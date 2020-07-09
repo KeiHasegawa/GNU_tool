@@ -1,0 +1,300 @@
+2020/07/05 Windows 10 DELL のノートパソコンで cygwin コマンドプロンプトから
+gcc 10.1.0 をソースからビルドしたときのメモ
+
+1. gcc のアーカイブをダウンロードする
+
+   % wget http://ftp.tsukuba.wide.ad.jp/software/gcc/releases/gcc-10.1.0/gcc-10.1.0.tar.xz
+
+   備考
+
+   https://gcc.gnu.org/
+
+   が gcc のサイト.
+
+2. gcc のアーカイブを展開する.
+
+   % ls gcc-10.1.0.tar.xz 
+   gcc-10.1.0.tar.xz
+   % xz -d gcc-10.1.0.tar.xz 
+   % ls gcc-10.1.0.tar 
+   gcc-10.1.0.tar
+   % tar xf gcc-10.1.0.tar
+   % ls -ld gcc-10.1.0
+
+3. gcc をビルドしてみる
+   % cd gcc-10.1.0
+   % ./configure
+   GMP, MPFR, MPC をインストールされていないというエラーが生成された
+
+4. GMP (The GNU Multiple Precision Arithmetic Library) のアーカイブをダウンロ
+   ードする
+
+   % wget https://gmplib.org/download/gmp/gmp-6.2.0.tar.xz
+
+   備考
+
+   https://gmplib.org/
+
+   が GMP のサイト.
+
+5. MPFR (C libirary for Multiple-Precision Floating-point computations with
+   correct rounding) のアーカイブをダウンロードする
+
+   % wget https://www.mpfr.org/mpfr-current/mpfr-4.0.2.tar.xz
+
+   備考
+
+   https://www.mpfr.org/
+
+   が MPFR のサイト.
+
+6. MPC のソースをダウンロードする
+
+   % wget https://ftp.gnu.org/gnu/mpc/mpc-1.0.3.tar.gz
+
+   備考
+
+   http://www.multiprecision.org/mpc
+
+   が MPC のサイト.
+
+7. GMP の展開とビルド
+
+   % xd -d -c gmp-6.2.0.tar.xz | tar xf -
+   % cd gmp-6.2.0
+   % ./configure
+   % make
+   % make install
+
+   以下でファイルが作成されたことを確認した.
+   
+   % ls -l /usr/local/include/gmp.h
+   % ls -l /usr/local/lib/libgmp.a
+
+8. MPFR の展開とビルド
+
+   % xz -d -c mpfr-4.0.2.tar.xz | tar xf -
+   % cd mpfr-4.0.2
+   % ./configure
+   この結果
+   configure: error: libgmp isn't provided as a DLL: use --enable-static --disable-shared
+   と表示された
+   % ./configure --enable-static --disable-shared
+   この結果
+   checking for __gmpz_init in -lgmp... no
+configure: error: libgmp not found or uses a different ABI (including static vs shared).
+   と表示された
+   しょうがないのでエラーしている箇所 configure:17211 から 17254 をコメントアウト.
+   ずるいがこれで回避した. 後になって分かったが /usr/local/lib/libgmp.a
+   の場所を検索していたらしい. 何らかの形で /usr/local/lib を configure に
+   指定できればよかった.
+
+   % ./configure --enable-static --disable-shared
+   % make
+   % make install
+
+   以下でファイルが作成されたことを確認する.
+
+   % ls -l /usr/local/include/mpfr.h
+   % ls -l /usr/local/lib/libmpfr.a
+
+9. MPC の展開とビルド
+
+   % gunzip -c mpc-1.0.3.tar.gz | tar xf -
+   % cd mpc-1.0.3
+   % ./configure
+   この結果
+   checking for __gmpz_init in -lgmp... no
+configure: error: libgmp not found or uses a different ABI (including static vs shared).
+   MPFR と同じエラーになった. configure:13771 から 13811 行目をコメントアウト
+   % ./configure
+   checking for MPFR... no
+   configure: error: libmpfr not found or uses a different ABI (including static vs shared).
+   なんだか似たようなエラーが発生している. configure:13814 から 13840 行目をコメ
+   ントアウト
+   % ./configure
+   次は以下のメッセージ
+   configure: error: gmp is not available as a DLL: use --enable-static --disable-shared
+   % ./configure --enable-static --disable-shared
+   これで何とかエラー回避した.
+   % make
+   libtool: compile:  gcc -DHAVE_CONFIG_H -I. -I.. -g -O2 -MT mul.lo -MD -MP -MF .deps/mul.Tpo -c mul.c -o mul.o
+   mul.c:175:1: error: conflicting types for 'mpfr_fmma'   
+   175 | mpfr_fmma (mpfr_ptr z, mpfr_srcptr a, mpfr_srcptr b, mpfr_srcptr c,
+       | ^~~~~~~~~
+   In file included from mpc.h:25,
+                 from mpc-impl.h:30,
+                 from mul.c:22:
+   /usr/local/include/mpfr.h:731:21: note: previous declaration of 'mpfr_fmma' was here
+   731 | __MPFR_DECLSPEC int mpfr_fmma (mpfr_ptr, mpfr_srcptr, mpfr_srcptr, mpfr_srcptr,
+       |                     ^~~~~~~~~
+
+   このエラーは mul.c で定義されている mpfr_fmma が /usr/local/inclde/mpfr.h で
+   宣言されている mpfr_fmma と一致していないという内容のもので, 作成者の意図を反映して
+   mul.c の mpfr_fmma を s_mpfr_fmma に変更し, mul.c のこれ以降の mpfr_fmma の
+   呼び出しを s_mpfr_fmma に変更した.
+   % make
+   この段階でビルド成功
+   % make install
+
+   以下でファイルが作成されたことを確認する.
+
+   % ls -l /usr/local/include/mpc.h
+   % ls -l /usr/local/lib/libmpc.a
+
+10. gcc ビルド
+
+   % cd gcc-10.1.0
+   % ./configure
+   checking for the correct version of the gmp/mpfr/mpc libraries... no
+   configure: error: Building GCC requires GMP 4.2+, MPFR 3.1.0+ and MPC 0.8.0+.
+   Try the --with-gmp, --with-mpfr and/or --with-mpc options to specify
+   their locations.  Source code for these libraries can be found at
+   their respective hosting sites as well as at
+   https://gcc.gnu.org/pub/gcc/infrastructure/.  See also
+   http://gcc.gnu.org/install/prerequisites.html for additional info.  If
+   you obtained GMP, MPFR and/or MPC from a vendor distribution package,
+   make sure that you have installed both the libraries and the header
+   files.  They may be located in separate packages.
+   しょうがない. 該当している configure の箇所 5875 から 5936 行をコメントアウトする
+   % ./configure
+   今度は成功
+   % make
+   make: *** No targets specified and no makefile found.  Stop.
+   調べてみると MAKEFILE というファイルが ls で確認できるが Makefile ではない.
+   これが良くないようだった.
+   % mv MAKEFILE /tmp/x
+   % mv /tmp/x Makefile
+   % make
+   ... 
+   g++ ... -o cc1.exe ...
+   でリンクエラー -lgmp -lmpfr -lmpc がないという内容.
+   % cd host-x86_64-pc-cygwin/gcc
+   % g++ ... -o cc1.exe ... -L/usr/local/lib
+   を実行して回避.
+   /usr/lib/gcc/x86_64-pc-cygwin/9.3.0/../../../../x86_64-pc-cygwin/bin/ld: /usr/local/lib/libmpc.a(sqrt.o): in function `mpc_sqrt':
+/cygdrive/d/tmp/work.07.05/mpc-1.0.3/src/sqrt.c:301: undefined reference to `mpfr_add_one_ulp'
+/cygdrive/d/tmp/work.07.05/mpc-1.0.3/src/sqrt.c:301:(.text+0x7f4): relocation truncated to fit: R_X86_64_PC32 against undefined symbol `mpfr_add_one_ulp'
+/usr/lib/gcc/x86_64-pc-cygwin/9.3.0/../../../../x86_64-pc-cygwin/bin/ld: /cygdrive/d/tmp/work.07.05/mpc-1.0.3/src/sqrt.c:345: undefined reference to `mpfr_sub_one_ulp'
+/cygdrive/d/tmp/work.07.05/mpc-1.0.3/src/sqrt.c:345:(.text+0x843): relocation truncated to fit: R_X86_64_PC32 against undefined symbol `mpfr_sub_one_ulp'
+/usr/lib/gcc/x86_64-pc-cygwin/9.3.0/../../../../x86_64-pc-cygwin/bin/ld: /cygdrive/d/tmp/work.07.05/mpc-1.0.3/src/sqrt.c:336: undefined reference to `mpfr_sub_one_ulp'
+/cygdrive/d/tmp/work.07.05/mpc-1.0.3/src/sqrt.c:336:(.text+0xb91): relocation truncated to fit: R_X86_64_PC32 against undefined symbol `mpfr_sub_one_ulp'
+/usr/lib/gcc/x86_64-pc-cygwin/9.3.0/../../../../x86_64-pc-cygwin/bin/ld: /cygdrive/d/tmp/work.07.05/mpc-1.0.3/src/sqrt.c:309: undefined reference to `mpfr_add_one_ulp'
+/cygdrive/d/tmp/work.07.05/mpc-1.0.3/src/sqrt.c:309:(.text+0xc08): relocation truncated to fit: R_X86_64_PC32 against undefined symbol `mpfr_add_one_ulp'
+/usr/lib/gcc/x86_64-pc-cygwin/9.3.0/../../../../x86_64-pc-cygwin/bin/ld: /cygdrive/d/tmp/work.07.05/mpc-1.0.3/src/sqrt.c:293: undefined reference to `mpfr_add_one_ulp'
+/cygdrive/d/tmp/work.07.05/mpc-1.0.3/src/sqrt.c:293:(.text+0xc37): relocation truncated to fit: R_X86_64_PC32 against undefined symbol `mpfr_add_one_ulp'
+/usr/lib/gcc/x86_64-pc-cygwin/9.3.0/../../../../x86_64-pc-cygwin/bin/ld: /cygdrive/d/tmp/work.07.05/mpc-1.0.3/src/sqrt.c:354: undefined reference to `mpfr_sub_one_ulp'
+/cygdrive/d/tmp/work.07.05/mpc-1.0.3/src/sqrt.c:354:(.text+0xc82): relocation truncated to fit: R_X86_64_PC32 against undefined symbol `mpfr_sub_one_ulp'
+/usr/lib/gcc/x86_64-pc-cygwin/9.3.0/../../../../x86_64-pc-cygwin/bin/ld: /usr/local/lib/libmpc.a(tan.o): in function `mpc_tan':
+/cygdrive/d/tmp/work.07.05/mpc-1.0.3/src/tan.c:197: undefined reference to `mpfr_add_one_ulp'
+/cygdrive/d/tmp/work.07.05/mpc-1.0.3/src/tan.c:197:(.text+0x233): relocation truncated to fit: R_X86_64_PC32 against undefined symbol `mpfr_add_one_ulp'
+/usr/lib/gcc/x86_64-pc-cygwin/9.3.0/../../../../x86_64-pc-cygwin/bin/ld: /cygdrive/d/tmp/work.07.05/mpc-1.0.3/src/tan.c:198: undefined reference to `mpfr_add_one_ulp'
+/cygdrive/d/tmp/work.07.05/mpc-1.0.3/src/tan.c:198:(.text+0x23d): relocation truncated to fit: R_X86_64_PC32 against undefined symbol `mpfr_add_one_ulp'
+/usr/lib/gcc/x86_64-pc-cygwin/9.3.0/../../../../x86_64-pc-cygwin/bin/ld: /cygdrive/d/tmp/work.07.05/mpc-1.0.3/src/tan.c:199: undefined reference to `mpfr_add_one_ulp'
+/cygdrive/d/tmp/work.07.05/mpc-1.0.3/src/tan.c:199:(.text+0x247): relocation truncated to fit: R_X86_64_PC32 against undefined symbol `mpfr_add_one_ulp'
+/usr/lib/gcc/x86_64-pc-cygwin/9.3.0/../../../../x86_64-pc-cygwin/bin/ld: /cygdrive/d/tmp/work.07.05/mpc-1.0.3/src/tan.c:200: undefined reference to `mpfr_add_one_ulp'
+/cygdrive/d/tmp/work.07.05/mpc-1.0.3/src/tan.c:200:(.text+0x253): relocation truncated to fit: R_X86_64_PC32 against undefined symbol `mpfr_add_one_ulp'
+/usr/lib/gcc/x86_64-pc-cygwin/9.3.0/../../../../x86_64-pc-cygwin/bin/ld: /cygdrive/d/tmp/work.07.05/mpc-1.0.3/src/tan.c:250: undefined reference to `mpfr_add_one_ulp'
+/cygdrive/d/tmp/work.07.05/mpc-1.0.3/src/tan.c:250:(.text+0x3db): additional relocation overflows omitted from the output
+/usr/lib/gcc/x86_64-pc-cygwin/9.3.0/../../../../x86_64-pc-cygwin/bin/ld: /usr/local/lib/libmpc.a(tan.o):/cygdrive/d/tmp/work.07.05/mpc-1.0.3/src/tan.c:252: more undefined references to `mpfr_add_one_ulp' follow
+collect2: error: ld returned 1 exit status
+   mpfr_xxx というラベルがシンボル解決できていないという内容.
+
+  簡単な mpc ライブラリ中のシンボルを参照するプログラム
+
+  #include <mpc.h>
+
+  int main()
+  {
+    void (*pf)() = (void (*)())mpc_real;
+    pf();
+    return 0;
+  }
+
+  をビルドしてみた.
+  % gcc a.c -lmpc -lmpfr -lgmp -L/usr/local/lib
+  で問題なし
+  a.c の mpc_real を mpc_sqrt に変更してみると, 同じ内容のリンクエラーが発生した.
+  これから判断すると, mpfr ライブラリのビルドに問題があったと言わざるを得ない.
+  % cd mpfr-4.0.2
+  % find . -type f -exec grep  -nH mpfr_add_one_ulp {} \;
+  これから判断するとかつてはマクロとして mpfr_add_one_ulp と mpfr_sub_one_ulp
+  があったが廃止されたとのこと. mpfr_next を使えってことらしい.
+  mpfr_add_one_ulp -> mpfr_nextabove
+  mpfr_sub_one_ulp -> mpfr_nextbelow
+  ということだろう.
+  % cd mpc-1.0.3
+  % find . -type f -exec grep  -nH mpfr_add_one_ulp {} \;
+  この結果から
+  mpc-1.0.3/src/mpc-impl.h を以下のように変更
+
+#if 0
+#define MPFR_ADD_ONE_ULP(x) mpfr_add_one_ulp (x, GMP_RNDN)
+#define MPFR_SUB_ONE_ULP(x) mpfr_sub_one_ulp (x, GMP_RNDN)
+#else
+#define MPFR_ADD_ONE_ULP(x) mpfr_nextabove (x)
+#define MPFR_SUB_ONE_ULP(x) mpfr_nextbelow (x)
+#endif
+
+  % make
+  % make install
+
+  % cd gcc-10.1.0/host-x86_64-pc-cygwin/gcc
+  % g++ ... -o cc1.exe ... -L/usr/local/lib
+  今度は成功
+
+  改めて
+  % cd gcc-10.1.0
+  % make
+  ...
+  g++ ... -o cc1plus.exe ...
+  で -lmpc -lmpfr -lgmp についてのエラーが発生.
+  % cd host-x86_64-pc-cygwin/gcc
+  % g++ ... -o cc1plus.exe ... -L/usr/local/lib
+  として回避
+
+  改めて
+  % cd gcc-10.1.0
+  % make
+  ...
+  g++ ... -o -o lto1.exe ...
+  でエラー. 例によって -L/usr/local/lib を付加してエラーを回避
+
+  改めて
+  % cd gcc-10.1.0
+  % make
+  ...
+  lto-dump.exe のリンクでエラー -L/usr/local/lib を付加してエラーを回避
+
+  ここいらで gcc-10.1.0/Makefile の以下の行
+
+  HOST_GMPLIBS = -lmpc -lmpfr -lgmp
+
+  を以下のように変更すればよいことに気付く.
+  
+  HOST_GMPLIBS = -lmpc -lmpfr -lgmp -L/usr/local/lib
+
+  改めて
+  % cd gcc-10.1.0
+  % make
+  成功した.
+
+  事情があって /usr/local にはインストールしたくなかったので以下のようにした.
+  % make install 'DESTDIR=d:/home/khasegawa'
+  ...
+  xgcc: fatal error: cannot execute '/cygdrive/d/tmp/work.07.05/gcc-10.1.0/host-x86_64-pc-cygwin/gcc/cc1.exe': spawn: Exec format error
+
+  謎のエラーが発生した. しょうがないのでビルドし直すことにした.
+  % rm host-x86_64-pc-cygwin/gcc/cc1.exe 
+  % make
+  成功
+  % make install 'DESTDIR=d:/home/khasegawa'
+  
+  % g++ -v
+  % /home/khasegawa/usr/local/bin/g++ -v
+
+  この 2 つを比較してみると, 既にインストールされていた g++ は configure で色々な
+  オプションを指定されていたことが分かる. だから 2 つの g++ でおそらく互換性はない
+  と思われる.
+  
+  
