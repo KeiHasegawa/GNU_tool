@@ -25,3 +25,14 @@ chmod +x $argv[1]
 % ./configure
 % make
 % make install 'DESTDIR=/home/khasegawa/gcc-10.2.0'
+
+環境変数 LD_LIBRARY_PATH に DESTDIR=/home/khasegawa/gcc-10.2.0/usr/local/lib
+を以下のように変更する. 以下は ~/.tcshrc の例
+
+% tail ~/.tcshrc
+# ...
+setenv LD_LIBRARY_PATH /usr/local/lib
+setenv LD_LIBRARY_PATH /home/khasegawa/gcc-10.2.0/usr/local/lib:$LD_LIBRARY_PATH
+
+これがないと libstdc++.so.6 や libgcc_s.so.1 が /usr/local/lib のものを
+参照してしまい都合が悪い.

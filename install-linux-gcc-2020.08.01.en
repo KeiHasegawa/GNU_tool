@@ -25,3 +25,15 @@ chmod +x $argv[1]
 % ./configure
 % make
 % make install 'DESTDIR=/home/khasegawa/gcc-10.2.0'
+
+# Add `/home/khasegawa/gcc-10.2.0/usr/local/lib' to environment varialbe
+# `LD_LIBRARY_PATH' like bellow:
+# My shell is `tcsh'
+
+% tail ~/.tcshrc
+# ...
+setenv LD_LIBRARY_PATH /usr/local/lib
+setenv LD_LIBRARY_PATH /home/khasegawa/gcc-10.2.0/usr/local/lib:$LD_LIBRARY_PATH
+
+If not added, `libstdc++.so.6' and `libgcc_s.so.1' are dynamic linked,
+which are located at /usr/local/lib.
