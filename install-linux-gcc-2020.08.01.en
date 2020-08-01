@@ -1,0 +1,27 @@
+Install memo of installation at vine linux on Panasonic Let's note.
+See also "cygwin 10.1.0 gcc install memo".
+
+% cd /home/khasegawa
+% wget http://ftp.tsukuba.wide.ad.jp/software/gcc/releases/gcc-10.2.0/gcc-10.2.0.tar.xz
+% xz -d -c gcc-10.2.0.tar.xz | tar xf -
+% cd gcc-10.2.0
+
+# Before executing ./configure and make, I modified configure, Makefile.in
+and Makefile.tpl like bellow:
+
+% cat /tmp/xx
+#! /bin/csh -f
+
+sed -e 's/-O2/-O0/g' $argv[1] > $argv[1].$$
+mv $argv[1].$$ $argv[1]
+chmod +x $argv[1]
+% chmod +x /tmp/xx
+% find . -name 'configure' -exec /tmp/xx {} \;
+% find . -name 'Makefile.in' -exec /tmp/xx {} \;
+% find . -name 'Makefile.tpl' -exec /tmp/xx {} \;
+
+# I' ve already installed libgmp, libmpfr and libmpc.
+
+% ./configure
+% make
+% make install 'DESTDIR=/home/khasegawa/gcc-10.2.0'

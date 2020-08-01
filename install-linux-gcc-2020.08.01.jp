@@ -1,0 +1,27 @@
+Vine linux (Let's note) に gcc 10.2.0 をインストールしたときのメモ
+「cygwin での gcc 10.1.0 インストールメモ」も参照
+
+% cd /home/khasegawa
+% wget http://ftp.tsukuba.wide.ad.jp/software/gcc/releases/gcc-10.2.0/gcc-10.2.0.tar.xz
+% xz -d -c gcc-10.2.0.tar.xz | tar xf -
+% cd gcc-10.2.0
+
+# -O2 ビルドしたくなかったので以下を実行した.
+
+% cat /tmp/xx
+#! /bin/csh -f
+
+sed -e 's/-O2/-O0/g' $argv[1] > $argv[1].$$
+mv $argv[1].$$ $argv[1]
+chmod +x $argv[1]
+% chmod +x /tmp/xx
+% find . -name 'configure' -exec /tmp/xx {} \;
+% find . -name 'Makefile.in' -exec /tmp/xx {} \;
+% find . -name 'Makefile.tpl' -exec /tmp/xx {} \;
+
+# libgmp, libmpfr, libmpc は既にインストールしていたので今回はこれらを改め
+# てインストールしなかった.
+
+% ./configure
+% make
+% make install 'DESTDIR=/home/khasegawa/gcc-10.2.0'
