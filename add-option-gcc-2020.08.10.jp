@@ -1,6 +1,6 @@
-gcc にオプションを追加してマクロの定義と参照位置をダンプする
+gcc �ɃI�v�V������ǉ����ă}�N���̒�`�ƎQ�ƈʒu���_���v����
 
-vine linux で既にビルドした状態
+vine linux �Ŋ��Ƀr���h�������
 
 % cd gcc-10.2.0/host-i686-pc-linux-gnu/gcc
 % cat /tmp/a.c
@@ -14,83 +14,83 @@ int main()
 
 % ./xgcc -S /tmp/a.c
 
-このコマンドで cc1 を exec できないというエラーメッセージが出た.
+���̃R�}���h�� cc1 �� exec �ł��Ȃ��Ƃ����G���[���b�Z�[�W���o��.
 
 % set path = ( $path `pwd` )
 % ./xgcc -S /tmp/a.c
 
-今度は正常終了した. このディレクトリにある cc1 を起動できたから.
-カレントディレクトリの a.s を見てみるとコンパイルがされたことを
-確認できる.
+���x�͐���I������. ���̃f�B���N�g���ɂ��� cc1 ���N���ł�������.
+�J�����g�f�B���N�g���� a.s �����Ă݂�ƃR���p�C�������ꂽ���Ƃ�
+�m�F�ł���.
 
-同様のことを gdb から行う
-gdb を起動する状態で PATH が gcc-10.2.0/host-i686-pc-linux-gnu/gcc に
-通っていないとやはり cc1 を起動することはできないことに注意.
-(Emacs から gdb を起動しているのなら M-x setenv で PATH を変更するとよい) 
+���l�̂��Ƃ� gdb ����s��
+gdb ���N�������Ԃ� PATH �� gcc-10.2.0/host-i686-pc-linux-gnu/gcc ��
+�ʂ��Ă��Ȃ��Ƃ�͂� cc1 ���N�����邱�Ƃ͂ł��Ȃ����Ƃɒ���.
+(Emacs ���� gdb ���N�����Ă���̂Ȃ� M-x setenv �� PATH ��ύX����Ƃ悢) 
 
 (gdb) b main
 (gdb) run -S /tmp/a.c
 
-とすれば main 函数で停止してソースレベルデバッグができるだろう.
+�Ƃ���� main �����Œ�~���ă\�[�X���x���f�o�b�O���ł��邾�낤.
 
-gcc には -### オプションがある. これでどのように外部コマンドを
-起動するか等を表示することができる
+gcc �ɂ� -### �I�v�V����������. ����łǂ̂悤�ɊO���R�}���h��
+�N�����邩����\�����邱�Ƃ��ł���
 
 % ./xgcc -S /tmp/a.c -###
 ...
  cc1 -quiet -iprefix /home/khasegawa/gcc-10.2.0/host-i686-pc-linux-gnu/gcc/../lib/gcc/i686-pc-linux-gnu/10.2.0/ /tmp/a.c -quiet -dumpbase a.c "-mtune=generic" "-march=pentiumpro" -auxbase a -o a.s
 ...
 
-ひとまず xgcc に --output-macro-info オプションを追加してみたい. さらに
-そのオプションを cc1 に引き継いでもらいたい.
+�ЂƂ܂� xgcc �� --output-macro-info �I�v�V������ǉ����Ă݂���. �����
+���̃I�v�V������ cc1 �Ɉ����p���ł��炢����.
 
-以下の函数にブレークポイントをセットして実行してみる.
+�ȉ��̔����Ƀu���[�N�|�C���g���Z�b�g���Ď��s���Ă݂�.
 decode_cmdline_option
 find_opt
 
-find_opt では OPT_SPECIAL_unknown が返されて, option_map のテーブルの "--"
-とマッチすることにより再び find_opt がよばれ, やはり OPT_SPECIAL_unknown
-が返される.
+find_opt �ł� OPT_SPECIAL_unknown ���Ԃ����, option_map �̃e�[�u���� "--"
+�ƃ}�b�`���邱�Ƃɂ��Ă� find_opt ����΂�, ��͂� OPT_SPECIAL_unknown
+���Ԃ����.
 
-1 回目 find_opt( input = "-output-macro-info", ...)
-2 回目 find_opt( input = "foutput-macro-info", ...)
+1 ��� find_opt( input = "-output-macro-info", ...)
+2 ��� find_opt( input = "foutput-macro-info", ...)
 
-で呼ばれる. find_opt では
+�ŌĂ΂��. find_opt �ł�
 
-cl_options という配列を検索している. cl_options_count はその配列の
-サイズ.
+cl_options �Ƃ����z����������Ă���. cl_options_count �͂��̔z���
+�T�C�Y.
 
-ソースからのビルドのログに
+�\�[�X����̃r���h�̃��O��
 
 	gawk -f ../.././gcc/opt-gather.awk ../.././gcc/ada/gcc-interface/lang.opt ../.././gcc/brig/lang.opt ../.././gcc/d/lang.opt ../.././gcc/fortran/lang.opt ../.././gcc/go/lang.opt ../.././gcc/lto/lang.opt ../.././gcc/c-family/c.opt ../.././gcc/common.opt ../.././gcc/params.opt ../.././gcc/analyzer/analyzer.opt ../.././gcc/config/fused-madd.opt ../.././gcc/config/i386/i386.opt ../.././gcc/config/gnu-user.opt ../.././gcc/config/linux.opt ../.././gcc/config/linux-android.opt > tmp-optionlist
 
-を発見. おそらくここがカギになるところとは思ったが, 単純にササっと済ますなら
-decode_cmdline_option の呼び出しを以下のようにスキップさせる
+�𔭌�. �����炭�������J�M�ɂȂ�Ƃ���Ƃ͎v������, �P���ɃT�T���ƍς܂��Ȃ�
+decode_cmdline_option �̌Ăяo�����ȉ��̂悤�ɃX�L�b�v������
 
 gcc-10.2.0/gcc/opts-common.c
 
-bool output_macro_info;  // このグローバル変数を追加
+bool output_macro_info;  // ���̃O���[�o���ϐ���ǉ�
 
   for (i = 0 ; i < argc ; i += n)
    {
       ...
-      // vvvvvv ここを追加
+      // vvvvvv ������ǉ�
       if (strcmp(opt, "--output-macro-info") == 0) {
 	hoge = true;
         n = 1;
 	continue;
       }
-      // ^^^^^^ ここを追加
+      // ^^^^^^ ������ǉ�
       ...
       decode_cmdline_option( ... );
       ...
     }
 
-cc1 を起動するときに後はこのオプションを伝える. 以下は
-gcc-10.2.0/gcc/gcc.c で cc1 を exec する直前の状態.
+cc1 ���N������Ƃ��Ɍ�͂��̃I�v�V������`����. �ȉ���
+gcc-10.2.0/gcc/gcc.c �� cc1 �� exec ���钼�O�̏��.
 
   commands[0].prog = argbuf[0]; /* first command.  */
-  // vvvvv ここを追加
+  // vvvvv ������ǉ�
   extern bool output_macro_info;
   if (output_macro_info) {
     const char* x = argbuf.pop();
@@ -98,41 +98,41 @@ gcc-10.2.0/gcc/gcc.c で cc1 を exec する直前の状態.
     argbuf.safe_push(y);
     argbuf.safe_push(x);
   }
-  // ^^^^^ ここを追加
+  // ^^^^^ ������ǉ�
   commands[0].argv = argbuf.address ();
 
-これで cc1 に --output-macro-info オプションが渡る. しかし, この程度のこと
-をしたいのであれば以下のように環境変数を使ったほうがだいぶお手軽かと思う.
+����� cc1 �� --output-macro-info �I�v�V�������n��. ������, ���̒��x�̂���
+���������̂ł���Έȉ��̂悤�Ɋ��ϐ����g�����ق��������Ԃ���y���Ǝv��.
 
   if (getenv("OUTPUT_MACRO_INFO")) {
-    ... // 自分の好きなことをする
+    ... // �����̍D���Ȃ��Ƃ�����
   }
 
-もう少し正式と思われるやり方でオプションを追加してみたい. 
-cl_options のありかを探す. xgcc のリンクで参照されるファイルは
+�������������Ǝv��������ŃI�v�V������ǉ����Ă݂���. 
+cl_options �̂��肩��T��. xgcc �̃����N�ŎQ�Ƃ����t�@�C����
 
 gcc.o gcc-main.o ggc-none.o \
 c/gccspec.o driver-i386.o  libcommon-target.a \
 libcommon.a ../libcpp/libcpp.a   ../libbacktrace/.libs/libbacktrace.a ../libiberty/libiberty.a ../libdecnumber/libdecnumber.a 
 
-なのでおそらくこの中のいずれか.
+�Ȃ̂ł����炭���̒��̂����ꂩ.
 
 % objdump -x gcc.o gcc-main.o ggc-none.o \
 c/gccspec.o driver-i386.o  libcommon-target.a \
 libcommon.a ../libcpp/libcpp.a   ../libbacktrace/.libs/libbacktrace.a ../libiberty/libiberty.a ../libdecnumber/libdecnumber.a > /tmp/a
 
-この結果からすると options.o で定義されているらしい.
-ビルドのログからすると
+���̌��ʂ��炷��� options.o �Œ�`����Ă���炵��.
+�r���h�̃��O���炷���
 
 gawk -f ../.././gcc/opt-functions.awk -f ../.././gcc/opt-read.awk \
 	       -f ../.././gcc/optc-gen.awk \
 	       -v header_name="config.h system.h coretypes.h options.h tm.h" < optionlist > options.c
 
-により options.c が作成されていることが分かる. とすると optionlist の
-作成方法だが, そうなると上で言及した tmp-optionlist の話に戻る.
+�ɂ�� options.c ���쐬����Ă��邱�Ƃ�������. �Ƃ���� optionlist ��
+�쐬���@����, �����Ȃ�Ə�Ō��y���� tmp-optionlist �̘b�ɖ߂�.
 
-gcc-10.2.0/gcc/c-family/c.opt の最後に以下のように --hogex オプションを
-追加してみた.
+gcc-10.2.0/gcc/c-family/c.opt �̍Ō�Ɉȉ��̂悤�� --hogex �I�v�V������
+�ǉ����Ă݂�.
 
 w
 C ObjC C++ ObjC++
@@ -144,23 +144,23 @@ C ObjC C++ ObjC++ Var(flag_hogex)
 
 ; This comment is to ensure we retain the blank line above.
 
-これでビルドしなおしてみて, 再実行.
+����Ńr���h���Ȃ����Ă݂�, �Ď��s.
 
-find_opt からは 30 がかえってきている. が, --hogex オプションに
+find_opt ����� 30 ���������Ă��Ă���. ��, --hogex �I�v�V������
 unrecognized command-line option
-のメッセージ. どうやらこれだけでは十分ではないらしい.
- Var(flag_hogex) をさらに付け加えて再度ビルド. やはり unrecognized の
-エラーがでる.
+�̃��b�Z�[�W. �ǂ���炱�ꂾ���ł͏\���ł͂Ȃ��炵��.
+ Var(flag_hogex) ������ɕt�������čēx�r���h. ��͂� unrecognized ��
+�G���[���ł�.
 
-ざっくりと話しが省かれるが, gcc-10.2.0/gcc/gcc.c にある
+��������Ƙb�����Ȃ���邪, gcc-10.2.0/gcc/gcc.c �ɂ���
 
 The Specs Language
 
-も関係している. --hogex オプションを追加するにはこの部分も変更する必要
-がある.
+���֌W���Ă���. --hogex �I�v�V������ǉ�����ɂ͂��̕������ύX����K�v
+������.
 
-これはさすがに面倒なのでやめる. 
-gcc-10.2.0/gcc/common.opt に以下のように --output-macro-info を追加した.
+����͂������ɖʓ|�Ȃ̂ł�߂�. 
+gcc-10.2.0/gcc/common.opt �Ɉȉ��̂悤�� --output-macro-info ��ǉ�����.
 
 fipa-ra
 Common Report Var(flag_ipa_ra) Optimization
@@ -171,17 +171,17 @@ Driver
 
 ; This comment is to ensure we retain the blank line above.
 
-ポイントは foutput-macro-info の行で f から始まっている.
-こうすることで xgcc にオプションが追加される. おそらく xg++ にも
-追加されていることだろう.
+�|�C���g�� foutput-macro-info �̍s�� f ����n�܂��Ă���.
+�������邱�Ƃ� xgcc �ɃI�v�V�������ǉ������. �����炭 xg++ �ɂ�
+�ǉ�����Ă��邱�Ƃ��낤.
 
 % ./xgcc -S /tmp/a.c --output-macro-info -###
 
-で確認すると, --output-macro-info オプションが認識され
--foutput-macro-info オプションが cc1 に引き継がれていることが確認
-できる.
+�Ŋm�F�����, --output-macro-info �I�v�V�������F������
+-foutput-macro-info �I�v�V������ cc1 �Ɉ����p����Ă��邱�Ƃ��m�F
+�ł���.
 
-cc1 にも同様にオプションを追加する.
+cc1 �ɂ����l�ɃI�v�V������ǉ�����.
 w
 C ObjC C++ ObjC++
 ; Documented in common.opt
@@ -192,12 +192,12 @@ C ObjC C++ ObjC++ Var(flag_output_macro_info)
 
 ; This comment is to ensure we retain the blank line above.
 
-やはり f から始まっているのがポイント. Var(flag_output_macro_info)
-は構造体のメンバに flag_output_macro_info が追加される
-ようになる.
+��͂� f ����n�܂��Ă���̂��|�C���g. Var(flag_output_macro_info)
+�͍\���̂̃����o�� flag_output_macro_info ���ǉ������
+�悤�ɂȂ�.
 
-cc1 -foutput-macro-info オプション付きで実行した場合プログラムの制御が以下
-の函数を呼び出した直後に
+cc1 -foutput-macro-info �I�v�V�����t���Ŏ��s�����ꍇ�v���O�����̐��䂪�ȉ�
+�̔������Ăяo���������
 
 gcc-10.2.0/gcc/toplev.c
 
@@ -208,12 +208,12 @@ gcc-10.2.0/gcc/toplev.c
 
   global_options.x_flag_output_macro_info
 
-  に 1 がセットされる. ここまでがオプションを追加する話. マクロの
-  定義と参照位置をダンプする話は今回は省略する.
+  �� 1 ���Z�b�g�����. �����܂ł��I�v�V������ǉ�����b. �}�N����
+  ��`�ƎQ�ƈʒu���_���v����b�͍���͏ȗ�����.
 
 output_macro_info.diff
 
-をダウンロードして修正を反映する方法は以下.
+���_�E�����[�h���ďC���𔽉f������@�͈ȉ�.
 
 % xz -d -c gcc-10.2.0.tar.xz | tar xf -
 % cd gcc-10.2.0
@@ -224,10 +224,10 @@ patching file gcc/common.opt
 patching file libcpp/directives.c
 patching file libcpp/macro.c
 
-後は通常通り ./configure と make install すればよい. 改造された
-gcc は以下のように実行する.
+��͒ʏ�ʂ� ./configure �� make install ����΂悢. �������ꂽ
+gcc �͈ȉ��̂悤�Ɏ��s����.
 
 % gcc foo.c --output-macro-info
 
-これにより foo.i にマクロの定義位置と参照位置がダンプされる.
+����ɂ�� foo.i �Ƀ}�N���̒�`�ʒu�ƎQ�ƈʒu���_���v�����.
 
