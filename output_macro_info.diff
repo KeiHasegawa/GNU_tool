@@ -1,0 +1,155 @@
+diff -rc ./gcc/c-family/c-opts.c /home/khasegawa/gcc-10.2.0/gcc/c-family/c-opts.c
+*** ./gcc/c-family/c-opts.c	2020-07-23 15:35:17.300384068 +0900
+--- /home/khasegawa/gcc-10.2.0/gcc/c-family/c-opts.c	2020-08-14 14:26:52.100940967 +0900
+***************
+*** 1420,1425 ****
+--- 1420,1472 ----
+    add_path (path, chain, 0, false);
+  }
+  
++ // vvvvv add 2020.08.13 by khasegawa
++ extern FILE* macro_info_out_file;
++ const char* macro_info_file_name;
++ static void
++ prepare_output_macro_info(const char* name)
++ {
++   if (!global_options.x_flag_output_macro_info)
++     return;
++ 
++   if (macro_info_out_file) {
++     fclose(macro_info_out_file);
++     macro_info_out_file = 0;
++   }
++ 
++   // Bellow code are inspired by `init_asm_output'
++   if (name == NULL && macro_info_file_name == 0)
++     macro_info_out_file = stdout;
++   else
++     {
++       if (macro_info_file_name == 0)
++ 	{
++ 	  int len = strlen (dump_base_name);
++ 	  char *dumpname = XNEWVEC (char, len + 6);
++ 
++ 	  memcpy (dumpname, dump_base_name, len + 1);
++ 	  strip_off_ending (dumpname, len);
++ 	  strcat (dumpname, ".j");
++ 	  macro_info_file_name = dumpname;
++ 	}
++       if (!strcmp (macro_info_file_name, "-"))
++ 	macro_info_out_file = stdout;
++       else if (!canonical_filename_eq (macro_info_file_name, name)
++ 	       || !strcmp (macro_info_file_name, HOST_BIT_BUCKET))
++ 	macro_info_out_file = fopen (macro_info_file_name, "w");
++       else
++ 	/* Use UNKOWN_LOCATION to prevent gcc from printing the first
++ 	   line in the current file. */
++ 	fatal_error (UNKNOWN_LOCATION,
++ 		     "input file %qs is the same as output file",
++ 		     macro_info_file_name);
++       if (macro_info_out_file == 0)
++ 	fatal_error (UNKNOWN_LOCATION,
++ 		     "cannot open %qs for writing: %m", macro_info_file_name);
++     }
++ }
++ // ^^^^^ add 2020.08.13 by khasegawa
++ 
+  /* Handle -D, -U, -A, -imacros, and the first -include.  */
+  static void
+  c_finish_options (void)
+***************
+*** 1434,1439 ****
+--- 1481,1488 ----
+        /* Make sure all of the builtins about to be declared have
+  	 BUILTINS_LOCATION has their location_t.  */
+        cpp_force_token_locations (parse_in, BUILTINS_LOCATION);
++      
++       prepare_output_macro_info(main_input_filename);
+  
+        cpp_init_builtins (parse_in, flag_hosted);
+        c_cpp_builtins (parse_in);
+diff -rc ./gcc/c-family/c.opt /home/khasegawa/gcc-10.2.0/gcc/c-family/c.opt
+*** ./gcc/c-family/c.opt	2020-07-23 15:35:17.300384068 +0900
+--- /home/khasegawa/gcc-10.2.0/gcc/c-family/c.opt	2020-08-13 06:42:48.159765103 +0900
+***************
+*** 2246,2249 ****
+--- 2246,2253 ----
+  C ObjC C++ ObjC++
+  ; Documented in common.opt
+  
++ foutput-macro-info
++ C ObjC C++ ObjC++ Var(flag_output_macro_info)
++ ; Added 2020.08.12 06:43 by khasegawa
++ 
+  ; This comment is to ensure we retain the blank line above.
+diff -rc ./gcc/common.opt /home/khasegawa/gcc-10.2.0/gcc/common.opt
+*** ./gcc/common.opt	2020-07-23 15:35:17.316384243 +0900
+--- /home/khasegawa/gcc-10.2.0/gcc/common.opt	2020-08-12 17:02:19.175212045 +0900
+***************
+*** 3412,3415 ****
+--- 3412,3419 ----
+  Common Report Var(flag_ipa_ra) Optimization
+  Use caller save register across calls if possible.
+  
++ foutput-macro-info
++ Driver
++ ; Added 2020.08.12 06:43 by khasegawa
++ 
+  ; This comment is to ensure we retain the blank line above.
+diff -rc ./libcpp/directives.c /home/khasegawa/gcc-10.2.0/libcpp/directives.c
+*** ./libcpp/directives.c	2020-07-23 15:35:18.712399623 +0900
+--- /home/khasegawa/gcc-10.2.0/libcpp/directives.c	2020-08-14 12:05:58.201629888 +0900
+***************
+*** 616,621 ****
+--- 616,623 ----
+    return NULL;
+  }
+  
++ FILE* macro_info_out_file;
++ 
+  /* Process a #define directive.  Most work is done in macro.c.  */
+  static void
+  do_define (cpp_reader *pfile)
+***************
+*** 637,642 ****
+--- 639,655 ----
+  	  pfile->cb.define (pfile, pfile->directive_line, node);
+  
+        node->flags &= ~NODE_USED;
++ 
++       // vvvv add by khasegawa 2020.08.13
++       if (macro_info_out_file) {
++ 	const char* name = (char*)node->ident.str;
++ 	fprintf(macro_info_out_file, "$macro $def %s ", name);
++ 	rich_location richloc(pfile->line_table, pfile->directive_line);
++ 	expanded_location exloc = richloc.get_expanded_location(0);
++ 	const char* file = exloc.file;
++ 	int line = exloc.line;
++ 	fprintf(macro_info_out_file, "\"%s\" %d ;\n", file, line);
++       }
+      }
+  }
+  
+diff -rc ./libcpp/macro.c /home/khasegawa/gcc-10.2.0/libcpp/macro.c
+*** ./libcpp/macro.c	2020-07-23 15:35:18.716399666 +0900
+--- /home/khasegawa/gcc-10.2.0/libcpp/macro.c	2020-08-14 13:54:21.427327796 +0900
+***************
+*** 1436,1441 ****
+--- 1436,1452 ----
+        if (pfile->cb.used)
+  	pfile->cb.used (pfile, location, node);
+  
++       extern FILE* macro_info_out_file;
++       if (macro_info_out_file) {
++ 	const char* name = (char*)node->ident.str;
++ 	fprintf(macro_info_out_file, "$macro $ref %s ", name);
++ 	rich_location richloc(pfile->line_table, location);
++ 	expanded_location exloc = richloc.get_expanded_location(0);
++ 	const char* file = exloc.file;
++ 	int line = exloc.line;
++ 	fprintf(macro_info_out_file, "\"%s\" %d ;\n", file, line);
++       }
++ 
+        macro->used = 1;
+  
+        if (macro->paramc == 0)
