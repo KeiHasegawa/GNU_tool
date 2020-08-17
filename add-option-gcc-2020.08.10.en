@@ -1,0 +1,242 @@
+Add option into gcc which invokes to dump macro defintion and macro reference
+to the file.
+
+Assume that vine linux build has been done.
+
+% cd gcc-10.2.0/host-i686-pc-linux-gnu/gcc
+% cat /tmp/a.c
+extern int printf(const char*, ...);
+
+int main()
+{
+  printf("hello world\n");
+  return 0;
+}
+
+% ./xgcc -S /tmp/a.c
+
+xgcc output error message that xgcc cannot do exec `cc1'.
+
+% set path = ( $path `pwd` )
+% ./xgcc -S /tmp/a.c
+
+Now normally done, because xgcc can do exec cc1 in this directory.
+a.s in this directory shows that compile is done normally.
+
+Execute the same thing under gdb control. Not that
+when we execute gdb, if PATH environment variable doesn't include
+gcc-10.2.0/host-i686-pc-linux-gnu/gcc, xgcc cannot do exece cc1.
+Also note that if you execute gdb in emacs, you can set PATH
+M-x setenv command.
+
+(gdb) b main
+(gdb) run -S /tmp/a.c
+
+You can do source level debugging.
+
+gcc has -### option which shows that the way of executing cc1, as or ld
+ans so on.
+
+% ./xgcc -S /tmp/a.c -###
+...
+ cc1 -quiet -iprefix /home/khasegawa/gcc-10.2.0/host-i686-pc-linux-gnu/gcc/../lib/gcc/i686-pc-linux-gnu/10.2.0/ /tmp/a.c -quiet -dumpbase a.c "-mtune=generic" "-march=pentiumpro" -auxbase a -o a.s
+...
+
+At 1st, add option `--output-macro-info' to xgcc and 2nd, pass the option to
+`cc1'
+
+Set break point `decode_cmdline_option' and `find_opt' and
+execute xgcc under gdb control like
+(gdb) run -S /tmp/a.c --output-macro-info
+
+`find_opt' return `OPT_SPECIAL_unknown' at 1st time, and 2nd,
+because "--" matches with the entry of `option_map`, again
+`find_opt' is called and return `OPT_SPECIAL_unknown'.
+
+Here, the argument of `find_opt' is like bellow:
+
+1st time : find_opt(input = "-output-macro-info", ...)
+2nd time : find_opt(input = "foutput-macro-info", ...)
+
+and you can find that `find_opt' looks up `input' in `cl_options'
+whose size is `cl_options_count'.
+
+I found in build log bellow:
+
+	gawk -f ../.././gcc/opt-gather.awk ../.././gcc/ada/gcc-interface/lang.opt ../.././gcc/brig/lang.opt ../.././gcc/d/lang.opt ../.././gcc/fortran/lang.opt ../.././gcc/go/lang.opt ../.././gcc/lto/lang.opt ../.././gcc/c-family/c.opt ../.././gcc/common.opt ../.././gcc/params.opt ../.././gcc/analyzer/analyzer.opt ../.././gcc/config/fused-madd.opt ../.././gcc/config/i386/i386.opt ../.././gcc/config/gnu-user.opt ../.././gcc/config/linux.opt ../.././gcc/config/linux-android.opt > tmp-optionlist
+
+I guessed that above is very important. But to implemnt simply,
+try to modify `decode_cmdline_option' call like bellow:
+ 
+gcc-10.2.0/gcc/opts-common.c
+
+bool output_macro_info;  // Add this global flag variable
+
+  for (i = 0 ; i < argc ; i += n)
+   {
+      ...
+      // vvvvvv Add from here
+      if (strcmp(opt, "--output-macro-info") == 0) {
+	output_macro_info = true;
+        n = 1;
+	continue;
+      }
+      // ^^^^^^ Add to here
+      ...
+      decode_cmdline_option( ... );
+      ...
+    }
+
+Now, all we have to do is to transfer "--ouput-macro-info" option
+when executing `cc1'.
+The situation Before executing `cc1' are like bellow:
+
+gcc-10.2.0/gcc/gcc.c
+
+  commands[0].prog = argbuf[0]; /* first command.  */
+  // vvvvv Add from here
+  extern bool output_macro_info;
+  if (output_macro_info) {
+    const char* x = argbuf.pop();
+    const char* y = "--output-macro-info";
+    argbuf.safe_push(y);
+    argbuf.safe_push(x);
+  }
+  // ^^^^^ Add to here
+  commands[0].argv = argbuf.address ();
+
+This works well. But I also noticed that it's more simple like bellow:
+
+  if (getenv("OUTPUT_MACRO_INFO")) {
+    ... // Do what you want
+  }
+
+I want to implement in the more formal way. So first, I searched
+`cl_options' definition. To generate `xgcc', linker referes to these
+files:
+
+gcc.o gcc-main.o ggc-none.o \
+c/gccspec.o driver-i386.o  libcommon-target.a \
+libcommon.a ../libcpp/libcpp.a   ../libbacktrace/.libs/libbacktrace.a ../libiberty/libiberty.a ../libdecnumber/libdecnumber.a 
+
+So I guessed that `cl_options' is defined at one of them.
+
+% objdump -x gcc.o gcc-main.o ggc-none.o \
+c/gccspec.o driver-i386.o  libcommon-target.a \
+libcommon.a ../libcpp/libcpp.a   ../libbacktrace/.libs/libbacktrace.a ../libiberty/libiberty.a ../libdecnumber/libdecnumber.a > /tmp/a
+
+As this result, `cl_options' is defined at options.o
+Build log shows that options.c was generated like bellow:
+
+gawk -f ../.././gcc/opt-functions.awk -f ../.././gcc/opt-read.awk \
+	       -f ../.././gcc/optc-gen.awk \
+	       -v header_name="config.h system.h coretypes.h options.h tm.h" < optionlist > options.c
+
+Now the point is the way of generaing `optionlist', the discuss falls back
+to above `tmp-optionlist'.
+
+I tried to add "--hogex" into gcc-10.2.0/gcc/c-family/c.opt like bellow:
+
+w
+C ObjC C++ ObjC++
+; Documented in common.opt
+
+-hogex
+C ObjC C++ ObjC++ Var(flag_hogex)
+; Added 2020.08.12 06:43 by khasegawa
+
+; This comment is to ensure we retain the blank line above.
+
+Rebuilding and trying to execute under gdb control.
+
+`find_opt' returns 30 at this time, but "--hogex" option is not recognized:
+
+unrecognized command-line option
+
+It's not enough. Roughly say, it depends on
+
+The Specs Language
+
+described at gcc-10.2.0/gcc/gcc.c
+To add "--hogex", we have to fix this part. But it's to troublesome.
+
+I added "--output-macro-info" into gcc-10.2.0/gcc/common.opt like bellow:
+
+fipa-ra
+Common Report Var(flag_ipa_ra) Optimization
+Use caller save register across calls if possible.
+
+foutput-macro-info
+Driver
+
+; This comment is to ensure we retain the blank line above.
+
+"foutput-macro-info" line is the point. This satisfies above
+"The Spec Language".
+Confirm by bellow command:
+
+% ./xgcc -S /tmp/a.c --output-macro-info -###
+
+"--output-macro-info" option is recognized and "-foutput-macro-info" option
+is passed to `cc1'
+
+Simliraly, add this option into gcc-10.2.0/gcc/c-family/c.opt for `cc1'
+
+w
+C ObjC C++ ObjC++
+; Documented in common.opt
+
+foutput-macro-info
+C ObjC C++ ObjC++ Var(flag_output_macro_info)
+; Added 2020.08.12 06:43 by khasegawa
+
+; This comment is to ensure we retain the blank line above.
+
+Similarly, the point is that first character is `f' of "foutput-macro-info"
+line. `Var(flag_output_macro_info)' is for adding member
+`x_flag_output_macro_info' to the structure which is type of
+variable `global_options'.
+
+If `cc1' is executed with "-foutput-macro-info" option,
+
+gcc-10.2.0/gcc/toplev.c
+
+  decode_options (&global_options, &global_options_set,
+		  save_decoded_options, save_decoded_options_count,
+		  UNKNOWN_LOCATION, global_dc,
+		  targetm.target_option.override);
+
+after above function is executed,
+
+  global_options.x_flag_output_macro_info
+
+is set to 1. This discussion is for adding option.
+At this time, omit the discussion of defining macro and refering macro.
+
+Download
+
+output_macro_info.diff
+
+and execute patch command like bellow:
+
+% xz -d -c gcc-10.2.0.tar.xz | tar xf -
+% cd gcc-10.2.0
+% patch -p1 < output_macro_info.diff
+patching file gcc/c-family/c-opts.c
+patching file gcc/c-family/c.opt
+patching file gcc/common.opt
+patching file libcpp/directives.c
+patching file libcpp/macro.c
+
+And then normally execute
+% ./configure 
+% make install
+
+Fixed version gcc is executed like bellow:
+
+% gcc foo.c --output-macro-info
+
+As a result, `foo.j' is generated which contains macro definition position
+and macro reference position.
+
+
