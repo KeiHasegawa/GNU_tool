@@ -1,0 +1,172 @@
+Investigation of g++ parser engine
+
+Assume that vine linux build has been done.
+  => refer to linux gcc 10.2.0 install memo
+
+% cd gcc-10.2.0/host-i686-pc-linux-gnu/gcc/
+% cat /tmp/b.cpp
+int a = 1;
+% ./xg++ -S /tmp/b.cpp
+xg++ outputed error message that xgcc cannot do exec `cc1plus'.
+
+% set path = ( $path `pwd` )
+% ./xg++ -S /tmp/b.cpp
+
+Now normally done, because xg++ can do exec cc1plus in this directory.
+b.s in this directory shows that compile is done normally.
+
+Execute the same thing under gdb control. Note that
+when we execute gdb, if PATH environment variable doesn't include
+gcc-10.2.0/host-i686-pc-linux-gnu/gcc, xg++ cannot do exece cc1plus.
+Also note that if you execute gdb in emacs, you can set PATH
+M-x setenv command.
+
+(gdb) b main
+(gdb) run -S /tmp/b.cpp
+
+You can do source level debugging.
+
+Same as gcc, g++ has -### option which shows that the way of executing
+cc1plus, as or ld ans so on.
+
+% ./xg++ -S /tmp/b.cpp -###
+...
+ cc1plus -quiet -iprefix /home/khasegawa/gcc-10.2.0/host-i686-pc-linux-gnu/gcc/../lib/gcc/i686-pc-linux-gnu/10.2.0/ -D_GNU_SOURCE /tmp/b.cpp -quiet -dumpbase b.cpp "-mtune=generic" "-march=pentiumpro" -auxbase b -o b.s
+...
+
+Now, execute cc1plus under control gdb
+% gdb cc1plus
+...
+(gdb) b main
+(gdb) run -quiet -iprefix /home/khasegawa/gcc-10.2.0/host-i686-pc-linux-gnu/gcc/../lib/gcc/i686-pc-linux-gnu/10.2.0/ -D_GNU_SOURCE /tmp/b.cpp -quiet -dumpbase b.cpp "-mtune=generic" "-march=pentiumpro" -auxbase b -o b.s
+
+where
+
+(gdb) run -quiet .... 
+
+specified arguments after run command should be the same as the arguments
+which are actually specified by xg++, denoted by -### option.
+
+Omitted detailed explanation,
+
+(gdb) b cp_parser_translation_unit  # set break point at this function
+(gdb) run -quiet ...
+
+cc1plus exection reachs at the begining of parser routine.
+
+As far as this gcc version, the comment of cp_parser_translation_unit says
+
+   translation-unit:
+     declaration-seq [opt]
+
+If you receive this comment without doubt, and I'm sorry that I omit
+detailed explanation, you might be sure that this function is the begining
+of parser routine.
+
+Do step execution. Now b.cpp is:
+
+int a = 1;
+
+very simple. And you may understand that `cp_parser_declaration'
+function parses this declaration. See the comment of this function:
+
+   declaration:
+     block-declaration
+     function-definition
+     template-declaration
+     explicit-instantiation
+     explicit-specialization
+     linkage-specification
+     namespace-definition
+
+Again omitted detailed explanation, you may also notice that 
+recursive-descent parsing is used.
+
+Now, at this time, I want to know that what grammer g++ parser accepts.
+For example:
+
+  template<typename _Tp>
+    auto declval() noexcept -> decltype(__declval<_Tp>(0));
+
+For above declaration, old C++ programmer can only recognize it is a
+template-declaration  but cannot recognize any more.
+
+To make sure that above declaration is part of template-declaration,
+b2.cpp is created:
+% cat /tmp/b2.cpp
+  template<typename _Tp>
+    _Tp __declval(int);
+
+  template<typename _Tp>
+    auto declval() noexcept -> decltype(__declval<_Tp>(0));
+%
+Again try to debug cc1plus sepcified /tmp/b2.cpp.
+
+(gdb) b cp_parser_template_declaration
+(gdb) run -quiet ... /tmp/b2.cpp ...
+
+We want to investigate 2nd template-declaration, so, at 1st time,
+execute continue commnad. At 2nd time, start to debug.
+
+auto declval()
+
+This part of declaration is very common function declaration
+replacing auto to int. i.e. We can guess that cc1plus'll reachs
+to the function which parses init-declarator:
+
+(gdb) b cp_parser_init_declarator    # init-declarator parser function
+(gdb) c
+
+and know that cc1plus reached here. Of cause, this function comment part says
+
+   init-declarator:
+     declarator initializer [opt]
+
+And more
+
+   auto declval() noexcept -> ...
+        ^^^^^^^^^
+
+This part is reduced to
+
+   direct-declarator
+
+so can guess that cc1plus'll reach to cp_parser_direct_declarator which
+parses direct-declarator.
+
+More simply
+
+   auto declval() noexcept -> ...
+                  ^^^^^^^^
+
+We can annotate this part and can guess that cc1plus'll reach to
+
+cp_parser_noexcept_specification_opt
+
+If we notice above, we can annotate this part
+
+    auto declval() noexcept -> decltype(__declval<_Tp>(0));
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+and guess tht cc1plus'll reach to
+
+cp_parser_late_return_type_opt
+
+Even if there are above results, it's difficult to specify the grammer
+correctly.
+
+noexcept-specification ( correspond to cp_parser_noexcept_specification_opt)
+specified-return-type  ( correspond to cp_parser_late_return_type_opt)
+
+are acutually derived from direct-declarator, as its part.
+But direct-declarator doesn't drive these two (See directo-declarator grammer).
+
+But for these two, from the correspond function comment part, we can know
+that
+
+   noexcept-specification:
+     noexcept ( constant-expression ) [opt]
+
+   specified-return-type:
+     -> trailing-type-specifier-seq abstract-declarator [opt]
+
+This result satisfied me.
