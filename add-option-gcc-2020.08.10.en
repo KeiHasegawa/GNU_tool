@@ -2,6 +2,7 @@ Add option into gcc which invokes to dump macro defintion and macro reference
 to the file.
 
 Assume that vine linux build has been done.
+  => refer to linux gcc 10.2.0 install memo
 
 % cd gcc-10.2.0/host-i686-pc-linux-gnu/gcc
 % cat /tmp/a.c
@@ -15,7 +16,7 @@ int main()
 
 % ./xgcc -S /tmp/a.c
 
-xgcc output error message that xgcc cannot do exec `cc1'.
+xgcc outputed error message that xgcc cannot do exec `cc1'.
 
 % set path = ( $path `pwd` )
 % ./xgcc -S /tmp/a.c
@@ -23,7 +24,7 @@ xgcc output error message that xgcc cannot do exec `cc1'.
 Now normally done, because xgcc can do exec cc1 in this directory.
 a.s in this directory shows that compile is done normally.
 
-Execute the same thing under gdb control. Not that
+Execute the same thing under gdb control. Note that
 when we execute gdb, if PATH environment variable doesn't include
 gcc-10.2.0/host-i686-pc-linux-gnu/gcc, xgcc cannot do exece cc1.
 Also note that if you execute gdb in emacs, you can set PATH
@@ -35,7 +36,7 @@ M-x setenv command.
 You can do source level debugging.
 
 gcc has -### option which shows that the way of executing cc1, as or ld
-ans so on.
+and so on.
 
 % ./xgcc -S /tmp/a.c -###
 ...

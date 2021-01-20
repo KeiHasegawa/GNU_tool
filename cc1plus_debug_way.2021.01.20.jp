@@ -156,19 +156,29 @@ cp_parser_late_return_type_opt
 
 でパースされていることに気付くだろう.
 
-これまでの調査で文法がどのようになっているかを正確に示すのは難しい.
-この理由は
+これまでの調査で文法は次のようになっていると考えれる:
+cp_parser_direct_declarator のコメント部分は
 
-cp_parser_noexcept_specification_opt
-cp_parser_late_return_type_opt
+   direct-declarator:
+     declarator-id
+     direct-declarator ( parameter-declaration-clause )
+       cv-qualifier-seq [opt]
+       ref-qualifier [opt]
+       exception-specification [opt]
+     direct-declarator [ constant-expression [opt] ]
+     ( declarator )
 
-に対応する
+となっているが, これを
 
-noexcept-specification
-specified-return-type
-
-が direct-declarator から導出される記述がないからである. しかしこれらに
-対してはそれぞれの函数のコメントから
+   direct-declarator:
+     declarator-id
+     direct-declarator ( parameter-declaration-clause )
+       cv-qualifier-seq [opt] noexcept-specification [opt] specified-return-type [opt]
+       ref-qualifier [opt] noexcept-specification [opt] specified-return-type [opt]
+       exception-specification [opt] noexcept-specification [opt] specified-return-type [opt]
+       noexcept-specification [opt] specified-return-type [opt]
+     direct-declarator [ constant-expression [opt] ]
+     ( declarator )
 
    noexcept-specification:
      noexcept ( constant-expression ) [opt]
@@ -176,4 +186,4 @@ specified-return-type
    specified-return-type:
      -> trailing-type-specifier-seq abstract-declarator [opt]
 
-であることは分かる. 今回はこれはこれで目的は達成された.
+であることが分かる.
