@@ -1,75 +1,75 @@
-g++ のパーサー部分を調査する
+g++ �̃p�[�T�[�����𒲍�����
 
-vine linux で既に -g でビルドした状態を仮定している
-   => linux での gcc 10.2.0 インストールメモを参照
+vine linux �Ŋ��� -g �Ńr���h������Ԃ����肵�Ă���
+   => linux �ł� gcc 10.2.0 �C���X�g�[���������Q��
 
 % cd gcc-10.2.0/host-i686-pc-linux-gnu/gcc/
 % cat /tmp/b.cpp
 int a = 1;
 % ./xg++ -S /tmp/b.cpp
-このコマンドで cc1plus を exec できないというエラーメッセージが出る.
+���̃R�}���h�� cc1plus �� exec �ł��Ȃ��Ƃ����G���[���b�Z�[�W���o��.
 
 % set path = ( $path `pwd` )
 % ./xg++ -S /tmp/b.cpp
 
-今度は正常終了した. このディレクトリにある cc1plus を起動できたからである.
-カレントディレクトリの b.s を見てみるとコンパイルがされたことを
-確認できる.
+���x�͐���I������. ���̃f�B���N�g���ɂ��� cc1plus ���N���ł�������ł���.
+�J�����g�f�B���N�g���� b.s �����Ă݂�ƃR���p�C�������ꂽ���Ƃ�
+�m�F�ł���.
 
-同様のことを gdb から行う
-gdb を起動する状態で PATH が gcc-10.2.0/host-i686-pc-linux-gnu/gcc に
-通っていないとやはり cc1plus を起動することはできないことに注意.
-(Emacs から gdb を起動しているのなら M-x setenv で PATH を変更するとよい) 
+���l�̂��Ƃ� gdb ����s��
+gdb ���N�������Ԃ� PATH �� gcc-10.2.0/host-i686-pc-linux-gnu/gcc ��
+�ʂ��Ă��Ȃ��Ƃ�͂� cc1plus ���N�����邱�Ƃ͂ł��Ȃ����Ƃɒ���.
+(Emacs ���� gdb ���N�����Ă���̂Ȃ� M-x setenv �� PATH ��ύX����Ƃ悢) 
 
 (gdb) b main
 (gdb) run -S /tmp/b.cpp
 
-とすれば main 函数で停止してソースレベルデバッグができるだろう.
+�Ƃ���� main �����Œ�~���ă\�[�X���x���f�o�b�O���ł��邾�낤.
 
-g++ には gcc と同様 -### オプションがある. これでどのように外部コマンドを
-起動するか等を表示することができる
+g++ �ɂ� gcc �Ɠ��l -### �I�v�V����������. ����łǂ̂悤�ɊO���R�}���h��
+�N�����邩����\�����邱�Ƃ��ł���
 
 % ./xg++ -S /tmp/b.cpp -###
 ...
  cc1plus -quiet -iprefix /home/khasegawa/gcc-10.2.0/host-i686-pc-linux-gnu/gcc/../lib/gcc/i686-pc-linux-gnu/10.2.0/ -D_GNU_SOURCE /tmp/b.cpp -quiet -dumpbase b.cpp "-mtune=generic" "-march=pentiumpro" -auxbase b -o b.s
 ...
 
-今度は gdb から cc1plus を起動する
+���x�� gdb ���� cc1plus ���N������
 % gdb cc1plus
 ...
 (gdb) b main
 (gdb) run -quiet -iprefix /home/khasegawa/gcc-10.2.0/host-i686-pc-linux-gnu/gcc/../lib/gcc/i686-pc-linux-gnu/10.2.0/ -D_GNU_SOURCE /tmp/b.cpp -quiet -dumpbase b.cpp "-mtune=generic" "-march=pentiumpro" -auxbase b -o b.s
 
-とすれば main 函数で停止してソースレベルデバッグができるだろう.
-ここで
+�Ƃ���� main �����Œ�~���ă\�[�X���x���f�o�b�O���ł��邾�낤.
+������
 
 (gdb) run -quiet .... 
 
-は実際に xg++ から cc1plus が起動される方法と同じにするべきだろう.
+�͎��ۂ� xg++ ���� cc1plus ���N���������@�Ɠ����ɂ���ׂ����낤.
 
-ざっくりと説明は省くが
+��������Ɛ����͏Ȃ���
 
-(gdb) b cp_parser_translation_unit  # この函数にブレークポイントセット
+(gdb) b cp_parser_translation_unit  # ���̔����Ƀu���[�N�|�C���g�Z�b�g
 (gdb) run -quiet ...
 
-とすることで構文解析ルーチンの入り口まで到達する.
+�Ƃ��邱�Ƃō\����̓��[�`���̓�����܂œ��B����.
 
-この gcc のバージョンの函数 cp_parser_translation_unit のコメントには
+���� gcc �̃o�[�W�����̔��� cp_parser_translation_unit �̃R�����g�ɂ�
 
    translation-unit:
      declaration-seq [opt]
 
-のような表記がある. このコメントをそのまま受け入れれば, そして詳しい説明は
-省くが, この函数が構文解析ルーチンの入り口であることを理解できるだろう.
+�̂悤�ȕ\�L������. ���̃R�����g�����̂܂܎󂯓�����, �����ďڂ���������
+�Ȃ���, ���̔������\����̓��[�`���̓�����ł��邱�Ƃ𗝉��ł��邾�낤.
 
-ステップ実行していく. 今コンパイルしているソースは
+�X�e�b�v���s���Ă���. ���R���p�C�����Ă���\�[�X��
 
 int a = 1;
 
-なのでシンプルなものであるが, それが
+�Ȃ̂ŃV���v���Ȃ��̂ł��邪, ���ꂪ
 
-cp_parser_declaration という函数で処理されていることに気付くだろう.
-そしてこの函数のコメントには
+cp_parser_declaration �Ƃ��������ŏ�������Ă��邱�ƂɋC�t�����낤.
+�����Ă��̔����̃R�����g�ɂ�
 
    declaration:
      block-declaration
@@ -80,22 +80,22 @@ cp_parser_declaration という函数で処理されていることに気付く�
      linkage-specification
      namespace-definition
 
-というものがある.
+�Ƃ������̂�����.
 
-さらにざっくりと説明は省くが, このプログラムの作りは再帰下降型構文解析
-ルーチンと呼ばれる構文解析手法を用いていることにも気付くだろう.
+����ɂ�������Ɛ����͏Ȃ���, ���̃v���O�����̍��͍ċA���~�^�\�����
+���[�`���ƌĂ΂��\����͎�@��p���Ă��邱�Ƃɂ��C�t�����낤.
  
-今回知りたかったことは, g++ のパーサー部分がどのような文法を受け入れる
-作りになっていることであった. 例えば
+����m�肽���������Ƃ�, g++ �̃p�[�T�[�������ǂ̂悤�ȕ��@���󂯓����
+���ɂȂ��Ă��邱�Ƃł�����. �Ⴆ��
 
   template<typename _Tp>
     auto declval() noexcept -> decltype(__declval<_Tp>(0));
 
-のような C++ の宣言に対して, 古い C++ しか知らないプログラマにとっては,
-template-declaration であることは分かっても, それ以上は分からないのだ.
+�̂悤�� C++ �̐錾�ɑ΂���, �Â� C++ �����m��Ȃ��v���O���}�ɂƂ��Ă�,
+template-declaration �ł��邱�Ƃ͕������Ă�, ����ȏ�͕�����Ȃ��̂�.
 
-改めて上が template-declaration から導出されることを確かめるために以下の
-ようなソースを作成した
+���߂ďオ template-declaration ���瓱�o����邱�Ƃ��m���߂邽�߂Ɉȉ���
+�悤�ȃ\�[�X���쐬����
 % cat /tmp/b2.cpp
   template<typename _Tp>
     _Tp __declval(int);
@@ -103,72 +103,72 @@ template-declaration であることは分かっても, それ以上は分から
   template<typename _Tp>
     auto declval() noexcept -> decltype(__declval<_Tp>(0));
 %
-この /tmp/b2.cpp でもう一度 cc1plus をデバッグしてみる.
+���� /tmp/b2.cpp �ł�����x cc1plus ���f�o�b�O���Ă݂�.
 
 (gdb) b cp_parser_template_declaration
 (gdb) run -quiet ... /tmp/b2.cpp ...
 
-調べたい宣言は 2 つ目なので 1 回目は continue コマンドで
-スキップする. 2 回目ブレークポイントにヒットしたら調べていく.
+���ׂ����錾�� 2 �ڂȂ̂� 1 ��ڂ� continue �R�}���h��
+�X�L�b�v����. 2 ��ڃu���[�N�|�C���g�Ƀq�b�g�����璲�ׂĂ���.
 
 auto declval()
 
-この部分は auto が, 例えば int であれば馴染みのある, 函数宣言の
-一部である. init-declarator をパースする函数にプログラム(cc1plus)
-の制御が移ると予測して
+���̕����� auto ��, �Ⴆ�� int �ł���Γ���݂̂���, �����錾��
+�ꕔ�ł���. init-declarator ���p�[�X���锟���Ƀv���O����(cc1plus)
+�̐��䂪�ڂ�Ɨ\������
 
-(gdb) b cp_parser_init_declarator    # init-declarator をパースする函数
+(gdb) b cp_parser_init_declarator    # init-declarator ���p�[�X���锟��
 (gdb) c
 
-とした. やはりここに到達している. この函数のコメントの一部は
+�Ƃ���. ��͂肱���ɓ��B���Ă���. ���̔����̃R�����g�̈ꕔ��
 
    init-declarator:
      declarator initializer [opt]
 
-というものである. さらに
+�Ƃ������̂ł���. �����
 
    auto declval() noexcept -> ...
         ^^^^^^^^^
 
-この部分は
+���̕�����
 
    direct-declarator
 
-なので direct-declarator をパースする函数 cp_parser_direct_declarator
-に到達することだろう.
+�Ȃ̂� direct-declarator ���p�[�X���锟�� cp_parser_direct_declarator
+�ɓ��B���邱�Ƃ��낤.
 
-もっとお手軽に
+�����Ƃ���y��
 
    auto declval() noexcept -> ...
                   ^^^^^^^^
 
-この部分に着目して, これが
+���̕����ɒ��ڂ���, ���ꂪ
 
 cp_parser_noexcept_specification_opt
 
-でパースされていることに気付くだろう. ここまで追跡できれば残りの
+�Ńp�[�X����Ă��邱�ƂɋC�t�����낤. �����܂ŒǐՂł���Ύc���
 
     auto declval() noexcept -> decltype(__declval<_Tp>(0));
                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-が
+��
 
 cp_parser_late_return_type_opt
 
-でパースされていることに気付くだろう.
+�Ńp�[�X����Ă��邱�ƂɋC�t�����낤.
 
-これまでの調査で文法がどのようになっているかを正確に示すのは難しい.
-この理由は
+����܂ł̒����ŕ��@���ǂ̂悤�ɂȂ��Ă��邩�𐳊m�Ɏ����͓̂��.
+���̗��R��
 
 cp_parser_noexcept_specification_opt
 cp_parser_late_return_type_opt
 
-に対応する
+�ɑΉ�����
 
 noexcept-specification
 specified-return-type
 
-が direct-declarator から導出される記述がないからである. しかしこれらに
-対してはそれぞれの函数のコメントから
+�� direct-declarator ���瓱�o�����L�q���Ȃ�����ł���. ������������
+�΂��Ă͂��ꂼ��̔����̃R�����g����
 
    noexcept-specification:
      noexcept ( constant-expression ) [opt]
@@ -176,4 +176,4 @@ specified-return-type
    specified-return-type:
      -> trailing-type-specifier-seq abstract-declarator [opt]
 
-であることは分かる. 今回はこれはこれで目的は達成された.
+�ł��邱�Ƃ͕�����. ����͂���͂���ŖړI�͒B�����ꂽ.
