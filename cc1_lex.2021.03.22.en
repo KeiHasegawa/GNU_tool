@@ -1,0 +1,307 @@
+gcc lexical analyzer investigation(Part 1)
+
+Index
+(*1) Assume that vine linux build has been done.
+(*2) Acutually run xgcc which is build with -g option
+(*3) How cc1 is executed from xgcc
+(*4) Run cc1 from gdb
+(*5) Parser entrance
+(*6) c_parser_peek_token
+(*7) _cpp_lex_direct 
+(*8) _cpp_clean_line
+(*9) Bug fix of C++ comment style
+(*10) Bug fix C style comment
+(*11) How to patch
+
+(*1) Assume that vine linux build has been done.
+  => refer to linux gcc 10.2.0 install memo
+
+(*2) Acutually run xgcc which is build with -g option
+% cd ~/gcc-10.2.0/host-i686-pc-linux-gnu/gcc
+% cat /tmp/a.c
+int a = 1;
+% set path = ($path `pwd`) 
+% ./xgcc -S /tmp/a.c
+
+Please confirm `a.s' and /tmp/a.c is compiled.
+
+(*3) How cc1 is executed from xgcc
+% ./xgcc -S /tmp/a.c -###
+...
+ cc1 -quiet -iprefix /home/khasegawa/gcc-10.2.0/host-i686-pc-linux-gnu/gcc/../lib/gcc/i686-pc-linux-gnu/10.2.0/ /tmp/a.c -quiet -dumpbase a.c "-mtune=generic" "-march=pentiumpro" -auxbase a -o a.s
+...
+
+(*4) Run cc1 from gdb
+(gdb) b main
+(gdb) run --quiet ...       # Arguments should be the same as above
+
+This can enable you to do source level debugging
+
+(*5) Parser entrance
+Explanation omitted, the bellow gdb commands sets break-point to the
+parser entrance:
+(gdb) b c_parser_translation_unit
+
+static void
+c_parser_translation_unit (c_parser *parser)
+{
+  if (c_parser_next_token_is (parser, CPP_EOF)) /* this returns 0 */
+    {
+
+i.e. at this time, lexical analyzer has already worked.
+1st token is `int' in case of /tmp/a.c
+
+(*6) c_parser_peek_token
+
+We can recognized that `c_parser_next_token_is' described at (*5) calls
+`c_parser_peek_token', and here return pointer to `c_token' without
+accessing to file. Now confirm that 
+
+(gdb) p ((c_token *) XXXX )->type
+$2 = CPP_KEYWORD
+
+where, XXXX denotes return value of `c_parser_peek_token'.
+
+Now, we can guess that 1st token has been read from file
+when the time cc1 comes to parser entrance described
+and it's a keyword (maybe `int').
+
+Set the break-point to `c_parser_peek_token' and again run cc1.
+We can know that `c_parser_peek_token' is called before
+`c_parser_translation_unit' is called. And this time:
+
+
+c_token *
+c_parser_peek_token (c_parser *parser)
+{
+  if (parser->tokens_avail == 0)
+    {
+      c_lex_one_token (parser, &parser->tokens[0]);  /* This is executed. */
+      parser->tokens_avail = 1;
+    }
+  return &parser->tokens[0];
+}
+
+
+(*7) _cpp_lex_direct
+At (*6), step into function and reach to:
+
+cpp_token *
+_cpp_lex_direct (cpp_reader *pfile)
+{
+...
+
+You'll know that 1 line has been read to
+
+pfile->buffer->next_line
+
+If you set break-point to this function and run cc1 again,
+you can know that this function is called at some times,
+and then `c_parser_peek_token' descirbed at (*6) is called.
+
+Now, I'm not interested with file access. Especially say,
+interested with skipping comment.
+
+Change /tmp/a.c like bellow: 
+
+// comment
+int a = 1;
+
+After (*6) situation, `_cpp_lex_direct' is called:
+(gdb) p pfile->buffer->next_line
+$14 = (const unsigned char *) 0xa7558d0 "// comment\nint a = 1;\n\n"
+
+This result is expected one. Easy to guess that comment is
+skipped from now.
+
+(*8) _cpp_clean_line
+
+I notice that skipping comment part is:
+
+void
+_cpp_clean_line (cpp_reader *pfile)
+{
+...
+	  /* Perform an optimized search for \n, \r, \\, ?.  */
+	  s = search_line_fast (s, buffer->rlimit);  /* This part! */
+
+This part searches:
+
+'\n' = 10, '\r' = 13, '\\' = 92, '?' = 63
+
+in a fast way, and proceed `s'.
+
+And more, step into function, program control reaches to
+`search_line_sse2'. This function call is done via pointer,
+now I know. If you search `SSE2' by using internet, you can
+get the more information.
+
+`search_line_sse2' is defined at `gcc-10.2.0/libcpp/lex.c'
+and several functions are defined which works like `search_line_sse2'.
+
+(*9) Bug fix of C++ comment style
+Change /tmp/a.c like bellow:
+// ‹@”\
+int a = 1;
+
+1st line is comment with Japanese character.
+And also note that this file have to be written by Shift-JIS encoding way.
+2nd byte of 2nd Japanese charater is '\\' = 92, so that unfortunately,
+cc1 recognizes that comment continues to next line.
+
+Now I fixed like bellow:
+
+inline bool sjis_1st(int c)
+{
+  return (0x81 <= c && c <= 0x9f) || (0xe0 <= c && c <= 0xfc);
+}
+
+const unsigned char*
+search_line_consider_sjis(const unsigned char* s, const unsigned char* end)
+{
+  bool sjis_state = false;
+  for ( ; s != end ; ++s) {
+    int c = *s;
+    if (!sjis_state && sjis_1st(c))
+      sjis_state = true;
+    else if (sjis_state)
+      sjis_state = false;
+    else if (!sjis_state) {
+      if (c == '\n' || c == '\r' || c == '\\' || c == '?')
+	return s;
+    }
+  }
+  return s;
+}
+...
+
+#if 0
+	  /* Perform an optimized search for \n, \r, \\, ?.  */
+	  s = search_line_fast (s, buffer->rlimit);
+#else
+	  s = search_line_consider_sjis(s, buffer->rlimit);
+#endif
+
+For build, to execute `make' at top directory is sure enough.
+But for easy, you can do like bellow:
+% cd ../libcpp
+% make libcpp.a
+% cd ~/gcc-10.2.0/host-i686-pc-linux-gnu/gcc
+% rm cc1
+% make -n cc1
+...
+xg++ ... -o cc1 ...  <- Execute this directly
+...
+
+Again run cc1 and compile /tmp/a.c and you can konw the comment is treated
+as expected.
+
+(*10) Bug fix C style comment
+
+Now we'll also support JIS(ISO-2022-JP). For reproducing the bug, change
+/tmp/a.c like bellow:
+% cat /tmp/a.c
+/*
+ * ðŒ‚ðÁª¯¸‚·‚é
+ */
+%
+Here, /tmp/a.c have to be written by JIS encoding.
+Confirm the bug like bellow:
+
+(gdb) run cc1 ...
+
+As this result, we can know that cc1 takes Japanese character as the end of
+comment.
+
+Explanation omitted, `_cpp_skip_block_comment' does skip the C style
+comment. Set break-point `_cpp_skip_block_comment' and go there. 
+
+bool
+_cpp_skip_block_comment (cpp_reader *pfile)
+{
+...
+      c = *cur++;
+
+      if (c == '/')
+	{
+	  if (cur[-2] == '*')
+	    break;        /* This is the end of comment. */
+
+Now fix like bellow:
+
+inline bool jis_kanji_start(const uchar* s)
+{
+  return s[0] == 0x1b && s[1] == 0x24 && (s[2] == 0x42 || s[2] == 0x40);
+}
+
+inline bool jis_ascii_start(const uchar* s)
+{
+  return s[0] == 0x1b && s[1] == 0x28 && s[2] == 0x42;
+}
+...
+bool
+_cpp_skip_block_comment (cpp_reader *pfile)
+{
+...
+  for (;;)
+    {
+
+/* vvvv add from here vvvvv */
+      if (!jis_state && jis_kanji_start(cur)) {
+	cur += 3;
+	jis_state = true;
+	continue;
+      }
+      if (jis_state && jis_ascii_start(cur)) {
+	cur += 3;
+	jis_state = false;
+      }
+      if (jis_state) {
+	++cur;
+	continue;
+      }
+/* ^^^^^ add to here ^^^^^ */
+
+Again re-build `libcpp.a' and re-build `cc1', and then
+we can confirm that `cc1' works well.
+Actually this is not enough. This doesn't support JIS hankaku-kana.
+
+% cat /tmp/a.c
+/*
+ * Áª¯¸
+ */
+
+For this, fix like bellow again:
+
+inline bool jis_hankakukana_start(const uchar* s)
+{
+  return s[0] == 0x1b && s[1] == 0x28 && s[2] == 0x49;
+}
+
+inline bool jis_start(const uchar* s)
+{
+  return jis_kanji_start(s) || jis_hankakukana_start(s);
+}
+...
+bool
+_cpp_skip_block_comment (cpp_reader *pfile)
+{
+...
+  for (;;)
+    {
+
+/* change `jis_kanji_start' to `jis_start' */
+/*                      vvvvvvvvvv  */
+      if (!jis_state && jis_start(cur)) {  
+
+(*11) How to patch
+
+Download `comment_bug_fix.diff' to, for example,
+/tmp/comment_bug_fix.diff
+
+% xz -d -c gcc-10.2.0.tar.xz | tar xf -
+% cd gcc-10.2.0
+% patch -p0 < /tmp/comment_bug_fix.diff
+patching file libcpp/lex.c
+
+Now fix of (*9) and (*10) are applied.

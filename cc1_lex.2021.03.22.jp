@@ -88,7 +88,7 @@ _cpp_lex_direct (cpp_reader *pfile)
 {
 ...
 
-この (*6) からこの函数にきたとき既に
+(*6) からこの函数にきたとき既に
 
 pfile->buffer->next_line
 
@@ -141,7 +141,7 @@ int a = 1;
 
 これは Shift-JIS でコーディングする必要がある. '能' の 2 バイト目は
 例の '\\' = 92 なわけでこれで次の行までコメントが続いていると
-gcc で解釈されてしまう.
+cc1 で解釈されてしまう.
 
 さてこれを修正したいために以下の修正を加えた.
 
@@ -191,7 +191,7 @@ xg++ ... -o cc1 ...
 
 (*10) C スタイルのコメントのバグをとる
 
-せっかくなので JIS にも対応しておく. バグを再現させるために
+せっかくなので JIS (ISO-2022-JP)にも対応しておく. バグを再現させるために
 /tmp/a.c を以下のものにする.
 % cat /tmp/a.c
 /*
@@ -287,7 +287,7 @@ _cpp_skip_block_comment (cpp_reader *pfile)
 jis_kanji_start ではなく jis_start にする
       if (!jis_state && jis_start(cur)) {  
 
-(*12) パッチの当て方
+(*11) パッチの当て方
 
 このページの comment_bug_fix.diff をダウンロードして例えば
 /tmp/comment_bug_fix.diff
@@ -295,7 +295,7 @@ jis_kanji_start ではなく jis_start にする
 
 % xz -d -c gcc-10.2.0.tar.xz | tar xf -
 % cd gcc-10.2.0
-% patch -p0 < comment_bug_fix.diff
+% patch -p0 < /tmp/comment_bug_fix.diff
 patching file libcpp/lex.c
 
 とすれば (*9) と (*10) の修正が反映される.
