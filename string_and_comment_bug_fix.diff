@@ -1,0 +1,194 @@
+diff -rc /home/khasegawa/gcc-10.2.0.org/libcpp libcpp
+diff -rc /home/khasegawa/gcc-10.2.0.org/libcpp/charset.c libcpp/charset.c
+*** /home/khasegawa/gcc-10.2.0.org/libcpp/charset.c	2020-07-23 15:35:18.712399623 +0900
+--- libcpp/charset.c	2021-03-22 16:32:39.039890627 +0900
+***************
+*** 1718,1725 ****
+--- 1718,1742 ----
+        for (;;)
+  	{
+  	  base = p;
++ #if 0
+  	  while (p < limit && *p != '\\')
+  	    p++;
++ #else
++ 	  bool jis_state = false;
++ 	  while (p < limit && (jis_state || *p != '\\')) {
++ 	    if (sjis_1st(*p))
++ 	      ++p;
++ 	    if (!jis_state && jis_kanji_start(p)) {
++ 	      p += 3;
++ 	      jis_state = true;
++ 	    }
++ 	    if (jis_state && jis_ascii_start(p)) {
++ 	      p += 2;
++ 	      jis_state = false;
++ 	    }
++ 	    ++p;
++ 	  }
++ #endif
+  	  if (p > base)
+  	    {
+  	      /* We have a run of normal characters; these can be fed
+
+diff -rc /home/khasegawa/gcc-10.2.0.org/libcpp/internal.h libcpp/internal.h
+*** /home/khasegawa/gcc-10.2.0.org/libcpp/internal.h	2020-07-23 15:35:18.712399623 +0900
+--- libcpp/internal.h	2021-03-22 16:18:14.466699220 +0900
+***************
+*** 950,953 ****
+--- 950,978 ----
+  }
+  #endif
+  
++ inline bool sjis_1st(int c)
++ {
++   return (0x81 <= c && c <= 0x9f) || (0xe0 <= c && c <= 0xfc);
++ }
++ 
++ inline bool jis_kanji_start(const uchar* s)
++ {
++   return s[0] == 0x1b && s[1] == 0x24 && (s[2] == 0x42 || s[2] == 0x40);
++ }
++ 
++ inline bool jis_hankakukana_start(const uchar* s)
++ {
++   return s[0] == 0x1b && s[1] == 0x28 && s[2] == 0x49;
++ }
++ 
++ inline bool jis_start(const uchar* s)
++ {
++   return jis_kanji_start(s) || jis_hankakukana_start(s);
++ }
++ 
++ inline bool jis_ascii_start(const uchar* s)
++ {
++   return s[0] == 0x1b && s[1] == 0x28 && s[2] == 0x42;
++ }
++ 
+  #endif /* ! LIBCPP_INTERNAL_H */
+
+diff -rc /home/khasegawa/gcc-10.2.0.org/libcpp/lex.c libcpp/lex.c
+*** /home/khasegawa/gcc-10.2.0.org/libcpp/lex.c	2020-07-23 15:35:18.712399623 +0900
+--- libcpp/lex.c	2021-03-22 16:54:33.034463473 +0900
+***************
+*** 929,934 ****
+--- 929,952 ----
+  #endif
+  }
+  
++ const unsigned char*
++ search_line_consider_sjis(const unsigned char* s, const unsigned char* end)
++ {
++   bool sjis_state = false;
++   for ( ; s != end ; ++s) {
++     int c = *s;
++     if (!sjis_state && sjis_1st(c))
++       sjis_state = true;
++     else if (sjis_state)
++       sjis_state = false;
++     else if (!sjis_state) {
++       if (c == '\n' || c == '\r' || c == '\\' || c == '?')
++         return s;
++     }
++   }
++   return s;
++ }
++ 
+  /* Returns with a logical line that contains no escaped newlines or
+     trigraphs.  This is a time-critical inner loop.  */
+  void
+***************
+*** 953,960 ****
+  	 data back to memory until we have to.  */
+        while (1)
+  	{
+  	  /* Perform an optimized search for \n, \r, \\, ?.  */
+! 	  s = search_line_fast (s, buffer->rlimit);
+  
+  	  c = *s;
+  	  if (c == '\\')
+--- 971,982 ----
+  	 data back to memory until we have to.  */
+        while (1)
+  	{
++ #if 0
+  	  /* Perform an optimized search for \n, \r, \\, ?.  */
+!           s = search_line_fast (s, buffer->rlimit);
+! #else
+!           s = search_line_consider_sjis(s, buffer->rlimit);
+! #endif
+  
+  	  c = *s;
+  	  if (c == '\\')
+***************
+*** 1175,1180 ****
+--- 1197,1203 ----
+    cpp_buffer *buffer = pfile->buffer;
+    const uchar *cur = buffer->cur;
+    uchar c;
++   bool jis_state = false;
+  
+    cur++;
+    if (*cur == '/')
+***************
+*** 1182,1187 ****
+--- 1205,1224 ----
+  
+    for (;;)
+      {
++       if (!jis_state && jis_start(cur)) {
++         cur += 3;
++         jis_state = true;
++         continue;
++       }
++       if (jis_state && jis_ascii_start(cur)) {
++         cur += 3;
++         jis_state = false;
++       }
++       if (jis_state) {
++         ++cur;
++         continue;
++       }
++ 
+        /* People like decorating comments with '*', so check for '/'
+  	 instead for efficiency.  */
+        c = *cur++;
+***************
+*** 2016,2025 ****
+--- 2053,2088 ----
+    else
+      terminator = '>', type = CPP_HEADER_NAME;
+  
++   bool sjis_state = false;
++   bool jis_state = false;
+    for (;;)
+      {
++       if (!jis_state && jis_start(cur)) {
++ 	cur += 3;
++ 	jis_state = true;
++ 	continue;
++       }
++       if (jis_state && jis_ascii_start(cur)) {
++ 	cur += 3;
++ 	jis_state = false;
++ 	continue;
++       }
++       if (jis_state) {
++ 	++cur;
++ 	continue;
++       }
++ 
+        cppchar_t c = *cur++;
+  
++       if (!sjis_state && sjis_1st(c)) {
++ 	sjis_state = true;
++ 	continue;
++       }
++       if (sjis_state) {
++ 	sjis_state = false;
++ 	continue;
++       }
++ 
+        /* In #include-style directives, terminators are not escapable.  */
+        if (c == '\\' && !pfile->state.angled_headers && *cur != '\n')
+  	cur++;

@@ -1,0 +1,235 @@
+gcc の字句解析ルーチンの調査(その2)
+
+目次
+(*1) 文字列リテラルの扱い
+(*2) lex_string
+(*3) Shif-JIS の文字列リテラルのバグ修正第一段階
+(*4) Shif-JIS の文字列リテラルのバグ修正第二段階
+(*5) JIS 文字列リテラルのバグ修正
+(*6) patch の当て型
+
+以下のような簡単なソースを作成する.
+% cat /tmp/a.c
+const char* p = "abcd";
+%
+
+これを cc1 でコンパイルしてみる
+(gdb) run cc1 ...                # 引数については (その1) 参照
+
+a.s を確認してみると, コンパイルされていることが確認できるだろう.
+
+構文解析ルーチンの観点から見ると "abcd" は c_parser_initializer
+で最初に参照される. 勿論この時点では既にファイルから読み込まれてい
+たとしても不思議ではないだろう.
+
+static struct c_expr
+c_parser_initializer (c_parser *parser)
+{
+  if (c_parser_next_token_is (parser, CPP_OPEN_BRACE))  ここにステップイン
+...
+c_parser_next_token_is (c_parser *parser, enum cpp_ttype type)
+{
+  return c_parser_peek_token (parser)->type == type;    ここもステップイン
+
+
+c_parser_peek_token は c_token へのポインタ型を返すがその戻り値を
+見てみると 
+
+(gdb) p ((c_token *) 戻り値)->type
+$151 = CPP_STRING
+
+となっていることに気付く. つまり文字列リテラルは CPP_STRING なわけだ.
+
+(*2) lex_string
+
+実際に文字列リテラルを作っているのは以下の函数
+
+static void
+lex_string (cpp_reader *pfile, cpp_token *token, const uchar *base)
+{
+...
+
+この函数が呼ばれたときに base が指しているところに文字列リテラルがある.
+...
+  for (;;)
+    {
+      cppchar_t c = *cur++;
+...
+      if (c == '\\' && !pfile->state.angled_headers && *cur != '\n')
+	cur++;
+      else if (c == terminator)
+	break;          ここが文字列の終端
+
+このループで文字列の終端を探している.
+
+(*3) Shif-JIS の文字列リテラルのバグ修正(第一段階)
+
+バグを再現させるソースは以下:
+
+% cat /tmp/a.c
+const char* p = "機能";
+%
+
+このファイルは Shift-JIS で書かれている必要がある. '能' の 2 バイト目は
+'\\' = 0x5c なので文字列の終端を見つけられないというバグである.
+
+(gdb) run cc1 ...
+
+として実行してみれば確認できるだろう. そこで問題の lex_string を修正してみる.
+
+  bool sjis_state = false;   これを追加
+  for (;;)
+    {
+      cppchar_t c = *cur++;
+
+ここから
+      if (!sjis_state && sjis_1st(c)) {
+	sjis_state = true;
+	continue;
+      }
+      if (sjis_state) {
+	sjis_state = false;
+	continue;
+      }
+ここまでを追加
+
+これで一応文字列の終端を期待通り認識できるようにはなった.
+しかし, これで終わりではない. この修正で単に字句の読み込みが
+できるようになっただけである.
+
+この文字列リテラルは 0x8b, 0x40, 0x94, 0x5c, 0x00 の値を
+もつ char [5] の配列として扱わなければならない.
+
+生成された a.s を見ると
+
+\213 = 0x8b
+@ = 0x40
+\224 = 0x94
+\" = 0x22     # 違っている
+
+なので間違っている. この文字列に限らず文字列は \n 等の
+エスケープシーケンスは特別な扱いをされる.
+
+(*4) Shif-JIS の文字列リテラルのバグ修正第二段階
+
+その問題の函数が c_parser_string_literal. この函数からさらに
+
+cpp_interpret_string_1
+
+が呼ばれる.
+
+static bool
+cpp_interpret_string_1 (cpp_reader *pfile, const cpp_string *from, size_t count
+...
+{
+...
+      for (;;)
+	{
+	  base = p;
+	  while (p < limit && *p != '\\')    ここがエスケープシーケンス
+	    p++;                             の始まりを見つけている部分
+
+
+ここを Shift-JIS に対応させると以下のようになる:
+
+#if 0
+	  while (p < limit && *p != '\\')
+	    p++;
+#else
+	  while (p < limit && *p != '\\') {
+	    if (sjis_1st(*p))
+	      ++p;
+	    ++p;
+	  }
+#endif
+ 
+libcpp.a と cc1 をリビルドして確認してみた. 今回の修正は sjis_1st
+は「gcc の字句解析ルーチンの調査(その1)」では lex.c で定義したインライン函数
+だったのだが, この修正でも必要になったので
+
+~/gcc-10.2.0/libcpp/internal.h
+
+に引っ越しした. このためたくさんのコンパイルが必要になった.
+とはいえ, 期待通り動作している.
+
+(*5) JIS 文字列リテラルのバグ修正
+
+やはりこれも特別な対応が必要. まずはバグを再現させるため以下のような
+ソースを準備:
+% cat /tmp/a.c
+const char* p = "あ";
+%
+
+勿論これは JIS で書かれている必要がある.
+
+(gdb) run cc1 ...
+
+のようにコンパイルしてみると文字列の終端を認識てきていない.
+この文字列リテラルのバイト表現は以下のようになる:
+
+22 1b  24 42 24 22 1b   28 42 22
+"  ESC $  B    あ   ESC  ( B  "
+
+ESC $ B は漢字の開始, ESC ( B は ASCII の開始である. やはり
+(*3) と (*4) に相当する修正が個別に必要になる.
+修正内容は以下のようになる:
+
+(*3) の該当箇所
+
+static void
+lex_string (cpp_reader *pfile, cpp_token *token, const uchar *base)
+{
+...
+  bool sjis_state = false;
+  bool jis_state = false;
+  for (;;)
+    {
+ここから
+      if (!jis_state && jis_start(cur)) {
+	cur += 3;
+	jis_state = true;
+	continue;
+      }
+      if (jis_state && jis_ascii_start(cur)) {
+	cur += 3;
+	jis_state = false;
+	continue;
+      }
+      if (jis_state) {
+	++cur;
+	continue;
+      }
+ここまで
+      cppchar_t c = *cur++;
+
+(*4) の該当箇所
+
+#if 0
+	  while (p < limit && *p != '\\')
+	    p++;
+#else
+	  bool jis_state = false;
+	  while (p < limit && (jis_state || *p != '\\')) {
+	    if (sjis_1st(*p))
+	      ++p;
+	    if (!jis_state && jis_kanji_start(p)) {
+	      p += 3;
+	      jis_state = true;
+	    }
+	    if (jis_state && jis_ascii_start(p)) {
+	      p += 2;
+	      jis_state = false;
+	    }
+	    ++p;
+	  }
+#endif
+
+libcpp.a と cc1 をリビルドして確認してみた. 今回の修正は jis_kanji_start 等
+は「gcc の字句解析ルーチンの調査(その1)」では lex.c で定義したインライン函数
+だったのだが, この修正でも必要になったので
+
+~/gcc-10.2.0/libcpp/internal.h
+
+に引っ越しした. ごちゃごちゃしているが, 期待通り動作している.
+
+(*6) 
