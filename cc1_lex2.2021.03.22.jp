@@ -232,4 +232,28 @@ libcpp.a と cc1 をリビルドして確認してみた. 今回の修正は jis_kanji_start 等
 
 に引っ越しした. ごちゃごちゃしているが, 期待通り動作している.
 
-(*6) 
+(*6)  パッチの当て方
+
+「gcc の字句解析ルーチンの調査(その1)」の修正内容のパッチはこのページに
+ある comment_bug_fix.diff であるが, このパッチを当てた状態で
+さらに以下述べるパッチを当てることはできない. 予定外の引っ越しがあった
+ためだ.
+
+このページの string_and_comment_bug_fix.diff をダウンロードして例えば
+/tmp/string_and_comment_bug_fix.diff
+
+として保存する.
+
+% xz -d -c gcc-10.2.0.tar.xz | tar xf -
+% cd gcc-10.2.0
+% patch -p0 < /tmp/string_and_comment_bug_fix.diff
+Ignoring potentially dangerous file name /home/khasegawa/gcc-10.2.0/libcpp/charset.c
+patching file libcpp/charset.c
+Ignoring potentially dangerous file name /home/khasegawa/gcc-10.2.0/libcpp/internal.h
+patching file libcpp/internal.h
+Ignoring potentially dangerous file name /home/khasegawa/gcc-10.2.0/libcpp/lex.c
+patching file libcpp/lex.c
+
+なんだか意味の分からない warning らしきものが patch が出力しているのだが,
+確認したところ期待通り patch が当たっていた.
+後は configure を実行し make すればよい.
