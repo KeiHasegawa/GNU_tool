@@ -1,55 +1,55 @@
-gcc の字句解析ルーチンの調査(その2)
+gcc �̎����̓��[�`���̒���(����2)
 
-目次
-(*1) 文字列リテラルの扱い
+�ڎ�
+(*1) �����񃊃e�����̈���
 (*2) lex_string
-(*3) Shif-JIS の文字列リテラルのバグ修正第一段階
-(*4) Shif-JIS の文字列リテラルのバグ修正第二段階
-(*5) JIS 文字列リテラルのバグ修正
-(*6) patch の当て型
+(*3) Shif-JIS �̕����񃊃e�����̃o�O�C�����i�K
+(*4) Shif-JIS �̕����񃊃e�����̃o�O�C�����i�K
+(*5) JIS �����񃊃e�����̃o�O�C��
+(*6) patch �̓��Č^
 
-以下のような簡単なソースを作成する.
+�ȉ��̂悤�ȊȒP�ȃ\�[�X���쐬����.
 % cat /tmp/a.c
 const char* p = "abcd";
 %
 
-これを cc1 でコンパイルしてみる
-(gdb) run cc1 ...                # 引数については (その1) 参照
+����� cc1 �ŃR���p�C�����Ă݂�
+(gdb) run cc1 ...                # �����ɂ��Ă� (����1) �Q��
 
-a.s を確認してみると, コンパイルされていることが確認できるだろう.
+a.s ���m�F���Ă݂��, �R���p�C������Ă��邱�Ƃ��m�F�ł��邾�낤.
 
-構文解析ルーチンの観点から見ると "abcd" は c_parser_initializer
-で最初に参照される. 勿論この時点では既にファイルから読み込まれてい
-たとしても不思議ではないだろう.
+�\����̓��[�`���̊ϓ_���猩��� "abcd" �� c_parser_initializer
+�ōŏ��ɎQ�Ƃ����. �ܘ_���̎��_�ł͊��Ƀt�@�C������ǂݍ��܂�Ă�
+���Ƃ��Ă��s�v�c�ł͂Ȃ����낤.
 
 static struct c_expr
 c_parser_initializer (c_parser *parser)
 {
-  if (c_parser_next_token_is (parser, CPP_OPEN_BRACE))  ここにステップイン
+  if (c_parser_next_token_is (parser, CPP_OPEN_BRACE))  �����ɃX�e�b�v�C��
 ...
 c_parser_next_token_is (c_parser *parser, enum cpp_ttype type)
 {
-  return c_parser_peek_token (parser)->type == type;    ここもステップイン
+  return c_parser_peek_token (parser)->type == type;    �������X�e�b�v�C��
 
 
-c_parser_peek_token は c_token へのポインタ型を返すがその戻り値を
-見てみると 
+c_parser_peek_token �� c_token �ւ̃|�C���^�^��Ԃ������̖߂�l��
+���Ă݂�� 
 
-(gdb) p ((c_token *) 戻り値)->type
+(gdb) p ((c_token *) �߂�l)->type
 $151 = CPP_STRING
 
-となっていることに気付く. つまり文字列リテラルは CPP_STRING なわけだ.
+�ƂȂ��Ă��邱�ƂɋC�t��. �܂蕶���񃊃e������ CPP_STRING �Ȃ킯��.
 
 (*2) lex_string
 
-実際に文字列リテラルを作っているのは以下の函数
+���ۂɕ����񃊃e����������Ă���͈̂ȉ��̔���
 
 static void
 lex_string (cpp_reader *pfile, cpp_token *token, const uchar *base)
 {
 ...
 
-この函数が呼ばれたときに base が指しているところに文字列リテラルがある.
+���̔������Ă΂ꂽ�Ƃ��� base ���w���Ă���Ƃ���ɕ����񃊃e����������.
 ...
   for (;;)
     {
@@ -58,31 +58,31 @@ lex_string (cpp_reader *pfile, cpp_token *token, const uchar *base)
       if (c == '\\' && !pfile->state.angled_headers && *cur != '\n')
 	cur++;
       else if (c == terminator)
-	break;          ここが文字列の終端
+	break;          ������������̏I�[
 
-このループで文字列の終端を探している.
+���̃��[�v�ŕ�����̏I�[��T���Ă���.
 
-(*3) Shif-JIS の文字列リテラルのバグ修正(第一段階)
+(*3) Shif-JIS �̕����񃊃e�����̃o�O�C��(���i�K)
 
-バグを再現させるソースは以下:
+�o�O���Č�������\�[�X�͈ȉ�:
 
 % cat /tmp/a.c
-const char* p = "機能";
+const char* p = "�@�\";
 %
 
-このファイルは Shift-JIS で書かれている必要がある. '能' の 2 バイト目は
-'\\' = 0x5c なので文字列の終端を見つけられないというバグである.
+���̃t�@�C���� Shift-JIS �ŏ�����Ă���K�v������. '�\' �� 2 �o�C�g�ڂ�
+'\\' = 0x5c �Ȃ̂ŕ�����̏I�[���������Ȃ��Ƃ����o�O�ł���.
 
 (gdb) run cc1 ...
 
-として実行してみれば確認できるだろう. そこで問題の lex_string を修正してみる.
+�Ƃ��Ď��s���Ă݂�Ίm�F�ł��邾�낤. �����Ŗ��� lex_string ���C�����Ă݂�.
 
-  bool sjis_state = false;   これを追加
+  bool sjis_state = false;   �����ǉ�
   for (;;)
     {
       cppchar_t c = *cur++;
 
-ここから
+��������
       if (!sjis_state && sjis_1st(c)) {
 	sjis_state = true;
 	continue;
@@ -91,32 +91,32 @@ const char* p = "機能";
 	sjis_state = false;
 	continue;
       }
-ここまでを追加
+�����܂ł�ǉ�
 
-これで一応文字列の終端を期待通り認識できるようにはなった.
-しかし, これで終わりではない. この修正で単に字句の読み込みが
-できるようになっただけである.
+����ňꉞ������̏I�[�����Ғʂ�F���ł���悤�ɂ͂Ȃ���.
+������, ����ŏI���ł͂Ȃ�. ���̏C���ŒP�Ɏ���̓ǂݍ��݂�
+�ł���悤�ɂȂ��������ł���.
 
-この文字列リテラルは 0x8b, 0x40, 0x94, 0x5c, 0x00 の値を
-もつ char [5] の配列として扱わなければならない.
+���̕����񃊃e������ 0x8b, 0x40, 0x94, 0x5c, 0x00 �̒l��
+���� char [5] �̔z��Ƃ��Ĉ���Ȃ���΂Ȃ�Ȃ�.
 
-生成された a.s を見ると
+�������ꂽ a.s �������
 
 \213 = 0x8b
 @ = 0x40
 \224 = 0x94
-\" = 0x22     # 違っている
+\" = 0x22     # ����Ă���
 
-なので間違っている. この文字列に限らず文字列は \n 等の
-エスケープシーケンスは特別な扱いをされる.
+�Ȃ̂ŊԈ���Ă���. ���̕�����Ɍ��炸������� \n ����
+�G�X�P�[�v�V�[�P���X�͓��ʂȈ����������.
 
-(*4) Shif-JIS の文字列リテラルのバグ修正第二段階
+(*4) Shif-JIS �̕����񃊃e�����̃o�O�C�����i�K
 
-その問題の函数が c_parser_string_literal. この函数からさらに
+���̖��̔����� c_parser_string_literal. ���̔������炳���
 
 cpp_interpret_string_1
 
-が呼ばれる.
+���Ă΂��.
 
 static bool
 cpp_interpret_string_1 (cpp_reader *pfile, const cpp_string *from, size_t count
@@ -126,11 +126,11 @@ cpp_interpret_string_1 (cpp_reader *pfile, const cpp_string *from, size_t count
       for (;;)
 	{
 	  base = p;
-	  while (p < limit && *p != '\\')    ここがエスケープシーケンス
-	    p++;                             の始まりを見つけている部分
+	  while (p < limit && *p != '\\')    �������G�X�P�[�v�V�[�P���X
+	    p++;                             �̎n�܂�������Ă��镔��
 
 
-ここを Shift-JIS に対応させると以下のようになる:
+������ Shift-JIS �ɑΉ�������ƈȉ��̂悤�ɂȂ�:
 
 #if 0
 	  while (p < limit && *p != '\\')
@@ -143,38 +143,38 @@ cpp_interpret_string_1 (cpp_reader *pfile, const cpp_string *from, size_t count
 	  }
 #endif
  
-libcpp.a と cc1 をリビルドして確認してみた. 今回の修正は sjis_1st
-は「gcc の字句解析ルーチンの調査(その1)」では lex.c で定義したインライン函数
-だったのだが, この修正でも必要になったので
+libcpp.a �� cc1 �����r���h���Ċm�F���Ă݂�. ����̏C���� sjis_1st
+�́ugcc �̎����̓��[�`���̒���(����1)�v�ł� lex.c �Œ�`�����C�����C������
+�������̂���, ���̏C���ł��K�v�ɂȂ����̂�
 
 ~/gcc-10.2.0/libcpp/internal.h
 
-に引っ越しした. このためたくさんのコンパイルが必要になった.
-とはいえ, 期待通り動作している.
+�Ɉ����z������. ���̂��߂�������̃R���p�C�����K�v�ɂȂ���.
+�Ƃ͂���, ���Ғʂ蓮�삵�Ă���.
 
-(*5) JIS 文字列リテラルのバグ修正
+(*5) JIS �����񃊃e�����̃o�O�C��
 
-やはりこれも特別な対応が必要. まずはバグを再現させるため以下のような
-ソースを準備:
+��͂肱������ʂȑΉ����K�v. �܂��̓o�O���Č������邽�߈ȉ��̂悤��
+�\�[�X������:
 % cat /tmp/a.c
-const char* p = "あ";
+const char* p = "��";
 %
 
-勿論これは JIS で書かれている必要がある.
+�ܘ_����� JIS �ŏ�����Ă���K�v������.
 
 (gdb) run cc1 ...
 
-のようにコンパイルしてみると文字列の終端を認識てきていない.
-この文字列リテラルのバイト表現は以下のようになる:
+�̂悤�ɃR���p�C�����Ă݂�ƕ�����̏I�[��F���Ă��Ă��Ȃ�.
+���̕����񃊃e�����̃o�C�g�\���͈ȉ��̂悤�ɂȂ�:
 
 22 1b  24 42 24 22 1b   28 42 22
-"  ESC $  B    あ   ESC  ( B  "
+"  ESC $  B    ��   ESC  ( B  "
 
-ESC $ B は漢字の開始, ESC ( B は ASCII の開始である. やはり
-(*3) と (*4) に相当する修正が個別に必要になる.
-修正内容は以下のようになる:
+ESC $ B �͊����̊J�n, ESC ( B �� ASCII �̊J�n�ł���. ��͂�
+(*3) �� (*4) �ɑ�������C�����ʂɕK�v�ɂȂ�.
+�C�����e�͈ȉ��̂悤�ɂȂ�:
 
-(*3) の該当箇所
+(*3) �̊Y���ӏ�
 
 static void
 lex_string (cpp_reader *pfile, cpp_token *token, const uchar *base)
@@ -184,7 +184,7 @@ lex_string (cpp_reader *pfile, cpp_token *token, const uchar *base)
   bool jis_state = false;
   for (;;)
     {
-ここから
+��������
       if (!jis_state && jis_start(cur)) {
 	cur += 3;
 	jis_state = true;
@@ -199,10 +199,10 @@ lex_string (cpp_reader *pfile, cpp_token *token, const uchar *base)
 	++cur;
 	continue;
       }
-ここまで
+�����܂�
       cppchar_t c = *cur++;
 
-(*4) の該当箇所
+(*4) �̊Y���ӏ�
 
 #if 0
 	  while (p < limit && *p != '\\')
@@ -224,12 +224,12 @@ lex_string (cpp_reader *pfile, cpp_token *token, const uchar *base)
 	  }
 #endif
 
-libcpp.a と cc1 をリビルドして確認してみた. 今回の修正は jis_kanji_start 等
-は「gcc の字句解析ルーチンの調査(その1)」では lex.c で定義したインライン函数
-だったのだが, この修正でも必要になったので
+libcpp.a �� cc1 �����r���h���Ċm�F���Ă݂�. ����̏C���� jis_kanji_start ��
+�́ugcc �̎����̓��[�`���̒���(����1)�v�ł� lex.c �Œ�`�����C�����C������
+�������̂���, ���̏C���ł��K�v�ɂȂ����̂�
 
 ~/gcc-10.2.0/libcpp/internal.h
 
-に引っ越しした. ごちゃごちゃしているが, 期待通り動作している.
+�Ɉ����z������. �����Ⴒ���Ⴕ�Ă��邪, ���Ғʂ蓮�삵�Ă���.
 
 (*6) 
