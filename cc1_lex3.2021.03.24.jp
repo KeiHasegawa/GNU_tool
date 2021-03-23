@@ -1,0 +1,269 @@
+gcc の字句解析ルーチンの解析(その 3)
+
+目次
+(*1) 字句の属性値
+(*2) c_token::type
+(*3) c_token::id_kind
+(*4) c_token::location
+(*5) c_token::value
+(*6) tree のデバッグ
+
+(*1) 字句の属性
+
+その 1, その 2 のバグの修正で調査で横道にそれた感じもあるが,
+結局は以下の函数やそこから呼ばれる函数が字句で重要なところらしい.
+
+c_token *
+c_parser_peek_token (c_parser *parser)
+{
+  if (parser->tokens_avail == 0)
+    {
+      c_lex_one_token (parser, &parser->tokens[0]);   ここが重要
+      parser->tokens_avail = 1;
+    }
+  return &parser->tokens[0];
+}
+
+例えば
+
+int a = 1;
+
+のようなプログラム片で字句を並び挙げれば,
+
+int
+a
+=
+1
+;
+
+の 5 つということになる. このうち字句に属性値を持たせる必要があるのが
+2 つ目の a と 4 つ目の 1 である. とはいえ gcc の実装では
+全ての字句に属性を持たせてはいる(例えばファイルにおける位置など).
+
+c_lex_one_token で作成される c_token オブジェクトは以下のようになっていた:
+
+int に対して
+{type = CPP_KEYWORD, id_kind = C_ID_NONE, keyword = RID_INT, pragma_kind = PRAGMA_NONE, location = 162, value = 0xb78f4630, flags = 64 '@'}
+
+a に対して
+{type = CPP_NAME, id_kind = C_ID_ID, keyword = RID_MAX, pragma_kind = PRAGMA_NONE, location = 288, value = 0xb7982630, flags = 1 '\001'}
+
+= に対して
+{type = CPP_EQ, id_kind = C_ID_NONE, keyword = RID_MAX, pragma_kind = PRAGMA_NONE, location = 352, value = 0x0, flags = 1 '\001'}
+
+1 に対して
+{type = CPP_NUMBER, id_kind = C_ID_NONE, keyword = RID_MAX, pragma_kind = PRAGMA_NONE, location = 416, value = 0xb78e0c94, flags = 1 '\001'}
+
+; に対して
+{type = CPP_SEMICOLON, id_kind = C_ID_NONE, keyword = RID_MAX, pragma_kind = PRAGMA_NONE, location = 448, value = 0x0, flags = 0 '\000'}
+
+のように c_token が作られていることが分かる.
+
+(*2) c_token::type
+
+字句そのものの値.
+
+	上から推察するに整数の 1 にも, 浮動小数点数の 0.5 にも CPP_NUMBER が
+	割り振られているということだ. ここいらは gcc の実装がそうなっている
+	ということであって, 別の実装では分けてあるかもしれない.
+	同じことはキーワードについてもいえる. int と double に別の値を
+	割り振ることもあるからだ.
+
+(*3) c_token::id_kind
+
+c_token:type が CPP_NAME の場合に限り C_ID_NONE 以外の値になる
+
+	     C_ID_ID          いわゆる identifier
+	     C_ID_TYPENAME    いわゆる typedef 名
+	     C_ID_CLASSNAME   いわゆる タグ名
+	     C_ID_ADDRSPACE   ????
+
+(*4) c_token::location
+
+これはファイルにおける位置を記録するもので, 型は unsigned int だが高度に
+ハッシュ化されている.
+
+gcc の実装では
+
+	o ファイルパス名
+	o 行番号
+	o カラム数
+	o システムヘッダーかどうか
+
+を保持しているが, 字句一つ一つに例えば
+
+struct info {
+  string name;
+  int line;
+  int columun;
+  bool sys;
+};
+
+のような情報は保持してはいないということ.
+
+c_token::location から上の情報を取得する方法として, 例えばこのページにある
+output_macro_info.diff の
+
++ 		       rich_location richloc(pfile->line_table, pfile->directive_line);
++ 		       expanded_location exloc = richloc.get_expanded_location(0);
++ 		       const char* file = exloc.file;
++ 		       int line = exloc.line;
+
+が参考になる.
+
+(*5) c_token::value
+
+このメンバの型は tree 型で, すなわちそれは以下の共用体だったりする.
+
+union tree_node {
+    tree_base base;
+    tree_typed typed;
+    tree_common common;
+    tree_int_cst int_cst;
+    tree_poly_int_cst poly_int_cst;
+    tree_real_cst real_cst;
+...
+}* tree;
+
+見ての通りだが, これは色々なところで出現するようなごった煮なわけだ.
+
+int a = 1;
+
+の a に対して, おそらく a という文字列と a の型はまだ, この時点では
+決まっていないという情報を持っていると考えられる. なのでここではそれ
+を確認する.
+
+c-lex.c:469
+
+      *value = HT_IDENT_TO_GCC_IDENT (HT_NODE (tok->val.node.node));  ここ
+
+gcc-10.2.0/libcpp/include/cpplib.h
+#define HT_NODE(NODE)		(&(NODE)->ident)
+
+gcc-10.2.0/gcc/tree.h
+#define HT_IDENT_TO_GCC_IDENT(NODE) \
+  ((tree) ((char *) (NODE) - sizeof (struct tree_common)))
+
+参照しているのは ident でそこからアドレスの調整をしているといったところ.
+
+(gdb) p tok.val.node.node.ident
+$33 = {str = 0xb7974170 "a", len = 1, hash_value = 4294967281}
+
+ということで
+
+(gdb) p parser->tokens[0].value.identifier.id
+$37 = {str = 0xb7974170 "a", len = 1, hash_value = 4294967281}
+
+これがセットされているということだ.
+まとめると, 
+
+c_token::type が CPP_NAME で
+c_token::id_kind が C_ID_ID ならば
+c_token::value の identifier.id に文字列が入っているとうことである.
+
+残念ながら「型がまだ決まっていない」という情報がどこに入っているのかは
+不明だった.
+
+ところで,
+
+gcc-10.2.0/gcc/c/c-parser.c:396
+	decl = lookup_name (token->value);
+
+がこの a に対して実行された. 普通に考えれば記号表が参照されたという
+ところなのだろうが, 自分が想像していたものではない. この場合の a
+に対しては「記号表が参照されるべきではなく, 新しく名前を作る」
+というのがコンパイラとしての動作だと考えているからだ.
+
+とはいえ, 今回の a の調査ではこんなもので満足しておく.
+
+int a = 1; の 1 についてはどうなっているべきだろうか.
+
+c-lex.c:488
+	    *value = interpret_integer (tok, flags, &overflow);  ここ
+
+さらに以下で作られる.
+
+static tree
+wide_int_to_tree_1 (tree type, const wide_int_ref &pcst)
+{
+...
+
+最初の type の引数には 1 の型である int が指定されていると推測される.
+2 つ目の pcst の引数には値が保持されていて *pcst.val に 1 が入っていた.
+
+この函数でも出現するが, tree 型にはマクロが駆使される:
+
+  TREE_CODE (type) : INTEGER_TYPE
+  TYPE_PRECISION (type) : 32
+  TYPE_SIGN (type) : SIGNED
+
+(*6) tree のデバッグ
+
+tree 型の変数が gcc のたくさんのところで使用される. できればこれを簡単に
+デバッグしたい.
+
+以下の函数を gcc-10.2.0/gcc/tree.c の末尾に追加した:
+
+void print(tree p)
+{
+  // ...
+}
+
+そしてこの函数をデバッガのコマンドラインから呼び出せばよい. まずは
+int a = 1; の a や 1 には少なくとも対応したい. この函数は解析が進めば
+どんどん膨大になっていく. しかし現状ではしょうがないことだ.
+
+最初のバージョンは以下のようにした:
+
+void print(tree p)
+{
+  if (!p) {
+    printf("nullptr\n");
+    return;
+  }
+  switch (p->base.code) {
+  case IDENTIFIER_NODE:
+    printf("IDENTIFIER_NODE\n");
+    break;
+  case INTEGER_CST:
+    printf("INTEGER_CST\n");
+    break;
+  default:
+    printf("Unknown\n");
+    break;
+  }
+}
+
+さてこれを cc1 に取り込むには, ビルドのログを参照するとよい.
+
+% g++ -c ... -o tree.o ... ../.././gcc/tree.c
+% ar rcT libbackend.a ... tree.o
+% g++ ... -o cc1 ... libbackend.a
+
+のようになる. これは自分が行ったビルドのログを見る必要がある.
+スクリプトでもいいし, Makefile を書いてもよいがここは簡単であることが重要.
+
+とりあえず cc1 を再度 gdb で動作させ
+
+c_token *
+c_parser_peek_token (c_parser *parser)
+{
+  if (parser->tokens_avail == 0)
+    {
+      c_lex_one_token (parser, &parser->tokens[0]);
+      parser->tokens_avail = 1;  ここにブレークポイントをセット
+
+ここで停止したときに
+
+(gdb) p print(parser->tokens[0]->value)
+
+のようにしてみるわけだ. a に対しては
+
+IDENTIFIER_NODE
+
+1 に対しては
+
+INTEGER_CST
+
+と表示しただろう. この表示結果は確かに満足できるものではないが,
+これを進化させていけばよい.
