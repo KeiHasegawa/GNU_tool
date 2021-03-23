@@ -5,9 +5,10 @@ gcc の字句解析ルーチンの調査(その2)
 (*2) lex_string
 (*3) Shif-JIS の文字列リテラルのバグ修正第一段階
 (*4) Shif-JIS の文字列リテラルのバグ修正第二段階
-(*5) JIS 文字列リテラルのバグ修正
+(*5) JIS(ISO-2022-JP) 文字列リテラルのバグ修正
 (*6) patch の当て型
 
+(*1) 文字列リテラルの扱い
 以下のような簡単なソースを作成する.
 % cat /tmp/a.c
 const char* p = "abcd";
@@ -42,7 +43,7 @@ $151 = CPP_STRING
 
 (*2) lex_string
 
-実際に文字列リテラルを作っているのは以下の函数
+実際に c_token としての文字列リテラルを作っているのは以下の函数
 
 static void
 lex_string (cpp_reader *pfile, cpp_token *token, const uchar *base)
@@ -253,6 +254,7 @@ Ignoring potentially dangerous file name /home/khasegawa/gcc-10.2.0/libcpp/inter
 patching file libcpp/internal.h
 Ignoring potentially dangerous file name /home/khasegawa/gcc-10.2.0/libcpp/lex.c
 patching file libcpp/lex.c
+%
 
 なんだか意味の分からない warning らしきものが patch が出力しているのだが,
 確認したところ期待通り patch が当たっていた.

@@ -1,0 +1,263 @@
+gcc lexical analyzer investigation (Part 2)
+
+Index
+(*1) String literal
+(*2) lex_string
+(*3) Bug fix for Shif-JIS string literal (1st step)
+(*4) Bug fix for Shif-JIS string literal (2nd step)
+(*5) Bug fix for JIS(ISO-2022-JP) string literal
+(*6) How to patch
+
+(*1) String literal
+Create simple source like bellow:
+% cat /tmp/a.c
+const char* p = "abcd";
+%
+
+And let cc1 compile
+(gdb) run cc1 ...                # About arguments, refer to
+                                 # gcc lexical analyzer investigation(Part 1)
+
+Confirm that `a.s' is generated as the result of /tmp/a.c
+
+From viewpoint of parser, "abcd" is refered at `c_parser_initializer'
+at first time. Of cause, at this point, it's not storange if the token has
+been already read from file.
+
+static struct c_expr
+c_parser_initializer (c_parser *parser)
+{
+  if (c_parser_next_token_is (parser, CPP_OPEN_BRACE))  // Step into this
+...
+c_parser_next_token_is (c_parser *parser, enum cpp_ttype type)
+{
+  return c_parser_peek_token (parser)->type == type;  // And also step into
+
+
+`c_parser_peek_token' returns pointer to `c_token'. Here, we can know that:
+
+(gdb) p ((c_token *) XXXX)->type
+$151 = CPP_STRING
+
+where, XXXX is return value of `c_parser_peek_token'
+
+i.e. type member becomes `CPP_STRING'.
+
+(*2) lex_string
+
+`c_token' as string literal is created at bellow function:
+
+static void
+lex_string (cpp_reader *pfile, cpp_token *token, const uchar *base)
+{
+...
+
+When this function is called, `base' points to string literal address.
+...
+  for (;;)
+    {
+      cppchar_t c = *cur++;
+...
+      if (c == '\\' && !pfile->state.angled_headers && *cur != '\n')
+	cur++;
+      else if (c == terminator)
+	break;          // Here, recognize end of string literal
+
+At this loop, search for end of string literal.
+
+(*3) Bug fix for Shif-JIS string literal (1st step)
+
+For reproducing the bug, change like bellow:
+
+% cat /tmp/a.c
+const char* p = "‹@”\";
+%
+
+Note that this file is written by Shift-JIS code.
+2nd byte of 2nd Japanese character is '\\' = 0x5c
+so, compiler can not recognize the end of string literal.
+You can confirm this bug like bellow:
+
+(gdb) run cc1 ...
+
+Now fix `lex_string'
+
+  bool sjis_state = false;   // add this
+  for (;;)
+    {
+      cppchar_t c = *cur++;
+
+/* vvvvv from here vvvvv */
+      if (!sjis_state && sjis_1st(c)) {
+	sjis_state = true;
+	continue;
+      }
+      if (sjis_state) {
+	sjis_state = false;
+	continue;
+      }
+/* ^^^^^ to here ^^^^^ */
+
+This fix enables cc1 to recognize the end of string literal.
+But it's not enough. 
+
+This string literal's type is char [5] and it's values are:
+
+0x8b, 0x40, 0x94, 0x5c, 0x00
+
+cc1 generates `a.s' and the string literal value are:
+
+\213 = 0x8b
+@ = 0x40
+\224 = 0x94
+\" = 0x22     # incorrect
+
+For every string literal, escape sequence like \n is treated specially,
+not especially for this string literal.
+
+(*4) Bug fix for Shif-JIS string literal (2nd step)
+
+The work is done at `c_parser_string_literal', and more, this function calls
+`cpp_interpret_string_1'
+
+static bool
+cpp_interpret_string_1 (cpp_reader *pfile, const cpp_string *from, size_t count
+...
+{
+...
+      for (;;)
+	{
+	  base = p;
+	  while (p < limit && *p != '\\')    /* This part looks for the      */
+	    p++;                             /* begining of escape sequence. */
+
+
+For supporting Shift-JIS string literal, fixed like bellow:
+
+#if 0
+	  while (p < limit && *p != '\\')
+	    p++;
+#else
+	  while (p < limit && *p != '\\') {
+	    if (sjis_1st(*p))
+	      ++p;
+	    ++p;
+	  }
+#endif
+ 
+libcpp.a and cc1 have to be re-builded and this fix makes
+the change of `sjis_1st' defined file. This inline function was
+described at "gcc lexical analyzer investigation(Part 1)"
+and it was defined at `lex.c'. But now it's defined at
+
+~/gcc-10.2.0/libcpp/internal.h
+
+cc1 works well for this fix.
+
+(*5) Bug fix for JIS(ISO-2022-JP) string literal
+
+Special fix is required for JIS string literal. At first, for reproducing
+the bug, change /tmp/a.c like bellow:
+% cat /tmp/a.c
+const char* p = "‚ ";
+%
+
+Of cause, it have to be written by JIS encode.
+
+(gdb) run cc1 ...
+
+You can see that cc1 can not recognize the end of string literal.
+This string literal part's byte expressions are:
+
+22 1b  24 42 24 22 1b   28 42 22
+"  ESC $  B    ‚    ESC  ( B  "
+
+ESC $ B denotes JIS kanji start and ESC ( B denotes ASCII start.
+Similaly with (*3) and (*4), it's must be fixed.
+
+(*3) part:
+
+static void
+lex_string (cpp_reader *pfile, cpp_token *token, const uchar *base)
+{
+...
+  bool sjis_state = false;
+  bool jis_state = false;
+  for (;;)
+    {
+/* vvvvv from here vvvvv */
+      if (!jis_state && jis_start(cur)) {
+	cur += 3;
+	jis_state = true;
+	continue;
+      }
+      if (jis_state && jis_ascii_start(cur)) {
+	cur += 3;
+	jis_state = false;
+	continue;
+      }
+      if (jis_state) {
+	++cur;
+	continue;
+      }
+/* ^^^^^ to here ^^^^^ */
+      cppchar_t c = *cur++;
+
+(*4) part:
+
+#if 0
+	  while (p < limit && *p != '\\')
+	    p++;
+#else
+	  bool jis_state = false;
+	  while (p < limit && (jis_state || *p != '\\')) {
+	    if (sjis_1st(*p))
+	      ++p;
+	    if (!jis_state && jis_kanji_start(p)) {
+	      p += 3;
+	      jis_state = true;
+	    }
+	    if (jis_state && jis_ascii_start(p)) {
+	      p += 2;
+	      jis_state = false;
+	    }
+	    ++p;
+	  }
+#endif
+
+libcpp.a and cc1 have to be re-build similary.
+And also similary, `jis_kanji_start' must be defined at
+
+~/gcc-10.2.0/libcpp/internal.h
+
+Above code is a little busy, but works well.
+
+(*6) How to patch
+
+`comment_bug_fix.diff' was described at
+"gcc lexical analyzer investigation(Part 1)". If this patch is applied to
+your gcc sources, the bellow patch can not be applied because of inline
+function position changing. Please again execute xz and tar command like
+bellow:
+
+Download `string_and_comment_bug_fix.diff' at this page and save as, for
+example
+
+/tmp/string_and_comment_bug_fix.diff
+
+Now,
+
+% xz -d -c gcc-10.2.0.tar.xz | tar xf -
+% cd gcc-10.2.0
+% patch -p0 < /tmp/string_and_comment_bug_fix.diff
+Ignoring potentially dangerous file name /home/khasegawa/gcc-10.2.0/libcpp/charset.c
+patching file libcpp/charset.c
+Ignoring potentially dangerous file name /home/khasegawa/gcc-10.2.0/libcpp/internal.h
+patching file libcpp/internal.h
+Ignoring potentially dangerous file name /home/khasegawa/gcc-10.2.0/libcpp/lex.c
+patching file libcpp/lex.c
+%
+
+Something like storange warning are outputed by patch command. But
+this command works well. After this, execute cofigure and make.
+
