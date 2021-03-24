@@ -1,0 +1,285 @@
+gcc lexical analyzer investigation(Part 3)
+
+Index
+(*1) Attributed value of token
+(*2) c_token::type
+(*3) c_token::id_kind
+(*4) c_token::location
+(*5) c_token::value
+(*6) How to debug `tree'
+
+(*1) Attributed value of token
+
+Now we are ready to investigate `c_token',
+even though we have gone away from the point because of bug fix.
+
+c_token *
+c_parser_peek_token (c_parser *parser)
+{
+  if (parser->tokens_avail == 0)
+    {
+      c_lex_one_token (parser, &parser->tokens[0]);   // Very important!
+      parser->tokens_avail = 1;
+    }
+  return &parser->tokens[0];
+}
+
+Think about a piece of code:
+
+int a = 1;
+
+The tokens of above code are:
+
+int
+a
+=
+1
+;
+
+It's not so difficult to guess that `a' has to the something attributed
+value except for token value. As far as gcc implementation, every
+token has its attributed value. We'll see that bellow.
+
+`c_token' objects created at `c_lex_one_token' are like bellow:
+
+For `int'
+{type = CPP_KEYWORD, id_kind = C_ID_NONE, keyword = RID_INT, pragma_kind = PRAGMA_NONE, location = 162, value = 0xb78f4630, flags = 64 '@'}
+
+For `a'
+{type = CPP_NAME, id_kind = C_ID_ID, keyword = RID_MAX, pragma_kind = PRAGMA_NONE, location = 288, value = 0xb7982630, flags = 1 '\001'}
+
+For `='
+{type = CPP_EQ, id_kind = C_ID_NONE, keyword = RID_MAX, pragma_kind = PRAGMA_NONE, location = 352, value = 0x0, flags = 1 '\001'}
+
+For `1'
+{type = CPP_NUMBER, id_kind = C_ID_NONE, keyword = RID_MAX, pragma_kind = PRAGMA_NONE, location = 416, value = 0xb78e0c94, flags = 1 '\001'}
+
+For `;'
+{type = CPP_SEMICOLON, id_kind = C_ID_NONE, keyword = RID_MAX, pragma_kind = PRAGMA_NONE, location = 448, value = 0x0, flags = 0 '\000'}
+
+(*2) c_token::type
+
+Token value.
+
+      At gcc implementation, for integer literal `1' and floating literal `0.5'
+      CPP_NUMBER is assigned. Similary, for `int' and `double'
+      CPP_KEYWORD is assigned.
+
+(*3) c_token::id_kind
+
+If c_token:type is equal to `CPP_NAME', this value becomes like bellow:
+
+	     C_ID_ID          so-called identifier
+	     C_ID_TYPENAME    so-called typedef name
+	     C_ID_CLASSNAME   so-called tag name
+	     C_ID_ADDRSPACE   ????
+
+Othewise, the value becomes `C_ID_NONE'
+
+(*4) c_token::location
+
+This member is to maintain the position at some file. This mebmer type
+is `unsigned int' and specilized hashed.
+
+gcc implementation
+
+	o file path
+	o line number
+	o column
+	o Is systemm header or not
+
+These information is maintained. But not directly maintained, like:
+
+struct info {
+  string name;
+  int line;
+  int columun;
+  bool sys;
+};
+
+From c_token::location, the way of obtaining above information
+is described at 
+
+output_macro_info.diff
+
+which is at this web page.
+
++ 		       rich_location richloc(pfile->line_table, pfile->directive_line);
++ 		       expanded_location exloc = richloc.get_expanded_location(0);
++ 		       const char* file = exloc.file;
++ 		       int line = exloc.line;
+
+Above code is one of examples.
+
+(*5) c_token::value
+
+This member type is `tree' like bellow:
+
+union tree_node {
+    tree_base base;
+    tree_typed typed;
+    tree_common common;
+    tree_int_cst int_cst;
+    tree_poly_int_cst poly_int_cst;
+    tree_real_cst real_cst;
+...
+}* tree;
+
+As you see, this is mixed up. And this is used at everywhere in source code.
+
+Now for a pieace of code:
+
+int a = 1;
+
+For this `a', I guess that above tree types variable contains:
+
+    o as a string,  "a"
+    o type of `a' is not defined
+    
+Now we'll investigate these points.
+
+c-lex.c:469
+
+      *value = HT_IDENT_TO_GCC_IDENT (HT_NODE (tok->val.node.node));  // HERE!
+
+gcc-10.2.0/libcpp/include/cpplib.h
+#define HT_NODE(NODE)		(&(NODE)->ident)
+
+gcc-10.2.0/gcc/tree.h
+#define HT_IDENT_TO_GCC_IDENT(NODE) \
+  ((tree) ((char *) (NODE) - sizeof (struct tree_common)))
+
+To simply say, refering to member `ident' and adjust address.
+
+For `a', at above `// HERE!' point:
+(gdb) p tok.val.node.node.ident
+$33 = {str = 0xb7974170 "a", len = 1, hash_value = 4294967281}
+
+And also at `c_parser_peek_token' point:
+
+(gdb) p parser->tokens[0].value.identifier.id
+$37 = {str = 0xb7974170 "a", len = 1, hash_value = 4294967281}
+
+Now we can conclude that:
+
+If c_token::type is equal to `CPP_NAME' and
+if c_token::id_kind is equal to `C_ID_ID' then
+c_token::value->identifier.id contains the name.
+
+Unfortunately, how to maintain the information "type of `a' is not defined"
+is not clear.
+
+By the way,
+
+gcc-10.2.0/gcc/c/c-parser.c:396
+	decl = lookup_name (token->value);
+
+above code is executed after token->value is created for `a'
+Normaly thinking about this situation, symbol table is referenced
+for `a'. But in this case, for `a'
+
+Not refer to symbol table, just create name of `a'
+
+This action is expected. Anyway, this time investigation is enough.
+
+Again for a piece of code
+
+int a = 1;
+
+For `1', now we'll investigate how tree is created.
+
+c-lex.c:488
+	    *value = interpret_integer (tok, flags, &overflow);  // HERE!
+
+And more:
+
+static tree
+wide_int_to_tree_1 (tree type, const wide_int_ref &pcst)
+{
+...
+
+1st parameter `type' expresses `int' in this case, which is a type of `1'
+2nd parameter `pcst' containes the value of `1' at *pcst.val
+
+As you can see in this code, various macro is used for `tree' type:
+
+  TREE_CODE (type) : INTEGER_TYPE
+  TYPE_PRECISION (type) : 32
+  TYPE_SIGN (type) : SIGNED
+
+(*6) How to debug `tree'
+
+Type `tree' variables are used at many code of gcc. I want to see it simply.
+
+So I added the function at the end of
+
+gcc-10.2.0/gcc/tree.c
+
+like bellow:
+
+void print(tree p)
+{
+  // ...
+}
+
+And will call this function from debugger command line.
+At first, for a piece of code:
+
+int a = 1;
+
+`a' and `1' 's attributed value whose type is `tree' should be printed
+suitably. This function will be huge as we understand `tree' type.
+But in this situation, there is no way. Anyway, 1st version is very simple:
+
+void print(tree p)
+{
+  if (!p) {
+    printf("nullptr\n");
+    return;
+  }
+  switch (p->base.code) {
+  case IDENTIFIER_NODE:
+    printf("IDENTIFIER_NODE\n");
+    break;
+  case INTEGER_CST:
+    printf("INTEGER_CST\n");
+    break;
+  default:
+    printf("Unknown\n");
+    break;
+  }
+}
+
+Of cause, it's enough to execute `make' at top directory.
+But if you refer to build log, the bellow commands work well:
+
+% g++ -c ... -o tree.o ... ../.././gcc/tree.c
+% ar rcT libbackend.a ... tree.o
+% g++ ... -o cc1 ... libbackend.a
+
+This should be the same way as your build was done. So see your build log file.
+Make a simple shell script or Makefile. And simple is important.
+
+Again execute cc1 under gdb control:
+
+c_token *
+c_parser_peek_token (c_parser *parser)
+{
+  if (parser->tokens_avail == 0)
+    {
+      c_lex_one_token (parser, &parser->tokens[0]);
+      parser->tokens_avail = 1;  // Set a break-point here!
+
+At this break-point, do print command like bellow:
+
+(gdb) p print(parser->tokens[0]->value)
+
+For `a'
+
+IDENTIFIER_NODE
+
+For `1'
+
+INTEGER_CST
+
+are printed. They are not enough. But you can improve yourself
