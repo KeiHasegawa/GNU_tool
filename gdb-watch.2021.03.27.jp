@@ -1,0 +1,784 @@
+gdb でウォッチポイントをどういう方法で実現しているかの調査.
+
+(*1) -O0 ビルド
+(*2) デバッグビルドした gdb を gdb から起動してみる.
+(*3) ウォッチポイントを gdb でセットし検出させてみる
+(*4) watch コマンドの入り口
+(*5) ptrace
+
+(*1) -O0 ビルド
+
+    例によって gdb を -O0 オプションでビルドし直した.
+    ビルドのログを 
+
+~/gdb-7.10.1-1.src/gdb-7.10.1/make.log.2021.03.26
+
+    に保存しておいた.
+
+(*2) デバッグビルドした gdb を gdb から起動してみる.
+     ひとまず main 函数にブレークポイントをセットして
+     
+     (gdb) run
+
+     とした. ソースレベルデバッグはできている.
+
+     (gdb) c
+
+     ここで起動時の gdb のメッセージが表示されてデバッグされている gdb
+     のプロンプトが表示された.
+
+     (gdb)
+
+     これは分かりにくい. 何とかこのコマンドプロンプトを変更したほうが
+     良さそうだ. 以下を試してみた.
+
+     (gdb) set prompt <gdb>
+     <gdb> 
+
+     これはデバッグされる gdb でやってもいいし, デバッグしている gdb
+     でやってもよい. いずれにせよ区別ができればよい. 以下では
+
+     (debugged-gdb) 
+
+     と
+
+     (gdb)
+
+     で分ける.
+
+(*3) ウォッチポイントを gdb でセットし検出させてみる
+
+% cat a.c
+int a[1024];
+
+int main()
+{
+  for (int i = 0 ; i != sizeof a/sizeof a[0] ; ++i)
+    a[i] = i;
+  return 0;
+}
+% gcc -g a.c -o a.out
+
+まずは普通にこのプログラムを gdb で動作させた. 配列 `a' は
+0x8049680 番地に配置されていることを確認した.
+
+さらに &a[1000] は
+0x804a620 (= 0x8049680 + 4000) であることを確認した. ここに
+ウォッチポイントをセットしてみる.
+
+(gdb) watch *(int*)0x804a620
+(gdb) c
+Continuing.
+Hardware watchpoint 2: *(int*)0x804a620
+
+Old value = 0
+New value = 1000
+main () at a.c:5
+(gdb)
+
+当たり前であるが, ウォッチポイントにヒットした. さてこれを
+デバッグされる gdb で行い, それをデバッグする gdb でデバッグする
+ということをやってみる.
+
+% cat debugged-gdb
+set prompt (debugged-gdb) 
+watch *(int*)0x804a620
+run
+quit
+%
+
+(gdb) run a.out -x debugged-gdbcom
+
+としてみた.
+
+GNU gdb (GDB) 7.10.1
+Copyright (C) 2015 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.  Type "show copying"
+and "show warranty" for details.
+This GDB was configured as "i686-pc-linux-gnu".
+Type "show configuration" for configuration details.
+For bug reporting instructions, please see:
+<http://www.gnu.org/software/gdb/bugs/>.
+Find the GDB manual and other documentation resources online at:
+<http://www.gnu.org/software/gdb/documentation/>.
+For help, type "help".
+Type "apropos word" to search for commands related to "word"...
+Reading symbols from a.out...done.
+Hardware watchpoint 1: *(int*)0x804a620
+Hardware watchpoint 1: *(int*)0x804a620
+
+Old value = 0
+New value = 1000
+main () at a.c:5
+5	  for (int i = 0 ; i != sizeof a/sizeof a[0] ; ++i)
+A debugging session is active.
+
+	Inferior 1 [process 17158] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
+[Inferior 1 (process 17092) exited normally]
+
+これは期待した結果である.
+
+改めて気付いたが debugged-gdbcom の最後の quit コマンドが
+あるおかげでデバッグされる gdb のコマンドプロンプトが
+表示されることはこの場合はない. このほうが分かりやすいかもしれない.
+
+(*4) watch コマンドの入り口
+
+-x で指定されたファイルは以下で実行していた:
+
+main.c:1131
+        catch_command_errors_const (source_script, cmdarg_p->string,
+				    !batch_flag);
+
+そして watchpoint コマンド(やおそらく break コマンドも)最後は
+ここにくる:
+
+breakpoint.c:8458
+void
+install_breakpoint (int internal, struct breakpoint *b, int update_gll)
+{
+
+
+そこで, これを確認するためにこの呼び出し直前でプログラムカウンタを
+ずらしてみた.
+
+=>install_breakpoint (internal, b, 1);   ここで止まった状態
+  do_cleanups (back_to);
+
+(gdb) disassemble
+...
+(gdb) set $pc=0x08125f3a   do_cleanups(back_to) 呼び出しのところまで進める.
+(gdb) c
+
+
+これでウォッチポイントにヒットせず. なので名前からも明らかだが
+install_breakpoint で何かをしている.
+
+これと同じ手法で確かめたが,
+
+add_to_breakpoint_chain 
+
+をスキップするとブレークポイントがヒットしない. というのは確かだが
+これは当たり前で breakpoint_chain というグローバル変数に
+このウォッチポイントを追加しているだけ.
+
+(*5) ptrace 
+
+(*4) の時点では ptrace はまだ呼び出されていない. そしてこの後
+ウォッチポイントにヒットするまで複数回 ptrace が実行される:
+
+(gdb) b ptrace
+(gdb) command
+> c
+> end
+(gdb) c
+Continuing.
+Hardware watchpoint 1: *(int*)0x804a620
+
+Breakpoint 10, ptrace (request=PTRACE_GETREGS) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	../sysdeps/unix/sysv/linux/ptrace.c: No such file or directory.
+
+Breakpoint 10, ptrace (request=PTRACE_GETSIGINFO) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_GETREGS) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_GETSIGINFO) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_SETOPTIONS) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_SETOPTIONS) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_SETOPTIONS) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_GETEVENTMSG) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_KILL) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_SETOPTIONS) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_KILL) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_KILL) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_SETOPTIONS) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_KILL) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_GETFPXREGS) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=16900) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_GETREGS) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_POKEDATA) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_GETREGS) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_SETREGS) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_POKEUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_POKEUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_POKEUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_POKEUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_GETREGS) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_GETSIGINFO) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_GETREGS) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_SETREGS) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_POKEDATA) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_SINGLESTEP) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_GETREGS) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_GETSIGINFO) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_POKEDATA) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_GETREGS) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_GETSIGINFO) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_GETREGS) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_SETREGS) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_POKEDATA) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_SINGLESTEP) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_GETREGS) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_GETSIGINFO) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_POKEDATA) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_CONT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_GETREGS) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_GETSIGINFO) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKUSER) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_PEEKTEXT) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_POKEDATA) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+Hardware watchpoint 1: *(int*)0x804a620
+
+Old value = 0
+New value = 1000
+main () at a.c:5
+5	  for (int i = 0 ; i != sizeof a/sizeof a[0] ; ++i)
+A debugging session is active.
+
+	Inferior 1 [process 24786] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
+
+Breakpoint 10, ptrace (request=PTRACE_KILL) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+
+Breakpoint 10, ptrace (request=PTRACE_KILL) at ../sysdeps/unix/sysv/linux/ptrace.c:119
+119	in ../sysdeps/unix/sysv/linux/ptrace.c
+[Inferior 1 (process 24712) exited normally]
+(gdb) 
+
+request の値は以下のもの:
+16900
+PTRACE_CONT
+PTRACE_GETEVENTMSG
+PTRACE_GETFPXREGS
+PTRACE_GETREGS
+PTRACE_GETSIGINFO
+PTRACE_KILL
+PTRACE_PEEKTEXT
+PTRACE_PEEKUSER
+PTRACE_POKEDATA
+PTRACE_POKEUSER
+PTRACE_SETOPTIONS
+PTRACE_SETREGS
+PTRACE_SINGLESTEP
+
+  ptrace (PTRACE_POKEUSER, tid, u_debugreg_offset (regnum), value);
+
+この呼び出しで value = 0x804a620 でこの値は watch ポイントに指定した
+アドレス.
