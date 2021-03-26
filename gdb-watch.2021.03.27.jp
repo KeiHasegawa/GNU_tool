@@ -1,52 +1,52 @@
-gdb でウォッチポイントをどういう方法で実現しているかの調査.
+gdb �ŃE�H�b�`�|�C���g���ǂ��������@�Ŏ������Ă��邩�̒���.
 
-(*1) -O0 ビルド
-(*2) デバッグビルドした gdb を gdb から起動してみる.
-(*3) ウォッチポイントを gdb でセットし検出させてみる
-(*4) watch コマンドの入り口
+(*1) -O0 �r���h
+(*2) �f�o�b�O�r���h���� gdb �� gdb ����N�����Ă݂�.
+(*3) �E�H�b�`�|�C���g�� gdb �ŃZ�b�g�����o�����Ă݂�
+(*4) watch �R�}���h�̓����
 (*5) ptrace
 
-(*1) -O0 ビルド
+(*1) -O0 �r���h
 
-    例によって gdb を -O0 オプションでビルドし直した.
-    ビルドのログを 
+    ��ɂ���� gdb �� -O0 �I�v�V�����Ńr���h��������.
+    �r���h�̃��O�� 
 
 ~/gdb-7.10.1-1.src/gdb-7.10.1/make.log.2021.03.26
 
-    に保存しておいた.
+    �ɕۑ����Ă�����.
 
-(*2) デバッグビルドした gdb を gdb から起動してみる.
-     ひとまず main 函数にブレークポイントをセットして
+(*2) �f�o�b�O�r���h���� gdb �� gdb ����N�����Ă݂�.
+     �ЂƂ܂� main �����Ƀu���[�N�|�C���g���Z�b�g����
      
      (gdb) run
 
-     とした. ソースレベルデバッグはできている.
+     �Ƃ���. �\�[�X���x���f�o�b�O�͂ł��Ă���.
 
      (gdb) c
 
-     ここで起動時の gdb のメッセージが表示されてデバッグされている gdb
-     のプロンプトが表示された.
+     �����ŋN������ gdb �̃��b�Z�[�W���\������ăf�o�b�O����Ă��� gdb
+     �̃v�����v�g���\�����ꂽ.
 
      (gdb)
 
-     これは分かりにくい. 何とかこのコマンドプロンプトを変更したほうが
-     良さそうだ. 以下を試してみた.
+     ����͕�����ɂ���. ���Ƃ����̃R�}���h�v�����v�g��ύX�����ق���
+     �ǂ�������. �ȉ��������Ă݂�.
 
      (gdb) set prompt <gdb>
      <gdb> 
 
-     これはデバッグされる gdb でやってもいいし, デバッグしている gdb
-     でやってもよい. いずれにせよ区別ができればよい. 以下では
+     ����̓f�o�b�O����� gdb �ł���Ă�������, �f�o�b�O���Ă��� gdb
+     �ł���Ă��悢. ������ɂ����ʂ��ł���΂悢. �ȉ��ł�
 
      (debugged-gdb) 
 
-     と
+     ��
 
      (gdb)
 
-     で分ける.
+     �ŕ�����.
 
-(*3) ウォッチポイントを gdb でセットし検出させてみる
+(*3) �E�H�b�`�|�C���g�� gdb �ŃZ�b�g�����o�����Ă݂�
 
 % cat a.c
 int a[1024];
@@ -59,12 +59,12 @@ int main()
 }
 % gcc -g a.c -o a.out
 
-まずは普通にこのプログラムを gdb で動作させた. 配列 `a' は
-0x8049680 番地に配置されていることを確認した.
+�܂��͕��ʂɂ��̃v���O������ gdb �œ��삳����. �z�� `a' ��
+0x8049680 �Ԓn�ɔz�u����Ă��邱�Ƃ��m�F����.
 
-さらに &a[1000] は
-0x804a620 (= 0x8049680 + 4000) であることを確認した. ここに
-ウォッチポイントをセットしてみる.
+����� &a[1000] ��
+0x804a620 (= 0x8049680 + 4000) �ł��邱�Ƃ��m�F����. ������
+�E�H�b�`�|�C���g���Z�b�g���Ă݂�.
 
 (gdb) watch *(int*)0x804a620
 (gdb) c
@@ -76,9 +76,9 @@ New value = 1000
 main () at a.c:5
 (gdb)
 
-当たり前であるが, ウォッチポイントにヒットした. さてこれを
-デバッグされる gdb で行い, それをデバッグする gdb でデバッグする
-ということをやってみる.
+������O�ł��邪, �E�H�b�`�|�C���g�Ƀq�b�g����. ���Ă����
+�f�o�b�O����� gdb �ōs��, ������f�o�b�O���� gdb �Ńf�o�b�O����
+�Ƃ������Ƃ�����Ă݂�.
 
 % cat debugged-gdb
 set prompt (debugged-gdb) 
@@ -89,7 +89,7 @@ quit
 
 (gdb) run a.out -x debugged-gdbcom
 
-としてみた.
+�Ƃ��Ă݂�.
 
 GNU gdb (GDB) 7.10.1
 Copyright (C) 2015 Free Software Foundation, Inc.
@@ -120,22 +120,22 @@ A debugging session is active.
 Quit anyway? (y or n) [answered Y; input not from terminal]
 [Inferior 1 (process 17092) exited normally]
 
-これは期待した結果である.
+����͊��҂������ʂł���.
 
-改めて気付いたが debugged-gdbcom の最後の quit コマンドが
-あるおかげでデバッグされる gdb のコマンドプロンプトが
-表示されることはこの場合はない. このほうが分かりやすいかもしれない.
+���߂ċC�t������ debugged-gdbcom �̍Ō�� quit �R�}���h��
+���邨�����Ńf�o�b�O����� gdb �̃R�}���h�v�����v�g��
+�\������邱�Ƃ͂��̏ꍇ�͂Ȃ�. ���̂ق���������₷����������Ȃ�.
 
-(*4) watch コマンドの入り口
+(*4) watch �R�}���h�̓����
 
--x で指定されたファイルは以下で実行していた:
+-x �Ŏw�肳�ꂽ�t�@�C���͈ȉ��Ŏ��s���Ă���:
 
 main.c:1131
         catch_command_errors_const (source_script, cmdarg_p->string,
 				    !batch_flag);
 
-そして watchpoint コマンド(やおそらく break コマンドも)最後は
-ここにくる:
+������ watchpoint �R�}���h(�₨���炭 break �R�}���h��)�Ō��
+�����ɂ���:
 
 breakpoint.c:8458
 void
@@ -143,33 +143,33 @@ install_breakpoint (int internal, struct breakpoint *b, int update_gll)
 {
 
 
-そこで, これを確認するためにこの呼び出し直前でプログラムカウンタを
-ずらしてみた.
+������, ������m�F���邽�߂ɂ��̌Ăяo�����O�Ńv���O�����J�E���^��
+���炵�Ă݂�.
 
-=>install_breakpoint (internal, b, 1);   ここで止まった状態
+=>install_breakpoint (internal, b, 1);   �����Ŏ~�܂������
   do_cleanups (back_to);
 
 (gdb) disassemble
 ...
-(gdb) set $pc=0x08125f3a   do_cleanups(back_to) 呼び出しのところまで進める.
+(gdb) set $pc=0x08125f3a   do_cleanups(back_to) �Ăяo���̂Ƃ���܂Ői�߂�.
 (gdb) c
 
 
-これでウォッチポイントにヒットせず. なので名前からも明らかだが
-install_breakpoint で何かをしている.
+����ŃE�H�b�`�|�C���g�Ƀq�b�g����. �Ȃ̂Ŗ��O��������炩����
+install_breakpoint �ŉ��������Ă���.
 
-これと同じ手法で確かめたが,
+����Ɠ�����@�Ŋm���߂���,
 
 add_to_breakpoint_chain 
 
-をスキップするとブレークポイントがヒットしない. というのは確かだが
-これは当たり前で breakpoint_chain というグローバル変数に
-このウォッチポイントを追加しているだけ.
+���X�L�b�v����ƃu���[�N�|�C���g���q�b�g���Ȃ�. �Ƃ����̂͊m������
+����͓�����O�� breakpoint_chain �Ƃ����O���[�o���ϐ���
+���̃E�H�b�`�|�C���g��ǉ����Ă��邾��.
 
 (*5) ptrace 
 
-(*4) の時点では ptrace はまだ呼び出されていない. そしてこの後
-ウォッチポイントにヒットするまで複数回 ptrace が実行される:
+(*4) �̎��_�ł� ptrace �͂܂��Ăяo����Ă��Ȃ�. �����Ă��̌�
+�E�H�b�`�|�C���g�Ƀq�b�g����܂ŕ����� ptrace �����s�����:
 
 (gdb) b ptrace
 (gdb) command
@@ -762,7 +762,7 @@ Breakpoint 10, ptrace (request=PTRACE_KILL) at ../sysdeps/unix/sysv/linux/ptrace
 [Inferior 1 (process 24712) exited normally]
 (gdb) 
 
-request の値は以下のもの:
+request �̒l�͈ȉ��̂���:
 16900
 PTRACE_CONT
 PTRACE_GETEVENTMSG
@@ -780,5 +780,5 @@ PTRACE_SINGLESTEP
 
   ptrace (PTRACE_POKEUSER, tid, u_debugreg_offset (regnum), value);
 
-この呼び出しで value = 0x804a620 でこの値は watch ポイントに指定した
-アドレス.
+���̌Ăяo���� value = 0x804a620 �ł��̒l�� watch �|�C���g�Ɏw�肵��
+�A�h���X.
