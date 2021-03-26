@@ -1,0 +1,32 @@
+I again installed gcc 10.2 because of -foutput-doc-info bug.
+
+% cat /tmp/z
+#! /bin/csh -f
+
+sed -e 's/-O0/-O2/g' $argv[1] > $argv[1].$$
+mv $argv[1].$$ $argv[1]
+chmod +x $argv[1]
+% chmod +x /tmp/z
+% find . -name 'configure' -exec /tmp/z {} \;
+% find . -name 'Makefile.in' -exec /tmp/z {} \;
+% find . -name 'Makefile.tpl' -exec /tmp/z {} \;
+% make distclean
+% ./configure
+% make
+% make install 'DESTDIR=/home/khasegawa/gcc-10.2.0'
+
+This time log file : make.log.2021.03.26
+
+Above takes 12 hours. At next chance, time should be logged.
+
+By the way, I annotated -O2 compiling except for -O0. So execute
+gdb at
+
+~/gcc-10.2.0/host-i686-pc-linux-gnu/gcc
+
+in the ordinally manner. And set the break-point `c_parser_peek_token',
+which was investigated at this time.
+
+The motion of gdb was different from that of -O2 compiling.
+
+
