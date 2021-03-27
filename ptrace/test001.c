@@ -1,6 +1,5 @@
 #include <sys/ptrace.h>
 #include <sys/user.h>
-#include <unistd.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
