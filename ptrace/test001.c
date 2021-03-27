@@ -41,21 +41,21 @@ int main()
   }
   if (pid) {
     // parent process
-    int ret = ptrace(PTRACE_TRACEME, pid);
-    if (ret != 0) {
-      puts("ptrace(PTRACE_TRACEME, ) failed");
+    if (ptrace(PTRACE_TRACEME, pid) != 0) {
+      puts("ptrace(PTRACE_TRACEME) failed");
       print_errno();
     }
-    ret = kill(pid, SIGKILL);
-    if (ret != 0) {
+    if (kill(pid, SIGKILL) != 0) {
       puts("kill failed");
       print_errno();
     }
   }
   else {
     // child process
-    while (1)
+    while (1) {
+      puts("This message is send by child process");
       sleep(10);
+    }
   }
   return 0;
 }
