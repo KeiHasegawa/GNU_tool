@@ -1,8 +1,8 @@
 #include <sys/ptrace.h>
 #include <unistd.h>
-#include <signal.h>
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 void print_errno(void)
 {
@@ -31,31 +31,23 @@ void print_errno(void)
   }
 }
 
-int main()
+int main(int argc, char** argv)
 {
-  int pid = fork();
-  if (pid < 0) {
-    puts("fork failed");
+  if (argc != 2) {
+    printf("usage % %s pid\n", argv[0]);
+    return 1;
+  }
+  int pid = atoi(argv[1]);
+  if (ptrace(PTRACE_ATTACH, pid) < 0) {
+    printf("ptrace(PTRACE_ATTACH, %d) failed\n", pid);
     print_errno();
-    return -1;
+    return 2;
   }
-  if (pid) {
-    // parent process
-    if (ptrace(PTRACE_TRACEME, pid) != 0) {
-      puts("ptrace(PTRACE_TRACEME) failed");
-      print_errno();
-    }
-    if (kill(pid, SIGKILL) != 0) {
-      puts("kill failed");
-      print_errno();
-    }
-  }
-  else {
-    // child process
-    while (1) {
-      puts("This message is send by child process");
-      sleep(10);
-    }
+  int regs[100] = {0};
+  if (ptrace(PTRACE_GETREGS, pid, 0, &regs) < 0) {
+    printf("ptrace(PTRACE_GETREGS, %d) failed\n", pid);
+    print_errno();
+    return 3; 
   }
   return 0;
 }

@@ -1,7 +1,7 @@
 ptrace に関する調査
 
 (*1) やりたいこと
-(*2) PTRACE_TRACEME
+(*2) GPR (General Perpose Register)を覗き見る
 (*3) gdb から実行して ptrace をエラーにしない方法
 
 (*1) やりたいこと
@@ -10,52 +10,51 @@ ptrace に関する調査
      埋め込むことで調査したい. Windows にも ptrace はないのだが, 近いものは
      あるはず.
 
-(*2) PTRACE_TRACEME
+(*2) レジスタを覗き見る
 
-     ptrace の第一引数にこれを指定することでプロセスのトレースができる
-     らしい. => test000.c
+     まずは簡単に ptrace を発行してみる. デバッグされる側のプログラム
+     => test000.c
 
-     % gcc -g test000.c
-     % ./a.out
-     ret = 0
+     % gcc -g test000.c -o test001.exe
+     % ./test001.exe &
+     [1] 15935
      %
 
-     これだけでは面白くも何ともないがまずはこれがスタートラインということ.
-     ところでこのプログラムを gdb から動作させた場合何が起こるか.
+     test001.cpp は ptrace を使用して上で実行しているプロセスのレジスタ
+     を覗き見るプログラムである.
 
-     (gdb) run
-     Starting program: /home/khasegawa/lang/53_GNU_tool/ptrace/a.out 
-     ret = -1
-     EPERM
-     [Inferior 1 (process 29680) exited normally]
-     (gdb) 
-
-      つまり gdb がすでにこのプロセスをトレースしているのに, この場合はこの
-      プロセス自身が, トレースする権利を横取りしようとしたためにこのエラー
-      が起こっている.
-
-      このことで確認したかったのは, 必ずしも ptrace は別のプロセス, 特にサ
-      ブプロセスである必要はなく, 自身でも機能するということ. しかし gdb に
-      よるテストプログラムの観測が難しい場合は必要に応じて fork, exec
-      することにする.
-
-(*2) gdb から実行して ptrace をエラーにしない方法
-
-     test001.c は fork したプロセスに対して ptrace を発行し, 最後に
-     SIGKILL を送るというもの.
-
-     % gcc -g test001.c -o a.out
-     % ./a.out
+     % gcc -g test001.c -o test001.exe
+     % ./test001.exe 15935
+     ptrace(PTRACE_GETREGS, 15935) failed
+     ESRCH
+     [1]  + 中断(シグナル)          ./a.out
+     % ./test001.exe 15935
      %
 
-     エラーは表示されない. さてこれを gdb から実行して ptrace でエラーし
-     ないようにしてみたい. gdb から普通に実行するとやはり ptrace は
-     失敗し errno = EPERM になってしまう.
+     1 回目は失敗したが 2 回目は ptrace の呼び出しがいずれも成功したようだ.
+     1 回目が失敗するのは, 停止する前にレジスタを読みだそうとしたためで,
+     これは wait を使用するようにマニュアルにはあるが今回は割愛.
 
-     おそらくこれは gdb が 親のプロセスとサブプロセスの両方に対して既に
-     ptrace を発行しているのが原因で, gdb から
+     gdb から test001.exe を実行すると regs の値は以下のようになっていた.
 
-     ptrace(PTRACE_DETACH, pid)
+p/x regs
+$2 = {0xb7710ff4, 0x2836f1be, 0xaa, 0x0, 0x0, 0xbfb34fe8, 0xaa, 0x7b, 0x7b, 0x0, 0x33, 0xffffff02, 0x80483b4, 0x73, 0x202, 0xbfb34fd8, 0x7b, 0x0 <repeats 83 times>}
 
-     が発行されればこの現象を回避できると思われる. gdb の detach コマンド
-     を調べてみたのだが, どうもよくわかっていない.
+      一方, gdb を今度は -p 15935 を指定して起動した.
+
+   eax = 0xaa
+   ebx = 0xb7710ff4
+   ecx = 0x2836f1be
+   edx = 0xaa
+   esp = 0xbfb34fd8
+   ebp = 0xbfb34fe8
+   esi = 0x0
+   edi = 0x0
+   eip = 0x80483b4
+   
+   efl は表示できず. だがおそらく 0x202 っぽい. 該当しないものもあるが 
+   そんなもんなのかも. マニュアルには regs に何を指定するべきかが
+   <linux/user.h> にあると書かれているが, そういうファイルはない.
+
+   gdb -p 15935 により起動した gdb は detach コマンドの後に quit コマンド
+   で終了すれば test000.exe を終了させることなく gdb のみが終了する.
