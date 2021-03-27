@@ -1,4 +1,5 @@
 #include <sys/ptrace.h>
+#include <sys/user.h>
 #include <unistd.h>
 #include <errno.h>
 #include <stdio.h>
@@ -43,7 +44,7 @@ int main(int argc, char** argv)
     print_errno();
     return 2;
   }
-  int regs[100] = {0};
+  struct user_regs_struct regs;
   if (ptrace(PTRACE_GETREGS, pid, 0, &regs) < 0) {
     printf("ptrace(PTRACE_GETREGS, %d) failed\n", pid);
     print_errno();

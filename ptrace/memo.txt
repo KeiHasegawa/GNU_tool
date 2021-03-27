@@ -2,21 +2,21 @@ ptrace に関する調査
 
 (*1) やりたいこと
 (*2) GPR (General Perpose Register)を覗き見る
-(*3) gdb から実行して ptrace をエラーにしない方法
+(*3) 自分自身を ptrace する => できない
 
 (*1) やりたいこと
 
      メモリ破壊のバグをデバッガの力を借りずに, プログラム内に特別なコードを
-     埋め込むことで調査したい. Windows にも ptrace はないのだが, 近いものは
+     埋め込むことで調査したい. Windows には ptrace はないのだが, 近いものは
      あるはず.
 
-(*2) レジスタを覗き見る
+(*2) GPR (General Perpose Register)を覗き見る
 
      まずは簡単に ptrace を発行してみる. デバッグされる側のプログラム
      => test000.c
 
-     % gcc -g test000.c -o test001.exe
-     % ./test001.exe &
+     % gcc -g test000.c -o test000.exe
+     % ./test000.exe &
      [1] 15935
      %
 
@@ -24,10 +24,10 @@ ptrace に関する調査
      を覗き見るプログラムである.
 
      % gcc -g test001.c -o test001.exe
-     % ./test001.exe 15935
+     % ./test001.exe 15935			# test000.exe の PID
      ptrace(PTRACE_GETREGS, 15935) failed
      ESRCH
-     [1]  + 中断(シグナル)          ./a.out
+     [1]  + 中断(シグナル)          ./test000.exe
      % ./test001.exe 15935
      %
 
@@ -37,24 +37,37 @@ ptrace に関する調査
 
      gdb から test001.exe を実行すると regs の値は以下のようになっていた.
 
-p/x regs
-$2 = {0xb7710ff4, 0x2836f1be, 0xaa, 0x0, 0x0, 0xbfb34fe8, 0xaa, 0x7b, 0x7b, 0x0, 0x33, 0xffffff02, 0x80483b4, 0x73, 0x202, 0xbfb34fd8, 0x7b, 0x0 <repeats 83 times>}
+     $6 = {ebx = 0xb7710ff4, ecx = 0x2836f1be, edx = 0x268, esi = 0x0, edi = 0x0, ebp = 0xbfb34fe8, eax = 0x268, xds = 0x7b, xes = 0x7b, xfs = 0x0, xgs = 0x33, orig_eax = 0xffffff02, eip = 0x80483b0, xcs = 0x73, eflags = 0x283, esp = 0xbfb34fd8, xss = 0x7b}
 
       一方, gdb を今度は -p 15935 を指定して起動した.
 
-   eax = 0xaa
-   ebx = 0xb7710ff4
-   ecx = 0x2836f1be
-   edx = 0xaa
-   esp = 0xbfb34fd8
-   ebp = 0xbfb34fe8
-   esi = 0x0
-   edi = 0x0
-   eip = 0x80483b4
+      eax = 0xaa
+      ebx = 0xb7710ff4
+      ecx = 0x2836f1be
+      edx = 0xaa
+      esp = 0xbfb34fd8
+      ebp = 0xbfb34fe8
+      esi = 0x0
+      edi = 0x0
+      eip = 0x80483b4
+      eflags = 0x246
    
-   efl は表示できず. だがおそらく 0x202 っぽい. 該当しないものもあるが 
-   そんなもんなのかも. マニュアルには regs に何を指定するべきかが
-   <linux/user.h> にあると書かれているが, そういうファイルはない.
+      gdb -p 15935 により起動した gdb は detach コマンドの後に quit コマンド
+      で終了すれば test000.exe を終了させることなく gdb のみが終了する.
 
-   gdb -p 15935 により起動した gdb は detach コマンドの後に quit コマンド
-   で終了すれば test000.exe を終了させることなく gdb のみが終了する.
+(*3) 自分自身を ptrace する
+
+     ptrace の引数に指定する PID を自分自身のものを指定してみた:
+
+     % gcc -g test002.c -o test002.exe
+     % ./test002.exe
+     ptrace(PTRACE_ATTACH, 20930) failed
+     EPERM
+     %
+
+     よくよく考えると当然の結果で, レジスタを覗き見たりするには対象のプロセス
+     が停止していることが前提となるからだ.
+
+     なので今回やりたいことは少なくとも ptrace では実現できない. 他の手段が
+     あるのかは不明.
+
