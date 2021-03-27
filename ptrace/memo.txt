@@ -25,35 +25,33 @@ ptrace に関する調査
 
      % gcc -g test001.c -o test001.exe
      % ./test001.exe 15935			# test000.exe の PID
-     ptrace(PTRACE_GETREGS, 15935) failed
-     ESRCH
-     [1]  + 中断(シグナル)          ./test000.exe
-     % ./test001.exe 15935
+     status = 4991
+     stopped with signal no 19
+     eax = 0x13d ebx = 0xb7769ff4
      %
-
-     1 回目は失敗したが 2 回目は ptrace の呼び出しがいずれも成功したようだ.
-     1 回目が失敗するのは, 停止する前にレジスタを読みだそうとしたためで,
-     これは wait を使用するようにマニュアルにはあるが今回は割愛.
 
      gdb から test001.exe を実行すると regs の値は以下のようになっていた.
 
      $6 = {ebx = 0xb7710ff4, ecx = 0x2836f1be, edx = 0x268, esi = 0x0, edi = 0x0, ebp = 0xbfb34fe8, eax = 0x268, xds = 0x7b, xes = 0x7b, xfs = 0x0, xgs = 0x33, orig_eax = 0xffffff02, eip = 0x80483b0, xcs = 0x73, eflags = 0x283, esp = 0xbfb34fd8, xss = 0x7b}
 
-      一方, gdb を今度は -p 15935 を指定して起動した.
+     これは 32 ビットの Intel で行ったからこのような結果だが, 64 ビットの
+     Intel ならば, あるいは ARM で実行したとかなら違ったメンバになっていた
+     だろう.
+     一方, gdb を今度は -p 15935 を指定して起動した.
 
-      eax = 0xaa
-      ebx = 0xb7710ff4
-      ecx = 0x2836f1be
-      edx = 0xaa
-      esp = 0xbfb34fd8
-      ebp = 0xbfb34fe8
-      esi = 0x0
-      edi = 0x0
-      eip = 0x80483b4
-      eflags = 0x246
+     eax = 0xaa
+     ebx = 0xb7710ff4
+     ecx = 0x2836f1be
+     edx = 0xaa
+     esp = 0xbfb34fd8
+     ebp = 0xbfb34fe8
+     esi = 0x0
+     edi = 0x0
+     eip = 0x80483b4
+     eflags = 0x246
    
-      gdb -p 15935 により起動した gdb は detach コマンドの後に quit コマンド
-      で終了すれば test000.exe を終了させることなく gdb のみが終了する.
+     gdb -p 15935 により起動した gdb は detach コマンドの後に quit コマンド
+     で終了すれば test000.exe を終了させることなく gdb のみが終了する.
 
 (*3) 自分自身を ptrace する
 
@@ -67,7 +65,3 @@ ptrace に関する調査
 
      よくよく考えると当然の結果で, レジスタを覗き見たりするには対象のプロセス
      が停止していることが前提となるからだ.
-
-     なので今回やりたいことは少なくとも ptrace では実現できない. 他の手段が
-     あるのかは不明.
-
