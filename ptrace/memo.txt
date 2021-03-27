@@ -3,6 +3,7 @@ ptrace に関する調査
 (*1) やりたいこと
 (*2) GPR (General Perpose Register)を覗き見る
 (*3) 自分自身を ptrace する => できない
+(*4) fork, exec して親プロセスからサブプロセスの GPR を覗き見る
 
 (*1) やりたいこと
 
@@ -53,7 +54,7 @@ ptrace に関する調査
      gdb -p 15935 により起動した gdb は detach コマンドの後に quit コマンド
      で終了すれば test000.exe を終了させることなく gdb のみが終了する.
 
-(*3) 自分自身を ptrace する
+(*3) 自分自身を ptrace する => できない
 
      ptrace の引数に指定する PID を自分自身のものを指定してみた:
 
@@ -65,3 +66,46 @@ ptrace に関する調査
 
      よくよく考えると当然の結果で, レジスタを覗き見たりするには対象のプロセス
      が停止していることが前提となるからだ.
+
+(*4) fork, exec して親プロセスからサブプロセスの GPR を覗き見る
+
+     デバッグされる側のプログラム => test003.cpp
+
+     % gcc -g test003.cpp -o test003.exe
+     % ./test003.exe
+     start
+     end
+     %
+
+     test004.cpp は test003.exe を fork, exec し ptrace を使用して test003.exe
+     のプロセスのレジスタを覗き見るプログラムである.
+
+     % gcc -g test004.cpp -o test004.exe
+     test004.c:71
+     status = 1407
+     stopped with signal no 5
+     eax = 0x0 ebx = 0x0
+     start
+     end
+     %
+
+     厳密ではないが, 図にするとおそらくこんな感じ:
+
+     test004.exe                                            OS
+        |                                                   |
+        |                                                   |
+        |                        test003.exe                |
+       fork  ------------------------+                      |
+        |                            |                      |
+       wait(enter)                   |                      |
+        |                            |                      |
+        |                    ptrace(PTRACE_TRACEME)         |
+        |                            |              SIGTRAP |
+        |                         exec(...)  <--------------+
+       wait(leave) <-----------------+                      |
+        |                            |                      |
+       ptrace(PTRACE_GETREGS)        |                      |
+        |                            |                      |
+       ptrace(PTRACE_CONT)------> exec(...) really starts   |
+        |                            |                      |
+

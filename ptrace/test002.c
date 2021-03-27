@@ -6,24 +6,12 @@
 void print_errno(void)
 {
   switch (errno) {
-  case EBUSY:
-    puts("EBUSY");
-    return;
-  case EFAULT:
-    puts("EFAULT");
-    return;
-  case EINVAL:
-    puts("EINVAL");
-    return;
-  case EIO:
-    puts("EIO");
-    return;
-  case EPERM:
-    puts("EPERM");
-    return;
-  case ESRCH:
-    puts("ESRCH");
-    return;
+  case EBUSY:  puts("EBUSY");  return;
+  case EFAULT: puts("EFAULT"); return;
+  case EINVAL: puts("EINVAL"); return;
+  case EIO:    puts("EIO");    return;
+  case EPERM:  puts("EPERM");  return;
+  case ESRCH:  puts("ESRCH");  return;
   default:
     printf("errno = %d\n", errno);
     return;
