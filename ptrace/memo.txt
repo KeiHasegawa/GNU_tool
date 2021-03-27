@@ -4,12 +4,15 @@ ptrace に関する調査
 (*2) GPR (General Perpose Register)を覗き見る
 (*3) 自分自身を ptrace する => できない
 (*4) fork, exec して親プロセスからサブプロセスの GPR を覗き見る
+(*5) ブレークポイントをセットする
 
 (*1) やりたいこと
 
      メモリ破壊のバグをデバッガの力を借りずに, プログラム内に特別なコードを
      埋め込むことで調査したい. Windows には ptrace はないのだが, 近いものは
      あるはず.
+
+     デバッガで判別するバグは何もこんなことをする必要がないことに注意.
 
 (*2) GPR (General Perpose Register)を覗き見る
 
@@ -22,7 +25,8 @@ ptrace に関する調査
      %
 
      test001.cpp は ptrace を使用して上で実行しているプロセスのレジスタ
-     を覗き見るプログラムである.
+     を覗き見るプログラムである. 残念ながら ptrace を呼び出すコードのため
+     cygwin ではコンパイルできない.
 
      % gcc -g test001.c -o test001.exe
      % ./test001.exe 15935			# test000.exe の PID
@@ -78,7 +82,7 @@ ptrace に関する調査
      %
 
      test004.cpp は test003.exe を fork, exec し ptrace を使用して test003.exe
-     のプロセスのレジスタを覗き見るプログラムである.
+     のプロセスの GPR を覗き見るプログラムである.
 
      % gcc -g test004.cpp -o test004.exe
      test004.c:71
@@ -110,3 +114,47 @@ ptrace に関する調査
         |                            |                      |
         |                         test003.exe               |
         |                            |                      |
+
+(*5) ブレークポイントをセットする
+
+      test005.c はプログラムの中にブレークポイントを仕込んでいる.
+
+      % gcc -g test005.c -o test005.exe
+      % ./test005.exe
+      トレース・ブレークポイントトラップ
+      %
+
+      test005.exe を gdb から実行すると int3 命令のところで停止する.
+      デバッガがブレークポイントをセットする仕組みの大雑把な仕組みは
+
+      止めたいアドレスの命令を int3 に置き換えて, 継続実行する.
+      停止したら本来の命令にそっと置き換えておく.
+
+      というものだが, int3 命令の実行からシグナルの送信の関係は理解
+      できていない. 今のところはこれで満足しておく.
+
+      test006.c は test005.exe を fork, exec して実行するプログラム
+      である.
+
+      % gcc -g test006.c -o test006.exe
+      % ./test006.exe
+      test006.c:82
+      status = 1407
+      stopped with signal no 5
+      status = 1407
+      stopped with signal no 5
+      eip = 0x8048398
+      % objdump -x test005.exe
+      ...
+08048394 <main>:
+ 8048394:	55                   	push   %ebp
+ 8048395:	89 e5                	mov    %esp,%ebp
+ 8048397:	cc                   	int3                これ!
+ 8048398:	b8 00 00 00 00       	mov    $0x0,%eax
+ 804839d:	5d                   	pop    %ebp
+ 804839e:	c3                   	ret    
+ 804839f:	90                   	nop
+      ...
+
+      eip を表示したアドレス値と 1 バイト異なっていることに改めて
+      気付く. デバッガを実装するときに直面する悩ましい問題だろう.
