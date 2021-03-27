@@ -778,7 +778,15 @@ PTRACE_SETOPTIONS
 PTRACE_SETREGS
 PTRACE_SINGLESTEP
 
+x86-linux-dregs.c:68
+x86_linux_dr_set (ptid_t ptid, int regnum, unsigned long value)
+{
+...
   ptrace (PTRACE_POKEUSER, tid, u_debugreg_offset (regnum), value);
 
+
 この呼び出しで value = 0x804a620 でこの値は watch ポイントに指定した
-アドレス.
+アドレスだった.
+
+regnum = 0
+u_debugreg_offset (regnum) = 252
