@@ -1,50 +1,50 @@
-ptrace に関する調査
+ptrace investigation
 
-(*1) やりたいこと
-(*2) GPR (General Perpose Register)を覗き見る
-(*3) 自分自身を ptrace する => できない
-(*4) fork, exec して親プロセスからサブプロセスの GPR を覗き見る
-(*5) ブレークポイントをセットする
-(*6) ウォッチポイントをセットする
-(*7) i386 のデバッグレジスタ
+(*1) What I want to do
+(*2) Peeking GPR (General Perpose Register)
+(*3) To ptrace itself => impossible
+(*4) Peeking GPR of sub-process which is created `fork' and `exec'
+     from parent process.
+(*5) Set break-point
+(*6) Set watch-point
+(*7) i386 debug register
 
-(*1) やりたいこと
+(*1) What I want to do
 
-     メモリ破壊のバグをデバッガの力を借りずに, プログラム内に特別なコードを
-     埋め込むことで調査したい. Windows には ptrace はないのだが, 近いものは
-     あるはず.
+     Some memory broken bug can be investigated by embedding the code,
+     which let programmer know when and where.
 
-     デバッガで判別するバグは何もこんなことをする必要がないことに注意.
+     Note that if programmer can know by using debugger normally,
+     this way argued here should not be used.
 
-(*2) GPR (General Perpose Register)を覗き見る
+(*2) Peeking GPR (General Perpose Register)
 
-     まずは簡単に ptrace を発行してみる. デバッグされる側のプログラム
-     => test000.c
+     At 1st, call `ptrace' simply. Debugged program is `test000.c'.
 
      % gcc -g test000.c -o test000.exe
      % ./test000.exe &
      [1] 15935
      %
 
-     test001.cpp は ptrace を使用して上で実行しているプロセスのレジスタ
-     を覗き見るプログラムである. 残念ながら ptrace を呼び出すコードのため
-     cygwin ではコンパイルできない.
+     And `test001.cpp' is a program which calls `ptrace' and peek
+     GPR. Unfortunately, `test001.c' cannot be compiled at cygwin
+     environment.
 
      % gcc -g test001.c -o test001.exe
-     % ./test001.exe 15935			# test000.exe の PID
+     % ./test001.exe 15935			# PID of test000.exe
      status = 4991
      stopped with signal no 19
      eax = 0x13d ebx = 0xb7769ff4
      %
 
-     gdb から test001.exe を実行すると regs の値は以下のようになっていた.
+     Again we can run test001.exe under control of gdb and notice that
+     variable `regs' is:
 
      $6 = {ebx = 0xb7710ff4, ecx = 0x2836f1be, edx = 0x268, esi = 0x0, edi = 0x0, ebp = 0xbfb34fe8, eax = 0x268, xds = 0x7b, xes = 0x7b, xfs = 0x0, xgs = 0x33, orig_eax = 0xffffff02, eip = 0x80483b0, xcs = 0x73, eflags = 0x283, esp = 0xbfb34fd8, xss = 0x7b}
 
-     これは 32 ビットの Intel で行ったからこのような結果だが, 64 ビットの
-     Intel ならば, あるいは ARM で実行したとかなら違ったメンバになっていた
-     だろう.
-     一方, gdb を今度は -p 15935 を指定して起動した.
+     This is the result of 32 bit intel case. In case of 64 bit intel or
+     ARM, the members of type of `regs' are different.
+     Any way, again execute gdb with option `-p 15935'
 
      eax = 0xaa
      ebx = 0xb7710ff4
@@ -57,12 +57,12 @@ ptrace に関する調査
      eip = 0x80483b4
      eflags = 0x246
    
-     gdb -p 15935 により起動した gdb は detach コマンドの後に quit コマンド
-     で終了すれば test000.exe を終了させることなく gdb のみが終了する.
+     Before executing `quit' command, execute `detach' command, so
+     you can terminate only gdb without terminating `test000.exe'
 
-(*3) 自分自身を ptrace する => できない
+(*3) To ptrace itself => impossible
 
-     ptrace の引数に指定する PID を自分自身のものを指定してみた:
+     I tried to call `ptrace' with argument with itself process ID:
 
      % gcc -g test002.c -o test002.exe
      % ./test002.exe
@@ -70,12 +70,13 @@ ptrace に関する調査
      EPERM
      %
 
-     よくよく考えると当然の結果で, レジスタを覗き見たりするには対象のプロセス
-     が停止していることが前提となるからだ.
+     To think over, this result is natural. When peeking GPR
+     by using ptrace, it's assumed that debugged process is stopped.
 
-(*4) fork, exec して親プロセスからサブプロセスの GPR を覗き見る
+(*4) Peeking GPR of sub-process which is created `fork' and `exec'
+     from parent process.
 
-     デバッグされる側のプログラム => test003.cpp
+     Here, debugged program is `test003.cpp'.
 
      % gcc -g test003.cpp -o test003.exe
      % ./test003.exe
@@ -83,8 +84,8 @@ ptrace に関する調査
      end
      %
 
-     test004.cpp は test003.exe を fork, exec し ptrace を使用して test003.exe
-     のプロセスの GPR を覗き見るプログラムである.
+     And test004.cpp is the program which creates sub-process of `test003.exe'
+     by calling `fork' and `exec':
 
      % gcc -g test004.cpp -o test004.exe
      test004.c:71
@@ -95,12 +96,12 @@ ptrace に関する調査
      end
      %
 
-     厳密ではないが, 図にするとおそらくこんな感じ:
+     The next figure illustrates this situation:
 
      test004.exe                                            OS
         |                                                   |
         |                                                   |
-        |                       後の test003.exe            |
+        |                       Later `test003.exe'         |
        fork  ------------------------+                      |
         |                            |                      |
        wait(enter)                   |                      |
@@ -117,26 +118,27 @@ ptrace に関する調査
         |                         test003.exe               |
         |                            |                      |
 
-(*5) ブレークポイントをセットする
+(*5) Set break-point
 
-      test005.c はプログラムの中にブレークポイントを仕込んでいる.
+      test005.c is the program which is embedded break-point:
 
       % gcc -g test005.c -o test005.exe
       % ./test005.exe
-      トレース・ブレークポイントトラップ
+      Trace/BPT trap
       %
 
-      test005.exe を gdb から実行すると int3 命令のところで停止する.
-      デバッガがブレークポイントをセットする仕組みの大雑把な仕組みは
+      Run `test005.exe' under control of gdb, stop at `int3' instruction
+      without break-point. The way of setting break-point by debugger is:
 
-      止めたいアドレスの命令を int3 に置き換えて, 継続実行する.
-      停止したら本来の命令にそっと置き換えておく.
+      Change the byte `int3' (=0xcc) at the location where the program
+      is stopped, and execute program. After the program stops,
+      change the byte to the original data.
 
-      というものだが, int3 命令の実行からシグナルの送信の関係は理解
-      できていない. 今のところはこれで満足しておく.
+      I don't understand that how signal is sent to the process after
+      `int3' instruction, but now, I'm not so interrested with the stuff.
 
-      test006.c は test005.exe を fork, exec して実行するプログラム
-      である.
+      test006.c is the program which creates `test005.exe' process by
+      calling `fork' and `exec':
 
       % gcc -g test006.c -o test006.exe
       % ./test006.exe
@@ -151,32 +153,34 @@ ptrace に関する調査
 08048394 <main>:
  8048394:	55                   	push   %ebp
  8048395:	89 e5                	mov    %esp,%ebp
- 8048397:	cc                   	int3                これ!
+ 8048397:	cc                   	int3                This one!
  8048398:	b8 00 00 00 00       	mov    $0x0,%eax
  804839d:	5d                   	pop    %ebp
  804839e:	c3                   	ret    
  804839f:	90                   	nop
       ...
 
-      eip を表示したアドレス値と 1 バイト異なっていることに改めて
-      気付く. デバッガを実装するときに直面する悩ましい問題だろう.
+      Here, I notice that the adress value displayed as `eip' register
+      is different  1 byte from the location of `int3' instruction.
+      I guess that this problem may annoys debugger implementation engineer.
 
-(*6) ウォッチポイントをセットする
+(*6) Set watch-point
 
-     再び test003.cpp のプログラムだが, 配列 a の 1000 番目を書き換える
-     瞬間を捉えたい.
+     Again think about `test003.cpp' program. Now we want to catch the
+     moment when the `test003.exe' process changes a[1000].
 
      % objdump -x test003.exe
      ...
-08049700 g     O .bss	00001000              a       これ
+08049700 g     O .bss	00001000              a       ## Address of `a'
      ...
      %
 
-     実行前に実は a のアドレスは決まっていて, 
+     We can know that the address of `a' is determined in this environment.
+     And more, &a[1000] is equal to:
 
-     &a[1000] は 0x8049700 + (4*1000) = 0x804a6a0
+       0x8049700 + (4*1000) = 0x804a6a0
 
-     ということらしい. そこで test007.c を作成した.
+     Now we do code `test007.c' and execute like bellow:
 
      % gcc -g test007.c -o test007.exe
      % ./test007.exe
@@ -199,33 +203,38 @@ ptrace に関する調査
      end
      %
 
-     ポイントは ptrace(PTRACE_POKEDATA, ...) の 4 回の呼び出しでこれが
-     ウォッチポイントを簡単にではあるが実現している. そしてウォッチポイント
-     にヒットしたときに test003.exe の配列 a の 1000 番目の要素の近辺
-     を読みだして表示している.
+     The point is:
 
-     これは期待した結果である.
+     calling ptrace(PTRACE_POKEDATA, ...) at 4 times
 
-     そこで, 疑問になるのがこれに近いことを test003.exe の中でできないだろ
-     うかということである.
-     test005.exe はプログラムの中にブレークポイントを埋め込んだもの.
-     test003.exe の中にブレークポイントを埋め込むことができないだろうか.
+     These realizes simply watch-point. And `test007.exe' process
+     displayed the value of a[1000] and around there.
 
-     ptrace(PTRACE_POKEDATA, pid, ...)  が指定されたプロセスに与える
-     影響を, 親プロセスが, ではなく自身で, 実現できればよいのだが, そも
-     そもこれ自体が何なのか不明なのだ.
+     This is the expected result.
 
-(*7) i386 のデバッグレジスタ
+     And again new question raises.
+
+     How `test003.exe' can do this by itself?
+
+     We've already know that `test005.exe' can be embedded break-point.
+
+     We want to generate the effects of 4 times
+     `ptrace(PTRACE_POKEDATA, pid, ...)'  by not parent process,
+     but by itself. But I don't know the whole of the effect.
+
+     At last, I concluded to (*7)
+
+(*7) i386 debug register
 
      http://css.csail.mit.edu/6.858/2015/readings/i386.pdf
 
-     priviledged モードで mov 命令でアクセス可能な DR0, ..., DR7 がある
-     らしい.
-     さて, これらに値をセットするのに普通はシステムコール以外は考えられない
-     がどうすればできるんだろう. デバッガを実現するには ptrace で
-     十分なわけだから, そういうシステムコールがなくても不思議はない.
+     This says that there is DR0, DR1, ... , and DR7 which 
+     can be accessed from priviledged software using `mov' instruction.
+     I wonder which system call sets these register. To implement
+     debugger, `ptrace' is enough, so it's not mysterious if there is
+     no such a system call.
 
-     test007.c の DR_CONTROL は DR7 のこと. DR_STATUS は DR6 のこと.
+     `DR_CONTROL' of `test007.c' means DR7 and `DR_STATUS' means DR6.
 
-     test008.S に無理とは思いつつ DR7, DR0, DR7, DR6 をセットする
-     コードを書いたが, やっぱりだめだよな.
+     I'm sure that `test008.S' doesn't work well but code it. The
+     execution of `test008.exe' is received SIGSEGV.
