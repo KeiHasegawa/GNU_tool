@@ -33,11 +33,6 @@ void print_status(int status)
     puts("continued");
 }
 
-void print_regs(struct user_regs_struct* regs)
-{
-  printf("eax = 0x%x ebx = 0x%x\n", regs->eax, regs->ebx);
-}
-
 int main()
 {
   int pid = fork();
@@ -54,22 +49,23 @@ int main()
       return 2;
     }
     print_status(status);
-    if (ptrace(PTRACE_POKEUSER, pid, 0x118, 0x0) < 0) {
+    if (ptrace(PTRACE_POKEUSER, pid, 0x118, 0x0) < 0) {  // DR_CONTROL
       printf("ptrace(PTRACE_POKEDATA, %d, 0x118, 0x0) failed\n", pid);
       print_errno();
       return 3;
     }
-    if (ptrace(PTRACE_POKEUSER, pid, 0xfc, 0x804a6a0) < 0) {
-      printf("ptrace(PTRACE_POKEDATA, %d, 0xfc, 0x804a6a0) failed\n", pid);
+    int addr = 0x804a6a0;
+    if (ptrace(PTRACE_POKEUSER, pid, 0xfc, addr) < 0) {
+      printf("ptrace(PTRACE_POKEDATA, %d, 0xfc, 0x%x) failed\n", pid, addr);
       print_errno();
       return 3;
     }
-    if (ptrace(PTRACE_POKEUSER, pid, 0x118, 0xd0101) < 0) {
+    if (ptrace(PTRACE_POKEUSER, pid, 0x118, 0xd0101) < 0) {  // DR_CONTROL
       printf("ptrace(PTRACE_POKEDATA, %d, 0x118, 0xd0101) failed\n", pid);
       print_errno();
       return 3;
     }
-    if (ptrace(PTRACE_POKEUSER, pid, 0x114, 0x0) < 0) {
+    if (ptrace(PTRACE_POKEUSER, pid, 0x114, 0x0) < 0) {  // DR_STATUS
       printf("ptrace(PTRACE_POKEDATA, %d, 0x114, 0x0) failed\n", pid);
       print_errno();
       return 3;
@@ -85,6 +81,14 @@ int main()
       return 5;
     }
     print_status(status);
+    for (int i = -5 ; i != +5 ; ++i) {
+      int a = addr+4*i;
+      errno = 0;
+      int data = ptrace(PTRACE_PEEKDATA, pid, a);
+      if (errno)
+	print_errno();
+      printf("0x%x : %d\n", a, data);
+    }
     if (ptrace(PTRACE_CONT, pid, 0, SIGCONT) < 0) {
       printf("ptrace(PTRACE_CONT, %d, 0, SIGCONT) failed\n", pid);
       print_errno();
