@@ -1,0 +1,56 @@
+Install gdb 10.1 at cygwin
+
+% wget -q https://ftp.gnu.org/gnu/gdb/gdb-10.1.tar.xz
+% xz -d -c gdb-10.1.tar.xz | tar xf -
+% ./configure
+% mv MAKEFILE d:/tmp/Makefile
+% mv d:/tmp/Makefile .
+% make
+
+Link for gdb was error. Log file was:
+
+~/gdb-10.1/make.log.2021.03.28
+
+% cp gdb/cp-support.c{,.org}
+
+Edit gdb/cp-support.c like bellow: 
+
+% diff -rc gdb/cp-support.c{.org,}
+*** gdb/cp-support.c.org	Mon Mar 29 05:37:30 2021
+--- gdb/cp-support.c	Mon Mar 29 05:24:58 2021
+***************
+*** 1615,1625 ****
+--- 1615,1627 ----
+    int crash_signal = 0;
+  
+  #ifdef HAVE_WORKING_FORK
++ #if 0  
+    scoped_restore restore_segv
+      = make_scoped_restore (&thread_local_segv_handler,
+  			   catch_demangler_crashes
+  			   ? gdb_demangle_signal_handler
+  			   : nullptr);
++ #endif
+    bool core_dump_allowed = gdb_demangle_attempt_core_dump;
+    SIGJMP_BUF jmp_buf;
+    scoped_restore restore_jmp_buf
+% make
+
+OK.
+
+% make install
+# Ordinally, install gdb into `/usr/local'
+
+/usr/bin/gdb :	     installed by cygwin installer
+/usr/local/bin/gdb : installed at this time
+
+Confirm like bellow:
+
+% /usr/bin/gdb
+GNU gdb (GDB) (Cygwin 8.3.1-1) 8.3.1          <-- This message
+...
+(gdb) quit
+% /usr/local/bin/gdb
+GNU gdb (GDB) 10.1                            <-- This message
+(gdb) quit
+%
