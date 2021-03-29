@@ -1,0 +1,204 @@
+gcc の記号表の調査
+
+(*1) 記号表の登録と検索
+
+     小さいプログラム片
+
+     typedef int T;
+     T a;
+
+     について考えてみる.
+     1 行目で T は記号表に typedef 名で型は int であると登録される.
+
+     2 行目でその T が検索され a の型は T の型, すなわち int だと分かり,
+     それがまた記号表に追加されるといった動作になる.
+
+     gcc では記号表の登録は c_parser_declaration_or_fndef という函数
+     から行われる:
+
+static void
+c_parser_declaration_or_fndef (c_parser *parser, bool fndef_ok,
+...
+{
+...
+              ここ!
+	      tree d = start_decl (declarator, specs, false,
+				   chainon (postfix_attrs,
+					    all_prefix_attrs));
+...
+tree
+start_decl (struct c_declarator *declarator, struct c_declspecs *declspecs,
+...
+  /* Add this decl to the current scope.
+     TEM may equal DECL or it may be a previous decl of the same name.  */
+  tem = pushdecl (decl);   ここ!
+
+     例によって d や decl は tree 型で「gcc の字句解析ルーチンの解析(その3)」
+     で作ったデバッグ函数をここで呼び出すとよい.
+
+     (gdb) p print(d)
+     typedef signed 32 bit integer T
+     $1 = void
+
+     このプログラムコード片ならば記号表の検索は c_parser_declspecs という
+     函数で行われていた:
+
+void
+c_parser_declspecs (c_parser *parser, struct c_declspecs *specs,
+...
+{
+...
+	      t.spec = lookup_name (value);  ここ
+
+      勿論記号表の参照は他のところからも行われる.
+
+     「gcc の字句解析ルーチンの解析(その3)」でもこの函数 lookup_name
+     の呼び出しについて少しだけ触れた. やはりここでもデバッグ函数を呼び出す
+     とよい:
+
+     (gdb) p print(value)
+     T
+     $2 = void
+     (gdb) p print(t.spec)
+     typedef signed 32 bit integer T
+     $3 = void
+
+     記号表を検索して戻ってきたのは, 追加した typedef であることが
+     分かる.
+     しかし, ここでの話はあくまでも構文解析器目線の話である. 私が本当
+     に調査したかったことは記号表のデータ構造だった. 例えばそれは
+
+     struct X {
+        X* parent;
+        vector<X*> children;
+        map<string, var*> vars;
+        ...
+     };
+
+     のようなものだった.
+
+(*2) 記号表のデータ構造
+
+     lookup_name で実際行われていることを調査した:
+
+tree
+lookup_name (tree name)
+{
+  struct c_binding *b = I_SYMBOL_BINDING (name);
+  // マクロだが次の函数 i_symbol_binding の呼び出し
+...
+
+static inline struct c_binding* *
+i_symbol_binding (tree node)
+{
+  struct lang_identifier *lid
+    = (struct lang_identifier *) IDENTIFIER_NODE_CHECK (node);
+   // ここは単なるキャスト
+
+   lid->symbol_binding を参照する.
+
+struct lang_identifier {
+    c_common_identifier common_id;   // node と同じ型
+    c_binding *symbol_binding;
+    c_binding *tag_binding;
+    c_binding *label_binding;
+};
+
+     つまり, 検索ではなくてメンバー参照しているだけなのである.
+
+	      t.spec = lookup_name (value);
+
+     において value が作成されるたときに t.spec はメンバ参照でたどることが
+     できていたということ. そしてメンバのセットは次の函数で行われていた:
+
+static void
+bind (tree name, tree decl, struct c_scope *scope, bool invisible,
+      bool nested, location_t locus)
+{
+...
+
+     この函数が (*1) で述べた pushdecl から呼び出されていたのだ.
+
+     小さいプログラム片の 1 行目の T が(実は後で述べるがそれは 2 行目の T
+     であったりもする) name の引数としてこの函数が呼
+     ばれたとき, decl は 1 行目で登録した typedef のエントリで
+
+     ((lang_identifier*)name)->symbol_binding = some_func(decl);
+
+     相当のことが行われている.
+
+     typedef int T;
+
+     に対して行われていることは:
+
+     (1) 字句解析ルーチンが何らかのデータ構造をもった T を返す
+     (2) 構文解析ルーチンが (1) の T に対して tree ここでは
+         c_common_identifier を作る
+     (3) 続いて宣言が bind される
+
+     これをメモリのレイアウトで示すと
+
+0xb7982630  +---------------------+  <-- tree の T
+            |                     |
+0xb7982640  +---------------------+  <--- 字句解析ルーチンが返す T
+            |                     |
+            |                     |
+0xb7982654  +---------------------+  
+            |                   <-+-- ここに宣言を bind
+            +---------------------+
+
+     そして 2 行目の
+
+     T a;
+
+     における T に対して字句解析ルーチンは上の図と同じ 0xb7982640
+     を返すのだ.
+
+      result = CPP_HASHNODE (ht_lookup_with_hash (pfile->hash_table,
+						  base, len, hash, HT_ALLOC));
+
+
+hashnode
+ht_lookup_with_hash (cpp_hash_table *table, const unsigned char *str,
+...
+{
+...
+  node = table->entries[index];
+
+  if (node != NULL)
+    {
+      if (node == DELETED)
+	deleted_index = index;
+      else if (node->hash_value == hash
+	       && HT_LEN (node) == (unsigned int) len
+	       && !memcmp (HT_STR (node), str, len))
+	return node;   ここで返っている
+
+     この cpp_hash_table が記号表の実態であった. そしてそこには
+     ありとあらゆるもの,  例えばプリプロセッサのディレクティブ	
+     define やキーワードの int, ビルトイン函数などが入れられている.
+
+     以下の操作でプログラムテキストに対して ht_lookup_with_hash がどのように
+     呼ばれたか確かめることができる.
+
+     (gdb) b c_lex_one_token
+     ブレークポイント番号を仮に 1 とする
+     (gdb) b ht_lookup_with_hash
+     ブレークポイント番号を仮に 2 とする
+     (gdb) disa 2
+     (gdb) run ...
+     ここでブレークポイント 1 にヒットする
+     (gdb) disa 1
+     (gdb) enab 2
+     (gdb) c
+
+     (1) 1 行目の T は新しいエントリが作られる.
+     (2) 2 行目の T は (1) で作られたエントリが返される
+     (3) 2 行目の a はエントリが返される.
+
+     こんな感じだった. ならば
+
+     typedef int define;
+     define a;
+
+     に対してはどうか.
