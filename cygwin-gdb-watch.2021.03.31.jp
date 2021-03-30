@@ -1,0 +1,170 @@
+cygwin 版での gdb でウォッチポイントをどういう方法で実現しているかの調査
+
+(*1) -O0 ビルド
+(*2) ウォッチポイントを gdb でセットして検出する
+(*3) (*2) を gdb の制御のもとで行う
+(*4) SetThreadContext
+
+(*1) -O0 ビルド
+
+     このページの「cygwin gdb 10.1 のデバッグビルドのメモ」を参照.
+
+(*2) ウォッチポイントを gdb でセットして検出する
+
+% cd ~/gdb-10.1/gdb
+% cat a.c
+#include <stdio.h>
+
+int my_array[1024];
+
+int main()
+{
+  asm("int3");
+  puts("start");
+  printf("&my_array[1000] = 0x%llx\n", &my_array[1000]);
+  for (int i = 0 ; i != sizeof my_array/sizeof my_array[0] ; ++i)
+    my_array[i] = i;
+  puts("end");
+  return 0;
+}
+% gcc -g a.c -o a.exe
+% cat debugged-gdbcom
+set prompt (debugged-gdb)
+run
+watch my_array[1000]
+c
+c
+quit
+% ./gdb a.exe -x debugged-gdbcom -q
+Reading symbols from a.exe...
+[New Thread 16408.0x3f18]
+[New Thread 16408.0x2614]
+[New Thread 16408.0x20fc]
+
+Thread 1 "a" received signal SIGTRAP, Trace/breakpoint trap.
+main () at a.c:8
+8	  puts("start");
+Hardware watchpoint 1: my_array[1000]
+
+Thread 1 "a" hit Hardware watchpoint 1: my_array[1000]
+
+Old value = 0
+New value = 1000
+main () at a.c:10
+10	  for (int i = 0 ; i != sizeof my_array/sizeof my_array[0] ; ++i)
+start
+&my_array[1000] = 0x100408140
+end
+[Thread 16408.0x3a10 exited with code 0]
+[Thread 16408.0x3f18 exited with code 0]
+[Thread 16408.0x20fc exited with code 0]
+[Inferior 1 (process 16408) exited normally]
+%
+    期待通り動作している.
+
+(*3) (*2) を gdb の制御のもとで行う
+
+    今度は上のことを gdb の制御のもとで行ってみる.
+
+% /usr/local/bin/gdb gdb.exe -q
+Reading symbols from gdb.exe...
+warning: File "/cygdrive/d/home/khasegawa/gdb-10.1/gdb/gdb-gdb.gdb" auto-loading has been declined by your `auto-load safe-path' set to "$debugdir:$datadir/auto-load".
+To enable execution of this file add
+	add-auto-load-safe-path /cygdrive/d/home/khasegawa/gdb-10.1/gdb/gdb-gdb.gdb
+line to your configuration file "/cygdrive/d/home/khasegawa/.gdbinit".
+To completely disable this security protection add
+	set auto-load safe-path /
+line to your configuration file "/cygdrive/d/home/khasegawa/.gdbinit".
+For more information about this security protection see the
+"Auto-loading safe path" section in the GDB manual.  E.g., run from the shell:
+	info "(gdb)Auto-loading safe path"
+(gdb) run a.exe -x debugged-gdbcom -q
+Starting program: /cygdrive/d/home/khasegawa/gdb-10.1/gdb/gdb.exe a.exe -x debugged-gdbcom -q
+[New Thread 9748.0x26c0]
+[New Thread 9748.0x3b24]
+[New Thread 9748.0x2660]
+[New Thread 9748.0x3d04]
+[New Thread 9748.0x4130]
+Reading symbols from a.exe...
+[New Thread 4964.0x13a0]
+[New Thread 4964.0x29cc]
+[New Thread 4964.0x3484]
+
+Thread 1 "a" received signal SIGTRAP, Trace/breakpoint trap.
+main () at a.c:8
+8	  puts("start");
+Hardware watchpoint 1: my_array[1000]
+
+Thread 1 "a" hit Hardware watchpoint 1: my_array[1000]
+
+Old value = 0
+New value = 1000
+main () at a.c:10
+10	  for (int i = 0 ; i != sizeof my_array/sizeof my_array[0] ; ++i)
+start
+&my_array[1000] = 0x100408140
+end
+[Thread 4964.0x13a0 exited with code 0]
+[Thread 4964.0x3d48 exited with code 0]
+[Thread 4964.0x3484 exited with code 0]
+[Inferior 1 (process 4964) exited normally]
+[Thread 9748.0x43ac exited with code 0]
+[Thread 9748.0x3b24 exited with code 0]
+[Thread 9748.0x4130 exited with code 0]
+[Thread 9748.0x3d04 exited with code 0]
+[Thread 9748.0x2660 exited with code 0]
+[Inferior 1 (process 9748) exited normally]
+(gdb) 
+
+    メッセージが入り乱れて分かりにくいが, 期待通り動作している.
+    問題は ptrace の代わりに何をしているかということ.
+
+(*4) SetThreadContext
+
+    色々調べていたら target_fetch_registers などが ptrace に代わる何か
+    を呼び出す入口らしい.
+
+    target_resume
+    target_read_memory
+    target_write_memory
+    target_insert_breakpoint
+
+    などがある.
+
+    target_insert_mask_watchpoint
+
+    ここもくるかと思ったがきていない. さらに調査したところ
+
+    cygwin_set_dr という函数は引数 addr = 0x100408140 でありウォッチポイントを
+    仕掛けたアドレスである.
+
+    cygwin_set_dr7 という函数もよばれている. これはいかにも「ptrace の調査」
+    で行われているようなことがされていると予測できる.
+
+    結局以下にたどり着けた:
+
+void
+windows_nat_target::resume (ptid_t ptid, int step, enum gdb_signal sig)
+{
+...
+	      if (debug_registers_changed)
+		{
+		  th->context.Dr0 = dr[0];   ここにブレークポイントをセットした
+		  th->context.Dr1 = dr[1];
+		  th->context.Dr2 = dr[2];
+		  th->context.Dr3 = dr[3];
+		  th->context.Dr6 = DR6_CLEAR_VALUE;
+		  th->context.Dr7 = dr[7];
+		}
+	      CHECK (SetThreadContext (th->h, &th->context));
+
+    再び gdb で同じ操作をして上の該当箇所にきていることを確認した. このとき
+
+    dr[0] = 0x100408140
+    dr[7] = 0xd0101
+
+    であることも確認した. つまりデバッグレジスタを変更するには Win32API
+
+    SetThreadContext
+
+    を使えばよいといいうこと. そしてこれでウォッチポイントを実現できるようだ.

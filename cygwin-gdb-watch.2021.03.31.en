@@ -1,0 +1,175 @@
+cygwin gdb watch-point implemention investigation
+
+(*1) -O0 build
+(*2) Set watch-point and detect it
+(*3) Execute (*2) under control gdb
+(*4) SetThreadContext
+
+(*1) Debug build gdb
+
+     Refer to "cygwin gdb 10.1 -O0 build memo" on this web page.
+
+(*2) Set watch-point and detect it
+
+% cd ~/gdb-10.1/gdb
+% cat a.c
+#include <stdio.h>
+
+int my_array[1024];
+
+int main()
+{
+  asm("int3");
+  puts("start");
+  printf("&my_array[1000] = 0x%llx\n", &my_array[1000]);
+  for (int i = 0 ; i != sizeof my_array/sizeof my_array[0] ; ++i)
+    my_array[i] = i;
+  puts("end");
+  return 0;
+}
+% gcc -g a.c -o a.exe
+% cat debugged-gdbcom
+set prompt (debugged-gdb)
+run
+watch my_array[1000]
+c
+c
+quit
+% ./gdb a.exe -x debugged-gdbcom -q
+Reading symbols from a.exe...
+[New Thread 16408.0x3f18]
+[New Thread 16408.0x2614]
+[New Thread 16408.0x20fc]
+
+Thread 1 "a" received signal SIGTRAP, Trace/breakpoint trap.
+main () at a.c:8
+8	  puts("start");
+Hardware watchpoint 1: my_array[1000]
+
+Thread 1 "a" hit Hardware watchpoint 1: my_array[1000]
+
+Old value = 0
+New value = 1000
+main () at a.c:10
+10	  for (int i = 0 ; i != sizeof my_array/sizeof my_array[0] ; ++i)
+start
+&my_array[1000] = 0x100408140
+end
+[Thread 16408.0x3a10 exited with code 0]
+[Thread 16408.0x3f18 exited with code 0]
+[Thread 16408.0x20fc exited with code 0]
+[Inferior 1 (process 16408) exited normally]
+%
+    OK! This is expected result.
+
+(*3) Execute (*2) under control gdb
+
+    Now we'll do the same thing under control gdb like bellow:
+
+% /usr/local/bin/gdb gdb.exe -q
+Reading symbols from gdb.exe...
+warning: File "/cygdrive/d/home/khasegawa/gdb-10.1/gdb/gdb-gdb.gdb" auto-loading has been declined by your `auto-load safe-path' set to "$debugdir:$datadir/auto-load".
+To enable execution of this file add
+	add-auto-load-safe-path /cygdrive/d/home/khasegawa/gdb-10.1/gdb/gdb-gdb.gdb
+line to your configuration file "/cygdrive/d/home/khasegawa/.gdbinit".
+To completely disable this security protection add
+	set auto-load safe-path /
+line to your configuration file "/cygdrive/d/home/khasegawa/.gdbinit".
+For more information about this security protection see the
+"Auto-loading safe path" section in the GDB manual.  E.g., run from the shell:
+	info "(gdb)Auto-loading safe path"
+(gdb) run a.exe -x debugged-gdbcom -q
+Starting program: /cygdrive/d/home/khasegawa/gdb-10.1/gdb/gdb.exe a.exe -x debugged-gdbcom -q
+[New Thread 9748.0x26c0]
+[New Thread 9748.0x3b24]
+[New Thread 9748.0x2660]
+[New Thread 9748.0x3d04]
+[New Thread 9748.0x4130]
+Reading symbols from a.exe...
+[New Thread 4964.0x13a0]
+[New Thread 4964.0x29cc]
+[New Thread 4964.0x3484]
+
+Thread 1 "a" received signal SIGTRAP, Trace/breakpoint trap.
+main () at a.c:8
+8	  puts("start");
+Hardware watchpoint 1: my_array[1000]
+
+Thread 1 "a" hit Hardware watchpoint 1: my_array[1000]
+
+Old value = 0
+New value = 1000
+main () at a.c:10
+10	  for (int i = 0 ; i != sizeof my_array/sizeof my_array[0] ; ++i)
+start
+&my_array[1000] = 0x100408140
+end
+[Thread 4964.0x13a0 exited with code 0]
+[Thread 4964.0x3d48 exited with code 0]
+[Thread 4964.0x3484 exited with code 0]
+[Inferior 1 (process 4964) exited normally]
+[Thread 9748.0x43ac exited with code 0]
+[Thread 9748.0x3b24 exited with code 0]
+[Thread 9748.0x4130 exited with code 0]
+[Thread 9748.0x3d04 exited with code 0]
+[Thread 9748.0x2660 exited with code 0]
+[Inferior 1 (process 9748) exited normally]
+(gdb) 
+
+    Even though many messages are mixed, this is expected result.
+    And now we are interrested with Win32API which takes part of `ptrace'.
+
+(*4) SetThreadContext
+
+    I noticed that `target_fetch_registers' function called some Win32API.
+    eventually. And other function:
+
+    target_resume
+    target_read_memory
+    target_write_memory
+    target_insert_breakpoint
+
+    also called some Win32API eventually. I guessed the next function
+    is also used:
+
+    target_insert_mask_watchpoint
+
+    but it's not.
+    I kept to investigate and found that:
+
+    `cygwin_set_dr' function was called with argument 0x100408140, and
+    the value was watch-point address.
+
+    `cygwin_set_dr7' function was called.
+
+    This is the similar situation with that of "ptrace investigation"
+    (See this web page).
+
+    At last,
+
+void
+windows_nat_target::resume (ptid_t ptid, int step, enum gdb_signal sig)
+{
+...
+	      if (debug_registers_changed)
+		{
+		  th->context.Dr0 = dr[0];   /* <<<< Set break-point here! */ 
+		  th->context.Dr1 = dr[1];
+		  th->context.Dr2 = dr[2];
+		  th->context.Dr3 = dr[3];
+		  th->context.Dr6 = DR6_CLEAR_VALUE;
+		  th->context.Dr7 = dr[7];
+		}
+	      CHECK (SetThreadContext (th->h, &th->context));
+
+    Again I executed gdb under control of gdb, samely. And confirmed that
+    above break point was hit. I also confirmed that:
+
+    dr[0] = 0x100408140
+    dr[7] = 0xd0101
+
+    i.e. To access i386 debug register DR0, ... DR7, use Win32API
+
+    SetThreadContext
+
+    And this enable us to implement watch-point.
