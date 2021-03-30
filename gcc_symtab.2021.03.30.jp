@@ -123,7 +123,7 @@ bind (tree name, tree decl, struct c_scope *scope, bool invisible,
      であったりもする) name の引数としてこの函数が呼
      ばれたとき, decl は 1 行目で登録した typedef のエントリで
 
-     ((lang_identifier*)name)->symbol_binding = some_func(decl);
+     ((lang_identifier*)name)->symbol_binding = decl;
 
      相当のことが行われている.
 
@@ -140,14 +140,14 @@ bind (tree name, tree decl, struct c_scope *scope, bool invisible,
 
 0xb7982630  +---------------------+  <-- tree の T
             |                     |
-0xb7982640  +---------------------+  <--- 字句解析ルーチンが返す T
+0xb7982640  +---------------------+  <-- 字句解析ルーチンが返す T
             |                     |
             |                     |
 0xb7982654  +---------------------+  
             |                   <-+-- ここに宣言を bind
             +---------------------+
 
-     そして 2 行目の
+     となる. そして 2 行目の
 
      T a;
 
@@ -172,11 +172,13 @@ ht_lookup_with_hash (cpp_hash_table *table, const unsigned char *str,
       else if (node->hash_value == hash
 	       && HT_LEN (node) == (unsigned int) len
 	       && !memcmp (HT_STR (node), str, len))
-	return node;   ここで返っている
+	return node;                                  <<<< ここで返っている
 
-     この cpp_hash_table が記号表の実態であった. そしてそこには
-     ありとあらゆるもの,  例えばプリプロセッサのディレクティブ	
-     define やキーワードの int, ビルトイン函数などが入れられている.
+     この cpp_hash_table が記号表の実態であった. これは私が勝手に想像してい
+     たものとはだいぶ様子が違っていた.
+     そしてそこにはありとあらゆる文字列,  例えばプリプロセッサのディレ
+     クティブ define やキーワードの int, ビルトイン函数 log などが入れ
+     られている.
 
      以下の操作でプログラムテキストに対して ht_lookup_with_hash がどのように
      呼ばれたか確かめることができる.
@@ -192,9 +194,9 @@ ht_lookup_with_hash (cpp_hash_table *table, const unsigned char *str,
      (gdb) enab 2
      (gdb) c
 
-     (1) 1 行目の T は新しいエントリが作られる.
-     (2) 2 行目の T は (1) で作られたエントリが返される
-     (3) 2 行目の a はエントリが返される.
+     (1) 1 行目の T には新しいエントリが作られる
+     (2) 2 行目の T には (1) で作られたエントリが返される
+     (3) 2 行目の a には新しいエントリが作られる
 
      それでは,
 
@@ -210,7 +212,7 @@ ht_lookup_with_hash (cpp_hash_table *table, const unsigned char *str,
 
 0xb78e6000  +---------------------+  <-- tree の define
             |                     |
-0xb78e6010  +---------------------+  <--- 字句解析ルーチンが返す define
+0xb78e6010  +---------------------+  <-- 字句解析ルーチンが返す define
             |                     |
             ~                     ~
             ~                     ~
@@ -238,8 +240,8 @@ directives.c:441
 
 0xb7982630  +---------------------+  <-- tree の T
             |                     |
-0xb7982640  +---------------------+  <--- 字句解析ルーチンが返す T
-            |                     |       1, 2, 3 回目すべて同じ
+0xb7982640  +---------------------+  <-- 字句解析ルーチンが返す T
+            |                     |      1, 2, 3 回目すべて同じ
             |                     |
 0xb7982654  +---------------------+  
             |                   <-+-- ここに typedef 宣言を bind

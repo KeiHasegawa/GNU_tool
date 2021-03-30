@@ -1,0 +1,272 @@
+gcc symbol table investigation
+
+(*1) Add into symbol table and  lookup symbol table.
+
+     Think about a piece of program like bellow:
+
+     typedef int T;
+     T a;
+
+     line 1 : Add `T' as typedef-name and its type is `int'
+     line 2 : Lookup `T' and found. Compiler knows that `T'is typedef-name
+              and its type is `int' and decide that type of `a' is `int'
+	      Again add `a' as variable.
+
+     On gcc implementation, function `c_parser_declaration_or_fndef' 
+     adds entry into symbol table:
+
+static void
+c_parser_declaration_or_fndef (c_parser *parser, bool fndef_ok,
+...
+{
+...
+              /*** Here! ***/
+	      tree d = start_decl (declarator, specs, false,
+				   chainon (postfix_attrs,
+					    all_prefix_attrs));
+...
+tree
+start_decl (struct c_declarator *declarator, struct c_declspecs *declspecs,
+...
+  /* Add this decl to the current scope.
+     TEM may equal DECL or it may be a previous decl of the same name.  */
+  tem = pushdecl (decl);   /* <<<<< Here! */
+
+     As usual, type of `d' and `decl' are `tree' which was described at
+     "cc1 lexical analyzer investigation(Part 3)" on this web page.
+     And more, it's let you understantd to call `print(tree)' from
+     debugger command line:
+
+     (gdb) p print(d)
+     typedef signed 32 bit integer T
+     $1 = void
+
+     As this piece of program, symbol table is looked up at function
+     `c_parser_declspecs':
+
+void
+c_parser_declspecs (c_parser *parser, struct c_declspecs *specs,
+...
+{
+...
+	      t.spec = lookup_name (value);  /*** Here! ***/
+
+      Of cause, symbol table is looked up any where in compiler code.
+
+      I mentioned a little `lookup_name' at
+      "cc1 lexical analyzer investigation(Part 3)". And it's also
+      good idea to call `print(tree)' like bellow:
+
+     (gdb) p print(value)
+     T
+     $2 = void
+     (gdb) p print(t.spec)
+     typedef signed 32 bit integer T
+     $3 = void
+
+     Now we know that `lookup_name(value)' returns the entry which
+     was added typedef-name.
+     This is just argument at view point of parser. I really wanted
+     to know that data structure of symbol table. For example,
+     I expected like:
+
+     struct X {
+        X* parent;
+        vector<X*> children;
+        map<string, var*> vars;
+        ...
+     };
+
+(*2) Data structure of symbol table and lexical analyzer
+
+     I confirmed how `lookup_name' worked:
+
+tree
+lookup_name (tree name)
+{
+  struct c_binding *b = I_SYMBOL_BINDING (name);
+  // calling bellow `i_symbol_binding' wrapped macro.
+...
+
+static inline struct c_binding* *
+i_symbol_binding (tree node)
+{
+  struct lang_identifier *lid
+    = (struct lang_identifier *) IDENTIFIER_NODE_CHECK (node);
+   // Just cast
+
+   `lid->symbol_binding' is used here.
+
+   Here, note that:
+
+struct lang_identifier {
+    c_common_identifier common_id;   // Same as `node' type
+    c_binding *symbol_binding;
+    c_binding *tag_binding;
+    c_binding *label_binding;
+};
+
+     i.e. this is not to search somehting, just refers to member.
+
+     For this gcc code:
+
+	      t.spec = lookup_name (value);
+
+     when `value' is created, already `t.spec' can be gotten by
+     refering to member. This member was set at bellow function:
+
+static void
+bind (tree name, tree decl, struct c_scope *scope, bool invisible,
+      bool nested, location_t locus)
+{
+...
+
+     And this `bind' was called from `pushdecl' described at (*1).
+
+
+     For the peice of program, `bind' is called with
+
+     1st argument `name' as 1st line `T'
+     2nd argument `decl' as entry added 1st line
+
+     And there, almost same thing like bellow:
+
+     ((lang_identifier*)name)->symbol_binding = decl;
+
+     is done. For as a piece of code:
+
+     typedef int T;
+
+     gcc does, abstractly say:
+
+     (1) For `T', lexical analyzer returns something which has some data
+         structure.
+
+     (2) For (1), parser creates `tree' object (especially say
+         `c_common_identifier')
+
+     (3) And parser `bind's (2) and declaration
+
+     Above can be illustrated like bellow:
+
+0xb7982630  +---------------------+  <-- tree `T'
+            |                     |
+0xb7982640  +---------------------+  <-- lexical analyzer retrun `T'
+            |                     |
+            |                     |
+0xb7982654  +---------------------+  
+            |                   <-+-- bind declaration here
+            +---------------------+
+
+     And at 2nd line
+
+     T a;
+
+     For `T', lexical analyzer return same value with above (i.e. 0xb7982640)
+
+
+      result = CPP_HASHNODE (ht_lookup_with_hash (pfile->hash_table,
+						  base, len, hash, HT_ALLOC));
+
+
+hashnode
+ht_lookup_with_hash (cpp_hash_table *table, const unsigned char *str,
+...
+{
+...
+  node = table->entries[index];
+
+  if (node != NULL)
+    {
+      if (node == DELETED)
+	deleted_index = index;
+      else if (node->hash_value == hash
+	       && HT_LEN (node) == (unsigned int) len
+	       && !memcmp (HT_STR (node), str, len))
+	return node;                          /***    <<<< Found ***/
+
+
+     Now we know that `cpp_hash_table' is symbol table. And this
+     feature is very different from what I guessed. This table
+     contains every string, for example, `define' of pre-processor
+     directive, `int' of keyword or `log' of one of builtin functions.
+
+     Bellow operation let us know that how `ht_lookup_with_hash'is called:
+
+     (gdb) b c_lex_one_token
+     # Assume that break-point number is 1
+     (gdb) b ht_lookup_with_hash
+     # Assume that break-point number is 2
+     (gdb) disa 2
+     (gdb) run ...
+     # Hit break-point 1
+     (gdb) disa 1
+     (gdb) enab 2
+     (gdb) c
+
+     (1) For `T' at 1st line, create new entry.
+     (2) For `T' at 2nd line, return entry created at (1)
+     (3) For `a' at 2nd line, create new entry.
+
+     Now you may wonder how compiler works for the bellow code:
+
+     int define;
+     #define X
+
+     Of cause, this is not ill-formed code. The point is that:
+     `define' has already existed at table before searching
+     at 1st line.
+
+     `ht_lookup_with_hash' returns existed entry as usual. And
+     samely `bind' is done:
+
+0xb78e6000  +---------------------+  <-- tree `define`
+            |                     |
+0xb78e6010  +---------------------+  <-- lexical analyzer return `define'
+            |                     |
+            ~                     ~
+            ~                     ~
+            |                     |
+0xb797978c  +---------------------+  
+            |                   <-+-- bind declaration here
+            +---------------------+
+
+     And more, for `define' at 2nd line, `ht_lookup_with_hash' returns
+     existed entry (i.e. 0xb78e6010).
+     Compiler can judge that this `define' is used at context where
+     prepprocessor directive is reuqired. So that' why this piece of
+     code can be compiled as expected:
+
+directives.c:441
+      if (dname->val.node.node->is_directive)
+	dir = &dtable[dname->val.node.node->directive_index]; // Here!
+
+     At last, think about the next code:
+
+     typedef int T;
+     void f(){ T T; }
+
+     For every `T', `ht_lookup_with_hash' returns same value:
+
+0xb7982630  +---------------------+  <-- tree `T'
+            |                     |
+0xb7982640  +---------------------+  <-- lexical analyzer return `T'
+            |                     |      for every `T'
+            |                     |
+0xb7982654  +---------------------+  
+            |                   <-+-- bind typedef declaration here
+            +---------------------+
+            |                     |
+            ~                     ~
+            ~                     ~
+            |                     |
+0xb797978c  +---------------------+  
+            |                   <-+-- bind variable decaration here
+            +---------------------+
+
+     At the point of declaration of local variable `T'
+
+     ((lang_identifier*)0xb7982630)->symbol_binding
+
+     is changed 0xb7982654 from 0xb797978c. For this mechanizum,
+     compiler can work well.
