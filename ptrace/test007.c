@@ -49,23 +49,26 @@ int main()
       return 2;
     }
     print_status(status);
-    if (ptrace(PTRACE_POKEUSER, pid, 0x118, 0x0) < 0) {  // DR_CONTROL
+    // set DR_CONTROL (DR7)
+    if (ptrace(PTRACE_POKEUSER, pid, 0x118, 0x0) < 0) {
       printf("ptrace(PTRACE_POKEDATA, %d, 0x118, 0x0) failed\n", pid);
       print_errno();
       return 3;
     }
     int addr = 0x804a6a0;
-    if (ptrace(PTRACE_POKEUSER, pid, 0xfc, addr) < 0) {
+    if (ptrace(PTRACE_POKEUSER, pid, 0xfc, addr) < 0) {  // DR0
       printf("ptrace(PTRACE_POKEDATA, %d, 0xfc, 0x%x) failed\n", pid, addr);
       print_errno();
       return 3;
     }
-    if (ptrace(PTRACE_POKEUSER, pid, 0x118, 0xd0101) < 0) {  // DR_CONTROL
+    // set DR_CONTROL(DR7)
+    if (ptrace(PTRACE_POKEUSER, pid, 0x118, 0xd0101) < 0) {
       printf("ptrace(PTRACE_POKEDATA, %d, 0x118, 0xd0101) failed\n", pid);
       print_errno();
       return 3;
     }
-    if (ptrace(PTRACE_POKEUSER, pid, 0x114, 0x0) < 0) {  // DR_STATUS
+    // set DR_STATUS(DR6)
+    if (ptrace(PTRACE_POKEUSER, pid, 0x114, 0x0) < 0) {
       printf("ptrace(PTRACE_POKEDATA, %d, 0x114, 0x0) failed\n", pid);
       print_errno();
       return 3;
