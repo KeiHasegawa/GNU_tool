@@ -181,9 +181,9 @@ ht_lookup_with_hash (cpp_hash_table *table, const unsigned char *str,
       if (node == DELETED)
 	deleted_index = index;
       else if (node->hash_value == hash
-	       && HT_LEN (node) == (unsigned int) len
+	       && HT_LEN (node) == (unsigned int) len  /*** compare name ***/
 	       && !memcmp (HT_STR (node), str, len))
-	return node;                          /***    <<<< Found ***/
+	return node;                          /***    <<<< Found! ***/
 
 
      Now we know that `cpp_hash_table' is symbol table. And this
