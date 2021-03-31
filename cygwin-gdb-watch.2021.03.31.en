@@ -61,6 +61,26 @@ end
 [Inferior 1 (process 16408) exited normally]
 %
     OK! This is expected result.
+    Here, I have to mention about some stuff:
+
+    (1) If you execute `watch' command before executing `run' command,
+        watch-point will not be hit.
+
+        This phenominon may be related with the fact that data break menu
+	becomes available after executing debug program.
+
+    (2) By using objdump, I investigated test000.exe and get only information
+        about `my_array':
+
+[631](sec  7)(fl 0x00)(ty   0)(scl   2) (nx 0) 0x00000000000001a0 my_array
+
+        i.e. I cannot get the information about the location of `my_array'.
+
+    (3) On every execution
+
+&my_array[1000] = 0x100408140
+
+        is printed. i.e. `my_array' address was fixed.
 
 (*3) Execute (*2) under control gdb
 
