@@ -70,8 +70,15 @@ ptrace investigation
      EPERM
      %
 
-     To think over, this result is natural. When peeking GPR
-     by using ptrace, it's assumed that debugged process is stopped.
+     To think over, this result is natural.
+
+     Attaching process becomes the parent process of attached process.
+     This is conflict.
+     And if it's not, the effect of `ptrace(PTRACE_ATTACH, ...)' is
+     send SIGSTOP to the attached process. i.e. send SIGSTOP to itself.
+     This is not expected by programmer.
+     And more, when peeking GPR  by using ptrace, it's assumed that
+     debugged process is stopped.
 
 (*4) Peeking GPR of sub-process which is created `fork' and `exec'
      from parent process.
@@ -247,5 +254,6 @@ ptrace investigation
       0x114 : DR6
       0x118 : DR7
 
-     I'm sure that `test008.S' doesn't work well but code it. The
-     execution of `test008.exe' is received SIGSEGV.
+     I'm sure that `test008.S' doesn't work well but code it. This program
+     has a error. Even though this program works at priviledged mode,
+     it refers to virtual address.
