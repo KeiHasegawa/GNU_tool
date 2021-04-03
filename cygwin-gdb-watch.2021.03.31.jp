@@ -4,6 +4,10 @@ cygwin 版での gdb でウォッチポイントをどういう方法で実現しているかの調査
 (*2) ウォッチポイントを gdb でセットして検出する
 (*3) (*2) を gdb の制御のもとで行う
 (*4) SetThreadContext
+(*5) CreateProcessW で返ってきたハンドルに対して SetThreadContext を発行している
+(*6) 自分のコードを入れてビルド
+(*7) CreteProcessA を gdb のコードから直接呼び出す.
+(*8) WaitForDebugEvent でウォッチポイントを検出しているわけではなさそう
 
 (*1) -O0 ビルド
 
@@ -186,3 +190,447 @@ windows_nat_target::resume (ptid_t ptid, int step, enum gdb_signal sig)
     SetThreadContext
 
     を使えばよいといいうこと. そしてこれでウォッチポイントを実現できるようだ.
+
+(*5) CreateProcessW で返ってきたハンドルに対して SetThreadContext を発行している
+     以下がそのログ. ★ を検索すると分かる
+
+> /usr/local/bin/gdb gdb.exe -q
+Reading symbols from gdb.exe...
+warning: File "/cygdrive/d/home/khasegawa/gdb-10.1/gdb/gdb-gdb.gdb" auto-loading has been declined by your `auto-load safe-path' set to "$debugdir:$datadir/auto-load".
+To enable execution of this file add
+	add-auto-load-safe-path /cygdrive/d/home/khasegawa/gdb-10.1/gdb/gdb-gdb.gdb
+line to your configuration file "/cygdrive/d/home/khasegawa/.gdbinit".
+To completely disable this security protection add
+	set auto-load safe-path /
+line to your configuration file "/cygdrive/d/home/khasegawa/.gdbinit".
+For more information about this security protection see the
+"Auto-loading safe path" section in the GDB manual.  E.g., run from the shell:
+	info "(gdb)Auto-loading safe path"
+(gdb) b CreateProcessW                ★ CreateProcessW にブレークポイントをセット
+Breakpoint 1 at 0x100950f50
+(gdb) run a.exe -x debugged-gdbcom -q
+Starting program: /cygdrive/d/home/khasegawa/gdb-10.1/gdb/gdb.exe a.exe -x debugged-gdbcom -q
+[New Thread 14912.0x26c8]
+[New Thread 14912.0x3170]
+[New Thread 14912.0x3a88]
+[New Thread 14912.0x4344]
+[New Thread 14912.0x1c80]
+Reading symbols from a.exe...
+
+Thread 1 "gdb" hit Breakpoint 1, 0x00007ffbcd5fb997 in KERNEL32!CreateProcessW
+    () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) fin
+Run till exit from #0  0x00007ffbcd5fb997 in KERNEL32!CreateProcessW ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+
+Thread 1 "gdb" hit Breakpoint 1, 0x00007ffbcb2d9147 in KERNELBASE!CreateProcessW () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Run till exit from #0  0x00007ffbcb2d9147 in KERNELBASE!CreateProcessW ()
+   from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+0x00007ffbcd5fb9e3 in KERNEL32!CreateProcessW ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Run till exit from #0  0x00007ffbcd5fb9e3 in KERNEL32!CreateProcessW ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+0x0000000100776f00 in windows_nat_target::create_inferior (
+    this=0x100b3e450 <the_windows_nat_target>, 
+    exec_file=0x800140fd0 "/cygdrive/d/home/khasegawa/gdb-10.1/gdb/a.exe", 
+    origallargs=..., in_env=0x800135430, from_tty=0) at windows-nat.c:2851
+2851	  ret = CreateProcess (0,
+(gdb) list
+2846		  dup2 (tty, 2);
+2847		}
+2848	    }
+2849	
+2850	  windows_init_thread_list ();
+2851	  ret = CreateProcess (0,
+2852			       args,	/* command line */
+2853			       NULL,	/* Security */
+2854			       NULL,	/* thread */
+2855			       TRUE,	/* inherit handles */
+(gdb) 
+2856			       flags,	/* start flags */
+2857			       w32_env,	/* environment */
+2858			       inferior_cwd != NULL ? infcwd : NULL, /* current
+2859									directory */
+2860			       &si,
+2861			       &pi);
+2862	  if (w32_env)
+2863	    /* Just free the Win32 environment, if it could be created. */
+2864	    free (w32_env);
+2865	  else
+(gdb) n
+2862	  if (w32_env)
+(gdb) p/x pi
+$1 = {hProcess = 0x2c8, hThread = 0x2c4, dwProcessId = 0x39b4, 
+  dwThreadId = 0x2fa0}   ★ CreateProcessW の結果プロセスのハンドルは 0x2c8
+(gdb) b windows-nat.c:1487   ★ 問題の箇所にブレークポイントをセット
+Breakpoint 3 at 0x1007746d7: file windows-nat.c, line 1487.
+(gdb) c
+Continuing.
+[New Thread 14912.0x34e8]
+[New Thread 14912.0x4780]
+[New Thread 14772.0x44a0]
+[New Thread 14772.0x38d8]
+[New Thread 14772.0x4520]
+
+Thread 1 "a" received signal SIGTRAP, Trace/breakpoint trap.
+main () at a.c:8
+8	  puts("start");
+Hardware watchpoint 1: my_array[1000]
+
+Thread 1 "gdb" hit Breakpoint 3, windows_nat_target::resume (
+    this=0x100b3e450 <the_windows_nat_target>, ptid=..., step=0, 
+    sig=GDB_SIGNAL_0) at windows-nat.c:1487
+1487			  th->context.Dr7 = dr[7];
+(gdb) list
+1482			  th->context.Dr0 = dr[0];
+1483			  th->context.Dr1 = dr[1];
+1484			  th->context.Dr2 = dr[2];
+1485			  th->context.Dr3 = dr[3];
+1486			  th->context.Dr6 = DR6_CLEAR_VALUE;
+1487			  th->context.Dr7 = dr[7];
+1488			}
+1489		      CHECK (SetThreadContext (th->h, &th->context));
+1490		      th->context.ContextFlags = 0;
+1491		    }
+(gdb) p/x dr[0]
+$2 = 0x100408140  ★ ウォッチポイントをセットしたアドレス
+(gdb) p/x dr[7]
+$3 = 0xd0101      ★ DR_CONTROL (DR7) にセットするべき値
+(gdb) p th->h
+$4 = (HANDLE) 0x2dc  ★ CreateProcessW で取得したハンドル
+(gdb)
+
+(*6) 自分のコードを入れてビルド
+
+     windows-nat.c に自分のコードを入れた. 単純な GetThreadContext を呼び出して
+     取得した内容を表示するというだけのもの.
+
+     (*1) で指定したブレークポイントをセットした windows-nat.c:1487 で停止したとき
+
+     (gdb) debug_thread(th->h)
+
+     とすれば期待した動作になっている. 一方
+
+     CreateProcessW 直後に
+
+     (gdb) debug_thread(pi.hProcess)
+
+     は GetThread の呼び出しでエラーになっている. その一方で
+
+     (gdb) debug_thread(pi.hThread)
+
+     はそれっぽい.
+
+
+(*7) CreteProcessA を gdb のコードから直接呼び出す.
+
+windows_nat_target::create_inferior
+
+の先頭部分で以下のコードを挿入
+
+  {
+    char path[] = ".\\a.exe";
+    STARTUPINFOA si = {0};
+    si.cb = sizeof si;
+    PROCESS_INFORMATION pi;
+    DWORD flag = 0x602;
+    BOOL ret = CreateProcessA(NULL, path, NULL, NULL, TRUE,
+			      flag, NULL, NULL, &si, &pi);
+    ret = ret;
+  }
+
+これで CreateProcessA の呼び出し直後に
+
+(gdb) p debug_thread(pi.hThread)
+
+としてみた. 結果は
+Dr0 = 0x0
+Dr1 = 0x0
+Dr2 = 0x0
+Dr3 = 0x0
+Dr6 = 0x0
+Dr7 = 0x0
+Rax = 0x0
+Rbx = 0x0
+Rcx = 0x100401000
+Rdx = 0x3ad000
+Rsp = 0x5fffd8
+Rbp = 0x0
+Rip = 0x7ffbcedf3670
+$97 = void
+
+である. つまり, ここまで gdb は何かをしている. ~/lang/53_GNU_tool/test002/test002.c
+のプログラムは, その何かをしていないので GetThreadContext の結果が異なっている
+というわけだ.
+
+さて, その「何か」を調査する必要がある.
+
+ここで少し flags = 2 で期待通り動作するか? gdb で変数を書き換えてためしてみた.
+やはりこれでも同じ結果である.
+
+さらに調査したところ ~/lang/53_GNU_tool/test002/test002.c
+は gcc でコンパイルしたものは期待通り動作し GetThreadContext でちゃんと
+Context を取得できているが, Visual Studio でコンパイルしたものは
+Context が空になっている. ということは... cygwin.dll の中にポイントがある
+
+ちなみにこのコード, 後で気付いたのだが, そのままにしておくと以下のように
+0 番地アクセスしてしまう.
+
+Thread 1 "gdb" received signal SIGSEGV, Segmentation fault.
+0x0000000100977090 in inferior::non_exited_threads (this=0x0)
+    at inferior.h:404
+404	  { return inf_non_exited_threads_range (this->thread_list); }
+(gdb) up
+#1  0x0000000100727731 in find_thread_ptid (inf=0x0, ptid=...) at thread.c:505
+505	  for (thread_info *tp : inf->non_exited_threads ())
+(gdb) where
+#0  0x0000000100977090 in inferior::non_exited_threads (this=0x0)
+    at inferior.h:404
+#1  0x0000000100727731 in find_thread_ptid (inf=0x0, ptid=...) at thread.c:505
+#2  0x0000000100726b5a in add_thread_silent (
+    targ=0x100b3e450 <the_windows_nat_target>, ptid=...) at thread.c:278
+#3  0x0000000100772181 in windows_add_thread (ptid=..., h=0x2cc, 
+    tlb=0x2dc000, main_thread_p=true) at windows-nat.c:456
+#4  0x0000000100774c94 in windows_nat_target::get_windows_debug_event (
+    this=0x100b3e450 <the_windows_nat_target>, pid=-1, ourstatus=0xffff5fb0)
+    at windows-nat.c:1622
+#5  0x0000000100775442 in windows_nat_target::wait (
+    this=0x100b3e450 <the_windows_nat_target>, ptid=..., 
+    ourstatus=0xffff5fb0, options=0) at windows-nat.c:1815
+#6  0x0000000100775cc4 in windows_nat_target::do_initial_windows_stuff (
+    this=0x100b3e450 <the_windows_nat_target>, pid=17380, attaching=false)
+    at windows-nat.c:2029
+#7  0x000000010077712b in windows_nat_target::create_inferior (
+    this=0x100b3e450 <the_windows_nat_target>, 
+    exec_file=0x800140fd0 "/cygdrive/d/home/khasegawa/gdb-10.1/gdb/a.exe", 
+    origallargs=..., in_env=0x800135430, from_tty=0) at windows-nat.c:3023
+#8  0x00000001005d4942 in run_command_1 (args=0x0, from_tty=0, 
+    run_how=RUN_NORMAL) at infcmd.c:493
+#9  0x00000001005d4b5b in run_command (args=0x0, from_tty=0) at infcmd.c:546
+#10 0x00000001004a87c8 in do_const_cfunc (c=0x8000c6120, args=0x0, from_tty=0)
+    at cli/cli-decode.c:95
+#11 0x00000001004abfda in cmd_func (cmd=0x8000c6120, args=0x0, from_tty=0)
+    at cli/cli-decode.c:2181
+#12 0x000000010072e8b0 in execute_command (p=0x8001e35a3 "", from_tty=0)
+    at top.c:668
+#13 0x0000000100570375 in command_handler (command=0x8001e35a0 "run")
+    at event-top.c:588
+#14 0x000000010072e1ab in read_command_file (stream=0x8000817d8) at top.c:447
+#15 0x00000001004b5b20 in script_from_file (stream=0x8000817d8, 
+    file=0xffffcc80 "debugged-gdbcom") at cli/cli-script.c:1622
+#16 0x00000001004a1e4a in source_script_from_stream (stream=0x8000817d8, 
+    file=0xffffcc80 "debugged-gdbcom", 
+    file_to_open=0xffffcc80 "debugged-gdbcom") at cli/cli-cmds.c:700
+#17 0x00000001004a1f22 in source_script_with_search (
+    file=0xffffcc80 "debugged-gdbcom", from_tty=1, search_path=0)
+    at cli/cli-cmds.c:736
+#18 0x00000001004a1f7d in source_script (file=0xffffcc80 "debugged-gdbcom", 
+    from_tty=1) at cli/cli-cmds.c:746
+#19 0x00000001006161dc in catch_command_errors (
+    command=0x1004a1f5a <source_script(char const*, int)>, 
+    arg=0xffffcc80 "debugged-gdbcom", from_tty=1) at main.c:457
+#20 0x000000010061774f in captured_main_1 (context=0xffffcbb0) at main.c:1214
+#21 0x000000010061795c in captured_main (data=0xffffcbb0) at main.c:1243
+#22 0x00000001006179c7 in gdb_main (args=0xffffcbb0) at main.c:1268
+#23 0x00000001004010d0 in main (argc=5, argv=0xffffcc20) at gdb.c:32
+(gdb)
+
+(*8) WaitForDebugEvent でウォッチポイントを検出しているわけではなさそう
+
+     Dr0, Dr6, Dr7 に値をセットして SetThreadContext をした後
+     WaitForDebugEvent にブレークポイントをセットしたが, ここでウォッチポイントを
+     検出しているわけではなさそう.
+
+ここにブレークポイントをセット
+
+(gdb) b breakpoint.c 10155
+(gdb) b breakpoint.c 10188
+これだとうまくいかない. 謎
+
+(gdb) b print_it_watchpoint
+これでうまくいった.
+
+(gdb) b watchpoint_check
+こっちがより近い.
+
+
+    Dr0, Dr6, Dr7 に値をセットしているが, これは見せかけなのかも. 以下のログを
+    参照. ★ にポイントを書いておいた.
+
+> /usr/local/bin/gdb gdb.exe -q
+Reading symbols from gdb.exe...
+warning: File "/cygdrive/d/home/khasegawa/gdb-10.1/gdb/gdb-gdb.gdb" auto-loading has been declined by your `auto-load safe-path' set to "$debugdir:$datadir/auto-load".
+To enable execution of this file add
+	add-auto-load-safe-path /cygdrive/d/home/khasegawa/gdb-10.1/gdb/gdb-gdb.gdb
+line to your configuration file "/cygdrive/d/home/khasegawa/.gdbinit".
+To completely disable this security protection add
+	set auto-load safe-path /
+line to your configuration file "/cygdrive/d/home/khasegawa/.gdbinit".
+For more information about this security protection see the
+"Auto-loading safe path" section in the GDB manual.  E.g., run from the shell:
+	info "(gdb)Auto-loading safe path"
+(gdb) b windows-nat.c:1487           ★ 問題の場所にブレークポイントをセット
+Breakpoint 1 at 0x1007746d7: file windows-nat.c, line 1487.
+(gdb) c
+The program is not being run.
+(gdb) so x
+[New Thread 3036.0x42c8]
+[New Thread 3036.0x1804]
+[New Thread 3036.0x2648]
+[New Thread 3036.0x4564]
+[New Thread 3036.0x2c08]
+Reading symbols from a.exe...
+[New Thread 10220.0x3444]
+[New Thread 10220.0x2d5c]
+[New Thread 10220.0x3af0]
+
+Thread 1 "a" received signal SIGTRAP, Trace/breakpoint trap.
+main () at a.c:8
+8	  puts("start");
+Hardware watchpoint 1: my_array[1000]
+
+Thread 1 "gdb" hit Breakpoint 1, windows_nat_target::resume (
+    this=0x100b3e450 <the_windows_nat_target>, ptid=..., step=0, 
+    sig=GDB_SIGNAL_0) at windows-nat.c:1487
+1487			  th->context.Dr7 = dr[7];   ★ 来ている.
+(gdb) b execute_command            ★ スクリプトに書いた c コマンドを捉える.
+Breakpoint 2 at 0x10072e3c2: file top.c, line 562.
+(gdb) c
+Continuing.
+[New Thread 3036.0x368c]
+[New Thread 10220.0x3918]
+
+Thread 1 "a" hit Hardware watchpoint 1: my_array[1000]
+
+Old value = 0
+New value = 1000
+main () at a.c:10
+10	  for (int i = 0 ; i != sizeof my_array/sizeof my_array[0] ; ++i)
+
+Thread 1 "gdb" hit Breakpoint 2, execute_command (p=0x8001632a0 "c", 
+    from_tty=0) at top.c:562
+562	  const char *cmd_start = p;            ★ c コマンドにきた.
+(gdb) so y                            ★ そこで Win32API にブレークポイントをセット
+Breakpoint 3 at 0x7ffbcb2a4fb4 (2 locations)
+Breakpoint 4 at 0x7ffbcb3547dc (2 locations)
+Breakpoint 5 at 0x7ffbcb2a478f (2 locations)
+Breakpoint 6 at 0x7ffbcb2d9147 (2 locations)
+Breakpoint 7 at 0x7ffbcb35483a (2 locations)
+Breakpoint 8 at 0x7ffbcb2ce510 (2 locations)
+Breakpoint 9 at 0x7ffbcb32ce69 (2 locations)
+Breakpoint 10 at 0x7ffbcb278879 (2 locations)
+Breakpoint 11 at 0x7ffbcb2c8800 (2 locations)
+Breakpoint 12 at 0x7ffbcb2db826 (2 locations)
+Breakpoint 13 at 0x7ffbcb2aa300 (2 locations)
+Breakpoint 14 at 0x7ffbcb2ca4e6 (2 locations)
+Breakpoint 15 at 0x7ffbcb2889af (2 locations)
+Breakpoint 16 at 0x7ffbcb2daafa (2 locations)
+Breakpoint 17 at 0x7ffbcb2cdc46 (2 locations)
+Breakpoint 18 at 0x7ffbcb35a6ea (2 locations)
+Breakpoint 19 at 0x7ffbcb2dee44 (2 locations)
+Breakpoint 20 at 0x7ffbcd63f394
+Breakpoint 21 at 0x7ffbcb2d4136 (2 locations)
+Breakpoint 22 at 0x7ffbcb2d1c9f (2 locations)
+Breakpoint 23 at 0x7ffbcb29fd17 (2 locations)
+Breakpoint 24 at 0x7ffbcb2c3584 (2 locations)
+Breakpoint 25 at 0x7ffbcb2da204 (2 locations)
+Breakpoint 26 at 0x7ffbcb2d44fa (2 locations)
+Breakpoint 27 at 0x7ffbcb2cee66 (2 locations)
+Breakpoint 28 at 0x7ffbcb2c4434 (2 locations)
+Breakpoint 29 at 0x7ffbcb357af4 (2 locations)
+Breakpoint 30 at 0x7ffbcb2de7b4 (2 locations)
+Breakpoint 31 at 0x7ffbcb2df15a (2 locations)
+Breakpoint 32 at 0x7ffbcb354b30 (2 locations)
+Breakpoint 33 at 0x7ffbcb2a9040 (2 locations)
+Breakpoint 34 at 0x7ffbcb352f89 (2 locations)
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 24, 0x00007ffbcd5f9680 in ReadProcessMemory ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+     ★ そして最初に呼ばれたのは ReadMemory
+(gdb) up
+#1  0x00000001007772ec in windows_xfer_memory (readbuf=0x8006328e0 "", 
+    writebuf=0x0, memaddr=4299194688, len=4, xfered_len=0xffffbc18)
+    at windows-nat.c:3080
+3080	      success = ReadProcessMemory (current_process_handle,
+(gdb) p/x memaddr
+$1 = 0x100408140  ★ これはウォッチポイントのアドレス
+(gdb) where
+#0  0x00007ffbcd5f9680 in ReadProcessMemory ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+#1  0x00000001007772ec in windows_xfer_memory (readbuf=0x8006328e0 "", 
+    writebuf=0x0, memaddr=4299194688, len=4, xfered_len=0xffffbc18)
+    at windows-nat.c:3080
+#2  0x0000000100777a1a in windows_nat_target::xfer_partial (
+    this=0x100b3e450 <the_windows_nat_target>, object=TARGET_OBJECT_MEMORY, 
+    annex=0x0, readbuf=0x8006328e0 "", writebuf=0x0, offset=4299194688, 
+    len=4, xfered_len=0xffffbc18) at windows-nat.c:3226
+#3  0x0000000100711249 in raw_memory_xfer_partial (
+    ops=0x100b3e450 <the_windows_nat_target>, readbuf=0x8006328e0 "", 
+    writebuf=0x0, memaddr=4299194688, len=4, xfered_len=0xffffbc18)
+    at target.c:918
+#4  0x000000010071165c in memory_xfer_partial_1 (
+    ops=0x100b3e450 <the_windows_nat_target>, object=TARGET_OBJECT_MEMORY, 
+    readbuf=0x8006328e0 "", writebuf=0x0, memaddr=4299194688, len=4, 
+    xfered_len=0xffffbc18) at target.c:1055
+#5  0x00000001007116f1 in memory_xfer_partial (
+    ops=0x100b3e450 <the_windows_nat_target>, object=TARGET_OBJECT_MEMORY, 
+    readbuf=0x8006328e0 "", writebuf=0x0, memaddr=4299194688, len=4, 
+    xfered_len=0xffffbc18) at target.c:1084
+#6  0x0000000100711992 in target_xfer_partial (
+    ops=0x100b3e450 <the_windows_nat_target>, object=TARGET_OBJECT_MEMORY, 
+    annex=0x0, readbuf=0x8006328e0 "", writebuf=0x0, offset=4299194688, 
+    len=4, xfered_len=0xffffbc18) at target.c:1141
+#7  0x0000000100757265 in read_value_memory (val=0x800632820, bit_offset=0, 
+    stack=0, memaddr=4299194688, buffer=0x8006328e0 "", length=4)
+    at valops.c:956
+#8  0x000000010076cbec in value_fetch_lazy_memory (val=0x800632820)
+    at value.c:3784
+#9  0x000000010076d2e4 in value_fetch_lazy (val=0x800632820) at value.c:3930
+#10 0x000000010056589b in fetch_subexp_value (exp=0x800682dc0, pc=0xffffbe34, 
+    valp=0xffffbe08, resultp=0xffffbe00, val_chain=0xffffbe10, 
+    preserve_errors=0) at eval.c:239
+#11 0x0000000100459e4e in update_watchpoint (b=0x8004825f0, reparse=0)
+    at breakpoint.c:1792
+#12 0x000000010045c2c3 in insert_breakpoints () at breakpoint.c:2813
+#13 0x00000001005ef9d1 in keep_going_pass_signal (ecs=0xffffc1f0)
+    at infrun.c:7864
+#14 0x00000001005e41e9 in proceed (addr=18446744073709551615, 
+    siggnal=GDB_SIGNAL_DEFAULT) at infrun.c:3138
+#15 0x00000001005d4dc5 in continue_1 (all_threads=0) at infcmd.c:675
+#16 0x00000001005d5057 in continue_command (args=0x0, from_tty=0)
+    at infcmd.c:767
+#17 0x00000001004a87c8 in do_const_cfunc (c=0x8000c5e50, args=0x0, from_tty=0)
+    at cli/cli-decode.c:95
+#18 0x00000001004abfda in cmd_func (cmd=0x8000c5e50, args=0x0, from_tty=0)
+    at cli/cli-decode.c:2181
+#19 0x000000010072e8b0 in execute_command (p=0x8001632a1 "", from_tty=0)
+    at top.c:668
+#20 0x0000000100570375 in command_handler (command=0x8001632a0 "c")
+    at event-top.c:588
+#21 0x000000010072e1ab in read_command_file (stream=0x8000817d8) at top.c:447
+#22 0x00000001004b5b20 in script_from_file (stream=0x8000817d8, 
+    file=0xffffcc80 "debugged-gdbcom") at cli/cli-script.c:1622
+#23 0x00000001004a1e4a in source_script_from_stream (stream=0x8000817d8, 
+    file=0xffffcc80 "debugged-gdbcom", 
+    file_to_open=0xffffcc80 "debugged-gdbcom") at cli/cli-cmds.c:700
+#24 0x00000001004a1f22 in source_script_with_search (
+    file=0xffffcc80 "debugged-gdbcom", from_tty=1, search_path=0)
+    at cli/cli-cmds.c:736
+#25 0x00000001004a1f7d in source_script (file=0xffffcc80 "debugged-gdbcom", 
+    from_tty=1) at cli/cli-cmds.c:746
+#26 0x00000001006161dc in catch_command_errors (
+    command=0x1004a1f5a <source_script(char const*, int)>, 
+    arg=0xffffcc80 "debugged-gdbcom", from_tty=1) at main.c:457
+#27 0x000000010061774f in captured_main_1 (context=0xffffcbb0) at main.c:1214
+#28 0x000000010061795c in captured_main (data=0xffffcbb0) at main.c:1243
+#29 0x00000001006179c7 in gdb_main (args=0xffffcbb0) at main.c:1268
+#30 0x00000001004010d0 in main (argc=5, argv=0xffffcc20) at gdb.c:32
+(gdb)
+
+このログをどう判断するかが問題だが, SetThreadContext でセットした Dr0, Dr6, Dr7
+は本当に必要だったのか疑問.
+
