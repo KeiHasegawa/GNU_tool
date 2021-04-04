@@ -299,15 +299,15 @@ $2 = 0x100408140  ★ ウォッチポイントをセットしたアドレス
 (gdb) p/x dr[7]
 $3 = 0xd0101      ★ DR_CONTROL (DR7) にセットするべき値
 (gdb) p th->h
-$4 = (HANDLE) 0x2dc  ★ CreateProcessW で取得したハンドル
+$4 = (HANDLE) 0x2c8  ★ CreateProcessW で取得したハンドル
 (gdb)
 
 (*6) 自分のコードを入れてビルド
 
-     windows-nat.c に自分のコードを入れた. 単純な GetThreadContext を呼び出して
+     windows-nat.c に自分のコードを入れた. 単純に GetThreadContext を呼び出して
      取得した内容を表示するというだけのもの.
 
-     (*1) で指定したブレークポイントをセットした windows-nat.c:1487 で停止したとき
+     (*5) で指定したブレークポイント windows-nat.c:1487 に停止したとき
 
      (gdb) debug_thread(th->h)
 
@@ -322,7 +322,6 @@ $4 = (HANDLE) 0x2dc  ★ CreateProcessW で取得したハンドル
      (gdb) debug_thread(pi.hThread)
 
      はそれっぽい.
-
 
 (*7) CreteProcessA を gdb のコードから直接呼び出す.
 
@@ -361,13 +360,13 @@ Rbp = 0x0
 Rip = 0x7ffbcedf3670
 $97 = void
 
-である. つまり, ここまで gdb は何かをしている. ~/lang/53_GNU_tool/test002/test002.c
+である. つまり, ここまで gdb は何かをしている. 単純に CreateProcessA を呼び出す
 のプログラムは, その何かをしていないので GetThreadContext の結果が異なっている
 というわけだ.
 
 さて, その「何か」を調査する必要がある.
 
-ここで少し flags = 2 で期待通り動作するか? gdb で変数を書き換えてためしてみた.
+ここで flags = 2 で期待通り動作するか? gdb で変数を書き換えてためしてみた.
 やはりこれでも同じ結果である.
 
 さらに調査したところ ~/lang/53_GNU_tool/test002/test002.c
