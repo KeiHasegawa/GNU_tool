@@ -7,7 +7,9 @@ cygwin 版での gdb でウォッチポイントをどういう方法で実現しているかの調査
 (*5) CreateProcessW で返ってきたハンドルに対して SetThreadContext を発行している
 (*6) 自分のコードを入れてビルド
 (*7) CreteProcessA を gdb のコードから直接呼び出す.
-(*8) WaitForDebugEvent でウォッチポイントを検出しているわけではなさそう
+(*8) ウォッチポイントをセットしてから wait_sync_command_done が呼ばれた後,
+     watchpoint_check が呼ばれるまで.
+(*9) SetEvent, WaitForSingleObject かな?
 
 (*1) -O0 ビルド
 
@@ -436,30 +438,13 @@ Thread 1 "gdb" received signal SIGSEGV, Segmentation fault.
 #23 0x00000001004010d0 in main (argc=5, argv=0xffffcc20) at gdb.c:32
 (gdb)
 
-(*8) WaitForDebugEvent でウォッチポイントを検出しているわけではなさそう
+(*8) ウォッチポイントをセットしてから wait_sync_command_done が呼ばれた後,
+     watchpoint_check が呼ばれるまで.
 
-     Dr0, Dr6, Dr7 に値をセットして SetThreadContext をした後
-     WaitForDebugEvent にブレークポイントをセットしたが, ここでウォッチポイントを
-     検出しているわけではなさそう.
+     ログのポイントとなる部分に ★ を入れた
 
-ここにブレークポイントをセット
-
-(gdb) b breakpoint.c:10155
-(gdb) b breakpoint.c:10188
-これだとうまくいかない. 謎
-
-(gdb) b print_it_watchpoint
-これでうまくいった.
-
-(gdb) b watchpoint_check
-こっちがより近い.
-
-
-    Dr0, Dr6, Dr7 に値をセットしているが, これは見せかけなのかも. 以下のログを
-    参照. ★ にポイントを書いておいた.
-
-> /usr/local/bin/gdb gdb.exe -q
-Reading symbols from gdb.exe...
+> /usr/local/bin/gdb gdb -q
+Reading symbols from gdb...
 warning: File "/cygdrive/d/home/khasegawa/gdb-10.1/gdb/gdb-gdb.gdb" auto-loading has been declined by your `auto-load safe-path' set to "$debugdir:$datadir/auto-load".
 To enable execution of this file add
 	add-auto-load-safe-path /cygdrive/d/home/khasegawa/gdb-10.1/gdb/gdb-gdb.gdb
@@ -470,20 +455,58 @@ line to your configuration file "/cygdrive/d/home/khasegawa/.gdbinit".
 For more information about this security protection see the
 "Auto-loading safe path" section in the GDB manual.  E.g., run from the shell:
 	info "(gdb)Auto-loading safe path"
-(gdb) b windows-nat.c:1487           ★ 問題の場所にブレークポイントをセット
+(gdb) so x
+[New Thread 7856.0x47cc]
+[New Thread 7856.0x2e84]
+[New Thread 7856.0x4a5c]
+[New Thread 7856.0x4ba0]
+[New Thread 7856.0x19e0]
+[New Thread 7856.0x4128]
+Reading symbols from a.exe...
+[New Thread 9280.0x1f6c]
+[New Thread 9280.0x2178]
+[New Thread 9280.0x430c]
+
+Thread 1 "a" received signal SIGTRAP, Trace/breakpoint trap.
+main () at a.c:8
+8	  puts("start");
+Hardware watchpoint 1: my_array[1000]
+
+Thread 1 "a" hit Hardware watchpoint 1: my_array[1000]
+
+Old value = 0
+New value = 1000
+main () at a.c:10
+10	  for (int i = 0 ; i != sizeof my_array/sizeof my_array[0] ; ++i)
+start
+&my_array[1000] = 0x100408140
+end
+[Thread 9280.0x430c exited with code 0]
+[Thread 9280.0x40b4 exited with code 0]
+[Thread 9280.0x2178 exited with code 0]
+[Inferior 1 (process 9280) exited normally]
+[Thread 7856.0x3d90 exited with code 0]
+[Thread 7856.0x4ba0 exited with code 0]
+[Thread 7856.0x4128 exited with code 0]
+[Thread 7856.0x19e0 exited with code 0]
+[Thread 7856.0x4a5c exited with code 0]
+[Thread 7856.0x2e84 exited with code 0]
+[Inferior 1 (process 7856) exited normally]    ★ まずはこれまでの動作を確認
+(gdb) b windows-nat.c:1487              ★ 例の場所にブレークポイントをセット
 Breakpoint 1 at 0x1007746d7: file windows-nat.c, line 1487.
 (gdb) c
 The program is not being run.
 (gdb) so x
-[New Thread 3036.0x42c8]
-[New Thread 3036.0x1804]
-[New Thread 3036.0x2648]
-[New Thread 3036.0x4564]
-[New Thread 3036.0x2c08]
+[New Thread 7456.0xa10]
+[New Thread 7456.0x3f44]
+[New Thread 7456.0x119c]
+[New Thread 7456.0x2538]
+[New Thread 7456.0x4420]
+[New Thread 7456.0x4838]
 Reading symbols from a.exe...
-[New Thread 10220.0x3444]
-[New Thread 10220.0x2d5c]
-[New Thread 10220.0x3af0]
+[New Thread 18548.0x3f10]
+[New Thread 18548.0x2604]
+[New Thread 18548.0x471c]
 
 Thread 1 "a" received signal SIGTRAP, Trace/breakpoint trap.
 main () at a.c:8
@@ -493,142 +516,334 @@ Hardware watchpoint 1: my_array[1000]
 Thread 1 "gdb" hit Breakpoint 1, windows_nat_target::resume (
     this=0x100b3e450 <the_windows_nat_target>, ptid=..., step=0, 
     sig=GDB_SIGNAL_0) at windows-nat.c:1487
-1487			  th->context.Dr7 = dr[7];   ★ 来ている.
-(gdb) b execute_command            ★ スクリプトに書いた c コマンドを捉える.
-Breakpoint 2 at 0x10072e3c2: file top.c, line 562.
+1487			  th->context.Dr7 = dr[7];
+(gdb) b watchpoint_check
+★ おそらくこの函数が呼ばれた時点ではウォッチポイントのイベントがきている
+
+Breakpoint 2 at 0x100460342: file breakpoint.c, line 4783.
+(gdb) Note: breakpoint 2 also set at pc 0x100460342.
+Breakpoint 3 at 0x100460342: file breakpoint.c, line 4783.
+(gdb) b wait_sync_command_done
+★ おそらくこの函数が呼ばれた時点ではウォッチポイントのイベントはまだきていない
+Breakpoint 4 at 0x10072e2da: file top.c, line 523.
 (gdb) c
 Continuing.
-[New Thread 3036.0x368c]
-[New Thread 10220.0x3918]
+[New Thread 7456.0x4a64]
 
-Thread 1 "a" hit Hardware watchpoint 1: my_array[1000]
-
-Old value = 0
-New value = 1000
-main () at a.c:10
-10	  for (int i = 0 ; i != sizeof my_array/sizeof my_array[0] ; ++i)
-
-Thread 1 "gdb" hit Breakpoint 2, execute_command (p=0x8001632a0 "c", 
-    from_tty=0) at top.c:562
-562	  const char *cmd_start = p;            ★ c コマンドにきた.
-(gdb) so y                            ★ そこで Win32API にブレークポイントをセット
-Breakpoint 3 at 0x7ffbcb2a4fb4 (2 locations)
-Breakpoint 4 at 0x7ffbcb3547dc (2 locations)
-Breakpoint 5 at 0x7ffbcb2a478f (2 locations)
-Breakpoint 6 at 0x7ffbcb2d9147 (2 locations)
-Breakpoint 7 at 0x7ffbcb35483a (2 locations)
-Breakpoint 8 at 0x7ffbcb2ce510 (2 locations)
-Breakpoint 9 at 0x7ffbcb32ce69 (2 locations)
-Breakpoint 10 at 0x7ffbcb278879 (2 locations)
-Breakpoint 11 at 0x7ffbcb2c8800 (2 locations)
-Breakpoint 12 at 0x7ffbcb2db826 (2 locations)
-Breakpoint 13 at 0x7ffbcb2aa300 (2 locations)
-Breakpoint 14 at 0x7ffbcb2ca4e6 (2 locations)
-Breakpoint 15 at 0x7ffbcb2889af (2 locations)
-Breakpoint 16 at 0x7ffbcb2daafa (2 locations)
-Breakpoint 17 at 0x7ffbcb2cdc46 (2 locations)
-Breakpoint 18 at 0x7ffbcb35a6ea (2 locations)
-Breakpoint 19 at 0x7ffbcb2dee44 (2 locations)
-Breakpoint 20 at 0x7ffbcd63f394
-Breakpoint 21 at 0x7ffbcb2d4136 (2 locations)
-Breakpoint 22 at 0x7ffbcb2d1c9f (2 locations)
-Breakpoint 23 at 0x7ffbcb29fd17 (2 locations)
-Breakpoint 24 at 0x7ffbcb2c3584 (2 locations)
-Breakpoint 25 at 0x7ffbcb2da204 (2 locations)
-Breakpoint 26 at 0x7ffbcb2d44fa (2 locations)
-Breakpoint 27 at 0x7ffbcb2cee66 (2 locations)
-Breakpoint 28 at 0x7ffbcb2c4434 (2 locations)
-Breakpoint 29 at 0x7ffbcb357af4 (2 locations)
-Breakpoint 30 at 0x7ffbcb2de7b4 (2 locations)
-Breakpoint 31 at 0x7ffbcb2df15a (2 locations)
-Breakpoint 32 at 0x7ffbcb354b30 (2 locations)
-Breakpoint 33 at 0x7ffbcb2a9040 (2 locations)
-Breakpoint 34 at 0x7ffbcb352f89 (2 locations)
+Thread 1 "gdb" hit Breakpoint 4, wait_sync_command_done () at top.c:523
+523	  scoped_restore save_ui = make_scoped_restore (&current_ui);
+(gdb) so y　　 ★ そこで可能性のある Win32API にブレークポイントをセット
+Breakpoint 5 at 0x7ffbcb2a4fb4 (2 locations)
+Breakpoint 6 at 0x7ffbcb3547dc (2 locations)
+Breakpoint 7 at 0x7ffbcb2a478f (2 locations)
+Breakpoint 8 at 0x7ffbcb2d9147 (2 locations)
+Breakpoint 9 at 0x7ffbcb35483a (2 locations)
+Breakpoint 10 at 0x7ffbcb2ce510 (2 locations)
+Breakpoint 11 at 0x7ffbcb32ce69 (2 locations)
+Breakpoint 12 at 0x7ffbcb278879 (2 locations)
+Breakpoint 13 at 0x7ffbcb2c8800 (2 locations)
+Breakpoint 14 at 0x7ffbcb2db826 (2 locations)
+Breakpoint 15 at 0x7ffbcb2aa300 (2 locations)
+Breakpoint 16 at 0x7ffbcb2ca4e6 (2 locations)
+Breakpoint 17 at 0x7ffbcb2889af (2 locations)
+Breakpoint 18 at 0x7ffbcb2daafa (2 locations)
+Breakpoint 19 at 0x7ffbcb2cdc46 (2 locations)
+Breakpoint 20 at 0x7ffbcb35a6ea (2 locations)
+Breakpoint 21 at 0x7ffbcb2dee44 (2 locations)
+Breakpoint 22 at 0x7ffbcd63f394
+Breakpoint 23 at 0x7ffbcb2d4136 (2 locations)
+Breakpoint 24 at 0x7ffbcb2d1c9f (2 locations)
+Breakpoint 25 at 0x7ffbcb29fd17 (2 locations)
+Breakpoint 26 at 0x7ffbcb2c3584 (2 locations)
+Breakpoint 27 at 0x7ffbcb2da204 (2 locations)
+Breakpoint 28 at 0x7ffbcb2d44fa (2 locations)
+Breakpoint 29 at 0x7ffbcb2cee66 (2 locations)
+Breakpoint 30 at 0x7ffbcb2c4434 (2 locations)
+Breakpoint 31 at 0x7ffbcb357af4 (2 locations)
+Breakpoint 32 at 0x7ffbcb2de7b4 (2 locations)
+Breakpoint 33 at 0x7ffbcb2df15a (2 locations)
+Breakpoint 34 at 0x7ffbcb354b30 (2 locations)
+Breakpoint 35 at 0x7ffbcb2a9040 (2 locations)
+Breakpoint 36 at 0x7ffbcb352f89 (2 locations)
 (gdb) c
 Continuing.
 
-Thread 1 "gdb" hit Breakpoint 24, 0x00007ffbcd5f9680 in ReadProcessMemory ()
+Thread 1 "gdb" hit Breakpoint 15, 0x00007ffbcd5f5200 in KERNEL32!GetLastError
+    () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 15, 0x00007ffbcb2aa300 in KERNELBASE!GetLastError () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 30, 0x00007ffbcd600e30 in SetEvent ()
    from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
-     ★ そして最初に呼ばれたのは ReadMemory
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 30, 0x00007ffbcb2c4434 in SetEvent ()
+   from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 15, 0x00007ffbcd5f5200 in KERNEL32!GetLastError
+    () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 15, 0x00007ffbcb2aa300 in KERNELBASE!GetLastError () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 5, 0x00007ffbcd600c90 in KERNEL32!CloseHandle ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 5, 0x00007ffbcb2a4fb4 in KERNELBASE!CloseHandle
+    () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 28, 0x00007ffbcd601700 in SetConsoleCtrlHandler
+    () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 28, 0x00007ffbcb2d44fa in SetConsoleCtrlHandler
+    () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 34, 0x00007ffbcd615f40 in WaitForDebugEvent ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 34, 0x00007ffbcb354b30 in WaitForDebugEvent ()
+   from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 21, 0x00007ffbcd5fdff0 in KERNEL32!GetThreadContext () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 21, 0x00007ffbcb2dee44 in KERNELBASE!GetThreadContext () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 31, 0x00007ffbcd615e40 in SetThreadContext ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 31, 0x00007ffbcb357af4 in SetThreadContext ()
+   from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 28, 0x00007ffbcd601700 in SetConsoleCtrlHandler
+    () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 28, 0x00007ffbcb2d44fa in SetConsoleCtrlHandler
+    () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 21, 0x00007ffbcd5fdff0 in KERNEL32!GetThreadContext () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 21, 0x00007ffbcb2dee44 in KERNELBASE!GetThreadContext () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 31, 0x00007ffbcd615e40 in SetThreadContext ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 31, 0x00007ffbcb357af4 in SetThreadContext ()
+   from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 6, 0x00007ffbcd614c10 in KERNEL32!ContinueDebugEvent () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 6, 0x00007ffbcb3547dc in KERNELBASE!ContinueDebugEvent () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 15, 0x00007ffbcd5f5200 in KERNEL32!GetLastError
+    () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 15, 0x00007ffbcb2aa300 in KERNELBASE!GetLastError () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 30, 0x00007ffbcd600e30 in SetEvent ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 30, 0x00007ffbcb2c4434 in SetEvent ()
+   from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 15, 0x00007ffbcd5f5200 in KERNEL32!GetLastError
+    () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 15, 0x00007ffbcb2aa300 in KERNELBASE!GetLastError () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+[New Thread 18548.0x32f4]
+
+Thread 1 "gdb" hit Breakpoint 5, 0x00007ffbcd600c90 in KERNEL32!CloseHandle ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 5, 0x00007ffbcb2a4fb4 in KERNELBASE!CloseHandle
+    () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 28, 0x00007ffbcd601700 in SetConsoleCtrlHandler
+    () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 28, 0x00007ffbcb2d44fa in SetConsoleCtrlHandler
+    () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 34, 0x00007ffbcd615f40 in WaitForDebugEvent ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 34, 0x00007ffbcb354b30 in WaitForDebugEvent ()
+   from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 28, 0x00007ffbcd601700 in SetConsoleCtrlHandler
+    () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 28, 0x00007ffbcb2d44fa in SetConsoleCtrlHandler
+    () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 21, 0x00007ffbcd5fdff0 in KERNEL32!GetThreadContext () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 21, 0x00007ffbcb2dee44 in KERNELBASE!GetThreadContext () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+[Switching to Thread 7456.0x4a64]
+
+Thread 8 hit Breakpoint 15, 0x00007ffbcb2aa300 in KERNELBASE!GetLastError ()
+   from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 8 hit Breakpoint 13, 0x00007ffbcd600c30 in KERNEL32!GetCurrentProcess
+    () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 8 hit Breakpoint 13, 0x00007ffbcb2c8800 in KERNELBASE!GetCurrentProcess
+    () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+[Switching to Thread 7456.0x4384]
+
+Thread 1 "gdb" hit Breakpoint 2, watchpoint_check (bs=0x800295ac0)
+    at breakpoint.c:4783
+4783	  gdb_assert (bs->breakpoint_at != NULL);
+★ おそらくこの時点でウォッチポイントのイベントはきている
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 26, 0x00007ffbcd5f9680 in ReadProcessMemory ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
 (gdb) up
-#1  0x00000001007772ec in windows_xfer_memory (readbuf=0x8006328e0 "", 
-    writebuf=0x0, memaddr=4299194688, len=4, xfered_len=0xffffbc18)
+#1  0x00000001007772ec in windows_xfer_memory (readbuf=0x8001edf80 "", 
+    writebuf=0x0, memaddr=4299194688, len=4, xfered_len=0xffffba68)
     at windows-nat.c:3080
 3080	      success = ReadProcessMemory (current_process_handle,
 (gdb) p/x memaddr
-$1 = 0x100408140  ★ これはウォッチポイントのアドレス
-(gdb) where
-#0  0x00007ffbcd5f9680 in ReadProcessMemory ()
-   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
-#1  0x00000001007772ec in windows_xfer_memory (readbuf=0x8006328e0 "", 
-    writebuf=0x0, memaddr=4299194688, len=4, xfered_len=0xffffbc18)
-    at windows-nat.c:3080
-#2  0x0000000100777a1a in windows_nat_target::xfer_partial (
-    this=0x100b3e450 <the_windows_nat_target>, object=TARGET_OBJECT_MEMORY, 
-    annex=0x0, readbuf=0x8006328e0 "", writebuf=0x0, offset=4299194688, 
-    len=4, xfered_len=0xffffbc18) at windows-nat.c:3226
-#3  0x0000000100711249 in raw_memory_xfer_partial (
-    ops=0x100b3e450 <the_windows_nat_target>, readbuf=0x8006328e0 "", 
-    writebuf=0x0, memaddr=4299194688, len=4, xfered_len=0xffffbc18)
-    at target.c:918
-#4  0x000000010071165c in memory_xfer_partial_1 (
-    ops=0x100b3e450 <the_windows_nat_target>, object=TARGET_OBJECT_MEMORY, 
-    readbuf=0x8006328e0 "", writebuf=0x0, memaddr=4299194688, len=4, 
-    xfered_len=0xffffbc18) at target.c:1055
-#5  0x00000001007116f1 in memory_xfer_partial (
-    ops=0x100b3e450 <the_windows_nat_target>, object=TARGET_OBJECT_MEMORY, 
-    readbuf=0x8006328e0 "", writebuf=0x0, memaddr=4299194688, len=4, 
-    xfered_len=0xffffbc18) at target.c:1084
-#6  0x0000000100711992 in target_xfer_partial (
-    ops=0x100b3e450 <the_windows_nat_target>, object=TARGET_OBJECT_MEMORY, 
-    annex=0x0, readbuf=0x8006328e0 "", writebuf=0x0, offset=4299194688, 
-    len=4, xfered_len=0xffffbc18) at target.c:1141
-#7  0x0000000100757265 in read_value_memory (val=0x800632820, bit_offset=0, 
-    stack=0, memaddr=4299194688, buffer=0x8006328e0 "", length=4)
-    at valops.c:956
-#8  0x000000010076cbec in value_fetch_lazy_memory (val=0x800632820)
-    at value.c:3784
-#9  0x000000010076d2e4 in value_fetch_lazy (val=0x800632820) at value.c:3930
-#10 0x000000010056589b in fetch_subexp_value (exp=0x800682dc0, pc=0xffffbe34, 
-    valp=0xffffbe08, resultp=0xffffbe00, val_chain=0xffffbe10, 
-    preserve_errors=0) at eval.c:239
-#11 0x0000000100459e4e in update_watchpoint (b=0x8004825f0, reparse=0)
-    at breakpoint.c:1792
-#12 0x000000010045c2c3 in insert_breakpoints () at breakpoint.c:2813
-#13 0x00000001005ef9d1 in keep_going_pass_signal (ecs=0xffffc1f0)
-    at infrun.c:7864
-#14 0x00000001005e41e9 in proceed (addr=18446744073709551615, 
-    siggnal=GDB_SIGNAL_DEFAULT) at infrun.c:3138
-#15 0x00000001005d4dc5 in continue_1 (all_threads=0) at infcmd.c:675
-#16 0x00000001005d5057 in continue_command (args=0x0, from_tty=0)
-    at infcmd.c:767
-#17 0x00000001004a87c8 in do_const_cfunc (c=0x8000c5e50, args=0x0, from_tty=0)
-    at cli/cli-decode.c:95
-#18 0x00000001004abfda in cmd_func (cmd=0x8000c5e50, args=0x0, from_tty=0)
-    at cli/cli-decode.c:2181
-#19 0x000000010072e8b0 in execute_command (p=0x8001632a1 "", from_tty=0)
-    at top.c:668
-#20 0x0000000100570375 in command_handler (command=0x8001632a0 "c")
-    at event-top.c:588
-#21 0x000000010072e1ab in read_command_file (stream=0x8000817d8) at top.c:447
-#22 0x00000001004b5b20 in script_from_file (stream=0x8000817d8, 
-    file=0xffffcc80 "debugged-gdbcom") at cli/cli-script.c:1622
-#23 0x00000001004a1e4a in source_script_from_stream (stream=0x8000817d8, 
-    file=0xffffcc80 "debugged-gdbcom", 
-    file_to_open=0xffffcc80 "debugged-gdbcom") at cli/cli-cmds.c:700
-#24 0x00000001004a1f22 in source_script_with_search (
-    file=0xffffcc80 "debugged-gdbcom", from_tty=1, search_path=0)
-    at cli/cli-cmds.c:736
-#25 0x00000001004a1f7d in source_script (file=0xffffcc80 "debugged-gdbcom", 
-    from_tty=1) at cli/cli-cmds.c:746
-#26 0x00000001006161dc in catch_command_errors (
-    command=0x1004a1f5a <source_script(char const*, int)>, 
-    arg=0xffffcc80 "debugged-gdbcom", from_tty=1) at main.c:457
-#27 0x000000010061774f in captured_main_1 (context=0xffffcbb0) at main.c:1214
-#28 0x000000010061795c in captured_main (data=0xffffcbb0) at main.c:1243
-#29 0x00000001006179c7 in gdb_main (args=0xffffcbb0) at main.c:1268
-#30 0x00000001004010d0 in main (argc=5, argv=0xffffcc20) at gdb.c:32
+$1 = 0x100408140
+★ メモリアクセスはウォッチポイントのアドレス. そこを読みだしている.
 (gdb)
 
-このログをどう判断するかが問題だが, SetThreadContext でセットした Dr0, Dr6, Dr7
-は本当に必要だったのか疑問.
+(*9) SetEvent, WaitForSingleObject かと思ったが, そもそも (*8) のログでは
+     WaitForSingleObject は呼び出されていない.
+     もっと言えば b windows-nat.c:1487 のブレークポイントから watchpoint_check
+     まで一度も WaitForSingleObject はきていない.
+
+(*10) WaitForDebugEvent かと思ったが, 
+wait_sync_command_done と watchpoint_check との間で 2 回呼び出されている.
+
+1 回目 : これは CREATE_THREAD_DEBUG_EVENT
+dwDebugEventCode = 2(CREATE_THREAD_DEBUG_EVENT)
+
+(gdb) p/x *event
+$10 = {dwDebugEventCode = 0x2, dwProcessId = 0x394c, dwThreadId = 0x3e74, 
+  u = {Exception = {ExceptionRecord = {ExceptionCode = 0x368, 
+        ExceptionFlags = 0x0, ExceptionRecord = 0x30e000, 
+        ExceptionAddress = 0x7ffbceda6330, NumberParameters = 0x1, 
+        ExceptionInformation = {0x0 <repeats 15 times>}}, 
+      dwFirstChance = 0x1}, CreateThread = {hThread = 0x368, 
+      lpThreadLocalBase = 0x30e000, lpStartAddress = 0x7ffbceda6330}, 
+    CreateProcessInfo = {hFile = 0x368, hProcess = 0x30e000, 
+      hThread = 0x7ffbceda6330, lpBaseOfImage = 0x1, 
+      dwDebugInfoFileOffset = 0x0, nDebugInfoSize = 0x0, 
+      lpThreadLocalBase = 0x0, lpStartAddress = 0x0, lpImageName = 0x0, 
+      fUnicode = 0x0}, ExitThread = {dwExitCode = 0x368}, ExitProcess = {
+      dwExitCode = 0x368}, LoadDll = {hFile = 0x368, lpBaseOfDll = 0x30e000, 
+      dwDebugInfoFileOffset = 0xceda6330, nDebugInfoSize = 0x7ffb, 
+      lpImageName = 0x1, fUnicode = 0x0}, UnloadDll = {lpBaseOfDll = 0x368}, 
+    DebugString = {lpDebugStringData = 0x368, fUnicode = 0xe000, 
+      nDebugStringLength = 0x30}, RipInfo = {dwError = 0x368, dwType = 0x0}}}
+
+2 回目: これはシングルステップ (0x80000004)
+dwDebugEventCode = 1 (EXCEPTION_DEBUG_EVENT)
+(gdb) p/x *event
+$11 = {dwDebugEventCode = 0x1, dwProcessId = 0x394c, dwThreadId = 0x233c, 
+  u = {Exception = {ExceptionRecord = {ExceptionCode = 0x80000004, 
+        ExceptionFlags = 0x0, ExceptionRecord = 0x0, 
+        ExceptionAddress = 0x1004010d0, NumberParameters = 0x0, 
+        ExceptionInformation = {0x0 <repeats 15 times>}}, 
+      dwFirstChance = 0x1}, CreateThread = {hThread = 0x80000004, 
+      lpThreadLocalBase = 0x0, lpStartAddress = 0x1004010d0}, 
+    CreateProcessInfo = {hFile = 0x80000004, hProcess = 0x0, 
+      hThread = 0x1004010d0, lpBaseOfImage = 0x0, 
+      dwDebugInfoFileOffset = 0x0, nDebugInfoSize = 0x0, 
+      lpThreadLocalBase = 0x0, lpStartAddress = 0x0, lpImageName = 0x0, 
+      fUnicode = 0x0}, ExitThread = {dwExitCode = 0x80000004}, ExitProcess = {
+      dwExitCode = 0x80000004}, LoadDll = {hFile = 0x80000004, 
+      lpBaseOfDll = 0x0, dwDebugInfoFileOffset = 0x4010d0, 
+      nDebugInfoSize = 0x1, lpImageName = 0x0, fUnicode = 0x0}, UnloadDll = {
+      lpBaseOfDll = 0x80000004}, DebugString = {
+      lpDebugStringData = 0x80000004, fUnicode = 0x0, 
+      nDebugStringLength = 0x0}, RipInfo = {dwError = 0x80000004, 
+      dwType = 0x0}}}
+
+なのでこれじゃないんだよな.
