@@ -1,20 +1,20 @@
-cc1 ã‚’ -O2 ã‚ªãƒ—ã‚·ãƒ§ãƒ³ã§é«˜é€Ÿã«ãƒ“ãƒ«ãƒ‰ã—ç›´ã—ã¦ã“ã‚Œã ã‘ã‚¤ãƒ³ã‚¹ãƒˆãƒ¼ãƒ«ã™ã‚‹æ–¹æ³•
+cc1 ‚ð -O2 ƒIƒvƒVƒ‡ƒ“‚Å‚‘¬‚Éƒrƒ‹ƒh‚µ’¼‚µ‚Ä‚±‚ê‚¾‚¯ƒCƒ“ƒXƒg[ƒ‹‚·‚é•û–@
 
-(*1) ç¢ºå®Ÿãªæ–¹æ³•ã¯ã€Œlinux ã§ã® gcc 10.2.0 å†ã‚¤ãƒ³ã‚¹ãƒˆãƒ¼ãƒ«ãƒ¡ãƒ¢ã€ã‚’å‚ç…§.
-     ä½†ã—ã“ã‚Œã¯ãƒ•ãƒ«ãƒ“ãƒ«ãƒ‰ãªã®ã§ 12 æ™‚é–“ä½ã‹ã‹ã£ãŸã‚Šã™ã‚‹.
+(*1) ŠmŽÀ‚È•û–@‚Íulinux ‚Å‚Ì gcc 10.2.0 ÄƒCƒ“ƒXƒg[ƒ‹ƒƒ‚v‚ðŽQÆ.
+     ’A‚µ‚±‚ê‚Íƒtƒ‹ƒrƒ‹ƒh‚È‚Ì‚Å 12 ŽžŠÔˆÊ‚©‚©‚Á‚½‚è‚·‚é.
 
-     ã—ã‹ã‚‚ä¸€æ—¦ -O0 ãƒ“ãƒ«ãƒ‰ã—ã¦ã„ã‚‹ã‚‚ã®ã‚’ -O2 ãƒ“ãƒ«ãƒ‰ã—ã¦, å†ã³
-     -O0 ãƒ“ãƒ«ãƒ‰ã™ã‚‹ã¨ã„ã†ã®ã¯ã™ã”ãæ®‹å¿µ.
+     ‚µ‚©‚àˆê’U -O0 ƒrƒ‹ƒh‚µ‚Ä‚¢‚é‚à‚Ì‚ð -O2 ƒrƒ‹ƒh‚µ‚Ä, Ä‚Ñ
+     -O0 ƒrƒ‹ƒh‚·‚é‚Æ‚¢‚¤‚Ì‚Í‚·‚²‚­Žc”O.
 
 % gcc -### /tmp/a.c
 
-ã¨ã™ã‚Œã°ã©ã® cc1 ã‚’èµ·å‹•ã—ã¦ã„ã‚‹ã‹åˆ†ã‹ã‚‹. è‡ªåˆ†ã® gcc ã®å ´åˆã¯
+‚Æ‚·‚ê‚Î‚Ç‚Ì cc1 ‚ð‹N“®‚µ‚Ä‚¢‚é‚©•ª‚©‚é. Ž©•ª‚Ì gcc ‚Ìê‡‚Í
 
  /home/khasegawa/gcc-10.2.0/usr/local/bin/../libexec/gcc/i686-pc-linux-gnu/10.2.0/cc1
 
-ã§ã‚ã£ãŸ. ã“ã‚Œã ã‘ã‚’æœ€å¾Œã«ä¸Šæ›¸ãã™ã‚‹.
+‚Å‚ ‚Á‚½. ‚±‚ê‚¾‚¯‚ðÅŒã‚Éã‘‚«‚·‚é.
 
-(*2) -O2 ãƒ“ãƒ«ãƒ‰ã®ãƒ­ã‚°ã‚’ perl ã‚¹ã‚¯ãƒªãƒ—ãƒˆã§èª­ã¿è¾¼ã‚“ã§ã¿ãŸ.
+(*2) -O2 ƒrƒ‹ƒh‚ÌƒƒO‚ð perl ƒXƒNƒŠƒvƒg‚Å“Ç‚Ýž‚ñ‚Å‚Ý‚½.
 > cat pick.pl
 while ( <> ) {
     chop;
@@ -23,23 +23,23 @@ while ( <> ) {
     }
 }
 > perl pick.pl make.log.2021.03.26
-ã¨ã™ã‚‹ã¨ 3 è¡Œãƒžãƒƒãƒã—ãŸ.
+‚Æ‚·‚é‚Æ 3 sƒ}ƒbƒ`‚µ‚½.
 g++ -std=gnu++98 -no-pie   -g -DIN_GCC     -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wno-format -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings -fno-common  -DHAVE_CONFIG_H -static-libstdc++ -static-libgcc  -o cc1 c/c-lang.o c-family/stub-objc.o attribs.o c/c-errors.o c/c-decl.o c/c-typeck.o c/c-convert.o c/c-aux-info.o c/c-objc-common.o c/c-parser.o c/c-fold.o c/gimple-parser.o c-family/c-common.o c-family/c-cppbuiltin.o c-family/c-dump.o c-family/c-format.o c-family/c-gimplify.o c-family/c-indentation.o c-family/c-lex.o c-family/c-omp.o c-family/c-opts.o c-family/c-pch.o c-family/c-ppoutput.o c-family/c-pragma.o c-family/c-pretty-print.o c-family/c-semantics.o c-family/c-ada-spec.o c-family/c-ubsan.o c-family/known-headers.o c-family/c-attribs.o c-family/c-warn.o c-family/c-spellcheck.o i386-c.o glibc-c.o \
 /home/khasegawa/gcc-10.2.0/host-i686-pc-linux-gnu/prev-gcc/xg++ -B/home/khasegawa/gcc-10.2.0/host-i686-pc-linux-gnu/prev-gcc/ -B/usr/local/i686-pc-linux-gnu/bin/ -nostdinc++ -B/home/khasegawa/gcc-10.2.0/prev-i686-pc-linux-gnu/libstdc++-v3/src/.libs -B/home/khasegawa/gcc-10.2.0/prev-i686-pc-linux-gnu/libstdc++-v3/libsupc++/.libs  -I/home/khasegawa/gcc-10.2.0/prev-i686-pc-linux-gnu/libstdc++-v3/include/i686-pc-linux-gnu  -I/home/khasegawa/gcc-10.2.0/prev-i686-pc-linux-gnu/libstdc++-v3/include  -I/home/khasegawa/gcc-10.2.0/libstdc++-v3/libsupc++ -L/home/khasegawa/gcc-10.2.0/prev-i686-pc-linux-gnu/libstdc++-v3/src/.libs -L/home/khasegawa/gcc-10.2.0/prev-i686-pc-linux-gnu/libstdc++-v3/libsupc++/.libs -no-pie   -g -O2 -fno-checking -gtoggle -DIN_GCC     -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H -static-libstdc++ -static-libgcc  -o cc1 c/c-lang.o c-family/stub-objc.o attribs.o c/c-errors.o c/c-decl.o c/c-typeck.o c/c-convert.o c/c-aux-info.o c/c-objc-common.o c/c-parser.o c/c-fold.o c/gimple-parser.o c-family/c-common.o c-family/c-cppbuiltin.o c-family/c-dump.o c-family/c-format.o c-family/c-gimplify.o c-family/c-indentation.o c-family/c-lex.o c-family/c-omp.o c-family/c-opts.o c-family/c-pch.o c-family/c-ppoutput.o c-family/c-pragma.o c-family/c-pretty-print.o c-family/c-semantics.o c-family/c-ada-spec.o c-family/c-ubsan.o c-family/known-headers.o c-family/c-attribs.o c-family/c-warn.o c-family/c-spellcheck.o i386-c.o glibc-c.o \
 /home/khasegawa/gcc-10.2.0/host-i686-pc-linux-gnu/prev-gcc/xg++ -B/home/khasegawa/gcc-10.2.0/host-i686-pc-linux-gnu/prev-gcc/ -B/usr/local/i686-pc-linux-gnu/bin/ -nostdinc++ -B/home/khasegawa/gcc-10.2.0/prev-i686-pc-linux-gnu/libstdc++-v3/src/.libs -B/home/khasegawa/gcc-10.2.0/prev-i686-pc-linux-gnu/libstdc++-v3/libsupc++/.libs  -I/home/khasegawa/gcc-10.2.0/prev-i686-pc-linux-gnu/libstdc++-v3/include/i686-pc-linux-gnu  -I/home/khasegawa/gcc-10.2.0/prev-i686-pc-linux-gnu/libstdc++-v3/include  -I/home/khasegawa/gcc-10.2.0/libstdc++-v3/libsupc++ -L/home/khasegawa/gcc-10.2.0/prev-i686-pc-linux-gnu/libstdc++-v3/src/.libs -L/home/khasegawa/gcc-10.2.0/prev-i686-pc-linux-gnu/libstdc++-v3/libsupc++/.libs -no-pie   -g -O2 -fchecking=1 -DIN_GCC     -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H -static-libstdc++ -static-libgcc  -o cc1 c/c-lang.o c-family/stub-objc.o attribs.o c/c-errors.o c/c-decl.o c/c-typeck.o c/c-convert.o c/c-aux-info.o c/c-objc-common.o c/c-parser.o c/c-fold.o c/gimple-parser.o c-family/c-common.o c-family/c-cppbuiltin.o c-family/c-dump.o c-family/c-format.o c-family/c-gimplify.o c-family/c-indentation.o c-family/c-lex.o c-family/c-omp.o c-family/c-opts.o c-family/c-pch.o c-family/c-ppoutput.o c-family/c-pragma.o c-family/c-pretty-print.o c-family/c-semantics.o c-family/c-ada-spec.o c-family/c-ubsan.o c-family/known-headers.o c-family/c-attribs.o c-family/c-warn.o c-family/c-spellcheck.o i386-c.o glibc-c.o \
 > 
 
-ã”ã¡ã‚ƒã”ã¡ã‚ƒã—ã¦ã„ã‚‹. 1 ã¤ç›®ã¯ g++ 
-2 ã¤ç›®ã¯
+‚²‚¿‚á‚²‚¿‚á‚µ‚Ä‚¢‚é. 1 ‚Â–Ú‚Í g++ 
+2 ‚Â–Ú‚Í
 /home/khasegawa/gcc-10.2.0/host-i686-pc-linux-gnu/prev-gcc/xg++
-3 ã¤ç›®ã¯
+3 ‚Â–Ú‚Í
 /home/khasegawa/gcc-10.2.0/host-i686-pc-linux-gnu/prev-gcc/xg++
-ã§ã‚ã‚‹.
+‚Å‚ ‚é.
 
-ã•ã‚‰ã«ã©ã®è¡Œã‚‚  \
-ã§æ¬¡ã®è¡Œã«ç¶šã„ã¦ã„ã‚‹ãŒ, ãã®å…ˆã®è¡Œã¯ç„¡è¦–ã•ã‚Œã¦ã„ã‚‹.
+‚³‚ç‚É‚Ç‚Ìs‚à  \
+‚ÅŽŸ‚Ìs‚É‘±‚¢‚Ä‚¢‚é‚ª, ‚»‚Ìæ‚Ìs‚Í–³Ž‹‚³‚ê‚Ä‚¢‚é.
 
-(*3) ä»¥ä¸‹ã®ã‚ˆã†ã«ä¿®æ­£ã—ãŸ
+(*3) ˆÈ‰º‚Ì‚æ‚¤‚ÉC³‚µ‚½
 > cat pick.pl
 while ( <> ) {
     chop;
@@ -60,11 +60,11 @@ end_label:
 g++ -std=gnu++98 -no-pie   -g -DIN_GCC     -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wno-format -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings -fno-common  -DHAVE_CONFIG_H -static-libstdc++ -static-libgcc  -o cc1 c/c-lang.o c-family/stub-objc.o attribs.o c/c-errors.o c/c-decl.o c/c-typeck.o c/c-convert.o c/c-aux-info.o c/c-objc-common.o c/c-parser.o c/c-fold.o c/gimple-parser.o c-family/c-common.o c-family/c-cppbuiltin.o c-family/c-dump.o c-family/c-format.o c-family/c-gimplify.o c-family/c-indentation.o c-family/c-lex.o c-family/c-omp.o c-family/c-opts.o c-family/c-pch.o c-family/c-ppoutput.o c-family/c-pragma.o c-family/c-pretty-print.o c-family/c-semantics.o c-family/c-ada-spec.o c-family/c-ubsan.o c-family/known-headers.o c-family/c-attribs.o c-family/c-warn.o c-family/c-spellcheck.o i386-c.o glibc-c.o \
 	  cc1-checksum.o libbackend.a main.o libcommon-target.a libcommon.a ../libcpp/libcpp.a ../libdecnumber/libdecnumber.a libcommon.a ../libcpp/libcpp.a   ../libbacktrace/.libs/libbacktrace.a ../libiberty/libiberty.a ../libdecnumber/libdecnumber.a   -lmpc -lmpfr -lgmp -rdynamic -ldl  -L./../zlib -lz 
 >
-ã“ã‚Œã¯æœŸå¾…ã—ãŸçµæžœã§ã¯ã‚ã‚‹. -O2 ã®ã‚ªãƒ—ã‚·ãƒ§ãƒ³ãŒ (*2) ã® 2 ã¤ç›®ã‚„ 3 ã¤ç›®
-ã§ã¯æŒ‡å®šã•ã‚Œã¦ã„ã‚‹ã®ã«ã“ã‚Œã«ã¯ãªã„. ãƒªãƒ³ã‚¯ãªã®ã§ãªãã¦ã‚‚ã„ã„ãŒ, ãƒªãƒ³ã‚¯ã§ã¯
-ãªã„ã‚³ãƒ³ãƒ‘ã‚¤ãƒ«ã®å ´åˆã‚‚è€ƒãˆã¦, æŒ‡å®šã—ã§ãã‚‹ã‚ˆã†ã«ã—ãŸã»ã†ãŒã„ã„ã ã‚ã†.
+‚±‚ê‚ÍŠú‘Ò‚µ‚½Œ‹‰Ê‚Å‚Í‚ ‚é. -O2 ‚ÌƒIƒvƒVƒ‡ƒ“‚ª (*2) ‚Ì 2 ‚Â–Ú‚â 3 ‚Â–Ú
+‚Å‚ÍŽw’è‚³‚ê‚Ä‚¢‚é‚Ì‚É‚±‚ê‚É‚Í‚È‚¢. ƒŠƒ“ƒN‚È‚Ì‚Å‚È‚­‚Ä‚à‚¢‚¢‚ª, ƒŠƒ“ƒN‚Å‚Í
+‚È‚¢ƒRƒ“ƒpƒCƒ‹‚Ìê‡‚àl‚¦‚Ä, Žw’è‚µ‚Å‚«‚é‚æ‚¤‚É‚µ‚½‚Ù‚¤‚ª‚¢‚¢‚¾‚ë‚¤.
 
-(*4) ã•ã‚‰ã«æ”¹è‰¯
+(*4) ‚³‚ç‚É‰ü—Ç
 > cat pick.pl
 $target = $ARGV[0];
 shift @ARGV;
@@ -89,12 +89,12 @@ end_label:
 g++ -O2 -std=gnu++98 -no-pie   -g -DIN_GCC     -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wno-format -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings -fno-common  -DHAVE_CONFIG_H -static-libstdc++ -static-libgcc  -o cc1 c/c-lang.o c-family/stub-objc.o attribs.o c/c-errors.o c/c-decl.o c/c-typeck.o c/c-convert.o c/c-aux-info.o c/c-objc-common.o c/c-parser.o c/c-fold.o c/gimple-parser.o c-family/c-common.o c-family/c-cppbuiltin.o c-family/c-dump.o c-family/c-format.o c-family/c-gimplify.o c-family/c-indentation.o c-family/c-lex.o c-family/c-omp.o c-family/c-opts.o c-family/c-pch.o c-family/c-ppoutput.o c-family/c-pragma.o c-family/c-pretty-print.o c-family/c-semantics.o c-family/c-ada-spec.o c-family/c-ubsan.o c-family/known-headers.o c-family/c-attribs.o c-family/c-warn.o c-family/c-spellcheck.o i386-c.o glibc-c.o \
 	  cc1-checksum.o libbackend.a main.o libcommon-target.a libcommon.a ../libcpp/libcpp.a ../libdecnumber/libdecnumber.a libcommon.a ../libcpp/libcpp.a   ../libbacktrace/.libs/libbacktrace.a ../libiberty/libiberty.a ../libdecnumber/libdecnumber.a   -lmpc -lmpfr -lgmp -rdynamic -ldl  -L./../zlib -lz 
 
-æœŸå¾…ã—ãŸçµæžœã«ãªã£ã¦ã„ã‚‹.
-ãã“ã§ä»¥ä¸‹ã‚’å®Ÿè¡Œã—ã¦ã¿ãŸ:
+Šú‘Ò‚µ‚½Œ‹‰Ê‚É‚È‚Á‚Ä‚¢‚é.
+‚»‚±‚ÅˆÈ‰º‚ðŽÀs‚µ‚Ä‚Ý‚½:
 > perl pick.pl c/c-lang.o make.log.2021.03.26
 g++ -O2 -std=gnu++98 -fno-PIE -c  -DIN_GCC_FRONTEND -g -DIN_GCC     -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wno-format -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings -fno-common  -DHAVE_CONFIG_H -I. -Ic -I../.././gcc -I../.././gcc/c -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/bid -I../libdecnumber -I../.././gcc/../libbacktrace   -o c/c-lang.o -MT c/c-lang.o -MMD -MP -MF c/.deps/c-lang.TPo ../.././gcc/c/c-lang.c
 >
-ã“ã‚Œã‚‚ã§ãã¦ã„ã‚‹.
+‚±‚ê‚à‚Å‚«‚Ä‚¢‚é.
 > cat envoke
 #! /bin/csh -f
 
@@ -106,12 +106,12 @@ end
 > envoke
 ...
 >
-æ®‹å¿µã ãŒ libbackend.a ã«å¯¾ã™ã‚‹ã‚³ãƒžãƒ³ãƒ‰ãŒå‡ºã¦ã„ãªã„. ã“ã‚Œã¯
+Žc”O‚¾‚ª libbackend.a ‚É‘Î‚·‚éƒRƒ}ƒ“ƒh‚ªo‚Ä‚¢‚È‚¢. ‚±‚ê‚Í
 rm -f libbackend.a
 ar rcT libbackend.a ...
-ã®ã‚ˆã†ã«ä½œæˆã—ã¦ã„ã‚‹ã‹ã‚‰ã .
-ã¾ãŸè©²å½“ã™ã‚‹ã‚‚ã®ãŒãªã‹ã£ãŸå ´åˆã«ã¯ã‚¨ãƒ©ãƒ¼ã«ãªã‚‹ã‚ˆã†ã«ã—ãŸã„.
-envoke ã¨ pick.pl ã‚’ä»¥ä¸‹ã®ã‚ˆã†ã«ä¿®æ­£ã—ãŸ:
+‚Ì‚æ‚¤‚Éì¬‚µ‚Ä‚¢‚é‚©‚ç‚¾.
+‚Ü‚½ŠY“–‚·‚é‚à‚Ì‚ª‚È‚©‚Á‚½ê‡‚É‚ÍƒGƒ‰[‚É‚È‚é‚æ‚¤‚É‚µ‚½‚¢.
+envoke ‚Æ pick.pl ‚ðˆÈ‰º‚Ì‚æ‚¤‚ÉC³‚µ‚½:
 > cat envoke
 #! /bin/csh -f
 
@@ -144,13 +144,13 @@ end_label:
 exit 0;
 >
 
-ã“ã‚Œã§ä»¥ä¸‹ã®ã‚ˆã†ã«å®Ÿè¡Œã—ãŸ
+‚±‚ê‚ÅˆÈ‰º‚Ì‚æ‚¤‚ÉŽÀs‚µ‚½
 > ./envoke
 ...
 not found libbackend.a
 >
-æœŸå¾…é€šã‚Šã‚¨ãƒ©ãƒ¼ã—ã¦ã„ã‚‹.
-æ‹¡å¼µå­ a ã«å¯¾ã—ã¦ã¯ pick2.pl ã‚’ä½¿ç”¨ã™ã‚‹ã‚ˆã†ã«ã™ã‚‹:
+Šú‘Ò’Ê‚èƒGƒ‰[‚µ‚Ä‚¢‚é.
+Šg’£Žq a ‚É‘Î‚µ‚Ä‚Í pick2.pl ‚ðŽg—p‚·‚é‚æ‚¤‚É‚·‚é:
 > cat envoke
 #! /bin/csh -f
 
@@ -187,8 +187,8 @@ exit 0;
 >
 > ./envoke
 ...
-æœŸå¾…é€šã‚Šå‹•ä½œã—ã¦ã„ã‚‹. ä½†ã— envoke ã®ãƒªã‚¹ãƒˆã‹ã‚‰ libbacktrace.a ã¯å¦¥å”ã—ã¦
-å‰Šé™¤ã—ãŸ.
+Šú‘Ò’Ê‚è“®ì‚µ‚Ä‚¢‚é. ’A‚µ envoke ‚ÌƒŠƒXƒg‚©‚ç libbacktrace.a ‚Í‘Ã‹¦‚µ‚Ä
+íœ‚µ‚½.
 
 > cat envoke2
 #! /bin/csh -f
@@ -197,8 +197,8 @@ foreach target (gimple-match.o generic-match.o insn-attrtab.o insn-automata.o in
   perl pick.pl $target make.log.2021.03.26 || exit 1
 end
 > ./envoke2
-ã“ã‚Œã‚‚å•é¡Œãªã—. ã“ã®å‡ºåŠ›çµæžœã‚’ãã®ã¾ã¾å®Ÿè¡Œã™ã‚‹ã¨, ä»Šã‚ã‚‹ .o ãƒ•ã‚¡ã‚¤ãƒ«ã«
-ä¸Šæ›¸ãã—ã¦ã—ã¾ã†. ãªã®ã§ä»¥ä¸‹ã®ã‚ˆã†ã«ã—ãŸ.
+‚±‚ê‚à–â‘è‚È‚µ. ‚±‚Ìo—ÍŒ‹‰Ê‚ð‚»‚Ì‚Ü‚ÜŽÀs‚·‚é‚Æ, ¡‚ ‚é .o ƒtƒ@ƒCƒ‹‚É
+ã‘‚«‚µ‚Ä‚µ‚Ü‚¤. ‚È‚Ì‚ÅˆÈ‰º‚Ì‚æ‚¤‚É‚µ‚½.
 > cat pick.pl
 $target = $ARGV[0];
 shift @ARGV;
@@ -226,10 +226,10 @@ exit 0;
 > ./envok2 > envoke2_result
 > mkdir -p ~/O2_build/analyzer
 > cd ~/gcc-10.2.0/host-i686-pc-linux-gnu/gcc/
-> sh -vf ../../envoke2_result      # csh ã ã¨å•é¡ŒãŒèµ·ã“ã‚‹ã‚ˆã†ã .
+> sh -vf ../../envoke2_result      # csh ‚¾‚Æ–â‘è‚ª‹N‚±‚é‚æ‚¤‚¾.
 > cd ~/O2_build
 > ar rcT libbackend.a ...
-# æˆåŠŸ!
+# ¬Œ÷!
 
 > cd ~/gcc-10.2.0
 > cat envoke3
@@ -244,7 +244,7 @@ end
 > sh -vf ../../envoke3_result 
 
 
-ã“ã‚Œã‚’ç¹°ã‚Šè¿”ã—ã¦æœ€å¾Œã®ãƒªãƒ³ã‚¯
+‚±‚ê‚ðŒJ‚è•Ô‚µ‚ÄÅŒã‚ÌƒŠƒ“ƒN
 
 > g++ -O2 -std=gnu++98 -no-pie -g -DIN_GCC -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wno-format -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings -fno-common -DHAVE_CONFIG_H -static-libstdc++ -static-libgcc -o ~/O2_build/cc1 c/c-lang.o c-family/stub-objc.o attribs.o c/c-errors.o c/c-decl.o c/c-typeck.o c/c-convert.o c/c-aux-info.o c/c-objc-common.o c/c-parser.o c/c-fold.o c/gimple-parser.o c-family/c-common.o c-family/c-cppbuiltin.o c-family/c-dump.o c-family/c-format.o c-family/c-gimplify.o c-family/c-indentation.o c-family/c-lex.o c-family/c-omp.o c-family/c-opts.o c-family/c-pch.o c-family/c-ppoutput.o c-family/c-pragma.o c-family/c-pretty-print.o c-family/c-semantics.o c-family/c-ada-spec.o c-family/c-ubsan.o c-family/known-headers.o c-family/c-attribs.o c-family/c-warn.o c-family/c-spellcheck.o i386-c.o glibc-c.o cc1-checksum.o libbackend.a main.o libcommon-target.a libcommon.a libcpp.a libdecnumber.a libcommon.a libcpp.a libbacktrace.a libiberty.a libdecnumber.a libz.a -lmpc -lmpfr -lgmp -rdynamic -ldl 
 attribs.o: In function `sorted_attr_string(tree_node*)':
@@ -3131,15 +3131,15 @@ init-regs.o: In function `initialize_uninitialized_regs':
 /home/khasegawa/gcc-10.2.0/host-i686-pc-linux-gnu/gcc/../.././gcc/init-regs.c:108: undefined reference to `emit_move_insn(rtx_def*, rtx_def*)'
 dbgcnt.o: In function `dbg_cnt_process_opt(char const*)':
 dbgcnt.c:(.text+0x590): undefined reference to `gcc_qsort(void*, unsigned int, unsigned int, int (*)(void const*, void const*))'
-collect2: ã‚¨ãƒ©ãƒ¼: ld ã¯ã‚¹ãƒ†ãƒ¼ã‚¿ã‚¹ 1 ã§çµ‚äº†ã—ã¾ã—ãŸ
+collect2: ƒGƒ‰[: ld ‚ÍƒXƒe[ƒ^ƒX 1 ‚ÅI—¹‚µ‚Ü‚µ‚½
 > 
 
-ã‚¨ãƒ©ãƒ¼ã¯ gcc_qsort ãŒãªã„ã¨ã„ã†ã‚‚ã®. èª¿ã¹ã¦ã¿ã‚‹ã¨ sort.o ã¯
-è¤‡æ•°å€‹æ‰€ã§å‡ºã¦ãã¦ã„ã‚‹ã®ãŒåŽŸå› 
+ƒGƒ‰[‚Í gcc_qsort ‚ª‚È‚¢‚Æ‚¢‚¤‚à‚Ì. ’²‚×‚Ä‚Ý‚é‚Æ sort.o ‚Í
+•¡”ŒÂŠ‚Åo‚Ä‚«‚Ä‚¢‚é‚Ì‚ªŒ´ˆö
 
-symtab.o, expr.o ã‚‚åŒã˜ã‚ˆã†ãªçŠ¶æ³. åŒæ§˜ã®å¯¾å‡¦ã‚’è¡Œã†ã¨æœ€å¾Œã®ãƒªãƒ³ã‚¯ãŒ
-æˆåŠŸã™ã‚‹.
+symtab.o, expr.o ‚à“¯‚¶‚æ‚¤‚Èó‹µ. “¯—l‚Ì‘Îˆ‚ðs‚¤‚ÆÅŒã‚ÌƒŠƒ“ƒN‚ª
+¬Œ÷‚·‚é.
 
-ã“ã‚Œã¯ã‚‚ã†å°‘ã—æ”¹å–„ã®ä½™åœ°ãŒã‚ã‚Šãã†ã .
+‚±‚ê‚Í‚à‚¤­‚µ‰ü‘P‚Ì—]’n‚ª‚ ‚è‚»‚¤‚¾.
 
 > cp cc1 /home/khasegawa/gcc-10.2.0/usr/local/bin/../libexec/gcc/i686-pc-linux-gnu/10.2.0/cc1
