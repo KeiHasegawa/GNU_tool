@@ -4,6 +4,10 @@ cygwin gdb watch-point implemention investigation
 (*2) Set watch-point and detect it
 (*3) Execute (*2) under control gdb
 (*4) SetThreadContext
+(*5) call `SetThreadContext' with process handle which is obtained by
+     callig `CreateProcessW'
+(*6) Re-build with my own code
+(*7) call `CreteProcessA' from gdb code
 
 (*1) Debug build gdb
 
@@ -193,3 +197,255 @@ windows_nat_target::resume (ptid_t ptid, int step, enum gdb_signal sig)
     SetThreadContext
 
     And this enable us to implement watch-point.
+
+(*5) call `SetThreadContext' with process handle which is obtained by
+     callig `CreateProcessW'
+
+     See bellow log. I added `(*)' near important point.
+
+š
+
+> /usr/local/bin/gdb gdb.exe -q
+Reading symbols from gdb.exe...
+warning: File "/cygdrive/d/home/khasegawa/gdb-10.1/gdb/gdb-gdb.gdb" auto-loading has been declined by your `auto-load safe-path' set to "$debugdir:$datadir/auto-load".
+To enable execution of this file add
+	add-auto-load-safe-path /cygdrive/d/home/khasegawa/gdb-10.1/gdb/gdb-gdb.gdb
+line to your configuration file "/cygdrive/d/home/khasegawa/.gdbinit".
+To completely disable this security protection add
+	set auto-load safe-path /
+line to your configuration file "/cygdrive/d/home/khasegawa/.gdbinit".
+For more information about this security protection see the
+"Auto-loading safe path" section in the GDB manual.  E.g., run from the shell:
+	info "(gdb)Auto-loading safe path"
+(gdb) b CreateProcessW                (*) set break-point `CreateProcessW'
+Breakpoint 1 at 0x100950f50
+(gdb) run a.exe -x debugged-gdbcom -q
+Starting program: /cygdrive/d/home/khasegawa/gdb-10.1/gdb/gdb.exe a.exe -x debugged-gdbcom -q
+[New Thread 14912.0x26c8]
+[New Thread 14912.0x3170]
+[New Thread 14912.0x3a88]
+[New Thread 14912.0x4344]
+[New Thread 14912.0x1c80]
+Reading symbols from a.exe...
+
+Thread 1 "gdb" hit Breakpoint 1, 0x00007ffbcd5fb997 in KERNEL32!CreateProcessW
+    () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) fin
+Run till exit from #0  0x00007ffbcd5fb997 in KERNEL32!CreateProcessW ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+
+Thread 1 "gdb" hit Breakpoint 1, 0x00007ffbcb2d9147 in KERNELBASE!CreateProcessW () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Run till exit from #0  0x00007ffbcb2d9147 in KERNELBASE!CreateProcessW ()
+   from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+0x00007ffbcd5fb9e3 in KERNEL32!CreateProcessW ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Run till exit from #0  0x00007ffbcd5fb9e3 in KERNEL32!CreateProcessW ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+0x0000000100776f00 in windows_nat_target::create_inferior (
+    this=0x100b3e450 <the_windows_nat_target>, 
+    exec_file=0x800140fd0 "/cygdrive/d/home/khasegawa/gdb-10.1/gdb/a.exe", 
+    origallargs=..., in_env=0x800135430, from_tty=0) at windows-nat.c:2851
+2851	  ret = CreateProcess (0,
+(gdb) list
+2846		  dup2 (tty, 2);
+2847		}
+2848	    }
+2849	
+2850	  windows_init_thread_list ();
+2851	  ret = CreateProcess (0,
+2852			       args,	/* command line */
+2853			       NULL,	/* Security */
+2854			       NULL,	/* thread */
+2855			       TRUE,	/* inherit handles */
+(gdb) 
+2856			       flags,	/* start flags */
+2857			       w32_env,	/* environment */
+2858			       inferior_cwd != NULL ? infcwd : NULL, /* current
+2859									directory */
+2860			       &si,
+2861			       &pi);
+2862	  if (w32_env)
+2863	    /* Just free the Win32 environment, if it could be created. */
+2864	    free (w32_env);
+2865	  else
+(gdb) n
+2862	  if (w32_env)
+(gdb) p/x pi
+$1 = {hProcess = 0x2c8, hThread = 0x2c4, dwProcessId = 0x39b4, 
+  dwThreadId = 0x2fa0}   (*) process handle obtained by calling
+                             `CreateProcessW' is equal to 0x2c8
+(gdb) b windows-nat.c:1487   (*) set break-point to above mentioned point.
+Breakpoint 3 at 0x1007746d7: file windows-nat.c, line 1487.
+(gdb) c
+Continuing.
+[New Thread 14912.0x34e8]
+[New Thread 14912.0x4780]
+[New Thread 14772.0x44a0]
+[New Thread 14772.0x38d8]
+[New Thread 14772.0x4520]
+
+Thread 1 "a" received signal SIGTRAP, Trace/breakpoint trap.
+main () at a.c:8
+8	  puts("start");
+Hardware watchpoint 1: my_array[1000]
+
+Thread 1 "gdb" hit Breakpoint 3, windows_nat_target::resume (
+    this=0x100b3e450 <the_windows_nat_target>, ptid=..., step=0, 
+    sig=GDB_SIGNAL_0) at windows-nat.c:1487
+1487			  th->context.Dr7 = dr[7];
+(gdb) list
+1482			  th->context.Dr0 = dr[0];
+1483			  th->context.Dr1 = dr[1];
+1484			  th->context.Dr2 = dr[2];
+1485			  th->context.Dr3 = dr[3];
+1486			  th->context.Dr6 = DR6_CLEAR_VALUE;
+1487			  th->context.Dr7 = dr[7];
+1488			}
+1489		      CHECK (SetThreadContext (th->h, &th->context));
+1490		      th->context.ContextFlags = 0;
+1491		    }
+(gdb) p/x dr[0]
+$2 = 0x100408140  (*) This value is the address of the watch-point
+(gdb) p/x dr[7]
+$3 = 0xd0101      (*) The value to set `DR_CONTROL (DR7)'
+(gdb) p th->h
+$4 = (HANDLE) 0x2c8  (*) The process handle obtained by calling
+                        `CreateProcessW'
+(gdb)
+
+(*6) Re-build with my own code
+
+     Inser function `debug_thread(HANDLE)' into `windows-nat.c'
+     This function just calls `GetThreadContext' and displays the
+     variable whose type is `CONTEXT'
+
+     This function is use like bellow:
+
+     When debugged gdb stops at `windows-nat.c:1487' mentioned at (*5)
+
+     (gdb) debug_thread(th->h)
+     ... 
+     This is expected result.
+
+     On the other hand, after calling `CreateProcessW'
+
+     (gdb) debug_thread(pi.hProcess)
+
+     This caused an error at calling `GetThread', and
+
+     (gdb) debug_thread(pi.hThread)
+     ...
+     This is something like expected.
+
+(*7) call `CreteProcessA' from gdb code
+
+At the top of the function `windows_nat_target::create_inferior', insert
+the bellow code:
+
+  {
+    char path[] = ".\\a.exe";
+    STARTUPINFOA si = {0};
+    si.cb = sizeof si;
+    PROCESS_INFORMATION pi;
+    DWORD flag = 0x602;
+    BOOL ret = CreateProcessA(NULL, path, NULL, NULL, TRUE,
+			      flag, NULL, NULL, &si, &pi);
+    ret = ret;
+  }
+
+After this call of `CreateProcessA', execute like bellow:
+
+(gdb) p debug_thread(pi.hThread)
+Dr0 = 0x0
+Dr1 = 0x0
+Dr2 = 0x0
+Dr3 = 0x0
+Dr6 = 0x0
+Dr7 = 0x0
+Rax = 0x0
+Rbx = 0x0
+Rcx = 0x100401000
+Rdx = 0x3ad000
+Rsp = 0x5fffd8
+Rbp = 0x0
+Rip = 0x7ffbcedf3670
+$97 = void
+
+(gdb)
+
+This result shows that:
+
+`gdb' does something so that's why `GetThreadContext' gets non-zero
+context. Simply if we call `CreateProcessA' and then call `GetThreadContext',
+just get empty context. We have to investigate the `something'.
+
+I also tried with `flags = 2', but result was the same.
+
+And more investigation, I noticed that the program compiled with `gcc'
+generates expected (hoped) result, but the program compiled with Visual
+Studio compiler generates unexpected (may be correct) result.
+
+I guess that this phenomenon is related with `cygwin.dll'.
+
+By the way, the code mentioned above causes null pointer dereference later:
+
+Thread 1 "gdb" received signal SIGSEGV, Segmentation fault.
+0x0000000100977090 in inferior::non_exited_threads (this=0x0)
+    at inferior.h:404
+404	  { return inf_non_exited_threads_range (this->thread_list); }
+(gdb) up
+#1  0x0000000100727731 in find_thread_ptid (inf=0x0, ptid=...) at thread.c:505
+505	  for (thread_info *tp : inf->non_exited_threads ())
+(gdb) where
+#0  0x0000000100977090 in inferior::non_exited_threads (this=0x0)
+    at inferior.h:404
+#1  0x0000000100727731 in find_thread_ptid (inf=0x0, ptid=...) at thread.c:505
+#2  0x0000000100726b5a in add_thread_silent (
+    targ=0x100b3e450 <the_windows_nat_target>, ptid=...) at thread.c:278
+#3  0x0000000100772181 in windows_add_thread (ptid=..., h=0x2cc, 
+    tlb=0x2dc000, main_thread_p=true) at windows-nat.c:456
+#4  0x0000000100774c94 in windows_nat_target::get_windows_debug_event (
+    this=0x100b3e450 <the_windows_nat_target>, pid=-1, ourstatus=0xffff5fb0)
+    at windows-nat.c:1622
+#5  0x0000000100775442 in windows_nat_target::wait (
+    this=0x100b3e450 <the_windows_nat_target>, ptid=..., 
+    ourstatus=0xffff5fb0, options=0) at windows-nat.c:1815
+#6  0x0000000100775cc4 in windows_nat_target::do_initial_windows_stuff (
+    this=0x100b3e450 <the_windows_nat_target>, pid=17380, attaching=false)
+    at windows-nat.c:2029
+#7  0x000000010077712b in windows_nat_target::create_inferior (
+    this=0x100b3e450 <the_windows_nat_target>, 
+    exec_file=0x800140fd0 "/cygdrive/d/home/khasegawa/gdb-10.1/gdb/a.exe", 
+    origallargs=..., in_env=0x800135430, from_tty=0) at windows-nat.c:3023
+#8  0x00000001005d4942 in run_command_1 (args=0x0, from_tty=0, 
+    run_how=RUN_NORMAL) at infcmd.c:493
+#9  0x00000001005d4b5b in run_command (args=0x0, from_tty=0) at infcmd.c:546
+#10 0x00000001004a87c8 in do_const_cfunc (c=0x8000c6120, args=0x0, from_tty=0)
+    at cli/cli-decode.c:95
+#11 0x00000001004abfda in cmd_func (cmd=0x8000c6120, args=0x0, from_tty=0)
+    at cli/cli-decode.c:2181
+#12 0x000000010072e8b0 in execute_command (p=0x8001e35a3 "", from_tty=0)
+    at top.c:668
+#13 0x0000000100570375 in command_handler (command=0x8001e35a0 "run")
+    at event-top.c:588
+#14 0x000000010072e1ab in read_command_file (stream=0x8000817d8) at top.c:447
+#15 0x00000001004b5b20 in script_from_file (stream=0x8000817d8, 
+    file=0xffffcc80 "debugged-gdbcom") at cli/cli-script.c:1622
+#16 0x00000001004a1e4a in source_script_from_stream (stream=0x8000817d8, 
+    file=0xffffcc80 "debugged-gdbcom", 
+    file_to_open=0xffffcc80 "debugged-gdbcom") at cli/cli-cmds.c:700
+#17 0x00000001004a1f22 in source_script_with_search (
+    file=0xffffcc80 "debugged-gdbcom", from_tty=1, search_path=0)
+    at cli/cli-cmds.c:736
+#18 0x00000001004a1f7d in source_script (file=0xffffcc80 "debugged-gdbcom", 
+    from_tty=1) at cli/cli-cmds.c:746
+#19 0x00000001006161dc in catch_command_errors (
+    command=0x1004a1f5a <source_script(char const*, int)>, 
+    arg=0xffffcc80 "debugged-gdbcom", from_tty=1) at main.c:457
+#20 0x000000010061774f in captured_main_1 (context=0xffffcbb0) at main.c:1214
+#21 0x000000010061795c in captured_main (data=0xffffcbb0) at main.c:1243
+#22 0x00000001006179c7 in gdb_main (args=0xffffcbb0) at main.c:1268
+#23 0x00000001004010d0 in main (argc=5, argv=0xffffcc20) at gdb.c:32
+(gdb)

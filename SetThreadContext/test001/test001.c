@@ -58,9 +58,11 @@ int operation(DEBUG_EVENT* event)
 
 int main()
 {
+    char path[] = "..\\test000\\x64\\Debug\\test000.exe";
     STARTUPINFOA si = { 0 };
+    si.cb = sizeof si;
     PROCESS_INFORMATION pi;
-    BOOL ret = CreateProcessA(NULL, "..\\test000\\x64\\Debug\\test000.exe",
+    BOOL ret = CreateProcessA(NULL, path,
         NULL, NULL, FALSE, DEBUG_ONLY_THIS_PROCESS, NULL, ".", &si, &pi);
     if (!ret) {
         print_error();
