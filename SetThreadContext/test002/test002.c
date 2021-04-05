@@ -35,20 +35,26 @@ int except_debug_handler(EXCEPTION_DEBUG_INFO* info)
             if (addr == (PVOID)0x000000010040108D) {
                 CONTEXT ctx = { 0 };
                 ctx.ContextFlags = CONTEXT_FULL;
+                // 0x10001f
                 if (!GetThreadContext(orange, &ctx))
                     print_error();
 #ifdef __CYGWIN__
-                printf("Eip = 0x%llx\n", ctx.Rip);
+                printf("Rip = 0x%llx\n\t", ctx.Rip);
                 ctx.Dr0 = 0x100408140;
                 ctx.Dr6 = 0xffff0ff0;
                 ctx.Dr7 = 0xd0101;
 #else // __CYGWIN__
-                printf("Eip = 0x%x\n", ctx.Eip);
+                printf("Eip = 0x%x\n\t", ctx.Eip);
 #endif // __CYGWIN__
                 if (!SetThreadContext(orange, &ctx))
                     print_error();
             }
             return printf("EXCEPTION_BREAKPOINT : 0x%p\n", addr);
+        }
+    case EXCEPTION_SINGLE_STEP:
+        {
+            PVOID addr = info->ExceptionRecord.ExceptionAddress;
+            return printf("EXCEPTION_SINGLE_STEP : 0x%p\n", addr);
         }
     default:
         return printf("unknown exception code = 0x%x\n", code);

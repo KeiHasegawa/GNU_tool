@@ -7,9 +7,10 @@ cygwin 版での gdb でウォッチポイントをどういう方法で実現しているかの調査
 (*5) CreateProcessW で返ってきたハンドルに対して SetThreadContext を発行している
 (*6) 自分のコードを入れてビルド
 (*7) CreteProcessA を gdb のコードから直接呼び出す.
-(*8) ウォッチポイントをセットしてから wait_sync_command_done が呼ばれた後,
-     watchpoint_check が呼ばれるまで.
-(*9) SetEvent, WaitForSingleObject かな?
+(*8) ウォッチポイントをセットしてから wait_sync_command_done, 
+     watchpoint_check, ReadProcessMemory が呼ばれるまで.
+(*9) WaitForDebugEvent で EXCEPTION_DEBUG_EVENT
+     (ExceptionCode = EXCEPTION_SINGLE_STEP)がきている
 
 (*1) -O0 ビルド
 
@@ -438,13 +439,13 @@ Thread 1 "gdb" received signal SIGSEGV, Segmentation fault.
 #23 0x00000001004010d0 in main (argc=5, argv=0xffffcc20) at gdb.c:32
 (gdb)
 
-(*8) ウォッチポイントをセットしてから wait_sync_command_done が呼ばれた後,
-     watchpoint_check が呼ばれるまで.
+(*8) ウォッチポイントをセットしてから wait_sync_command_done, 
+     watchpoint_check, ReadProcessMemory が呼ばれるまで.
 
      ログのポイントとなる部分に ★ を入れた
 
-> /usr/local/bin/gdb gdb -q
-Reading symbols from gdb...
+/usr/local/bin/gdb gdb.exe -q
+Reading symbols from gdb.exe...
 warning: File "/cygdrive/d/home/khasegawa/gdb-10.1/gdb/gdb-gdb.gdb" auto-loading has been declined by your `auto-load safe-path' set to "$debugdir:$datadir/auto-load".
 To enable execution of this file add
 	add-auto-load-safe-path /cygdrive/d/home/khasegawa/gdb-10.1/gdb/gdb-gdb.gdb
@@ -456,16 +457,16 @@ For more information about this security protection see the
 "Auto-loading safe path" section in the GDB manual.  E.g., run from the shell:
 	info "(gdb)Auto-loading safe path"
 (gdb) so x
-[New Thread 7856.0x47cc]
-[New Thread 7856.0x2e84]
-[New Thread 7856.0x4a5c]
-[New Thread 7856.0x4ba0]
-[New Thread 7856.0x19e0]
-[New Thread 7856.0x4128]
+[New Thread 11976.0x1ce8]
+[New Thread 11976.0x42a8]
+[New Thread 11976.0x1b40]
+[New Thread 11976.0x2bec]
+[New Thread 11976.0x41c4]
+[New Thread 11976.0x4898]
 Reading symbols from a.exe...
-[New Thread 9280.0x1f6c]
-[New Thread 9280.0x2178]
-[New Thread 9280.0x430c]
+[New Thread 14540.0x4518]
+[New Thread 14540.0x4818]
+[New Thread 14540.0x36d0]
 
 Thread 1 "a" received signal SIGTRAP, Trace/breakpoint trap.
 main () at a.c:8
@@ -481,32 +482,29 @@ main () at a.c:10
 start
 &my_array[1000] = 0x100408140
 end
-[Thread 9280.0x430c exited with code 0]
-[Thread 9280.0x40b4 exited with code 0]
-[Thread 9280.0x2178 exited with code 0]
-[Inferior 1 (process 9280) exited normally]
-[Thread 7856.0x3d90 exited with code 0]
-[Thread 7856.0x4ba0 exited with code 0]
-[Thread 7856.0x4128 exited with code 0]
-[Thread 7856.0x19e0 exited with code 0]
-[Thread 7856.0x4a5c exited with code 0]
-[Thread 7856.0x2e84 exited with code 0]
-[Inferior 1 (process 7856) exited normally]    ★ まずはこれまでの動作を確認
-(gdb) b windows-nat.c:1487              ★ 例の場所にブレークポイントをセット
+[Thread 14540.0x4518 exited with code 0]
+[Thread 14540.0x4094 exited with code 0]
+[Thread 14540.0x36d0 exited with code 0]
+[Inferior 1 (process 14540) exited normally]
+[Thread 11976.0x2bec exited with code 0]
+[Thread 11976.0x48e0 exited with code 0]
+[Thread 11976.0x4898 exited with code 0]
+[Thread 11976.0x41c4 exited with code 0]
+[Thread 11976.0x1b40 exited with code 0]
+[Thread 11976.0x42a8 exited with code 0]
+[Inferior 1 (process 11976) exited normally]    ★ まずはこれまでの動作を確認
+(gdb) b windows-nat.c:1487               ★ 例の場所にブレークポイントをセット
 Breakpoint 1 at 0x1007746d7: file windows-nat.c, line 1487.
-(gdb) c
-The program is not being run.
 (gdb) so x
-[New Thread 7456.0xa10]
-[New Thread 7456.0x3f44]
-[New Thread 7456.0x119c]
-[New Thread 7456.0x2538]
-[New Thread 7456.0x4420]
-[New Thread 7456.0x4838]
+[New Thread 18604.0x3c98]
+[New Thread 18604.0x2604]
+[New Thread 18604.0x3a8c]
+[New Thread 18604.0x4b88]
+[New Thread 18604.0x25ac]
 Reading symbols from a.exe...
-[New Thread 18548.0x3f10]
-[New Thread 18548.0x2604]
-[New Thread 18548.0x471c]
+[New Thread 10988.0x2e28]
+[New Thread 10988.0x1d20]
+[New Thread 10988.0x2c50]
 
 Thread 1 "a" received signal SIGTRAP, Trace/breakpoint trap.
 main () at a.c:8
@@ -517,22 +515,16 @@ Thread 1 "gdb" hit Breakpoint 1, windows_nat_target::resume (
     this=0x100b3e450 <the_windows_nat_target>, ptid=..., step=0, 
     sig=GDB_SIGNAL_0) at windows-nat.c:1487
 1487			  th->context.Dr7 = dr[7];
-(gdb) b watchpoint_check
-★ おそらくこの函数が呼ばれた時点ではウォッチポイントのイベントがきている
-
-Breakpoint 2 at 0x100460342: file breakpoint.c, line 4783.
-(gdb) Note: breakpoint 2 also set at pc 0x100460342.
-Breakpoint 3 at 0x100460342: file breakpoint.c, line 4783.
 (gdb) b wait_sync_command_done
-★ おそらくこの函数が呼ばれた時点ではウォッチポイントのイベントはまだきていない
-Breakpoint 4 at 0x10072e2da: file top.c, line 523.
-(gdb) c
-Continuing.
-[New Thread 7456.0x4a64]
-
-Thread 1 "gdb" hit Breakpoint 4, wait_sync_command_done () at top.c:523
-523	  scoped_restore save_ui = make_scoped_restore (&current_ui);
-(gdb) so y　　 ★ そこで可能性のある Win32API にブレークポイントをセット
+★ wtachpoint_check が呼ばれる前にこっちがくる
+Breakpoint 2 at 0x10072e2da: file top.c, line 523.
+(gdb) Note: breakpoint 2 also set at pc 0x10072e2da.
+Breakpoint 3 at 0x10072e2da: file top.c, line 523.
+(gdb) delete 3
+(gdb) b watchpoint_check
+★ ここでウォッチポイントを検出する
+Breakpoint 4 at 0x100460342: file breakpoint.c, line 4783.
+(gdb) so y  ★ そこで可能性のある Win32API にブレークポイントをセット
 Breakpoint 5 at 0x7ffbcb2a4fb4 (2 locations)
 Breakpoint 6 at 0x7ffbcb3547dc (2 locations)
 Breakpoint 7 at 0x7ffbcb2a478f (2 locations)
@@ -566,6 +558,49 @@ Breakpoint 34 at 0x7ffbcb354b30 (2 locations)
 Breakpoint 35 at 0x7ffbcb2a9040 (2 locations)
 Breakpoint 36 at 0x7ffbcb352f89 (2 locations)
 (gdb) c
+Continuing.
+[New Thread 18604.0x293c]
+
+Thread 1 "gdb" hit Breakpoint 31, 0x00007ffbcd615e40 in SetThreadContext ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 31, 0x00007ffbcb357af4 in SetThreadContext ()
+   from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 14, 0x00007ffbcd5fd240 in KERNEL32!GetExitCodeThread () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 14, 0x00007ffbcb2db826 in KERNELBASE!GetExitCodeThread () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 31, 0x00007ffbcd615e40 in SetThreadContext ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 31, 0x00007ffbcb357af4 in SetThreadContext ()
+   from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 6, 0x00007ffbcd614c10 in KERNEL32!ContinueDebugEvent () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 6, 0x00007ffbcb3547dc in KERNELBASE!ContinueDebugEvent () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 2, wait_sync_command_done () at top.c:523
+523	  scoped_restore save_ui = make_scoped_restore (&current_ui);
+                                                           ★ ここにきている
+(gdb) 
 Continuing.
 
 Thread 1 "gdb" hit Breakpoint 15, 0x00007ffbcd5f5200 in KERNEL32!GetLastError
@@ -707,7 +742,7 @@ Continuing.
 Thread 1 "gdb" hit Breakpoint 15, 0x00007ffbcb2aa300 in KERNELBASE!GetLastError () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
 (gdb) 
 Continuing.
-[New Thread 18548.0x32f4]
+[New Thread 10988.0x4640]
 
 Thread 1 "gdb" hit Breakpoint 5, 0x00007ffbcd600c90 in KERNEL32!CloseHandle ()
    from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
@@ -756,50 +791,27 @@ Continuing.
 Thread 1 "gdb" hit Breakpoint 21, 0x00007ffbcb2dee44 in KERNELBASE!GetThreadContext () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
 (gdb) 
 Continuing.
-[Switching to Thread 7456.0x4a64]
 
-Thread 8 hit Breakpoint 15, 0x00007ffbcb2aa300 in KERNELBASE!GetLastError ()
-   from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
-(gdb) 
-Continuing.
-
-Thread 8 hit Breakpoint 13, 0x00007ffbcd600c30 in KERNEL32!GetCurrentProcess
-    () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
-(gdb) 
-Continuing.
-
-Thread 8 hit Breakpoint 13, 0x00007ffbcb2c8800 in KERNELBASE!GetCurrentProcess
-    () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
-(gdb) 
-Continuing.
-[Switching to Thread 7456.0x4384]
-
-Thread 1 "gdb" hit Breakpoint 2, watchpoint_check (bs=0x800295ac0)
+Thread 1 "gdb" hit Breakpoint 4, watchpoint_check (bs=0x800419500)
     at breakpoint.c:4783
 4783	  gdb_assert (bs->breakpoint_at != NULL);
-★ おそらくこの時点でウォッチポイントのイベントはきている
-(gdb) c
+                                         ★ ここにきている
+(gdb) 
 Continuing.
-
+							   
 Thread 1 "gdb" hit Breakpoint 26, 0x00007ffbcd5f9680 in ReadProcessMemory ()
    from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
 (gdb) up
-#1  0x00000001007772ec in windows_xfer_memory (readbuf=0x8001edf80 "", 
+#1  0x00000001007772ec in windows_xfer_memory (readbuf=0x800627c50 "", 
     writebuf=0x0, memaddr=4299194688, len=4, xfered_len=0xffffba68)
     at windows-nat.c:3080
 3080	      success = ReadProcessMemory (current_process_handle,
 (gdb) p/x memaddr
-$1 = 0x100408140
-★ メモリアクセスはウォッチポイントのアドレス. そこを読みだしている.
-(gdb)
+$1 = 0x100408140                 ★ これはウォッチポイントに指定したアドレス
+(gdb) 
 
-(*9) SetEvent, WaitForSingleObject かと思ったが, そもそも (*8) のログでは
-     WaitForSingleObject は呼び出されていない.
-     もっと言えば b windows-nat.c:1487 のブレークポイントから watchpoint_check
-     まで一度も WaitForSingleObject はきていない.
-
-(*10) WaitForDebugEvent かと思ったが, 
-wait_sync_command_done と watchpoint_check との間で 2 回呼び出されている.
+(*9) WaitForDebugEvent で EXCEPTION_DEBUG_EVENT
+     (ExceptionCode = EXCEPTION_SINGLE_STEP)がきている
 
 1 回目 : これは CREATE_THREAD_DEBUG_EVENT
 dwDebugEventCode = 2(CREATE_THREAD_DEBUG_EVENT)
@@ -846,4 +858,40 @@ $11 = {dwDebugEventCode = 0x1, dwProcessId = 0x394c, dwThreadId = 0x233c,
       nDebugStringLength = 0x0}, RipInfo = {dwError = 0x80000004, 
       dwType = 0x0}}}
 
-なのでこれじゃないんだよな.
+なのでこれではないと思われる. ところでなぜシングルステップのイベントがくるのだろう.
+
+(*11) Win32API の観点から攻めるのを少しやめてみる.
+      watchpoint_check が呼ばれるのはウォッチポイントを仕掛けてそれがヒットした
+      ときなので, この函数が呼ばれる原因を考えてみてはどうか.
+
+      watchpoint_check は handle_signal_stop から呼び出される.
+
+      handle_signal_stop は 2 回呼び出されている.
+
+      1 回目はプログラムに仕込まれたブレークポイントにヒットしたとき. (*2) 参照.
+
+      2 回目はウォッチポイントを検出したときである.
+
+      1 回目が検出されるのは Win32API レベルの階層で言えば WaitForDebugEvent
+      なのだが, 2 回目についても WaitForDebugEvent であるべき. やはり
+
+      EXCEPTION_SINGLE_STEP
+
+      が来ているのがやはり重要で
+
+infrun.c:5935
+      stopped_by_watchpoint = watchpoints_triggered (&ecs->ws);
+...
+
+infrun.c:6067
+	    = bpstat_stop_status (get_current_regcache ()->aspace (),
+
+      つまり, ウォッチポイントに書き込みがあったときにデバッガ目線では
+      EXCEPTION_SINGLE_STEP がきているということ. このとき Dr6 を
+      読み込んでウォッチポイントにヒットしたかどうかを判定している.
+      それが 5935 行目で行われていること.
+
+      6067 行目の函数呼び出しが, 結果的に watchpoint_check を呼び出している.
+
+      そこで疑問なのは自分が作った簡単なプログラムを Visual Studio ではなくて
+      gcc でビルドしたが EXCEPTION_SINGLE_STEP が来ないということ.
