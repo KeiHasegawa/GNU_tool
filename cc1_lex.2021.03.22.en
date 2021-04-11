@@ -182,6 +182,35 @@ search_line_consider_sjis(const unsigned char* s, const unsigned char* end)
 	  s = search_line_consider_sjis(s, buffer->rlimit);
 #endif
 
+      => Above code doens't work well. becaus of not checking 2nd SJIS
+         byte. The next code works well:
+
+inline bool sjis(const unsigned char* s)
+{
+  int c = s[0];
+  if ((0x81 <= c && c <= 0x9f) || (0xe0 <= c && c <= 0xfc)) {
+    int c2 = s[1];
+    return (0x40 <= c2 && c2 <= 0x7e) || (0x80 <= c2 && c2 <= 0xfc);
+  }
+  return false;
+}
+
+const unsigned char*
+search_line_consider_sjis(const unsigned char* s, const unsigned char* end)
+{
+  for ( ; s != end ; ++s) {
+    if (sjis(s) {
+      ++s;
+      continue;
+    }
+    int c = *s;
+    if (c == '\n' || c == '\r' || c == '\\' || c == '?')
+      return s;
+  }
+  return s;
+}
+
+
 For build, to execute `make' at top directory is sure enough.
 But for easy, you can do like bellow:
 % cd ../libcpp
