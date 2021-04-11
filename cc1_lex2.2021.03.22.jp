@@ -98,6 +98,20 @@ const char* p = "機能";
 しかし, これで終わりではない. この修正で単に字句の読み込みが
 できるようになっただけである.
 
+   => (*A) 上のコードは間違っている. 2 バイト目が SJIS の 2 バイト目である
+      ことをチェックしていない. 正しいコードは
+
+  for (;;)
+    {
+      if (sjis(cur)) {       ここを追加
+        ++cur;
+        continue;
+      }
+      cppchar_t c = *cur++;
+
+      例えば UTF8 の文字列を読み込んだときに最初のバージョンは正しく動作
+      しない.
+
 この文字列リテラルは 0x8b, 0x40, 0x94, 0x5c, 0x00 の値を
 もつ char [5] の配列として扱わなければならない.
 
@@ -143,6 +157,21 @@ cpp_interpret_string_1 (cpp_reader *pfile, const cpp_string *from, size_t count
 	    ++p;
 	  }
 #endif
+
+          => ここは (*A) と同様に
+
+#if 0
+	  while (p < limit && *p != '\\')
+	    p++;
+#else
+	  while (p < limit && *p != '\\') {
+	    if (sjist(*p))
+	      ++p;
+	    ++p;
+	  }
+#endif
+
+          が正しい.
  
 libcpp.a と cc1 をリビルドして確認してみた. 今回の修正は sjis_1st
 は「gcc の字句解析ルーチンの調査(その1)」では lex.c で定義したインライン函数
