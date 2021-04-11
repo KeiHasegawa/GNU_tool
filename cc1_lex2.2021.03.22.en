@@ -98,6 +98,17 @@ Now fix `lex_string'
       }
 /* ^^^^^ to here ^^^^^ */
 
+       => (*A) Above code is not correct. Not check 2nd SJIS byte.
+
+  for (;;)
+    {
+      if (sjis(cur)) {    // correct
+        ++cur;
+        continue;
+      }
+      cppchar_t c = *cur++;
+
+
 This fix enables cc1 to recognize the end of string literal.
 But it's not enough. 
 
@@ -144,6 +155,20 @@ For supporting Shift-JIS string literal, fixed like bellow:
 	    ++p;
 	  }
 #endif
+
+         => Same with (*A), above should be:
+
+#if 0
+	  while (p < limit && *p != '\\')
+	    p++;
+#else
+	  while (p < limit && *p != '\\') {
+	    if (sjis(p))
+	      ++p;
+	    ++p;
+	  }
+#endif
+
  
 libcpp.a and cc1 have to be re-builded and this fix makes
 the change of `sjis_1st' defined file. This inline function was
