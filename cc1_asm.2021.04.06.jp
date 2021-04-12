@@ -1,0 +1,131 @@
+cc1 アセンブラ生成の調査
+
+(*1) 抽象コード
+
+c-parse.c
+static void
+c_parser_declaration_or_fndef (c_parser *parser, bool fndef_ok,
+...
+{
+...
+      tree fndecl = current_function_decl;   ここで停止して
+
+(gdb) p print(fnbody)
+
+    とすれば tree としての函数の中は表示できている. ここで print は
+
+    「gcc の字句解析ルーチンの解析(その3)」
+    「gcc の記号表の調査」
+
+    で述べられているものである.
+
+    ここで気付くのは, この段階でプログラムの正当性はチェックされているが,
+    抽象コードのレベルになっているかというと, そうではないように思える.
+
+    もっとも何を抽象コードと呼ぶかによるのだが, 単純な変換をこれらに
+    行うことによってターゲットコードを生成できるような状況にはなっていない
+    ということである.
+
+(*2) アセンブラ生成
+
+     アセンブラ生成は FILE* asm_out_file への書き込みで行われる.
+
+     (gdb) set asm_out_file=stdout
+
+     のようにすればファイルではなくて標準出力にアセンブラの出力が
+     表示される.
+
+cgraphunit.c:2820:
+  output_in_order ();   ここで一気にアセンブラが出力されている.
+
+cgraphunit.c:2578
+	  nodes[i].u.f->expand ();   ここで一気にアセンブラが出力されている.
+
+cgraphunit.c:2300
+  execute_pass_list (cfun, g->get_passes ()->all_passes);
+  ここで一気にアセンブラが出力されている.
+
+final.c:4658
+  final_1 (first, asm_out_file, seen, optimize);
+  ここで一気にアセンブラが出力されている.
+
+static void
+final_1 (rtx_insn *first, FILE *file, int seen, int optimize_p)
+{
+...
+  for (insn = first; insn;)  このループが重要らしい
+...
+      insn = final_scan_insn (insn, file, optimize_p, 0, &seen); 
+      ここで 1 命令ずつ出力
+
+
+(*3) print(rtx_insn*)
+
+     例によってこの函数はデバッガのコマンドラインから呼び出される.
+     最初のバージョンは単純なものにした:
+
+int print(rtx_insn* insn)
+{
+  enum rtx_code code = insn->code;
+  switch (code) {
+  case SET: return puts("SET");
+  case PARALLEL: return puts("PARALLEL");
+  case USE: return puts("USE");
+  case JUMP_INSN: return puts("JUMP_INSN");
+  case BARRIER: return puts("BARRIER");
+  case NOTE:
+        ... 
+  }
+}  
+
+% cat /tmp/a.c 
+int f(int a, int b)
+{
+  return a + b;
+}
+%
+
+この f に対して final_1 にきたときに以下を実行した:
+(gdb) p print_l(first)
+NOTE_INSN_DELETED
+NOTE_INSN_BASIC_BLOCK
+SET                     # pushl	%ebp
+NOTE_INSN_CFI_LABEL
+NOTE_INSN_CFI
+NOTE_INSN_CFI
+SET			# movl	%esp, %ebp
+NOTE_INSN_CFI_LABEL
+NOTE_INSN_CFI
+NOTE_INSN_PROLOGUE_END
+NOTE_INSN_FUNCTION_BEG
+SET			# movl	8(%ebp), %edx
+SET			# movl	12(%ebp), %eax
+PARALLEL		# addl	%edx, %eax
+USE
+NOTE_INSN_EPILOGUE_BEG
+SET			# popl	%ebp
+NOTE_INSN_CFI_LABEL
+NOTE_INSN_CFI
+NOTE_INSN_CFI
+JUMP_INSN		# ret
+BARRIER
+NOTE_INSN_DELETED
+(gdb) 
+
+    # に続く行は対応する x86 のアセンブラであり, この段階での print(rtx_insn*)
+    では勿論表示できていない.
+
+    print_l は print(rtx_insn*) をループで呼び出すものである:
+
+void print_l(rtx_insn* first)
+{
+  for (rtx_insn* insn = first ; insn ; insn = NEXT_INSN(insn))
+    print(insn);
+}
+
+    rtx_insn はおそらく単純な変換によりアセンブラを生成できるものだが,
+    自分が期待したものではなかった. これはむしろほぼアセンブラに近いもの
+    なのだ.
+
+    (*1) で述べた tree fnbody から rtx_insn の列への変換がどのように行
+    われるかを今後調査したい.
