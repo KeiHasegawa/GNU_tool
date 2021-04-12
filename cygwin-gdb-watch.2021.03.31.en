@@ -12,6 +12,10 @@ cygwin gdb watch-point implemention investigation
      `wait_sync_command_done', `watchpoint_check' and `ReadProcessMemory'
 (*9) WaitForDebugEvent recieved EXCEPTION_DEBUG_EVENT
      (ExceptionCode = EXCEPTION_SINGLE_STEP)
+(*10) Watchpoint detection
+
+
+
 
 (*1) Debug build gdb
 
@@ -863,7 +867,7 @@ $10 = {dwDebugEventCode = 0x2, dwProcessId = 0x394c, dwThreadId = 0x3e74,
     DebugString = {lpDebugStringData = 0x368, fUnicode = 0xe000, 
       nDebugStringLength = 0x30}, RipInfo = {dwError = 0x368, dwType = 0x0}}}
 
-2nd time : single step occured (0x80000004)
+2nd time : `EXCEPTION_SINGLE_STEP' (0x80000004)
 dwDebugEventCode = 1 (EXCEPTION_DEBUG_EVENT)
 (gdb) p/x *event
 $11 = {dwDebugEventCode = 0x1, dwProcessId = 0x394c, dwThreadId = 0x233c, 
@@ -888,3 +892,43 @@ $11 = {dwDebugEventCode = 0x1, dwProcessId = 0x394c, dwThreadId = 0x233c,
 
       These 2 events are not watchpoint. Here, I wonder why single step
       event occured.
+
+(*10) Watchpoint detection
+
+      I think we should change the view-point. At (*9), we are interrested
+      with  Win32API which detects the watchpoint, but have not
+      reach to the result.
+
+      `watchpoint_check' is called when the watchpoint is detected, so
+      I change to think about the reason that this function is called.
+
+      `watchpoint_check' is called from `handle_signal_stop'
+
+      `handle_signal_stop' is called 2 times.
+
+      1st time : break point was hit which is embedded program directly.
+      See (*2)
+
+      2nd time : watchpoint was detected.
+
+      1st time event is detected with `WaitForDebugEvent' Win32API. So,
+      2nd time event should be detected with the same Win32API, I think. 
+      So, the event `EXCEPTION_SINGLE_STEP' is the point:
+
+infrun.c:5935
+      stopped_by_watchpoint = watchpoints_triggered (&ecs->ws);
+...
+
+infrun.c:6067
+	    = bpstat_stop_status (get_current_regcache ()->aspace (),
+
+      i.e. For gdb, when the watchpoint is detected, the event
+      `EXCEPTION_SINGLE_STEP' happens. And then gdb examines
+      `Dr6' and knows that watchpoint is detected. That is done
+      at infrun.c:5935
+
+      Now calling `bpstat_stop_status' at infrun.c:6067 eventually
+      calls `watchpoint_check'.
+
+      So I wonder that my simple program doesn't get the event
+      `EXCEPTION_SINGLE_STEP' (of cause, build with gcc, not Visual Studio).
