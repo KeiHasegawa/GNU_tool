@@ -1,0 +1,100 @@
+gcc docgen 出力
+
+(*1) doclink.exe への入力ファイルを cc1 で生成してみたい.
+     これは本来 hcc1.exe と docgen.dll でやっていたこと.
+
+     docgen.dll doclink.exe については「トップ」->「ドキュメントジェネレータ」
+     を参照.
+
+     当初は cc1 の実装で, 函数の中で,
+
+     o グローバル変数の参照
+     o 函数呼び出し
+     o 構造体の参照を
+
+     どのようにしているか当初は分からなかったので中断していた.
+
+     現状では「cc1 アセンブラ生成の調査」でも述べたように,
+
+c-parse.c
+static void
+c_parser_declaration_or_fndef (c_parser *parser, bool fndef_ok,
+...
+{
+...
+      tree fndecl = current_function_decl;   ここで停止して
+
+(gdb) p print(fnbody)
+
+     とすれば tree としての函数の中は表示できている.
+     これと近いことを行えば doclink.exe への入力ファイルを生成することが
+     できる.
+
+     例えば
+
+% cat /tmp/a.c
+struct S {
+  int m;
+};
+
+int a;
+
+int f();
+
+int g(struct S* ps)
+{
+  return a + f(ps->m);
+}
+%
+      のようなソースに対して
+
+$func $def g "/tmp/a.c" 9
+{
+    $func $ref f "/tmp/a.c" 11;
+    $ref $tag S "/tmp/a.c" 11;
+    $var $ref a "/tmp/a.c" 11;
+    $graph {}
+}
+
+      を出力できればよいわけだ. それぞれの意味は 11 行目で函数 f が,
+      タグ S が, 変数 a が参照されているという内容だ.
+
+      これは明らかに print(tree) よりも単純である. とはいえ, 変数が
+      グローバル変数かどうかの判定や, 構造体が函数の外側で宣言されている
+      かどうかの判定などは別途必要にはなる:
+
+  void traverse_decl(tree p)
+  {
+    if (DECL_FILE_SCOPE_P(p))  ファイルスコープかどうか判定
+      ...
+
+      せっかくなので cc1plus にも同様の修正をしておいた. ここで
+      以下のことに気付いた:
+
+cp/parser.c:17716
+      type_spec = cp_parser_class_specifier (parser);
+      invoke_plugin_callbacks (PLUGIN_FINISH_TYPE, type_spec);
+
+      のように invoke_plugin_callbacks が呼び出されていた. このように
+      すればパッチではなくてダイナミックリンクライブラリで事足りるのか
+      もしれないが今回は深入りしない.
+
+(*2) パッチファイルの作成
+
+% \ls -d gcc-10.2.0.org gcc-10.2.0
+gcc-10.2.0  gcc-10.2.0.org
+% diff -Naur gcc-10.2.0.org gcc-10.2.0 > docgen.diff
+これだとなかなか終了しない.
+
+修正しているファイルはだいたい覚えていたので以下のようにした.
+
+% diff -rc gcc-10.2.0{.org,}/gcc/c-family/c-opts.c > docgen.diff
+% diff -rc gcc-10.2.0{.org,}/gcc/c-family/c.opt >> docgen.diff
+% diff -rc gcc-10.2.0{.org,}/gcc/common.opt >> docgen.diff
+% diff -rc gcc-10.2.0{.org,}/libcpp/directives.c >> docgen.diff
+% diff -rc gcc-10.2.0{.org,}/libcpp/macro.c >> docgen.diff
+% diff -rc gcc-10.2.0{.org,}/gcc/tree.c >> docgen.diff
+% diff -rc gcc-10.2.0{.org,}/gcc/c/c-parser.c >> docgen.diff
+% diff -rc gcc-10.2.0{.org,}/gcc/cp/tree.c >> docgen.diff
+% diff -rc gcc-10.2.0{.org,}/gcc/cp/parser.c >> docgen.diff
+
