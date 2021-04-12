@@ -154,7 +154,7 @@
 --- gcc-10.2.0/gcc/tree.c	2021-04-12 07:44:37.653682528 +0900
 ***************
 *** 15883,15885 ****
---- 15883,17806 ----
+--- 15883,17811 ----
   #endif /* CHECKING_P */
   
   #include "gt-tree.h"
@@ -415,8 +415,13 @@
 +   }
 +   void print_icst(tree_int_cst* p, bool newline)
 +   {
++ #ifdef __CYGWIN__
++     long int* val = p->val;
++     printf("%ld", *val);
++ #else // __CYGWIN__
 +     long long* val = p->val;
 +     printf("%lld", *val);
++ #endif // __CYGWIN__
 +     printf("(");
 +     tree_typed* typed = &p->typed;
 +     print_typed(typed, false);

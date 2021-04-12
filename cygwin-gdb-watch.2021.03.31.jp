@@ -11,6 +11,9 @@ cygwin 版での gdb でウォッチポイントをどういう方法で実現しているかの調査
      watchpoint_check, ReadProcessMemory が呼ばれるまで.
 (*9) WaitForDebugEvent で EXCEPTION_DEBUG_EVENT
      (ExceptionCode = EXCEPTION_SINGLE_STEP)がきている
+(*10) ウォッチポイントの検出
+
+
 
 (*1) -O0 ビルド
 
@@ -813,6 +816,9 @@ $1 = 0x100408140                 ★ これはウォッチポイントに指定したアドレス
 (*9) WaitForDebugEvent で EXCEPTION_DEBUG_EVENT
      (ExceptionCode = EXCEPTION_SINGLE_STEP)がきている
 
+     (*8) のログでは WaitForDebugEvent が合計 4 回, 実際には 2 回呼ばれて
+     いることに気付く.
+
 1 回目 : これは CREATE_THREAD_DEBUG_EVENT
 dwDebugEventCode = 2(CREATE_THREAD_DEBUG_EVENT)
 
@@ -858,9 +864,12 @@ $11 = {dwDebugEventCode = 0x1, dwProcessId = 0x394c, dwThreadId = 0x233c,
       nDebugStringLength = 0x0}, RipInfo = {dwError = 0x80000004, 
       dwType = 0x0}}}
 
-なのでこれではないと思われる. ところでなぜシングルステップのイベントがくるのだろう.
+      なのでこれではないと思われる. ところでなぜシングルステップのイベント
+      がくるのだろう.
 
-(*11) Win32API の観点から攻めるのを少しやめてみる.
+(*10) ウォッチポイントの検出
+
+      Win32API の観点から攻めるのを少しやめてみる.
       watchpoint_check が呼ばれるのはウォッチポイントを仕掛けてそれがヒットした
       ときなので, この函数が呼ばれる原因を考えてみてはどうか.
 

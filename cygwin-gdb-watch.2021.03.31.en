@@ -8,6 +8,10 @@ cygwin gdb watch-point implemention investigation
      callig `CreateProcessW'
 (*6) Re-build with my own code
 (*7) call `CreateProcessA' from gdb code
+(*8) Win32API called at the span between
+     `wait_sync_command_done', `watchpoint_check' and `ReadProcessMemory'
+(*9) WaitForDebugEvent recieved EXCEPTION_DEBUG_EVENT
+     (ExceptionCode = EXCEPTION_SINGLE_STEP)
 
 (*1) Debug build gdb
 
@@ -449,3 +453,438 @@ Thread 1 "gdb" received signal SIGSEGV, Segmentation fault.
 #22 0x00000001006179c7 in gdb_main (args=0xffffcbb0) at main.c:1268
 #23 0x00000001004010d0 in main (argc=5, argv=0xffffcc20) at gdb.c:32
 (gdb)
+
+(*8) Win32API called at the span between
+     `wait_sync_command_done', `watchpoint_check' and `ReadProcessMemory'
+
+     Insert the mark (*) to the bellow log:
+
+/usr/local/bin/gdb gdb.exe -q
+Reading symbols from gdb.exe...
+warning: File "/cygdrive/d/home/khasegawa/gdb-10.1/gdb/gdb-gdb.gdb" auto-loading has been declined by your `auto-load safe-path' set to "$debugdir:$datadir/auto-load".
+To enable execution of this file add
+	add-auto-load-safe-path /cygdrive/d/home/khasegawa/gdb-10.1/gdb/gdb-gdb.gdb
+line to your configuration file "/cygdrive/d/home/khasegawa/.gdbinit".
+To completely disable this security protection add
+	set auto-load safe-path /
+line to your configuration file "/cygdrive/d/home/khasegawa/.gdbinit".
+For more information about this security protection see the
+"Auto-loading safe path" section in the GDB manual.  E.g., run from the shell:
+	info "(gdb)Auto-loading safe path"
+(gdb) so x
+[New Thread 11976.0x1ce8]
+[New Thread 11976.0x42a8]
+[New Thread 11976.0x1b40]
+[New Thread 11976.0x2bec]
+[New Thread 11976.0x41c4]
+[New Thread 11976.0x4898]
+Reading symbols from a.exe...
+[New Thread 14540.0x4518]
+[New Thread 14540.0x4818]
+[New Thread 14540.0x36d0]
+
+Thread 1 "a" received signal SIGTRAP, Trace/breakpoint trap.
+main () at a.c:8
+8	  puts("start");
+Hardware watchpoint 1: my_array[1000]
+
+Thread 1 "a" hit Hardware watchpoint 1: my_array[1000]
+
+Old value = 0
+New value = 1000
+main () at a.c:10
+10	  for (int i = 0 ; i != sizeof my_array/sizeof my_array[0] ; ++i)
+start
+&my_array[1000] = 0x100408140
+end
+[Thread 14540.0x4518 exited with code 0]
+[Thread 14540.0x4094 exited with code 0]
+[Thread 14540.0x36d0 exited with code 0]
+[Inferior 1 (process 14540) exited normally]
+[Thread 11976.0x2bec exited with code 0]
+[Thread 11976.0x48e0 exited with code 0]
+[Thread 11976.0x4898 exited with code 0]
+[Thread 11976.0x41c4 exited with code 0]
+[Thread 11976.0x1b40 exited with code 0]
+[Thread 11976.0x42a8 exited with code 0]
+[Inferior 1 (process 11976) exited normally]
+
+    (*) I confirmed the gdb motion about watcpoint.
+
+(gdb) b windows-nat.c:1487
+
+    (*) set breakpoint the source which we are interrested with
+
+Breakpoint 1 at 0x1007746d7: file windows-nat.c, line 1487.
+(gdb) so x
+[New Thread 18604.0x3c98]
+[New Thread 18604.0x2604]
+[New Thread 18604.0x3a8c]
+[New Thread 18604.0x4b88]
+[New Thread 18604.0x25ac]
+Reading symbols from a.exe...
+[New Thread 10988.0x2e28]
+[New Thread 10988.0x1d20]
+[New Thread 10988.0x2c50]
+
+Thread 1 "a" received signal SIGTRAP, Trace/breakpoint trap.
+main () at a.c:8
+8	  puts("start");
+Hardware watchpoint 1: my_array[1000]
+
+Thread 1 "gdb" hit Breakpoint 1, windows_nat_target::resume (
+    this=0x100b3e450 <the_windows_nat_target>, ptid=..., step=0, 
+    sig=GDB_SIGNAL_0) at windows-nat.c:1487
+1487			  th->context.Dr7 = dr[7];
+(gdb) b wait_sync_command_done
+
+    (*) First `wait_sync_command_done' is called.
+
+Breakpoint 2 at 0x10072e2da: file top.c, line 523.
+(gdb) Note: breakpoint 2 also set at pc 0x10072e2da.
+Breakpoint 3 at 0x10072e2da: file top.c, line 523.
+(gdb) delete 3
+(gdb) b watchpoint_check
+
+    (*) Second `watchpoint_check' is called.
+
+Breakpoint 4 at 0x100460342: file breakpoint.c, line 4783.
+(gdb) so y  (*) set breapoint possible Win32API
+Breakpoint 5 at 0x7ffbcb2a4fb4 (2 locations)
+Breakpoint 6 at 0x7ffbcb3547dc (2 locations)
+Breakpoint 7 at 0x7ffbcb2a478f (2 locations)
+Breakpoint 8 at 0x7ffbcb2d9147 (2 locations)
+Breakpoint 9 at 0x7ffbcb35483a (2 locations)
+Breakpoint 10 at 0x7ffbcb2ce510 (2 locations)
+Breakpoint 11 at 0x7ffbcb32ce69 (2 locations)
+Breakpoint 12 at 0x7ffbcb278879 (2 locations)
+Breakpoint 13 at 0x7ffbcb2c8800 (2 locations)
+Breakpoint 14 at 0x7ffbcb2db826 (2 locations)
+Breakpoint 15 at 0x7ffbcb2aa300 (2 locations)
+Breakpoint 16 at 0x7ffbcb2ca4e6 (2 locations)
+Breakpoint 17 at 0x7ffbcb2889af (2 locations)
+Breakpoint 18 at 0x7ffbcb2daafa (2 locations)
+Breakpoint 19 at 0x7ffbcb2cdc46 (2 locations)
+Breakpoint 20 at 0x7ffbcb35a6ea (2 locations)
+Breakpoint 21 at 0x7ffbcb2dee44 (2 locations)
+Breakpoint 22 at 0x7ffbcd63f394
+Breakpoint 23 at 0x7ffbcb2d4136 (2 locations)
+Breakpoint 24 at 0x7ffbcb2d1c9f (2 locations)
+Breakpoint 25 at 0x7ffbcb29fd17 (2 locations)
+Breakpoint 26 at 0x7ffbcb2c3584 (2 locations)
+Breakpoint 27 at 0x7ffbcb2da204 (2 locations)
+Breakpoint 28 at 0x7ffbcb2d44fa (2 locations)
+Breakpoint 29 at 0x7ffbcb2cee66 (2 locations)
+Breakpoint 30 at 0x7ffbcb2c4434 (2 locations)
+Breakpoint 31 at 0x7ffbcb357af4 (2 locations)
+Breakpoint 32 at 0x7ffbcb2de7b4 (2 locations)
+Breakpoint 33 at 0x7ffbcb2df15a (2 locations)
+Breakpoint 34 at 0x7ffbcb354b30 (2 locations)
+Breakpoint 35 at 0x7ffbcb2a9040 (2 locations)
+Breakpoint 36 at 0x7ffbcb352f89 (2 locations)
+(gdb) c
+Continuing.
+[New Thread 18604.0x293c]
+
+Thread 1 "gdb" hit Breakpoint 31, 0x00007ffbcd615e40 in SetThreadContext ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 31, 0x00007ffbcb357af4 in SetThreadContext ()
+   from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 14, 0x00007ffbcd5fd240 in KERNEL32!GetExitCodeThread () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 14, 0x00007ffbcb2db826 in KERNELBASE!GetExitCodeThread () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 31, 0x00007ffbcd615e40 in SetThreadContext ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 31, 0x00007ffbcb357af4 in SetThreadContext ()
+   from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 6, 0x00007ffbcd614c10 in KERNEL32!ContinueDebugEvent () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 6, 0x00007ffbcb3547dc in KERNELBASE!ContinueDebugEvent () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 2, wait_sync_command_done () at top.c:523
+523	  scoped_restore save_ui = make_scoped_restore (&current_ui);
+                                                           š ‚±‚±‚É‚«‚Ä‚¢‚é
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 15, 0x00007ffbcd5f5200 in KERNEL32!GetLastError
+    () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 15, 0x00007ffbcb2aa300 in KERNELBASE!GetLastError () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 30, 0x00007ffbcd600e30 in SetEvent ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 30, 0x00007ffbcb2c4434 in SetEvent ()
+   from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 15, 0x00007ffbcd5f5200 in KERNEL32!GetLastError
+    () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 15, 0x00007ffbcb2aa300 in KERNELBASE!GetLastError () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 5, 0x00007ffbcd600c90 in KERNEL32!CloseHandle ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 5, 0x00007ffbcb2a4fb4 in KERNELBASE!CloseHandle
+    () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 28, 0x00007ffbcd601700 in SetConsoleCtrlHandler
+    () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 28, 0x00007ffbcb2d44fa in SetConsoleCtrlHandler
+    () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 34, 0x00007ffbcd615f40 in WaitForDebugEvent ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 34, 0x00007ffbcb354b30 in WaitForDebugEvent ()
+   from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 21, 0x00007ffbcd5fdff0 in KERNEL32!GetThreadContext () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 21, 0x00007ffbcb2dee44 in KERNELBASE!GetThreadContext () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 31, 0x00007ffbcd615e40 in SetThreadContext ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 31, 0x00007ffbcb357af4 in SetThreadContext ()
+   from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 28, 0x00007ffbcd601700 in SetConsoleCtrlHandler
+    () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 28, 0x00007ffbcb2d44fa in SetConsoleCtrlHandler
+    () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 21, 0x00007ffbcd5fdff0 in KERNEL32!GetThreadContext () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 21, 0x00007ffbcb2dee44 in KERNELBASE!GetThreadContext () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 31, 0x00007ffbcd615e40 in SetThreadContext ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 31, 0x00007ffbcb357af4 in SetThreadContext ()
+   from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 6, 0x00007ffbcd614c10 in KERNEL32!ContinueDebugEvent () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 6, 0x00007ffbcb3547dc in KERNELBASE!ContinueDebugEvent () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 15, 0x00007ffbcd5f5200 in KERNEL32!GetLastError
+    () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 15, 0x00007ffbcb2aa300 in KERNELBASE!GetLastError () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 30, 0x00007ffbcd600e30 in SetEvent ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 30, 0x00007ffbcb2c4434 in SetEvent ()
+   from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 15, 0x00007ffbcd5f5200 in KERNEL32!GetLastError
+    () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 15, 0x00007ffbcb2aa300 in KERNELBASE!GetLastError () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+[New Thread 10988.0x4640]
+
+Thread 1 "gdb" hit Breakpoint 5, 0x00007ffbcd600c90 in KERNEL32!CloseHandle ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 5, 0x00007ffbcb2a4fb4 in KERNELBASE!CloseHandle
+    () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 28, 0x00007ffbcd601700 in SetConsoleCtrlHandler
+    () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 28, 0x00007ffbcb2d44fa in SetConsoleCtrlHandler
+    () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 34, 0x00007ffbcd615f40 in WaitForDebugEvent ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 34, 0x00007ffbcb354b30 in WaitForDebugEvent ()
+   from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 28, 0x00007ffbcd601700 in SetConsoleCtrlHandler
+    () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 28, 0x00007ffbcb2d44fa in SetConsoleCtrlHandler
+    () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 21, 0x00007ffbcd5fdff0 in KERNEL32!GetThreadContext () from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 21, 0x00007ffbcb2dee44 in KERNELBASE!GetThreadContext () from /cygdrive/c/WINDOWS/System32/KERNELBASE.dll
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 4, watchpoint_check (bs=0x800419500)
+    at breakpoint.c:4783
+4783	  gdb_assert (bs->breakpoint_at != NULL);
+                                         (*) now `watchpoint_check' is called
+(gdb) 
+Continuing.
+							   
+Thread 1 "gdb" hit Breakpoint 26, 0x00007ffbcd5f9680 in ReadProcessMemory ()
+   from /cygdrive/c/WINDOWS/System32/KERNEL32.DLL
+(gdb) up
+#1  0x00000001007772ec in windows_xfer_memory (readbuf=0x800627c50 "", 
+    writebuf=0x0, memaddr=4299194688, len=4, xfered_len=0xffffba68)
+    at windows-nat.c:3080
+3080	      success = ReadProcessMemory (current_process_handle,
+(gdb) p/x memaddr
+$1 = 0x100408140                 (*) This is wathpoint address
+(gdb) 
+
+
+(*9) WaitForDebugEvent recieved EXCEPTION_DEBUG_EVENT
+     (ExceptionCode = EXCEPTION_SINGLE_STEP)
+
+     We notice that `WaitForDebugEvent' was called 2 times from (*8) log.
+
+1st time : `CREATE_THREAD_DEBUG_EVENT'
+dwDebugEventCode = 2(CREATE_THREAD_DEBUG_EVENT)
+
+(gdb) p/x *event
+$10 = {dwDebugEventCode = 0x2, dwProcessId = 0x394c, dwThreadId = 0x3e74, 
+  u = {Exception = {ExceptionRecord = {ExceptionCode = 0x368, 
+        ExceptionFlags = 0x0, ExceptionRecord = 0x30e000, 
+        ExceptionAddress = 0x7ffbceda6330, NumberParameters = 0x1, 
+        ExceptionInformation = {0x0 <repeats 15 times>}}, 
+      dwFirstChance = 0x1}, CreateThread = {hThread = 0x368, 
+      lpThreadLocalBase = 0x30e000, lpStartAddress = 0x7ffbceda6330}, 
+    CreateProcessInfo = {hFile = 0x368, hProcess = 0x30e000, 
+      hThread = 0x7ffbceda6330, lpBaseOfImage = 0x1, 
+      dwDebugInfoFileOffset = 0x0, nDebugInfoSize = 0x0, 
+      lpThreadLocalBase = 0x0, lpStartAddress = 0x0, lpImageName = 0x0, 
+      fUnicode = 0x0}, ExitThread = {dwExitCode = 0x368}, ExitProcess = {
+      dwExitCode = 0x368}, LoadDll = {hFile = 0x368, lpBaseOfDll = 0x30e000, 
+      dwDebugInfoFileOffset = 0xceda6330, nDebugInfoSize = 0x7ffb, 
+      lpImageName = 0x1, fUnicode = 0x0}, UnloadDll = {lpBaseOfDll = 0x368}, 
+    DebugString = {lpDebugStringData = 0x368, fUnicode = 0xe000, 
+      nDebugStringLength = 0x30}, RipInfo = {dwError = 0x368, dwType = 0x0}}}
+
+2nd time : single step occured (0x80000004)
+dwDebugEventCode = 1 (EXCEPTION_DEBUG_EVENT)
+(gdb) p/x *event
+$11 = {dwDebugEventCode = 0x1, dwProcessId = 0x394c, dwThreadId = 0x233c, 
+  u = {Exception = {ExceptionRecord = {ExceptionCode = 0x80000004, 
+        ExceptionFlags = 0x0, ExceptionRecord = 0x0, 
+        ExceptionAddress = 0x1004010d0, NumberParameters = 0x0, 
+        ExceptionInformation = {0x0 <repeats 15 times>}}, 
+      dwFirstChance = 0x1}, CreateThread = {hThread = 0x80000004, 
+      lpThreadLocalBase = 0x0, lpStartAddress = 0x1004010d0}, 
+    CreateProcessInfo = {hFile = 0x80000004, hProcess = 0x0, 
+      hThread = 0x1004010d0, lpBaseOfImage = 0x0, 
+      dwDebugInfoFileOffset = 0x0, nDebugInfoSize = 0x0, 
+      lpThreadLocalBase = 0x0, lpStartAddress = 0x0, lpImageName = 0x0, 
+      fUnicode = 0x0}, ExitThread = {dwExitCode = 0x80000004}, ExitProcess = {
+      dwExitCode = 0x80000004}, LoadDll = {hFile = 0x80000004, 
+      lpBaseOfDll = 0x0, dwDebugInfoFileOffset = 0x4010d0, 
+      nDebugInfoSize = 0x1, lpImageName = 0x0, fUnicode = 0x0}, UnloadDll = {
+      lpBaseOfDll = 0x80000004}, DebugString = {
+      lpDebugStringData = 0x80000004, fUnicode = 0x0, 
+      nDebugStringLength = 0x0}, RipInfo = {dwError = 0x80000004, 
+      dwType = 0x0}}}
+
+      These 2 events are not watchpoint. Here, I wonder why single step
+      event occured.
