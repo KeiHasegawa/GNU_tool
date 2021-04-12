@@ -1,8 +1,11 @@
 gcc docgen 出力
 
-(*1) doclink.exe への入力ファイルを cc1 で生成してみたい.
-     これは本来 hcc1.exe と docgen.dll でやっていたこと.
+(*1) doclink.exe への入力ファイルを cc1 で生成する.
+(*2) パッチファイル
 
+(*1) doclink.exe への入力ファイルを cc1 で生成する.
+
+     これは本来 hcc1.exe と docgen.dll でやっていたこと.
      docgen.dll doclink.exe については「トップ」->「ドキュメントジェネレータ」
      を参照.
 
@@ -79,9 +82,9 @@ cp/parser.c:17716
       すればパッチではなくてダイナミックリンクライブラリで事足りるのか
       もしれないが今回は深入りしない.
 
-(*2) パッチファイルの作成
+(*2) パッチファイル
 
-% \ls -d gcc-10.2.0.org gcc-10.2.0
+% ls -d gcc-10.2.0.org gcc-10.2.0
 gcc-10.2.0  gcc-10.2.0.org
 % diff -Naur gcc-10.2.0.org gcc-10.2.0 > docgen.diff
 これだとなかなか終了しない.
@@ -98,3 +101,37 @@ gcc-10.2.0  gcc-10.2.0.org
 % diff -rc gcc-10.2.0{.org,}/gcc/cp/tree.c >> docgen.diff
 % diff -rc gcc-10.2.0{.org,}/gcc/cp/parser.c >> docgen.diff
 
+このページの docgen.diff をダウンロードして例えば
+
+/tmp/docgen.diff
+
+として保存する.
+
+% xz -d -c gcc-10.2.0.tar.xz | tar xf -
+% cd gcc-10.2.0
+% patch -p1 < /tmp/docgen.diff
+patching file gcc/c-family/c-opts.c
+patching file gcc/c-family/c.opt
+patching file gcc/common.opt
+Hunk #1 succeeded at 3408 (offset -4 lines).
+patching file libcpp/directives.c
+patching file libcpp/macro.c
+patching file gcc/tree.c
+Hunk #1 succeeded at 15874 (offset -9 lines).
+patching file gcc/c/c-parser.c
+patching file gcc/cp/tree.c
+patching file gcc/cp/parser.c
+Hunk #1 succeeded at 11749 (offset -5 lines).
+Hunk #2 succeeded at 11809 (offset -5 lines).
+Hunk #3 succeeded at 18505 (offset -5 lines).
+Hunk #4 succeeded at 18561 (offset -5 lines).
+Hunk #5 succeeded at 18665 (offset -5 lines).
+Hunk #6 succeeded at 19088 (offset -5 lines).
+Hunk #7 succeeded at 20512 (offset -10 lines).
+Hunk #8 succeeded at 20668 (offset -10 lines).
+Hunk #9 succeeded at 20919 (offset -10 lines).
+Hunk #10 succeeded at 24286 (offset -16 lines).
+%
+
+なにやら patch がメッセージを出しているが, これは正しく適用できた
+ようである.
