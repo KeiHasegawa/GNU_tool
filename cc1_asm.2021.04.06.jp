@@ -4,6 +4,7 @@ cc1 アセンブラ生成の調査
 (*2) アセンブラ生成
 (*3) print(rtx_insn*)
 (*4) debug_insn_slim(const rtx_insn*)
+(*5) debug_tree(tree)
 
 (*1) 抽象コード
 
@@ -172,3 +173,12 @@ $156 = void
 (gdb) 
 
    やはりこれはアセンブラにすごく近い.
+
+(*5) debug_tree(tree)
+
+     (*4) からすると tree にも似たような函数があるのではと思い探してみた.
+     (*1) と同じところで停止して. gdb から以下のようにしてみた.
+
+(gdb) p debug_tree(fnbody)
+...
+     これは, 自分で作成したものよりも完成度が当然高い.
