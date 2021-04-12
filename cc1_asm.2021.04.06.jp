@@ -1,6 +1,11 @@
 cc1 アセンブラ生成の調査
 
 (*1) 抽象コード
+(*2) アセンブラ生成
+(*3) print(rtx_insn*)
+(*4) debug_insn_slim(const rtx_insn*)
+
+(*1) 抽象コード
 
 c-parse.c
 static void
@@ -129,3 +134,41 @@ void print_l(rtx_insn* first)
 
     (*1) で述べた tree fnbody から rtx_insn の列への変換がどのように行
     われるかを今後調査したい.
+
+(*4) debug_insn_slim(const rtx_insn*)
+
+    さらに調査していたら debug_insn_slim を見つけた. これは (*3) の
+    print(rtx_insn*) の完全版で勿論使わせてもらおう. final_1 にきたときに同
+    様に print_l を呼び出した:
+
+(gdb) p print_l(first)
+    1: NOTE_INSN_DELETED
+    3: NOTE_INSN_BASIC_BLOCK 2
+   18: [--sp:SI]=bp:SI
+   30: NOTE_INSN_CFI_LABEL
+   25: NOTE_INSN_CFI
+   26: NOTE_INSN_CFI
+   19: bp:SI=sp:SI
+   31: NOTE_INSN_CFI_LABEL
+   27: NOTE_INSN_CFI
+   20: NOTE_INSN_PROLOGUE_END
+    2: NOTE_INSN_FUNCTION_BEG
+    5: dx:SI=[bp:SI+0x8]
+    6: ax:SI=[bp:SI+0xc]
+    7: {ax:SI=ax:SI+dx:SI;clobber flags:CC;}
+      REG_EQUAL [argp:SI]+[argp:SI+0x4]
+   15: use ax:SI
+   21: NOTE_INSN_EPILOGUE_BEG
+   22: bp:SI=[sp:SI++]
+      REG_CFA_DEF_CFA sp:SI+0x4
+      REG_CFA_RESTORE bp:SI
+   32: NOTE_INSN_CFI_LABEL
+   28: NOTE_INSN_CFI
+   29: NOTE_INSN_CFI
+   23: simple_return
+   24: barrier
+   17: NOTE_INSN_DELETED
+$156 = void
+(gdb) 
+
+   やはりこれはアセンブラにすごく近い.
