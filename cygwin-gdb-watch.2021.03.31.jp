@@ -6,7 +6,7 @@ cygwin 版での gdb でウォッチポイントをどういう方法で実現しているかの調査
 (*4) SetThreadContext
 (*5) CreateProcessW で返ってきたハンドルに対して SetThreadContext を発行している
 (*6) 自分のコードを入れてビルド
-(*7) CreteProcessA を gdb のコードから直接呼び出す.
+(*7) CreateProcessA を gdb のコードから直接呼び出す.
 (*8) ウォッチポイントをセットしてから wait_sync_command_done, 
      watchpoint_check, ReadProcessMemory が呼ばれるまで.
 (*9) WaitForDebugEvent で EXCEPTION_DEBUG_EVENT
@@ -326,7 +326,7 @@ $4 = (HANDLE) 0x2c8  ★ CreateProcessW で取得したハンドル
 
      はそれっぽい.
 
-(*7) CreteProcessA を gdb のコードから直接呼び出す.
+(*7) CreateProcessA を gdb のコードから直接呼び出す.
 
 windows_nat_target::create_inferior
 
