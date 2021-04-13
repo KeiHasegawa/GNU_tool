@@ -151,10 +151,10 @@
   
         if (macro->paramc == 0)
 *** gcc-10.2.0.org/gcc/tree.c	2020-07-23 15:35:18.664399093 +0900
---- gcc-10.2.0/gcc/tree.c	2021-04-12 07:44:37.653682528 +0900
+--- gcc-10.2.0/gcc/tree.c	2021-04-13 09:50:26.352162171 +0900
 ***************
 *** 15883,15885 ****
---- 15883,17811 ----
+--- 15883,17855 ----
   #endif /* CHECKING_P */
   
   #include "gt-tree.h"
@@ -162,6 +162,40 @@
 + #include <set>
 + namespace print_impl {
 +   void print(tree, bool);
++   void print_VEC_COND_EXPR(tree p, bool newline)
++   {
++     printf("vec_cond(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(",");
++     print(TREE_OPERAND(p, 2), false);
++     printf(",");
++     print(TREE_OPERAND(p, 3), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_VEC_PERM_EXPR(tree p, bool newline)
++   {
++     printf("vec_perm(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(",");
++     print(TREE_OPERAND(p, 2), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_VECTOR_TYPE(tree p, bool newline)
++   {
++     printf("vector_type(");
++     print(TREE_TYPE(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
 +   void print_TRUTH_OR_EXPR(tree p, bool newline)
 +   {
 +     printf("truth_or(");
@@ -1512,6 +1546,12 @@
 +     default:
 +       asm("int3");
 +       return;
++     case VEC_COND_EXPR:
++       return print_VEC_COND_EXPR(p, newline);
++     case VEC_PERM_EXPR:
++       return print_VEC_PERM_EXPR(p, newline);
++     case VECTOR_TYPE:
++       return print_VECTOR_TYPE(p, newline);
 +     case RDIV_EXPR:
 +       return print_RDIV_EXPR(p, newline);
 +     case OFFSETOF_EXPR:
@@ -1973,6 +2013,7 @@
 +     case REAL_TYPE: case IDENTIFIER_NODE: case BOOLEAN_TYPE: case VOID_TYPE:
 +     case VOID_CST: case LANG_TYPE: case ERROR_MARK: case BREAK_STMT:
 +     case CONTINUE_STMT: case REAL_CST: case OFFSET_TYPE: case DEBUG_BEGIN_STMT:
++     case VECTOR_CST: case LABEL_DECL:
 +       return;
 +     case VAR_DECL: case FUNCTION_DECL: case TEMPLATE_DECL: case TYPE_DECL:
 +     case CONST_DECL: case USING_DECL: case NAMESPACE_DECL:
@@ -2007,7 +2048,7 @@
 +       /* Fall through.  */
 +     case USING_STMT:
 +       return traverse(TREE_OPERAND(p, 0));
-+     case COND_EXPR: case BIND_EXPR: case BIT_FIELD_REF:
++     case COND_EXPR: case BIND_EXPR: case BIT_FIELD_REF: case VEC_PERM_EXPR:
 +       set_locus(p->exp.locus);
 +       /* Fall through.  */
 +     case CLEANUP_STMT:
@@ -2020,7 +2061,7 @@
 +       set_locus(p->exp.locus);
 +       /* Fall through.  */
 +     case POINTER_TYPE: case ARRAY_TYPE: case REFERENCE_TYPE:
-+     case TEMPLATE_TYPE_PARM: case PARM_DECL: case TAG_DEFN:
++     case TEMPLATE_TYPE_PARM: case PARM_DECL: case TAG_DEFN: case VECTOR_TYPE:
 +       return traverse(TREE_TYPE(p));
 +     case RECORD_TYPE: case UNION_TYPE: case ENUMERAL_TYPE:
 +       return traverse_tagged_type(p);
@@ -2058,6 +2099,9 @@
 +     case HANDLER: case SCOPE_REF:
 +       traverse(TREE_TYPE(p));
 +       return traverse(TREE_OPERAND(p, 0)), traverse(TREE_OPERAND(p, 1));
++     case VEC_COND_EXPR:
++       set_locus(p->exp.locus);
++       /* Fall through.  */
 +     case TREE_VEC: return traverse_tree_vec(p);
 +     case CONSTRUCTOR: return traverse_constructor(p);
 +     case IF_STMT: case SWITCH_STMT:
@@ -2285,10 +2329,10 @@
   }
   
 *** gcc-10.2.0.org/gcc/cp/tree.c	2020-07-23 15:35:17.532386623 +0900
---- gcc-10.2.0/gcc/cp/tree.c	2021-04-12 06:41:12.239256756 +0900
+--- gcc-10.2.0/gcc/cp/tree.c	2021-04-13 09:32:43.993443481 +0900
 ***************
 *** 5854,5856 ****
---- 5854,6207 ----
+--- 5854,6222 ----
   
   
   #include "gt-cp-tree.h"
@@ -2296,6 +2340,19 @@
 + #include <cassert>
 + namespace print_impl {
 +   extern void print(tree, bool);
++   void print_VECTOR_CST(tree p, bool newline)
++   {
++     printf("vec_cst(");
++     int n = vector_cst_encoded_nelts(p);
++     for (int i = 0; i != n; ++i) {
++       if (i)
++ 	printf(",");
++       print(VECTOR_CST_ENCODED_ELT(p, i), false);
++     }
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
 +   void print_TEMPLATE_INFO(tree p, bool newline)
 +   {
 +     printf("template info(");
@@ -2472,6 +2529,8 @@
 +     tree_code code = p->base.code;
 +     switch (code) {
 +     default: asm("int3"); return;
++     case VECTOR_CST:
++       return print_VECTOR_CST(p, newline);
 +     case TEMPLATE_INFO:
 +       return print_TEMPLATE_INFO(p, newline);
 +     case TEMPLATE_TEMPLATE_PARM:
