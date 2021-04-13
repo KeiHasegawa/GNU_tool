@@ -151,10 +151,10 @@
   
         if (macro->paramc == 0)
 *** gcc-10.2.0.org/gcc/tree.c	2020-07-23 15:35:18.664399093 +0900
---- gcc-10.2.0/gcc/tree.c	2021-04-13 09:50:26.352162171 +0900
+--- gcc-10.2.0/gcc/tree.c	2021-04-14 07:23:50.334978878 +0900
 ***************
 *** 15883,15885 ****
---- 15883,17853 ----
+--- 15883,17878 ----
   #endif /* CHECKING_P */
   
   #include "gt-tree.h"
@@ -162,6 +162,26 @@
 + #include <set>
 + namespace print_impl {
 +   void print(tree, bool);
++   void print_TRUTH_XOR_EXPR(tree p, bool newline)
++   {
++     printf("truth_xor(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_TRUTH_AND_EXPR(tree p, bool newline)
++   {
++     printf("truth_and(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
 +   void print_VEC_COND_EXPR(tree p, bool newline)
 +   {
 +     printf("vec_cond(");
@@ -1545,6 +1565,10 @@
 +     switch (code) {
 +     default:
 +       return;
++     case TRUTH_XOR_EXPR:
++       return print_TRUTH_XOR_EXPR(p, newline);
++     case TRUTH_AND_EXPR:
++       return print_TRUTH_AND_EXPR(p, newline);
 +     case VEC_COND_EXPR:
 +       return print_VEC_COND_EXPR(p, newline);
 +     case VEC_PERM_EXPR:
@@ -2026,6 +2050,7 @@
 +     case SWITCH_EXPR: case INIT_EXPR: case DOTSTAR_EXPR: case OFFSETOF_EXPR:
 +     case TRY_FINALLY_EXPR: case DELETE_EXPR: case MUST_NOT_THROW_EXPR:
 +     case MIN_EXPR: case MAX_EXPR: case MEM_REF: case TRUTH_OR_EXPR:
++     case TRUTH_AND_EXPR: case TRUTH_XOR_EXPR:
 +       set_locus(p->exp.locus);
 +       /* Fall through.  */
 +     case TRY_BLOCK: case WHILE_STMT: case MEMBER_REF: case DO_STMT:
