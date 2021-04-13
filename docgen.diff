@@ -2129,10 +2129,10 @@
 +   out_doc_info_impl::traverse(fnbody);
 + }
 *** gcc-10.2.0.org/gcc/c/c-parser.c	2020-07-23 15:35:17.304384112 +0900
---- gcc-10.2.0/gcc/c/c-parser.c	2021-04-11 11:18:02.041754290 +0900
+--- gcc-10.2.0/gcc/c/c-parser.c	2021-04-13 16:59:52.073046333 +0900
 ***************
 *** 1765,1770 ****
---- 1765,1819 ----
+--- 1765,1823 ----
     add_stmt (stmt);
   }
   
@@ -2169,6 +2169,10 @@
 +   extern FILE* doc_info_file;
 +   if (!doc_info_file)
 +     return;
++   if (!TREE_PUBLIC(current_function_decl))
++     return;
++   if (DECL_DECLARED_INLINE_P(current_function_decl))
++     return;
 +   const char* name = get_name(current_function_decl);
 +   location_t loc =
 +     DECL_STRUCT_FUNCTION(current_function_decl)->function_start_locus;
@@ -2190,7 +2194,7 @@
      is accepted; otherwise (old-style parameter declarations) only other
 ***************
 *** 2335,2340 ****
---- 2384,2391 ----
+--- 2388,2395 ----
   	      if (d)
   		finish_decl (d, UNKNOWN_LOCATION, NULL_TREE,
   			     NULL_TREE, asm_name);
@@ -2201,7 +2205,7 @@
   		{
 ***************
 *** 2504,2509 ****
---- 2555,2562 ----
+--- 2559,2566 ----
         else
   	fnbody = c_parser_compound_statement (parser, &endloc);
         tree fndecl = current_function_decl;
@@ -2212,7 +2216,7 @@
   	  tree decl = current_function_decl;
 ***************
 *** 2650,2655 ****
---- 2703,2732 ----
+--- 2707,2736 ----
       }
   }
   
@@ -2245,7 +2249,7 @@
      Storage class specifiers are accepted iff SCSPEC_OK; type
 ***************
 *** 2852,2857 ****
---- 2929,2939 ----
+--- 2933,2943 ----
   	      /* For a typedef name, record the meaning, not the name.
   		 In case of 'foo foo, bar;'.  */
   	      t.spec = lookup_name (value);
@@ -2259,7 +2263,7 @@
   	    {
 ***************
 *** 3128,3133 ****
---- 3210,3229 ----
+--- 3214,3233 ----
       }
     if (c_parser_next_token_is (parser, CPP_OPEN_BRACE))
       {
@@ -2282,7 +2286,7 @@
         tree type;
 ***************
 *** 3334,3339 ****
---- 3430,3451 ----
+--- 3434,3455 ----
       {
         /* Parse a struct or union definition.  Start the scope of the
   	 tag before parsing components.  */
@@ -2307,7 +2311,7 @@
         tree postfix_attrs;
 ***************
 *** 3461,3466 ****
---- 3573,3592 ----
+--- 3577,3596 ----
     /* ??? Existing practice is that GNU attributes are ignored after
        the struct or union keyword when not defining the members.  */
     ret = parser_xref_tag (ident_loc, code, ident, have_std_attrs, std_attrs);
@@ -2703,10 +2707,10 @@
 +   } Y;
 + } // end of namespace out_doc_info_impl
 *** gcc-10.2.0.org/gcc/cp/parser.c	2020-07-23 15:35:17.528386580 +0900
---- gcc-10.2.0/gcc/cp/parser.c	2021-04-11 11:34:58.332048914 +0900
+--- gcc-10.2.0/gcc/cp/parser.c	2021-04-13 17:08:20.652688213 +0900
 ***************
 *** 11754,11759 ****
---- 11754,11778 ----
+--- 11754,11782 ----
     return statement;
   }
   
@@ -2715,6 +2719,10 @@
 + {
 +   extern FILE* doc_info_file;
 +   if (!doc_info_file)
++     return;
++   if (!TREE_PUBLIC(current_function_decl))
++     return;
++   if (DECL_DECLARED_INLINE_P(current_function_decl))
 +     return;
 +   const char* file = DECL_SOURCE_FILE(current_function_decl);
 +   int line = DECL_SOURCE_LINE(current_function_decl);
@@ -2734,7 +2742,7 @@
      compound-statement:
 ***************
 *** 11795,11800 ****
---- 11814,11821 ----
+--- 11818,11825 ----
     if (function_body)
       maybe_splice_retval_cleanup (compound_stmt);
   
@@ -2745,7 +2753,7 @@
     /* Consume the `}'.  */
 ***************
 *** 18489,18494 ****
---- 18510,18519 ----
+--- 18514,18523 ----
   static tree
   cp_parser_type_name (cp_parser* parser, bool typename_keyword_p)
   {
@@ -2758,7 +2766,7 @@
     /* We can't know yet whether it is a class-name or not.  */
 ***************
 *** 18541,18549 ****
---- 18566,18611 ----
+--- 18570,18615 ----
   	return cp_parser_nonclass_name (parser);
       }
   
@@ -2807,7 +2815,7 @@
   
 ***************
 *** 18608,18613 ****
---- 18670,18677 ----
+--- 18674,18681 ----
   	   && !parser->scope)
       maybe_note_name_used_in_class (identifier, type_decl);
   
@@ -2818,7 +2826,7 @@
   
 ***************
 *** 19029,19034 ****
---- 19093,19111 ----
+--- 19097,19115 ----
        happens, the user was probably trying to form a template-id.  */
     cp_parser_check_for_invalid_template_id (parser, type, tag_type,
   					   token->location);
@@ -2840,7 +2848,7 @@
   }
 ***************
 *** 20445,20450 ****
---- 20522,20560 ----
+--- 20526,20564 ----
     return type;
   }
   
@@ -2882,7 +2890,7 @@
   /* Parse an init-declarator.
 ***************
 *** 20568,20573 ****
---- 20678,20684 ----
+--- 20682,20688 ----
   			    flags, &ctor_dtor_or_conv_p,
   			    /*parenthesized_p=*/NULL,
   			    member_p, friend_p, /*static_p=*/false);
@@ -2892,7 +2900,7 @@
   
 ***************
 *** 20818,20823 ****
---- 20929,20937 ----
+--- 20933,20941 ----
   	current_function_decl = saved_current_function_decl;
       }
   
@@ -2904,7 +2912,7 @@
     is_direct_init = false;
 ***************
 *** 24188,24200 ****
---- 24302,24340 ----
+--- 24306,24344 ----
     return type;
   }
   
