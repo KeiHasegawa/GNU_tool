@@ -1,0 +1,222 @@
+Windows 10 で cygwin1.dll をビルドしたときのメモ
+
+(*1) ダウンロードとビルド
+(*2) 動作確認 => エラー発生
+(*3) エラーの箇所を確認
+(*4) gdb から起動したプログラムにビルドした cygwin1.dll をロードさせてみた
+
+% mkdir ~/my_cygwin
+% cd ~/my_cygwin
+% wget http://cygwin.mirror.constant.com/x86_64/release/cygwin/cygwin-3.1.6-1.tar.xz
+% xz -d -c cygwin-3.1.6-1.tar.xz | tar xf -
+% cd cygwin-3.1.6-1.src
+% bunzip2 -c newlib-cygwin-3.1.6.tar.bz2 | tar xf -
+% cd newlib-cygwin
+% ./configure
+% mv MAKEFILE d:/tmp/Makefile
+% mv d:/tmp/Makefile .
+% make
+...
+ここで x86_64-mingw-g++ がないというエラーが発生してしまった. しょうがない
+ので x86_64-mingw-g++ をインストールした. 改めて
+
+% cd ~/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin
+% make
+...
+何やらコンパイルエラーが発生している.
+
+../../.././winsup/cygwin/fhandler_console.cc:2788:8: error: narrowing conversion of '-2' from 'int' to 'long unsigned int' [-Wnarrowing]
+ 2788 |  case -2:
+      |        ^
+...
+
+該当箇所をキャストして修正した:
+
+         case (unsigned long int)-2:
+
+似たようなエラーを修正した.
+
+% make
+...
+
+andler_socket_wsock::send_internal(_WSAMSG*, int)':
+../../.././winsup/cygwin/fhandler_socket_inet.cc:1377:69: error: suggest parentheses around assignment used as truth value [-Werror=parentheses]
+ 1377 |        in_off >= wsamsg->lpBuffers[in_idx].len && (++in_idx, in_off = 0))
+      |                                                              ~~~~~~~^~~
+
+こういうコンパイルエラーも発生している. 修正した:
+
+              (++in_idx, (in_off = 0))
+
+...
+% make
+
+また似たようなエラーが発生している.
+
+../../.././winsup/cygwin/ntdll.h:21:68: error: narrowing conversion of '-536870295' from 'NTSTATUS' {aka 'int'} to 'unsigned int' [-Wnarrowing]
+   21 | #define STATUS_ILLEGAL_DLL_PSEUDO_RELOCATION ((NTSTATUS) 0xe0000269)
+      |                                                                    ^
+../../.././winsup/cygwin/pinfo.cc:136:10: note: in expansion of macro 'STATUS_ILLEGAL_DLL_PSEUDO_RELOCATION'
+  136 |     case STATUS_ILLEGAL_DLL_PSEUDO_RELOCATION: /* custom error value */
+
+
+修正した:
+
+            case 0xe0000269:
+% make
+...
+g++ -B/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/libstdc++-v3/src/.libs -B/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/libstdc++-v3/libsupc++/.libs -L/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin -isystem /cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/winsup/cygwin/include -B/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/newlib/ -isystem /cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/newlib/targ-include -isystem /cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/newlib/libc/include    -o cygserver.exe cygserver.o client.o process.o msg.o sem.o shm.o threaded_queue.o transport.o transport_pipes.o bsd_helper.o bsd_log.o bsd_mutex.o sysv_msg.o sysv_sem.o sysv_shm.o setpwd.o pwdgrp.o /cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/version.o -static -static-libgcc -B/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin -lntdll
+/usr/bin/ld: /usr/local/lib/gcc/x86_64-pc-cygwin/10.1.0/crtbegin.o:cygming-crtbegin.c:(.text+0x8): undefined reference to `atexit'
+
+atext がなくてエラーしている. 後で判明したことだが atexit.o が壊れていたらしい.
+atexit.o を一旦削除した
+
+% make
+...
+
+紆余曲折あったが最後まで一応完了した.
+
+% make -n install
+どうやら /usr/local/bin/cywin1.dll が作成されるらしい.
+% make install
+
+これを 2021/04/13 19:00 ころやった.
+
+(*2) 動作確認 => エラー発生
+
+% cat a.c
+#include <stdio.h>
+
+int main(int argc, char** argv)
+{
+  for (int i = 0 ; i != argc ; ++i)
+    printf("hello world %d, %s\n", i, argv[i]);
+  return 0;
+}
+% gcc -g a.c -o a.exe
+% ./a.exe
+hello world 0, ./a
+% 
+
+自分の Windows 10 のパソコンは d:/cygwin64/bin/cygwin1.dll にこれまで
+動作していた cygwin1.dll があるので新しくビルドしたものを優先させるために
+以下のようにした.
+
+% setenv PATH /usr/local/bin:$PATH
+% ./a.exe
+      4 [main] a (10632) D:\home\khasegawa\my_cygwin\hello_test\a.exe: *** fatal error - cygheap base mismatch detected - 0x180343408/0x18033E408.
+This problem is probably due to using incompatible versions of the cygwin DLL.
+Search for cygwin1.dll using the Windows Start->Find/Search facility
+and delete all but the most recent version.  The most recent version *should*
+reside in x:\cygwin\bin, where 'x' is the drive on which you have
+installed the cygwin distribution.  Rebooting is also suggested if you
+are unable to find another cygwin DLL.
+
+しょうがないので以下のようにした:
+
+% mv /usr/local/bin/cygwin1.dll /usr/local/bin/cygwin1.dll.bad
+% ./a.exe
+hello world 0, ./a
+%
+
+mv や ls は動作しているが, 自分がビルドした gcc や gdb も動かなくなっている
+ことに気付いた.
+
+(*3) エラーの箇所を確認
+
+~/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/winsup/cygwin/dcrt0.cc:527
+
+get_cygwin_startup_info ()
+{
+  STARTUPINFO si;
+
+  GetStartupInfo (&si);
+  child_info *res = (child_info *) si.lpReserved2;
+
+  if (si.cbReserved2 < EXEC_MAGIC_SIZE || !res
+      || res->intro != PROC_MAGIC_GENERIC || res->magic != CHILD_INFO_MAGIC)
+    {
+      strace.activate (false);
+      res = NULL;
+    }
+  else
+    {
+      if ((res->intro & OPROC_MAGIC_MASK) == OPROC_MAGIC_GENERIC)
+	multiple_cygwin_problem ("proc intro", res->intro, 0);
+      else if (res->cygheap != (void *) &_cygheap_start)
+	multiple_cygwin_problem ("cygheap base", (uintptr_t) res->cygheap,
+				 (uintptr_t) &_cygheap_start);
+        ここらしい				 
+
+
+~/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/winsup/cygwin/dcrt0.cc:1336
+
+api_fatal ("%s mismatch detected - %ly/%ly.\n\
+This problem is probably due to using incompatible versions of the cygwin DLL.\n\
+Search for cygwin1.dll using the Windows Start->Find/Search facility\n\
+and delete all but the most recent version.  The most recent version *should*\n\
+reside in x:\\cygwin\\bin, where 'x' is the drive on which you have\n\
+installed the cygwin distribution.  Rebooting is also suggested if you\n\
+are unable to find another cygwin DLL.",
+	       what, magic_version, version);
+
+いろいろやってみたがエラーを回避できない.
+
+(*4) gdb から起動したプログラムにビルドした cygwin1.dll をロードさせてみた
+
+% gdb a.exe
+(gdb) b main
+(gdb) run
+...
+main で停止
+(gdb) b dll_entry
+(gdb) b get_cygwin_startup_info
+(gdb) run
+...
+dll_entry で停止
+Thread 1 hit Breakpoint 2, 0x00000001800d3b1b in dll_entry ()
+   from /usr/bin/cygwin1.dll
+        ^^^^^^^^^^^^^^^^^^^^   もともとインストールされている cygwin1.dll
+(gdb) c
+...
+get_cygwin_startup_info で停止
+
+Thread 1 hit Breakpoint 3, 0x000000018004afd9 in get_cygwin_startup_info() ()
+   from /usr/bin/cygwin1.dll
+        ^^^^^^^^^^^^^^^^^^^^
+	
+(gdb) set environ PATH /cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin:$PATH
+
+                         # 環境変数 PATH をビルドした cygwin1.dll があるディレクトリ
+      	 		   が最初にくるようにセット
+...
+
+Thread 1 hit Breakpoint 2, dll_entry (h=0x180040000, reason=1, 
+    static_load=0x5ffb00) at ../../.././winsup/cygwin/init.cc:78
+78	{
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ビルドした cygwin1.dll のソースにきている.
+(gdb) c
+...
+Thread 1 hit Breakpoint 3, get_cygwin_startup_info ()
+    at ../../.././winsup/cygwin/dcrt0.cc:528
+528	{
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+こっちもビルドした cygwin1.dll のソース
+(gdb) 
+
+ここで変数を見ながらステップ実行すると res = 0 なので
+
+534	  if (si.cbReserved2 < EXEC_MAGIC_SIZE || !res
+535	      || res->intro != PROC_MAGIC_GENERIC || res->magic != CHILD_INFO_MAGIC)
+536	    {
+537	      strace.activate (false);
+538	      res = NULL;                 こっちが実行されている.
+
+
+そして gdb から実行されたプログラムはエラーせず正常に main が呼ばれている.
+謎.
+
+とりあえず gdb から実行するという謎の回避策がある. これじゃ一見だめそうだが
+今回はこれまで.
