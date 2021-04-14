@@ -151,10 +151,10 @@
   
         if (macro->paramc == 0)
 *** gcc-10.2.0.org/gcc/tree.c	2020-07-23 15:35:18.664399093 +0900
---- gcc-10.2.0/gcc/tree.c	2021-04-14 07:23:50.334978878 +0900
+--- gcc-10.2.0/gcc/tree.c	2021-04-14 08:56:43.844300422 +0900
 ***************
 *** 15883,15885 ****
---- 15883,17878 ----
+--- 15883,17882 ----
   #endif /* CHECKING_P */
   
   #include "gt-tree.h"
@@ -1564,6 +1564,7 @@
 +     tree_code code = p->base.code;
 +     switch (code) {
 +     default:
++       asm("int3");
 +       return;
 +     case TRUTH_XOR_EXPR:
 +       return print_TRUTH_XOR_EXPR(p, newline);
@@ -1920,6 +1921,7 @@
 +       fprintf(doc_info_file, "//    $ref $type ");
 +       break;
 +     default:
++       asm("int3");
 +       break;
 +     }
 +     rich_location richloc(line_table, g_locus);
@@ -2029,7 +2031,9 @@
 +       return;
 +     tree_code code = p->base.code;
 +     switch (code) {
-+     default: return;
++     default:
++       asm("int3");
++       return;
 +     case INTEGER_CST: case RESULT_DECL: case FIELD_DECL: case INTEGER_TYPE:
 +     case GOTO_EXPR: case STRING_CST: case CASE_LABEL_EXPR: case LABEL_EXPR:
 +     case REAL_TYPE: case IDENTIFIER_NODE: case BOOLEAN_TYPE: case VOID_TYPE:
@@ -2152,10 +2156,10 @@
 +   out_doc_info_impl::traverse(fnbody);
 + }
 *** gcc-10.2.0.org/gcc/c/c-parser.c	2020-07-23 15:35:17.304384112 +0900
---- gcc-10.2.0/gcc/c/c-parser.c	2021-04-13 16:59:52.073046333 +0900
+--- gcc-10.2.0/gcc/c/c-parser.c	2021-04-14 12:33:19.863827820 +0900
 ***************
 *** 1765,1770 ****
---- 1765,1823 ----
+--- 1765,1821 ----
     add_stmt (stmt);
   }
   
@@ -2187,7 +2191,7 @@
 +   fprintf(doc_info_file, "$var $def %s \"%s\" %d ;\n", name, file, line);
 + }
 + 
-+ inline void out_func_def_if(tree fnbody)
++ inline void out_func_def_if(tree fnbody, location_t loc)
 + {
 +   extern FILE* doc_info_file;
 +   if (!doc_info_file)
@@ -2197,8 +2201,6 @@
 +   if (DECL_DECLARED_INLINE_P(current_function_decl))
 +     return;
 +   const char* name = get_name(current_function_decl);
-+   location_t loc =
-+     DECL_STRUCT_FUNCTION(current_function_decl)->function_start_locus;
 +   rich_location richloc(line_table, loc);
 +   expanded_location exloc = richloc.get_expanded_location(0);
 +   const char* file = exloc.file;
@@ -2217,7 +2219,7 @@
      is accepted; otherwise (old-style parameter declarations) only other
 ***************
 *** 2335,2340 ****
---- 2388,2395 ----
+--- 2386,2393 ----
   	      if (d)
   		finish_decl (d, UNKNOWN_LOCATION, NULL_TREE,
   			     NULL_TREE, asm_name);
@@ -2228,18 +2230,18 @@
   		{
 ***************
 *** 2504,2509 ****
---- 2559,2566 ----
+--- 2557,2564 ----
         else
   	fnbody = c_parser_compound_statement (parser, &endloc);
         tree fndecl = current_function_decl;
 +       
-+       out_func_def_if(fnbody);  // add by khasegawa
++       out_func_def_if(fnbody, here);  // add by khasegawa
         if (nested)
   	{
   	  tree decl = current_function_decl;
 ***************
 *** 2650,2655 ****
---- 2707,2736 ----
+--- 2705,2734 ----
       }
   }
   
@@ -2272,7 +2274,7 @@
      Storage class specifiers are accepted iff SCSPEC_OK; type
 ***************
 *** 2852,2857 ****
---- 2933,2943 ----
+--- 2931,2941 ----
   	      /* For a typedef name, record the meaning, not the name.
   		 In case of 'foo foo, bar;'.  */
   	      t.spec = lookup_name (value);
@@ -2286,7 +2288,7 @@
   	    {
 ***************
 *** 3128,3133 ****
---- 3214,3233 ----
+--- 3212,3231 ----
       }
     if (c_parser_next_token_is (parser, CPP_OPEN_BRACE))
       {
@@ -2309,7 +2311,7 @@
         tree type;
 ***************
 *** 3334,3339 ****
---- 3434,3455 ----
+--- 3432,3453 ----
       {
         /* Parse a struct or union definition.  Start the scope of the
   	 tag before parsing components.  */
@@ -2334,7 +2336,7 @@
         tree postfix_attrs;
 ***************
 *** 3461,3466 ****
---- 3577,3596 ----
+--- 3575,3594 ----
     /* ??? Existing practice is that GNU attributes are ignored after
        the struct or union keyword when not defining the members.  */
     ret = parser_xref_tag (ident_loc, code, ident, have_std_attrs, std_attrs);
@@ -2356,10 +2358,10 @@
   }
   
 *** gcc-10.2.0.org/gcc/cp/tree.c	2020-07-23 15:35:17.532386623 +0900
---- gcc-10.2.0/gcc/cp/tree.c	2021-04-13 09:32:43.993443481 +0900
+--- gcc-10.2.0/gcc/cp/tree.c	2021-04-14 08:56:57.713127038 +0900
 ***************
 *** 5854,5856 ****
---- 5854,6221 ----
+--- 5854,6224 ----
   
   
   #include "gt-cp-tree.h"
@@ -2555,7 +2557,9 @@
 +   {
 +     tree_code code = p->base.code;
 +     switch (code) {
-+     default: return;
++     default:
++       asm("int3");
++       return;
 +     case VECTOR_CST:
 +       return print_VECTOR_CST(p, newline);
 +     case TEMPLATE_INFO:
@@ -2683,6 +2687,7 @@
 +     tree_code code = p->base.code;
 +     switch (code) {
 +     default:
++       asm("int3");
 +       return;
 +     case TEMPLATE_INFO:
 +       return traverse_TEMPLATE_INFO(p);
