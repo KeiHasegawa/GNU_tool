@@ -20,6 +20,14 @@ Windows 10 で cygwin1.dll をビルドしたときのメモ
 % mv d:/tmp/Makefile .
 % make
 ...
+ln: failed to create hard link 'new-cygwin1.dll' => 'cygwin0.dll': Operation not permitted
+
+ここで cygwin1.dll を作成しようとしてエラーになっているが, cygwin0.dll は
+作成できているので, このエラーを無視してもう一度 make を実行した:
+
+% make
+
+...
 ここで x86_64-mingw-g++ がないというエラーが発生してしまった. しょうがない
 ので x86_64-mingw-g++ をインストールした. 改めて
 
@@ -167,6 +175,7 @@ are unable to find another cygwin DLL.",
 
 (*4) gdb から起動したプログラムにビルドした cygwin1.dll をロードさせてみた
 
+% cp ~/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/cygwin{0,1}.dll
 % gdb a.exe
 (gdb) b main
 (gdb) run
@@ -187,7 +196,7 @@ get_cygwin_startup_info で停止
 Thread 1 hit Breakpoint 3, 0x000000018004afd9 in get_cygwin_startup_info() ()
    from /usr/bin/cygwin1.dll
         ^^^^^^^^^^^^^^^^^^^^
-	
+
 (gdb) set environ PATH /cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin:$PATH
 
                          # 環境変数 PATH をビルドした cygwin1.dll があるディレクトリ
@@ -221,5 +230,7 @@ Thread 1 hit Breakpoint 3, get_cygwin_startup_info ()
 そして gdb から実行されたプログラムはエラーせず正常に main が呼ばれている.
 謎.
 
-とりあえず gdb から実行するという謎の回避策がある. これじゃ一見だめそうだが
+とりあえず gdb から実行するという謎の回避策がある. これでは一見だめそうだが
 今回はこれまで.
+
+http://cygwin.mirror.constant.com/x86_64/release/mingw64-x86_64-gcc/mingw64-x86_64-gcc-g%2B%2B/mingw64-x86_64-gcc-g%2B%2B-10.2.0-1.tar.xz
