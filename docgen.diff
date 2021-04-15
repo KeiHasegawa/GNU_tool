@@ -151,10 +151,10 @@
   
         if (macro->paramc == 0)
 *** gcc-10.2.0.org/gcc/tree.c	2020-07-23 15:35:18.664399093 +0900
---- gcc-10.2.0/gcc/tree.c	2021-04-14 13:01:17.177858509 +0900
+--- gcc-10.2.0/gcc/tree.c	2021-04-15 08:12:55.833006445 +0900
 ***************
 *** 15883,15885 ****
---- 15883,17884 ----
+--- 15883,17909 ----
   #endif /* CHECKING_P */
   
   #include "gt-tree.h"
@@ -162,6 +162,28 @@
 + #include <set>
 + namespace print_impl {
 +   void print(tree, bool);
++   void print_NULLPTR_TYPE(tree, bool newline)
++   {
++     printf("nullptr_type");
++     if (newline)
++       printf("\n");
++   }
++   void print_EXIT_EXPR(tree p, bool newline)
++   {
++     printf("exit_expr(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_LOOP_EXPR(tree p, bool newline)
++   {
++     printf("loop(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
 +   void print_TRUTH_XOR_EXPR(tree p, bool newline)
 +   {
 +     printf("truth_xor(");
@@ -1564,8 +1586,13 @@
 +     tree_code code = p->base.code;
 +     switch (code) {
 +     default:
-+       asm("int3");
 +       return;
++     case NULLPTR_TYPE:
++       return print_NULLPTR_TYPE(p, newline);
++     case EXIT_EXPR:
++       return print_EXIT_EXPR(p, newline);
++     case LOOP_EXPR:
++       return print_LOOP_EXPR(p, newline);
 +     case TRUTH_XOR_EXPR:
 +       return print_TRUTH_XOR_EXPR(p, newline);
 +     case TRUTH_AND_EXPR:
@@ -1923,7 +1950,6 @@
 +       fprintf(doc_info_file, "//    $ref $type ");
 +       break;
 +     default:
-+       asm("int3");
 +       break;
 +     }
 +     rich_location richloc(line_table, g_locus);
@@ -2034,14 +2060,13 @@
 +     tree_code code = p->base.code;
 +     switch (code) {
 +     default:
-+       asm("int3");
 +       return;
 +     case INTEGER_CST: case RESULT_DECL: case FIELD_DECL: case INTEGER_TYPE:
 +     case GOTO_EXPR: case STRING_CST: case CASE_LABEL_EXPR: case LABEL_EXPR:
 +     case REAL_TYPE: case IDENTIFIER_NODE: case BOOLEAN_TYPE: case VOID_TYPE:
 +     case VOID_CST: case LANG_TYPE: case ERROR_MARK: case BREAK_STMT:
 +     case CONTINUE_STMT: case REAL_CST: case OFFSET_TYPE: case DEBUG_BEGIN_STMT:
-+     case VECTOR_CST: case LABEL_DECL:
++     case VECTOR_CST: case LABEL_DECL: case NULLPTR_TYPE:
 +       return;
 +     case VAR_DECL: case FUNCTION_DECL: case TEMPLATE_DECL: case TYPE_DECL:
 +     case CONST_DECL: case USING_DECL: case NAMESPACE_DECL:
@@ -2072,7 +2097,7 @@
 +     case STATIC_CAST_EXPR: case CONST_CAST_EXPR: case TYPEID_EXPR:
 +     case NOEXCEPT_EXPR: case IMPLICIT_CONV_EXPR: case SIZEOF_EXPR:
 +     case PAREN_EXPR: case REINTERPRET_CAST_EXPR: case DYNAMIC_CAST_EXPR:
-+     case ALIGNOF_EXPR: case VA_ARG_EXPR:
++     case ALIGNOF_EXPR: case VA_ARG_EXPR: case LOOP_EXPR: case EXIT_EXPR:
 +       set_locus(p->exp.locus);
 +       /* Fall through.  */
 +     case USING_STMT:
@@ -2363,7 +2388,7 @@
 --- gcc-10.2.0/gcc/cp/tree.c	2021-04-14 08:56:57.713127038 +0900
 ***************
 *** 5854,5856 ****
---- 5854,6224 ----
+--- 5854,6222 ----
   
   
   #include "gt-cp-tree.h"
@@ -2560,7 +2585,6 @@
 +     tree_code code = p->base.code;
 +     switch (code) {
 +     default:
-+       asm("int3");
 +       return;
 +     case VECTOR_CST:
 +       return print_VECTOR_CST(p, newline);
@@ -2689,7 +2713,6 @@
 +     tree_code code = p->base.code;
 +     switch (code) {
 +     default:
-+       asm("int3");
 +       return;
 +     case TEMPLATE_INFO:
 +       return traverse_TEMPLATE_INFO(p);
