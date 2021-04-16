@@ -2,7 +2,7 @@ gcc symbol table investigation
 
 (*1) Add into symbol table and  lookup symbol table.
 
-     Think about a piece of program like bellow:
+     Think about a piece of program like below:
 
      typedef int T;
      T a;
@@ -55,7 +55,7 @@ c_parser_declspecs (c_parser *parser, struct c_declspecs *specs,
 
       I mentioned a little `lookup_name' at
       "cc1 lexical analyzer investigation(Part 3)". And it's also
-      good idea to call `print(tree)' like bellow:
+      good idea to call `print(tree)' like below:
 
      (gdb) p print(value)
      T
@@ -85,7 +85,7 @@ tree
 lookup_name (tree name)
 {
   struct c_binding *b = I_SYMBOL_BINDING (name);
-  // calling bellow `i_symbol_binding' wrapped macro.
+  // calling below `i_symbol_binding' wrapped macro.
 ...
 
 static inline struct c_binding* *
@@ -113,7 +113,7 @@ struct lang_identifier {
 	      t.spec = lookup_name (value);
 
      when `value' is created, already `t.spec' can be gotten by
-     refering to member. This member was set at bellow function:
+     refering to member. This member was set at below function:
 
 static void
 bind (tree name, tree decl, struct c_scope *scope, bool invisible,
@@ -129,7 +129,7 @@ bind (tree name, tree decl, struct c_scope *scope, bool invisible,
      1st argument `name' as 1st line `T'
      2nd argument `decl' as entry added 1st line
 
-     And there, almost same thing like bellow:
+     And there, almost same thing like below:
 
      ((lang_identifier*)name)->symbol_binding = decl;
 
@@ -147,7 +147,7 @@ bind (tree name, tree decl, struct c_scope *scope, bool invisible,
 
      (3) And parser `bind's (2) and declaration
 
-     Above can be illustrated like bellow:
+     Above can be illustrated like below:
 
 0xb7982630  +---------------------+  <-- tree `T'
             |                     |
@@ -191,7 +191,7 @@ ht_lookup_with_hash (cpp_hash_table *table, const unsigned char *str,
      contains every string, for example, `define' of pre-processor
      directive, `int' of keyword or `log' of one of builtin functions.
 
-     Bellow operation let us know that how `ht_lookup_with_hash'is called:
+     Below operation let us know that how `ht_lookup_with_hash'is called:
 
      (gdb) b c_lex_one_token
      # Assume that break-point number is 1
@@ -208,7 +208,7 @@ ht_lookup_with_hash (cpp_hash_table *table, const unsigned char *str,
      (2) For `T' at 2nd line, return entry created at (1)
      (3) For `a' at 2nd line, create new entry.
 
-     Now you may wonder how compiler works for the bellow code:
+     Now you may wonder how compiler works for the below code:
 
      int define;
      #define X

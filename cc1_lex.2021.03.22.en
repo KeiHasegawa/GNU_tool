@@ -38,7 +38,7 @@ Please confirm `a.s' and /tmp/a.c is compiled.
 This can enable you to do source level debugging
 
 (*5) Parser entrance
-Explanation omitted, the bellow gdb commands sets break-point to the
+Explanation omitted, the below gdb commands sets break-point to the
 parser entrance:
 (gdb) b c_parser_translation_unit
 
@@ -102,7 +102,7 @@ and then `c_parser_peek_token' descirbed at (*6) is called.
 Now, I'm not interested with file access. Especially say,
 interested with skipping comment.
 
-Change /tmp/a.c like bellow: 
+Change /tmp/a.c like below: 
 
 // comment
 int a = 1;
@@ -140,7 +140,7 @@ get the more information.
 and several functions are defined which works like `search_line_sse2'.
 
 (*9) Bug fix of C++ comment style
-Change /tmp/a.c like bellow:
+Change /tmp/a.c like below:
 // ã@î\
 int a = 1;
 
@@ -149,7 +149,7 @@ And also note that this file have to be written by Shift-JIS encoding way.
 2nd byte of 2nd Japanese charater is '\\' = 92, so that unfortunately,
 cc1 recognizes that comment continues to next line.
 
-Now I fixed like bellow:
+Now I fixed like below:
 
 inline bool sjis_1st(int c)
 {
@@ -212,7 +212,7 @@ search_line_consider_sjis(const unsigned char* s, const unsigned char* end)
 
 
 For build, to execute `make' at top directory is sure enough.
-But for easy, you can do like bellow:
+But for easy, you can do like below:
 % cd ../libcpp
 % make libcpp.a
 % cd ~/gcc-10.2.0/host-i686-pc-linux-gnu/gcc
@@ -228,14 +228,14 @@ as expected.
 (*10) Bug fix C style comment
 
 Now we'll also support JIS(ISO-2022-JP). For reproducing the bug, change
-/tmp/a.c like bellow:
+/tmp/a.c like below:
 % cat /tmp/a.c
 /*
  * èåèÇ¡™Ø∏Ç∑ÇÈ
  */
 %
 Here, /tmp/a.c have to be written by JIS encoding.
-Confirm the bug like bellow:
+Confirm the bug like below:
 
 (gdb) run cc1 ...
 
@@ -256,7 +256,7 @@ _cpp_skip_block_comment (cpp_reader *pfile)
 	  if (cur[-2] == '*')
 	    break;        /* This is the end of comment. */
 
-Now fix like bellow:
+Now fix like below:
 
 inline bool jis_kanji_start(const uchar* s)
 {
@@ -300,7 +300,7 @@ Actually this is not enough. This doesn't support JIS hankaku-kana.
  * ¡™Ø∏
  */
 
-For this, fix like bellow again:
+For this, fix like below again:
 
 inline bool jis_hankakukana_start(const uchar* s)
 {
