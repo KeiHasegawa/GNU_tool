@@ -1,0 +1,271 @@
+https://ejje.weblio.jp/content/’A‚µ
+
+Rebuild only cc1 with -O2 option rapidly
+
+(*1) Reliable way : refer to "linux gcc 10.2.0 re-install memo"  on this page.
+
+     But this takes 12 hours. And more I compiled `cc1' with
+     `-g' without `-O2'. If I chose the reliable way, I have to rebuild
+     again without `-O2'. It's not good.
+
+% gcc -### /tmp/a.c
+
+    shows that which `cc1' is envoked. In my case,
+
+ /home/khasegawa/gcc-10.2.0/usr/local/bin/../libexec/gcc/i686-pc-linux-gnu/10.2.0/cc1
+
+    The last command is to copy rebuilt `cc1' to above.
+
+(*2) perl script reading `-O2' build log
+> cat pick.pl
+while ( <> ) {
+    chop;
+    if (/-o cc1 /) {
+	print $_, "\n";
+    }
+}
+> perl pick.pl make.log.2021.03.26
+
+3 lines match:
+
+g++ -std=gnu++98 -no-pie   -g -DIN_GCC     -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wno-format -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings -fno-common  -DHAVE_CONFIG_H -static-libstdc++ -static-libgcc  -o cc1 c/c-lang.o c-family/stub-objc.o attribs.o c/c-errors.o c/c-decl.o c/c-typeck.o c/c-convert.o c/c-aux-info.o c/c-objc-common.o c/c-parser.o c/c-fold.o c/gimple-parser.o c-family/c-common.o c-family/c-cppbuiltin.o c-family/c-dump.o c-family/c-format.o c-family/c-gimplify.o c-family/c-indentation.o c-family/c-lex.o c-family/c-omp.o c-family/c-opts.o c-family/c-pch.o c-family/c-ppoutput.o c-family/c-pragma.o c-family/c-pretty-print.o c-family/c-semantics.o c-family/c-ada-spec.o c-family/c-ubsan.o c-family/known-headers.o c-family/c-attribs.o c-family/c-warn.o c-family/c-spellcheck.o i386-c.o glibc-c.o \
+/home/khasegawa/gcc-10.2.0/host-i686-pc-linux-gnu/prev-gcc/xg++ -B/home/khasegawa/gcc-10.2.0/host-i686-pc-linux-gnu/prev-gcc/ -B/usr/local/i686-pc-linux-gnu/bin/ -nostdinc++ -B/home/khasegawa/gcc-10.2.0/prev-i686-pc-linux-gnu/libstdc++-v3/src/.libs -B/home/khasegawa/gcc-10.2.0/prev-i686-pc-linux-gnu/libstdc++-v3/libsupc++/.libs  -I/home/khasegawa/gcc-10.2.0/prev-i686-pc-linux-gnu/libstdc++-v3/include/i686-pc-linux-gnu  -I/home/khasegawa/gcc-10.2.0/prev-i686-pc-linux-gnu/libstdc++-v3/include  -I/home/khasegawa/gcc-10.2.0/libstdc++-v3/libsupc++ -L/home/khasegawa/gcc-10.2.0/prev-i686-pc-linux-gnu/libstdc++-v3/src/.libs -L/home/khasegawa/gcc-10.2.0/prev-i686-pc-linux-gnu/libstdc++-v3/libsupc++/.libs -no-pie   -g -O2 -fno-checking -gtoggle -DIN_GCC     -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H -static-libstdc++ -static-libgcc  -o cc1 c/c-lang.o c-family/stub-objc.o attribs.o c/c-errors.o c/c-decl.o c/c-typeck.o c/c-convert.o c/c-aux-info.o c/c-objc-common.o c/c-parser.o c/c-fold.o c/gimple-parser.o c-family/c-common.o c-family/c-cppbuiltin.o c-family/c-dump.o c-family/c-format.o c-family/c-gimplify.o c-family/c-indentation.o c-family/c-lex.o c-family/c-omp.o c-family/c-opts.o c-family/c-pch.o c-family/c-ppoutput.o c-family/c-pragma.o c-family/c-pretty-print.o c-family/c-semantics.o c-family/c-ada-spec.o c-family/c-ubsan.o c-family/known-headers.o c-family/c-attribs.o c-family/c-warn.o c-family/c-spellcheck.o i386-c.o glibc-c.o \
+/home/khasegawa/gcc-10.2.0/host-i686-pc-linux-gnu/prev-gcc/xg++ -B/home/khasegawa/gcc-10.2.0/host-i686-pc-linux-gnu/prev-gcc/ -B/usr/local/i686-pc-linux-gnu/bin/ -nostdinc++ -B/home/khasegawa/gcc-10.2.0/prev-i686-pc-linux-gnu/libstdc++-v3/src/.libs -B/home/khasegawa/gcc-10.2.0/prev-i686-pc-linux-gnu/libstdc++-v3/libsupc++/.libs  -I/home/khasegawa/gcc-10.2.0/prev-i686-pc-linux-gnu/libstdc++-v3/include/i686-pc-linux-gnu  -I/home/khasegawa/gcc-10.2.0/prev-i686-pc-linux-gnu/libstdc++-v3/include  -I/home/khasegawa/gcc-10.2.0/libstdc++-v3/libsupc++ -L/home/khasegawa/gcc-10.2.0/prev-i686-pc-linux-gnu/libstdc++-v3/src/.libs -L/home/khasegawa/gcc-10.2.0/prev-i686-pc-linux-gnu/libstdc++-v3/libsupc++/.libs -no-pie   -g -O2 -fchecking=1 -DIN_GCC     -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H -static-libstdc++ -static-libgcc  -o cc1 c/c-lang.o c-family/stub-objc.o attribs.o c/c-errors.o c/c-decl.o c/c-typeck.o c/c-convert.o c/c-aux-info.o c/c-objc-common.o c/c-parser.o c/c-fold.o c/gimple-parser.o c-family/c-common.o c-family/c-cppbuiltin.o c-family/c-dump.o c-family/c-format.o c-family/c-gimplify.o c-family/c-indentation.o c-family/c-lex.o c-family/c-omp.o c-family/c-opts.o c-family/c-pch.o c-family/c-ppoutput.o c-family/c-pragma.o c-family/c-pretty-print.o c-family/c-semantics.o c-family/c-ada-spec.o c-family/c-ubsan.o c-family/known-headers.o c-family/c-attribs.o c-family/c-warn.o c-family/c-spellcheck.o i386-c.o glibc-c.o \
+> 
+
+Very compilcated. 1st is `g++'
+2nd is:
+/home/khasegawa/gcc-10.2.0/host-i686-pc-linux-gnu/prev-gcc/xg++
+3rd is:
+/home/khasegawa/gcc-10.2.0/host-i686-pc-linux-gnu/prev-gcc/xg++
+
+And these lines end with `\'
+and continue the next line.
+
+(*3) Improve like below:
+> cat pick.pl
+while ( <> ) {
+    chop;
+    if (/-o cc1 /) {
+	print $_, "\n";
+	while (/\\$/) {
+	    $_ = <>;
+	    chop;
+	    print $_, "\n";
+	}
+	goto end_label;
+    }
+}
+
+end_label:
+    ;
+> perl pick.pl make.log.2021.03.26
+g++ -std=gnu++98 -no-pie   -g -DIN_GCC     -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wno-format -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings -fno-common  -DHAVE_CONFIG_H -static-libstdc++ -static-libgcc  -o cc1 c/c-lang.o c-family/stub-objc.o attribs.o c/c-errors.o c/c-decl.o c/c-typeck.o c/c-convert.o c/c-aux-info.o c/c-objc-common.o c/c-parser.o c/c-fold.o c/gimple-parser.o c-family/c-common.o c-family/c-cppbuiltin.o c-family/c-dump.o c-family/c-format.o c-family/c-gimplify.o c-family/c-indentation.o c-family/c-lex.o c-family/c-omp.o c-family/c-opts.o c-family/c-pch.o c-family/c-ppoutput.o c-family/c-pragma.o c-family/c-pretty-print.o c-family/c-semantics.o c-family/c-ada-spec.o c-family/c-ubsan.o c-family/known-headers.o c-family/c-attribs.o c-family/c-warn.o c-family/c-spellcheck.o i386-c.o glibc-c.o \
+	  cc1-checksum.o libbackend.a main.o libcommon-target.a libcommon.a ../libcpp/libcpp.a ../libdecnumber/libdecnumber.a libcommon.a ../libcpp/libcpp.a   ../libbacktrace/.libs/libbacktrace.a ../libiberty/libiberty.a ../libdecnumber/libdecnumber.a   -lmpc -lmpfr -lgmp -rdynamic -ldl  -L./../zlib -lz 
+>
+
+This is expected result. But `-O2' option is missed even though this
+command is just linking not compiling. It should be specified `-O2'
+otion.
+
+(*4) Improve again like below:
+> cat pick.pl
+$target = $ARGV[0];
+shift @ARGV;
+
+while ( <> ) {
+    chop;
+    if (/-o $target /) {
+	s/^g\+\+/g\+\+ -O2/;
+	print $_, "\n";
+	while (/\\$/) {
+	    $_ = <>;
+	    chop;
+	    print $_, "\n";
+	}
+	goto end_label;
+    }
+}
+
+end_label:
+    ;
+> perl pick.pl cc1 make.log.2021.03.26
+g++ -O2 -std=gnu++98 -no-pie   -g -DIN_GCC     -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wno-format -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings -fno-common  -DHAVE_CONFIG_H -static-libstdc++ -static-libgcc  -o cc1 c/c-lang.o c-family/stub-objc.o attribs.o c/c-errors.o c/c-decl.o c/c-typeck.o c/c-convert.o c/c-aux-info.o c/c-objc-common.o c/c-parser.o c/c-fold.o c/gimple-parser.o c-family/c-common.o c-family/c-cppbuiltin.o c-family/c-dump.o c-family/c-format.o c-family/c-gimplify.o c-family/c-indentation.o c-family/c-lex.o c-family/c-omp.o c-family/c-opts.o c-family/c-pch.o c-family/c-ppoutput.o c-family/c-pragma.o c-family/c-pretty-print.o c-family/c-semantics.o c-family/c-ada-spec.o c-family/c-ubsan.o c-family/known-headers.o c-family/c-attribs.o c-family/c-warn.o c-family/c-spellcheck.o i386-c.o glibc-c.o \
+	  cc1-checksum.o libbackend.a main.o libcommon-target.a libcommon.a ../libcpp/libcpp.a ../libdecnumber/libdecnumber.a libcommon.a ../libcpp/libcpp.a   ../libbacktrace/.libs/libbacktrace.a ../libiberty/libiberty.a ../libdecnumber/libdecnumber.a   -lmpc -lmpfr -lgmp -rdynamic -ldl  -L./../zlib -lz 
+
+OK result. Again I tried like below:
+> perl pick.pl c/c-lang.o make.log.2021.03.26
+g++ -O2 -std=gnu++98 -fno-PIE -c  -DIN_GCC_FRONTEND -g -DIN_GCC     -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wno-format -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings -fno-common  -DHAVE_CONFIG_H -I. -Ic -I../.././gcc -I../.././gcc/c -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/bid -I../libdecnumber -I../.././gcc/../libbacktrace   -o c/c-lang.o -MT c/c-lang.o -MMD -MP -MF c/.deps/c-lang.TPo ../.././gcc/c/c-lang.c
+>
+This is also expected result.
+> cat envoke
+#! /bin/csh -f
+
+foreach target ( c/c-lang.o c-family/stub-objc.o attribs.o c/c-errors.o c/c-decl.o c/c-typeck.o c/c-convert.o c/c-aux-info.o c/c-objc-common.o c/c-parser.o c/c-fold.o c/gimple-parser.o c-family/c-common.o c-family/c-cppbuiltin.o c-family/c-dump.o c-family/c-format.o c-family/c-gimplify.o c-family/c-indentation.o c-family/c-lex.o c-family/c-omp.o c-family/c-opts.o c-family/c-pch.o c-family/c-ppoutput.o c-family/c-pragma.o c-family/c-pretty-print.o c-family/c-semantics.o c-family/c-ada-spec.o c-family/c-ubsan.o c-family/known-headers.o c-family/c-attribs.o c-family/c-warn.o c-family/c-spellcheck.o i386-c.o glibc-c.o \
+	  cc1-checksum.o libbackend.a main.o libcommon-target.a libcommon.a ../libcpp/libcpp.a ../libdecnumber/libdecnumber.a libcommon.a ../libcpp/libcpp.a   ../libbacktrace/.libs/libbacktrace.a ../libiberty/libiberty.a ../libdecnumber/libdecnumber.a )
+  perl pick.pl $target make.log.2021.03.26
+end
+> chmod +x envoke
+> envoke
+...
+>
+Unfortunately no command is outputed for `libbackend.a'. Because
+`libbackend.a' is build like below:
+
+rm -f libbackend.a
+ar rcT libbackend.a ...
+
+It should be error if correspond command is not found.
+Fix `envoke' and `pick.pl' like below:
+> cat envoke
+#! /bin/csh -f
+
+foreach target ( c/c-lang.o c-family/stub-objc.o attribs.o c/c-errors.o c/c-decl.o c/c-typeck.o c/c-convert.o c/c-aux-info.o c/c-objc-common.o c/c-parser.o c/c-fold.o c/gimple-parser.o c-family/c-common.o c-family/c-cppbuiltin.o c-family/c-dump.o c-family/c-format.o c-family/c-gimplify.o c-family/c-indentation.o c-family/c-lex.o c-family/c-omp.o c-family/c-opts.o c-family/c-pch.o c-family/c-ppoutput.o c-family/c-pragma.o c-family/c-pretty-print.o c-family/c-semantics.o c-family/c-ada-spec.o c-family/c-ubsan.o c-family/known-headers.o c-family/c-attribs.o c-family/c-warn.o c-family/c-spellcheck.o i386-c.o glibc-c.o \
+	  cc1-checksum.o libbackend.a main.o libcommon-target.a libcommon.a ../libcpp/libcpp.a ../libdecnumber/libdecnumber.a libcommon.a ../libcpp/libcpp.a   ../libbacktrace/.libs/libbacktrace.a ../libiberty/libiberty.a ../libdecnumber/libdecnumber.a )
+  perl pick.pl $target make.log.2021.03.26 || exit 1
+end
+> cat pick.pl
+$target = $ARGV[0];
+shift @ARGV;
+
+while ( <> ) {
+    chop;
+    if (/-o $target /) {
+	s/^g\+\+/g\+\+ -O2/;
+	print $_, "\n";
+	while (/\\$/) {
+	    $_ = <>;
+	    chop;
+	    print $_, "\n";
+	}
+	goto end_label;
+    }
+}
+
+print STDERR "not found ", $target, "\n";
+exit 1;
+
+end_label:
+exit 0;
+>
+
+And again I executed:
+> ./envoke
+...
+not found libbackend.a
+>
+OK. As expected, error occured.
+`pick2.pl' should be used for extension `a':
+> cat envoke
+#! /bin/csh -f
+
+foreach target ( c/c-lang.o c-family/stub-objc.o attribs.o c/c-errors.o c/c-decl.o c/c-typeck.o c/c-convert.o c/c-aux-info.o c/c-objc-common.o c/c-parser.o c/c-fold.o c/gimple-parser.o c-family/c-common.o c-family/c-cppbuiltin.o c-family/c-dump.o c-family/c-format.o c-family/c-gimplify.o c-family/c-indentation.o c-family/c-lex.o c-family/c-omp.o c-family/c-opts.o c-family/c-pch.o c-family/c-ppoutput.o c-family/c-pragma.o c-family/c-pretty-print.o c-family/c-semantics.o c-family/c-ada-spec.o c-family/c-ubsan.o c-family/known-headers.o c-family/c-attribs.o c-family/c-warn.o c-family/c-spellcheck.o i386-c.o glibc-c.o \
+	  cc1-checksum.o libbackend.a main.o libcommon-target.a libcommon.a ../libcpp/libcpp.a ../libdecnumber/libdecnumber.a libcommon.a ../libcpp/libcpp.a    ../libiberty/libiberty.a ../libdecnumber/libdecnumber.a )
+  if ($target:e == "a") then
+    perl pick2.pl $target:t make.log.2021.03.26 || exit 1
+  else
+    perl pick.pl $target make.log.2021.03.26 || exit 1
+  endif
+end
+> cat pick2.pl
+$target = $ARGV[0];
+shift @ARGV;
+
+while ( <> ) {
+    chop;
+    if (/^ar .*$target /) {
+	print $_, "\n";
+	while (/\\$/) {
+	    $_ = <>;
+	    chop;
+	    print $_, "\n";
+	}
+	goto end_label;
+    }
+}
+
+print STDERR "not found ", $target, "\n";
+exit 1;
+
+end_label:
+exit 0;
+>
+> ./envoke
+...
+This works well, however exclude `libbacktrace.a' from `envoke' to simplify.
+
+> cat envoke2
+#! /bin/csh -f
+
+foreach target (gimple-match.o generic-match.o insn-attrtab.o insn-automata.o insn-dfatab.o insn-emit.o insn-extract.o insn-latencytab.o insn-modes.o insn-opinit.o insn-output.o insn-peep.o insn-preds.o insn-recog.o insn-enums.o ggc-page.o alias.o alloc-pool.o auto-inc-dec.o auto-profile.o bb-reorder.o bitmap.o builtins.o caller-save.o calls.o ccmp.o cfg.o cfganal.o cfgbuild.o cfgcleanup.o cfgexpand.o cfghooks.o cfgloop.o cfgloopanal.o cfgloopmanip.o cfgrtl.o symtab.o cgraph.o cgraphbuild.o cgraphunit.o cgraphclones.o combine.o combine-stack-adj.o compare-elim.o context.o convert.o coroutine-passes.o coverage.o cppbuiltin.o cppdefault.o cprop.o cse.o cselib.o data-streamer.o data-streamer-in.o data-streamer-out.o dbxout.o dbgcnt.o dce.o ddg.o debug.o df-core.o df-problems.o df-scan.o dfp.o digraph.o dojump.o dominance.o domwalk.o double-int.o dse.o dumpfile.o dwarf2asm.o dwarf2cfi.o dwarf2out.o early-remat.o emit-rtl.o et-forest.o except.o explow.o expmed.o expr.o fibonacci_heap.o file-prefix-map.o final.o fixed-value.o fold-const.o fold-const-call.o function.o function-abi.o function-tests.o fwprop.o gcc-rich-location.o gcse.o gcse-common.o ggc-common.o ggc-tests.o gimple.o gimple-builder.o gimple-expr.o gimple-iterator.o gimple-fold.o gimple-laddress.o gimple-loop-interchange.o gimple-loop-jam.o gimple-loop-versioning.o gimple-low.o gimple-pretty-print.o gimple-ssa-backprop.o gimple-ssa-evrp.o gimple-ssa-evrp-analyze.o gimple-ssa-isolate-paths.o gimple-ssa-nonnull-compare.o gimple-ssa-split-paths.o gimple-ssa-store-merging.o gimple-ssa-strength-reduction.o gimple-ssa-sprintf.o gimple-ssa-warn-alloca.o gimple-ssa-warn-restrict.o gimple-streamer-in.o gimple-streamer-out.o gimple-walk.o gimplify.o gimplify-me.o godump.o graph.o graphds.o graphviz.o graphite.o graphite-isl-ast-to-gimple.o graphite-dependences.o graphite-optimize-isl.o graphite-poly.o graphite-scop-detection.o graphite-sese-to-poly.o gtype-desc.o haifa-sched.o hash-map-tests.o hash-set-tests.o hsa-common.o hsa-gen.o hsa-regalloc.o hsa-brig.o hsa-dump.o hw-doloop.o hwint.o ifcvt.o ree.o inchash.o incpath.o init-regs.o internal-fn.o ipa-cp.o ipa-sra.o ipa-devirt.o ipa-fnsummary.o ipa-polymorphic-call.o ipa-split.o ipa-inline.o ipa-comdats.o ipa-visibility.o ipa-inline-analysis.o ipa-inline-transform.o ipa-predicate.o ipa-profile.o ipa-prop.o ipa-param-manipulation.o ipa-pure-const.o ipa-icf.o ipa-icf-gimple.o ipa-reference.o ipa-hsa.o ipa-ref.o ipa-utils.o ipa.o ira.o ira-build.o ira-costs.o ira-conflicts.o ira-color.o ira-emit.o ira-lives.o jump.o langhooks.o lcm.o lists.o loop-doloop.o loop-init.o loop-invariant.o loop-iv.o loop-unroll.o lower-subreg.o lra.o lra-assigns.o lra-coalesce.o lra-constraints.o lra-eliminations.o lra-lives.o lra-remat.o lra-spills.o lto-cgraph.o lto-streamer.o lto-streamer-in.o lto-streamer-out.o lto-section-in.o lto-section-out.o lto-opts.o lto-compress.o mcf.o mode-switching.o modulo-sched.o multiple_target.o omp-offload.o omp-expand.o omp-general.o omp-grid.o omp-low.o omp-simd-clone.o opt-problem.o optabs.o optabs-libfuncs.o optabs-query.o optabs-tree.o optinfo.o optinfo-emit-json.o options-save.o opts-global.o ordered-hash-map-tests.o passes.o plugin.o postreload-gcse.o postreload.o predict.o print-rtl.o print-rtl-function.o print-tree.o profile.o profile-count.o range.o range-op.o read-md.o read-rtl.o read-rtl-function.o real.o realmpfr.o recog.o reg-stack.o regcprop.o reginfo.o regrename.o regstat.o reload.o reload1.o reorg.o resource.o rtl-error.o rtl-tests.o rtl.o rtlhash.o rtlanal.o rtlhooks.o rtx-vector-builder.o run-rtl-passes.o sched-deps.o sched-ebb.o sched-rgn.o sel-sched-ir.o sel-sched-dump.o sel-sched.o selftest-rtl.o selftest-run-tests.o sese.o shrink-wrap.o simplify-rtx.o sparseset.o spellcheck.o spellcheck-tree.o sreal.o stack-ptr-mod.o statistics.o stmt.o stor-layout.o store-motion.o streamer-hooks.o stringpool.o substring-locations.o target-globals.o targhooks.o timevar.o toplev.o tracer.o trans-mem.o tree-affine.o asan.o tsan.o ubsan.o sanopt.o sancov.o tree-call-cdce.o tree-cfg.o tree-cfgcleanup.o tree-chrec.o tree-complex.o tree-data-ref.o tree-dfa.o tree-diagnostic.o tree-diagnostic-path.o tree-dump.o tree-eh.o tree-emutls.o tree-if-conv.o tree-inline.o tree-into-ssa.o tree-iterator.o tree-loop-distribution.o tree-nested.o tree-nrv.o tree-object-size.o tree-outof-ssa.o tree-parloops.o tree-phinodes.o tree-predcom.o tree-pretty-print.o tree-profile.o tree-scalar-evolution.o tree-sra.o tree-switch-conversion.o tree-ssa-address.o tree-ssa-alias.o tree-ssa-ccp.o tree-ssa-coalesce.o tree-ssa-copy.o tree-ssa-dce.o tree-ssa-dom.o tree-ssa-dse.o tree-ssa-forwprop.o tree-ssa-ifcombine.o tree-ssa-live.o tree-ssa-loop-ch.o tree-ssa-loop-im.o tree-ssa-loop-ivcanon.o tree-ssa-loop-ivopts.o tree-ssa-loop-manip.o tree-ssa-loop-niter.o tree-ssa-loop-prefetch.o tree-ssa-loop-split.o tree-ssa-loop-unswitch.o tree-ssa-loop.o tree-ssa-math-opts.o tree-ssa-operands.o tree-ssa-phiopt.o tree-ssa-phiprop.o tree-ssa-pre.o tree-ssa-propagate.o tree-ssa-reassoc.o tree-ssa-sccvn.o tree-ssa-scopedtables.o tree-ssa-sink.o tree-ssa-strlen.o tree-ssa-structalias.o tree-ssa-tail-merge.o tree-ssa-ter.o tree-ssa-threadbackward.o tree-ssa-threadedge.o tree-ssa-threadupdate.o tree-ssa-uncprop.o tree-ssa-uninit.o tree-ssa.o tree-ssanames.o tree-stdarg.o tree-streamer.o tree-streamer-in.o tree-streamer-out.o tree-tailcall.o tree-vect-generic.o tree-vect-patterns.o tree-vect-data-refs.o tree-vect-stmts.o tree-vect-loop.o tree-vect-loop-manip.o tree-vect-slp.o tree-vectorizer.o tree-vector-builder.o tree-vrp.o tree.o tristate.o typed-splay-tree.o unique-ptr-tests.o valtrack.o value-range.o value-prof.o var-tracking.o varasm.o varpool.o vec-perm-indices.o vmsdbgout.o vr-values.o vtable-verify.o web.o wide-int.o wide-int-print.o xcoffout.o i386.o analyzer/analysis-plan.o analyzer/analyzer.o analyzer/analyzer-logging.o analyzer/analyzer-pass.o analyzer/analyzer-selftests.o analyzer/bar-chart.o analyzer/call-string.o analyzer/checker-path.o analyzer/constraint-manager.o analyzer/diagnostic-manager.o analyzer/engine.o analyzer/function-set.o analyzer/pending-diagnostic.o analyzer/program-point.o analyzer/program-state.o analyzer/region-model.o analyzer/sm.o analyzer/sm-file.o analyzer/sm-malloc.o analyzer/sm-pattern-test.o analyzer/sm-sensitive.o analyzer/sm-signal.o analyzer/sm-taint.o analyzer/state-purge.o analyzer/supergraph.o x86-tune-sched.o x86-tune-sched-bd.o x86-tune-sched-atom.o x86-tune-sched-core.o i386-options.o i386-builtins.o i386-expand.o i386-features.o linux.o cet.o host-linux.o)
+  perl pick.pl $target make.log.2021.03.26 || exit 1
+end
+> ./envoke2
+This also works well. But if we execute this output directly,
+overwrite existing `.o' file. So fix like below:
+> cat pick.pl
+$target = $ARGV[0];
+shift @ARGV;
+
+while ( <> ) {
+    chop;
+    if (/-o $target /) {
+	s/-o $target /-o ~\/O2_build\/$target /;
+	s/^g\+\+/g\+\+ -O2/;
+	print $_, "\n";
+	while (/\\$/) {
+	    $_ = <>;
+	    chop;
+	    print $_, "|| exit 1\n";
+	}
+	goto end_label;
+    }
+}
+
+print STDERR "not found ", $target, "\n";
+exit 1;
+
+end_label:
+exit 0;
+> ./envok2 > envoke2_result
+> mkdir -p ~/O2_build/analyzer
+> cd ~/gcc-10.2.0/host-i686-pc-linux-gnu/gcc/
+> sh -vf ../../envoke2_result
+> cd ~/O2_build
+> ar rcT libbackend.a ...
+# OK!
+
+> cd ~/gcc-10.2.0
+> cat envoke3
+#! /bin/csh -f
+
+foreach target (i386-common.o prefix.o opts.o opts-common.o options.o vec.o hooks.o common/common-targhooks.o hash-table.o file-find.o spellcheck.o selftest.o opt-suggestions.o)
+  perl pick.pl $target make.log.2021.03.26 || exit 1
+end
+> chmod +x envoke3
+> ./envoke3 > envoke3_result
+> cd host-i686-pc-linux-gnu/gcc/
+> sh -vf ../../envoke3_result 
+
+
+I repeated these work and finally execute next command:
+
+> g++ -O2 -std=gnu++98 -no-pie -g -DIN_GCC -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wno-format -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings -fno-common -DHAVE_CONFIG_H -static-libstdc++ -static-libgcc -o ~/O2_build/cc1 c/c-lang.o c-family/stub-objc.o attribs.o c/c-errors.o c/c-decl.o c/c-typeck.o c/c-convert.o c/c-aux-info.o c/c-objc-common.o c/c-parser.o c/c-fold.o c/gimple-parser.o c-family/c-common.o c-family/c-cppbuiltin.o c-family/c-dump.o c-family/c-format.o c-family/c-gimplify.o c-family/c-indentation.o c-family/c-lex.o c-family/c-omp.o c-family/c-opts.o c-family/c-pch.o c-family/c-ppoutput.o c-family/c-pragma.o c-family/c-pretty-print.o c-family/c-semantics.o c-family/c-ada-spec.o c-family/c-ubsan.o c-family/known-headers.o c-family/c-attribs.o c-family/c-warn.o c-family/c-spellcheck.o i386-c.o glibc-c.o cc1-checksum.o libbackend.a main.o libcommon-target.a libcommon.a libcpp.a libdecnumber.a libcommon.a libcpp.a libbacktrace.a libiberty.a libdecnumber.a libz.a -lmpc -lmpfr -lgmp -rdynamic -ldl 
+...
+collect2: error: ld returned 1 exit status
+> 
+
+Error occured because of `gcc_qsort' is not defined. This is defined
+at `sort.o' but the same file names appear at some places.
+For cc1 linking, 1st command is not suitable. Same thing occured for
+`symtab.o' and `expr.o'.
+
+I again compiled `sort.o', `symtab.o' and `expr.o' with suitable
+command.
+This should be improved.
+And finally the last link command ended successfly.
+
+At last, overwrite like below:
+> cp cc1 /home/khasegawa/gcc-10.2.0/usr/local/bin/../libexec/gcc/i686-pc-linux-gnu/10.2.0/cc1
+
+
