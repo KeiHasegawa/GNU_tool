@@ -66,10 +66,10 @@ use cygwin
    % xz -d -c mpfr-4.0.2.tar.xz | tar xf -
    % cd mpfr-4.0.2
    % ./configure
-   As a result, bellow error occured:
+   As a result, below error occured:
    configure: error: libgmp isn't provided as a DLL: use --enable-static --disable-shared
    % ./configure --enable-static --disable-shared
-   As a result, bellow error occured:
+   As a result, below error occured:
    checking for __gmpz_init in -lgmp... no
 configure: error: libgmp not found or uses a different ABI (including static vs shared).
 
@@ -91,17 +91,17 @@ configure: error: libgmp not found or uses a different ABI (including static vs 
    % gunzip -c mpc-1.0.3.tar.gz | tar xf -
    % cd mpc-1.0.3
    % ./configure
-   As a result, bellow error occured:
+   As a result, below error occured:
    checking for __gmpz_init in -lgmp... no
 configure: error: libgmp not found or uses a different ABI (including static vs shared).
    Similary to MPFR, I comment-outed configure:13771-13811.
    % ./configure
-   As a result, bellow error occured:
+   As a result, below error occured:
    checking for MPFR... no
    configure: error: libmpfr not found or uses a different ABI (including static vs shared).
    Similary to MPFR, configure:13814-13840 are comment-outed.
    % ./configure
-   As a result, bellow error occured:
+   As a result, below error occured:
    configure: error: gmp is not available as a DLL: use --enable-static --disable-shared
    % ./configure --enable-static --disable-shared
    Normarlly done.
@@ -120,7 +120,7 @@ configure: error: libgmp not found or uses a different ABI (including static vs 
 
    Error reason is that `mpfr_fmma' declared at mul.c is conflict with
    `mpfr_fmma' declared at /usr/local/inclde/mpfr.h
-   I changed mul.c like bellow:
+   I changed mul.c like below:
 
    mpfr_fmma definition -> s_mpfr_fmma definition
    mpfr_fmma call -> s_mpfr_fmma call
@@ -138,7 +138,7 @@ configure: error: libgmp not found or uses a different ABI (including static vs 
 
    % cd gcc-10.1.0
    % ./configure
-   As a result, bellow error occured:
+   As a result, below error occured:
    checking for the correct version of the gmp/mpfr/mpc libraries... no
    configure: error: Building GCC requires GMP 4.2+, MPFR 3.1.0+ and MPC 0.8.0+.
    Try the --with-gmp, --with-mpfr and/or --with-mpc options to specify
@@ -167,7 +167,7 @@ configure: error: libgmp not found or uses a different ABI (including static vs 
    Link error : -lgmp -lmpfr -lmpc not found
    % cd host-x86_64-pc-cygwin/gcc
    % g++ ... -o cc1.exe ... -L/usr/local/lib
-   As a result, bellow error occured:
+   As a result, below error occured:
    /usr/lib/gcc/x86_64-pc-cygwin/9.3.0/../../../../x86_64-pc-cygwin/bin/ld: /usr/local/lib/libmpc.a(sqrt.o): in function `mpc_sqrt':
 /cygdrive/d/tmp/work.07.05/mpc-1.0.3/src/sqrt.c:301: undefined reference to `mpfr_add_one_ulp'
 /cygdrive/d/tmp/work.07.05/mpc-1.0.3/src/sqrt.c:301:(.text+0x7f4): relocation truncated to fit: R_X86_64_PC32 against undefined symbol `mpfr_add_one_ulp'
@@ -219,7 +219,7 @@ collect2: error: ld returned 1 exit status
   % find . -type f -exec grep  -nH mpfr_add_one_ulp {} \;
 
   According to this result, `mpfr_add_one_ulp' and `mpfr_sub_one_ulp'
-  were deleted at this release. From this release, change like bellow:
+  were deleted at this release. From this release, change like below:
   
   mpfr_add_one_ulp -> mpfr_nextabove
   mpfr_sub_one_ulp -> mpfr_nextbelow
@@ -227,7 +227,7 @@ collect2: error: ld returned 1 exit status
   % cd mpc-1.0.3
   % find . -type f -exec grep  -nH mpfr_add_one_ulp {} \;
 
-  As a result, I changed mpc-1.0.3/src/mpc-impl.h like bellow:
+  As a result, I changed mpc-1.0.3/src/mpc-impl.h like below:
 
 #if 0
 #define MPFR_ADD_ONE_ULP(x) mpfr_add_one_ulp (x, GMP_RNDN)
@@ -281,12 +281,12 @@ collect2: error: ld returned 1 exit status
   % make
   Normally done.
 
-  I didn't want to install /usr/local, so did like bellow:
+  I didn't want to install /usr/local, so did like below:
   % make install 'DESTDIR=d:/home/khasegawa'
   ...
   xgcc: fatal error: cannot execute '/cygdrive/d/tmp/work.07.05/gcc-10.1.0/host-x86_64-pc-cygwin/gcc/cc1.exe': spawn: Exec format error
 
-  Understandable error occured. I again builded like bellow:
+  Understandable error occured. I again builded like below:
   % rm gcc-10.1.0/host-x86_64-pc-cygwin/gcc/cc1.exe 
   % make
   Normally done

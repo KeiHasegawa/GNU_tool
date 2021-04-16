@@ -9,7 +9,7 @@ Index
 (*6) How to patch
 
 (*1) String literal
-Create simple source like bellow:
+Create simple source like below:
 % cat /tmp/a.c
 const char* p = "abcd";
 %
@@ -45,7 +45,7 @@ i.e. type member becomes `CPP_STRING'.
 
 (*2) lex_string
 
-`c_token' as string literal is created at bellow function:
+`c_token' as string literal is created at below function:
 
 static void
 lex_string (cpp_reader *pfile, cpp_token *token, const uchar *base)
@@ -67,7 +67,7 @@ At this loop, search for end of string literal.
 
 (*3) Bug fix for Shif-JIS string literal (1st step)
 
-For reproducing the bug, change like bellow:
+For reproducing the bug, change like below:
 
 % cat /tmp/a.c
 const char* p = "機能";
@@ -76,7 +76,7 @@ const char* p = "機能";
 Note that this file is written by Shift-JIS code.
 2nd byte of 2nd Japanese character is '\\' = 0x5c
 so, compiler can not recognize the end of string literal.
-You can confirm this bug like bellow:
+You can confirm this bug like below:
 
 (gdb) run cc1 ...
 
@@ -143,7 +143,7 @@ cpp_interpret_string_1 (cpp_reader *pfile, const cpp_string *from, size_t count
 	    p++;                             /* begining of escape sequence. */
 
 
-For supporting Shift-JIS string literal, fixed like bellow:
+For supporting Shift-JIS string literal, fixed like below:
 
 #if 0
 	  while (p < limit && *p != '\\')
@@ -182,7 +182,7 @@ cc1 works well for this fix.
 (*5) Bug fix for JIS(ISO-2022-JP) string literal
 
 Special fix is required for JIS string literal. At first, for reproducing
-the bug, change /tmp/a.c like bellow:
+the bug, change /tmp/a.c like below:
 % cat /tmp/a.c
 const char* p = "あ";
 %
@@ -261,9 +261,9 @@ Above code is a little busy, but works well.
 
 `comment_bug_fix.diff' was described at
 "gcc lexical analyzer investigation(Part 1)". If this patch is applied to
-your gcc sources, the bellow patch can not be applied because of inline
+your gcc sources, the below patch can not be applied because of inline
 function position changing. Please again execute xz and tar command like
-bellow:
+below:
 
 Download `string_and_comment_bug_fix.diff' at this page and save as, for
 example

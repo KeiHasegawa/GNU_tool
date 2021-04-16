@@ -96,7 +96,7 @@ end
 
 (*3) Execute (*2) under control gdb
 
-    Now we'll do the same thing under control gdb like bellow:
+    Now we'll do the same thing under control gdb like below:
 
 % /usr/local/bin/gdb gdb.exe -q
 Reading symbols from gdb.exe...
@@ -209,7 +209,7 @@ windows_nat_target::resume (ptid_t ptid, int step, enum gdb_signal sig)
 (*5) call `SetThreadContext' with process handle which is obtained by
      callig `CreateProcessW'
 
-     See bellow log. I added `(*)' near important point.
+     See below log. I added `(*)' near important point.
 
 Åö
 
@@ -329,7 +329,7 @@ $4 = (HANDLE) 0x2c8  (*) The process handle obtained by calling
      This function just calls `GetThreadContext' and displays the
      variable whose type is `CONTEXT'
 
-     This function is use like bellow:
+     This function is use like below:
 
      When debugged gdb stops at `windows-nat.c:1487' mentioned at (*5)
 
@@ -350,7 +350,7 @@ $4 = (HANDLE) 0x2c8  (*) The process handle obtained by calling
 (*7) call `CreateProcessA' from gdb code
 
 At the top of the function `windows_nat_target::create_inferior', insert
-the bellow code:
+the below code:
 
   {
     char path[] = ".\\a.exe";
@@ -363,7 +363,7 @@ the bellow code:
     ret = ret;
   }
 
-After this call of `CreateProcessA', execute like bellow:
+After this call of `CreateProcessA', execute like below:
 
 (gdb) p debug_thread(pi.hThread)
 Dr0 = 0x0
@@ -461,7 +461,7 @@ Thread 1 "gdb" received signal SIGSEGV, Segmentation fault.
 (*8) Win32API called at the span between
      `wait_sync_command_done', `watchpoint_check' and `ReadProcessMemory'
 
-     Insert the mark (*) to the bellow log:
+     Insert the mark (*) to the below log:
 
 /usr/local/bin/gdb gdb.exe -q
 Reading symbols from gdb.exe...

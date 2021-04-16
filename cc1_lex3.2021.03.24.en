@@ -38,9 +38,9 @@ a
 
 It's not so difficult to guess that `a' has to the something attributed
 value except for token value. As far as gcc implementation, every
-token has its attributed value. We'll see that bellow.
+token has its attributed value. We'll see that below.
 
-`c_token' objects created at `c_lex_one_token' are like bellow:
+`c_token' objects created at `c_lex_one_token' are like below:
 
 For `int'
 {type = CPP_KEYWORD, id_kind = C_ID_NONE, keyword = RID_INT, pragma_kind = PRAGMA_NONE, location = 162, value = 0xb78f4630, flags = 64 '@'}
@@ -67,7 +67,7 @@ Token value.
 
 (*3) c_token::id_kind
 
-If c_token:type is equal to `CPP_NAME', this value becomes like bellow:
+If c_token:type is equal to `CPP_NAME', this value becomes like below:
 
 	     C_ID_ID          so-called identifier
 	     C_ID_TYPENAME    so-called typedef name
@@ -113,7 +113,7 @@ Above code is one of examples.
 
 (*5) c_token::value
 
-This member type is `tree' like bellow:
+This member type is `tree' like below:
 
 union tree_node {
     tree_base base;
@@ -222,7 +222,7 @@ So I added the function at the end of
 
 gcc-10.2.0/gcc/tree.c
 
-like bellow:
+like below:
 
 void print(tree p)
 {
@@ -258,7 +258,7 @@ void print(tree p)
 }
 
 Of cause, it's enough to execute `make' at top directory.
-But if you refer to build log, the bellow commands work well:
+But if you refer to build log, the below commands work well:
 
 % g++ -c ... -o tree.o ... ../.././gcc/tree.c
 % ar rcT libbackend.a ... tree.o
@@ -266,7 +266,7 @@ But if you refer to build log, the bellow commands work well:
 
 This should be the same way as your build was done. So see your build log file.
 Make a simple shell script or Makefile. And simple is important.
-My log file was like bellow:
+My log file was like below:
 
 g++ -std=gnu++98 -fno-PIE -c   -g -DIN_GCC     -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wno-format -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings -fno-common  -DHAVE_CONFIG_H -I. -I. -I../.././gcc -I../.././gcc/. -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/bid -I../libdecnumber -I../.././gcc/../libbacktrace   -o tree.o -MT tree.o -MMD -MP -MF ./.deps/tree.TPo ../.././gcc/tree.c
 
@@ -285,7 +285,7 @@ c_parser_peek_token (c_parser *parser)
       c_lex_one_token (parser, &parser->tokens[0]);
       parser->tokens_avail = 1;  // Set a break-point here!
 
-At this break-point, do print command like bellow:
+At this break-point, do print command like below:
 
 (gdb) p print(parser->tokens[0]->value)
 

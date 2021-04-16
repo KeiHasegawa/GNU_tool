@@ -54,7 +54,7 @@ execute xgcc under gdb control like
 because "--" matches with the entry of `option_map`, again
 `find_opt' is called and return `OPT_SPECIAL_unknown'.
 
-Here, the argument of `find_opt' is like bellow:
+Here, the argument of `find_opt' is like below:
 
 1st time : find_opt(input = "-output-macro-info", ...)
 2nd time : find_opt(input = "foutput-macro-info", ...)
@@ -62,12 +62,12 @@ Here, the argument of `find_opt' is like bellow:
 and you can find that `find_opt' looks up `input' in `cl_options'
 whose size is `cl_options_count'.
 
-I found in build log bellow:
+I found in build log below:
 
 	gawk -f ../.././gcc/opt-gather.awk ../.././gcc/ada/gcc-interface/lang.opt ../.././gcc/brig/lang.opt ../.././gcc/d/lang.opt ../.././gcc/fortran/lang.opt ../.././gcc/go/lang.opt ../.././gcc/lto/lang.opt ../.././gcc/c-family/c.opt ../.././gcc/common.opt ../.././gcc/params.opt ../.././gcc/analyzer/analyzer.opt ../.././gcc/config/fused-madd.opt ../.././gcc/config/i386/i386.opt ../.././gcc/config/gnu-user.opt ../.././gcc/config/linux.opt ../.././gcc/config/linux-android.opt > tmp-optionlist
 
 I guessed that above is very important. But to implemnt simply,
-try to modify `decode_cmdline_option' call like bellow:
+try to modify `decode_cmdline_option' call like below:
  
 gcc-10.2.0/gcc/opts-common.c
 
@@ -90,7 +90,7 @@ bool output_macro_info;  // Add this global flag variable
 
 Now, all we have to do is to transfer "--ouput-macro-info" option
 when executing `cc1'.
-The situation Before executing `cc1' are like bellow:
+The situation Before executing `cc1' are like below:
 
 gcc-10.2.0/gcc/gcc.c
 
@@ -106,7 +106,7 @@ gcc-10.2.0/gcc/gcc.c
   // ^^^^^ Add to here
   commands[0].argv = argbuf.address ();
 
-This works well. But I also noticed that it's more simple like bellow:
+This works well. But I also noticed that it's more simple like below:
 
   if (getenv("OUTPUT_MACRO_INFO")) {
     ... // Do what you want
@@ -127,7 +127,7 @@ c/gccspec.o driver-i386.o  libcommon-target.a \
 libcommon.a ../libcpp/libcpp.a   ../libbacktrace/.libs/libbacktrace.a ../libiberty/libiberty.a ../libdecnumber/libdecnumber.a > /tmp/a
 
 As this result, `cl_options' is defined at options.o
-Build log shows that options.c was generated like bellow:
+Build log shows that options.c was generated like below:
 
 gawk -f ../.././gcc/opt-functions.awk -f ../.././gcc/opt-read.awk \
 	       -f ../.././gcc/optc-gen.awk \
@@ -136,7 +136,7 @@ gawk -f ../.././gcc/opt-functions.awk -f ../.././gcc/opt-read.awk \
 Now the point is the way of generaing `optionlist', the discuss falls back
 to above `tmp-optionlist'.
 
-I tried to add "--hogex" into gcc-10.2.0/gcc/c-family/c.opt like bellow:
+I tried to add "--hogex" into gcc-10.2.0/gcc/c-family/c.opt like below:
 
 w
 C ObjC C++ ObjC++
@@ -161,7 +161,7 @@ The Specs Language
 described at gcc-10.2.0/gcc/gcc.c
 To add "--hogex", we have to fix this part. But it's to troublesome.
 
-I added "--output-macro-info" into gcc-10.2.0/gcc/common.opt like bellow:
+I added "--output-macro-info" into gcc-10.2.0/gcc/common.opt like below:
 
 fipa-ra
 Common Report Var(flag_ipa_ra) Optimization
@@ -174,7 +174,7 @@ Driver
 
 "foutput-macro-info" line is the point. This satisfies above
 "The Spec Language".
-Confirm by bellow command:
+Confirm by below command:
 
 % ./xgcc -S /tmp/a.c --output-macro-info -###
 
@@ -218,7 +218,7 @@ Download
 
 output_macro_info.diff
 
-and execute patch command like bellow:
+and execute patch command like below:
 
 % xz -d -c gcc-10.2.0.tar.xz | tar xf -
 % cd gcc-10.2.0
@@ -233,7 +233,7 @@ And then normally execute
 % ./configure 
 % make install
 
-Fixed version gcc is executed like bellow:
+Fixed version gcc is executed like below:
 
 % gcc foo.c --output-macro-info
 
