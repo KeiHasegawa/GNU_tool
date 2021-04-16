@@ -1,0 +1,207 @@
+cc1 の抽象コードの調査
+
+(*1) 3 番地コード gimple
+(*2) 基本ブロック basic_block
+
+(*1) gimple
+
+    「cc1 アセンブラ生成の調査」で述べたように以下のことが分かっている:
+
+     o tree : 構文解析が終わった段階の函数のボディの表現
+     o rtn_insn : アセンブラ出力の前の命令列の表現
+
+     この中間段階にあるのが gimple というデータ構造で, ざっくりといえば
+
+     tree -> gimple -> rtx_insn
+
+     という関係になっている. まずは単純なソース
+
+     int f(int a, int b, int c)
+     {
+       return a ? b : c;
+     }
+
+     に対してどのような gimple が作成されるかを述べる. 調査に先立って
+     自分が探していたものは, いわゆる 3 番地コードの列でこのサンプルに
+     対しては
+
+     f:
+         if a != 0 goto label1
+         t0 := b
+         goto label2
+         label1:
+         t0 := c
+         label2:
+         return t0
+
+     のようなものであった. これであれば, 単純な変換を行うことによって
+     ターゲットコードを出すことが可能である.
+
+     cc1 の中でこの表現が得られるのは以下の部分であった:
+
+gimplify.c:14805
+  /* Gimplify the function's body.  */
+  seq = NULL;
+  gimplify_stmt (&DECL_SAVED_TREE (fndecl), &seq);     ここで変換
+  outer_stmt = gimple_seq_first_nondebug_stmt (seq);
+  if (!outer_stmt)
+
+     ところで gimple を辞書で調べても該当する単語はない. simple に
+     近い造語なのだろう.
+
+     上のコードの gimplify_stmt の第一引数はマクロにくるまれているが,
+     函数のボディの tree 表現である.
+
+(gdb) b gimplify_stmt
+...
+gimplify_stmt で停止したら
+(gdb) p debug_tree(*stmt_p)
+
+    としてみると確認できる. あるいは自分で作成した print(tree) を呼び出して
+    確認してもよい.
+    そして上のコードの outer_stmt に値がセットされたところで以下を試
+    してみた:
+
+(gdb) p debug_gimple_stmt(outer_stmt)
+{
+  if (a != 0) goto <D.1529>; else goto <D.1530>;
+  <D.1529>:
+  iftmp.0 = b;
+  goto <D.1531>;
+  <D.1530>:
+  iftmp.0 = c;
+  <D.1531>:
+  D.1527 = iftmp.0;
+  return D.1527;
+}
+$90 = void
+(gdb)
+
+    これは, ズバリではないが, 自分が探していたものだった.
+    tree から gimple への変換ものすごく重要だとは思うが, 今の段階では私に
+    はあまり興味がないところなので省略する. というのも, 私の実装では tree
+    に相当するものはなくて, いきなり gimple に相当するものを構文解析をしな
+    がら生成するようにしていたからだ. とはいえ以下の函数で行われている
+    とだけ言及しておく:
+
+enum gimplify_status
+gimplify_expr (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p,
+	       bool (*gimple_test_f) (tree), fallback_t fallback)
+{
+
+
+    tree と gimple の一番の違いはプログラムの流れを goto と label
+    で表現しているところである.
+
+    とはいえ, 違いは他にもたくさんある. 例えば:
+
+    int f(int a, int b, int c)
+    {
+      return a + b * c;
+    }
+
+    に対して同様のことを行うと以下のような結果になった:
+
+(gdb) p debug_gimple_stmt(outer_stmt)
+{
+  _1 = b * c;
+  D.1527 = a + _1;
+  return D.1527;
+}
+
+    これは, ズバリ, 私が探していたものである.
+
+(*2) 基本ブロック basic_block
+
+     一旦 3 番地コードの列が生成されれば通常は基本ブロックを作成する
+     のが普通である. 勿論最適化しなければ必要ない. 基本ブロックとは
+     いわゆるグラフである.
+
+     int f(int a, int b, int c)
+     {
+       return a ? b : c;
+     }
+
+     は 4 つの基本ブロックから構成される:
+
+     B0
+        if a != 0 goto label1
+
+     B1
+        t0 := b
+        goto label2
+
+     B2
+        label1:
+        t0 := c
+
+     B3
+        return t0
+
+     グラフィカルに表現するとこのようになる:
+
+               +----+
+               | B0 |
+               +----+
+             /       \
+      +----+           +----+
+      | B1 |           | B2 |
+      +----+           +----+
+             \       /
+               +----+
+               | B3 |
+               +----+
+
+    cc1 でこのデータを作成している部分を調査した.
+
+tree-cfg.c:548
+      if (start_new_block || stmt_starts_bb_p (stmt, prev_stmt))
+	{
+	  if (!first_stmt_of_seq)
+	    gsi_split_seq_before (&i, &seq);
+	  bb = create_basic_block (seq, bb);
+	  start_new_block = false;
+
+      bb に値がセットされたところで以下を試してみた:
+
+(gdb) p debug_bb_slim(bb->prev_bb)
+(gdb) p debug_bb_slim(bb)
+
+      基本ブロックにも便利なデバッグ函数が用意されている. これらから
+      以下のように 5 つの基本ブロックが作成されていることが分かる.
+
+----------------------------------------------------------
+;; basic block 2, loop depth 0
+;;  pred:      
+if (a != 0) goto <D.1529>; else goto <D.1530>;
+;;  succ:      
+----------------------------------------------------------
+;; basic block 3, loop depth 0
+;;  pred:      
+<L0>:
+iftmp.0 = b;
+goto <D.1531>;
+;;  succ:      
+----------------------------------------------------------
+;; basic block 4, loop depth 0
+;;  pred:      
+<L1>:
+iftmp.0 = c;
+;;  succ:      
+----------------------------------------------------------
+;; basic block 5, loop depth 0
+;;  pred:      
+<L2>:
+D.1527 = iftmp.0;
+goto <D.1532>;
+;;  succ:      
+----------------------------------------------------------
+;; basic block 6, loop depth 0
+;;  pred:      
+<D.1532>:
+return D.1527;
+;;  succ:      
+----------------------------------------------------------
+
+      <D.1532> のラベルがあるためここでは 4 つではなくて 5 つ
+      の基本ブロックが作成されている.
