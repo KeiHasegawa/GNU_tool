@@ -1,12 +1,12 @@
-cc1 アセンブラ生成の調査
+cc1 assembler output investigation
 
-(*1) 抽象コード
-(*2) アセンブラ生成
+(*1) Abstract code
+(*2) Assembler generation
 (*3) print(rtx_insn*)
 (*4) debug_insn_slim(const rtx_insn*)
 (*5) debug_tree(tree)
 
-(*1) 抽象コード
+(*1) Abstract code
 
 c-parse.c
 static void
@@ -15,42 +15,39 @@ c_parser_declaration_or_fndef (c_parser *parser, bool fndef_ok,
 {
 ...
 	fnbody = c_parser_compound_statement (parser, &endloc);
-      tree fndecl = current_function_decl;   ここで停止して
+      tree fndecl = current_function_decl;   // Stop here
 
 (gdb) p print(fnbody)
 
-    とすれば tree としての函数の中は表示できている. ここで print は
+    Above gdb command shows the contents of function as a `tree'. Here,
+    `print' was described at:
 
-    「gcc の字句解析ルーチンの解析(その3)」
-    「gcc の記号表の調査」
+    "cc1 lexical analyzer investigation(Part 3)"
+    "gcc symbol table investigation"
 
-    で述べられているものである.
+    on this web page.
 
-    ここで気付くのは, この段階でプログラムの正当性はチェックされているが,
-    抽象コードのレベルになっているかというと, そうではないように思える.
+    Here, you may notice that program validation is check at this point
+    but it's not abstract code. Not defining abstract code, it's not
+    the situation to generate target code.
 
-    もっとも何を抽象コードと呼ぶかによるのだが, 単純な変換をこれらに
-    行うことによってターゲットコードを生成できるような状況にはなっていない
-    ということである.
+(*2) Assembler generation
 
-(*2) アセンブラ生成
-
-     アセンブラ生成は FILE* asm_out_file への書き込みで行われる.
+     Assembler generation is done by writing into `FILE* asm_out_file': 
 
      (gdb) set asm_out_file=stdout
 
-     のようにすればファイルではなくて標準出力にアセンブラの出力が
-     表示される.
+     By above command, assembler generation output becomes `stdout'.
 
 cgraphunit.c:2820:
-  output_in_order ();   ここで一気にアセンブラが出力されている.
+  output_in_order ();   // Output here function code
 
 cgraphunit.c:2578
-	  nodes[i].u.f->expand ();   ここで一気にアセンブラが出力されている.
+	  nodes[i].u.f->expand ();   // Output here function code
 
 cgraphunit.c:2300
   execute_pass_list (cfun, g->get_passes ()->all_passes);
-  ここで一気にアセンブラが出力されている.
+  // Output above function code
 
 final.c:4658
   final_1 (first, asm_out_file, seen, optimize);
@@ -60,16 +57,16 @@ static void
 final_1 (rtx_insn *first, FILE *file, int seen, int optimize_p)
 {
 ...
-  for (insn = first; insn;)  このループが重要らしい
+  for (insn = first; insn;)  // This loop may be important
 ...
       insn = final_scan_insn (insn, file, optimize_p, 0, &seen); 
-      ここで 1 命令ずつ出力
+      // Output one instruction above
 
 
 (*3) print(rtx_insn*)
 
-     例によってこの函数はデバッガのコマンドラインから呼び出される.
-     最初のバージョンは単純なものにした:
+     Similary with `print(tree)', this function is just called from
+     debugger commad line. 1st version is very simple:
 
 int print(rtx_insn* insn)
 {
@@ -92,7 +89,7 @@ int f(int a, int b)
 }
 %
 
-この f に対して final_1 にきたときに以下を実行した:
+     For above `f', do like below at `final_1'
 (gdb) p print_l(first)
 NOTE_INSN_DELETED
 NOTE_INSN_BASIC_BLOCK
@@ -119,10 +116,10 @@ BARRIER
 NOTE_INSN_DELETED
 (gdb) 
 
-    # に続く行は対応する x86 のアセンブラであり, この段階での print(rtx_insn*)
-    では勿論表示できていない.
+    A line followed by `#' means x86 assembler and of cause `print(rtx_insn*)'
+    cannot print this at this point.
 
-    print_l は print(rtx_insn*) をループで呼び出すものである:
+    `print_l' is like below:
 
 void print_l(rtx_insn* first)
 {
@@ -130,18 +127,19 @@ void print_l(rtx_insn* first)
     print(insn);
 }
 
-    rtx_insn はおそらく単純な変換によりアセンブラを生成できるものだが,
-    自分が期待したものではなかった. これはむしろほぼアセンブラに近いもの
-    なのだ.
+     `rtx_insn' is the data structure which enables to generate target
+     code by simple conversion. But this is not something I've investigated
+     so far. This is allmost assembler.
 
-    (*1) で述べた tree fnbody から rtx_insn の列への変換がどのように行
-    われるかを今後調査したい.
+     Now I want to investigate the way of converstion `rtx_insn' sequence
+     from `tree fnbody' described at (*1).
 
 (*4) debug_insn_slim(const rtx_insn*)
 
-    さらに調査していたら debug_insn_slim を見つけた. これは (*3) の
-    print(rtx_insn*) の完全版で勿論使わせてもらおう. final_1 にきたときに同
-    様に print_l を呼び出した:
+    By futher investigation, I found `debug_insn_slim' function and
+    this is complete version of `print(rtx_insn*)' described at (*3)
+    Of cause we should use this. When cc1 stops at `final_1', call
+    print_l like below:
 
 (gdb) p print_l(first)
     1: NOTE_INSN_DELETED
@@ -173,13 +171,14 @@ void print_l(rtx_insn* first)
 $156 = void
 (gdb) 
 
-     やはりこれはアセンブラにすごく近い.
+     OK. And also noticed that this is allmost assembler.
 
 (*5) debug_tree(tree)
 
-     (*4) からすると tree にも似たような函数があるのではと思い探してみた.
-     (*1) と同じところで停止して. gdb から以下のようにしてみた.
+     I also looked the same kind function for `tree' in fact that (*4).
+     And found `debug_tree' function. Stop program at the same point with
+     (*1), I tried like below:
 
 (gdb) p debug_tree(fnbody)
 ...
-     これは, 自分で作成したものよりも完成度が当然高い.
+     This is, of cause, more complete than my `print(tree)'.
