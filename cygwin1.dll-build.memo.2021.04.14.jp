@@ -27,8 +27,8 @@ make[1]: *** [Makefile:9420: configure-target-winsup] Error 1
 make[1]: Leaving directory '/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin'
 make: *** [Makefile:883: all] Error 2
 
-ここで x86_64-w64-mingw32-g++ がないというエラーが発生してしまった. しょうがない
-ので x86_64-w64-mingw32-g++ をインストールした:
+ここで x86_64-w64-mingw32-g++ がないというエラーが発生してしまった. しょうが
+ないので x86_64-w64-mingw32-g++ をインストールした:
 
 % cd d:/tmp
 % wget http://cygwin.mirror.constant.com/x86_64/release/mingw64-x86_64-gcc/mingw64-x86_64-gcc-g%2B%2B/mingw64-x86_64-gcc-g%2B%2B-10.2.0-1.tar.xz
@@ -93,12 +93,9 @@ andler_socket_wsock::send_internal(_WSAMSG*, int)':
 ...
 ln: failed to create hard link 'new-cygwin1.dll' => 'cygwin0.dll': Operation not permitted
 
-ここで cygwin1.dll を作成しようとしてエラーになっているが, cygwin0.dll は
+ここで new-cygwin1.dll を作成しようとしてエラーになっているが, cygwin0.dll は
 作成できているので, このエラーを無視してもう一度 make を実行した:
 
-% make
-
-...
 % make
 ...
 g++ -B/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/libstdc++-v3/src/.libs -B/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/libstdc++-v3/libsupc++/.libs -L/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin -isystem /cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/winsup/cygwin/include -B/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/newlib/ -isystem /cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/newlib/targ-include -isystem /cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/newlib/libc/include    -o cygserver.exe cygserver.o client.o process.o msg.o sem.o shm.o threaded_queue.o transport.o transport_pipes.o bsd_helper.o bsd_log.o bsd_mutex.o sysv_msg.o sysv_sem.o sysv_shm.o setpwd.o pwdgrp.o /cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/version.o -static -static-libgcc -B/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin -lntdll
@@ -147,16 +144,11 @@ c++wrap -c -o cygcheck.o -fno-exceptions -fno-rtti -O2 -g  ../../.././winsup/uti
 D:/cygwin64/lib/gcc/x86_64-w64-mingw32/10/cc1plus.exe: error while loading shared libraries: cygzstd-1.dll: cannot open shared object file: No such file or directory
 
 これは
-/usr/bin/x86_64-w64-mingw32-g++.exe
+d:/cygwin64/usr/bin/x86_64-w64-mingw32-g++.exe
 のインストールが不完全だったということ.
 
-% cd
-% wget -q http://cygwin.mirror.constant.com/x86_64/release/mingw64-x86_64-gcc/mingw64-x86_64-gcc-10.2.0-1-src.tar.xz
-% xz -d -c mingw64-x86_64-gcc-10.2.0-1-src.tar.xz | tar xf -
-% cd mingw64-x86_64-gcc-10.2.0-1.src/
-
-
-紆余曲折あったが最後まで一応完了した.
+面倒なのでここはスキップした. 最終的に cygwin1.dll をインストールできれば
+よしとした.
 
 % make -n install
 どうやら /usr/local/bin/cywin1.dll が作成されるらしい.
@@ -270,8 +262,8 @@ Thread 1 hit Breakpoint 3, 0x000000018004afd9 in get_cygwin_startup_info() ()
 
 (gdb) set environ PATH /cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin:$PATH
 
-                         # 環境変数 PATH をビルドした cygwin1.dll があるディレクトリ
-      	 		   が最初にくるようにセット
+                  # 環境変数 PATH をビルドした cygwin1.dll があるディレクトリ
+                  # が最初にくるようにセット
 ...
 
 Thread 1 hit Breakpoint 2, dll_entry (h=0x180040000, reason=1, 
@@ -311,15 +303,15 @@ Thread 1 hit Breakpoint 3, get_cygwin_startup_info ()
 % ls cygwin1.dll
 cygwin1.dll   # (*4) の手順で残ったまま
 % make cygwin0.dll
-g++ がエラーする, というより g++ の main すら到達していないのでエラーメッセージも
-出ない
+g++ がエラーする, というより g++ の main すら到達していないのでエラーメッ
+セージも出ない
 
-これはカレントディレクトリにある cygwin1.dll が g++ の起動時にロードされてこのような
-結果になっている. なので cygwin0.dll をリビルドするには一旦削除する必要がある:
+これはカレントディレクトリにある cygwin1.dll が g++ の起動時にロードされて
+このような結果になっている. なので cygwin0.dll をリビルドするには一旦削除
+する必要がある:
 % rm cygwin1.dll
 % make cygwin0.dll
 今度はちゃんと g++ が起動できている.
-
 
 
 2021/04/15

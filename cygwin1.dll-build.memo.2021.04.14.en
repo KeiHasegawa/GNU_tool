@@ -1,12 +1,12 @@
-Windows 10 で cygwin1.dll をビルドしたときのメモ
+cygwin1.dll build memo
 
-(*1) ダウンロードとビルド
-(*2) 動作確認 => エラー発生
-(*3) エラーの箇所を確認
-(*4) gdb から起動したプログラムにビルドした cygwin1.dll をロードさせてみた
+(*1) Download and build
+(*2) Validation => Error
+(*3) Confirm error
+(*4) Try to load cygwin1.dll into the program which is executed from gdb.
+(*5) Implicitly refer to ./cygwin1.dll
 
-
-(*1) ダウンロードとビルド
+(*1) Download and build
 
 % mkdir ~/my_cygwin
 % cd ~/my_cygwin
@@ -20,24 +20,45 @@ Windows 10 で cygwin1.dll をビルドしたときのメモ
 % mv d:/tmp/Makefile .
 % make
 ...
-ここで x86_64-mingw-g++ がないというエラーが発生してしまった. しょうがない
-ので x86_64-mingw-g++ をインストールした. 改めて
+checking for x86_64-w64-mingw32-g++... no
+configure: error: no acceptable mingw g++ found in $PATH
+configure: error: ../../.././winsup/utils/configure failed for utils
+make[1]: *** [Makefile:9420: configure-target-winsup] Error 1
+make[1]: Leaving directory '/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin'
+make: *** [Makefile:883: all] Error 2
+
+Here, error occured because `x86_64-w64-mingw32-g++' was not installed.
+I installed `x86_64-w64-mingw32-g++' like below:
+
+% cd d:/tmp
+% wget http://cygwin.mirror.constant.com/x86_64/release/mingw64-x86_64-gcc/mingw64-x86_64-gcc-g%2B%2B/mingw64-x86_64-gcc-g%2B%2B-10.2.0-1.tar.xz
+% xz -d -c mingw64-x86_64-gcc-g++-10.2.0-1.tar.xz | tar tvf -
+I confirmed the contents.
+% cd d:/cygwin64
+% xz -d -c d:/tmp/mingw64-x86_64-gcc-g++-10.2.0-1.tar.xz | tar xvf -
+usr/bin/x86_64-w64-mingw32-c++.exe
+usr/bin/x86_64-w64-mingw32-g++.exe
+tar: usr/bin/x86_64-w64-mingw32-g++.exe: Cannot hard link to 'usr/bin/x86_64-w64-mingw32-c++.exe': Operation not permitted
+...
+This cause error but I just did like below:
+% cp usr/bin/x86_64-w64-mingw32-{c,g}++.exe
+Again I started to build:
 
 % cd ~/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin
+% make distclean
+% ./configure
 % make
 ...
-何やらコンパイルエラーが発生している.
+Comiler error occured:
 
 ../../.././winsup/cygwin/fhandler_console.cc:2788:8: error: narrowing conversion of '-2' from 'int' to 'long unsigned int' [-Wnarrowing]
  2788 |  case -2:
       |        ^
 ...
 
-該当箇所をキャストして修正した:
+Fixed like below:
 
          case (unsigned long int)-2:
-
-似たようなエラーを修正した.
 
 % make
 ...
@@ -47,14 +68,14 @@ andler_socket_wsock::send_internal(_WSAMSG*, int)':
  1377 |        in_off >= wsamsg->lpBuffers[in_idx].len && (++in_idx, in_off = 0))
       |                                                              ~~~~~~~^~~
 
-こういうコンパイルエラーも発生している. 修正した:
+Compile error occured. Fixed like below:
 
               (++in_idx, (in_off = 0))
 
 ...
 % make
 
-また似たようなエラーが発生している.
+Compiler error occured.
 
 ../../.././winsup/cygwin/ntdll.h:21:68: error: narrowing conversion of '-536870295' from 'NTSTATUS' {aka 'int'} to 'unsigned int' [-Wnarrowing]
    21 | #define STATUS_ILLEGAL_DLL_PSEUDO_RELOCATION ((NTSTATUS) 0xe0000269)
@@ -63,29 +84,76 @@ andler_socket_wsock::send_internal(_WSAMSG*, int)':
   136 |     case STATUS_ILLEGAL_DLL_PSEUDO_RELOCATION: /* custom error value */
 
 
-修正した:
+Fixed like below:
 
             case 0xe0000269:
+
+...
+ln: failed to create hard link 'new-cygwin1.dll' => 'cygwin0.dll': Operation not permitted
+
+Here, error occured when creating new-cygwin1.dll but cygwin0.dll was
+created. So I ignored this error and again do like below:
+
 % make
 ...
 g++ -B/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/libstdc++-v3/src/.libs -B/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/libstdc++-v3/libsupc++/.libs -L/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin -isystem /cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/winsup/cygwin/include -B/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/newlib/ -isystem /cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/newlib/targ-include -isystem /cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/newlib/libc/include    -o cygserver.exe cygserver.o client.o process.o msg.o sem.o shm.o threaded_queue.o transport.o transport_pipes.o bsd_helper.o bsd_log.o bsd_mutex.o sysv_msg.o sysv_sem.o sysv_shm.o setpwd.o pwdgrp.o /cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/version.o -static -static-libgcc -B/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin -lntdll
 /usr/bin/ld: /usr/local/lib/gcc/x86_64-pc-cygwin/10.1.0/crtbegin.o:cygming-crtbegin.c:(.text+0x8): undefined reference to `atexit'
 
-atext がなくてエラーしている. 後で判明したことだが atexit.o が壊れていたらしい.
-atexit.o を一旦削除した
+`atext' was not defined. `atexit.o' was broken after I noticed, so once
+delete `atexit.o' angain:
 
 % make
 ...
+g++ -B/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/libstdc++-v3/src/.libs -B/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/libstdc++-v3/libsupc++/.libs -L/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin -isystem /cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/winsup/cygwin/include -B/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/newlib/ -isystem /cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/newlib/targ-include -isystem /cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/newlib/libc/include    -o dumper.exe dumper.o module_info.o parse_pe.o -B/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/  -static -Wl,--enable-auto-import -L/usr/lib/w32api -lnetapi32 -ladvapi32 -lkernel32 -luser32 -lpsapi -lbfd -lintl -liconv -liberty -lz
+/usr/bin/ld: cannot find -liconv
 
-紆余曲折あったが最後まで一応完了した.
+`libiconv.a' is not installed.
+
+Install libiconv :
+% cd
+% wget http://cygwin.mirror.constant.com/x86_64/release/libiconv/libiconv-1.16-2-src.tar.xz -q
+% xz -d -c libiconv-1.16-2-src.tar.xz | tar xvf -
+% cd libiconv-1.16-2.src
+% gunzip -c libiconv-1.16.tar.gz | tar xf -
+% cd libiconv-1.16/
+% ./configure
+% make
+% make install
+% ls -l /usr/local/lib/*iconv*
+-rw-r--r-- 1 khasegawa none 10906 Apr 16 05:18 /usr/local/lib/libiconv.dll.a
+-rw-r--r-- 1 khasegawa none  892 Apr 16 05:18 /usr/local/lib/libiconv.la
+
+Again:
+% cd ~/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin
+% make
+
+Same erorr occured. But did like below:
+
+% cd cd d:/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/utils
+% g++ -B/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/libstdc++-v3/src/.libs -B/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/libstdc++-v3/libsupc++/.libs -L/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin -isystem /cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/winsup/cygwin/include -B/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/newlib/ -isystem /cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/newlib/targ-include -isystem /cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/newlib/libc/include    -o dumper.exe dumper.o module_info.o parse_pe.o -B/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/  -Wl,--enable-auto-import -L/usr/lib/w32api -lnetapi32 -ladvapi32 -lkernel32 -luser32 -lpsapi -lbfd -lintl -L/usr/local/lib -liconv -liberty -lz
+
+Again:
+
+% cd ~/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin
+% make
+...
+
+c++wrap -c -o cygcheck.o -fno-exceptions -fno-rtti -O2 -g  ../../.././winsup/utils/cygcheck.cc
+D:/cygwin64/lib/gcc/x86_64-w64-mingw32/10/cc1plus.exe: error while loading shared libraries: cygzstd-1.dll: cannot open shared object file: No such file or directory
+
+This means installation of
+/usr/bin/x86_64-w64-mingw32-g++.exe
+is not complete.
+
+Simply skip this. I'm satisfied if `cygwin1.dll' is installed.
 
 % make -n install
-どうやら /usr/local/bin/cywin1.dll が作成されるらしい.
+I confirmed that /usr/local/bin/cywin1.dll is created.
 % make install
 
-これを 2021/04/13 19:00 ころやった.
+I did at 2021/04/13 19:00
 
-(*2) 動作確認 => エラー発生
+(*2) Validation => Error
 
 % cat a.c
 #include <stdio.h>
@@ -101,9 +169,8 @@ int main(int argc, char** argv)
 hello world 0, ./a
 % 
 
-自分の Windows 10 のパソコンは d:/cygwin64/bin/cygwin1.dll にこれまで
-動作していた cygwin1.dll があるので新しくビルドしたものを優先させるために
-以下のようにした.
+In my Windows 10 personal computer, d:/cygwin64/bin/cygwin1.dll is
+installed. I want to use rebuild cygwin1.dll, so do like below:
 
 % setenv PATH /usr/local/bin:$PATH
 % ./a.exe
@@ -115,17 +182,17 @@ reside in x:\cygwin\bin, where 'x' is the drive on which you have
 installed the cygwin distribution.  Rebooting is also suggested if you
 are unable to find another cygwin DLL.
 
-しょうがないので以下のようにした:
+Something wrong happened. Once I renamed like below:
 
 % mv /usr/local/bin/cygwin1.dll /usr/local/bin/cygwin1.dll.bad
 % ./a.exe
 hello world 0, ./a
 %
 
-mv や ls は動作しているが, 自分がビルドした gcc や gdb も動かなくなっている
-ことに気付いた.
+I also noticed that `mv' and `ls' worked well but `gcc' and `gdb' didn't
+work well.
 
-(*3) エラーの箇所を確認
+(*3) Confirm error
 
 ~/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/winsup/cygwin/dcrt0.cc:527
 
@@ -149,7 +216,7 @@ get_cygwin_startup_info ()
       else if (res->cygheap != (void *) &_cygheap_start)
 	multiple_cygwin_problem ("cygheap base", (uintptr_t) res->cygheap,
 				 (uintptr_t) &_cygheap_start);
-        ここらしい				 
+        // This caused.
 
 
 ~/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/winsup/cygwin/dcrt0.cc:1336
@@ -163,42 +230,43 @@ installed the cygwin distribution.  Rebooting is also suggested if you\n\
 are unable to find another cygwin DLL.",
 	       what, magic_version, version);
 
-いろいろやってみたがエラーを回避できない.
+I could not get rid of this error.
 
-(*4) gdb から起動したプログラムにビルドした cygwin1.dll をロードさせてみた
+(*4) Try to load cygwin1.dll into the program which is executed from gdb.
 
+% cp ~/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/cygwin{0,1}.dll
 % gdb a.exe
 (gdb) b main
 (gdb) run
 ...
-main で停止
+Stop at `main'
 (gdb) b dll_entry
 (gdb) b get_cygwin_startup_info
 (gdb) run
 ...
-dll_entry で停止
+Stop at `dll_entry'
 Thread 1 hit Breakpoint 2, 0x00000001800d3b1b in dll_entry ()
    from /usr/bin/cygwin1.dll
-        ^^^^^^^^^^^^^^^^^^^^   もともとインストールされている cygwin1.dll
+        ^^^^^^^^^^^^^^^^^^^^   This is originally installed cygwin1.dll
 (gdb) c
 ...
-get_cygwin_startup_info で停止
+Stop at `get_cygwin_startup_info'
 
 Thread 1 hit Breakpoint 3, 0x000000018004afd9 in get_cygwin_startup_info() ()
    from /usr/bin/cygwin1.dll
         ^^^^^^^^^^^^^^^^^^^^
-	
+
 (gdb) set environ PATH /cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin:$PATH
 
-                         # 環境変数 PATH をビルドした cygwin1.dll があるディレクトリ
-      	 		   が最初にくるようにセット
+                 # Make environment variable PATH refer to cygwin1.dll
+      	 	 # which is build myself
 ...
 
 Thread 1 hit Breakpoint 2, dll_entry (h=0x180040000, reason=1, 
     static_load=0x5ffb00) at ../../.././winsup/cygwin/init.cc:78
 78	{
                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-ビルドした cygwin1.dll のソースにきている.
+This is cygwin1.dll build myself
 (gdb) c
 ...
 Thread 1 hit Breakpoint 3, get_cygwin_startup_info ()
@@ -206,20 +274,52 @@ Thread 1 hit Breakpoint 3, get_cygwin_startup_info ()
 528	{
                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-こっちもビルドした cygwin1.dll のソース
+This is also cygwin1.dll build myself
 (gdb) 
 
-ここで変数を見ながらステップ実行すると res = 0 なので
+Now I execute step command and confirm that `res' is equal to 0,
+which means:
 
 534	  if (si.cbReserved2 < EXEC_MAGIC_SIZE || !res
 535	      || res->intro != PROC_MAGIC_GENERIC || res->magic != CHILD_INFO_MAGIC)
 536	    {
 537	      strace.activate (false);
-538	      res = NULL;                 こっちが実行されている.
+538	      res = NULL;                 // This is executed.
 
 
-そして gdb から実行されたプログラムはエラーせず正常に main が呼ばれている.
-謎.
+And `a.exe' executed from gdb reached to `main' and normally exited.
 
-とりあえず gdb から実行するという謎の回避策がある. これじゃ一見だめそうだが
-今回はこれまで.
+There is a mysterious avoidance that program is executed from gdb.
+
+(*5) Implicitly refer to ./cygwin1.dll
+
+% cd ~/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/
+% ls cygwin1.dll
+cygwin1.dll   # remain because of operation described at (*4)
+% make cygwin0.dll
+g++ terminated before its main function is called.
+This is happened because ./cygwin1.dll is loaded when g++ is executed.
+So if we have to rebuild cygwin0.dll, once we have to delete cygwin1.dll:
+
+% rm cygwin1.dll
+% make cygwin0.dll
+Now, can execute g++ as we expect.
+
+2021/04/15
+% cd ~/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/
+% make clean
+% make
+...
+% make install
+% cd ~/my_cygwin/hello_test
+% ./a.exe
+No error message.
+% /usr/bin/gcc -g a.c -o a.exe
+% ./a.exe
+No error message.
+% mv /usr/local/bin/cygwin1.dll{,.bad}
+mv: overwrite '/usr/local/bin/cygwin1.dll.bad'? y
+% ./a.exe 
+hello world 0, ./a
+>
+OK.
