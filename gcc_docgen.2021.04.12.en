@@ -1,23 +1,26 @@
-gcc docgen 出力
+gcc docgen output
 
-(*1) doclink.exe への入力ファイルを cc1 で生成する.
-(*2) パッチファイル
+(*1) Let cc1 generate input file of doclink.exe
+(*2) Patch file
 
-(*1) doclink.exe への入力ファイルを cc1 で生成する.
+(*1) Let cc1 generate input file of doclink.exe
 
-     これは本来 hcc1.exe と docgen.dll でやっていたこと.
-     docgen.dll doclink.exe については「トップ」->「ドキュメントジェネレータ」
-     を参照.
+     Originally hcc1.exe and docgen.dll do that. Refer to 
 
-     当初は cc1 の実装で, 函数の中で,
+     "Top" -> "Document generator"
 
-     o グローバル変数の参照
-     o 函数呼び出し
-     o 構造体の参照を
+     about docgen.dll and doclink.exe
 
-     どのようにしているか当初は分からなかったので中断していた.
+     At initail investigation level of `cc1', I didn't understand
+     the way of judging if the compiling function uses
 
-     現状では「cc1 アセンブラ生成の調査」でも述べたように,
+     o Global variable
+     o Function
+     o Struct or other tag
+
+     or not. So this work was stopped.
+
+     But now I already know that:
 
 c-parse.c
 static void
@@ -26,15 +29,17 @@ c_parser_declaration_or_fndef (c_parser *parser, bool fndef_ok,
 {
 ...
 	fnbody = c_parser_compound_statement (parser, &endloc);
-      tree fndecl = current_function_decl;   ここで停止して
+      tree fndecl = current_function_decl;   // Stop here
 
 (gdb) p print(fnbody)
 
-     とすれば tree としての函数の中は表示できている.
-     これと近いことを行えば doclink.exe への入力ファイルを生成することが
-     できる.
+     This shows the contents of `fnbody' as a tree described at
+     "cc1 assembler generation investigation" on this web page.
 
-     例えば
+     It's possible to generate input file of doclink.exe by calling
+     the same kind function with `print(tree)'.
+
+     For example,
 
 % cat /tmp/a.c
 struct S {
@@ -50,46 +55,48 @@ int g(struct S* ps)
   return a + f(ps->m);
 }
 %
-     のようなソースに対して
+     Generate like below for above source:
 
 $func $def g "/tmp/a.c" 9
 {
-    $ref $func f "/tmp/a.c" 11;
+    $ref f $func "/tmp/a.c" 11;
     $ref $tag S "/tmp/a.c" 11;
     $ref $var a "/tmp/a.c" 11;
 }
 
-     を出力できればよいわけだ. それぞれの意味は 11 行目で函数 f が,
-     タグ S が, 変数 a が参照されているという内容だ.
+     Each line means function `g' refers to function `f' at line 11,
+     refers to tag `S' at line 11 and refers to variable `a' at line 11,
+     respectively.
 
-     これは明らかに print(tree) よりも単純である. とはいえ, 変数が
-     グローバル変数かどうかの判定や, 構造体が函数の外側で宣言されている
-     かどうかの判定などは別途必要にはなる:
+     This task more simple than `print(tree)' even though it' necessary
+     to judge:
+
+     o Variable is global
+     o Function is external
+     o Tag is declared outside function
 
   void traverse_decl(tree p)
   {
-    if (DECL_FILE_SCOPE_P(p))  ファイルスコープかどうか判定
+    if (DECL_FILE_SCOPE_P(p))  // judge file scope or not
       ...
 
-     せっかくなので cc1plus にも同様の修正をしておいた. ここで
-     以下のことに気付いた:
+      In passing, I fixed cc1plus. At this time, I noticed that:
 
 cp/parser.c:17716
       type_spec = cp_parser_class_specifier (parser);
       invoke_plugin_callbacks (PLUGIN_FINISH_TYPE, type_spec);
 
-     のように invoke_plugin_callbacks が呼び出されていた. このように
-     すればパッチではなくてダイナミックリンクライブラリで事足りるのか
-     もしれないが今回は深入りしない.
+      This may enable me not to make patch file but to make dynamic link
+      library. But this time I dind't use this facility.
 
-(*2) パッチファイル
+(*2) Patch file
 
 % ls -d gcc-10.2.0.org gcc-10.2.0
 gcc-10.2.0  gcc-10.2.0.org
 % diff -Naur gcc-10.2.0.org gcc-10.2.0 > docgen.diff
-これだとなかなか終了しない.
+This takes too long time.
 
-修正しているファイルはだいたい覚えていたので以下のようにした.
+I made patch file like below:
 
 % diff -rc gcc-10.2.0{.org,}/gcc/c-family/c-opts.c > docgen.diff
 % diff -rc gcc-10.2.0{.org,}/gcc/c-family/c.opt >> docgen.diff
@@ -101,12 +108,10 @@ gcc-10.2.0  gcc-10.2.0.org
 % diff -rc gcc-10.2.0{.org,}/gcc/cp/tree.c >> docgen.diff
 % diff -rc gcc-10.2.0{.org,}/gcc/cp/parser.c >> docgen.diff
 
-パッチの適用方法は以下のようになる:
-このページの docgen.diff をダウンロードして例えば
+The way of using this patch file:
+Download `docgen.diff' on this web page and locate
 
 /tmp/docgen.diff
-
-として保存する.
 
 % xz -d -c gcc-10.2.0.tar.xz | tar xf -
 % cd gcc-10.2.0
@@ -134,5 +139,4 @@ Hunk #9 succeeded at 20919 (offset -10 lines).
 Hunk #10 succeeded at 24286 (offset -16 lines).
 %
 
-なにやら patch がメッセージを出しているが, これは正しく適用できた
-ようである.
+patch gave some messages but this worked well.
