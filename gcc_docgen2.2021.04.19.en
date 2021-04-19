@@ -1,0 +1,67 @@
+gcc docgen output(Part 2)
+
+(*1) Output basic block
+(*2) Patch file
+
+(*1) Output basic block
+
+     As described at "gcc docgen output" on this web page, we did docgen
+     output function body as a `tree', but it's not possible to output
+     basic block information.
+
+     But now we are ready to output basic block information becase 
+     we've already known how cc1 creates basic block as described at
+     "cc1 abstract code investigation" on this web page:
+
+tree-cfg.c:487
+static unsigned int
+execute_build_cfg (void)
+{
+  gimple_seq body = gimple_body (current_function_decl);
+
+  build_gimple_cfg (body);  // `cc1' creates basic block here,
+  out_doc_info_if();        // So, do docgen output here.
+
+     The points are:
+
+     (1) For each basic block of current function, do like below:
+
+           For abstract code operands which belongs to the basic block,
+	   output variable, function or tag name if it is used.
+
+     (2) For each basic block of current function, output its edges.
+
+     There is a difference between the way described at "gcc docgen output"
+     and that of above. In above case, not traversing `tree',  but
+     refer to operand of abstract code. But the operand is expressed as
+     a `tree', so past investigation and code are available.
+
+     I also fixed `cc1plus'.
+
+(*2) Patch file
+
+     `docgen2.diff' on this web page was generated like below:
+
+% diff -rc gcc-10.2.0{.org,}/gcc/c-family/c-opts.c > docgen2.diff
+% diff -rc gcc-10.2.0{.org,}/gcc/c-family/c.opt >> docgen2.diff
+% diff -rc gcc-10.2.0{.org,}/gcc/common.opt >> docgen2.diff
+% diff -rc gcc-10.2.0{.org,}/libcpp/directives.c >> docgen2.diff
+% diff -rc gcc-10.2.0{.org,}/libcpp/macro.c >> docgen2.diff
+% diff -rc gcc-10.2.0{.org,}/gcc/tree.c >> docgen2.diff
+% diff -rc gcc-10.2.0{.org,}/gcc/tree-cfg.c >> docgen2.diff
+% diff -rc gcc-10.2.0{.org,}/gcc/c/c-parser.c >> docgen2.diff
+% diff -rc gcc-10.2.0{.org,}/gcc/cp/tree.c >> docgen2.diff
+% diff -rc gcc-10.2.0{.org,}/gcc/cp/parser.c >> docgen2.diff
+
+     How to patch:
+     Download `docgen2.diff' on this web page and save as:
+
+/tmp/docgen2.diff
+
+     And execute like below:
+
+% xz -d -c gcc-10.2.0.tar.xz | tar xf -
+% cd gcc-10.2.0
+% patch -p1 < /tmp/docgen2.diff
+
+     If you already patched `docgen.diff', above doesn't work.
