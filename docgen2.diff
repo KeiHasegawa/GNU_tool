@@ -1,0 +1,3330 @@
+*** gcc-10.2.0.org/gcc/c-family/c-opts.c	2020-07-23 15:35:17.300384068 +0900
+--- gcc-10.2.0/gcc/c-family/c-opts.c	2020-08-28 14:11:17.223547673 +0900
+***************
+*** 1420,1425 ****
+--- 1420,1469 ----
+    add_path (path, chain, 0, false);
+  }
+  
++ // vvvvv add 2020.08.13 by khasegawa
++ extern FILE* doc_info_file;
++ static void
++ prepare_doc_info_file(const char* name)
++ {
++   if (!global_options.x_flag_output_doc_info && !getenv("OUTPUT_DOC_INFO"))
++     return;
++ 
++   if (doc_info_file) {
++     fclose(doc_info_file);
++     doc_info_file = 0;
++   }
++ 
++   char* ofn = 0;
++   if (!name)
++     doc_info_file = stdout;
++   else {
++     int len = strlen (dump_base_name);
++     char *dumpname = XNEWVEC (char, len + 6);
++     memcpy (dumpname, dump_base_name, len + 1);
++     strip_off_ending (dumpname, len);
++     strcat (dumpname, ".j");
++     ofn = dumpname;
++   }
++   
++   if (ofn) {
++     if (!canonical_filename_eq (ofn, name) || !strcmp (ofn, HOST_BIT_BUCKET))
++       doc_info_file = fopen (ofn, "w");
++     else {
++       /* Use UNKOWN_LOCATION to prevent gcc from printing the first
++ 	 line in the current file. */
++       fatal_error (UNKNOWN_LOCATION,
++ 		   "input file %qs is the same as output file",
++ 		   ofn);
++     }
++   }
++ 
++   if (!doc_info_file) {
++     fatal_error (UNKNOWN_LOCATION,
++ 		 "cannot open %qs for writing: %m", ofn);
++   }
++ }
++ // ^^^^^ add 2020.08.13 by khasegawa
++ 
+  /* Handle -D, -U, -A, -imacros, and the first -include.  */
+  static void
+  c_finish_options (void)
+***************
+*** 1434,1439 ****
+--- 1478,1487 ----
+        /* Make sure all of the builtins about to be declared have
+  	 BUILTINS_LOCATION has their location_t.  */
+        cpp_force_token_locations (parse_in, BUILTINS_LOCATION);
++      
++       // vvvvv add 2020.08.28 by khasegawa
++       prepare_doc_info_file(main_input_filename);
++       // ^^^^^ add 2020.08.28 by khasegawa
+  
+        cpp_init_builtins (parse_in, flag_hosted);
+        c_cpp_builtins (parse_in);
+*** gcc-10.2.0.org/gcc/c-family/c.opt	2020-07-23 15:35:17.300384068 +0900
+--- gcc-10.2.0/gcc/c-family/c.opt	2020-08-28 13:59:33.406346932 +0900
+***************
+*** 2246,2249 ****
+--- 2246,2253 ----
+  C ObjC C++ ObjC++
+  ; Documented in common.opt
+  
++ foutput-doc-info
++ C ObjC C++ ObjC++ Var(flag_output_doc_info)
++ ; Added 2020.08.12 06:43 by khasegawa
++ 
+  ; This comment is to ensure we retain the blank line above.
+*** gcc-10.2.0.org/gcc/common.opt	2020-07-23 15:35:17.316384243 +0900
+--- gcc-10.2.0/gcc/common.opt	2020-08-28 14:15:26.532430843 +0900
+***************
+*** 3412,3415 ****
+--- 3412,3419 ----
+  Common Report Var(flag_ipa_ra) Optimization
+  Use caller save register across calls if possible.
+  
++ foutput-doc-info
++ Driver
++ ; Added 2020.08.12 06:43 by khasegawa
++ 
+  ; This comment is to ensure we retain the blank line above.
+*** gcc-10.2.0.org/libcpp/directives.c	2020-07-23 15:35:18.712399623 +0900
+--- gcc-10.2.0/libcpp/directives.c	2020-08-28 16:38:40.676988151 +0900
+***************
+*** 616,621 ****
+--- 616,623 ----
+    return NULL;
+  }
+  
++ FILE* doc_info_file;
++ 
+  /* Process a #define directive.  Most work is done in macro.c.  */
+  static void
+  do_define (cpp_reader *pfile)
+***************
+*** 637,642 ****
+--- 639,656 ----
+  	  pfile->cb.define (pfile, pfile->directive_line, node);
+  
+        node->flags &= ~NODE_USED;
++ 
++       // vvvv add by khasegawa 2020.08.13
++       if (doc_info_file) {
++ 	const char* name = (char*)node->ident.str;
++ 	fprintf(doc_info_file, "$macro $def %s ", name);
++ 	rich_location richloc(pfile->line_table, pfile->directive_line);
++ 	expanded_location exloc = richloc.get_expanded_location(0);
++ 	const char* file = exloc.file;
++ 	int line = exloc.line;
++ 	fprintf(doc_info_file, "\"%s\" %d ;\n", file, line);
++       }
++       // ^^^^^ add by  khasegawa 2020.08.13
+      }
+  }
+  
+*** gcc-10.2.0.org/libcpp/macro.c	2020-07-23 15:35:18.716399666 +0900
+--- gcc-10.2.0/libcpp/macro.c	2020-08-28 14:14:35.797065121 +0900
+***************
+*** 1436,1441 ****
+--- 1436,1454 ----
+        if (pfile->cb.used)
+  	pfile->cb.used (pfile, location, node);
+  
++       // vvvvv add by khasegawa 2020.08.28
++       extern FILE* doc_info_file;
++       if (doc_info_file) {
++ 	const char* name = (char*)node->ident.str;
++ 	fprintf(doc_info_file, "$macro $ref %s ", name);
++ 	rich_location richloc(pfile->line_table, location);
++ 	expanded_location exloc = richloc.get_expanded_location(0);
++ 	const char* file = exloc.file;
++ 	int line = exloc.line;
++ 	fprintf(doc_info_file, "\"%s\" %d ;\n", file, line);
++       }
++       // ^^^^^ add by khasegawa 2020.08.28
++ 
+        macro->used = 1;
+  
+        if (macro->paramc == 0)
+*** gcc-10.2.0.org/gcc/tree.c	2020-07-23 15:35:18.664399093 +0900
+--- gcc-10.2.0/gcc/tree.c	2021-04-19 16:02:09.680440284 +0900
+***************
+*** 15883,15885 ****
+--- 15883,18075 ----
+  #endif /* CHECKING_P */
+  
+  #include "gt-tree.h"
++ 
++ #include <set>
++ namespace print_impl {
++   void print(tree, bool);
++   void print_CONJ_EXPR(tree p, bool newline)
++   {
++     printf("CONJ_EXPR(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_COMPLEX_CST(tree, bool newline)
++   {
++     printf("COMPLEX_CST");
++     if (newline)
++       printf("\n");
++   }
++   void print_REALPART_EXPR(tree p, bool newline)
++   {
++     printf("REALPART_EXPR(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_COMPLEX_EXPR(tree p, bool newline)
++   {
++     printf("COMPLEX_EXPR(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_COMPLEX_TYPE(tree p, bool newline)
++   {
++     printf("COMPLEX_TYPE(");
++     print(TREE_TYPE(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_UNLT_EXPR(tree p, bool newline)
++   {
++     printf("UNLT_EXPR(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_UNLE_EXPR(tree p, bool newline)
++   {
++     printf("UNLE_EXPR(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_UNGT_EXPR(tree p, bool newline)
++   {
++     printf("UNGT_EXPR(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_UNGE_EXPR(tree p, bool newline)
++   {
++     printf("UNGE_EXPR(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_UNEQ_EXPR(tree p, bool newline)
++   {
++     printf("UNEQ_EXPR(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_ORDERED_EXPR(tree p, bool newline)
++   {
++     printf("ordered_expr(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_UNORDERED_EXPR(tree p, bool newline)
++   {
++     printf("unordered_expr(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_IMAGPART_EXPR(tree p, bool newline)
++   {
++     printf("imagpart_expr(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_ABS_EXPR(tree p, bool newline)
++   {
++     printf("abs_expr(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_NULLPTR_TYPE(tree, bool newline)
++   {
++     printf("nullptr_type");
++     if (newline)
++       printf("\n");
++   }
++   void print_EXIT_EXPR(tree p, bool newline)
++   {
++     printf("exit_expr(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_LOOP_EXPR(tree p, bool newline)
++   {
++     printf("loop(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_TRUTH_XOR_EXPR(tree p, bool newline)
++   {
++     printf("truth_xor(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_TRUTH_AND_EXPR(tree p, bool newline)
++   {
++     printf("truth_and(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_VEC_COND_EXPR(tree p, bool newline)
++   {
++     printf("vec_cond(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(",");
++     print(TREE_OPERAND(p, 2), false);
++     printf(",");
++     print(TREE_OPERAND(p, 3), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_VEC_PERM_EXPR(tree p, bool newline)
++   {
++     printf("vec_perm(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(",");
++     print(TREE_OPERAND(p, 2), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_VECTOR_TYPE(tree p, bool newline)
++   {
++     printf("vector_type(");
++     print(TREE_TYPE(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_TRUTH_OR_EXPR(tree p, bool newline)
++   {
++     printf("truth_or(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_DEBUG_BEGIN_STMT(tree, bool newline)
++   {
++     printf("debug begin");
++     if (newline)
++       printf("\n");
++   }
++   void print_ASM_EXPR(tree p, bool newline)
++   {
++     printf("asm(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(",");
++     print(TREE_OPERAND(p, 2), false);
++     printf(",");
++     print(TREE_OPERAND(p, 3), false);
++     printf(",");
++     print(TREE_OPERAND(p, 4), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_BIT_FIELD_REF(tree p, bool newline)
++   {
++     printf("bit field ref(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(",");
++     print(TREE_OPERAND(p, 2), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_VA_ARG_EXPR(tree p, bool newline)
++   {
++     printf("va_arg(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_MEM_REF(tree p, bool newline)
++   {
++     printf("memref(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_MIN_EXPR(tree p, bool newline)
++   {
++     printf("min(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_MAX_EXPR(tree p, bool newline)
++   {
++     printf("max(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_OFFSETOF_EXPR(tree p, bool newline)
++   {
++     printf("offsetof(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_RDIV_EXPR(tree p, bool newline)
++   {
++     printf("rdiv(");
++     print(TREE_TYPE(p), false);
++     printf(",");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_EMPTY_CLASS_EXPR(tree p, bool newline)
++   {
++     printf("empty class(");
++     print(TREE_TYPE(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_USING_STMT(tree p, bool newline)
++   {
++     printf("using(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_RANGE_FOR_STMT(tree p, bool newline)
++   {
++     printf("range for(");
++     for (int i = 0 ; i != 6 ; ++i) {
++       if (i)
++ 	printf(",");
++       print(TREE_OPERAND(p, i), false);
++     }
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_ALIGNOF_EXPR(tree p, bool newline)
++   {
++     printf("alignof(");
++     print(TREE_TYPE(p), false);
++     printf(",");
++     print(TREE_OPERAND(p, 0), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_MUST_NOT_THROW_EXPR(tree p, bool newline)
++   {
++     printf("must_not_throw(");
++     print(TREE_TYPE(p), false);
++     printf(",");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_DELETE_EXPR(tree p, bool newline)
++   {
++     printf("delete(");
++     print(TREE_TYPE(p), false);
++     printf(",");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_TRY_FINALLY_EXPR(tree p, bool newline)
++   {
++     printf("try_finally(");
++     print(TREE_TYPE(p), false);
++     printf(",");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_OBJ_TYPE_REF(tree p, bool newline)
++   {
++     printf("obj_type_ref(");
++     print(TREE_TYPE(p), false);
++     printf(",");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(",");
++     print(TREE_OPERAND(p, 2), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_DO_STMT(tree p, bool newline)
++   {
++     printf("do(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_CLEANUP_STMT(tree p, bool newline)
++   {
++     printf("cleanup(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(",");
++     print(TREE_OPERAND(p, 2), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_TRY_CATCH_EXPR(tree p, bool newline)
++   {
++     printf("try_catch(");
++     print(TREE_TYPE(p), false);
++     printf(",");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_TAG_DEFN(tree p, bool newline)
++   {
++     printf("tag_defn(");
++     print(TREE_TYPE(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_id(tree_identifier* p, bool newline)
++   {
++     ht_identifier id = p->id;
++     const unsigned char* s = id.str;
++     int n = id.len;
++     while (n--)
++       putchar(*s++);
++     if (newline)
++       putchar('\n');
++     fflush(stdout);
++   }
++   void print_typed(tree_typed* p, bool newline)
++   {
++     print(p->type, false);
++     if (newline)
++       printf("\n");
++   }
++   void print_icst(tree_int_cst* p, bool newline)
++   {
++ #ifdef __x86_64__
++     long int* val = p->val;
++     printf("%ld", *val);
++ #else // __x86_64__
++     long long* val = p->val;
++     printf("%lld", *val);
++ #endif // __x86_64__
++     printf("(");
++     tree_typed* typed = &p->typed;
++     print_typed(typed, false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_rv(real_value* rv, bool newline)
++   {
++     printf("floating point");
++     printf("(cl : %d  dec : %d sign : %d uexp : %d)",
++ 	   rv->cl, rv->decimal, rv->sign, rv->uexp);
++     if (newline)
++       printf("\n");
++   }
++   void print_rcst(tree_real_cst* p, bool newline)
++   {
++     real_value* rv = p->real_cst_ptr;
++     print_rv(rv, false);
++     printf("(");
++     tree_typed* typed = &p->typed;
++     print_typed(typed, false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_string(tree_string* p, bool newline)
++   {
++     int length = p->length;
++     char* str = p->str;
++     while (length--)
++       putchar(*str++);
++     if (newline)
++       putchar('\n');
++     fflush(stdout);
++   }
++   void print_vcst(tree, bool newline)
++   {
++     printf("void constant");
++     if (newline)
++       printf("\n");
++   }
++   void print_integer_type(tree p, bool newline)
++   {
++     if (DECL_UNSIGNED(p))
++       printf("unsigned");
++     else
++       printf("signed");
++     printf(" %d bit integer", TYPE_PRECISION(p));
++     if (newline)
++       printf("\n");
++   }
++   void print_boolean_type(tree, bool newline)
++   {
++     printf("boolean");
++     if (newline)
++       printf("\n");
++   }
++   void print_real_type(tree_type_common* p, bool newline)
++   {
++     printf("%d bit real", p->precision);
++     if (newline)
++       printf("\n");
++   }
++   void print_void_type(tree_type_common*, bool newline)
++   {
++     printf("void");
++     if (newline)
++       printf("\n");
++   }
++   void print_function_type(tree p, bool newline)
++   {
++     printf("return ");
++     print(TREE_TYPE(p), false);
++     printf(" (");
++     print(TYPE_ARG_TYPES(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_array_type(tree p, bool newline)
++   {
++     printf("array of (");
++     print(TREE_TYPE(p), false);
++     printf(",");
++     print(TYPE_SIZE_UNIT(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_pointer_type(tree p, bool newline)
++   {
++     printf("pointer to ");
++     print(TREE_TYPE(p), false);
++     if (newline)
++       printf("\n");
++   }
++   void print_reference_type(tree p, bool newline)
++   {
++     printf("reference to ");
++     print(p->type_common.common.typed.type, false);
++     if (newline)
++       printf("\n");
++   }
++   std::set<tree> done;
++   void print_tag_type(tree p, bool newline)
++   {
++     print(TYPE_IDENTIFIER(p), false);
++     if (done.find(p) != done.end())
++       return;
++     printf(" { ");
++     done.insert(p);
++     for ( tree m = TYPE_VALUES(p) ; m ; m = DECL_CHAIN(m)) {
++       print(m, false);
++       printf(", ");
++     }
++     done.erase(p);
++     printf("}");
++     if (newline)
++       printf("\n");
++   }
++   void print_field_decl(tree p, bool newline)
++   {
++     printf("field(");
++     print(TREE_TYPE(p), false);
++     printf(",");
++     print(DECL_NAME(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_record_type(tree p, bool newline)
++   {
++     printf("reocrd ");
++     print_tag_type(p, newline);
++   }
++   void print_union_type(tree p, bool newline)
++   {
++     printf("union ");
++     print_tag_type(p, newline);
++   }
++   void print_enumeral_type(tree p, bool newline)
++   {
++     printf("enum ");
++     print_tag_type(p, newline);
++   }
++   void print_var_decl(tree p, bool newline)
++   {
++     printf("var ");
++     print(TREE_TYPE(p), false);
++     printf(" ");
++     print(DECL_NAME(p), newline);
++   }
++   void print_type_decl(tree p, bool newline)
++   {
++     printf("typedef ");
++     tree type = TREE_TYPE(p);
++     print(type, false);
++     printf(" ");
++     print(DECL_NAME(p), newline);
++   }
++   void print_label_decl(tree p, bool newline)
++   {
++     print(DECL_NAME(p), false);
++     printf(" :");
++     if (newline)
++       printf("\n");
++   }
++   void print_function_decl(tree p, bool newline) 
++   {
++     printf("function ");
++     print(TREE_TYPE(p), false);
++     printf(" ");
++     print(DECL_NAME(p), newline);
++   }
++   void print_tree_list(tree_list* p, bool newline)
++   {
++     print(p->value, false);
++     if (tree chain = p->common.chain) {
++       printf(", ");
++       print(chain, false);
++     }
++     if (newline)
++       printf("\n");
++   }
++   void print_elt(constructor_elt* p)
++   {
++     printf("(");
++     print(p->index, false);
++     printf(",");
++     print(p->value, false);
++     printf("),");
++   }
++   void print_constructor(tree p, bool newline)
++   {
++     printf("constructor(");
++     print(TREE_TYPE(p), false);
++     if (CONSTRUCTOR_ELTS(p)) {
++       printf(",");
++       int n = CONSTRUCTOR_NELTS(p);
++       for (int i = 0 ; i != n ; ++i) {
++ 	print_elt(CONSTRUCTOR_ELT(p, i));
++       }
++     }
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_bind_expr(tree p, bool newline)
++   {
++     print(TREE_TYPE(p), false);
++     printf(", ");
++     print(TREE_OPERAND(p, 0), false);
++     printf(", ");
++     print(TREE_OPERAND(p, 1), false);
++     printf(", ");
++     print(TREE_OPERAND(p, 2), false);
++     if (newline)
++       printf("\n");
++   }
++   void print_return_expr(tree_exp* p, bool newline)
++   {
++     printf("return ");
++     print((p->operands)[0], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_modify_expr(tree_exp* p, bool newline)
++   {
++     print((p->operands)[0], false);
++     printf(" = ");
++     print((p->operands)[1], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_mult_expr(tree_exp* p, bool newline)
++   {
++     print((p->operands)[0], false);
++     printf(" * ");
++     print((p->operands)[1], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_trunc_div_expr(tree_exp* p, bool newline)
++   {
++     print((p->operands)[0], false);
++     printf(" / ");
++     print((p->operands)[1], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_exact_div_expr(tree_exp* p, bool newline)
++   {
++     print_trunc_div_expr(p, newline);
++   }
++   void print_trunc_mod_expr(tree_exp* p, bool newline)
++   {
++     print((p->operands)[0], false);
++     printf(" %% ");
++     print((p->operands)[1], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_plus_expr(tree_exp* p, bool newline)
++   {
++     print((p->operands)[0], false);
++     printf(" + ");
++     print((p->operands)[1], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_minus_expr(tree_exp* p, bool newline)
++   {
++     print((p->operands)[0], false);
++     printf(" - ");
++     print((p->operands)[1], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_lshift_expr(tree_exp* p, bool newline)
++   {
++     print((p->operands)[0], false);
++     printf(" << ");
++     print((p->operands)[1], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_rshift_expr(tree_exp* p, bool newline)
++   {
++     print((p->operands)[0], false);
++     printf(" >> ");
++     print((p->operands)[1], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_lt_expr(tree_exp* p, bool newline)
++   {
++     print((p->operands)[0], false);
++     printf(" < ");
++     print((p->operands)[1], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_le_expr(tree_exp* p, bool newline)
++   {
++     print((p->operands)[0], false);
++     printf(" <= ");
++     print((p->operands)[1], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_gt_expr(tree_exp* p, bool newline)
++   {
++     print((p->operands)[0], false);
++     printf(" > ");
++     print((p->operands)[1], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_ge_expr(tree_exp* p, bool newline)
++   {
++     print((p->operands)[0], false);
++     printf(" >= ");
++     print((p->operands)[1], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_eq_expr(tree_exp* p, bool newline)
++   {
++     print((p->operands)[0], false);
++     printf(" == ");
++     print((p->operands)[1], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_ne_expr(tree_exp* p, bool newline)
++   {
++     print((p->operands)[0], false);
++     printf(" != ");
++     print((p->operands)[1], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_and_expr(tree_exp* p, bool newline)
++   {
++     print((p->operands)[0], false);
++     printf(" & ");
++     print((p->operands)[1], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_xor_expr(tree_exp* p, bool newline)
++   {
++     print((p->operands)[0], false);
++     printf(" ^ ");
++     print((p->operands)[1], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_ior_expr(tree_exp* p, bool newline)
++   {
++     print((p->operands)[0], false);
++     printf(" | ");
++     print((p->operands)[1], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_array_ref_expr(tree_exp* p, bool newline)
++   {
++     print((p->operands)[0], false);
++     printf("[");
++     print((p->operands)[1], false);
++     printf("]");
++     if (newline)
++       printf("\n");
++   }
++   void print_component_ref_expr(tree_exp* p, bool newline)
++   {
++     print((p->operands)[0], false);
++     printf(" ref ");  // . or ->
++     print((p->operands)[1], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_negate_expr(tree_exp* p, bool newline)
++   {
++     printf("-");
++     print((p->operands)[0], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_addr_expr(tree_exp* p, bool newline)
++   {
++     printf("&");
++     print((p->operands)[0], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_indirect_ref_expr(tree_exp* p, bool newline)
++   {
++     printf("*");
++     print((p->operands)[0], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_preincrement_expr(tree_exp* p, bool newline)
++   {
++     printf("++");
++     print((p->operands)[0], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_predecrement_expr(tree_exp* p, bool newline)
++   {
++     printf("--");
++     print((p->operands)[0], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_postincrement_expr(tree_exp* p, bool newline)
++   {
++     print((p->operands)[0], false);
++     printf("++");
++     if (newline)
++       printf("\n");
++   }
++   void print_postdecrement_expr(tree_exp* p, bool newline)
++   {
++     print((p->operands)[0], false);
++     printf("--");
++     if (newline)
++       printf("\n");
++   }
++   void print_bit_not_expr(tree_exp* p, bool newline)
++   {
++     printf("~");
++     print((p->operands)[0], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_float_expr(tree_exp* p, bool newline)
++   {
++     tree_typed* typed = &p->typed;
++     printf("(");
++     print_typed(typed, false);
++     printf(")");
++     print((p->operands)[0], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_convert_expr(tree_exp* p, bool newline)
++   {
++     print_float_expr(p, newline);
++   }
++   void print_realing_load_expr(tree_exp* p, bool newline)
++   {
++     printf("load ");
++     print((p->operands)[0], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_fix_trunc_expr(tree_exp* p, bool newline)
++   {
++     printf("trunc ");
++     print((p->operands)[0], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_call_expr(tree_exp* p, bool newline)
++   {
++     tree_typed* typed = &p->typed;
++     print_typed(typed, false);
++     printf(" ");
++     print((p->operands)[1], false);
++     printf("(");
++     int n = call_expr_nargs((tree)p);
++     for (int i = 0 ; i != n ; ++i)
++       print(CALL_EXPR_ARG((tree)p, i), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_cond_expr(tree_exp* p, bool newline)
++   {
++     print((p->operands)[0], false);
++     printf(" ? ");
++     print((p->operands)[1], false);
++     printf(" : ");
++     print((p->operands)[2], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_predict_expr(tree_exp* p, bool newline)
++   {
++     printf("predict ");
++     print((p->operands)[0], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_goto_expr(tree_exp* p, bool newline)
++   {
++     printf("goto ");
++     print((p->operands)[0], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_result_decl(tree_result_decl* p, bool newline)
++   {
++     (void)p;
++     printf("result");
++     if (newline)
++       printf("\n");
++   }
++   void print_parm_decl(tree_parm_decl* p, bool newline)
++   {
++     printf("parm ");
++     print(p->common.common.common.name, false);
++     if (newline)
++       printf("\n");
++   }
++   void print_statement_list(tree_statement_list* p, bool newline)
++   {
++     tree_statement_list_node* h = p->head;
++     for ( ; h ; h = h->next)
++       print(h->stmt, false);
++     if (newline)
++       printf("\n");
++   }
++   void print_block(tree p, bool newline)
++   {
++     printf("block(");
++     print(BLOCK_VARS(p), false);
++     printf(",");
++     print(BLOCK_SUBBLOCKS(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_truth_andif_expr(tree_exp* p, bool newline)
++   {
++     print((p->operands)[0], false);
++     printf(" && ");
++     print((p->operands)[1], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_truth_orif_expr(tree_exp* p, bool newline)
++   {
++     print((p->operands)[0], false);
++     printf(" || ");
++     print((p->operands)[1], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_compound_literal_expr(tree_exp* p, bool newline)
++   {
++     printf("compound literal (");
++     print((p->operands)[0], false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_decl_expr(tree_exp* p, bool newline)
++   {
++     printf("decl ");
++     print((p->operands)[0], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_nop_expr(tree_exp* p, bool newline)
++   {
++     printf("nop ");
++     print((p->operands)[0], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_compound_expr(tree_exp* p, bool newline)
++   {
++     printf("{");
++     print((p->operands)[0], false);
++     printf(", ");
++     print((p->operands)[1], false);
++     printf("}");
++     if (newline)
++       printf("\n");
++   }
++   void print_switch_expr(tree_exp* p, bool newline)
++   {
++     printf("switch ");
++     print((p->operands)[0], false);
++     printf(" ");
++     print((p->operands)[1], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_case_label_expr(tree_exp* p, bool newline)
++   {
++     printf("case ");
++     print((p->operands)[0], false);
++     printf(" :");
++     if (newline)
++       printf("\n");
++   }
++   void print_label_expr(tree_exp* p, bool newline)
++   {
++     print((p->operands)[0], false);
++     printf(" :");
++     if (newline)
++       printf("\n");
++   }
++   void print_save_expr(tree_exp* p, bool newline)
++   {
++     printf("save ");
++     print((p->operands)[0], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_init_expr(tree_exp* p, bool newline)
++   {
++     printf("init ");
++     print((p->operands)[0], false);
++     printf(" ");
++     print((p->operands)[1], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_view_convert_expr(tree_exp* p, bool newline)
++   {
++     printf("view convert ");
++     print((p->operands)[0], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_cleanup_point_expr(tree_exp* p, bool newline)
++   {
++     printf("cleanup point ");
++     print((p->operands)[0], false);
++     if (newline)
++       printf("\n");
++   }
++   void print_modop_expr(tree p, bool newline)
++   {
++     printf("modop ");
++     int n = tree_operand_length(p);
++     for (int i = 0 ; i != n ; ++i)
++       print(TREE_OPERAND(p, i), false);
++     if (newline)
++       printf("\n");
++   }
++   void print_ssa_name(tree p, bool newline)
++   {
++     printf("ssa ");
++     unsigned int ver = p->base.u.version;
++     printf("ver : %d ,", ver);
++     tree_ssa_name* q = &p->ssa_name;
++     tree_typed* typed = &q->typed;
++     printf("type : ");
++     print_typed(typed, false);
++     printf(", ");
++     print(q->var, false);
++     printf(", (gimple*)0x%x", q->def_stmt);
++     if (newline)
++       printf("\n");
++   }
++   void print_error_mark(tree, bool newline)
++   {
++     printf("error mark node");
++     if (newline)
++       printf("\n");
++   }
++   void print_namespace_decl(tree p, bool newline)
++   {
++     printf("namespace(");
++     print(DECL_NAME(p), false);
++     printf(",");
++     print(TREE_TYPE(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_expr_stmt(tree p, bool newline)
++   {
++     printf("expr stmt ");
++     int n = tree_operand_length(p);
++     for (int i = 0 ; i != n ; ++i) {
++       if (i)
++ 	printf(",");
++       print(TREE_OPERAND(p, i), false);
++     }
++     if (newline)
++       printf("\n");
++   }
++   void print_template_type_param(tree p, bool newline)
++   {
++     printf("template parameter ");
++     print(DECL_NAME(p), false);
++     printf(" ");
++     print(TREE_TYPE(p), false);
++     if (newline)
++       printf("\n");
++   }
++   void print_cast_expr(tree p, bool newline)
++   {
++     printf("cast ");
++     print(TREE_TYPE(p), false);
++     printf(" ");
++     int n = tree_operand_length(p);
++     for (int i = 0 ; i != n ; ++i) {
++       if (i)
++ 	printf(",");
++       print(TREE_OPERAND(p, i), false);
++     }
++     if (newline)
++       printf("\n");
++   }
++   void print_truth_not_expr(tree p, bool newline)
++   {
++     printf("truth_not ");
++     print(TREE_OPERAND(p, 0), newline);
++   }
++   void print_method_type(tree p, bool newline)
++   {
++     printf("method_type (");
++     print(TREE_TYPE(p), false);
++     printf(",");
++     print(TYPE_METHOD_BASETYPE(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_non_lvalue_expr(tree p, bool newline)
++   {
++     printf("non_lvalue ");
++     print(TREE_OPERAND(p, 0), newline);
++   }
++   void print_target_expr(tree p, bool newline)
++   {
++     printf("target (");
++     for (int i = 0 ; i != 4 ; ++i) {
++       if (i)
++ 	printf(",");
++       print(TREE_OPERAND(p, i), false);
++     }
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_arrow_expr(tree p, bool newline)
++   {
++     printf("arrow ");
++     print(TREE_OPERAND(p, 0), false);
++     if (newline)
++       printf("\n");
++   }
++   void print_DYNAMIC_CAST_EXPR(tree p, bool newline)
++   {
++     printf("dynamic_ast<");
++     print(TREE_TYPE(p), false);
++     printf(">(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_REINTERPRET_CAST_EXPR(tree p, bool newline)
++   {
++     printf("reinterpret_ast<");
++     print(TREE_TYPE(p), false);
++     printf(">(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_static_cast_expr(tree p, bool newline)
++   {
++     printf("static_cast<");
++     print(TREE_TYPE(p), false);
++     printf(">(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_const_cast_expr(tree p, bool newline)
++   {
++     printf("const_cast<");
++     print(TREE_TYPE(p), false);
++     printf(">(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_typeid_expr(tree p, bool newline)
++   {
++     printf("typeid(");
++     print(TREE_TYPE(p), false);
++     printf(",");
++     print(TREE_OPERAND(p, 0), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_new_expr(tree p, bool newline)
++   {
++     printf("new (");
++     for (int i = 0 ; i != 4 ; ++i) {
++       if (i)
++ 	printf(",");
++       print(TREE_OPERAND(p, i), false);
++     }
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_template_id_expr(tree p, bool newline)
++   {
++     printf("template-id (");
++     print(TREE_TYPE(p), false);
++     printf(",");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_lang_type(tree, bool newline)
++   {
++     printf("lang type");
++     if (newline)
++       printf("\n");
++   }
++   void print_template_decl(tree p, bool newline)
++   {
++     printf("template(");
++     print(TREE_TYPE(p), false);
++     printf(",");
++     print(DECL_NAME(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_tree_vec(tree p, bool newline)
++   {
++     printf("vec(");
++     int n = TREE_VEC_LENGTH(p);
++     for (int i = 0 ; i != n ; ++i) {
++       if (i)
++ 	printf(",");
++       print(TREE_VEC_ELT(p, i), false);
++     }
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_try_block(tree p, bool newline)
++   {
++     printf("try (");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_handler(tree p, bool newline)
++   {
++     printf("handler (");
++     print(TREE_TYPE(p), false);
++     printf(",");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_addressof_expr(tree p, bool newline)
++   {
++     printf("addressof(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_static_assert(tree p, bool newline)
++   {
++     printf("static_assert(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_scope_ref(tree p, bool newline)
++   {
++     printf("scope_ref(");
++     print(TREE_TYPE(p), false);
++     printf(",");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_noexcept_expr(tree p, bool newline)
++   {
++     printf("noexcept(");
++     print(TREE_TYPE(p), false);
++     printf(",");
++     print(TREE_OPERAND(p, 0), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_constuctor(tree p, bool newline)
++   {
++     printf("constructor(");
++     print(TREE_TYPE(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_dotstar_expr(tree p, bool newline)
++   {
++     print(TREE_OPERAND(p, 0), false);
++     printf(" .* ");
++     print(TREE_OPERAND(p, 1), false);
++     if (newline)
++       printf("\n");
++   }
++   void print_for_stmt(tree p, bool newline)
++   {
++     printf("for (");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(",");
++     print(TREE_OPERAND(p, 2), false);
++     printf(",");
++     print(TREE_OPERAND(p, 3), false);
++     printf(",");
++     print(TREE_OPERAND(p, 4), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_if_stmt(tree p, bool newline)
++   {
++     printf("if (");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(",");
++     print(TREE_OPERAND(p, 2), false);
++     printf(",");
++     print(TREE_OPERAND(p, 3), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_const_decl(tree p, bool newline)
++   {
++     printf("const decl (");
++     print(TREE_TYPE(p), false);
++     printf(",");
++     print(DECL_NAME(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_throw_expr(tree p, bool newline)
++   {
++     printf("throw(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_implicit_conv_expr(tree p, bool newline)
++   {
++     printf("implicit_conv(");
++     print(TREE_TYPE(p), false);
++     printf(",");
++     print(TREE_OPERAND(p, 0), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_tree_binfo(tree p, bool newline)
++   {
++     printf("binfo(");
++     print(BINFO_OFFSET(p), false);
++     printf(",");
++     print(BINFO_TYPE(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_using_decl(tree p, bool newline)
++   {
++     printf("using");
++     print(DECL_NAME(p), false);
++     print(TREE_TYPE(p), false);
++     if (newline)
++       printf("\n");
++   }
++   void print_while_stmt(tree p, bool newline)
++   {
++     printf("while(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_sizeof_expr(tree p, bool newline)
++   {
++     printf("sizeof(");
++     print(TREE_TYPE(p), false);
++     printf(",");
++     print(TREE_OPERAND(p, 0), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_switch_stmt(tree p, bool newline)
++   {
++     printf("switch (");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(",");
++     print(TREE_OPERAND(p, 2), false);
++     printf(",");
++     print(TREE_OPERAND(p, 3), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_break_stmt(tree, bool newline)
++   {
++     printf("break");
++     if (newline)
++       printf("\n");
++   }
++   void print_continue_stmt(tree, bool newline)
++   {
++     printf("continue");
++     if (newline)
++       printf("\n");
++   }
++   void print_MEMBER_REF(tree p, bool newline)
++   {
++     printf("member ref(");
++     print(TREE_OPERAND(p, 0), false);
++     printf(",");
++     print(TREE_OPERAND(p, 1), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_PAREN_EXPR(tree p, bool newline)
++   {
++     printf("paren(");
++     print(TREE_TYPE(p), false);
++     printf(",");
++     print(TREE_OPERAND(p, 0), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void (*print_cxx_special)(tree, bool);
++   void print(tree p, bool newline)
++   {
++     using namespace print_impl;
++     if (!p) {
++       printf("null");
++       if (newline)
++ 	printf("\n");
++       return;
++     }
++     tree_code code = p->base.code;
++     switch (code) {
++     default:
++       asm("int3");
++       return;
++     case CONJ_EXPR:
++       return print_CONJ_EXPR(p, newline);
++     case COMPLEX_CST:
++       return print_COMPLEX_CST(p, newline);
++     case REALPART_EXPR:
++       return print_REALPART_EXPR(p, newline);
++     case COMPLEX_EXPR:
++       return print_COMPLEX_EXPR(p, newline);
++     case COMPLEX_TYPE:
++       return print_COMPLEX_TYPE(p, newline);
++     case UNLT_EXPR:
++       return print_UNLT_EXPR(p, newline);
++     case UNLE_EXPR:
++       return print_UNLE_EXPR(p, newline);
++     case UNGT_EXPR:
++       return print_UNGT_EXPR(p, newline);
++     case UNGE_EXPR:
++       return print_UNGE_EXPR(p, newline);
++     case UNEQ_EXPR:
++       return print_UNEQ_EXPR(p, newline);
++     case ORDERED_EXPR:
++       return print_ORDERED_EXPR(p, newline);
++     case UNORDERED_EXPR:
++       return print_UNORDERED_EXPR(p, newline);
++     case IMAGPART_EXPR:
++       return print_IMAGPART_EXPR(p, newline);
++     case ABS_EXPR:
++       return print_ABS_EXPR(p, newline);
++     case NULLPTR_TYPE:
++       return print_NULLPTR_TYPE(p, newline);
++     case EXIT_EXPR:
++       return print_EXIT_EXPR(p, newline);
++     case LOOP_EXPR:
++       return print_LOOP_EXPR(p, newline);
++     case TRUTH_XOR_EXPR:
++       return print_TRUTH_XOR_EXPR(p, newline);
++     case TRUTH_AND_EXPR:
++       return print_TRUTH_AND_EXPR(p, newline);
++     case VEC_COND_EXPR:
++       return print_VEC_COND_EXPR(p, newline);
++     case VEC_PERM_EXPR:
++       return print_VEC_PERM_EXPR(p, newline);
++     case VECTOR_TYPE:
++       return print_VECTOR_TYPE(p, newline);
++     case RDIV_EXPR:
++       return print_RDIV_EXPR(p, newline);
++     case OFFSETOF_EXPR:
++       return print_OFFSETOF_EXPR(p, newline);
++     case TRUTH_OR_EXPR:
++       return print_TRUTH_OR_EXPR(p, newline);
++     case DEBUG_BEGIN_STMT:
++       return print_DEBUG_BEGIN_STMT(p, newline);
++     case ASM_EXPR:
++       return print_ASM_EXPR(p, newline);
++     case BIT_FIELD_REF:
++       return print_BIT_FIELD_REF(p, newline);
++     case VA_ARG_EXPR:
++       return print_VA_ARG_EXPR(p, newline);
++     case MEM_REF:
++       return print_MEM_REF(p, newline);
++     case MIN_EXPR:
++       return print_MIN_EXPR(p, newline);
++     case MAX_EXPR:
++       return print_MAX_EXPR(p, newline);
++     case TRY_CATCH_EXPR:
++       return print_TRY_CATCH_EXPR(p, newline);
++     case TAG_DEFN:
++       return print_TAG_DEFN(p, newline);
++     case IDENTIFIER_NODE:
++       return print_id(&p->identifier, newline);
++     case INTEGER_CST:
++       return print_icst(&p->int_cst, newline);
++     case REAL_CST:
++       return print_rcst(&p->real_cst, newline);
++     case STRING_CST:
++       return print_string(&p->string, newline);
++     case VOID_CST:
++       return print_vcst(p, newline);
++     case TYPE_DECL:
++       return print_type_decl(p, newline);
++     case LABEL_DECL:
++       return print_label_decl(p, newline);
++     case INTEGER_TYPE: case OFFSET_TYPE:
++       return print_integer_type(p, newline);
++     case BOOLEAN_TYPE:
++       return print_boolean_type(p, newline);
++     case REAL_TYPE:
++       return print_real_type(&p->type_common, newline);
++     case VOID_TYPE:
++       return print_void_type(&p->type_common, newline);
++     case FUNCTION_TYPE:
++       return print_function_type(p, newline);
++     case ARRAY_TYPE:
++       return print_array_type(p, newline);
++     case POINTER_TYPE:
++       return print_pointer_type(p, newline);
++     case REFERENCE_TYPE:
++       return print_reference_type(p, newline);
++     case RECORD_TYPE:
++       return print_record_type(p, newline);
++     case UNION_TYPE:
++       return print_union_type(p, newline);
++     case ENUMERAL_TYPE:
++       return print_enumeral_type(p, newline);
++     case FIELD_DECL:
++       return print_field_decl(p, newline);
++     case VAR_DECL:
++       return print_var_decl(p, newline);
++     case FUNCTION_DECL:
++       return print_function_decl(p, newline);
++     case TREE_LIST:
++       return print_tree_list(&p->list, newline);
++     case CONSTRUCTOR:
++       return print_constructor(p, newline);
++     case BIND_EXPR:
++       return print_bind_expr(p, newline);
++     case RETURN_EXPR:
++       return print_return_expr(&p->exp, newline);
++     case MODIFY_EXPR:
++       return print_modify_expr(&p->exp, newline);
++     case MULT_EXPR:
++       return print_mult_expr(&p->exp, newline);
++     case TRUNC_DIV_EXPR:
++       return print_trunc_div_expr(&p->exp, newline);
++     case EXACT_DIV_EXPR:
++       return print_exact_div_expr(&p->exp, newline);
++     case TRUNC_MOD_EXPR:
++       return print_trunc_mod_expr(&p->exp, newline);
++     case PLUS_EXPR:  case POINTER_PLUS_EXPR:
++       return print_plus_expr(&p->exp, newline);
++     case MINUS_EXPR: case POINTER_DIFF_EXPR:
++       return print_minus_expr(&p->exp, newline);
++     case LSHIFT_EXPR:
++       return print_lshift_expr(&p->exp, newline);
++     case RSHIFT_EXPR:
++       return print_rshift_expr(&p->exp, newline);
++     case LT_EXPR:
++       return print_lt_expr(&p->exp, newline);
++     case LE_EXPR:
++       return print_le_expr(&p->exp, newline);
++     case GT_EXPR:
++       return print_gt_expr(&p->exp, newline);
++     case GE_EXPR:
++       return print_ge_expr(&p->exp, newline);
++     case EQ_EXPR:
++       return print_eq_expr(&p->exp, newline);
++     case NE_EXPR:
++       return print_eq_expr(&p->exp, newline);
++     case BIT_AND_EXPR:
++       return print_and_expr(&p->exp, newline);
++     case BIT_XOR_EXPR:
++       return print_xor_expr(&p->exp, newline);
++     case BIT_IOR_EXPR:
++       return print_ior_expr(&p->exp, newline);
++     case ARRAY_REF:
++       return print_array_ref_expr(&p->exp, newline);
++     case COMPONENT_REF:
++       return print_component_ref_expr(&p->exp, newline);
++     case NEGATE_EXPR:
++       return print_negate_expr(&p->exp, newline);
++     case ADDR_EXPR:
++       return print_addr_expr(&p->exp, newline);
++     case INDIRECT_REF:
++       return print_indirect_ref_expr(&p->exp, newline);
++     case PREINCREMENT_EXPR:
++       return print_preincrement_expr(&p->exp, newline);
++     case PREDECREMENT_EXPR:
++       return print_predecrement_expr(&p->exp, newline);
++     case POSTINCREMENT_EXPR:
++       return print_postincrement_expr(&p->exp, newline);
++     case POSTDECREMENT_EXPR:
++       return print_postdecrement_expr(&p->exp, newline);
++     case BIT_NOT_EXPR:
++       return print_bit_not_expr(&p->exp, newline);
++     case FLOAT_EXPR:
++       return print_float_expr(&p->exp, newline);
++     case CONVERT_EXPR:
++       return print_convert_expr(&p->exp, newline);
++     case REALIGN_LOAD_EXPR:
++       return print_realing_load_expr(&p->exp, newline);
++     case FIX_TRUNC_EXPR:
++       return print_fix_trunc_expr(&p->exp, newline);
++     case CALL_EXPR:
++       return print_call_expr(&p->exp, newline);
++     case COND_EXPR:
++       return print_cond_expr(&p->exp, newline);
++     case PREDICT_EXPR:
++       return print_predict_expr(&p->exp, newline);
++     case GOTO_EXPR:
++       return print_goto_expr(&p->exp, newline);
++     case STATEMENT_LIST:
++       return print_statement_list(&p->stmt_list, newline);
++     case RESULT_DECL:
++       return print_result_decl(&p->result_decl, newline);
++     case PARM_DECL:
++       return print_parm_decl(&p->parm_decl, newline);
++     case BLOCK:
++       return print_block(p, newline);
++     case TRUTH_ANDIF_EXPR:
++       return print_truth_andif_expr(&p->exp, newline);
++     case TRUTH_ORIF_EXPR:
++       return print_truth_orif_expr(&p->exp, newline);
++     case COMPOUND_LITERAL_EXPR:
++       return print_compound_literal_expr(&p->exp, newline);
++     case DECL_EXPR:
++       return print_decl_expr(&p->exp, newline);
++     case NOP_EXPR:
++       return print_nop_expr(&p->exp, newline);
++     case COMPOUND_EXPR:
++       return print_compound_expr(&p->exp, newline);
++     case SWITCH_EXPR:
++       return print_switch_expr(&p->exp, newline);
++     case CASE_LABEL_EXPR:
++       return print_case_label_expr(&p->exp, newline);
++     case LABEL_EXPR:
++       return print_label_expr(&p->exp, newline);
++     case SAVE_EXPR:
++       return print_save_expr(&p->exp, newline);
++     case INIT_EXPR:
++       return print_init_expr(&p->exp, newline);
++     case VIEW_CONVERT_EXPR:
++       return print_view_convert_expr(&p->exp, newline);
++     case CLEANUP_POINT_EXPR:
++       return print_cleanup_point_expr(&p->exp, newline);
++     case DO_STMT:
++       return print_DO_STMT(p, newline);
++     case OBJ_TYPE_REF:
++       return print_OBJ_TYPE_REF(p, newline);
++     case DELETE_EXPR:
++       return print_DELETE_EXPR(p, newline);
++     case MUST_NOT_THROW_EXPR:
++       return print_MUST_NOT_THROW_EXPR(p, newline);
++     case ALIGNOF_EXPR:
++       return print_ALIGNOF_EXPR(p, newline);
++     case RANGE_FOR_STMT:
++       return print_RANGE_FOR_STMT(p, newline);
++     case USING_STMT:
++       return print_USING_STMT(p, newline);
++     case EMPTY_CLASS_EXPR:
++       return print_EMPTY_CLASS_EXPR(p, newline);
++     case TRY_FINALLY_EXPR:
++       return print_TRY_FINALLY_EXPR(p, newline);
++     case MODOP_EXPR:
++       return print_modop_expr(p, newline);
++     case SSA_NAME:
++       return print_ssa_name(p, newline);
++     case ERROR_MARK:
++       return print_error_mark(p, newline);
++     case NAMESPACE_DECL:
++       return print_namespace_decl(p, newline);
++     case EXPR_STMT:
++       return print_expr_stmt(p, newline);
++     case TEMPLATE_TYPE_PARM:
++       return print_template_type_param(p, newline);
++     case CAST_EXPR:
++       return print_cast_expr(p, newline);
++     case TRUTH_NOT_EXPR:
++       return print_truth_not_expr(p, newline);
++     case METHOD_TYPE:
++       return print_method_type(p, newline);
++     case NON_LVALUE_EXPR:
++       return print_non_lvalue_expr(p, newline);
++     case TARGET_EXPR:
++       return print_target_expr(p, newline);
++     case AGGR_INIT_EXPR: case TYPENAME_TYPE: case TRAIT_EXPR:
++     case TEMPLATE_PARM_INDEX: case BASELINK: case OVERLOAD:
++     case DECLTYPE_TYPE: case EXPR_PACK_EXPANSION: case TYPE_PACK_EXPANSION:
++     case PTRMEM_CST: case LAMBDA_EXPR: case BOUND_TEMPLATE_TEMPLATE_PARM:
++     case TEMPLATE_TEMPLATE_PARM: case TEMPLATE_INFO:
++       return print_cxx_special ? print_cxx_special(p, newline) : (void)0;
++     case ARROW_EXPR:
++       return print_arrow_expr(p, newline);
++     case DYNAMIC_CAST_EXPR:
++       return print_DYNAMIC_CAST_EXPR(p, newline);
++     case REINTERPRET_CAST_EXPR:
++       return print_REINTERPRET_CAST_EXPR(p, newline);
++     case STATIC_CAST_EXPR:
++       return print_static_cast_expr(p, newline);
++     case CONST_CAST_EXPR:
++       return print_const_cast_expr(p, newline);
++     case TYPEID_EXPR:
++       return print_typeid_expr(p, newline);
++     case NEW_EXPR:
++       return print_new_expr(p, newline);
++     case TEMPLATE_ID_EXPR:
++       return print_template_id_expr(p, newline);
++     case LANG_TYPE:
++       return print_lang_type(p, newline);
++     case TEMPLATE_DECL:
++       return print_template_decl(p, newline);
++     case TREE_VEC:
++       return print_tree_vec(p, newline);
++     case TRY_BLOCK:
++       return print_try_block(p, newline);
++     case HANDLER:
++       return print_handler(p, newline);
++     case ADDRESSOF_EXPR:
++       return print_addressof_expr(p, newline);
++     case STATIC_ASSERT:
++       return print_static_assert(p, newline);
++     case SCOPE_REF:
++       return print_scope_ref(p, newline);
++     case NOEXCEPT_EXPR:
++       return print_noexcept_expr(p, newline);
++     case DOTSTAR_EXPR:
++       return print_dotstar_expr(p, newline);
++     case FOR_STMT:
++       return print_for_stmt(p, newline);
++     case IF_STMT:
++       return print_if_stmt(p, newline);
++     case CONST_DECL:
++       return print_const_decl(p, newline);
++     case THROW_EXPR:
++       return print_throw_expr(p, newline);
++     case IMPLICIT_CONV_EXPR:
++       return print_implicit_conv_expr(p, newline);
++     case TREE_BINFO:
++       return print_tree_binfo(p, newline);
++     case USING_DECL:
++       return print_using_decl(p, newline);
++     case WHILE_STMT:
++       return print_while_stmt(p, newline);
++     case SIZEOF_EXPR:
++       return print_sizeof_expr(p, newline);
++     case SWITCH_STMT:
++       return print_switch_stmt(p, newline);
++     case BREAK_STMT:
++       return print_break_stmt(p, newline);
++     case CONTINUE_STMT:
++       return print_continue_stmt(p, newline);
++     case MEMBER_REF:
++       return print_MEMBER_REF(p, newline);
++     case PAREN_EXPR:
++       return print_PAREN_EXPR(p, newline);
++     case CLEANUP_STMT:
++       return print_CLEANUP_STMT(p, newline);
++     }
++   }  
++ } // end of namespace print_impl
++  
++ void print(tree p)
++ {
++   print_impl::print(p, true);
++ }
++ 
++ extern FILE* doc_info_file;
++ 
++ namespace out_doc_info_impl {
++   location_t g_locus;
++   void set_locus(location_t locus)
++   {
++     if (locus != UNKNOWN_LOCATION)
++       g_locus = locus;
++   }
++   line_maps* line_table;
++   using namespace std;
++   void traverse(tree);
++   inline bool file_scope_or_namespace(tree p)
++   {
++     if (DECL_FILE_SCOPE_P(p))
++       return true;
++     tree ctx = DECL_CONTEXT(p);
++     return TREE_CODE(ctx) == NAMESPACE_DECL;
++   }
++   const char* (*get_name_cxx_special)(tree);
++   inline void traverse_decl(tree p)
++   {
++     if (!file_scope_or_namespace(p))
++       return traverse(TREE_TYPE(p));
++     if (DECL_IS_BUILTIN(p))
++       return;
++     if (!TREE_PUBLIC(p))
++       return;
++     if (get_name_cxx_special) {
++       if (!DECL_CONTEXT(p))
++ 	return;  // like `__cxa_begin_catch'
++     }
++     switch (TREE_CODE(p)) {
++     case VAR_DECL:
++       fprintf(doc_info_file, "    $ref $var ");
++       break;
++     case FUNCTION_DECL:
++       fprintf(doc_info_file, "    $ref $func ");
++       break;
++     case NAMESPACE_DECL:
++       fprintf(doc_info_file, "    $ref $nmsp ");
++       break;
++     case TYPE_DECL:
++       fprintf(doc_info_file, "//    $ref $type ");
++       break;
++     default:
++       asm("int3");
++       break;
++     }
++     rich_location richloc(line_table, g_locus);
++     expanded_location exloc = richloc.get_expanded_location(0);
++     const char* file = exloc.file;
++     int line = exloc.line;
++     if (get_name_cxx_special) {
++       const char* name = get_name_cxx_special(p);
++       fprintf(doc_info_file, "\"%s\" \"%s\" %d;\n", name, file, line);
++     }
++     else {
++       const char* name = get_name(p);
++       fprintf(doc_info_file, "%s \"%s\" %d;\n", name, file, line);
++     }
++   }
++   inline void traverse_call_expr(tree p)
++   {
++     traverse(CALL_EXPR_FN(p));
++     int n = call_expr_nargs(p);
++     for (int i = 0 ; i != n ; ++i)
++       traverse(CALL_EXPR_ARG(p, i));
++   }
++   inline void traverse_tagged_type(tree p)
++   {
++     if (!TYPE_FILE_SCOPE_P(p))
++       return;
++     tree can = TYPE_CANONICAL(p);
++     if (!can)
++       return;
++     tree id = TYPE_NAME(can);
++     if (!id)
++       return;
++     if (TREE_CODE(id) == TYPE_DECL)
++       id = DECL_NAME(id);
++     rich_location richloc(line_table, g_locus);
++     expanded_location exloc = richloc.get_expanded_location(0);
++     const char* file = exloc.file;
++     int line = exloc.line;
++     if (get_name_cxx_special) {
++       const char* name = get_name_cxx_special(id);
++       fprintf(doc_info_file, "    $ref $tag \"%s\" \"%s\" %d;\n",
++ 	      name, file, line);
++     }
++     else {
++       const char* name = (const char*)id->identifier.id.str;
++       fprintf(doc_info_file, "    $ref $tag %s \"%s\" %d;\n",
++ 	      name, file, line);
++     }
++   }
++   inline void traverse_statement_list(tree_statement_list* p)
++   {
++     tree_statement_list_node* h = p->head;
++     for ( ; h ; h = h->next)
++       traverse(h->stmt);
++   }
++   inline void traverse_va_op(tree p)
++   {
++     int n = tree_operand_length(p);
++     for (int i = 0 ; i != n ; ++i)
++       traverse(TREE_OPERAND(p, i));
++   }
++   inline void traverse_list(tree_list* p)
++   {
++     traverse(p->value);
++     if (tree chain = p->common.chain)
++       traverse(chain);
++   }
++   inline void traverse_tree_vec(tree p)
++   {
++     int n = TREE_VEC_LENGTH(p);
++     for (int i = 0 ; i != n ; ++i)
++       traverse(TREE_VEC_ELT(p, i));
++   }
++   inline void traverse_elt(constructor_elt* p)
++   {
++     traverse(p->index);
++     traverse(p->value);
++   }
++   inline void traverse_constructor(tree p)
++   {
++     traverse(TREE_TYPE(p));
++     if (CONSTRUCTOR_ELTS(p)) {
++       int n = CONSTRUCTOR_NELTS(p);
++       for (int i = 0 ; i != n ; ++i)
++ 	traverse_elt(CONSTRUCTOR_ELT(p, i));
++     }
++   }
++   inline void traverse_4op(tree p)
++   {
++     traverse(TREE_OPERAND(p, 0));
++     traverse(TREE_OPERAND(p, 1));
++     traverse(TREE_OPERAND(p, 2));
++     traverse(TREE_OPERAND(p, 3));
++   }
++   inline void traverse_5op(tree p)
++   {
++     traverse(TREE_OPERAND(p, 0));
++     traverse(TREE_OPERAND(p, 1));
++     traverse(TREE_OPERAND(p, 2));
++     traverse(TREE_OPERAND(p, 3));
++     traverse(TREE_OPERAND(p, 4));
++   }
++   inline void traverse_6op(tree p)
++   {
++     for (int i = 0 ; i != 6 ; ++i)
++       traverse(TREE_OPERAND(p, 0));
++   }
++   void (*traverse_cxx_special)(tree);
++   void traverse(tree p)
++   {
++     if (!p)
++       return;
++     tree_code code = p->base.code;
++     switch (code) {
++     default:
++       asm("int3");
++       return;
++     case INTEGER_CST: case RESULT_DECL: case INTEGER_TYPE: case FIELD_DECL:
++     case GOTO_EXPR: case STRING_CST: case CASE_LABEL_EXPR: case LABEL_EXPR:
++     case REAL_TYPE: case IDENTIFIER_NODE: case BOOLEAN_TYPE: case VOID_TYPE:
++     case VOID_CST: case LANG_TYPE: case ERROR_MARK: case BREAK_STMT:
++     case CONTINUE_STMT: case REAL_CST: case OFFSET_TYPE: case DEBUG_BEGIN_STMT:
++     case VECTOR_CST: case LABEL_DECL: case NULLPTR_TYPE: case COMPLEX_TYPE:
++     case COMPLEX_CST: case SSA_NAME:
++       return;
++     case VAR_DECL: case FUNCTION_DECL: case TEMPLATE_DECL: case TYPE_DECL:
++     case CONST_DECL: case USING_DECL: case NAMESPACE_DECL:
++       return traverse_decl(p);
++     case MULT_EXPR: case RDIV_EXPR: case TRUNC_DIV_EXPR: case EXACT_DIV_EXPR:
++     case TRUNC_MOD_EXPR: case PLUS_EXPR: case MINUS_EXPR: case LSHIFT_EXPR:
++     case RSHIFT_EXPR: case LT_EXPR: case LE_EXPR: case GT_EXPR: case GE_EXPR:
++     case EQ_EXPR: case NE_EXPR: case BIT_AND_EXPR: case BIT_XOR_EXPR:
++     case BIT_IOR_EXPR: case ARRAY_REF: case POINTER_PLUS_EXPR:
++     case POINTER_DIFF_EXPR: case TRUTH_ANDIF_EXPR:
++     case TRUTH_ORIF_EXPR: case MODIFY_EXPR: case COMPOUND_EXPR:
++     case SWITCH_EXPR: case INIT_EXPR: case DOTSTAR_EXPR: case OFFSETOF_EXPR:
++     case TRY_FINALLY_EXPR: case DELETE_EXPR: case MUST_NOT_THROW_EXPR:
++     case MIN_EXPR: case MAX_EXPR: case MEM_REF: case TRUTH_OR_EXPR:
++     case TRUTH_AND_EXPR: case TRUTH_XOR_EXPR: case UNLT_EXPR: case UNLE_EXPR:
++     case UNGT_EXPR: case UNGE_EXPR: case UNEQ_EXPR: case COMPLEX_EXPR:
++       set_locus(p->exp.locus);
++       /* Fall through.  */
++     case TRY_BLOCK: case WHILE_STMT: case MEMBER_REF: case DO_STMT:
++       return traverse(TREE_OPERAND(p, 0)), traverse(TREE_OPERAND(p, 1));
++     case COMPONENT_REF:
++       set_locus(p->exp.locus);
++       traverse(TREE_TYPE(TREE_OPERAND(p, 0)));
++       return traverse(TREE_OPERAND(p, 0));
++     case ADDR_EXPR: case INDIRECT_REF:case RETURN_EXPR: case NOP_EXPR:
++     case PREDECREMENT_EXPR: case PREINCREMENT_EXPR: case POSTDECREMENT_EXPR:
++     case POSTINCREMENT_EXPR: case BIT_NOT_EXPR: case NEGATE_EXPR:
++     case FLOAT_EXPR: case FIX_TRUNC_EXPR: case CONVERT_EXPR: case DECL_EXPR:
++     case COMPOUND_LITERAL_EXPR: case PREDICT_EXPR: case SAVE_EXPR:
++     case VIEW_CONVERT_EXPR: case CLEANUP_POINT_EXPR: case TRUTH_NOT_EXPR:
++     case NON_LVALUE_EXPR: case ARROW_EXPR: case ADDRESSOF_EXPR:
++     case STATIC_ASSERT: case THROW_EXPR:
++     case STATIC_CAST_EXPR: case CONST_CAST_EXPR: case TYPEID_EXPR:
++     case NOEXCEPT_EXPR: case IMPLICIT_CONV_EXPR: case SIZEOF_EXPR:
++     case PAREN_EXPR: case REINTERPRET_CAST_EXPR: case DYNAMIC_CAST_EXPR:
++     case ALIGNOF_EXPR: case VA_ARG_EXPR: case LOOP_EXPR: case EXIT_EXPR:
++     case ABS_EXPR: case IMAGPART_EXPR: case UNORDERED_EXPR: case ORDERED_EXPR:
++     case REALPART_EXPR: case CONJ_EXPR:
++       set_locus(p->exp.locus);
++       /* Fall through.  */
++     case USING_STMT:
++       return traverse(TREE_OPERAND(p, 0));
++     case COND_EXPR: case BIND_EXPR: case BIT_FIELD_REF: case VEC_PERM_EXPR:
++       set_locus(p->exp.locus);
++       /* Fall through.  */
++     case CLEANUP_STMT:
++       traverse(TREE_OPERAND(p, 0)); traverse(TREE_OPERAND(p, 1));
++       return traverse(TREE_OPERAND(p, 2));
++     case CALL_EXPR:
++       set_locus(p->exp.locus);
++       return traverse_call_expr(p);
++     case EMPTY_CLASS_EXPR:
++       set_locus(p->exp.locus);
++       /* Fall through.  */
++     case POINTER_TYPE: case ARRAY_TYPE: case REFERENCE_TYPE:
++     case TEMPLATE_TYPE_PARM: case PARM_DECL: case TAG_DEFN: case VECTOR_TYPE:
++       return traverse(TREE_TYPE(p));
++     case RECORD_TYPE: case UNION_TYPE: case ENUMERAL_TYPE:
++       return traverse_tagged_type(p);
++     case FUNCTION_TYPE:
++       return traverse(TREE_TYPE(p)), traverse(TYPE_ARG_TYPES(p));
++     case STATEMENT_LIST:
++       return traverse_statement_list(&p->stmt_list);
++     case EXPR_STMT:
++       return traverse_va_op(p);
++     case MODOP_EXPR:
++       set_locus(p->exp.locus);
++       return traverse_va_op(p);
++     case CAST_EXPR:
++       set_locus(p->exp.locus);
++       return traverse_va_op(p);
++     case TREE_LIST:
++       return traverse_list(&p->list);
++     case METHOD_TYPE:
++       return traverse(TREE_TYPE(p)), traverse(TYPE_METHOD_BASETYPE(p));
++     case TARGET_EXPR: case NEW_EXPR:
++       set_locus(p->exp.locus);
++       traverse(TREE_OPERAND(p, 0)); traverse(TREE_OPERAND(p, 1));
++       return traverse(TREE_OPERAND(p, 2)), traverse(TREE_OPERAND(p, 3));
++     case AGGR_INIT_EXPR: case TRAIT_EXPR: case LAMBDA_EXPR:
++       set_locus(p->exp.locus);
++       /* Fall through.  */
++     case TYPENAME_TYPE: case TEMPLATE_PARM_INDEX: case BASELINK: case OVERLOAD:
++     case DECLTYPE_TYPE: case EXPR_PACK_EXPANSION: case TYPE_PACK_EXPANSION:
++     case PTRMEM_CST: case BOUND_TEMPLATE_TEMPLATE_PARM:
++     case TEMPLATE_TEMPLATE_PARM: case TEMPLATE_INFO:
++       return traverse_cxx_special ? traverse_cxx_special(p) : (void)0;
++     case TEMPLATE_ID_EXPR: case TRY_CATCH_EXPR:
++       set_locus(p->exp.locus);
++       /* Fall through.  */
++     case HANDLER: case SCOPE_REF:
++       traverse(TREE_TYPE(p));
++       return traverse(TREE_OPERAND(p, 0)), traverse(TREE_OPERAND(p, 1));
++     case VEC_COND_EXPR:
++       set_locus(p->exp.locus);
++       /* Fall through.  */
++     case TREE_VEC: return traverse_tree_vec(p);
++     case CONSTRUCTOR: return traverse_constructor(p);
++     case IF_STMT: case SWITCH_STMT:
++       return traverse_4op(p);
++     case ASM_EXPR:
++       set_locus(p->exp.locus);
++       /* Fall through.  */
++     case FOR_STMT:
++       return traverse_5op(p);
++     case RANGE_FOR_STMT: return traverse_6op(p);
++     case TREE_BINFO:
++       return traverse(BINFO_OFFSET(p)), traverse(BINFO_TYPE(p));
++     case BLOCK:
++       return traverse(BLOCK_VARS(p)), traverse(BLOCK_SUBBLOCKS(p));
++     case OBJ_TYPE_REF:
++       traverse(TREE_TYPE(p)); traverse(TREE_OPERAND(p, 0));
++       return traverse(TREE_OPERAND(p, 1)), traverse(TREE_OPERAND(p, 2));
++     }
++   }
++ } // end of namespace out_doc_info_impl
++ 
++ void out_doc_info(tree fnbody, line_maps* lm)
++ {
++   out_doc_info_impl::line_table = lm;
++   out_doc_info_impl::traverse(fnbody);
++ }
+*** gcc-10.2.0.org/gcc/tree-cfg.c	2020-07-23 15:35:18.624398652 +0900
+--- gcc-10.2.0/gcc/tree-cfg.c	2021-04-19 15:52:23.409769179 +0900
+***************
+*** 361,372 ****
+--- 361,502 ----
+      }
+  }
+  
++ // vvvvv add khasegawa
++ extern FILE* doc_info_file;
++ 
++ namespace out_doc_info_impl {
++   extern line_maps* line_table;
++   extern void set_locus(location_t locus);
++   extern void traverse(tree);
++   inline void out_ref_a(const gassign* gs)
++   {
++     tree lhs = gimple_assign_lhs(gs);
++     traverse(lhs);
++     tree rhs = gimple_assign_rhs1(gs);
++     traverse(rhs);
++     switch (gimple_num_ops(gs)) {
++     case 2: return;
++     case 3: return traverse(gimple_assign_rhs2(gs));
++     default:
++       traverse(gimple_assign_rhs2(gs));
++       return traverse(gimple_assign_rhs3(gs));
++     }
++   }
++   inline void out_ref_c(const gcall* gs)
++   {
++     tree lhs = gimple_call_lhs(gs);
++     traverse(lhs);
++     tree fn = gimple_call_fn(gs);
++     traverse(fn);
++     int N = gimple_call_num_args(gs);
++     for (int i = 0 ; i != N; ++i) {
++       tree arg = gimple_call_arg(gs, i);
++       traverse(arg);
++     }
++   }
++   inline location_t get_loc(gimple* gs)
++   {
++     location_t loc = gimple_location(gs);
++     rich_location richloc(line_table, loc);
++     expanded_location exloc = richloc.get_expanded_location(0);
++     const char* file = exloc.file;
++     return file ? loc : UNKNOWN_LOCATION;
++   }
++   inline void out_ref_g(gimple* gs)
++   {
++     location_t loc = get_loc(gs);
++     set_locus(loc);
++     enum gimple_code code = gimple_code(gs);
++     switch (code) {
++     default:
++       return;
++     case GIMPLE_ASSIGN: return out_ref_a((gassign*)gs);
++     case GIMPLE_CALL: return out_ref_c((gcall*)gs);
++     }
++   }
++   inline void out_ref(basic_block bb)
++   {
++     typedef gimple_stmt_iterator IT;
++     for (IT gsi = gsi_start_bb(bb) ; !gsi_end_p(gsi) ; gsi_next(&gsi)) {
++       gimple* stmt = gsi_stmt(gsi);
++       out_ref_g(stmt);
++     }
++   }
++   inline location_t get_location(basic_block bb)
++   {
++     gimple_stmt_iterator gsi = gsi_start_bb(bb);
++     gimple* stmt = gsi_stmt(gsi);
++     if (!stmt)
++       return UNKNOWN_LOCATION;
++     return get_loc(stmt);
++   }
++   inline void out_graph(basic_block bb)
++   {
++     int no = bb->index;
++     location_t loc = get_location(bb);
++     if (loc == UNKNOWN_LOCATION)
++       return;
++     rich_location richloc(line_table, loc);
++     expanded_location exloc = richloc.get_expanded_location(0);
++     const char* file = exloc.file;
++     int line = exloc.line;
++     fprintf(doc_info_file, "       %d \"%s\" %d;\n", no, file, line);
++ 
++     edge_iterator ei;
++     edge e;
++     FOR_EACH_EDGE (e, ei, bb->succs) {
++       basic_block dst = e->dest;
++       location_t loc = get_location(dst);
++       if (loc == UNKNOWN_LOCATION)
++ 	return;
++       int to = dst->index;
++       fprintf(doc_info_file, "       (%d, %d)\n", no, to);
++     }
++   }
++   extern const char* (*get_name_cxx_special)(tree);
++ } // end of out_doc_info_impl
++ 
++ inline void out_doc_info_if()
++ {
++   if (!doc_info_file)
++     return;
++   if (!TREE_PUBLIC(current_function_decl))
++     return;
++   if (DECL_DECLARED_INLINE_P(current_function_decl))
++     return;
++   const char* file = DECL_SOURCE_FILE(current_function_decl);
++   int line = DECL_SOURCE_LINE(current_function_decl);
++   if (out_doc_info_impl::get_name_cxx_special) {
++     const char* name =
++       out_doc_info_impl::get_name_cxx_special(current_function_decl);
++     fprintf(doc_info_file, "$func $def \"%s\" \"%s\" %d\n",
++ 	    name, file, line);
++   }
++   else {
++     const char* name = get_name(current_function_decl);
++     fprintf(doc_info_file, "$func $def %s \"%s\" %d\n",
++ 	    name, file, line);
++   }
++   fprintf(doc_info_file, "{\n");
++   out_doc_info_impl::line_table = line_table;
++   basic_block bb;
++   FOR_EACH_BB_FN (bb, cfun)
++     out_doc_info_impl::out_ref(bb);
++   fprintf(doc_info_file, "    $graph {\n");
++   FOR_EACH_BB_FN (bb, cfun)
++     out_doc_info_impl::out_graph(bb);
++   fprintf(doc_info_file, "    }\n");
++   fprintf(doc_info_file, "}\n");
++ }
++ // ^^^^^ add khasegawa
++ 
+  static unsigned int
+  execute_build_cfg (void)
+  {
+    gimple_seq body = gimple_body (current_function_decl);
+  
+    build_gimple_cfg (body);
++   out_doc_info_if();  // add by khasegawa
+    gimple_set_body (current_function_decl, NULL);
+    if (dump_file && (dump_flags & TDF_DETAILS))
+      {
+*** gcc-10.2.0.org/gcc/c/c-parser.c	2020-07-23 15:35:17.304384112 +0900
+--- gcc-10.2.0/gcc/c/c-parser.c	2021-04-19 16:05:24.063010228 +0900
+***************
+*** 1765,1770 ****
+--- 1765,1823 ----
+    add_stmt (stmt);
+  }
+  
++ // vvvvv add khasegawa
++ inline void out_doc_info_if(tree decl)
++ {
++   extern FILE* doc_info_file;
++   if (!doc_info_file)
++     return;
++   if (current_function_decl)
++     return;  // ignore declaration at function body
++   const char* file = DECL_SOURCE_FILE(decl);
++   int line = DECL_SOURCE_LINE(decl);
++   const char* name = get_name(decl);
++   if (TREE_CODE(decl) == TYPE_DECL) {
++     fprintf(doc_info_file, "$type $def %s \"%s\" %d ;\n", name, file, line);
++     return;
++   }
++   if (!TREE_PUBLIC(decl))
++     return;
++   if (TREE_CODE(decl) == FUNCTION_DECL) {
++     fprintf(doc_info_file, "$func $decl %s \"%s\" %d ;\n", name, file, line);
++     return;
++   }
++   if (DECL_EXTERNAL(decl)) {
++     fprintf(doc_info_file, "$var $decl %s \"%s\" %d ;\n", name, file, line);
++     return;
++   }
++   fprintf(doc_info_file, "$var $def %s \"%s\" %d ;\n", name, file, line);
++ }
++ 
++ #ifdef USE_TREE_FOR_OUT_DOC_INFO
++ inline void out_func_def_if(tree fnbody, location_t loc)
++ {
++   extern FILE* doc_info_file;
++   if (!doc_info_file)
++     return;
++   if (!TREE_PUBLIC(current_function_decl))
++     return;
++   if (DECL_DECLARED_INLINE_P(current_function_decl))
++     return;
++   const char* name = get_name(current_function_decl);
++   rich_location richloc(line_table, loc);
++   expanded_location exloc = richloc.get_expanded_location(0);
++   const char* file = exloc.file;
++   int line = exloc.line;
++   fprintf(doc_info_file, "$func $def %s \"%s\" %d\n",  name, file, line);
++   fprintf(doc_info_file, "{\n");
++   void out_doc_info(tree, line_maps*);
++   out_doc_info(fnbody, line_table);
++   fprintf(doc_info_file, "    $graph {}\n");
++   fprintf(doc_info_file, "}\n");
++ }
++ #endif // USE_TREE_FOR_OUT_DOC_INFO
++ //add khasegawa
++ 
+  /* Parse a declaration or function definition (C90 6.5, 6.7.1, C99
+     6.7, 6.9.1, C11 6.7, 6.9.1).  If FNDEF_OK is true, a function definition
+     is accepted; otherwise (old-style parameter declarations) only other
+***************
+*** 2335,2340 ****
+--- 2388,2395 ----
+  	      if (d)
+  		finish_decl (d, UNKNOWN_LOCATION, NULL_TREE,
+  			     NULL_TREE, asm_name);
++ 	      if (d)
++ 		out_doc_info_if(d);  // add by khasegawa
+  	      
+  	      if (c_parser_next_token_is_keyword (parser, RID_IN))
+  		{
+***************
+*** 2504,2509 ****
+--- 2559,2569 ----
+        else
+  	fnbody = c_parser_compound_statement (parser, &endloc);
+        tree fndecl = current_function_decl;
++ 
++       // add by khasegawa
++ #ifdef USE_TREE_FOR_OUT_DOC_INFO
++       out_func_def_if(fnbody, here);
++ #endif // USE_TREE_FOR_OUT_DOC_INFO
+        if (nested)
+  	{
+  	  tree decl = current_function_decl;
+***************
+*** 2650,2655 ****
+--- 2710,2739 ----
+      }
+  }
+  
++ /* vvvvv add by khasegawa vvvvv */
++ inline void out_type_ref_if(tree spec, tree value,
++ 			    line_maps* line_table,
++ 			    location_t loc)
++ {
++   extern FILE* doc_info_file;
++   if (!doc_info_file)
++     return;
++   if (DECL_IS_BUILTIN(spec))
++     return;
++   if (!TYPE_FILE_SCOPE_P(spec))
++     return;
++   tree type = TREE_TYPE(spec);
++   if (!TYPE_FILE_SCOPE_P(type))
++     return;
++   const char* name = (const char*)value->identifier.id.str;
++   rich_location richloc(line_table, loc);
++   expanded_location exloc = richloc.get_expanded_location(0);
++   const char* file = exloc.file;
++   int line = exloc.line;
++   fprintf(doc_info_file, "$type $ref %s \"%s\" %d ;\n", name, file, line);
++ }
++ /* ^^^^^ add by khasegawa ^^^^^ */
++ 
+  /* Parse some declaration specifiers (possibly none) (C90 6.5, C99
+     6.7, C11 6.7), adding them to SPECS (which may already include some).
+     Storage class specifiers are accepted iff SCSPEC_OK; type
+***************
+*** 2852,2857 ****
+--- 2936,2946 ----
+  	      /* For a typedef name, record the meaning, not the name.
+  		 In case of 'foo foo, bar;'.  */
+  	      t.spec = lookup_name (value);
++ 
++ 	      // vvvvv add by khasegawa
++ 	      out_type_ref_if(t.spec, value,
++ 			      line_table, name_token->location);
++ 	      // ^^^^^ add by khasegawa
+  	    }
+  	  else
+  	    {
+***************
+*** 3128,3133 ****
+--- 3217,3236 ----
+      }
+    if (c_parser_next_token_is (parser, CPP_OPEN_BRACE))
+      {
++       // vvvvv add khasegawa vvvvv
++       if (ident) {
++ 	extern FILE* doc_info_file;
++ 	if (doc_info_file) {
++ 	  const char* name = (const char*)ident->identifier.id.str;
++ 	  rich_location richloc(line_table, ident_loc);
++ 	  expanded_location exloc = richloc.get_expanded_location(0);
++ 	  const char* file = exloc.file;
++ 	  int line = exloc.line;
++ 	  fprintf(doc_info_file, "$tag $decl %s \"%s\" %d ;\n",
++ 		  name, file, line);
++ 	}
++       }
++       // ^^^^ add khasegawa ^^^^^
+        /* Parse an enum definition.  */
+        struct c_enum_contents the_enum;
+        tree type;
+***************
+*** 3334,3339 ****
+--- 3437,3458 ----
+      {
+        /* Parse a struct or union definition.  Start the scope of the
+  	 tag before parsing components.  */
++       // vvvvv add khasegawa vvvvv
++       if (!current_function_decl) {
++ 	if (ident) {
++ 	  extern FILE* doc_info_file;
++ 	  if (doc_info_file) {
++ 	    const char* name = (const char*)ident->identifier.id.str;
++ 	    rich_location richloc(line_table, ident_loc);
++ 	    expanded_location exloc = richloc.get_expanded_location(0);
++ 	    const char* file = exloc.file;
++ 	    int line = exloc.line;
++ 	    fprintf(doc_info_file, "$tag $decl %s \"%s\" %d ;\n",
++ 		    name, file, line);
++ 	  }
++ 	}
++       }
++       // ^^^^ add khasegawa ^^^^^
+        class c_struct_parse_info *struct_info;
+        tree type = start_struct (struct_loc, code, ident, &struct_info);
+        tree postfix_attrs;
+***************
+*** 3461,3466 ****
+--- 3580,3599 ----
+    /* ??? Existing practice is that GNU attributes are ignored after
+       the struct or union keyword when not defining the members.  */
+    ret = parser_xref_tag (ident_loc, code, ident, have_std_attrs, std_attrs);
++ 
++   // vvvvv add khasegawa vvvvv
++   extern FILE* doc_info_file;
++   if (doc_info_file) {
++     const char* name = (const char*)ident->identifier.id.str;
++     rich_location richloc(line_table, ident_loc);
++     expanded_location exloc = richloc.get_expanded_location(0);
++     const char* file = exloc.file;
++     int line = exloc.line;
++     fprintf(doc_info_file, "// $tag $ref %s \"%s\" %d ;\n",
++ 	    name, file, line);
++   }
++   // ^^^^ add khasegawa ^^^^^
++ 
+    return ret;
+  }
+  
+*** gcc-10.2.0.org/gcc/cp/tree.c	2020-07-23 15:35:17.532386623 +0900
+--- gcc-10.2.0/gcc/cp/tree.c	2021-04-14 08:56:57.713127038 +0900
+***************
+*** 5854,5856 ****
+--- 5854,6224 ----
+  
+  
+  #include "gt-cp-tree.h"
++ 
++ #include <cassert>
++ namespace print_impl {
++   extern void print(tree, bool);
++   void print_VECTOR_CST(tree p, bool newline)
++   {
++     printf("vec_cst(");
++     int n = vector_cst_encoded_nelts(p);
++     for (int i = 0; i != n; ++i) {
++       if (i)
++ 	printf(",");
++       print(VECTOR_CST_ENCODED_ELT(p, i), false);
++     }
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_TEMPLATE_INFO(tree p, bool newline)
++   {
++     printf("template info(");
++     print(TI_TEMPLATE(p), false);
++     printf(",");
++     print(TI_ARGS(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_TEMPLATE_TEMPLATE_PARM(tree p, bool newline)
++   {
++     printf("template parm(");
++     print(TYPE_NAME(p), false);
++     printf(",");
++     print(TYPE_STUB_DECL(p), false);
++     printf(",");
++     print(TEMPLATE_TYPE_PARM_INDEX(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_BOUND_TEMPLATE_TEMPLATE_PARM(tree p, bool newline)
++   {
++     printf("bound template(");
++     print(TEMPLATE_TYPE_PARM_INDEX(p), false);
++     printf(",");  
++     print(TEMPLATE_TEMPLATE_PARM_TEMPLATE_INFO(p), false);
++     printf(",");
++     print(TYPE_NAME(p), false);
++     printf(",");
++     print(TYPE_STUB_DECL(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_LAMBDA_EXPR(tree p, bool newline)
++   {
++     printf("lambda(");
++     print(LAMBDA_EXPR_CAPTURE_LIST(p), false);
++     printf(",");
++     print(LAMBDA_EXPR_THIS_CAPTURE(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_PTRMEM_CST(tree p, bool newline)
++   {
++     printf("Ptr Member(");
++     print(TREE_TYPE(p), false);
++     printf(",");
++     print(PTRMEM_CST_MEMBER(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_TRAIT_EXPR(tree p, bool newline)
++   {
++     printf("trait(");
++     print(TRAIT_EXPR_TYPE1(p), false);
++     printf(",");
++     print(TRAIT_EXPR_TYPE2(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_BLOCK(tree p, bool newline)
++   {
++     printf("block(");
++     print(BLOCK_VARS(p), false);
++     printf(",");
++     print(BLOCK_SUBBLOCKS(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_aggr_init_expr(tree p, bool newline)
++   {
++     printf("aggr_init(");
++     print(TREE_TYPE(p), false);
++     printf(",");
++     print(AGGR_INIT_EXPR_FN(p), false);
++     printf(",");
++     print(AGGR_INIT_EXPR_SLOT(p), false);
++     printf(",");
++     int n = tree_operand_length(p);
++     assert(n >= 3);
++     n -= 3;
++     for (int i = 0 ; i != n ; ++i) {
++       if (i)
++ 	printf(",");
++       print(AGGR_INIT_EXPR_ARG (p,i), false);
++     }
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_overload(tree p, bool newline)
++   {
++     printf("overload(");
++     print(TREE_TYPE(p), false);
++     printf(",");
++     print(OVL_FUNCTION(p), false);
++     printf(",");
++     print(OVL_CHAIN(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_typename_type(tree p, bool newline)
++   {
++     printf("typename type(");
++     print(TYPE_CONTEXT(p), false);
++     printf(",");
++     print(TYPENAME_TYPE_FULLNAME(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_template_parm_index(tree p, bool newline)
++   {
++     printf("template param (");
++     print(TEMPLATE_PARM_DECL(p), false);
++     printf(",");
++     print(TREE_TYPE(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_baselink(tree p, bool newline)
++   {
++     printf("baselink(");
++     print(TREE_TYPE(p), false);
++     printf(",");
++     print(BASELINK_BINFO(p), false);
++     printf(",");
++     print(BASELINK_ACCESS_BINFO(p), false);
++     printf(",");
++     print(BASELINK_FUNCTIONS(p), false);
++     printf(",");
++     print(BASELINK_OPTYPE(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_DECLTYPE_TYPE(tree p, bool newline)
++   {
++     printf("decltype(");
++     print(DECLTYPE_TYPE_EXPR(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_expr_pack_expansion(tree p, bool newline)
++   {
++     printf("expr_pack_expansion(");
++     print(TREE_TYPE(p), false);
++     printf(",");
++     print(PACK_EXPANSION_PARAMETER_PACKS(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_TYPE_PACK_EXPANSION(tree p, bool newline)
++   {
++     printf("type_pack_expansion(");
++     print(PACK_EXPANSION_PARAMETER_PACKS(p), false);
++     printf(")");
++     if (newline)
++       printf("\n");
++   }
++   void print_cxx_special_x(tree p, bool newline)
++   {
++     tree_code code = p->base.code;
++     switch (code) {
++     default:
++       asm("int3");
++       return;
++     case VECTOR_CST:
++       return print_VECTOR_CST(p, newline);
++     case TEMPLATE_INFO:
++       return print_TEMPLATE_INFO(p, newline);
++     case TEMPLATE_TEMPLATE_PARM:
++       return print_TEMPLATE_TEMPLATE_PARM(p, newline);
++     case BOUND_TEMPLATE_TEMPLATE_PARM:
++       return print_BOUND_TEMPLATE_TEMPLATE_PARM(p, newline);
++     case LAMBDA_EXPR:
++       return print_LAMBDA_EXPR(p, newline);
++     case PTRMEM_CST:
++       return print_PTRMEM_CST(p, newline);
++     case TRAIT_EXPR:
++ 	return print_TRAIT_EXPR(p, newline);
++     case AGGR_INIT_EXPR:
++       return print_aggr_init_expr(p, newline);
++     case OVERLOAD:
++       return print_overload(p, newline);
++     case TYPENAME_TYPE:
++       return print_typename_type(p, newline);
++     case TEMPLATE_PARM_INDEX:
++       return print_template_parm_index(p, newline);
++     case BASELINK:
++       return print_baselink(p, newline);
++     case DECLTYPE_TYPE:
++       return print_DECLTYPE_TYPE(p, newline);
++     case TYPE_PACK_EXPANSION:
++       return print_TYPE_PACK_EXPANSION(p, newline);
++     case EXPR_PACK_EXPANSION:
++       return print_expr_pack_expansion(p, newline);
++     }
++   }
++   extern void (*print_cxx_special)(tree, bool);
++   struct X {
++     X()
++     {
++       print_cxx_special = &print_cxx_special_x;
++     }
++   } X;
++ } // end of namespace print_impl
++ 
++ namespace out_doc_info_impl {
++   extern void traverse(tree);
++   void traverse_TEMPLATE_INFO(tree p)
++   {
++     traverse(TI_TEMPLATE(p));
++     traverse(TI_ARGS(p));
++   }
++   void traverse_TEMPLATE_TEMPLATE_PARM(tree)
++   {
++     // nothing should be traversed
++   }
++   void traverse_BOUND_TEMPLATE_TEMPLATE_PARM(tree p)
++   {
++     traverse(TEMPLATE_TYPE_PARM_INDEX(p));
++     traverse(TEMPLATE_TEMPLATE_PARM_TEMPLATE_INFO(p));
++     traverse(TYPE_NAME(p));
++     traverse(TYPE_STUB_DECL(p));
++   }
++   void traverse_LAMBDA_EXPR(tree p)
++   {
++     traverse(LAMBDA_EXPR_CAPTURE_LIST(p));
++     traverse(LAMBDA_EXPR_THIS_CAPTURE(p));
++   }
++   void traverse_PTRMEM_CST(tree p)
++   {
++     traverse(TREE_TYPE(p));
++     traverse(PTRMEM_CST_MEMBER(p));
++   }
++   void traverse_TRAIT_EXPR(tree p)
++   {
++     traverse(TRAIT_EXPR_TYPE1(p));
++     traverse(TRAIT_EXPR_TYPE2(p));
++   }
++   void traverse_aggr_init_expr(tree p)
++   {
++     traverse(TREE_TYPE(p));
++     traverse(AGGR_INIT_EXPR_FN(p));
++     traverse(AGGR_INIT_EXPR_SLOT(p));
++     int n = tree_operand_length(p);
++     assert(n >= 3);
++     n -= 3;
++     for (int i = 0 ; i != n ; ++i)
++       traverse(AGGR_INIT_EXPR_ARG (p,i));
++   }
++   void traverse_overload(tree p)
++   {
++     traverse(TREE_TYPE(p));
++     traverse(OVL_FUNCTION(p));
++     traverse(OVL_CHAIN(p));
++   }
++   void traverse_typename_type(tree p)
++   {
++     traverse(TYPE_CONTEXT(p));
++     traverse(TYPENAME_TYPE_FULLNAME(p));
++   }
++   void traverse_template_parm_index(tree p)
++   {
++     traverse(TEMPLATE_PARM_DECL(p));
++     traverse(TREE_TYPE(p));
++   }
++   void traverse_baselink(tree p)
++   {
++     traverse(TREE_TYPE(p));
++     traverse(BASELINK_BINFO(p));
++     traverse(BASELINK_ACCESS_BINFO(p));
++     traverse(BASELINK_FUNCTIONS(p));
++     traverse(BASELINK_OPTYPE(p));
++   }
++   void traverse_DECLTYPE_TYPE(tree p)
++   {
++     traverse(DECLTYPE_TYPE_EXPR(p));
++   }
++   void traverse_TYPE_PACK_EXPANSION(tree p)
++   {
++     traverse(PACK_EXPANSION_PARAMETER_PACKS(p));
++   }
++   void traverse_expr_pack_expansion(tree p)
++   {
++     traverse(TREE_TYPE(p));
++     traverse(PACK_EXPANSION_PARAMETER_PACKS(p));
++   }
++   void traverse_cxx_special_x(tree p)
++   {
++     tree_code code = p->base.code;
++     switch (code) {
++     default:
++       asm("int3");
++       return;
++     case TEMPLATE_INFO:
++       return traverse_TEMPLATE_INFO(p);
++     case TEMPLATE_TEMPLATE_PARM:
++       return traverse_TEMPLATE_TEMPLATE_PARM(p);
++     case BOUND_TEMPLATE_TEMPLATE_PARM:
++       return traverse_BOUND_TEMPLATE_TEMPLATE_PARM(p);
++     case LAMBDA_EXPR:
++       return traverse_LAMBDA_EXPR(p);
++     case PTRMEM_CST:
++       return traverse_PTRMEM_CST(p);
++     case TRAIT_EXPR:
++       return traverse_TRAIT_EXPR(p);
++     case AGGR_INIT_EXPR:
++       return traverse_aggr_init_expr(p);
++     case OVERLOAD:
++       return traverse_overload(p);
++     case TYPENAME_TYPE:
++       return traverse_typename_type(p);
++     case TEMPLATE_PARM_INDEX:
++       return traverse_template_parm_index(p);
++     case BASELINK:
++       return traverse_baselink(p);
++     case DECLTYPE_TYPE:
++       return traverse_DECLTYPE_TYPE(p);
++     case TYPE_PACK_EXPANSION:
++       return traverse_TYPE_PACK_EXPANSION(p);
++     case EXPR_PACK_EXPANSION:
++       return traverse_expr_pack_expansion(p);
++     }
++   }
++   extern void (*traverse_cxx_special)(tree);
++   extern const char* (*get_name_cxx_special)(tree);
++   const char* get_name_cxx_special_x(tree p)
++   {
++     return decl_as_string_translate(p, 0);
++   }
++   struct Y {
++     Y()
++     {
++       traverse_cxx_special = &traverse_cxx_special_x;
++       get_name_cxx_special = &get_name_cxx_special_x;
++     }
++   } Y;
++ } // end of namespace out_doc_info_impl
+*** gcc-10.2.0.org/gcc/cp/parser.c	2020-07-23 15:35:17.528386580 +0900
+--- gcc-10.2.0/gcc/cp/parser.c	2021-04-19 16:08:01.000048202 +0900
+***************
+*** 11754,11759 ****
+--- 11754,11784 ----
+    return statement;
+  }
+  
++ // vvvvv add by khasegawa
++ #ifdef USE_TREE_FOR_OUT_DOC_INFO
++ inline void out_func_def_if(tree fnbody)
++ {
++   extern FILE* doc_info_file;
++   if (!doc_info_file)
++     return;
++   if (!TREE_PUBLIC(current_function_decl))
++     return;
++   if (DECL_DECLARED_INLINE_P(current_function_decl))
++     return;
++   const char* file = DECL_SOURCE_FILE(current_function_decl);
++   int line = DECL_SOURCE_LINE(current_function_decl);
++   const char* decl_as_string_translate(tree, int);
++   const char* name = decl_as_string_translate(current_function_decl, 0);
++   fprintf(doc_info_file, "$func $def \"%s\" \"%s\" %d\n", name, file, line);
++   fprintf(doc_info_file, "{\n");
++   void out_doc_info(tree, line_maps*);
++   out_doc_info(fnbody, line_table);
++   fprintf(doc_info_file, "    $graph {}\n");
++   fprintf(doc_info_file, "}\n");
++ }
++ #endif // USE_TREE_FOR_OUT_DOC_INFO
++ // ^^^^^ add by khasegawa
++ 
+  /* Parse a compound-statement.
+  
+     compound-statement:
+***************
+*** 11795,11800 ****
+--- 11820,11829 ----
+    if (function_body)
+      maybe_splice_retval_cleanup (compound_stmt);
+  
++ #ifdef USE_TREE_FOR_OUT_DOC_INFO
++   out_func_def_if(compound_stmt);
++ #endif // USE_TREE_FOR_OUT_DOC_INFO
++ 
+    /* Finish the compound-statement.  */
+    finish_compound_stmt (compound_stmt);
+    /* Consume the `}'.  */
+***************
+*** 18489,18494 ****
+--- 18518,18527 ----
+  static tree
+  cp_parser_type_name (cp_parser* parser, bool typename_keyword_p)
+  {
++   /* vvvvv add by khasegawa vvvvv */
++   location_t loc = cp_lexer_peek_token (parser->lexer)->location;
++   /* ^^^^^ add by kahsegawa ^^^^^ */
++ 
+    tree type_decl;
+  
+    /* We can't know yet whether it is a class-name or not.  */
+***************
+*** 18541,18549 ****
+--- 18574,18619 ----
+  	return cp_parser_nonclass_name (parser);
+      }
+  
++   /* vvvvv add by khasegawa 2021/04/07 vvvvv */
++   extern FILE* doc_info_file;
++   if (doc_info_file) {
++     if (TREE_CODE(type_decl) == TYPE_DECL) {
++       rich_location richloc(line_table, loc);
++       expanded_location exloc = richloc.get_expanded_location(0);
++       const char* file = exloc.file;
++       int line = exloc.line;
++       tree id = DECL_NAME(type_decl);
++       const char* name = (const char*)((tree_identifier*)id)->id.str;
++       fprintf(doc_info_file, "// $ref $tag \"%s\" \"%s\" %d ;\n",
++ 	      name, file, line);
++     }
++   }
++   /* ^^^^^ add by khasegawa 2021/04/07 ^^^^^ */
+    return type_decl;
+  }
+  
++ // vvvvv add by khasegawa
++ inline void out_type_ref_if(tree type_decl, location_t loc)
++ {
++   extern FILE* doc_info_file;
++   if (!doc_info_file)
++     return;
++   if (TREE_CODE(type_decl) != TYPE_DECL)
++     return;
++   if (DECL_IS_BUILTIN(type_decl))
++     return;
++ 
++   const char* decl_as_string_translate(tree, int);
++   const char* name = decl_as_string_translate(type_decl, 0);
++   rich_location richloc(line_table, loc);
++   expanded_location exloc = richloc.get_expanded_location(0);
++   const char* file = exloc.file;
++   int line = exloc.line;
++   fprintf(doc_info_file, "$type $ref \"%s\" \"%s\" %d ;\n",
++ 	  name, file, line);
++ }
++ // ^^^^^ add by khasegawa
++ 
+  /* Parse a non-class type-name, that is, either an enum-name, a typedef-name,
+     or a concept-name.
+  
+***************
+*** 18608,18613 ****
+--- 18678,18685 ----
+  	   && !parser->scope)
+      maybe_note_name_used_in_class (identifier, type_decl);
+  
++   out_type_ref_if(type_decl, token->location);  // add by khasegawa
++ 
+    return type_decl;
+  }
+  
+***************
+*** 19029,19034 ****
+--- 19101,19119 ----
+       happens, the user was probably trying to form a template-id.  */
+    cp_parser_check_for_invalid_template_id (parser, type, tag_type,
+  					   token->location);
++   /* vvvvv add by khasegawa vvvvv */
++   extern FILE* doc_info_file;
++   if (doc_info_file) {
++     rich_location richloc(line_table, key_loc);
++     expanded_location exloc = richloc.get_expanded_location(0);
++     const char* file = exloc.file;
++     int line = exloc.line;
++     tree id = TYPE_IDENTIFIER(type);
++     const char* name = (const char*)((tree_identifier*)id)->id.str;
++     fprintf(doc_info_file, "// $ref $tag \"%s\" \"%s\" %d ;\n",
++ 	    name, file, line);
++   }
++   /* ^^^^^ add by khasegawa ^^^^^ */
+  
+    return type;
+  }
+***************
+*** 20445,20450 ****
+--- 20530,20568 ----
+    return type;
+  }
+  
++ // vvvvv add by khasegawa
++ inline void out_doc_info_if(tree decl)
++ {
++   extern FILE* doc_info_file;
++   if (!doc_info_file)
++     return;
++   if (current_function_decl)
++     return;  // ignore declaration at function body
++   const char* decl_as_string_translate(tree, int);
++   const char* name = decl_as_string_translate(decl, 0);
++   const char* file = DECL_SOURCE_FILE(decl);
++   int line = DECL_SOURCE_LINE(decl);
++   if (TREE_CODE(decl) == TYPE_DECL) {
++     fprintf(doc_info_file, "$type $def \"%s\" \"%s\" %d ;\n",
++ 	    name, file, line);
++     return;
++   }
++   if (!TREE_PUBLIC(decl))
++     return;
++   if (TREE_CODE(decl) == FUNCTION_DECL) {
++     fprintf(doc_info_file, "$func $decl \"%s\" \"%s\" %d ;\n",
++ 	    name, file, line);
++     return;
++   }
++   if (DECL_EXTERNAL(decl)) {
++     fprintf(doc_info_file, "$var $decl \"%s\" \"%s\" %d ;\n",
++ 	    name, file, line);
++     return;
++   }
++   fprintf(doc_info_file, "$var $def \"%s\" \"%s\" %d ;\n", name, file, line);
++ }
++ // ^^^^^ add by khasegawa
++ 
+  /* Declarators [gram.dcl.decl] */
+  
+  /* Parse an init-declarator.
+***************
+*** 20568,20573 ****
+--- 20686,20692 ----
+  			    flags, &ctor_dtor_or_conv_p,
+  			    /*parenthesized_p=*/NULL,
+  			    member_p, friend_p, /*static_p=*/false);
++ 
+    /* Gather up the deferred checks.  */
+    stop_deferring_access_checks ();
+  
+***************
+*** 20818,20823 ****
+--- 20937,20945 ----
+  	current_function_decl = saved_current_function_decl;
+      }
+  
++   if (decl)
++     out_doc_info_if(decl);  // add by khasegawa
++ 
+    /* Parse the initializer.  */
+    initializer = NULL_TREE;
+    is_direct_init = false;
+***************
+*** 24188,24200 ****
+--- 24310,24348 ----
+    return type;
+  }
+  
++ /* vvvvv add by khasegawa 2021/04/07 vvvvv */
++ inline void out_tag_def_if(tree spec, location_t loc)
++ {
++   extern FILE* doc_info_file;
++   if (!doc_info_file)
++     return;
++   tree id = TYPE_IDENTIFIER(spec);
++   if (IDENTIFIER_ANON_P(id))
++     return;
++   rich_location richloc(line_table, loc);
++   expanded_location exloc = richloc.get_expanded_location(0);
++   const char* file = exloc.file;
++   int line = exloc.line;
++   const char* name = (const char*)((tree_identifier*)id)->id.str;
++   fprintf(doc_info_file, "$tag $decl \"%s\" \"%s\" %d;\n", name, file, line);
++ }
++ /* ^^^^^ add by khasegawa 2021/04/07 ^^^^^ */
++ 
+  static tree
+  cp_parser_class_specifier (cp_parser* parser)
+  {
++   // add by khasegawa
++   location_t loc = cp_lexer_peek_token (parser->lexer)->location;
++ 
+    tree ret;
+    timevar_push (TV_PARSE_STRUCT);
+    ret = cp_parser_class_specifier_1 (parser);
+    timevar_pop (TV_PARSE_STRUCT);
++ 
++   // add by khasegawa
++   if (ret != error_mark_node)
++     out_tag_def_if(ret, loc);
++ 
+    return ret;
+  }
+  
