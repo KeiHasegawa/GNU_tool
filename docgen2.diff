@@ -154,7 +154,7 @@
 --- gcc-10.2.0/gcc/tree.c	2021-04-19 16:02:09.680440284 +0900
 ***************
 *** 15883,15885 ****
---- 15883,18075 ----
+--- 15883,18072 ----
   #endif /* CHECKING_P */
   
   #include "gt-tree.h"
@@ -1708,7 +1708,6 @@
 +     tree_code code = p->base.code;
 +     switch (code) {
 +     default:
-+       asm("int3");
 +       return;
 +     case CONJ_EXPR:
 +       return print_CONJ_EXPR(p, newline);
@@ -2101,7 +2100,6 @@
 +       fprintf(doc_info_file, "//    $ref $type ");
 +       break;
 +     default:
-+       asm("int3");
 +       break;
 +     }
 +     rich_location richloc(line_table, g_locus);
@@ -2217,7 +2215,6 @@
 +     tree_code code = p->base.code;
 +     switch (code) {
 +     default:
-+       asm("int3");
 +       return;
 +     case INTEGER_CST: case RESULT_DECL: case INTEGER_TYPE: case FIELD_DECL:
 +     case GOTO_EXPR: case STRING_CST: case CASE_LABEL_EXPR: case LABEL_EXPR:
@@ -2706,7 +2703,7 @@
 --- gcc-10.2.0/gcc/cp/tree.c	2021-04-14 08:56:57.713127038 +0900
 ***************
 *** 5854,5856 ****
---- 5854,6224 ----
+--- 5854,6222 ----
   
   
   #include "gt-cp-tree.h"
@@ -2903,7 +2900,6 @@
 +     tree_code code = p->base.code;
 +     switch (code) {
 +     default:
-+       asm("int3");
 +       return;
 +     case VECTOR_CST:
 +       return print_VECTOR_CST(p, newline);
@@ -3032,7 +3028,6 @@
 +     tree_code code = p->base.code;
 +     switch (code) {
 +     default:
-+       asm("int3");
 +       return;
 +     case TEMPLATE_INFO:
 +       return traverse_TEMPLATE_INFO(p);
