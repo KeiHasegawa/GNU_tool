@@ -1,0 +1,16 @@
+gprof の簡単な使い方
+
+      gcc の -pg オプションを使用してコンパイルする:
+
+% gcc -pg -o test000 test000.c test000_0.c test000_1.c test000_2.c
+
+      いろいろと突っ込みどころがあるが, 最初なのでこれくらい大雑把で
+      いい.
+
+% ./test000 1 2000 300000
+f called with 1000
+g called with 2000000
+h called with 300000000
+% gprof test000 gmon.out > test000.gprof
+
+      これで test000.gprof を確認してみる. テキストファイルである.
