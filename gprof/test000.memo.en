@@ -16,3 +16,42 @@ gmon.out   # `gmon.out' is generated
 % gprof test000 gmon.out > test000.gprof
 
       Now look at text file `test000.gprof'.
+
+      "Flat profile" says below (*1), ..., (*6):
+
+      (*1) Show percentage `f', `g' and `h' spent time. I noticed that sum
+      	   is not equal to 100.
+
+           h : 99.98 %
+           g :  0.50 %
+           f :  0.00 %
+
+      (*2) "cumulative seconds". ???
+
+      (*3) "self seconds" shows spent time by the second.
+
+           h : 2.01 sec
+           g : 0.01 sec
+           f : 0.00 sec
+
+      (*4) "calls" shows the number of function call. At this time,
+           `f', `g' and `h' is called once, so no comment.
+
+      (*5) "self s/call" shows average.
+
+      (*6) "total s/call" : difference from (*5) is uncertain.
+
+      And I noticed that `main' doesn't exist here.
+
+      "granularity" says spent time at `main', `f', `g' and `h'
+      with percentage and second.
+
+      main : 100 %
+                     h : 99.5 %
+		     g :  0.5 %
+		     f :  0.0 %
+
+      This is almost expected result.
+      "granularity" also says spent time, in distinction, `main' itself or
+      calling function `f', `g' and `h'.
+      This is also expected result.

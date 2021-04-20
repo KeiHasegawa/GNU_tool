@@ -1,0 +1,72 @@
+-pg オプションで cc1 が行っていること
+
+% cat a.c
+void g();
+
+void f()
+{
+  g();
+}
+% gcc -pg -S a.c
+
+     これで a.s を確認すると函数 f の先頭で mcount という函数を呼び出して
+     いることが分かる. そしてそれだけである.
+
+     test000.c や test000_1.c は a.c よりも少し複雑だがやはり函数の入り口
+     で mcount という函数を呼び出しているだけである.
+
+     これは自分が想像していた結果とは違って, ずいぶんとコンパイラがやってい
+     ることは少ないらしい.
+
+% gcc -pg -S a.c -###
+
+     とすると分かるが cc1 に渡されているのは -p オプションだった.
+     「cc1 アセンブラ生成の調査」で述べた通り, final_1 で止めて
+     print_l を呼び出してみた:
+
+(gdb) b final_1
+...
+Breakpoint 1, final_1 (first=0xb7981d60, file=0xa719cc8, seen=0, optimize_p=0) at ../.././gcc/final.c:1956
+(gdb) p print_l(first)
+    1: NOTE_INSN_DELETED
+    3: NOTE_INSN_BASIC_BLOCK 2
+   10: [--sp:SI]=bp:SI
+   24: NOTE_INSN_CFI_LABEL
+   19: NOTE_INSN_CFI
+   20: NOTE_INSN_CFI
+   11: bp:SI=sp:SI
+   25: NOTE_INSN_CFI_LABEL
+   21: NOTE_INSN_CFI
+   12: use bp:SI                    *** ここ
+   13: NOTE_INSN_PROLOGUE_END
+   14: unspec/v[0] 1                *** ここ
+    2: NOTE_INSN_FUNCTION_BEG
+    8: 0
+   15: NOTE_INSN_EPILOGUE_BEG
+   16: bp:SI=[sp:SI++]
+      REG_CFA_DEF_CFA sp:SI+0x4
+      REG_CFA_RESTORE bp:SI
+   26: NOTE_INSN_CFI_LABEL
+   22: NOTE_INSN_CFI
+   23: NOTE_INSN_CFI
+   17: simple_return
+   18: barrier
+    9: NOTE_INSN_DELETED
+$1 = void
+(gdb) 
+
+     -p オプションありとなしとで rtx_insn の命令列に違いがでている
+     ことに気付いた. 意外だったが mcount を呼び出す命令を出力していたの
+     は上の「*** ここ」ではなくその間の
+
+     NOTE_INSN_PROLOGUE_END
+
+     に対応する部分だった. まぁ勝手な思い込みが的中することはまれという
+     ことだ.
+
+static void
+profile_function (FILE *file ATTRIBUTE_UNUSED)
+{
+...
+  FUNCTION_PROFILER (file, current_function_funcdef_no);
+  ここで call mcount を出力

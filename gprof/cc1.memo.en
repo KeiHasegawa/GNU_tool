@@ -1,0 +1,77 @@
+What `cc1' works for `-pg' option
+
+% cat a.c
+void g();
+
+void f()
+{
+  g();
+}
+% gcc -pg -S a.c
+
+     If you look `a.s', you can see that
+
+     call   mcount
+
+     at the beginnig of `f'. And that's all.
+
+     It's the same if you compile `test000.c' or `tesst000_1.c' insted of
+     `a.c'.
+
+     This is very differnt from what I guess. i.e. For profiling, compiler
+     work is very small.
+
+% gcc -pg -S a.c -###
+
+     Above command shows that `-p' option is passed to `cc1'.
+     I execute `cc1' under control `gdb' and stop `final_1'
+     and call like below as describe at
+     "cc1 assembler generation investigation":
+
+(gdb) b final_1
+...
+Breakpoint 1, final_1 (first=0xb7981d60, file=0xa719cc8, seen=0, optimize_p=0) at ../.././gcc/final.c:1956
+(gdb) p print_l(first)
+    1: NOTE_INSN_DELETED
+    3: NOTE_INSN_BASIC_BLOCK 2
+   10: [--sp:SI]=bp:SI
+   24: NOTE_INSN_CFI_LABEL
+   19: NOTE_INSN_CFI
+   20: NOTE_INSN_CFI
+   11: bp:SI=sp:SI
+   25: NOTE_INSN_CFI_LABEL
+   21: NOTE_INSN_CFI
+   12: use bp:SI                    *** Here
+   13: NOTE_INSN_PROLOGUE_END
+   14: unspec/v[0] 1                *** Here
+    2: NOTE_INSN_FUNCTION_BEG
+    8: 0
+   15: NOTE_INSN_EPILOGUE_BEG
+   16: bp:SI=[sp:SI++]
+      REG_CFA_DEF_CFA sp:SI+0x4
+      REG_CFA_RESTORE bp:SI
+   26: NOTE_INSN_CFI_LABEL
+   22: NOTE_INSN_CFI
+   23: NOTE_INSN_CFI
+   17: simple_return
+   18: barrier
+    9: NOTE_INSN_DELETED
+$1 = void
+(gdb) 
+
+     There are differences between using `-p' option and not using
+     at `rtx_insn' sequece. Surprisingly, `call mcount' is generated
+     at:
+
+     NOTE_INSN_PROLOGUE_END
+
+     not at either of "*** Here".
+
+
+static void
+profile_function (FILE *file ATTRIBUTE_UNUSED)
+{
+...
+  FUNCTION_PROFILER (file, current_function_funcdef_no);
+  // Above code generates `call mcount'
+
