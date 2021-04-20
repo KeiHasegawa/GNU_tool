@@ -1,0 +1,18 @@
+Introduction of gprof 
+
+      Compile using gcc with `-pg' option:
+
+% gcc -pg -o test000 test000.c test000_0.c test000_1.c test000_2.c
+
+      You may be interrested with some stuff. But this is just introduction.
+      We'll investigate precicely later.
+      
+% ./test000 1 2000 300000
+f called with 1000
+g called with 2000000
+h called with 300000000
+% ls gmon.out
+gmon.out   # `gmon.out' is generated
+% gprof test000 gmon.out > test000.gprof
+
+      Now look at text file `test000.gprof'.
