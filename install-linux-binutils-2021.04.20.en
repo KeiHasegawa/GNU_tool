@@ -1,0 +1,34 @@
+linux binutils 2.36.1-2 install memo
+
+(*1) zstd install
+
+The latest binutils is ditributed as `zstd' form. So, install zstd.
+
+% wget -q http://cygwin.mirror.constant.com/x86_64/release/zstd/zstd-1.4.8-1-src.tar.xz
+% xz -d -c zstd-1.4.8-1-src.tar.xz | tar xf -
+% cd zstd-1.4.8-1.src
+% gunzip -c zstd-v1.4.8.tar.gz | tar xf -
+% cd zstd-1.4.8
+% make                     # ./configure is not required!
+% sudo make install
+% ls -l /usr/local/bin/zstd
+
+I confirmed that zstd is installed.
+
+(*2) binutils 2.36.1-2 install
+
+% wget -q http://cygwin.mirror.constant.com/x86_64/release/binutils/binutils-2.36.1-2-src.tar.zst
+% /usr/local/bin/zstd -d -c binutils-2.36.1-2-src.tar.zst | tar xf -
+% cd binutils-2.36.1-2.src
+% xz -d -c binutils-2.36.1.tar.xz | tar xf -
+% cd binutils-2.36.1
+% ./configure
+% make
+% sudo make install
+% ls -l /usr/local/bin/gprof
+
+Various tools are installed. I confirmed `gprof' is installed especially.
+
+Save the log file as:
+
+~/binutils-2.36.1-2.src/binutils-2.36.1/make-install.log.2021.04.20
