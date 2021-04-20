@@ -1,0 +1,95 @@
+mcount の調査
+
+     簡単なプログラムを -pg オプションを付けてコンパイルした:
+
+% cat test001.c
+void f(int n)
+{
+  while (--n)
+    ;
+}
+
+int main()
+{
+  f(0x4000);
+  return 0;
+}
+% gcc -pg test001.c -o test001
+% rm -f gmon.outw
+% ./test001
+% ls gmon.out
+gmon.out
+% gprof test001 gmon.out > test001.gprof
+
+     これは「簡単な使い方」ですでにやった. このサンプルは全く面白さに
+     欠けるが単純なものにした.
+
+% objdump -x test001 > test001.objdump
+...
+080484c4 g     F .text	00000016              f
+00000000       F *UND*	00000000              __monstartup@@GLIBC_2.0
+00000000       F *UND*	00000000              mcount@@GLIBC_2.0       ★ これ
+00000000       F *UND*	00000000              __cxa_atexit@@GLIBC_2.1.3
+0804981c g       .data	00000000              __data_start
+080483c0 g     F .text	00000044              __gmon_start__
+...
+
+     おそらく mcount は libc にあるということなのだろう:
+% ldd test001
+	linux-gate.so.1 =>  (0xffffe000)
+	libc.so.6 => /lib/libc.so.6 (0xb757f000)       ★ これ
+	/lib/ld-linux.so.2 (0xb7701000)
+%
+
+     gdb から test001 を実行してみた. そして以下のようになった.
+(gdb) b main
+Breakpoint 1 at 0x80484dd
+(gdb) b f
+Breakpoint 2 at 0x80484c7
+(gdb) b mcount
+Breakpoint 3 at 0x8048360
+(gdb) c
+The program is not being run.
+(gdb) run
+Starting program: /home/khasegawa/lang/53_GNU_tool/gprof/test001 
+
+Breakpoint 1, 0x080484dd in main ()
+(gdb) c
+Continuing.
+
+Breakpoint 3, mcount () at ../sysdeps/i386/i386-mcount.S:35       ★ これ
+35	in ../sysdeps/i386/i386-mcount.S
+(gdb) c
+Continuing.
+
+Breakpoint 2, 0x080484c7 in f ()
+(gdb) c
+Continuing.
+
+Breakpoint 3, mcount () at ../sysdeps/i386/i386-mcount.S:35       ★ これ
+35	in ../sysdeps/i386/i386-mcount.S
+(gdb) c
+Continuing.
+[Inferior 1 (process 4984) exited normally]
+(gdb) 
+
+       一応 i386-mcount.S が ~/gcc-10.2.0 にないことを確認した.
+
+       ところで mcount を自前のものにするには以下のようにする:
+
+% cat test001_0.c
+void mcount()
+{
+}
+% gcc -pg test001.c -c
+% gcc test001_0.c -c       # これは -pg オプションなし
+% gcc test001.o test001_0.o -o test001
+% rm -f gmon.out
+% ./test001
+% ls gmon.out
+gmon.out はない. 生成されていない.
+%
+
+   誤って test001_0.c のコンパイルに -pg オプションを指定すると
+   再帰的に mcount が呼ばれてしまう.
+
