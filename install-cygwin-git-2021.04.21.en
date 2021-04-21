@@ -1,0 +1,78 @@
+cygwin git 2.31.1 install memo
+
+(*1) autoconf installation confirmed
+(*2) zlib installation confirmed
+(*3) gettext installation confirmed
+(*4) git build
+(*5) Validation => Error
+
+(*1) autoconf installation confirmed
+% ls -l /usr/bin/autoconf
+# Confrimed.
+
+(*2) zlib installation confirmed
+% ls -l /usr/lib/libz.a /usr/include/zlib.h
+# Confirmed.
+
+(*3) gettext installation confirmed
+% ls -l /usr/bin/msgfmt /usr/bin/gettext
+# Confirmed.
+
+(*4) git build
+% ls git-2.31.1-1-src.tar.xz
+# Already downloaded.
+% xz -d -c git-2.31.1-1-src.tar.xz | tar xf -
+% cd git-2.31.1-1.src
+% gunzip -c git-v2.31.1.tar.gz | tar xf -
+% cd git-v2.31.1
+% autoconf
+% ./configure
+% patch -p2 < ../1.8.5.2-cygwin.patch
+# Apply cygwin patch
+% make
+% make install
+...
+ln: failed to create hard link '/usr/local/libexec/git-core/git-citool' => '/usr/local/libexec/git-core/git-gui': Operation not permitted
+
+Modify git-gui/Makefile like below:
+
+-	INSTALL_L3 = && echo '   ' 'LINK       ' `basename "$$dst"` '->' `basename "$$src"` && rm -f "$$dst" && ln "$$src" "$$dst"
+
+
++	INSTALL_L3 = && echo '   ' 'LINK       ' `basename "$$dst"` '->' `basename "$$src"` && rm -f "$$dst" && cp "$$src" "$$dst"
+	
+% make install
+% ls -l /usr/local/bin/git
+# Confrimed.
+
+(*5) Validation => Error
+
+% which git
+git: 	 aliased to d:/Program\ Files/Git/bin/git.exe
+% git pull
+From https://github.com/KeiHasegawa/GNU_tool
+   1d7770c..4868239  master     -> origin/master
+Updating 1d7770c..4868239
+Fast-forward
+ install-linux-git-2021.04.21.jp | 70 +++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 70 insertions(+)
+
+Original `git' worked well.
+
+% /usr/local/bin/git add install-cygwin-git-2021.04.21.jp
+% /usr/local/bin/git commit -m "up ins cyg git jp"
+[master 3b3f814] up ins cyg git jp
+ 1 file changed, 71 insertions(+)
+ create mode 100644 install-cygwin-git-2021.04.21.jp
+% /usr/local/bin/git push
+git: 'remote-https' is not a git command. See 'git --help'.
+%
+
+This is the same phenomenon with linux git
+
+% git push
+To https://github.com/KeiHasegawa/GNU_tool.git
+   4868239..3b3f814  master -> master
+%
+
+OK if use orignal git.
