@@ -1,0 +1,71 @@
+cygwin での git 2.31.1 インストールメモ
+
+(*1) autoconf インストール確認
+(*2) zlib のインストール確認
+(*3) gettext のインストール確認
+(*4) git の展開とビルド
+(*5) 動作確認
+
+(*1) autoconf インストール確認
+% ls -l /usr/bin/autoconf
+# インストールされていた.
+
+(*2) zlib のインストール確認
+% ls -l /usr/lib/libz.a /usr/include/zlib.h
+# インストールされていた.
+
+(*3) gettext のインストール確認
+% ls -l /usr/bin/msgfmt /usr/bin/gettext
+# インストールされていた.
+
+(*4) git の展開とビルド
+% ls git-2.31.1-1-src.tar.xz
+# すでにダウンロード済み
+% xz -d -c git-2.31.1-1-src.tar.xz | tar xf -
+% cd git-2.31.1-1.src
+% gunzip -c git-v2.31.1.tar.gz | tar xf -
+% cd git-v2.31.1
+% autoconf
+% ./configure
+% patch -p2 < ../1.8.5.2-cygwin.patch
+# cygwin 用のパッチを適用した.
+% make
+% make install
+...
+ln: failed to create hard link '/usr/local/libexec/git-core/git-citool' => '/usr/local/libexec/git-core/git-gui': Operation not permitted
+
+エラーしている. これは cygwin 用のパッチとは無関係なのだろうか.
+% cd git-gui
+% cp git-gui git-citool
+% cd ..
+% make install
+...
+同じところでエラーしている. 回避できていない.
+
+git-gui/Makefile を以下のように修正:
+
+-	INSTALL_L3 = && echo '   ' 'LINK       ' `basename "$$dst"` '->' `basename "$$src"` && rm -f "$$dst" && ln "$$src" "$$dst"
+
+
++	INSTALL_L3 = && echo '   ' 'LINK       ' `basename "$$dst"` '->' `basename "$$src"` && rm -f "$$dst" && cp "$$src" "$$dst"
+	
+% make install
+エラーを回避できた
+% ls -l /usr/local/bin/git
+インストールされていることを確認した
+
+(*5) 動作確認
+
+% which git
+git: 	 aliased to d:/Program\ Files/Git/bin/git.exe
+% git pull
+From https://github.com/KeiHasegawa/GNU_tool
+   1d7770c..4868239  master     -> origin/master
+Updating 1d7770c..4868239
+Fast-forward
+ install-linux-git-2021.04.21.jp | 70 +++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 70 insertions(+)
+
+今まで動作している git は正常に動作している.
+
+% 
