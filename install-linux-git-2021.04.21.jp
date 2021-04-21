@@ -1,0 +1,136 @@
+linux での git 2.31.1 インストールメモ
+
+(*1) git のダウンロード
+(*2) autoconf のダウンロードからインストールまで 
+(*3) git のビルドその 1
+(*4) zlib のダウンロードからインストールまで
+(*5) git のビルドその 2
+(*6) gettext のインストール
+(*7) git のビルドその 3
+(*8) 動作確認 => エラー
+
+(*1) git のダウンロード
+% cd
+% wget -q http://cygwin.mirror.constant.com/x86_64/release/git/git-2.31.1-1-src.tar.xz
+% xz -d -c git-2.31.1-1-src.tar.xz | tar xf -
+% cd git-2.31.1-1.src
+% gunzip -c git-v2.31.1.tar.gz | tar xf -
+% cd git-v2.31.1
+
+ここで configure.ac はあるが configure がないことに気付いた.
+
+autoconf がインストールされていないことに気付き先にこっちを
+インストールすることになる.
+
+(*2) autoconf のダウンロードからインストールまで 
+% cd
+% wget -q http://cygwin.mirror.constant.com/x86_64/release/gcc-tools-epoch2-autoconf/gcc-tools-epoch2-autoconf-2.64-2-src.tar.bz2
+% bunzip2 -c gcc-tools-epoch2-autoconf-2.64-2-src.tar.bz2 | tar xf -
+% bunzip2 -c autoconf-2.64.tar.bz2 | tar xf -
+% cd autoconf-2.64
+% ./configure
+% make
+% sudo make install
+% ls -l /usr/local/bin/autoconf
+# インストールされていることを確認した.
+
+(*3) git のビルドその 1
+% cd ~/git-2.31.1-1.src/git-v2.31.1
+% autoconf
+% ls -l configure
+% ./configure
+% make
+
+zlib.h がないというエラー. zlib をインストールしていないので
+こっちもインストールする.
+
+(*4) zlib のダウンロードからインストールまで
+% cd
+% wget -q http://cygwin.mirror.constant.com/x86_64/release/zlib/zlib-1.2.8-3-src.tar.xz
+% xz -d -c zlib-1.2.8-3-src.tar.xz | tar xf -
+% cd zlib-1.2.8-3.src
+% gunzip -c zlib-1.2.8.tar.gz | tar xf -
+% cd zlib-1.2.8
+% ./configure
+% make
+# 開発者の方は -O3 ビルドで -g なしというスタイルらしい.
+% ls -l /usr/local/lib/libz.a /usr/local/include/zlib.h
+# インストールされていることを確認した.
+
+(*5) git のビルドその 2
+
+再びビルド再開
+
+% cd ~/git-2.31.1-1.src/git-v2.31.1
+% make
+
+msgfmt というコマンドがないというエラー.
+
+(*6) gettext のインストール
+
+% cd
+% wget -q http://cygwin.mirror.constant.com/x86_64/release/gettext/gettext-0.19.8.1-2-src.tar.xz
+% xz -d -c gettext-0.19.8.1-2-src.tar.xz | tar xf -
+% cd gettext-0.19.8.1-2.src
+% xz -d -c gettext-0.19.8.1.tar.xz | tar xf -
+% cd gettext-0.19.8.1
+% ./configure
+% make
+% sudo make install
+...
+libtool: relink: gcc -shared  -fPIC -DPIC ... -fopenmp -Wl,-soname -Wl,libgettextsrc-0.19.8.1.so -o .libs/libgettextsrc-0.19.8.1.so
+/usr/bin/ld: .libs/libgettextsrc_la-message.o(.debug_frame+0x504): reloc against `.debug_frame': error 2
+
+エラーしている. エラーしたディレクトリでエラーしたコマンドを実行してみた:
+
+% cd ~/gettext-0.19.8.1-2.src/gettext-0.19.8.1/gettext-tools/src
+% gcc -shared  -fPIC -DPIC  .libs/libgettextsrc_la-message.o .libs/libgettextsrc_la-po-error.o .libs/libgettextsrc_la-po-xerror.o .libs/libgettextsrc_la-read-catalog-abstract.o .libs/libgettextsrc_la-po-lex.o .libs/libgettextsrc_la-po-gram-gen.o .libs/libgettextsrc_la-po-charset.o .libs/libgettextsrc_la-read-po.o .libs/libgettextsrc_la-read-properties.o .libs/libgettextsrc_la-read-stringtable.o .libs/libgettextsrc_la-open-catalog.o .libs/libgettextsrc_la-dir-list.o .libs/libgettextsrc_la-str-list.o .libs/libgettextsrc_la-read-catalog.o .libs/libgettextsrc_la-color.o .libs/libgettextsrc_la-write-catalog.o .libs/libgettextsrc_la-write-properties.o .libs/libgettextsrc_la-write-stringtable.o .libs/libgettextsrc_la-write-po.o .libs/libgettextsrc_la-msgl-ascii.o .libs/libgettextsrc_la-msgl-iconv.o .libs/libgettextsrc_la-msgl-equal.o .libs/libgettextsrc_la-msgl-cat.o .libs/libgettextsrc_la-msgl-header.o .libs/libgettextsrc_la-msgl-english.o .libs/libgettextsrc_la-msgl-check.o .libs/libgettextsrc_la-file-list.o .libs/libgettextsrc_la-msgl-charset.o .libs/libgettextsrc_la-po-time.o .libs/libgettextsrc_la-plural-exp.o .libs/libgettextsrc_la-plural-eval.o .libs/libgettextsrc_la-plural-table.o .libs/libgettextsrc_la-sentence.o .libs/libgettextsrc_la-format.o .libs/libgettextsrc_la-format-c.o .libs/libgettextsrc_la-format-sh.o .libs/libgettextsrc_la-format-python.o .libs/libgettextsrc_la-format-python-brace.o .libs/libgettextsrc_la-format-lisp.o .libs/libgettextsrc_la-format-elisp.o .libs/libgettextsrc_la-format-librep.o .libs/libgettextsrc_la-format-scheme.o .libs/libgettextsrc_la-format-java.o .libs/libgettextsrc_la-format-csharp.o .libs/libgettextsrc_la-format-awk.o .libs/libgettextsrc_la-format-pascal.o .libs/libgettextsrc_la-format-ycp.o .libs/libgettextsrc_la-format-tcl.o .libs/libgettextsrc_la-format-perl.o .libs/libgettextsrc_la-format-perl-brace.o .libs/libgettextsrc_la-format-php.o .libs/libgettextsrc_la-format-gcc-internal.o .libs/libgettextsrc_la-format-gfc-internal.o .libs/libgettextsrc_la-format-qt.o .libs/libgettextsrc_la-format-qt-plural.o .libs/libgettextsrc_la-format-kde.o .libs/libgettextsrc_la-format-kde-kuit.o .libs/libgettextsrc_la-format-boost.o .libs/libgettextsrc_la-format-lua.o .libs/libgettextsrc_la-format-javascript.o .libs/libgettextsrc_la-read-desktop.o .libs/libgettextsrc_la-locating-rule.o .libs/libgettextsrc_la-its.o .libs/libgettextsrc_la-search-path.o   -Wl,-rpath -Wl,/usr/local/lib -L/usr/local/lib -lgettextlib -lm -ltermcap -lc  -g -O2   -fopenmp -Wl,-soname -Wl,libgettextsrc-0.19.8.1.so -o .libs/libgettextsrc-0.19.8.1.so
+% ls -l .libs/libgettextsrc-0.19.8.1.so
+
+成功している. 謎.
+
+% cd ~/gettext-0.19.8.1-2.src/gettext-0.19.8.1
+% sudo make install
+
+同じところでエラーしている.
+
+% cd ~/gettext-0.19.8.1-2.src/gettext-0.19.8.1/gettext-tools/src
+% make install
+libtool: install: /usr/bin/install -c .libs/libgettextsrc-0.19.8.1.soT /usr/local/lib/libgettextsrc-0.19.8.1.so
+/usr/bin/install: cannot create regular file `/usr/local/lib/libgettextsrc-0.19.8.1.so': Permission denied
+% sudo /usr/bin/install -c .libs/libgettextsrc-0.19.8.1.so /usr/local/lib
+% ls -l /usr/local/lib/libgettextsrc-0.19.8.1.so
+
+回避しできている.
+
+% su
+# cd /home/khasegawa/gettext-0.19.8.1-2.src/gettext-0.19.8.1
+# make install
+成功した
+
+% ls -l /usr/local/bin/msgfmt
+インストールされていることを確認した.
+ 
+(*7) git のビルドその 3
+
+再びビルド再開
+
+% cd ~/git-2.31.1-1.src/git-v2.31.1
+% make
+% sudo make install
+% ls -l /usr/local/bin/git
+インストールされていることを確認した.
+
+(*8) 動作確認 => エラー
+
+% git add index.html
+% git commit -m "add install memo"
+% git push
+git: 'remote-https' is not a git command. See 'git --help'.
+
+このエラーがなぜ発生しているか不明.
+% /usr/bin/git push
+
+これなら OK.
+
+

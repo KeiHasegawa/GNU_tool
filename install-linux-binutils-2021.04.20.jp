@@ -1,0 +1,36 @@
+linux での binutils 2.36.1 インストールメモ
+
+(*1) zstd のインストール
+
+最新の binutils が zstd 形式になっているので, せっかくなので zstd を
+インストールした.
+
+% wget -q http://cygwin.mirror.constant.com/x86_64/release/zstd/zstd-1.4.8-1-src.tar.xz
+% xz -d -c zstd-1.4.8-1-src.tar.xz | tar xf -
+% cd zstd-1.4.8-1.src
+% gunzip -c zstd-v1.4.8.tar.gz | tar xf -
+% cd zstd-1.4.8
+% make                     # ./configure がいらない
+% sudo make install
+% ls -l /usr/local/bin/zstd
+
+インストールされていることを確認した.
+
+(*2) binutils 2.36.1-2 インストール
+
+% wget -q http://cygwin.mirror.constant.com/x86_64/release/binutils/binutils-2.36.1-2-src.tar.zst
+% /usr/local/bin/zstd -d -c binutils-2.36.1-2-src.tar.zst | tar xf -
+% cd binutils-2.36.1-2.src
+% xz -d -c binutils-2.36.1.tar.xz | tar xf -
+% cd binutils-2.36.1
+% ./configure
+% make
+% sudo make install
+% ls -l /usr/local/bin/gprof
+
+色々インストールされるが gprof のインストールを確認した.
+このときのログを
+
+~/binutils-2.36.1-2.src/binutils-2.36.1/make-install.log.2021.04.20
+
+に保存しておいた.
