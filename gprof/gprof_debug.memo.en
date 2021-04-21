@@ -1,0 +1,151 @@
+Build gprof with -g and -O0 and execute under control gdb
+
+(*1) Build gprof with -g and -O0
+(*2) Execute gprof under control gdb
+
+(*1) Build gprof with -g and -O0
+
+     See your binutils install log file:
+
+make[4]: Entering directory `/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/gprof'
+
+     These commands are saved into `debug_build.mk'
+
+make[4]: Leaving directory `/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/gprof'
+
+     (a) Change `-O2' to `-O0'
+
+     (b) The last `libtool: link: gcc' line is deleted.
+
+     (c) If you execute like csh -vf debug_build.mk, existing object files
+         are overwritten, so
+
+% mkdir debug
+
+         Change all
+
+-o 
+
+         to
+
+-o debug/
+
+          at debug_build.mk.
+
+         The last command `/bin/sh ./libtool' inputs are current directory
+	 object files, so change
+
+basic_blocks.o
+
+         to
+
+debug/basic_blocks.o
+
+         and as others.
+
+         Now we can build `debug/gprof' with `-g -O0' option:
+
+% csh -vf debug_build.mk
+         
+(*2) Execute gprof under control gdb
+
+     事前にこのページの「簡単な使い方」でやった通り test000 をコンパイルして
+
+% ./test000 1 2000 300000
+
+     として gmon.out を生成しておく.
+
+% gdb gprof
+
+(gdb) run /home/khasegawa/my_directory/test000 /home/khasegawa/my_directory/gmon.out
+
+     のように実行すればよい. この run コマンドを x というファイルに保存して
+     おけば
+
+(gdb) so x
+
+     のようにして実行できる.
+
+
+  core_init (a_out_name);  ここで test000 を読み込んでいる.
+
+	  gmon_out_read (gmon_name);   ここで gmon.out を読み込んでいる.
+
+      hist_print ();  ここで Flat profile: の部分を出している.
+
+	  cg_print (cg);  ここで Call graph の部分を出している.
+
+
+void
+gmon_out_read (const char *filename)  ここで gmon.out を読んでいる
+{
+...
+      while (fread (&tag, sizeof (tag), 1, ifp) == 1)
+	{
+	  switch (tag)
+	    {
+	    case GMON_TAG_TIME_HIST:
+	      ++nhist;                           test000 のサンプルなら
+	      gmon_input |= INPUT_HISTOGRAM;     1 回目ここにくる
+	      hist_read_rec (ifp, filename);
+	      break;                        
+
+	    case GMON_TAG_CG_ARC:
+	      ++narcs;                           test000 のサンプルなら
+	      gmon_input |= INPUT_CALL_GRAPH;    2, 3, 4 回目がここにくる.
+	      cg_read_rec (ifp, filename);       そしておそらくそれは
+	      break;                             f, g, h に対応している.
+
+	    case GMON_TAG_BB_COUNT:
+	      ++nbbs;                            test000 のサンプルでは
+	      gmon_input |= INPUT_BB_COUNTS;     ここには来ていないが,
+	      bb_read_rec (ifp, filename);       通過したところを記録する
+	      break;                             ためのものかもしれない.
+                                          
+
+void
+hist_read_rec (FILE * ifp, const char *filename)
+{
+...
+
+record->lowpc  = 0x8048400   test000 の開始アドレス
+record->highpc = 0x8048744   test000 の .rodata のアドレス
+
+record->num_bins = 210        test000 のサンプルでは 210 個
+
+  for (i = 0; i < record->num_bins; ++i)
+
+
+...
+
+
+gmon_out_read で読み込んだデータがここで使われていそうだが確認はしていない.
+
+      /* Write execution time histogram if we have one.  */
+      if (gmon_input & INPUT_HISTOGRAM)
+	hist_write_hist (ofp, filename);
+
+      /* Write call graph arcs if we have any.  */
+      if (gmon_input & INPUT_CALL_GRAPH)
+	cg_write_arcs (ofp, filename);
+
+      /* Write basic-block info if we have it.  */
+      if (gmon_input & INPUT_BB_COUNTS)   ここ <-----+
+	bb_write_blocks (ofp, filename);             |
+                                                     |
+                                                     |
+~/gcc-10.2.0/gcc/final.c:                            |
+	case NOTE_INSN_BASIC_BLOCK:                  |
+	  if (need_profile_function)      ここ <-----+
+	    {
+	      profile_function (asm_out_file);
+	      need_profile_function = false;
+	    }
+
+need_profile_function は final.c で次のように定義されている:
+
+/* True if profile_function should be called, but hasn't been called yet.  */
+static bool need_profile_function;
+ 
+     というわけでここは作りかけの機能だと予測される.
+
