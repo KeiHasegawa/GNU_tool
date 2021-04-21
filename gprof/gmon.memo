@@ -1,2 +1,50 @@
-gmon.out のファイルフォーマット
+gmon.out file format
 
+(*) header
+
+    +---------+
+    | g m o n |
+    +---------+
+    |    1    |  version
+    +---------+
+    |         |  
+    ~         ~  pad
+    ~         ~
+    |         |
+    +-+-------+
+    | |          record   0 : time hist
+    +-+                   1 : call graph
+
+(*) time hist
+
+    +---------+
+    |         |  lowpc
+    +---------+
+    |         |  highpc
+    +---------+
+    |         |  num_bins
+    +---------+
+    |         |  proflate
+    +---------+
+    |         |  
+    ~         ~  hist_dimension
+    ~         ~
+    |       +-+ 
+    |       | |  hist_abbrev
+    +----+--+-+
+    |    |    |  
+    +----+----+
+    |    |    |  hist_data (case of num_bins = 5)
+    +----+----+
+    |    |
+    +----+
+
+(*) call graph
+
+    +---------+
+    |         |  from_pc
+    +---------+
+    |         |  self_pc
+    +---------+
+    |         |  count
+    +---------+
