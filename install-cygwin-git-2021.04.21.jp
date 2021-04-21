@@ -4,7 +4,7 @@ cygwin での git 2.31.1 インストールメモ
 (*2) zlib のインストール確認
 (*3) gettext のインストール確認
 (*4) git の展開とビルド
-(*5) 動作確認
+(*5) 動作確認 => エラー
 
 (*1) autoconf インストール確認
 % ls -l /usr/bin/autoconf
@@ -54,7 +54,7 @@ git-gui/Makefile を以下のように修正:
 % ls -l /usr/local/bin/git
 インストールされていることを確認した
 
-(*5) 動作確認
+(*5) 動作確認 => エラー
 
 % which git
 git: 	 aliased to d:/Program\ Files/Git/bin/git.exe
@@ -68,4 +68,20 @@ Fast-forward
 
 今まで動作している git は正常に動作している.
 
-% 
+% /usr/local/bin/git add install-cygwin-git-2021.04.21.jp
+% /usr/local/bin/git commit -m "up ins cyg git jp"
+[master 3b3f814] up ins cyg git jp
+ 1 file changed, 71 insertions(+)
+ create mode 100644 install-cygwin-git-2021.04.21.jp
+% /usr/local/bin/git push
+git: 'remote-https' is not a git command. See 'git --help'.
+%
+
+これは linux 版と同じ現象が出ている.
+
+% git push
+To https://github.com/KeiHasegawa/GNU_tool.git
+   4868239..3b3f814  master -> master
+%
+
+こっちは OK.
