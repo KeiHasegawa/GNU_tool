@@ -13,31 +13,26 @@ make[4]: Entering directory `/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36
 
 make[4]: Leaving directory `/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/gprof'
 
-     debug_build.mk の先頭に
+     (a) -O2 を -O0 に変換した.
 
-all:
+     (b) 最後の libtool: link: gcc  の行を削除した.
 
-     の行を付け加えて, 後は残りの行の先頭にタブを挿入した.
-
-     -O2 を -O0 に変換した.
-
-     最後の libtool: link: gcc  の行を削除した.
-
-     このまま make -f debug_build.mk を実行すると今あるオブジェクトファイルを
-     上書きしてしまうので
+     (c) このまま csh -vf debug_build.mk とすると今あるオブジェクトファイルを
+         上書きしてしまうので
 
 % mkdir debug
 
-     として debug_build.mk の
+         として debug_build.mk の
 
 -o 
 
-     を
+         を
 
 -o debug/
 
-     に変換した. 最後の /bin/sh ./libtool の入力となるオブジェクトファイルが
-     カレントディレクトリのオブジェクトファイルを参照しているので
+         に変換した. 最後の /bin/sh ./libtool の入力となるオブジェクト
+         ファイルがカレントディレクトリのオブジェクトファイルを参照し
+         ているので
 
 basic_blocks.o
 
@@ -45,23 +40,23 @@ basic_blocks.o
 
 debug/basic_blocks.o
 
-     のように変更した. ここは面倒だが全部変更した. 空白を
+          のように変更した. ここは面倒だが全部変更した. 空白を
 
  debug/
 
-     に変更すれば簡単だが, 手で直接やってもよい.
+          に変更すれば簡単だが, 手で直接やってもよい.
 
-     これだと, Makefile としてあまりよくはないが一応機能する.
-     必要に応じて変更する.
+% csh -vf debug_build.mk
 
-% make -f debug_build.mk
-
-     で debug/gprof を -g -O0 ビルドできる.
+          で debug/gprof を -g -O0 ビルドできる.
 
 (*2) gprof を gdb から実行
 
      事前にこのページの「簡単な使い方」でやった通り test000 をコンパイルして
-     gmon.out を生成しておく.
+
+% ./test000 1 2000 300000
+
+     として gmon.out を生成しておく.
 
 % gdb gprof
 
@@ -127,7 +122,7 @@ record->num_bins = 210        test000 のサンプルでは 210 個
 ...
 
 
-gmon_out_read で読み込んだデータ
+gmon_out_read で読み込んだデータがここで使われていそうだが確認はしていない.
 
       /* Write execution time histogram if we have one.  */
       if (gmon_input & INPUT_HISTOGRAM)
@@ -138,13 +133,13 @@ gmon_out_read で読み込んだデータ
 	cg_write_arcs (ofp, filename);
 
       /* Write basic-block info if we have it.  */
-      if (gmon_input & INPUT_BB_COUNTS)
-	bb_write_blocks (ofp, filename);
-
-
-~/gcc-10.2.0/gcc/final.c:
-	case NOTE_INSN_BASIC_BLOCK:
-	  if (need_profile_function)  これ
+      if (gmon_input & INPUT_BB_COUNTS)   ここ <-----+
+	bb_write_blocks (ofp, filename);             |
+                                                     |
+                                                     |
+~/gcc-10.2.0/gcc/final.c:                            |
+	case NOTE_INSN_BASIC_BLOCK:                  |
+	  if (need_profile_function)      ここ <-----+
 	    {
 	      profile_function (asm_out_file);
 	      need_profile_function = false;
@@ -155,5 +150,4 @@ gmon_out_read で読み込んだデータ
 
 -pg オプションでは need_profile_function が true にはなっていないので
 これがどういうときに true になるかを調べたい.
-
  

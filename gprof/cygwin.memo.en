@@ -1,0 +1,88 @@
+cygwin version mcount investigation
+
+     I guessed that the same kind code is generated for `-pg' option.
+     So compared 2 outputed assembler like below:
+
+% gcc -S test001.c -o test001.s.nopg
+% gcc -S test001.c -o test001.s -pg
+
+     I noticed that `-pg' option is specified, extra code is generated
+     like below:
+
+f:
+1:	call	__fentry__
+...
+main:
+1:	call	__fentry__
+...
+	call	_monstartup
+...
+
+     This result let me guess that if we want to do profile:
+
+      o At `main', call `_monstartup'
+      o For each function, call `__fentry__'
+
+     As usually, execute `test001.c' program under control gdb:
+
+% gcc -pg test001.c -o test001.exe
+% gdb test001.exe
+...
+(gdb) b main
+(gdb) b f
+(gdb) b _monstartup
+(gdb) b __fentry__
+(gdb) run
+`__fentry__' break-point hit.
+(gdb) c
+`main' break-point hit.
+(gdb) c
+`_monstartup' break-point hit.
+(gdb) c
+Again `_monstartup' break-point hit.
+(gdb) c
+`__fentry__ break-point hit.
+(gdb) c
+`f' break-point hit.
+(gdb) c
+...
+[Inferior 1 (process 11664) exited normally]
+(gdb)
+
+      I noticed that at `_monstartup' source file is displayed
+      and the file is build by myself. But at `__fentry__',
+      there is no debug information.
+
+      I guessed that `__fentry__' is defined at `cygwin1.dll'
+      So I tried to load `cygwin1.dll' built by myself
+      into `test001.exe' execution process as described at
+      "cygwin1.dll build memo":
+
+(gdb) set environ PATH /cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin:$PATH
+(gdb) b dll_entry
+(gdb) run
+`dll_entry' break-point hit. My own cygwin source is displayed.
+(gdb) c
+Again ``dll_entry' break-point hit. Also, my own cygwin source is displayed.
+(gdb) c
+`__fentry__' break-point hit.
+
+   => No debug information
+
+      i.e. `__fentry__' is not defined at `cygwin1.dll'
+
+
+% objdump -x test001.exe > test001.objdump
+...
+	DLL Name: cygwin1.dll
+	vma:  Hint/Ord Member-Name Bound-To
+	83b0	   15  __cxa_atexit
+	83c0	   22  __errno
+        ...                      # No `__fentry__'
+
+[939](sec  7)(fl 0x00)(ty   0)(scl   2) (nx 0) 0x000000000000023c __imp_free
+[940](sec  1)(fl 0x00)(ty   0)(scl   2) (nx 0) 0x0000000000000ae5 __fentry__
+[941](sec  1)(fl 0x00)(ty   0)(scl   2) (nx 0) 0x0000000000001380 SignalObjectAndWait
+...
+
+        That's all for `__fentry__'

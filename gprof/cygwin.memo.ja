@@ -1,0 +1,86 @@
+cygwin 版 mcount の調査
+
+     cygwin 版でも mcount 相当が行われていると考えて test001.c を
+     -pg オプションありなしで比較してみた:
+
+% gcc -S test001.c -o test001.s.nopg
+% gcc -S test001.c -o test001.s -pg
+
+     -pg ありの場合は以下のような差分がある:
+
+f:
+1:	call	__fentry__
+...
+main:
+1:	call	__fentry__
+...
+	call	_monstartup
+...
+
+     これから察するにプロファイルを行うには
+
+     o main 函数で _monstartup を呼び出す
+     o 各函数で __fentry__ を呼び出す
+
+     ということになる. さて例によってこの test001.c を gdb から実行してみた.
+
+% gcc -pg test001.c -o test001.exe
+% gdb test001.exe
+...
+(gdb) b main
+(gdb) b f
+(gdb) b _monstartup
+(gdb) b __fentry__
+(gdb) run
+__fentry__ のブレークポイントにヒット
+(gdb) c
+main のブレークポイントにヒット
+(gdb) c
+_monstartup のブレークポイントにヒット
+(gdb) c
+もう一度 _monstartup のブレークポイントにヒット
+(gdb) c
+__fentry__ のブレークポイントにヒット
+(gdb) c
+f のブレークポイントにヒット
+(gdb) c
+...
+[Inferior 1 (process 11664) exited normally]
+(gdb)
+
+      _monstartup は自分でビルドした cygwin のソースが表示されたが, 肝心の
+      __fentry__ はデバッグ情報がなかった.
+
+      __fentry__ は cygwin1.dll にあるのかと予測し,
+      「Windows 10 で cygwin1.dll をビルドしたときのメモ」でやったように
+      test001.exe に自分でビルドした cygwin1.dll を読み込ませてみた.
+
+(gdb) set environ PATH /cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin:$PATH
+(gdb) b dll_entry
+(gdb) run
+dll_entry で停止. 自分でビルドした cygwin1.dll が実行されていることを確認.
+(gdb) c
+もう一度 dll_entry で停止. やはり自分でビルドした cygwin1.dll が実行されてい
+ることを確認.
+(gdb) c
+__fentry__ で停止
+
+   => 残念. デバッグ情報なし.
+
+      つまり __fentry__ が定義されているのは cygwin1.dll ではないということ.
+
+
+% objdump -x test001.exe > test001.objdump
+...
+	DLL Name: cygwin1.dll
+	vma:  Hint/Ord Member-Name Bound-To
+	83b0	   15  __cxa_atexit
+	83c0	   22  __errno
+        ...                      ここには __fentry__ はない
+
+[939](sec  7)(fl 0x00)(ty   0)(scl   2) (nx 0) 0x000000000000023c __imp_free
+[940](sec  1)(fl 0x00)(ty   0)(scl   2) (nx 0) 0x0000000000000ae5 __fentry__
+[941](sec  1)(fl 0x00)(ty   0)(scl   2) (nx 0) 0x0000000000001380 SignalObjectAndWait
+...
+
+         情報があるのはこれだけだった.
