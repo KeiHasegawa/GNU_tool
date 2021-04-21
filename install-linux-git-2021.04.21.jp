@@ -8,6 +8,7 @@ linux での git 2.31.1 インストールメモ
 (*6) gettext のインストール
 (*7) git のビルドその 3
 (*8) 動作確認 => エラー
+(*9) エラーの箇所を追跡してみた
 
 (*1) git のダウンロード
 % cd
@@ -132,5 +133,74 @@ git: 'remote-https' is not a git command. See 'git --help'.
 % /usr/bin/git push
 
 これなら OK.
+
+(*9) エラーの箇所を追跡してみた
+
+% git hoge
+git: 'hoge' is not a git command. See 'git --help'.
+
+The most similar commands are
+	clone
+	log
+	merge
+	notes
+	stage
+%
+
+これは... そもそも git push というコマンドが受け入れられていないように
+思われたが
+
+% mkdir ~/git_test
+% git init
+% git pull https://github.com/KeiHasegawa/GNU_tool
+
+同じ現象が起きる. 例によって gdb で調べてみた:
+
+% gdb /usr/local/bin/git
+(gdb) cd ~/git_test
+(gdb) run pull https://github.com/KeiHasegawa/GNU_tool
+
+これは調べてみると fork して以下を exec していた:
+
+/usr/local/libexec/git-core/git fetch --update-head-ok https://github.com/KeiHasegawa/GNU_tool
+
+% gdb /usr/local/libexec/git-core/git
+(gdb) cd ~/git_test
+(gdb) run fetch --update-head-ok https://github.com/KeiHasegawa/GNU_tool
+
+
+static struct ref *get_refs_list(struct transport *transport, int for_push,
+				 struct transport_ls_refs_options *transport_options)
+{
+	get_helper(transport);  これを実行するとエラーになる
+
+この函数にステップインする:
+
+	write_constant(helper->in, "capabilities\n");   これを実行すると
+
+(gdb)
+Program received signal SIGPIPE, Broken pipe.
+0xffffe424 in __kernel_vsyscall ()
+
+となる. これはデバッガ付きで実行するとこうなるらしい.
+
+	write_constant(helper->in, "capabilities\n");
+
+の次の行にブレークポイントをセットして再び最初から実行すると
+そこに到達した.  (*A)
+
+そして, 見た目正常終了している. 
+
+git: 'remote-https' is not a git command. See 'git --help'.
+
+のメッセージは表示されていない.
+しかし ~/git_test にファイルがダウンロードされてはいない.
+
+試しに (*A) のブレークポイントをはずして最初から実行すると...
+
+git: 'remote-https' is not a git command. See 'git --help'.
+
+とエラーは再現する. 謎. 通信している状態なのでデバッガで
+止めたりすると違う現象を再現しているのかもしれない.
 
 
