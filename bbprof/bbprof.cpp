@@ -71,13 +71,13 @@ int read_bb(const char* bbout, std::vector<addr_type>& res)
   using namespace std;
   ifstream ifs(bbout);
   while (1) {
-    if (ifs.eof())
-      return 0;
     union {
       addr_type addr;
       char c[sizeof addr];
     };
     ifs.read(&c[0], sizeof c);
+    if (ifs.eof())
+      return 0;
     res.push_back(addr);
   }
 }
