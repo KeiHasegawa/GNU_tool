@@ -1,0 +1,53 @@
+Basic block profile
+
+(*1) What I want to do
+(*2) Aim
+(*3) First sample
+
+(*1) What I want to do
+
+     Display the executed source lines of the program with high light,
+     after the program ran.
+
+(*2) Aim
+
+     Illustrate that tests are at least enough or not.
+
+(*3) First sample
+
+     I chosed `test000.c' as a first sample. For `test000.c', expected
+     results becomes like `test000.ppt'. At this point, it's `ppt' format
+     but later it's better to see with web browser or editor like `emacs'.
+
+     test000.c is built like below:
+
+% gcc test000.c -o a.out
+
+     We hope that the build way for profiling is not so different from
+     above. But users have to build in a special way. For example,
+     common `gprof' case:
+
+% gcc -pg test000.c -o a.out
+% ./a.out
+% gprof a.out gmon.out
+
+     For profiling basic block, users have to
+
+% gcc -c test000.c --profile-basic-block
+% gcc profile_basic_block.cpp test000.o -o a.out
+% ./a.out
+% ./bbprof.exe a.out bb.out
+
+     For using `--profile-basic-block' option, you have to modify
+     `gcc' as described at "gcc modification for basic block profile",
+     and build `gcc' by yourself. This is very diffcult. But there is
+     no way.
+
+     `profile_basic_block.cpp' is correspond to `mcount' as described
+     at "gprof investigation". And I'll require users to embeded it
+     users program. Verfy ugly.
+
+     And last command bbprof.exe is using `binutils' library. It's
+     necesssary to install from `binutils' source files.
+
+     If this becomes standard, some complications become fewer, I hope.
