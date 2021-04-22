@@ -8,7 +8,12 @@ OBJS = $(SRCS:.cpp=.o)
 
 BINUTILS = /home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1
 
-LIB_FLAG = -lbfd -liberty -L$(BINUTILS)/libiberty -ldl -lz
+LIB_INTL_FLAGS =
+ifeq (,$(findstring CYGWIN,$(UNAME)))
+	LIB_INTL_FLAGS = -lintl
+endif
+
+LIB_FLAG = -lbfd -liberty -L$(BINUTILS)/libiberty -ldl -lz $(LIB_INTL_FLAGS)
 
 $(PROG):$(OBJS)
 	$(CXX) -o $(PROG) $(OBJS) $(LIB_FLAG)
