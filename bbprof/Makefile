@@ -8,8 +8,8 @@ OBJS = $(SRCS:.cpp=.o)
 
 BINUTILS = /home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1
 
-LIB_INTL_FLAGS =
-ifeq (,$(findstring CYGWIN,$(UNAME)))
+UNAME := $(shell uname)
+ifneq (,$(findstring CYGWIN,$(UNAME)))
 	LIB_INTL_FLAGS = -lintl
 endif
 
