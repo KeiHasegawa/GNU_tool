@@ -20,8 +20,8 @@ inline void collect(asymbol* sym, std::map<addr_type, const char*>* info)
   if (!(flags & SEC_CODE))
     return;
   addr_type addr = sec->vma + sym->value;
-  assert(info->find(addr) == info->end());
-  (*info)[addr] = sym->name;
+  if (info->find(addr) == info->end())
+    (*info)[addr] = sym->name;
 }
 
 int read_prog(const char* aout, std::map<addr_type, const char*>& info)
