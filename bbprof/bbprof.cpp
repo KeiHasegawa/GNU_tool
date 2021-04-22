@@ -7,18 +7,24 @@
 #include <cassert>
 #include <bfd.h>
 
-inline void collect(asymbol* sym, std::map<uint32_t, const char*>* info)
+#ifdef __x86_64__
+typedef uint64_t addr_type;
+#else // __x86_64__
+typedef uint32_t addr_type;
+#endif // __x86_64__
+
+inline void collect(asymbol* sym, std::map<addr_type, const char*>* info)
 {
   asection* sec = sym->section;
   flagword flags = sec->flags;
   if (!(flags & SEC_CODE))
     return;
-  uint32_t addr = sec->vma + sym->value;
+  addr_type addr = sec->vma + sym->value;
   assert(info->find(addr) == info->end());
   (*info)[addr] = sym->name;
 }
 
-int read_prog(const char* aout, std::map<uint32_t, const char*>& info)
+int read_prog(const char* aout, std::map<addr_type, const char*>& info)
 {
   using namespace std;
   bfd* handle =  bfd_openr(aout, 0);
@@ -60,24 +66,24 @@ int read_prog(const char* aout, std::map<uint32_t, const char*>& info)
   return 0;
 }
 
-int read_bb(const char* bbout, std::vector<uint32_t>& res)
+int read_bb(const char* bbout, std::vector<addr_type>& res)
 {
   using namespace std;
   ifstream ifs(bbout);
-  union {
-    uint32_t addr;
-    char c[4];
-  };
   while (1) {
     if (ifs.eof())
       return 0;
+    union {
+      addr_type addr;
+      char c[sizeof addr];
+    };
     ifs.read(&c[0], sizeof c);
     res.push_back(addr);
   }
 }
 
 inline void
-find_caller(uint32_t addr, const std::map<uint32_t, const char*>* info)
+find_caller(addr_type addr, const std::map<addr_type, const char*>* info)
 {
   using namespace std;
   auto p = info->upper_bound(addr);
@@ -94,11 +100,11 @@ int main(int argc, char** argv)
     return 1;
   }
 
-  map<uint32_t, const char*> info;
+  map<addr_type, const char*> info;
   if (read_prog(argv[1], info) < 0)
     return 2;
 
-  vector<uint32_t> addrs;
+  vector<addr_type> addrs;
   if (read_bb(argv[2], addrs) < 0)
     return 3;
 
