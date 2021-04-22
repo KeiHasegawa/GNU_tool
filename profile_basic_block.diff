@@ -1,0 +1,95 @@
+*** gcc-10.2.0.org/gcc/common.opt	2020-07-23 15:35:17.316384243 +0900
+--- gcc-10.2.0/gcc/common.opt	2021-04-21 18:36:50.220120568 +0900
+***************
+*** 3412,3415 ****
+--- 3412,3419 ----
+  Common Report Var(flag_ipa_ra) Optimization
+  Use caller save register across calls if possible.
++ 
++ fprofile-basic-block
++ Driver
++ ; Added 2021.04.21 18:33 by khasegawa
++ 
+  ; This comment is to ensure we retain the blank line above.
+*** gcc-10.2.0.org/gcc/c-family/c.opt	2020-07-23 15:35:17.300384068 +0900
+--- gcc-10.2.0/gcc/c-family/c.opt	2021-04-21 18:39:19.721252328 +0900
+***************
+*** 2246,2249 ****
+--- 2246,2253 ----
+  C ObjC C++ ObjC++
+  ; Documented in common.opt
++ 
++ fprofile-basic-block
++ C ObjC C++ ObjC++ Var(flag_profile_basic_block)
++ ; Added 2021.04.21 18:45 by khasegawa
++ 
+  ; This comment is to ensure we retain the blank line above.
+*** gcc-10.2.0.org/gcc/final.c	2020-07-23 15:35:17.588387239 +0900
+--- gcc-10.2.0/gcc/final.c	2021-04-22 07:02:15.325979598 +0900
+***************
+*** 1869,1874 ****
+--- 1869,1879 ----
+  #endif
+  }
+  
++ inline void profile_basic_block(FILE *file)
++ {
++   FUNCTION_BB_PROFILER(file);
++ }
++ 
+  /* Output assembler code for the end of a function.
+     For clarity, args are same as those of `final_start_function'
+     even though not all of them are needed.  */
+***************
+*** 2240,2245 ****
+--- 2245,2253 ----
+  	  break;
+  
+  	case NOTE_INSN_BASIC_BLOCK:
++ 	  if (global_options.x_flag_profile_basic_block)
++ 	    profile_basic_block(file);
++ 
+  	  if (need_profile_function)
+  	    {
+  	      profile_function (asm_out_file);
+*** gcc-10.2.0.org/gcc/config/i386/i386.h	2020-07-23 15:35:17.396385125 +0900
+--- gcc-10.2.0/gcc/config/i386/i386.h	2021-04-22 07:01:03.287880191 +0900
+***************
+*** 1720,1725 ****
+--- 1720,1727 ----
+  #define FUNCTION_PROFILER(FILE, LABELNO) \
+    x86_function_profiler ((FILE), (LABELNO))
+  
++ #define FUNCTION_BB_PROFILER(FILE) x86_bb_profiler ((FILE))
++ 
+  #define MCOUNT_NAME "_mcount"
+  
+  #define MCOUNT_NAME_BEFORE_PROLOGUE "__fentry__"
+*** gcc-10.2.0.org/gcc/config/i386/i386-protos.h	2020-07-23 15:35:17.392385082 +0900
+--- gcc-10.2.0/gcc/config/i386/i386-protos.h	2021-04-22 07:00:08.911559955 +0900
+***************
+*** 175,180 ****
+--- 175,181 ----
+  
+  extern void x86_order_regs_for_local_alloc (void);
+  extern void x86_function_profiler (FILE *, int);
++ extern void x86_bb_profiler(FILE*);
+  extern void x86_emit_floatuns (rtx [2]);
+  extern void ix86_emit_fp_unordered_jump (rtx);
+  
+*** gcc-10.2.0.org/gcc/config/i386/i386.c	2020-07-23 15:35:17.396385125 +0900
+--- gcc-10.2.0/gcc/config/i386/i386.c	2021-04-22 07:01:37.954446440 +0900
+***************
+*** 20474,20479 ****
+--- 20474,20484 ----
+      }
+  }
+  
++ void x86_bb_profiler (FILE *file)
++ {
++   x86_print_call_or_nop(file, "_profile_basic_block_");
++ }
++ 
+  /* We don't have exact information about the insn sizes, but we may assume
+     quite safely that we are informed about all 1 byte insns and memory
+     address sizes.  This is enough to eliminate unnecessary padding in

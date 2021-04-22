@@ -1,0 +1,111 @@
+gcc basic block profile
+
+     For each the head of basic block, let gcc generate profile
+     function call
+
+(*1) Add option
+(*2) Code generation for profile basic block
+(*3) パッチファイル
+
+(*1) Add option
+
+     Refer to "Add option of gcc memo". In the same way, add
+     `--profile-basic-block' option. I modified:
+
+~/gcc-10.2.0/gcc/common.opt:
+fprofile-basic-block     <<< Add
+Driver                   <<< these
+
+~/gcc-10.2.0/gcc/c-family/c.opt:
+fprofile-basic-block                                 << Add
+C ObjC C++ ObjC++ Var(flag_profile_basic_block)      << these
+
+      At first, we should confirme that current xgcc rejects this option:
+
+% ./xgcc --profile-basic-block /tmp/b.c -S
+xgcc: error: unrecognized command-line option ‘--profile-basic-block’
+
+      So, build xgcc, xg++, cc1 and cc1plus. Unfortunately, it's necessary
+      to do like below:
+
+% cd ~/gcc-10.2.0/host-i686-pc-linux-gnu/gcc
+% make clean
+% make
+...
+
+      I chosed some files to rebuild necessaly, and linked xgcc.
+      But this way didn't work. And also, just `make' didn't work.
+
+% ls -l xgcc xg++ cc1 cc1plus
+Confirmed
+
+% ./xgcc /tmp/b.c -S --profile-basic-block -###
+...
+
+% ./xg++ /tmp/b.c -S --profile-basic-block -###
+...
+      OK. xgcc passed `-fprofile-basic-block' option to `cc1' and
+      xg++ also passed `-fprofile-basic-block' option to `cc1plus'.
+
+% gdb cc1
+(gdb) b decode_options 
+(gdb) run ... --fprofile-basick-block
+(gdb) fin
+(gdb) p global_options.x_flag_profile_basic_block
+$1 = 1
+(gdb)
+
+      OK. About above, also refer to "Add option of gcc memo".
+
+(*2) Code generation for profile basic block
+
+     I modified like below:
+
+final.c:
+
+inline void profile_basic_block(FILE *file)  // Add this
+{
+  FUNCTION_BB_PROFILER(file);
+}
+
+	case NOTE_INSN_BASIC_BLOCK:
+	  if (global_options.x_flag_profile_basic_block)  // Add
+	    profile_basic_block(file);                    // this
+
+i386.h:
+#define FUNCTION_BB_PROFILER(FILE) x86_bb_profiler ((FILE)) // Add this
+
+i386-protos.h:
+extern void x86_bb_profiler(FILE*);  // Add this
+
+i386.c:
+void x86_bb_profiler (FILE *file)  // Add this
+{
+  x86_print_call_or_nop(file, "_profile_basic_block_");
+}
+
+     It's necessary to re-compile i386.o and final.o and to rebuild
+     libbackend.a which containes i386.o and final.o. And finally,
+     rebuld `cc1'. These operation can be deduced from build log.
+
+(*3) Patch file
+
+     `profile_basic_block.diff'' on this web page was generated like below:
+
+% diff -rc gcc-10.2.0{.org,}/gcc/common.opt > profile_basic_block.diff
+% diff -rc gcc-10.2.0{.org,}/gcc/c-family/c.opt >> profile_basic_block.diff
+% diff -rc gcc-10.2.0{.org,}/gcc/final.c >> profile_basic_block.diff
+% diff -rc gcc-10.2.0{.org,}/gcc/config/i386/i386.h >> profile_basic_block.diff
+% diff -rc gcc-10.2.0{.org,}/gcc/config/i386/i386-protos.h >> profile_basic_block.diff
+% diff -rc gcc-10.2.0{.org,}/gcc/config/i386/i386.c >> profile_basic_block.diff
+
+     How to patch:
+     Download `docgen2.diff' on this web page and save as:
+
+/tmp/profile_basic_block.diff
+
+     And execute like below:
+
+% xz -d -c gcc-10.2.0.tar.xz | tar xf -
+% cd gcc-10.2.0
+% patch -p1 < /tmp/profile_basic_block.diff
