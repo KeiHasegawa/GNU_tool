@@ -3,6 +3,8 @@ Basic block profile
 (*1) What I want to do
 (*2) Aim
 (*3) First sample
+(*4) profile_basic_block.cpp
+(*5) bbprof.exe
 
 (*1) What I want to do
 
@@ -33,7 +35,7 @@ Basic block profile
 
      For profiling basic block, users have to
 
-% gcc -c test000.c --profile-basic-block
+% gcc -g -c test000.c --profile-basic-block
 % gcc profile_basic_block.cpp test000.o -o test000.exe
 % ./test000.exe
 % ./bbprof.exe test000.exe bb.out
@@ -51,3 +53,19 @@ Basic block profile
      necesssary to install from `binutils' source files.
 
      If this becomes standard, some complications become fewer, I hope.
+
+(*4) profile_basic_block.cpp
+
+     This function just writes caller address into the file. This
+     doesn't support program using multi threads. But at this point,
+     it's enough.
+
+(*5) bbprof.exe
+
+     First version of bbprof.exe outputs which function calls profiler
+     function described at (*4) by investigating program file and
+     profile at (*4). It should be
+
+     source file, line and column
+
+     but also OK at this point.
