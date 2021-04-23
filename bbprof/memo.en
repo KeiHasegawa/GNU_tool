@@ -21,22 +21,22 @@ Basic block profile
 
      test000.c is built like below:
 
-% gcc test000.c -o a.out
+% gcc test000.c -o test000.exe
 
      We hope that the build way for profiling is not so different from
      above. But users have to build in a special way. For example,
      common `gprof' case:
 
-% gcc -pg test000.c -o a.out
-% ./a.out
-% gprof a.out gmon.out
+% gcc -pg test000.c -o test000.exe
+% ./test000.exe
+% gprof test000.exe gmon.out
 
      For profiling basic block, users have to
 
 % gcc -c test000.c --profile-basic-block
-% gcc profile_basic_block.cpp test000.o -o a.out
-% ./a.out
-% ./bbprof.exe a.out bb.out
+% gcc profile_basic_block.cpp test000.o -o test000.exe
+% ./test000.exe
+% ./bbprof.exe test000.exe bb.out
 
      For using `--profile-basic-block' option, you have to modify
      `gcc' as described at "gcc modification for basic block profile",

@@ -21,23 +21,23 @@
 
      test000.c は通常次のようにビルドされる.
      
-% gcc test000.c -o a.out
+% gcc test000.c -o test000.exe
 
      これとあまり変わらない形でビルドされなくてはならないが, ユーザーは
      プロファイルのために特別なビルドをしなくてはならない. 例えば通常の
      gprof を使用するためには
 
-% gcc -pg test000.c -o a.out
-% ./a.out
-% gprof a.out gmon.out
+% gcc -pg test000.c -o test000.exe
+% ./test000.exe
+% gprof test000.exe gmon.out
 
      のようなことをする必要がある. 基本ブロックのプロファイルでは以下の
      ようにする必要がある:
 
 % gcc -c test000.c --profile-basic-block
-% gcc profile_basic_block.cpp test000.o -o a.out
-% ./a.out
-% ./bbprof.exe a.out bb.out
+% gcc profile_basic_block.cpp test000.o -o test000.exe
+% ./test000.exe
+% ./bbprof.exe test000.exe bb.out
 
      --profile-basic-block オプションを使用するためには
      「基本ブロックプロファイルのための gcc の修正」を行う必要があり,
