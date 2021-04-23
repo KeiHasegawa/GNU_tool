@@ -2,7 +2,7 @@ PROG = bbprof.exe
 
 all:$(PROG)
 
-SRCS = bbprof.cpp
+SRCS = bbprof2.cpp
 
 OBJS = $(SRCS:.cpp=.o)
 
