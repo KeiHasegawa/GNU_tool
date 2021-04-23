@@ -38,6 +38,10 @@ find_caller_1(bfd* abfd, asection* sect, asymbol** syms, addr_type addr)
     return false;
 
   addr_type vma = sect->vma;
+#ifdef __CYGWIN__
+  addr &= 0x0000ffff;
+  addr |= vma;
+#endif // __CYGWIN__
   if (addr < vma)
     return false;
 

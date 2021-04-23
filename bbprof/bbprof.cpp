@@ -103,7 +103,7 @@ find_caller(addr_type addr, const std::map<addr_type, const char*>* info)
   using namespace std;
 #ifdef __CYGWIN__
   cout << hex << addr << "->";
-  addr &= 0x000fffff;
+  addr &= 0x0000ffff;
   addr |= text_base;
 #endif // __CYGWIN__
   auto p = info->upper_bound(addr);
