@@ -4,7 +4,8 @@ Basic block profile
 (*2) Aim
 (*3) First sample
 (*4) profile_basic_block.cpp
-(*5) bbprof.exe
+(*5) bbprof1.cpp
+(*6) bbprof2.cpp
 
 (*1) What I want to do
 
@@ -60,11 +61,15 @@ Basic block profile
 
 (*4) profile_basic_block.cpp
 
-     This function just writes caller address into the file. This
-     doesn't support program using multi threads. But at this point,
-     it's enough.
+     This function just writes caller address into the file. There are
+     some improvement stuff but OK at this point.
 
-(*5) bbprof.exe
+     o If profile_basic_block.cpp is compiled with -O2 or -O3, it may
+       not work well.
+
+     o profile_basic_block.cpp doesn't support program using multi threads
+
+(*5) bbprof1.cpp
 
      First version of bbprof.exe outputs which function calls profiler
      function described at (*4) by investigating program file and
@@ -73,3 +78,9 @@ Basic block profile
      source file, line and column
 
      but also OK at this point.
+
+(*6) bbprof2.cpp
+
+     Second verion of bbprof.exe outputs source file and line number.
+     I refered to addr2line program which is a part of `binutils'.
+
