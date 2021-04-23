@@ -81,6 +81,10 @@ int read_bb(const char* bbout, std::vector<addr_type>& res)
 {
   using namespace std;
   ifstream ifs(bbout);
+  if (!ifs) {
+    cerr << "cannot open " << bbout << endl;
+    return -1;
+  }
   while (1) {
     union {
       addr_type addr;
