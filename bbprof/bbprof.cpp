@@ -9,6 +9,9 @@
 
 #ifdef __x86_64__
 typedef uint64_t addr_type;
+#ifdef __CYGWIN__
+addr_type text_base;
+#endif //  __CYGWIN__
 #else // __x86_64__
 typedef uint32_t addr_type;
 #endif // __x86_64__
@@ -20,8 +23,16 @@ inline void collect(asymbol* sym, std::map<addr_type, const char*>* info)
   if (!(flags & SEC_CODE))
     return;
   addr_type addr = sec->vma + sym->value;
-  if (info->find(addr) == info->end())
-    (*info)[addr] = sym->name;
+#ifdef __x86_64__
+#ifdef __CYGWIN__
+  text_base = sec->vma;
+#endif // __CYGWIN__
+#endif // __x86_64__
+  auto p = info->find(addr);
+  if (p != info->end())
+    return;
+  const char* name = sym->name;
+  (*info)[addr] = name;
 }
 
 int read_prog(const char* aout, std::map<addr_type, const char*>& info)
@@ -86,6 +97,10 @@ inline void
 find_caller(addr_type addr, const std::map<addr_type, const char*>* info)
 {
   using namespace std;
+#ifdef __CYGWIN__
+  addr &= 0x000fffff;
+  addr |= text_base;
+#endif // __CYGWIN__
   auto p = info->upper_bound(addr);
   assert(p != info->begin());
   --p;
