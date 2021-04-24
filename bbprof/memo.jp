@@ -77,10 +77,16 @@
      最初のバージョンは, プログラム内の函数のアドレスと (*4) の機能で記録し
      たアドレスから, どの函数から呼び出されているかを表示するだけのものにした.
      本当は「ソース行のどこから」という情報が必要だが, これも現時点では十分で
-     ある.
+     ある. ビルドの方法は以下:
+
+linux % g++ -o bbprof.exe -DPACKAGE bbprof1.cpp -lbfd -liberty -L/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/libiberty -ldl -lz
+
+cygwin % 
 
 (*6) bbprof2.cpp
 
      2 つ目のバージョンは, ファイル名と行番号を表示できるようになっている.
-     addr2line というプログラムが binutils にあるが参考にした.
+     addr2line というプログラムが binutils にあるが参考にした. ビルドの方法は
+     bbprof1.cpp と同じである.
+
 
