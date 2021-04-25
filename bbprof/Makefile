@@ -19,8 +19,9 @@ $(PROG):$(OBJS)
 	$(CXX) -o $(PROG) $(OBJS) $(LIB_FLAG)
 
 DEBUG_FLAG = -g
+EXTRA_INCUDE = -I$(BINUTILS)/bfd -I$(BINUTILS)/include
 
-CXX_FLAG = $(DEBUG_FLAG) -DPACKAGE
+CXX_FLAG = $(DEBUG_FLAG) $(EXTRA_INCUDE) -DPACKAGE
 
 %.o : %.cpp
 	$(CXX) $(CXX_FLAG) $< -c -o $@

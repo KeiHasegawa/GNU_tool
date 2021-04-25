@@ -30,6 +30,10 @@ int read_bb(const char* bbout, std::vector<addr_type>& res)
   }
 }
 
+// extern const struct dwarf_debug_section dwarf_debug_sections[];
+
+extern "C" int myfunc();
+
 inline bool
 find_caller_1(bfd* abfd, asection* sect, asymbol** syms, addr_type addr)
 {
@@ -53,10 +57,16 @@ find_caller_1(bfd* abfd, asection* sect, asymbol** syms, addr_type addr)
   const char* functionname;
   unsigned int line;
   unsigned int discriminator;
+#if 1
+  auto ret = myfunc(abfd, sect, syms, addr - vma,
+					&filename, &functionname,
+					&line, &discriminator);
+#else
   auto ret = 
     bfd_find_nearest_line_discriminator(abfd, sect, syms, addr - vma,
 					&filename, &functionname,
 					&line, &discriminator);
+#endif
   using namespace std;
   if (!ret) {
     cerr << hex << addr << " not found" << endl;
