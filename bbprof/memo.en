@@ -5,6 +5,7 @@ Basic block profile
 (*3) profile_basic_block.cpp
 (*4) bbprof1.cpp
 (*5) bbprof2.cpp
+(*6) bbprof3.cpp
 
 (*1) What I want to do
 
@@ -68,7 +69,7 @@ Basic block profile
 
 (*4) bbprof1.cpp
 
-     First version of bbprof.exe outputs which function calls profiler
+     1st version of bbprof.exe outputs which function calls profiler
      function described at (*3) by investigating program file and
      profile at (*3). It should be
 
@@ -82,8 +83,28 @@ cygwin % g++ -o bbprof.exe -DPACKAGE bbprof1.cpp -lbfd -liberty -ldl -lz -lintl
 
 (*5) bbprof2.cpp
 
-     Second version of bbprof.exe outputs source file and line number.
+     2nd version of bbprof.exe outputs source file and line number.
      I refered to addr2line program which is a part of `binutils'.
      The build way is same with (*4).
 
+(*6) bbprof3.cpp
+
+     3rd version o bbprof.exe outputs source file, line number and
+     column. Unfortunately, there is no corresponding function in
+     libbfd.a. So I coded.  Build like below:
+
+linux
+g++ -g -DPACKAGE bbprof3.cpp -c -o bbprof3.o
+gcc -g -I/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/bfd -I/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/include -DPACKAGE bbprof3_0.c -c -o bbprof3_0.o
+gcc -g -I/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/bfd -I/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/include my_dwarf2.c -c -o my_dwarf2.o -DDEBUGDIR=\".\"
+g++ -o bbprof.exe bbprof3.o bbprof3_0.o my_dwarf2.o -lbfd -liberty -L/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/libiberty -ldl -lz 
+
+     Note that the specified options are different according to the source
+     file.
+     my_dwarf2.c is a almost copy of
+
+     ~/binutils-2.36.1-2.src/binutils-2.36.1/bfd/dwarf2.c
+
+     At this point, obtained column is always equal to 1. I guess compiler
+     should not output line information.
 
