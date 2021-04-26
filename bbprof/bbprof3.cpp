@@ -30,9 +30,16 @@ int read_bb(const char* bbout, std::vector<addr_type>& res)
   }
 }
 
-// extern const struct dwarf_debug_section dwarf_debug_sections[];
-
-extern "C" int myfunc();
+extern "C"
+bfd_boolean my_func(bfd *abfd,
+		    asymbol **symbols,
+		    asection *section,
+		    bfd_vma offset,
+		    const char **filename_ptr,
+		    const char **functionname_ptr,
+		    unsigned int *line_ptr,
+		    unsigned int *column_ptr,
+		    unsigned int *discriminator_ptr);
 
 inline bool
 find_caller_1(bfd* abfd, asection* sect, asymbol** syms, addr_type addr)
@@ -56,24 +63,19 @@ find_caller_1(bfd* abfd, asection* sect, asymbol** syms, addr_type addr)
   const char* filename;
   const char* functionname;
   unsigned int line;
+  unsigned int column;
   unsigned int discriminator;
-#if 1
-  auto ret = myfunc(abfd, sect, syms, addr - vma,
-					&filename, &functionname,
-					&line, &discriminator);
-#else
-  auto ret = 
-    bfd_find_nearest_line_discriminator(abfd, sect, syms, addr - vma,
-					&filename, &functionname,
-					&line, &discriminator);
-#endif
+  auto ret = my_func(abfd, syms, sect, addr - vma,
+		     &filename, &functionname, &line, &column,
+		     &discriminator);
   using namespace std;
   if (!ret) {
     cerr << hex << addr << " not found" << endl;
     return false;
   }
 
-  cout << filename << ':' << functionname << ':' << line << endl;
+  cout << filename << ':' << functionname << ':' << line
+       << '.' << column << endl;
   return true;
 }
 
