@@ -5,6 +5,7 @@
 (*3) profile_basic_block.cpp
 (*4) bbprof1.cpp
 (*5) bbprof2.cpp
+(*6) bbprof3.cpp
 
 (*1) やりたいこと
 
@@ -85,3 +86,24 @@ cygwin % g++ -o bbprof.exe -DPACKAGE bbprof1.cpp -lbfd -liberty -ldl -lz -lintl
      2 つ目のバージョンは, ファイル名と行番号を表示できるようになっている.
      addr2line というプログラムが binutils にあるが参考にした. ビルドの方法は
      bbprof1.cpp と同じである.
+
+(*6) bbprof3.cpp
+
+     3 つ目のバージョンは, さらにカラム数を取り出せるようにしたものである.
+     残念ながら libbfd.a でこの機能がないのでその部分だけ作成した. ビルドの
+     方法は:
+
+linux
+g++ -g -DPACKAGE bbprof3.cpp -c -o bbprof3.o
+gcc -g -I/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/bfd -I/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/include -DPACKAGE bbprof3_0.c -c -o bbprof3_0.o
+gcc -g -I/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/bfd -I/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/include my_dwarf2.c -c -o my_dwarf2.o -DDEBUGDIR=\".\"
+g++ -o bbprof.exe bbprof3.o bbprof3_0.o my_dwarf2.o -lbfd -liberty -L/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/libiberty -ldl -lz 
+
+     ファイルによってオプションが少し異なっていることに注意したい.
+     my_dwarf2.c は ~/binutils-2.36.1-2.src/binutils-2.36.1/bfd/dwarf2.c
+     のほとんどコピーである.
+
+     現状はカラム数が必ず 1 になっているが, これはライン情報が適切に
+     出ていないためであろう.
+
+     
