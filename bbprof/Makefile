@@ -2,11 +2,18 @@ PROG = bbprof.exe
 
 all:$(PROG)
 
-OBJS = bbprof3.o bbprof3_0.o my_dwarf2.o
+UNAME := $(shell uname)
+ifneq (,$(findstring CYGWIN,$(UNAME)))
+	MY_COFF_OBJ = my_coffgen.o
+endif
+
+OBJS = bbprof3.o bbprof3_0.o my_dwarf2.o $(MY_COFF_OBJ)
 
 BINUTILS = /home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1
+ifneq (,$(findstring CYGWIN,$(UNAME)))
+	BINUTILS = d:/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1
+endif
 
-UNAME := $(shell uname)
 ifneq (,$(findstring CYGWIN,$(UNAME)))
 	LIB_INTL_FLAGS = -lintl
 endif
@@ -28,6 +35,9 @@ bbprof3_0.o : bbprof3_0.c
 
 my_dwarf2.o : my_dwarf2.c
 	gcc $(DEBUG_FLAG) $(EXTRA_INCUDE) $< -c -o $@ -DDEBUGDIR=\".\"
+
+my_coffgen.o : my_coffgen.c
+	gcc $(DEBUG_FLAG) $(EXTRA_INCUDE) $< -c -o $@
 
 clean:
 	rm -f $(PROG) $(OBJS)
