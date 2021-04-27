@@ -109,11 +109,8 @@ g++ -o bbprof.exe bbprof3.o bbprof3_0.o my_dwarf2.o my_coffgen.o -lbfd -liberty 
      ファイルによってオプションが少し異なっていることに注意したい.
      my_dwarf2.c は ~/binutils-2.36.1-2.src/binutils-2.36.1/bfd/dwarf2.c
      のほとんどコピーである. 同様に
-     my_coffgen.c は ~/binutils-2.36.1-2.src/binutils-2.36.1/bfd/coffgen.c
+     my_coffgen.c も ~/binutils-2.36.1-2.src/binutils-2.36.1/bfd/coffgen.c
      のほとんどコピーである.
-
-     現状はカラム数が必ず 1 になっているが, これはライン情報が適切に出ていな
-     いためであろう.
 
 (*7)
 
@@ -132,6 +129,9 @@ f:
 	.loc 1 3 16 discriminator 2
 ...
 	.loc 1 4 1 is_stmt 1 discriminator 5
+main:
+...
+	.loc 1 7 1
 
 
 cygwin 版で期待通り動作しない理由は f でレジスタを save する前に
