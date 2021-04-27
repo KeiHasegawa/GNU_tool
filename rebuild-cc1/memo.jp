@@ -1,0 +1,60 @@
+cc1 だけビルドし直す方法(その2)
+
+     「cc1 だけビルドし直してインストールする方法」では異なるディレクトリ
+     にある同じファイル名が複数あった場合正しく扱うことができていなか
+     った.
+
+     今回はその部分を解消している. cc1 をビルドするときのディレクトリ構成
+     は以下のようになっている:
+
+gcc-XX.YY.ZZ
+    |
+    +-------- UUU-VVV-WW
+                   |
+                   +--- libbacktrace
+                   |         |
+                   |         +--- .libs
+                   |
+                   +--- libcpp
+                   |
+                   +--- libdecnumber
+                   |
+                   +--- libiberty
+                   |
+                   +--- gcc
+                         |
+                         +--- analyzer
+                         |
+                         +--- c
+                         |
+                         +--- c-family
+                         |
+                         +--- common
+
+     オブジェクトファイルやアーカイブが各ディレクトリには作成される.
+
+     リビルドの手順は
+
+     1. 新たに上で示したディレクトリ群を作成する. 自分で作成してもよい
+        が以下のスクリプトを用意した. 以下のように実行する:
+
+sh mkdirs
+
+     2. 以下のようにスクリプトを実行していく:
+
+cd gcc-XX.YY.ZZ/UUU-VVV-WW
+cd libbacktrace
+sh libbacktrace_build
+cd ..
+cd libcpp
+sh libcpp_build
+cd ..
+cd libdecnumber
+sh libdecnumber_build
+cd ..
+cd libiberty
+sh libiberty_build
+cd ..
+cd gcc
+sh cc1_build
+     
