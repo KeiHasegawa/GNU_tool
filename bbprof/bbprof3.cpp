@@ -60,22 +60,24 @@ find_caller_1(bfd* abfd, asection* sect, asymbol** syms, addr_type addr)
   if (addr >= vma + size)
     return false;
 
-  const char* filename;
-  const char* functionname;
+  const char* file;
+  const char* func;
   unsigned int line;
   unsigned int column;
-  unsigned int discriminator;
+  unsigned int disc;
   auto ret = my_func(abfd, syms, sect, addr - vma,
-		     &filename, &functionname, &line, &column,
-		     &discriminator);
+		     &file, &func, &line, &column,
+		     &disc);
   using namespace std;
   if (!ret) {
     cerr << hex << addr << " not found" << endl;
     return false;
   }
 
-  cout << filename << ':' << functionname << ':' << line
-       << '.' << column << '.' << discriminator << endl;
+  cout << file << ':' << func << ':' << line << '.' << column;
+  if (disc)
+    cout << '.' << disc;
+  cout << endl;
   return true;
 }
 

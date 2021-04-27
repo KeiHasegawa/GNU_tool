@@ -5468,6 +5468,10 @@ void print(struct line_sequence* seq)
     int line = info->line;
     int column = info->column;
     int disc = info->discriminator;
-    fprintf(stderr, "%08x %s:%d.%d.%d\n", addr, fn, line, column, disc);
+#ifdef __x86_64__
+    fprintf(stderr, "%llx %s:%d.%d.%d\n", addr, fn, line, column, disc);
+#else
+    fprintf(stderr, "%lx %s:%d.%d.%d\n", addr, fn, line, column, disc);
+#endif
   }
 }

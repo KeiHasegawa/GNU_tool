@@ -134,3 +134,14 @@ f:
 	.loc 1 4 1 is_stmt 1 discriminator 5
 
 
+cygwin 版で期待通り動作しない理由は f でレジスタを save する前に
+
+       _profile_basic_block_
+
+を呼び出しているから. このため rcx, rdx, r8, r9 が壊されている.
+linux 版はたまたま動作しているといっていい. なので prolog が終わったところで
+1 回目の呼び出しコードを生成するように修正する.
+
+と思ったが, profile_basic_block.cpp を修正すれば cc1 は修正しなくてよいので
+そっちで対応する.
+

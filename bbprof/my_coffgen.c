@@ -2241,6 +2241,7 @@ coff_find_nearest_line_with_names2 (bfd *abfd,
 				   const char **functionname_ptr,
 				   unsigned int *line_ptr,
     				   unsigned int *column_ptr,
+				   unsigned int *discriminator_ptr,
 				   const struct dwarf_debug_section *debug_sections)
 {
   bfd_boolean found;
@@ -2272,7 +2273,7 @@ coff_find_nearest_line_with_names2 (bfd *abfd,
   if (_bfd_dwarf2_find_nearest_line2 (abfd, symbols, NULL, section, offset,
 				     filename_ptr, functionname_ptr,
 				      line_ptr, column_ptr,
-				      NULL, debug_sections,
+				      discriminator_ptr, debug_sections,
 				     &coff_data(abfd)->dwarf2_find_line_info))
     return TRUE;
 
@@ -2531,6 +2532,7 @@ coff_find_nearest_line2 (bfd *abfd,
   return coff_find_nearest_line_with_names2 (abfd, symbols, section, offset,
 					    filename_ptr, functionname_ptr,
 					     line_ptr, column_ptr,
+					     discriminator_ptr,
 					     dwarf_debug_sections);
 }
 

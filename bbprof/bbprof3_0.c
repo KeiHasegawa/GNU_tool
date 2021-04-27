@@ -28,7 +28,7 @@ coff_find_nearest_line2 (bfd *abfd,
 			const char **functionname_ptr,
 			unsigned int *line_ptr,
 			unsigned int *column_ptr,
-			 unsigned int *discriminator_ptr);
+			unsigned int *discriminator_ptr);
 
 bfd_boolean my_func(bfd *abfd,
 		    asymbol **symbols,
