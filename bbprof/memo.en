@@ -116,6 +116,20 @@ g++ -o bbprof.exe bbprof3.o bbprof3_0.o my_dwarf2.o my_coffgen.o -lbfd -liberty 
 
      ~/binutils-2.36.1-2.src/binutils-2.36.1/bfd/coffgen.c
 
-     At this point, obtained column is always equal to 1. I guess compiler
-     should not output suitable line information.
+     Once rename bb.out as test000.out, and build test001.exe similaly with
+     test000.exe, execute test001.exe and rename bb.out as test001.out.
+     And compare like below:
+
+% ./bbprof.exe test000.exe test000.out
+test000.c:main:7.1
+test000.c:f:2.1
+test000.c:f:3.16.2  (*) discriminator = 2
+test000.c:f:4.1.5
+% ./bbprof.exe test001.exe test001.out
+test001.c:main:7.1
+test001.c:f:2.1
+test001.c:f:3.16.1  (*) discriminator = 1
+test001.c:f:4.1.5
+
+    We can distingush by `discriminator' between test000.out and test001.out.
 

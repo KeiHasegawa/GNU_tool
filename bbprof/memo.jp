@@ -112,36 +112,12 @@ g++ -o bbprof.exe bbprof3.o bbprof3_0.o my_dwarf2.o my_coffgen.o -lbfd -liberty 
      my_coffgen.c も ~/binutils-2.36.1-2.src/binutils-2.36.1/bfd/coffgen.c
      のほとんどコピーである.
 
-(*7)
+     bb.out を一旦 test000.out にリネームし, test001.c を test000.c と同様にビル
+     ドして test001.exe を実行し bb.out を生成し, bb.out を test001.out に
+     リネームする. そして以下の結果を比較してみる:
 
-% gcc -g -S test000.c --profile-basic-block
+% ./bbprof.exe test000.exe test000.out
+% ./bbprof.exe test001.exe test001.out
 
-     として test000.s の中を確認した. 以下抜粋:
-
-f:
-	.file 1 "test000.c"
-	.loc 1 2 1
-...
-	.loc 1 3 16
-...
-	.loc 1 3 16 is_stmt 0 discriminator 1
-...
-	.loc 1 3 16 discriminator 2
-...
-	.loc 1 4 1 is_stmt 1 discriminator 5
-main:
-...
-	.loc 1 7 1
-
-
-cygwin 版で期待通り動作しない理由は f でレジスタを save する前に
-
-       _profile_basic_block_
-
-を呼び出しているから. このため rcx, rdx, r8, r9 が壊されている.
-linux 版はたまたま動作しているといっていい. なので prolog が終わったところで
-1 回目の呼び出しコードを生成するように修正する.
-
-と思ったが, profile_basic_block.cpp を修正すれば cc1 は修正しなくてよいので
-そっちで対応する.
-
+     カラム数は同じだが discriminator (識別子) の部分が異なっている. カラム数では
+     区別はできていないが, この部分で識別はできている.
