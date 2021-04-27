@@ -117,7 +117,18 @@ g++ -o bbprof.exe bbprof3.o bbprof3_0.o my_dwarf2.o my_coffgen.o -lbfd -liberty 
      リネームする. そして以下の結果を比較してみる:
 
 % ./bbprof.exe test000.exe test000.out
+test000.c:main:7.1.0
+test000.c:f:2.1.0
+test000.c:f:3.16.2        # discriminator = 2
+test000.c:f:4.1.5
 % ./bbprof.exe test001.exe test001.out
+test001.c:main:7.1.0
+test001.c:f:2.1.0
+test001.c:f:3.16.1        # discriminator = 1
+test001.c:f:4.1.5
+%
 
-     カラム数は同じだが discriminator (識別子) の部分が異なっている. カラム数では
-     区別はできていないが, この部分で識別はできている.
+     カラム数は同じだが discriminator (識別子) の部分が異なっている.
+     discriminator のような不明なものではなくてカラム数で区別
+     したかったのだが, 現状はここまで.
+
