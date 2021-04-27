@@ -75,7 +75,7 @@ find_caller_1(bfd* abfd, asection* sect, asymbol** syms, addr_type addr)
   }
 
   cout << filename << ':' << functionname << ':' << line
-       << '.' << column << endl;
+       << '.' << column << '.' << discriminator << endl;
   return true;
 }
 

@@ -5164,6 +5164,8 @@ _bfd_dwarf2_find_nearest_line2 (bfd *abfd,
 		    * discriminator_ptr = local_discriminator;
 		  if (local_linenumber)
 		    * linenumber_ptr = local_linenumber;
+		  if (local_column)
+		    *column_ptr = local_column;
 		  min_range = range;
 		}
 	    }
@@ -5450,4 +5452,22 @@ _bfd_elf_find_function2 (bfd *abfd,
     *functionname_ptr = bfd_asymbol_name (cache->func);
 
   return cache->func;
+}
+
+void print(struct line_sequence* seq)
+{
+  if (!seq) {
+    fprintf(stderr, "null\n");
+    return;
+  }
+
+  struct line_info* info;
+  for (int i = 0 ; info = seq->line_info_lookup[i] ; ++i) {
+    bfd_vma addr = info->address;
+    const char* fn = info->filename;
+    int line = info->line;
+    int column = info->column;
+    int disc = info->discriminator;
+    fprintf(stderr, "%08x %s:%d.%d.%d\n", addr, fn, line, column, disc);
+  }
 }
