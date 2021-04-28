@@ -6,6 +6,7 @@
 (*4) bbprof1.cpp
 (*5) bbprof2.cpp
 (*6) bbprof3.cpp
+(*7) カラム数の扱い
 
 (*1) やりたいこと
 
@@ -112,9 +113,9 @@ g++ -o bbprof.exe bbprof3.o bbprof3_0.o my_dwarf2.o my_coffgen.o -lbfd -liberty 
      my_coffgen.c も ~/binutils-2.36.1-2.src/binutils-2.36.1/bfd/coffgen.c
      のほとんどコピーである.
 
-     bb.out を一旦 test000.out にリネームし, test001.c を test000.c と同様にビル
-     ドして test001.exe を実行し bb.out を生成し, bb.out を test001.out に
-     リネームする. そして以下の結果を比較してみる:
+     bb.out を一旦 test000.out にリネームし, test001.c を test000.c と同様に
+     ビルドして test001.exe を実行し bb.out を生成し, bb.out を test001.out
+     にリネームする. そして以下の結果を比較してみる:
 
 % ./bbprof.exe test000.exe test000.out
 test000.c:main:7.1.0
@@ -132,3 +133,62 @@ test001.c:f:4.1.5
      discriminator のような不明なものではなくてカラム数で区別
      したかったのだが, 現状はここまで.
 
+(*7) カラム数の扱い
+
+     (*6) では残念ながらカラム数で区別することができなかったが, これが
+     どの段階で消失(?)しているのか調べてみた.
+
+     「cc1 の抽象コードの調査」で述べた基本ブロックが作成された段階で
+     カラム数は 16 になってしまっていた. すなわち
+
+int f(int a, int b, int c)
+{
+  return a ? b : c;
+}
+
+     に対して gcc は 4 つある基本ブロックのすべてが 3 行目の 16
+     カラム目としている.
+
+     「gcc docgen 出力」で述べた函数のボディを tree として表現した
+     段階ではどうか. 実はこの段階でカラム数の情報は 12 か 16 しかない.
+     
+     12 カラムは '?' の位置で 16 カラムは ':' の位置である.
+     この式は
+
+     COND_EXPR
+         |
+         +---- NE_EXPR
+         |       |
+         |       +------- PARAM_DECL (a)
+         |       |
+         |       +------- 0
+         |
+         +---- PARAM_DECL (b)
+         |
+         +---- PARAM_DECL (c) 
+
+     のようになっているから NE_EXPR の部分には行番号情報はあるが,
+     b や c の部分にはもはや行番号情報はない. そして COND_EXPR
+     そのものには行番号情報を持たせている.
+
+     test002.c と test003.c をビルドし test002.exe と test003.exe
+     を実行し, test002.out と test003.out を生成したところで以下を
+     試してみた:
+
+% ./bbprof.exe test002.exe test002.out
+./bbprof.exe test002.exe test002.out 
+test002.c:main:17.1.0
+test002.c:h:12.1.0
+test002.c:h:13.20.2   # 20 カラム目
+test002.c:g:7.1.0
+test002.c:h:14.1.5
+% ./bbprof.exe test003.exe test003.out
+test003.c:main:17.1.0
+test003.c:h:12.1.0
+test003.c:h:13.14.1    # 14 カラム目
+test003.c:f:2.1.0
+test003.c:h:14.1.5
+%
+
+     これは期待した結果になっている. 14 カラム目, 20 カラム目は
+     ちょうど f と g の呼び出しにそれぞれ相当する.
