@@ -192,3 +192,66 @@ test003.c:h:14.1.5
 
      これは期待した結果になっている. 14 カラム目, 20 カラム目は
      ちょうど f と g の呼び出しにそれぞれ相当する.
+
+     test004.c と test005.c についても同様のことを試してみた. 試す前に,
+     期待通りカラム数で判別できると予測していたが, 実際はカラム数での
+     判別はできなかった:
+
+% ./bbprof.exe test004.exe test004.out
+test004.c:main:7.1.0
+test004.c:f:2.1.0
+test004.c:f:3.20.2     # カラム数は 20 で discriminator = 2
+test004.c:f:4.1.5
+% ./bbprof.exe test005.exe test005.out
+test005.c:main:7.1.0
+test005.c:f:2.1.0
+test005.c:f:3.20.1     # カラム数は 20 で discriminator = 1
+test005.c:f:4.1.5
+%
+
+      そこでこの状況を解消するためにパッチを作成した.
+      パッチの当て方はこのページにある profile_basic_block2.diff を
+      例えば /tmp/profile_basic_block2.diff として保存して
+
+% cd gcc-10.2.0
+% patch -p1 < /tmp/profile_basic_block.diff
+
+      とする. これで cc1 をビルドし直して, インストールされている cc1
+      に上書きして再び test00[0-5].exe をリビルド, 再実行すれば以下の
+      結果が得られる:
+
+% ./bbprof.exe test000.exe test000.out
+test000.c:main:7.1.0
+test000.c:f:2.1.0
+test000.c:f:3.16.2    # 16 カラム
+test000.c:f:4.1.5
+% ./bbprof.exe test001.exe test001.out
+test001.c:main:7.1.0
+test001.c:f:2.1.0
+test001.c:f:3.12.1    # 12 カラム
+test001.c:f:4.1.5
+% ./bbprof.exe test002.exe test002.out
+test002.c:main:17.1.0
+test002.c:h:12.1.0
+test002.c:h:13.18.2   # 18 カラム
+test002.c:g:7.1.0
+test002.c:h:14.1.5
+% ./bbprof.exe test003.exe test003.out
+test003.c:main:17.1.0
+test003.c:h:12.1.0
+test003.c:h:13.12.1   # 12 カラム
+test003.c:f:2.1.0
+test003.c:h:14.1.5
+% ./bbprof.exe test004.exe test004.out
+test004.c:main:7.1.0
+test004.c:f:2.1.0
+test004.c:f:3.20.2    # 20 カラム
+test004.c:f:4.1.5
+% ./bbprof.exe test005.exe test005.out
+test005.c:main:7.1.0
+test005.c:f:2.1.0
+test005.c:f:3.12.1    # 12 カラム
+test005.c:f:4.1.5
+%
+
+     これは期待した結果になっている.

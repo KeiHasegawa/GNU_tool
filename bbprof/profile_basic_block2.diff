@@ -1,0 +1,43 @@
+*** /home/khasegawa/gcc-10.2.0.org/gcc/gimplify.c	2020-07-23 15:35:17.644387858 +0900
+--- /home/khasegawa/gcc-10.2.0/gcc/gimplify.c	2021-04-29 13:23:07.536783712 +0900
+***************
+*** 4050,4055 ****
+--- 4050,4067 ----
+    return false;
+  }
+  
++ inline void modify_loc_if(tree expr, gimple_seq seq, bool second)
++ {
++   if (!global_options.x_flag_profile_basic_block)
++     return;
++   gimple* p = seq->next;
++   for (; p->next ; p = p->next)
++     ;
++   location_t loc = second ? EXPR_LOCATION(expr)
++     : EXPR_LOCATION(TREE_OPERAND(expr,0));
++   gimple_set_location(p, loc);
++ }
++ 
+  /*  Convert the conditional expression pointed to by EXPR_P '(p) ? a : b;'
+      into
+  
+***************
+*** 4238,4243 ****
+--- 4250,4256 ----
+  	{
+  	  gimplify_seq_add_stmt (&seq, gimple_build_label (label_true));
+  	  have_then_clause_p = gimplify_stmt (&TREE_OPERAND (expr, 1), &seq);
++ 	  modify_loc_if(expr, seq, false);
+  	  /* For if (...) { code; } else {} or
+  	     if (...) { code; } else goto label; or
+  	     if (...) { code; return; } else { ... }
+***************
+*** 4267,4272 ****
+--- 4280,4286 ----
+      {
+        gimplify_seq_add_stmt (&seq, gimple_build_label (label_false));
+        have_else_clause_p = gimplify_stmt (&TREE_OPERAND (expr, 2), &seq);
++       modify_loc_if(expr, seq, true);
+      }
+    if (label_cont)
+      gimplify_seq_add_stmt (&seq, gimple_build_label (label_cont));

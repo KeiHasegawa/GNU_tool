@@ -6,6 +6,7 @@ Basic block profile
 (*4) bbprof1.cpp
 (*5) bbprof2.cpp
 (*6) bbprof3.cpp
+(*7) column number
 
 (*1) What I want to do
 
@@ -132,4 +133,136 @@ test001.c:f:3.16.1  # discriminator = 1
 test001.c:f:4.1.5
 %
     We can distingush by `discriminator' between test000.out and test001.out.
+    But this is not expected result. We actually want to distinguish by
+    column number.
+
+(*7) column number
+
+    I investigated line information because the result of (*6) was not
+    expected result.
+
+    When basic blocks are created at the point which was described at
+    "cc1 abstract code investigation", the column numbers were 16.
+    i.e. for the below code,
+
+int f(int a, int b, int c)
+{
+  return a ? b : c;
+}
+
+    gcc makes line information for 4 basic blocks, and the information
+    column numbers are all 16.
+
+    I also investigated at the point which was described at
+    "gcc docgen output", where function body is expressed as a `tree'.
+    Acutally, at this point, column number of line information is 12
+    or 16, and they are correspond to '?' and ':' respecitively.
+    A `tree' of `a ? b : c' is:
+
+     COND_EXPR
+         |
+         +---- NE_EXPR
+         |       |
+         |       +------- PARAM_DECL (a)
+         |       |
+         |       +------- 0
+         |
+         +---- PARAM_DECL (b)
+         |
+         +---- PARAM_DECL (c) 
+
+     Above COND_EXPR itself has line information. Similary above NE_EXPR
+     has also. But there is no line information for `b' or `c' as 
+     a primary-expression.
+
+     Now I tried test002.c and test003.c similarly with test000.c and
+     test001.c:
+
+% ./bbprof.exe test002.exe test002.out
+./bbprof.exe test002.exe test002.out 
+test002.c:main:17.1.0
+test002.c:h:12.1.0
+test002.c:h:13.20.2   # 20 column
+test002.c:g:7.1.0
+test002.c:h:14.1.5
+% ./bbprof.exe test003.exe test003.out
+test003.c:main:17.1.0
+test003.c:h:12.1.0
+test003.c:h:13.14.1    # 14 column
+test003.c:f:2.1.0
+test003.c:h:14.1.5
+%
+
+     This is expected result. Column number 14 and 20 are correspond
+     to function call `f' or `g' respectively.
+
+     Similary I also tried test004.c and test005.c. I expected that
+     I could distinguish by column number not `discriminator'. But
+     the result were:
+
+% ./bbprof.exe test004.exe test004.out
+test004.c:main:7.1.0
+test004.c:f:2.1.0
+test004.c:f:3.20.2     # column : 20  discriminator : 2
+test004.c:f:4.1.5
+% ./bbprof.exe test005.exe test005.out
+test005.c:main:7.1.0
+test005.c:f:2.1.0
+test005.c:f:3.20.1     # column : 20  discriminator : 1
+test005.c:f:4.1.5
+%
+
+     So I decided to make patch file for modifing line information
+     for this purpose.
+
+     How to patch:
+     Download `profile_basic_block2.diff' on this web page and save as:
+
+/tmp/profile_basic_block2.diff
+
+     And execute like below:
+
+% cd gcc-10.2.0
+% patch -p1 < /tmp/profile_basic_block2.diff
+
+      Rebuild cc1 and overwrite rebuild cc1 to installed cc1.
+      And again rebuld test00[0-5].exe. The results are:
+
+% ./bbprof.exe test000.exe test000.out
+test000.c:main:7.1.0
+test000.c:f:2.1.0
+test000.c:f:3.16.2    # 16
+test000.c:f:4.1.5
+% ./bbprof.exe test001.exe test001.out
+test001.c:main:7.1.0
+test001.c:f:2.1.0
+test001.c:f:3.12.1    # 12
+test001.c:f:4.1.5
+% ./bbprof.exe test002.exe test002.out
+test002.c:main:17.1.0
+test002.c:h:12.1.0
+test002.c:h:13.18.2   # 18
+test002.c:g:7.1.0
+test002.c:h:14.1.5
+% ./bbprof.exe test003.exe test003.out
+test003.c:main:17.1.0
+test003.c:h:12.1.0
+test003.c:h:13.12.1   # 12
+test003.c:f:2.1.0
+test003.c:h:14.1.5
+% ./bbprof.exe test004.exe test004.out
+test004.c:main:7.1.0
+test004.c:f:2.1.0
+test004.c:f:3.20.2    # 20
+test004.c:f:4.1.5
+% ./bbprof.exe test005.exe test005.out
+test005.c:main:7.1.0
+test005.c:f:2.1.0
+test005.c:f:3.12.1    # 12
+test005.c:f:4.1.5
+%
+
+     These are expected result.
+
+
 
