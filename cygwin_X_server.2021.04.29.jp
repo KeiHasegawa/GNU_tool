@@ -1,0 +1,305 @@
+cygwin の X server のメモ
+
+(*1) X server の起動方法
+(*2) linux マシンから emacs を起動してみたが起動できず.
+(*3) cygwin で xeyes を X server 指定で起動してみたが起動できず.
+(*4) cygwin で xterm から emacs を起動してみたがだめだがこれは emacs の問題
+(*5) sh -vf /usr/bin/startx を実行してみた
+
+(*1) X server の起動方法
+   色々やり方はあるが
+   
+% startx
+
+   とすると X server が起動してさらにそこで xterm と思われるウィンドウが
+   表示される.
+
+sh-4.4$
+
+   のようにコマンドプロンプトが表示されているので, そこで
+
+sh-4.4$ xeyes
+
+   のように X のプログラムを起動してみる. 期待通り xeyes が動いていた.
+   キーボードの配置日本語から英語に切り替わってしまっていたので, 画面右下の
+   部分をクリックして配置をもとに戻す必要があった.
+
+(*2) linux マシンから emacs を起動してみたが起動できず.
+
+linux % printenv
+...
+linux % printenv | grep SSH
+SH_TTY=/dev/pts/0
+SSH_CLIENT=192.168.100.17 52703 22      # Windows マシンの IP アドレス
+linux % emacs -d 192.168.100.17:0.0
+Display 192.168.100.17:0.0 can't be opened
+
+     残念. だめらしい.
+
+linux % emacs -d 192.168.100.16:0.0     # 意図的に違うアドレスを指定
+Display 192.168.100.16:0.0 can't be opened
+見た目の結果は同じだが, すぐにエラーになる.
+
+     これは, X server に拒否されているということだろうか.
+
+(*3) cygwin で xeyes を X server 指定で起動してみたが起動できず.
+
+sh-4.4$ xeyes -display 192.168.100.17:0.0
+
+    これもだめ. 表示できていない.
+
+(*4) cygwin で xterm から emacs を起動してみたがだめだがこれは emacs の問題
+
+sh-4.4$ emacs                        
+libGL error: Screen is not Windows-DRI capable
+
+** (emacs:63889): WARNING **: Error retrieving accessibility bus address: org.freedesktop.DBus.Error.Spawn.ChildExited: Process org.a11y.Bus exited with status 1
+
+(emacs:63889): Gtk-WARNING **: Could not load a pixbuf from icon theme.
+This may indicate that pixbuf loaders or the mime database could not be found.
+**
+Gtk:ERROR:/usr/src/ports/gtk3/gtk3-3.22.28-1.x86_64/src/gtk+-3.22.28/gtk/gtkiconhelper.c:494:ensure_surface_for_gicon: assertion failed (error == NULL): Failed to load /usr/share/icons/Adwaita/24x24/status/image-missing.png: Unrecognized image file format (gdk-pixbuf-error-quark, 3)
+Fatal error 6: Aborted
+Aborted (core dumped)
+sh-4.4$
+
+     一瞬 emacs の画面が表示されたがなんだかよくないことが起こっているらしい.
+
+(*5) sh -vf /usr/bin/startx を実行してみた
+
+> which startx
+/usr/bin/startx
+> sh -vf /usr/bin/startx
+#!/bin/sh
+
+#
+# This is just a sample implementation of a slightly less primitive
+# interface than xinit. It looks for user .xinitrc and .xserverrc
+# files, then system xinitrc and xserverrc files, else lets xinit choose
+# its default. The system xinitrc should probably do things like check
+# for .Xresources files and merge them in, start up a window manager,
+# and pop a clock and several xterms.
+#
+# Site administrators are STRONGLY urged to write nicer versions.
+#
+
+unset DBUS_SESSION_BUS_ADDRESS
+unset SESSION_MANAGER
+userclientrc=$HOME/.xinitrc
+sysclientrc=/etc/X11/xinit/xinitrc
+
+userserverrc=$HOME/.xserverrc
+sysserverrc=/etc/X11/xinit/xserverrc
+defaultclient=xterm
+defaultserver=/usr/bin/X
+defaultclientargs=""
+defaultserverargs=""
+defaultdisplay=""
+clientargs=""
+serverargs=""
+vtarg=""
+display=""
+enable_xauth=1
+
+
+# Automatically determine an unused $DISPLAY
+d=0
+while true ; do
+    [ -e "/tmp/.X$d-lock" -o -S "/tmp/.X11-unix/X$d" ] || break
+    kill -0 `cat /tmp/.X$d-lock` 2>/dev/null || break
+    d=$(($d + 1))
+done
+defaultdisplay=":$d"
+unset d
+
+whoseargs="client"
+while [ x"$1" != x ]; do
+    case "$1" in
+    # '' required to prevent cpp from treating "/*" as a C comment.
+    /''*|\./''*)
+ if [ "$whoseargs" = "client" ]; then
+     if [ x"$client" = x ] && [ x"$clientargs" = x ]; then
+  client="$1"
+     else
+  clientargs="$clientargs $1"
+     fi
+ else
+     if [ x"$server" = x ] && [ x"$serverargs" = x ]; then
+  server="$1"
+     else
+  serverargs="$serverargs $1"
+     fi
+ fi
+ ;;
+    --)
+ whoseargs="server"
+ ;;
+    *)
+ if [ "$whoseargs" = "client" ]; then
+     clientargs="$clientargs $1"
+ else
+     # display must be the FIRST server argument
+     if [ x"$serverargs" = x ] && \
+   expr "$1" : ':[0-9][0-9]*$' > /dev/null 2>&1; then
+  display="$1"
+     else
+  serverargs="$serverargs $1"
+     fi
+ fi
+ ;;
+    esac
+    shift
+done
+
+# process client arguments
+if [ x"$client" = x ]; then
+    client=$defaultclient
+
+    # For compatibility reasons, only use startxrc if there were no client command line arguments
+    if [ x"$clientargs" = x ]; then
+        if [ -f "$userclientrc" ]; then
+            client=$userclientrc
+        elif [ -f "$sysclientrc" ]; then
+            client=$sysclientrc
+        fi
+    fi
+fi
+
+# if no client arguments, use defaults
+if [ x"$clientargs" = x ]; then
+    clientargs=$defaultclientargs
+fi
+
+# process server arguments
+if [ x"$server" = x ]; then
+    server=$defaultserver
+    # For compatibility reasons, only use xserverrc if there were no server command line arguments
+    if [ x"$serverargs" = x -a x"$display" = x ]; then
+ if [ -f "$userserverrc" ]; then
+     server=$userserverrc
+ elif [ -f "$sysserverrc" ]; then
+     server=$sysserverrc
+ fi
+    fi
+fi
+
+# if no server arguments, use defaults
+if [ x"$serverargs" = x ]; then
+    serverargs=$defaultserverargs
+fi
+
+# set icon if available
+if [ -f "/usr/share/pixmaps/xwin/$XSESSION_ICON.ico" ]; then
+    serverargs="$serverargs -icon /usr/share/pixmaps/xwin/$XSESSION_ICON.ico"
+fi
+
+# if no vt is specified add vtarg (which may be empty)
+have_vtarg="no"
+for i in $serverargs; do
+    if expr "$i" : 'vt[0-9][0-9]*$' > /dev/null; then
+        have_vtarg="yes"
+    fi
+done
+if [ "$have_vtarg" = "no" ]; then
+    serverargs="$serverargs $vtarg"
+fi
+
+# if no display, use default
+if [ x"$display" = x ]; then
+    display=$defaultdisplay
+fi
+
+if [ x"$enable_xauth" = x1 ] ; then
+    if [ x"$XAUTHORITY" = x ]; then
+        XAUTHORITY=$HOME/.Xauthority
+        export XAUTHORITY
+    fi
+
+    removelist=
+
+    # set up default Xauth info for this machine
+    case `uname` in
+    Linux*)
+        if [ -z "`hostname --version 2>&1 | grep GNU`" ]; then
+            hostname=`hostname -f`
+        else
+            hostname=`hostname`
+        fi
+        ;;
+    *)
+        hostname=`hostname`
+        ;;
+    esac
+
+    authdisplay=${display:-:0}
+
+    mcookie=`/usr/bin/mcookie`
+
+
+
+
+
+
+
+    if test x"$mcookie" = x; then
+        echo "Couldn't create cookie"
+        exit 1
+    fi
+    dummy=0
+
+    # create a file with auth information for the server. ':0' is a dummy.
+    xserverauthfile=$HOME/.serverauth.$$
+    trap "rm -f '$xserverauthfile'" HUP INT QUIT ILL TRAP KILL BUS TERM
+    touch "$xserverauthfile"
+    xauth -q -f "$xserverauthfile" << EOF
+add :$dummy . $mcookie
+EOF
+
+    xserverauthfilequoted=$(echo ${xserverauthfile} | sed "s/'/'\\\\''/g")
+    serverargs=${serverargs}" -auth '"${xserverauthfilequoted}"'"
+
+
+
+
+    # now add the same credentials to the client authority file
+    # if '$displayname' already exists do not overwrite it as another
+    # server may need it. Add them to the '$xserverauthfile' instead.
+    for displayname in $authdisplay $hostname$authdisplay; do
+        authcookie=`xauth list "$displayname" \
+        | sed -n "s/.*$displayname[[:space:]*].*[[:space:]*]//p"` 2>/dev/null;
+        if [ "z${authcookie}" = "z" ] ; then
+            xauth -q << EOF
+add $displayname . $mcookie
+EOF
+        removelist="$displayname $removelist"
+        else
+            dummy=$(($dummy+1));
+            xauth -q -f "$xserverauthfile" << EOF
+add :$dummy . $authcookie
+EOF
+        fi
+    done
+fi
+
+
+eval xinit \"$client\" $clientargs -- \"$server\" $display $serverargs
+xinit "xterm" -- "/usr/bin/X" :0 -auth '/cygdrive/d/home/khasegawa/.serverauth.63900'
+
+xinit: connection to X server lost
+
+waiting for X server to shut down
+
+
+
+retval=$?
+
+if [ x"$enable_xauth" = x1 ] ; then
+    if [ x"$removelist" != x ]; then
+        xauth remove $removelist
+    fi
+    if [ x"$xserverauthfile" != x ]; then
+        rm -f "$xserverauthfile"
+    fi
+fi
+exit $retval
+>
