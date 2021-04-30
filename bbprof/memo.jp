@@ -272,8 +272,24 @@ test005.c:f:4.1.5
 
      まず _profile_basic_block_ がどこに配置されているかを調べる.
      次に各函数に対してそのアドレスに call を発行している部分を
-     知る.
+     調べる.
 
      その函数が _profile_basic_block_ を呼び出していないのならば,
      プロファイル対象外の函数ということになる.
      
+     やり方はいろいろあるが, 逆アセンブルするのが一番確実かと思いその
+     ようにした. ビルドの方法は以下のようにする:
+
+linux
+g++ -o bbprof.exe -DPACKAGE  bbprof4.cpp -lbfd -liberty -L/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/libiberty -ldl -lz  /home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/opcodes/libopcodes.a
+
+cygwin
+
+     この 4 番目のバージョンは bb.out に相当するものを読み込まないで,
+     単にプログラムファイルから基本ブロックの範囲を抜粋するだけにした.
+     以下のように実行する.
+
+% ./bbprof.exe test000.exe
+
+     f の基本ブロック 4 つと main の基本ブロック 1 つに対して,
+     先頭アドレスと最後のアドレスとして表示される.
