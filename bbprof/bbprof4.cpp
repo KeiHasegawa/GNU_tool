@@ -31,24 +31,27 @@ struct find_caller1 {
 #ifdef JUST_DISASSEMBLE
     cout << sym->name << ':' << endl;
 #endif
+#ifdef __CYGWIN__
+    if (!strcmp(sym->name, "__CTOR_LIST__"))
+      return false;
+#endif
     auto p = reinterpret_cast<app_data*>(m_info->application_data);
     p->m_caller = m_sec_base + sym->value;
     auto res = p->m_result;
-    int n = res->size();
+    int before = res->size();
     const char* ret = "ret";
     int len = strlen(ret);
-
     while (p->m_caller != end) {
       int n = print_insn_i386(p->m_caller, m_info);
       p->m_prev = p->m_caller;
-      if (!strncmp(my_fprintf_data::last, ret, len)) 
+      if (my_fprintf_data::last && !strncmp(my_fprintf_data::last, ret, len)) 
 	p->m_last_ret = p->m_caller;
       p->m_caller += n;
 #ifdef JUST_DISASSEMBLE
       cout << endl;
 #endif
     }
-    if (n != res->size()) {
+    if (before != res->size()) {
       assert(!res->empty());
       auto& second = res->back().second;
       assert(!second);
