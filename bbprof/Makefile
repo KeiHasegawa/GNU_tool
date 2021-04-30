@@ -19,7 +19,7 @@ ifneq (,$(findstring CYGWIN,$(UNAME)))
 endif
 
 LIB_FLAG = -lbfd -liberty -L$(BINUTILS)/libiberty -ldl -lz $(LIB_INTL_FLAGS)
-EXTRA_LIB = $(BINUTILS)/opcodes/debug_build/libopcodes.a
+EXTRA_LIB = $(BINUTILS)/opcodes/libopcodes.a
 
 $(PROG):$(OBJS)
 	$(CXX) -o $(PROG) $(OBJS) $(LIB_FLAG) $(EXTRA_LIB)
