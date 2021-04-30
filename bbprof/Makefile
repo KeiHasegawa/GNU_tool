@@ -7,7 +7,7 @@ ifneq (,$(findstring CYGWIN,$(UNAME)))
 	MY_COFF_OBJ = my_coffgen.o
 endif
 
-OBJS = bbprof3.o bbprof3_0.o my_dwarf2.o $(MY_COFF_OBJ)
+OBJS = bbprof4.o
 
 BINUTILS = /home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1
 ifneq (,$(findstring CYGWIN,$(UNAME)))
@@ -19,9 +19,10 @@ ifneq (,$(findstring CYGWIN,$(UNAME)))
 endif
 
 LIB_FLAG = -lbfd -liberty -L$(BINUTILS)/libiberty -ldl -lz $(LIB_INTL_FLAGS)
+EXTRA_LIB = $(BINUTILS)/opcodes/debug_build/libopcodes.a
 
 $(PROG):$(OBJS)
-	$(CXX) -o $(PROG) $(OBJS) $(LIB_FLAG)
+	$(CXX) -o $(PROG) $(OBJS) $(LIB_FLAG) $(EXTRA_LIB)
 
 DEBUG_FLAG = -g
 EXTRA_DEFINE = -DPACKAGE

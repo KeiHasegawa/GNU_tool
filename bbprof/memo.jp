@@ -7,6 +7,7 @@
 (*5) bbprof2.cpp
 (*6) bbprof3.cpp
 (*7) カラム数の扱い
+(*8) bbprof4.cpp
 
 (*1) やりたいこと
 
@@ -118,13 +119,13 @@ g++ -o bbprof.exe bbprof3.o bbprof3_0.o my_dwarf2.o my_coffgen.o -lbfd -liberty 
      にリネームする. そして以下の結果を比較してみる:
 
 % ./bbprof.exe test000.exe test000.out
-test000.c:main:7.1.0
-test000.c:f:2.1.0
+test000.c:main:7.1
+test000.c:f:2.1
 test000.c:f:3.16.2        # discriminator = 2
 test000.c:f:4.1.5
 % ./bbprof.exe test001.exe test001.out
-test001.c:main:7.1.0
-test001.c:f:2.1.0
+test001.c:main:7.1
+test001.c:f:2.1
 test001.c:f:3.16.1        # discriminator = 1
 test001.c:f:4.1.5
 %
@@ -177,16 +178,16 @@ int f(int a, int b, int c)
 
 % ./bbprof.exe test002.exe test002.out
 ./bbprof.exe test002.exe test002.out 
-test002.c:main:17.1.0
-test002.c:h:12.1.0
+test002.c:main:17.1
+test002.c:h:12.1
 test002.c:h:13.20.2   # 20 カラム目
-test002.c:g:7.1.0
+test002.c:g:7.1
 test002.c:h:14.1.5
 % ./bbprof.exe test003.exe test003.out
-test003.c:main:17.1.0
-test003.c:h:12.1.0
+test003.c:main:17.1
+test003.c:h:12.1
 test003.c:h:13.14.1    # 14 カラム目
-test003.c:f:2.1.0
+test003.c:f:2.1
 test003.c:h:14.1.5
 %
 
@@ -198,13 +199,13 @@ test003.c:h:14.1.5
      判別はできなかった:
 
 % ./bbprof.exe test004.exe test004.out
-test004.c:main:7.1.0
-test004.c:f:2.1.0
+test004.c:main:7.1
+test004.c:f:2.1
 test004.c:f:3.20.2     # カラム数は 20 で discriminator = 2
 test004.c:f:4.1.5
 % ./bbprof.exe test005.exe test005.out
-test005.c:main:7.1.0
-test005.c:f:2.1.0
+test005.c:main:7.1
+test005.c:f:2.1
 test005.c:f:3.20.1     # カラム数は 20 で discriminator = 1
 test005.c:f:4.1.5
 %
@@ -214,44 +215,65 @@ test005.c:f:4.1.5
       例えば /tmp/profile_basic_block2.diff として保存して
 
 % cd gcc-10.2.0
-% patch -p1 < /tmp/profile_basic_block.diff
+% patch -p4 < /tmp/profile_basic_block.diff
 
       とする. これで cc1 をビルドし直して, インストールされている cc1
       に上書きして再び test00[0-5].exe をリビルド, 再実行すれば以下の
       結果が得られる:
 
 % ./bbprof.exe test000.exe test000.out
-test000.c:main:7.1.0
-test000.c:f:2.1.0
+test000.c:main:7.1
+test000.c:f:2.1
 test000.c:f:3.16.2    # 16 カラム
 test000.c:f:4.1.5
 % ./bbprof.exe test001.exe test001.out
-test001.c:main:7.1.0
-test001.c:f:2.1.0
+test001.c:main:7.1
+test001.c:f:2.1
 test001.c:f:3.12.1    # 12 カラム
 test001.c:f:4.1.5
 % ./bbprof.exe test002.exe test002.out
-test002.c:main:17.1.0
-test002.c:h:12.1.0
+test002.c:main:17.1
+test002.c:h:12.1
 test002.c:h:13.18.2   # 18 カラム
-test002.c:g:7.1.0
+test002.c:g:7.1
 test002.c:h:14.1.5
 % ./bbprof.exe test003.exe test003.out
-test003.c:main:17.1.0
-test003.c:h:12.1.0
+test003.c:main:17.1
+test003.c:h:12.1
 test003.c:h:13.12.1   # 12 カラム
-test003.c:f:2.1.0
+test003.c:f:2.1
 test003.c:h:14.1.5
 % ./bbprof.exe test004.exe test004.out
-test004.c:main:7.1.0
-test004.c:f:2.1.0
+test004.c:main:7.1
+test004.c:f:2.1
 test004.c:f:3.20.2    # 20 カラム
 test004.c:f:4.1.5
 % ./bbprof.exe test005.exe test005.out
-test005.c:main:7.1.0
-test005.c:f:2.1.0
+test005.c:main:7.1
+test005.c:f:2.1
 test005.c:f:3.12.1    # 12 カラム
 test005.c:f:4.1.5
 %
 
      これは期待した結果になっている.
+
+(*8) bbprof4.cpp
+
+     bbprof3.cpp は函数 _profile_basic_block_ がどこから呼び出された
+     かを特定することはできたが, 函数を構成する基本ブロックを認識できて
+     いない.
+     
+     基本ブロックの先頭は
+
+     call	_profile_basic_block_
+
+     という命令である. そしてこの基本ブロックの終わりは同一函数内の
+     基本ブロックの先頭か, 函数の終わりである.
+
+     まず _profile_basic_block_ がどこに配置されているかを調べる.
+     次に各函数に対してそのアドレスに call を発行している部分を
+     知る.
+
+     その函数が _profile_basic_block_ を呼び出していないのならば,
+     プロファイル対象外の函数ということになる.
+     
