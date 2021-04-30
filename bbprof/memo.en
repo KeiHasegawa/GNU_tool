@@ -7,6 +7,7 @@ Basic block profile
 (*5) bbprof2.cpp
 (*6) bbprof3.cpp
 (*7) column number
+(*8) bbprof4.cpp
 
 (*1) What I want to do
 
@@ -264,5 +265,44 @@ test005.c:f:4.1.5
 
      These are expected result.
 
+(*8) bbprof4.cpp
 
+     bbprof3.cpp does not recognize start and end address of basic
+     block.
+
+     If
+
+     call	_profile_basic_block_
+
+     is located, it's the start address of basic block. The end 
+     address of basic block is either below:
+
+     o Next basic block start address
+     o The end of function
+
+     So, at first, investigate address of _profile_basic_block. And
+     second, for each function, investigate the address where
+
+     call	_profile_basic_block_
+
+     is located.
+     If a function does not call _profile_basic_block_, it's not
+     necessary to profile the function.
+
+     To implement above, there are some ways. But I think disassembling is
+     certain method. This program is built like below:
+
+linux
+g++ -o bbprof.exe -DPACKAGE  bbprof4.cpp -lbfd -liberty -L/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/libiberty -ldl -lz /home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/opcodes/libopcodes.a
+
+cygwin
+g++ -o bbprof.exe -DPACKAGE bbprof4.cpp -lbfd -liberty -Ld:/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/libiberty -ldl -lz -lintl d:/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/opcodes/libopcodes.a
+
+     This version bbprof.exe does not read `bb.out' but just program file.
+     Execute like below:
+
+% ./bbprof.exe test000.exe
+
+     Above results shows start and end address of 4 blocks of `f'
+     and 1 block of `main'.
 
