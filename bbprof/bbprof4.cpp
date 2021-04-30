@@ -152,7 +152,11 @@ void find_caller(bfd* abfd, asection* sect, asymbol** syms, int nsyms,
   init_disassemble_info(&info, 0, my_fprintf);
   info.print_address_func = my_address_func;
 #endif
+#ifdef __x86_64__
+  info.mach = bfd_mach_x86_64;
+#else // __x86_64__
   info.mach = bfd_mach_i386_i386;
+#endif // __x86_64__
   app_data data = { prof_addr, &res };
   info.application_data = reinterpret_cast<void*>(&data);
 
