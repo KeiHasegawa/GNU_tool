@@ -313,7 +313,8 @@ inline bool output1(bfd* abfd, asection* sect, asymbol** syms,
   if (!column)
     return true;
 
-  if (prev_highlight)
+  bool b = prev_highlight && column != 1;
+  if (b)
     cout << roff::fB;
 
   while (--column) {
@@ -323,7 +324,7 @@ inline bool output1(bfd* abfd, asection* sect, asymbol** syms,
     cout.put(c);
   }
 
-  if (prev_highlight)
+  if (b)
     cout << roff::fR;
 
   if (highlight)
