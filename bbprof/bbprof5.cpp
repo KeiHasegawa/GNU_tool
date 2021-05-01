@@ -341,7 +341,7 @@ inline bool match(const std::set<bfd_vma>& addrs, bfd_vma y)
 		   [y](bfd_vma x){ return (x & 0xffff) == (y & 0xffff); });
   return p != end(addrs);
 #else // __CYGWIN__
-  return addrs.find(addr) != addrs.end();
+  return addrs.find(y) != addrs.end();
 #endif // __CYGWIN__
 }
 
