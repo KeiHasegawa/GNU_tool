@@ -8,10 +8,13 @@ static FILE* fp = fopen("bb.out", "w");
 extern "C" void _profile_basic_block_()
 {
 #ifdef __x86_64__
+  asm("pushq	%rax");
   asm("pushq	%rcx");
   asm("pushq	%rdx");
   asm("pushq	%r8");
   asm("pushq	%r9");
+#else  // __x86_64__
+  asm("push	%eax");
 #endif // __x86_64__
 #ifdef __CYGWIN__
   static FILE* fp;
@@ -27,10 +30,12 @@ extern "C" void _profile_basic_block_()
   asm("popq	%r8");
   asm("popq	%rdx");
   asm("popq	%rcx");
+  asm("popq	%rax");
 #else //__x86_64__
   uint32_t addr;
   asm("movl	4(%ebp), %eax");
   asm("mov	%eax, -12(%ebp)");  // assume that addr is located at -12(%ebp)
   fwrite(&addr, sizeof addr, 1, fp);
+  asm("pop	%eax");
 #endif // __x86_64__
 }
