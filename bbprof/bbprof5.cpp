@@ -297,7 +297,7 @@ inline bool output1(bfd* abfd, asection* sect, asymbol** syms,
 #endif // __CYGWIN__
       if (c == '\n')
 	break;
-      if (c == ' ' || c == '\\')  // not support SJIS JIS
+      if (c == ' ' || c == '\t' || c == '\\')  // not support SJIS JIS
 	cout.put('\\');
       cout.put(c);
     }

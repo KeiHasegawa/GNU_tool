@@ -2,7 +2,9 @@
 
 int f()
 {
-  return 2;
+	putc('f', stdout); 
+	putc('\n', stdout); 
+	return 2;
 }
 
 int g()

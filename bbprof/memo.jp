@@ -316,4 +316,16 @@ g++ -o bbprof.exe -DPACKAGE bbprof5.cpp bbprof3_0.o my_dwarf2.o -lbfd -liberty -
 cygwin
 g++ -o bbprof.exe -DPACKAGE  bbprof5.o bbprof3_0.o my_dwarf2.o my_coffgen.o -lbfd -liberty -ldl -lz -lintl -lopcodes
 
+      このバージョンの bbprof.exe は以下のように使用する:
 
+% ./bbprof.exe test000.exe test000.out > test000.res
+% man ./test000.res
+
+      groff を使用すれば html 形式に変換できる:
+
+% groff -T html test000.res > test000.html
+
+      html 形式に変換して気付いたが, 行頭の空白が正しく扱えていない.
+      これはそのうち改善する必要がある.
+
+      o 例によって SJIS, JIS の対応が必要になる
