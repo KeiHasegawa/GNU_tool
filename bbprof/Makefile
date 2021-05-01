@@ -7,7 +7,7 @@ ifneq (,$(findstring CYGWIN,$(UNAME)))
 	MY_COFF_OBJ = my_coffgen.o
 endif
 
-OBJS = bbprof4.o
+OBJS = bbprof5.o bbprof3_0.o my_dwarf2.o
 
 BINUTILS = /home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1
 ifneq (,$(findstring CYGWIN,$(UNAME)))
