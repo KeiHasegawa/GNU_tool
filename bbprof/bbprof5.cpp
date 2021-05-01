@@ -213,10 +213,6 @@ inline bool output1(bfd* abfd, asection* sect, asymbol** syms,
     return false;
 
   bfd_vma vma = sect->vma;
-#ifdef __CYGWIN__
-  addr &= 0x0000ffff;
-  addr |= vma;
-#endif // __CYGWIN__
   if (addr < vma)
     return false;
 
@@ -280,13 +276,22 @@ inline bool output1(bfd* abfd, asection* sect, asymbol** syms,
     do {
       ifs.clear();
       ifs.getline(&buf[0], sizeof buf);
+#ifdef __CYGWIN__
+      int len = strlen(&buf[0]);
+      if (buf[len-1] == '\r')
+	buf[len-1] = '\0';
+#endif // __CYGWIN__
       cout << buf;
     } while (ifs.fail());
     if (ifs.eof())
       return true;
     if (prev_highlight)
       cout << roff::fR;
+#ifdef __CYGWIN__
+    cout << "\r\n" << roff::br << "\r\n";
+#else // __CYGWIN__
     cout << '\n' << roff::br << '\n';
+#endif // __CYGWIN__
   }
 
   if (!column)
@@ -315,7 +320,7 @@ inline bool output1(bfd* abfd, asection* sect, asymbol** syms,
   }
   if (highlight)
     cout << roff::fR;
-  fflush(stdout);
+
   prev_highlight = highlight;
   return true;
 }
@@ -328,13 +333,16 @@ inline void output(bfd* abfd, asymbol** syms, bfd_vma addr, bool highlight)
   }
 }
 
-inline std::pair<bfd_vma, bfd_vma>*
-chose(bfd_vma addr, std::map<bfd_vma, bfd_vma>* bb)
+inline bool match(const std::set<bfd_vma>& addrs, bfd_vma y)
 {
+#ifdef __CYGWIN__
   using namespace std;
-  auto it = bb->find(addr);
-  assert(it != bb->end());
-  return reinterpret_cast<pair<bfd_vma, bfd_vma>*>(&*it);
+  auto p = find_if(begin(addrs), end(addrs),
+		   [y](bfd_vma x){ return (x & 0xffff) == (y & 0xffff); });
+  return p != end(addrs);
+#else // __CYGWIN__
+  return addrs.find(addr) != addrs.end();
+#endif // __CYGWIN__
 }
 
 int main(int argc, char** argv)
@@ -397,13 +405,17 @@ int main(int argc, char** argv)
 
   for (auto p : bb) {
     auto addr = p.first;
-    bool highlight = addrs.find(addr) != addrs.end();
+    bool highlight = match(addrs, addr);
     output(abfd, syms, addr, highlight);
     if (addr = p.second)
       output(abfd, syms, addr, highlight);
   }
-  
+
+#ifdef __CYGWIN__
+  cout << "\r\n" << roff::br << "\r\n";
+#else // __CYGWIN__
   cout << '\n' << roff::br << '\n';
+#endif // __CYGWIN__
 
   return 0;
 }
