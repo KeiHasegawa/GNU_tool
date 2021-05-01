@@ -205,6 +205,20 @@ namespace roff {
   const char* fR = "\\fR";
 } // end of namespace roff
 
+inline bool out_fB(bool prev_highlight, std::ifstream& ifs)
+{
+#ifdef __CYGWIN__
+  if (!prev_highlight)
+    return false;
+  if (ifs.peek() != '\r')
+    return true;
+  ifs.get();
+  return ifs.peek() != '\n';
+#else // __CYGWIN__
+  return prev_highlight && ifs.peek() != '\n';
+#endif // __CYGWIN__
+}
+
 inline bool output1(bfd* abfd, asection* sect, asymbol** syms,
 		    bfd_vma addr, bool highlight)
 {
@@ -270,13 +284,17 @@ inline bool output1(bfd* abfd, asection* sect, asymbol** syms,
   }
 
   while (line--) {
-    bool b = prev_highlight && ifs.peek() != '\n';
+    bool b = out_fB(prev_highlight, ifs);
     if (b)
       cout << roff::fB;
     while (1) {
       int c = ifs.get();
       if (ifs.eof())
 	return true;
+#ifdef __CYGWIN__
+      if (c == '\r')
+	c = ifs.get();
+#endif // __CYGWIN__
       if (c == '\n')
 	break;
       if (c == ' ' || c == '\\')  // not support SJIS JIS
