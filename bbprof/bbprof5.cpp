@@ -203,7 +203,7 @@ namespace roff {
   const char* br = ".br";
   const char* fB = "\\fB";
   const char* fR = "\\fR";
-} // end of namespacer off
+} // end of namespace roff
 
 inline bool output1(bfd* abfd, asection* sect, asymbol** syms,
 		    bfd_vma addr, bool highlight)
@@ -270,22 +270,20 @@ inline bool output1(bfd* abfd, asection* sect, asymbol** syms,
   }
 
   while (line--) {
-    if (prev_highlight)
+    bool b = prev_highlight && ifs.peek() != '\n';
+    if (b)
       cout << roff::fB;
-    char buf[256];
-    do {
-      ifs.clear();
-      ifs.getline(&buf[0], sizeof buf);
-#ifdef __CYGWIN__
-      int len = strlen(&buf[0]);
-      if (buf[len-1] == '\r')
-	buf[len-1] = '\0';
-#endif // __CYGWIN__
-      cout << buf;
-    } while (ifs.fail());
-    if (ifs.eof())
-      return true;
-    if (prev_highlight)
+    while (1) {
+      int c = ifs.get();
+      if (ifs.eof())
+	return true;
+      if (c == '\n')
+	break;
+      if (c == ' ' || c == '\\')  // not support SJIS JIS
+	cout.put('\\');
+      cout.put(c);
+    }
+    if (b)
       cout << roff::fR;
 #ifdef __CYGWIN__
     cout << "\r\n" << roff::br << "\r\n";
@@ -418,47 +416,4 @@ int main(int argc, char** argv)
 #endif // __CYGWIN__
 
   return 0;
-}
-
-using namespace std;
-void debug(const map<bfd_vma, bfd_vma>& m)
-{
-  cout << hex;
-  for (auto p : m)
-    cout << p.first << " - " << p.second << endl;
-}
-
-void debug(const set<pair<bfd_vma, bfd_vma>*>& res)
-{
-  cout << hex;
-  for (auto p : res)
-    cout << p->first << " - " << p->second << endl;
-}
-
-void debug(const vector<bfd_vma>& v)
-{
-  cout << hex;
-  for (auto addr : v)
-    cout << addr << endl;
-}
-
-void debug(const set<bfd_vma>& v)
-{
-  cout << hex;
-  for (auto addr : v)
-    cout << addr << endl;
-}
-
-void debug(const vector<map<bfd_vma, bfd_vma>::const_iterator>& res)
-{
-  cout << hex;
-  for (auto p : res)
-    cout << p->first << " - " << p->second << endl;
-}
-
-void debug(const set<pair<bfd_vma, bfd_vma>>& res)
-{
-  cout << hex;
-  for (auto p : res)
-    cout << p.first << " - " << p.second << endl;
 }
