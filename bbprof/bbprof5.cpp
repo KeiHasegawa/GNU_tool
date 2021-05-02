@@ -229,6 +229,13 @@ inline void output_newline()
 #endif // __CYGWIN__
 }
 
+inline bool unexpected_eof(const char* file)
+{
+  using namespace std;
+  cerr << "unexpected EOF reading `" << file << "''\n";
+  return true;
+}
+
 inline bool output1(bfd* abfd, asection* sect, asymbol** syms,
 		    bfd_vma addr, bool highlight)
 {
@@ -296,6 +303,8 @@ inline bool output1(bfd* abfd, asection* sect, asymbol** syms,
 
   auto& ifs = *ptr_ifs.get();
   if (!ifs) {
+    if (ifs.eof())
+      return true;  // already error message outputed
     cerr << "cannot open " << file << endl;
     return true;
   }
@@ -307,7 +316,7 @@ inline bool output1(bfd* abfd, asection* sect, asymbol** syms,
     while (1) {
       int c = ifs.get();
       if (ifs.eof())
-	return true;
+	return unexpected_eof(file);
       if (c == '\r')
 	c = ifs.get();
       if (c == '\n')
@@ -331,7 +340,7 @@ inline bool output1(bfd* abfd, asection* sect, asymbol** syms,
   while (--column) {
     int c = ifs.get();
     if (ifs.eof())
-      return true;
+      return unexpected_eof(file);
     if (c == ' ' || c == '\t' || c == '\\')  // not support SJIS JIS
       cout.put('\\');
     cout.put(c);
@@ -345,7 +354,7 @@ inline bool output1(bfd* abfd, asection* sect, asymbol** syms,
   {
     int c = ifs.get();
     if (ifs.eof())
-      return true;
+      return unexpected_eof(file);
     cout.put(c);
   }
   if (highlight)
