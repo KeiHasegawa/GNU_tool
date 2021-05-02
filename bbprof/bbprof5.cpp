@@ -232,7 +232,7 @@ inline void output_newline()
 inline bool unexpected_eof(const char* file)
 {
   using namespace std;
-  cerr << "unexpected EOF reading `" << file << "''\n";
+  cerr << "unexpected EOF at `" << file << "''\n";
   return true;
 }
 
@@ -286,6 +286,8 @@ inline bool output1(bfd* abfd, asection* sect, asymbol** syms,
     ptr_ifs.reset(new ifstream {file});
   }
   else {
+    if (prev_line > line)
+      return true;  // guess that this is loop
     unsigned int tmp = line;
     line -= prev_line;
     prev_line = tmp;
@@ -293,6 +295,7 @@ inline bool output1(bfd* abfd, asection* sect, asymbol** syms,
       prev_column = column;
     else {
       tmp = column;
+      assert(prev_column <= column);
       column -= prev_column;
       prev_column = tmp;
     }
@@ -453,4 +456,19 @@ int main(int argc, char** argv)
   output_newline();
 
   return 0;
+}
+
+using namespace std;
+void debug(const set<bfd_vma>& s)
+{
+  cout << hex;
+  for (auto p : s)
+    cout << p << endl;
+}
+
+void debug(const map<bfd_vma, bfd_vma>& m)
+{
+  cout << hex;
+  for (auto p : m)
+    cout << p.first << " - " << p.second << endl;
 }
