@@ -219,6 +219,16 @@ inline bool out_fB(bool prev_highlight, std::ifstream& ifs)
 #endif // __CYGWIN__
 }
 
+inline void output_newline()
+{
+  using namespace std;
+#ifdef __CYGWIN__
+  cout << "\r\n" << roff::br << "\r\n";
+#else // __CYGWIN__
+  cout << '\n' << roff::br << '\n';
+#endif // __CYGWIN__
+}
+
 inline bool output1(bfd* abfd, asection* sect, asymbol** syms,
 		    bfd_vma addr, bool highlight)
 {
@@ -254,6 +264,13 @@ inline bool output1(bfd* abfd, asection* sect, asymbol** syms,
   static unsigned int prev_line, prev_column;
   static bool prev_highlight;
   if (!prev_file || strcmp(prev_file, file)) {
+    if (prev_file) {
+      output_newline();
+      output_newline();
+      prev_highlight = false;
+    }
+    cout << file << '\n';
+    output_newline();
     prev_file = file;
     prev_func = func;
     prev_line = line;
@@ -291,10 +308,8 @@ inline bool output1(bfd* abfd, asection* sect, asymbol** syms,
       int c = ifs.get();
       if (ifs.eof())
 	return true;
-#ifdef __CYGWIN__
       if (c == '\r')
 	c = ifs.get();
-#endif // __CYGWIN__
       if (c == '\n')
 	break;
       if (c == ' ' || c == '\t' || c == '\\')  // not support SJIS JIS
@@ -303,11 +318,7 @@ inline bool output1(bfd* abfd, asection* sect, asymbol** syms,
     }
     if (b)
       cout << roff::fR;
-#ifdef __CYGWIN__
-    cout << "\r\n" << roff::br << "\r\n";
-#else // __CYGWIN__
-    cout << '\n' << roff::br << '\n';
-#endif // __CYGWIN__
+    output_newline();
   }
 
   if (!column)
@@ -321,6 +332,8 @@ inline bool output1(bfd* abfd, asection* sect, asymbol** syms,
     int c = ifs.get();
     if (ifs.eof())
       return true;
+    if (c == ' ' || c == '\t' || c == '\\')  // not support SJIS JIS
+      cout.put('\\');
     cout.put(c);
   }
 
@@ -428,11 +441,7 @@ int main(int argc, char** argv)
       output(abfd, syms, addr, highlight);
   }
 
-#ifdef __CYGWIN__
-  cout << "\r\n" << roff::br << "\r\n";
-#else // __CYGWIN__
-  cout << '\n' << roff::br << '\n';
-#endif // __CYGWIN__
+  output_newline();
 
   return 0;
 }

@@ -8,6 +8,8 @@ Basic block profile
 (*6) bbprof3.cpp
 (*7) column number
 (*8) bbprof4.cpp
+(*9) Generation
+(*10) bbprof5.cpp
 
 (*1) What I want to do
 
@@ -63,7 +65,7 @@ Basic block profile
 
      This function just writes caller address into the file. There are
      some improvement stuff but OK at this point.
-     Improvement:
+     Improvement item:
 
      o If profile_basic_block.cpp is compiled with -O2 or -O3, it may
        not work well.
@@ -71,6 +73,9 @@ Basic block profile
      o profile_basic_block.cpp doesn't support program using multi threads
 
      o Support only intel
+
+     o This function always writes address into the file. This may cause
+       some problem, if, for example, profiled program runs for long time.
 
 (*4) bbprof1.cpp
 
@@ -308,4 +313,38 @@ g++ -o bbprof.exe -DPACKAGE bbprof4.cpp -lbfd -liberty -Ld:/home/khasegawa/binut
 
      Above results shows start and end address of 4 blocks of `f'
      and 1 block of `main'.
+
+(*9) Generation 
+
+     If bbprof.exe generates nroff file, we can convert it to html file,
+     see the contents with `man' command. So I chosed to generate nroff.
+
+(*10) bbprof5.cpp
+
+     This program generates nroff by using facility of bpprof3.cpp and
+     bbprof4.cpp. Build like below:
+
+linux
+g++ -o bbprof.exe -DPACKAGE bbprof5.cpp bbprof3_0.o my_dwarf2.o -lbfd -liberty -L/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/libiberty -ldl -lz /home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/opcodes/libopcodes.a
+     
+cygwin
+g++ -o bbprof.exe -DPACKAGE  bbprof5.o bbprof3_0.o my_dwarf2.o my_coffgen.o -lbfd -liberty -ldl -lz -lintl -lopcodes
+
+     This version bbprof.exe is used like below:
+
+% ./bbprof.exe test000.exe test000.out > test000.res
+% man ./test000.res
+
+     By using groff, you can convert to html:
+
+% groff -T html test000.res > test000.html
+
+     I noticed that groff cannot deal with the white space at the head
+     of line.
+
+     Samely with some programs, there are Japanese character problem
+     in bbprof.exe. But here omitted. You can see Japanese version
+     of this document.
+
+
 

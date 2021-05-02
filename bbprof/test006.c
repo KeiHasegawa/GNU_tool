@@ -1,5 +1,8 @@
 #include <stdio.h>
 
+// ‹@”\
+int function;
+
 int f()
 {
 	putc('f', stdout); 
@@ -9,7 +12,7 @@ int f()
 
 int g()
 {
-  return 3;
+  return function + 3;
 }
 
 int h(int a)
