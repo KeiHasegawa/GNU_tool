@@ -1,0 +1,26 @@
+*** groff-1.22.4.org/src/roff/troff/input.cpp	2018-11-24 06:51:49.000000000 +0900
+--- groff-1.22.4/src/roff/troff/input.cpp	2021-05-03 13:45:45.351213834 +0900
+***************
+*** 7270,7277 ****
+--- 7270,7290 ----
+  						curenv->get_fill_color()));
+      break;
+    case TOKEN_UNSTRETCHABLE_SPACE:
++ #if 0
+      curenv->add_node(new space_char_hmotion_node(curenv->get_space_width(),
+  						 curenv->get_fill_color()));
++ #else
++     {
++       auto space = new space_char_hmotion_node(curenv->get_space_width(),
++ 					       curenv->get_fill_color());
++       extern int suppress_push;
++       if (!suppress_push) {
++ 	space->state = curenv->construct_state(0);
++ 	space->push_state = get_diversion_state();
++       }
++       curenv->add_node(space);
++     }
++ #endif
+      break;
+    case TOKEN_TAB:
+      curenv->handle_tab(0);

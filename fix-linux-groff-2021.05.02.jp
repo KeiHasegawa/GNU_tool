@@ -1,0 +1,458 @@
+linux での groff 1.22.4 修正メモ
+
+(*1) ダウンロードとビルド
+(*2) groff のデバッグビルド
+(*3) バグの再現と修正
+(*4) パッチの当て方
+
+% wget -q http://cygwin.mirror.constant.com/x86_64/release/groff/groff-1.22.4-1-src.tar.xz
+% xz -d -c groff-1.22.4-1-src.tar.xz | tar xf -
+% cd groff-1.22.4-1.src
+% gunzip -c groff-1.22.4.tar.gz | tar xf -
+% cd groff-1.22.4
+% ./configure
+% make
+% sudo make install
+% ls -l /usr/local/bin/groff
+# インストールされていることを確認した
+
+     このときのログを
+
+~/groff-1.22.4-1.src/make-install.log.2021.05.02
+
+     に保存しておいた.
+
+(*2) groff のデバッグビルド
+
+% cat /tmp/xx
+#! /bin/csh -f
+
+sed -e 's/-O2/-O0/g' $argv[1] > $argv[1].$$
+mv $argv[1].$$ $argv[1]
+chmod +x $argv[1]
+% chmod +x /tmp/xx
+% find . -name 'configure' -exec /tmp/xx {} \;
+% find . -name 'Makefile.in' -exec /tmp/xx {} \;
+% find . -name 'Makefile.tpl' -exec /tmp/xx {} \;
+% make clean
+% ./configure
+% make -n groff
+# -O0 ビルドされることを確認した
+% make groff
+
+(*3) バグの再現
+
+% cat sample
+int\ main()
+.br
+{
+.br
+\ \ return\ f(0,\ 1,\ 2);
+.br
+}
+.br
+
+% gdb -q groff
+(gdb) run -T html sample
+...
+<p>int&nbsp;main() <b><br>
+{ &nbsp;&nbsp; <br>
+return&nbsp;f(0,&nbsp;1,&nbsp;2); <br>
+ }</b></p>
+...
+(gdb)
+
+     上の期待値が
+
+{<br>
+&nbsp;&nbsp; return&nbsp;f(0,&nbsp;1,&nbsp;2); <br>
+
+     であり順番が少し間違えている. 調べてみるとどうやら
+
+soelim, pre-grohtml, post-grohtml
+
+     を fork, exec しているらしい.
+
+
+% ./groff -T html sample -V
+soelim sample | pre-grohtml troff -Thtml | post-grohtml
+%
+
+     わかりずらいが troff の前の文字は小文字の L であって | ではない.
+     結局全ビルドした. groff は親プロセスのプログラムだが, その他の
+     コマンドもビルドする必要がある.
+
+% ./soelim sample | ./pre-grohtml troff -Thtml | ./post-grohtml
+これで再現している.
+
+% ./soelim sample > sample.soe
+% ./pre-grohtml troff -Thtml sample.soe > sample.pre
+% ./post-grohtml sample.pre 
+これで再現できている.
+
+     というわけで, まずは post-grohtml が
+
+{ &nbsp;&nbsp; <br>
+return
+
+     のように出力している原因を調査したい.
+     おそらく sample.pre の以下の部分が関係している.
+
+t{         おそらく text の { ということ
+n40 0
+V160
+H0
+N-24
+H24
+N-24
+h24
+x X devtag:.br
+V160
+H48
+treturn         おそらく text の return ということ
+
+sample.pre を以下のように修正した:
+
+t{
+n40 0
+V160
+H0
+x X devtag:.br
+V160
+H48
+N-24   # ここ
+H24    # ここ
+N-24   # ここ
+h24    # ここ
+treturn
+
+% ./post-grohtml sample.pre
+残念. &nbsp; が 1 つ足りない
+
+sample.pre を改めて以下のように修正した
+
+t{
+n40 0
+V160
+H0
+x X devtag:.br
+V160
+H0     # ここを修正
+N-24
+H24
+N-24
+h24
+treturn
+
+     今度は期待通り動作している. 状況から考えるに post-grohtml
+     は正しく動作しているっぽい.
+
+% gdb -q pre-grohtml
+(gdb) run troff -Thtml sample.soe
+...
+再現できている
+
+     このプログラムでは groff を fork, exec している
+
+% ./pre-grohtml troff -Thtml sample.soe -V
+soelim sample.soe | troff -dwww-image-template=grohtml-23014 -Thtml
+% troff -dwww-image-template=grohtml-23014 -Thtml sample.soe 
+再現できた
+% ./troff -dwww-image-template=grohtml-23014 -Thtml sample.soe 
+これでも再現できている.
+
+% gdb -q troff
+(gdb) run -dwww-image-template=grohtml-23014 -Thtml sample.soe
+...
+再現できている
+
+
+void process_input_stack()  この函数で構文解析っぽいことをしているらしい
+
+    case token::TOKEN_NEWLINE:  ここは改行を読み込んだときにきている
+
+
+	    interpolate_macro(nm);  ここは .br を読み込んだときにきている
+
+     問題の \ に続くスペースを読み込んだときに
+
+token::TOKEN_UNSTRETCHABLE_SPACE
+
+     になって
+
+	tok.process();  ここにきている
+
+
+     問題の箇所は
+
+	    interpolate_macro(nm);
+
+     を実行したときに生成される. ここは入力ファイルを読み込む前にも
+     きているが,
+
+command
+if (nm.s[0] != 'b')
+c
+end
+end
+
+     のようにすれば br のところで止めることができる.
+     3 つ目の br を処理したときに問題の箇所が生成される:
+
+.lf 1 ./sample
+int\ main()
+.br   <<<<<<<<<<<<<<<<<<<<<<<<< 1 つ目の br
+{
+.br   <<<<<<<<<<<<<<<<<<<<<<<<< 2 つ目の br
+\ \ return\ f(0,\ 1,\ 2);
+.br   <<<<<<<<<<<<<<<<<<<<<<<<< 3 つ目の br
+}
+.br
+
+     どうやら br を処理したときに直前の行までを出力している.
+     1 つ目の br を処理したときに "main()" 等を出力する.
+     2 つ目の br を処理したときに "{" 等を出力する.
+     3 つ目の br を処理したときに "return" 等を出力する.
+
+% cat sample2
+{
+.br
+\ \ return
+% ./troff  -dwww-image-template=grohtml-23014 -Thtml sample2
+...
+t{           テキストの {
+n40 0
+V120
+H0
+N-24          ここ
+H24           ここ
+N-24          ここ
+h24           ここ
+x X devtag:.br
+V120
+H48
+treturn       テキストの return
+
+     これでも再現している.
+
+% cat sample3
+{
+.br
+\ X
+% ./troff  -dwww-image-template=grohtml-23014 -Thtml sample3
+...
+t{                テキストの {
+n40 0
+V120
+H0
+N-24
+H24
+x X devtag:.br
+V120
+H24
+tX                 テキストの X
+...
+
+     空白が br を追い越している(?)のが問題.
+
+
+troff_output_file::really_print_line
+
+     が実際出力しているところだが node* n が
+
+line_start_node            (*1)
+space_char_hmotion_node    (*2)
+glyph_node                 (*3)
+
+     の順になっているが, (*2) と (*3) が逆
+
+env.cpp
+  node *nn = 0;
+  while (n != 0) {
+    node *tem = n->next;
+    n->next = nn;
+    nn = n;
+    n = tem;
+  }
+
+     どうやらここで入れ替えている. これは n から nn を作り出している.
+     例えば:
+
+n = glyph_node
+n->next = line_start_node
+n->next->next = 0
+
+     ならば
+
+nn = line_start_node
+nn->next = glyph_node
+nn->next->next = 0
+
+     を作り出す. これはうまくいっている. これに対して
+
+n = glyph_node
+n->next = space_char_hmotion_node
+n->next->next = line_start_node
+n->next->next->next = 0
+
+     ならば
+
+nn = line_start_node
+nn->next = space_char_hmotion_node
+nn->next->next = glyph_node
+nn->next->next->next = 0
+
+     となるが, これが space_char_hmotion_node と glyph_node とが
+     入れ替わっている原因.
+
+     以下の修正を入れてみた:
+
+inline node* change(node* n)
+{
+  node* head = n;
+  node* tail = n;
+  for ( ; n->next ; n = n->next)
+    tail = n;
+  n->next = head;
+  tail->next = 0;
+  return n;
+}
+...
+#if 0
+  node *nn = 0;
+  while (n != 0) {
+    node *tem = n->next;
+    n->next = nn;
+    nn = n;
+    n = tem;
+  }
+#else
+  node* nn = change(n);
+#endif
+
+      意図した通り並べ返られたが, 出力結果は
+
+V120
+H0
+x X devtag:.br
+V120
+H0
+tX               # これが先にきている
+N-24             # ここと
+h24              # ここが先に来てほしい
+n40 0
+
+      そこで以下のように修正した:
+
+node.cpp
+void space_char_hmotion_node::tprint(troff_output_file *out)
+{
+#if 0
+  out->fill_color(col);
+  if (is_html) {
+    // we emit the space width as a negative glyph index
+    out->flush_tbuf();
+    out->do_motion();
+    out->put('N');
+    out->put(-n.to_units());
+    out->put('\n');
+  }
+  out->right(n);
+#else
+  if (!is_html) {
+    out->fill_color(col);
+    out->right(n);
+    return;
+  }
+
+  // we emit the space width as a negative glyph index
+  out->put('N');
+  out->put(-n.to_units());
+  out->put('\n');
+  out->right(n);
+  out->do_motion();
+  out->flush_tbuf();
+#endif
+}
+
+    これで一応期待通りの出力結果になっている.
+    ここで実際に bbprof の出力結果に試してみたら激しく
+    文字列が入れ替わっていた... 修正は正しくなかったらしい.
+    一旦 env.cppp と node.cpp の修正をもとに戻す.
+
+% cat sample5
+{
+.br
+\ ABC
+% ./troff -T html sample5
+...
+t{
+n40 0
+V120
+H0
+tCB              # CB が先にこっちにきている! しかも BC じゃなく CB
+x X devtag:.br
+V120
+H48
+N-24
+h24
+tA               # A がここにきている!
+...
+
+change を作ったときのように調べてみると
+n = glyph_node                                <- C
+n->next = glyph_node                          <- B
+n->next->next = glyph_node                    <- br A
+n->next->next->next = space_char_hmotion_node <- \ 
+n->next->next->next->next = line_start_node
+
+      のようになっているので, 正しく動作していない.
+      br と A が結びついているのが良くない.
+      おそらく
+
+n = glyph_node                                <- C
+n->next = glyph_node                          <- B
+n->next->next = glyph_node                    <- A
+n->next->next->next = space_char_hmotion_node <- br \ 
+n->next->next->next->next = line_start_node
+
+      のようになっていれば正しく動くと思われる.
+
+      A で br が表示されるのは以下のようにしているから
+
+environment::add_char()
+...
+  if ((!suppress_push) && gc_np) {
+    if (gc_np && (gc_np->state == 0)) {
+      gc_np->state = construct_state(0);    ここで state に値をセット
+      gc_np->push_state = get_diversion_state();
+    }
+    else if (line && (line->state == 0)) {
+      line->state = construct_state(0);
+      line->push_state = get_diversion_state();
+    }
+  }
+
+
+      そこで以下の修正を行った:
+
+  case TOKEN_UNSTRETCHABLE_SPACE:
+#if 0
+    curenv->add_node(new space_char_hmotion_node(curenv->get_space_width(),
+						 curenv->get_fill_color()));
+#else
+    {
+      auto space = new space_char_hmotion_node(curenv->get_space_width(),
+					       curenv->get_fill_color());
+      extern int suppress_push;
+      if (!suppress_push) {
+	space->state = curenv->construct_state(0);
+	space->push_state = get_diversion_state();
+      }
+      curenv->add_node(space);
+    }
+#endif
+    break;
+
+    一応期待した通り動作している.
+
