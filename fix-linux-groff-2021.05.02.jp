@@ -456,3 +456,15 @@ environment::add_char()
 
     一応期待した通り動作している.
 
+(*4) パッチの当て方
+
+    このページにある groff.diff を例えば /tmp/groff.diff として保存する.
+
+% xz -d -c groff-1.22.4-1-src.tar.xz | tar xf -
+% cd groff-1.22.4-1.src
+% gunzip -c groff-1.22.4.tar.gz | tar xf -
+% cd groff-1.22.4
+% patch -p1 < /tmp/groff.diff
+patching file src/roff/troff/input.cpp
+
+     このメッセージが出れば期待通り input.cpp が修正されている.
