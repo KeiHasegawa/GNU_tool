@@ -1,0 +1,219 @@
+linxu groff 1.22.4 fix memo
+
+(*1) Download and build
+(*2) groff debug build
+(*3) Reproducition bug and fix
+(*4) Patch file
+
+(*1) Download and build
+% wget -q http://cygwin.mirror.constant.com/x86_64/release/groff/groff-1.22.4-1-src.tar.xz
+% xz -d -c groff-1.22.4-1-src.tar.xz | tar xf -
+% cd groff-1.22.4-1.src
+% gunzip -c groff-1.22.4.tar.gz | tar xf -
+% cd groff-1.22.4
+% ./configure
+% make
+% sudo make install
+% ls -l /usr/local/bin/groff
+# Confirmed that it was created
+
+     Build log was saved at
+
+~/groff-1.22.4-1.src/make-install.log.2021.05.02
+
+(*2) groff debug build
+
+% cat /tmp/xx
+#! /bin/csh -f
+
+sed -e 's/-O2/-O0/g' $argv[1] > $argv[1].$$
+mv $argv[1].$$ $argv[1]
+chmod +x $argv[1]
+% chmod +x /tmp/xx
+% find . -name 'configure' -exec /tmp/xx {} \;
+% find . -name 'Makefile.in' -exec /tmp/xx {} \;
+% find . -name 'Makefile.tpl' -exec /tmp/xx {} \;
+% make clean
+% ./configure
+% make -n groff
+# Confirmed that -O0 option was specified
+% make groff
+
+(*3) Reproducition bug and fix
+
+% cat sample
+int\ main()
+.br
+{
+.br
+\ \ return\ f(0,\ 1,\ 2);
+.br
+}
+.br
+
+% gdb -q groff
+(gdb) run -T html sample
+...
+<p>int&nbsp;main() <b><br>
+{ &nbsp;&nbsp; <br>
+return&nbsp;f(0,&nbsp;1,&nbsp;2); <br>
+ }</b></p>
+...
+(gdb)
+
+     Expected result is :
+
+{<br>
+&nbsp;&nbsp; return&nbsp;f(0,&nbsp;1,&nbsp;2); <br>
+
+     The output order are not correct. I investigated and
+     noticed that below process were:
+
+soelim, pre-grohtml, post-grohtml
+
+      fork and exec.
+
+% ./groff -T html sample -V
+soelim sample | pre-grohtml troff -Thtml | post-grohtml
+%
+
+     This means that we also have to build `soelim',`pre-grohtml' and
+     `post-grohtml'.
+
+% ./soelim sample | ./pre-grohtml troff -Thtml | ./post-grohtml
+Confirmed that the bug was rebroduced.
+
+% ./soelim sample > sample.soe
+% ./pre-grohtml troff -Thtml sample.soe > sample.pre
+% ./post-grohtml sample.pre 
+Confirmed that the bug was rebroduced.
+
+     So at 1st, I investigated the reason why `post-grohtml' outputs
+     like below:
+
+{ &nbsp;&nbsp; <br>
+return
+
+     I guessed that the below parts of `sample.pre' is  related with above:
+
+t{         # Gues text "{"
+n40 0
+V160
+H0
+N-24
+H24
+N-24
+h24
+x X devtag:.br
+V160
+H48
+treturn    # Guess text "return"
+
+     I modified `sample.pre' like below:
+
+t{
+n40 0
+V160
+H0
+x X devtag:.br
+V160
+H48
+N-24   # This
+H24    # This
+N-24   # This
+h24    # This
+treturn
+
+% ./post-grohtml sample.pre
+Unfortunately, `&nbsp;' was outputed just one.
+
+     Try again like below:
+
+t{
+n40 0
+V160
+H0
+x X devtag:.br
+V160
+H0     # This
+N-24
+H24
+N-24
+h24
+treturn
+
+     Now, `post-grohtml' output was expected result. I thoguht that
+     `post-grohtml' worked well from this situation.
+
+% gdb -q pre-grohtml
+(gdb) run troff -Thtml sample.soe
+...
+Confirmed that the bug was rebroduced.
+
+     I investigated and found that fork, `pre-grohtml' did fork and exec
+     `groff'.
+
+% ./pre-grohtml troff -Thtml sample.soe -V
+soelim sample.soe | troff -dwww-image-template=grohtml-23014 -Thtml
+% troff -dwww-image-template=grohtml-23014 -Thtml sample.soe 
+Confirmed that the bug was rebroduced.
+% ./troff -dwww-image-template=grohtml-23014 -Thtml sample.soe 
+Confirmed that the bug was rebroduced.
+
+% gdb -q troff
+(gdb) run -dwww-image-template=grohtml-23014 -Thtml sample.soe
+...
+Confirmed that the bug was rebroduced.
+
+
+void process_input_stack()  // Parser function
+
+    case token::TOKEN_NEWLINE:  // Hnalde with new line
+
+	    interpolate_macro(nm);  // Handle with `.br'
+
+    For '\' followed by white space, I noticed that the toke value became
+
+token::TOKEN_UNSTRETCHABLE_SPACE
+
+    and it was handled with at below:
+
+	tok.process();  // Here
+
+    Omitted precice stuff. Roughly speaking, I fixed like below:
+
+  case TOKEN_UNSTRETCHABLE_SPACE:
+#if 0
+    curenv->add_node(new space_char_hmotion_node(curenv->get_space_width(),
+						 curenv->get_fill_color()));
+#else
+    {
+      auto space = new space_char_hmotion_node(curenv->get_space_width(),
+					       curenv->get_fill_color());
+      extern int suppress_push;
+      if (!suppress_push) {
+	space->state = curenv->construct_state(0);
+	space->push_state = get_diversion_state();
+      }
+      curenv->add_node(space);
+    }
+#endif
+    break;
+
+    This worked well. You can see precice stuff at Japanese version of this
+    document.
+
+(*4) Patch file
+
+    Download `groff.diff' on this web page and save as, for example
+
+    /tmp/groff.diff
+
+    and apply this patch file like below:
+
+% xz -d -c groff-1.22.4-1-src.tar.xz | tar xf -
+% cd groff-1.22.4-1.src
+% gunzip -c groff-1.22.4.tar.gz | tar xf -
+% cd groff-1.22.4
+% patch -p1 < /tmp/groff.diff
+patching file src/roff/troff/input.cpp

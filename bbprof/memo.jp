@@ -369,3 +369,38 @@ g++ -o bbprof.exe -DPACKAGE  bbprof5.o bbprof3_0.o my_dwarf2.o my_coffgen.o -lbf
       ため結局期待通りには表示できない. groff についても同じである.
       そもそも html にある charset が JIS に対応しているかは, ブラウザ
       も含めて不明ではある.
+
+      test013.cpp は C++ の hello world だがある程度は動作している.
+      生成された groffer 起動時に何やらメッセージが出ている.
+
+> groffer test013.res
+troff: stdin:33: warning [p 1, 3.0i]: can't break line
+troff: stdin:39: warning [p 1, 3.5i]: can't break line
+troff: stdin:45: warning [p 1, 4.0i]: can't break line
+troff: stdin:57: warning [p 1, 5.0i]: can't break line
+troff: stdin:63: warning [p 1, 5.5i]: can't break line
+troff: stdin:65: warning [p 1, 5.7i]: can't break line
+troff: stdin:67: warning [p 1, 5.8i]: can't break line
+troff: stdin:121: warning [p 1, 10.3i]: can't break line
+troff: stdin:133: warning [p 1, 11.3i]: can't break line
+troff: stdin:135: warning [p 1, 11.5i]: can't break line
+troff: stdin:147: warning [p 1, 12.5i]: can't break line
+troff: stdin:149: warning [p 1, 12.7i]: can't break line
+troff: stdin:159: warning [p 1, 13.5i]: can't break line
+troff: stdin:169: warning [p 1, 14.3i]: can't break line
+>
+      test013.cpp が 2 回出現している. そして main 函数の最後の
+
+      }
+
+      がハイライトして表示されている. おそらくファイルスコープに
+      ある変数がコンストラクタによって初期化されたときに
+      このようになると思われる.
+
+      static ios_base::Init __ioinit;
+                            ^^^^^^^^^
+
+      ここが正しく表示できていない.
+
+
+

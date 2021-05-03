@@ -5,6 +5,7 @@ linux での groff 1.22.4 修正メモ
 (*3) バグの再現と修正
 (*4) パッチの当て方
 
+(*1) ダウンロードとビルド
 % wget -q http://cygwin.mirror.constant.com/x86_64/release/groff/groff-1.22.4-1-src.tar.xz
 % xz -d -c groff-1.22.4-1-src.tar.xz | tar xf -
 % cd groff-1.22.4-1.src
@@ -98,7 +99,7 @@ return
      のように出力している原因を調査したい.
      おそらく sample.pre の以下の部分が関係している.
 
-t{         おそらく text の { ということ
+t{        # おそらく text の { ということ
 n40 0
 V160
 H0
@@ -109,9 +110,9 @@ h24
 x X devtag:.br
 V160
 H48
-treturn         おそらく text の return ということ
+treturn        # おそらく text の return ということ
 
-sample.pre を以下のように修正した:
+     sample.pre を以下のように修正した:
 
 t{
 n40 0
@@ -129,7 +130,7 @@ treturn
 % ./post-grohtml sample.pre
 残念. &nbsp; が 1 つ足りない
 
-sample.pre を改めて以下のように修正した
+     sample.pre を改めて以下のように修正した
 
 t{
 n40 0

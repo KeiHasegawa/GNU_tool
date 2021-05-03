@@ -1,6 +1,6 @@
-cygwin で xinit をインストールしたときのメモ
+cygwin xinit install memo
 
-(*1) ダウンロードとインストール
+(*1) Download and install
 % wget -q http://cygwin.mirror.constant.com/x86_64/release/xinit/xinit-1.4.1-1-src.tar.xz
 % xz -d -c xinit-1.4.1-1-src.tar.xz | tar xf - 
 % cd xinit-1.4.1-1.src
@@ -9,13 +9,13 @@ cygwin で xinit をインストールしたときのメモ
 % ./configure
 % make
 % ls -l /usr/local/bin/xinit
-# 作成されていることを確認した
+# Confirmed it was created
 % ls -l /usr/local/bin/startx
-# 作成されていることを確認した
+# Confirmed it was created
 % ls -l /usr/local/etc/X11/xinit/xinitrc
-# 作成されていることを確認した
+# Confirmed it was created
 
-(*2) 動作確認 => /usr/local/bin/X を実行しようとしてエラーしている.
+(*2) Validation => Error because of envoking /usr/local/bin/X
 
 > source ~/.tcshrc
 > which startx
@@ -263,7 +263,7 @@ fi
 exit $retval
 >
 
-(*3) libX11 のインストール-+
+(*3) install libX11
 
 % wget -q http://cygwin.mirror.constant.com/x86_64/release/libX11/libX11-1.6.12-1-src.tar.xz
 % xz -d -c libX11-1.6.12-1-src.tar.xz | tar xf -
@@ -271,12 +271,13 @@ exit $retval
 % bunzip2 -c libX11-1.6.12.tar.bz2 | tar xf -
 % cd libX11-1.6.12
 % ./configure
-ここで以下のエラー:
+...
+Error occured:
 configure: error: Package requirements (xproto >= 7.0.17 xextproto xtrans xcb >= 1.11.1 kbproto inputproto) were not met:
 
 Package 'xtrans', required by 'virtual:world', not found
 
-(*4) 一旦 pkgconf のインストール
+(*4) install pkgconf
 % wget -q http://cygwin.mirror.constant.com/x86_64/release/pkgconf/pkgconf-1.6.3-1-src.tar.xz
 % xz -d -c pkgconf-1.6.3-1-src.tar.xz | tar xf -
 % cd pkgconf-1.6.3-1.src
@@ -287,19 +288,19 @@ Package 'xtrans', required by 'virtual:world', not found
 % make install
 % ls -l /usr/local/bin/
 % ls -l /usr/local/bin/pkgconf.exe
-# 作成されていることを確認した
+# Confirmed that it was created
 
-(*5) libX11 のインストール再開
+(*5) install libX11 again
 
 % cd ~/libX11-1.6.12-1.src/libX11-1.6.12
 % ./configure
 
-     (*3) と同じところでエラーした. (*4) ではエラーを回避できていなかった.
-     config.log を見ると
+     The Same error with (*3) occured. I couldn't get rid of this error
+     by (*4). I knew that error occured
 
      $PKG_CONFIG --exists --print-errors "$X11_REQUIRES"
 
-     でエラーしたらしい.
+     by looking `config.log'.
 
 % pkgconf --exists --print-errors 'xproto >= 7.0.17 xextproto xtrans xcb >= 1.11.1'
 Package xproto was not found in the pkg-config search path.
@@ -311,8 +312,10 @@ Package 'xtrans', required by 'virtual:world', not found
 Package 'xcb', required by 'virtual:world', not found
 %
 
-     これはそれなりに動いてエラーしたっぽい.
-     config.log から成功した pkgconf の実行があったのでそれを直接実行してみた:
+     These messages showed that pkgconf worked but some packages were
+     not found.
+     I found sucesseful pkgconf exection from `config.log', so execute
+     the same way:
 
 % pkgconf --exists --print-errors "xorg-sgml-doctools >= 1.10"
 Package xorg-sgml-doctools was not found in the pkg-config search path.
@@ -321,19 +324,18 @@ to the PKG_CONFIG_PATH environment variable
 Package 'xorg-sgml-doctools', required by 'virtual:world', not found
 %
 
-     これは予期せずエラーしている. ということは ./configure から実行したのと
-     そうでないのとでは何かが異なっている.
+     Unexpected error occured. This meaned there were difference
+     between execution from `./configure' and above execution.
 
 % /usr/bin/pkgconf --exists --print-errors "xorg-sgml-doctools >= 1.10"
 
-     これは正常終了したようだ. どうやら /usr/bin/pkgconf は
+     Successfully done. I noticed that `/usr/bin/pkgconf' refers
      
      /usr/share/pkgconfig
 
-     を参照しているようだ.
+     And also noticed that there was
 
      /usr/share/pkgconfig/xorg-sgml-doctools.pc
 
-     というファイルが存在している. これから推察すると, xproto.pc がないから
-     エラーしているらしい.
-     
+     From above, I guessed that error occured because there was no
+    `proto.pc' at /usr/share/pkgconf or other directory.
