@@ -125,6 +125,7 @@ int my_fprintf(void* p, const char* fmt, ...)
 
 void my_address_func(bfd_vma addr, disassemble_info* info)
 {
+  using namespace std;
   if (!my_fprintf_data::last)
     return;
   const char* call = "call";
@@ -137,7 +138,6 @@ void my_address_func(bfd_vma addr, disassemble_info* info)
     return;
   auto caller = p->m_caller;
   auto res = p->m_result;
-  using namespace std;
   res->insert(make_pair(caller+5,0));  // +5 means next instrunction
 }
 
@@ -188,17 +188,6 @@ void create_bb(bfd* abfd, asection* sect, asymbol** syms, int nsyms,
   mismatch(begin(vs), end(vs), begin(va), create_bb1(sec_base, &info));
 }
 
-extern "C"
-bfd_boolean my_func(bfd *abfd,
-		    asymbol **symbols,
-		    asection *section,
-		    bfd_vma offset,
-		    const char **filename_ptr,
-		    const char **functionname_ptr,
-		    unsigned int *line_ptr,
-		    unsigned int *column_ptr,
-		    unsigned int *discriminator_ptr);
-
 namespace roff {
   const char* br = ".br";
   const char* fB = "\\fB";
@@ -236,13 +225,65 @@ inline bool unexpected_eof(const char* file)
   return true;
 }
 
-inline bool output1(bfd* abfd, asection* sect, asymbol** syms,
-		    bfd_vma addr, bool highlight)
+struct info_t {
+  bfd_vma addr;
+  bool highlight;
+  const char* file;
+  const char* func;
+  unsigned int line;
+  unsigned int column;
+  unsigned int disc;
+};
+
+inline bool operator<(const info_t& x, const info_t& y)
 {
+  if (strcmp(x.file, y.file))
+    return x.addr < y.addr;
+
+  if (x.line < y.line)
+    return true;
+  if (x.line > y.line)
+    return false;
+
+  if (x.column < y.column)
+    return true;
+  if (x.column > y.column)
+    return false;
+
+  return x.disc < y.disc;
+}
+
+inline bool match(const std::set<bfd_vma>& addrs, bfd_vma y)
+{
+#ifdef __CYGWIN__
+  using namespace std;
+  auto p = find_if(begin(addrs), end(addrs),
+		   [y](bfd_vma x){ return (x & 0xffff) == (y & 0xffff); });
+  return p != end(addrs);
+#else // __CYGWIN__
+  return addrs.find(y) != addrs.end();
+#endif // __CYGWIN__
+}
+
+extern "C"
+bfd_boolean my_func(bfd *abfd,
+		    asymbol **symbols,
+		    asection *section,
+		    bfd_vma offset,
+		    const char **filename_ptr,
+		    const char **functionname_ptr,
+		    unsigned int *line_ptr,
+		    unsigned int *column_ptr,
+		    unsigned int *discriminator_ptr);
+
+inline bool collect1(bfd* abfd, asection* sect, asymbol** syms, info_t* res)
+{
+  using namespace std;
   auto flags = sect->flags;
   if (!(flags & SEC_ALLOC))
     return false;
 
+  bfd_vma addr = res->addr;
   bfd_vma vma = sect->vma;
   if (addr < vma)
     return false;
@@ -251,19 +292,34 @@ inline bool output1(bfd* abfd, asection* sect, asymbol** syms,
   if (addr >= vma + size)
     return false;
 
-  const char* file;
-  const char* func;
-  unsigned int line;
-  unsigned int column;
-  unsigned int disc;
-  auto ret = my_func(abfd, syms, sect, addr - vma,
-		     &file, &func, &line, &column,
-		     &disc);
-  using namespace std;
+  auto ret = my_func(abfd, syms, sect, addr - vma, &res->file, &res->func,
+		     &res->line, &res->column, &res->disc);
   if (!ret) {
     cerr << hex << addr << " not found" << endl;
     return true;
   }
+  return true;
+}
+
+inline info_t collect(bfd* abfd, asymbol** syms,
+		      bfd_vma addr, bool highlight)
+{
+  info_t res = { addr, highlight };
+  for (asection* sect = abfd->sections ; sect ; sect = sect->next) {
+    if (collect1(abfd, sect, syms, &res))
+      return res;
+  }
+  return res;
+}
+
+inline bool output(const info_t& info)
+{
+  using namespace std;
+  const char* file = info.file;
+  const char* func = info.func;
+  unsigned int line = info.line;
+  unsigned int column = info.column;
+  bool highlight = info.highlight;
 
   static const char* prev_file;
   static const char* prev_func;
@@ -286,9 +342,8 @@ inline bool output1(bfd* abfd, asection* sect, asymbol** syms,
     ptr_ifs.reset(new ifstream {file});
   }
   else {
-    if (prev_line > line)
-      return true;  // guess that this is loop
     unsigned int tmp = line;
+    assert(prev_line <= line);
     line -= prev_line;
     prev_line = tmp;
     if (line)
@@ -367,26 +422,6 @@ inline bool output1(bfd* abfd, asection* sect, asymbol** syms,
   return true;
 }
 
-inline void output(bfd* abfd, asymbol** syms, bfd_vma addr, bool highlight)
-{
-  for (asection* sect = abfd->sections ; sect ; sect = sect->next) {
-    if (output1(abfd, sect, syms, addr, highlight))
-      return;
-  }
-}
-
-inline bool match(const std::set<bfd_vma>& addrs, bfd_vma y)
-{
-#ifdef __CYGWIN__
-  using namespace std;
-  auto p = find_if(begin(addrs), end(addrs),
-		   [y](bfd_vma x){ return (x & 0xffff) == (y & 0xffff); });
-  return p != end(addrs);
-#else // __CYGWIN__
-  return addrs.find(y) != addrs.end();
-#endif // __CYGWIN__
-}
-
 int main(int argc, char** argv)
 {
   using namespace std;
@@ -395,8 +430,8 @@ int main(int argc, char** argv)
     return 1;
   }
 
-  set<bfd_vma> addrs;
-  if (read_bb(argv[2], addrs) < 0)
+  set<bfd_vma> trace_points;
+  if (read_bb(argv[2], trace_points) < 0)
     return 1;
 
   bfd* abfd =  bfd_openr(argv[1], 0);
@@ -445,13 +480,17 @@ int main(int argc, char** argv)
   for (asection* sect = abfd->sections ; sect ; sect = sect->next)
     create_bb(abfd, sect, syms, nsyms, prof_addr, bb);
 
+  vector<info_t> info;
   for (auto p : bb) {
-    auto addr = p.first;
-    bool highlight = match(addrs, addr);
-    output(abfd, syms, addr, highlight);
+    bfd_vma addr = p.first;
+    bool hightlight = match(trace_points, addr);
+    info.push_back(collect(abfd, syms, addr, hightlight));
     if (addr = p.second)
-      output(abfd, syms, addr, highlight);
+      info.push_back(collect(abfd, syms, addr, hightlight));
   }
+  sort(begin(info), end(info));
+
+  for_each(begin(info), end(info), output);
 
   output_newline();
 
@@ -471,4 +510,22 @@ void debug(const map<bfd_vma, bfd_vma>& m)
   cout << hex;
   for (auto p : m)
     cout << p.first << " - " << p.second << endl;
+}
+
+void debug(const info_t& p)
+{
+  cout << hex << p.addr << ',';
+  cout << p.highlight << ',';
+  cout << p.file << ',';
+  cout << p.func << ',';
+  cout << dec;
+  cout << p.line << ',';
+  cout << p.column << ',';
+  cout << p.disc << endl;
+}
+
+void debug(const vector<info_t>& info)
+{
+  for (auto p : info)
+    debug(p);
 }

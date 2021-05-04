@@ -222,7 +222,7 @@ test005.c:f:4.1.5
       例えば /tmp/profile_basic_block2.diff として保存して
 
 % cd gcc-10.2.0
-% patch -p4 < /tmp/profile_basic_block.diff
+% patch -p1 < /tmp/profile_basic_block2.diff
 
       とする. これで cc1 をビルドし直して, インストールされている cc1
       に上書きして再び test00[0-5].exe をリビルド, 再実行すれば以下の
@@ -402,5 +402,119 @@ troff: stdin:169: warning [p 1, 14.3i]: can't break line
 
       ここが正しく表示できていない.
 
+      まずは以下を確認した
+> ./bbprof3.exe  test013.exe test013.out 
+/home/khasegawa/lang/53_GNU_tool/bbprof/test013.cpp:_GLOBAL__sub_I_main:8.1
+/home/khasegawa/lang/53_GNU_tool/bbprof/test013.cpp:_Z41__static_initialization_and_destruction_0ii:8.1
+/home/khasegawa/lang/53_GNU_tool/bbprof/test013.cpp:_Z41__static_initialization_and_destruction_0ii:8.1.1
+/usr/local/include/c++/10.2.0/iostream:_Z41__static_initialization_and_destruction_0ii:74.25
+/home/khasegawa/lang/53_GNU_tool/bbprof/test013.cpp:_Z41__static_initialization_and_destruction_0ii:8.1
+/home/khasegawa/lang/53_GNU_tool/bbprof/test013.cpp:main:4.1
+
+     1 行目は test013.cpp の 8 行目である. 一方で _GLOBAL__sub_I_main
+     という函数はプログラマ目線では定義していない.
+     2, 3, 5 行目も同様.
+     4 行目は iostream の 74 行目 25 カラムなのでここは正しそう.
+     最後の行は問題なし.
+
+     test014.cpp が正しく処理できていない. ハイライトされているのは
+     main のボディだけ.
+
+> ./bbprof3.exe test014.exe  test014.out 
+/home/khasegawa/lang/53_GNU_tool/bbprof/test014.cpp:_GLOBAL__sub_I_obj:20.1
+/home/khasegawa/lang/53_GNU_tool/bbprof/test014.cpp:_Z41__static_initialization_and_destruction_0ii:20.1
+/home/khasegawa/lang/53_GNU_tool/bbprof/test014.cpp:_Z41__static_initialization_and_destruction_0ii:20.1.1
+/home/khasegawa/lang/53_GNU_tool/bbprof/test014.cpp:_Z41__static_initialization_and_destruction_0ii:14.3
+/home/khasegawa/lang/53_GNU_tool/bbprof/test014.cpp:_ZN1XC2Ev:4.3
+/home/khasegawa/lang/53_GNU_tool/bbprof/test014.cpp:_Z41__static_initialization_and_destruction_0ii:20.1
+/home/khasegawa/lang/53_GNU_tool/bbprof/test014.cpp:main:17.1
+/home/khasegawa/lang/53_GNU_tool/bbprof/test014.cpp:_ZN1XD2Ev:8.3
+
+なので, おそらくループの対処で入れた
+
+    if (prev_line > line)
+      return true;  // ここが影響している
 
 
+    確認して以下のように修正した
+
+    if (prev_line > line) {
+      if (!strcmp(prev_func, func))
+	return true;  // guess that this is loop
+      asm("int3");
+   }
+
+    状況としては main 函数からプロファイル函数の呼び出しを先に処理して
+    X::X からのプロファイル函数の呼び出しを後に処理しているのが原因.
+
+...
+080492ae  w    F .text	0000001e              _ZN1XC1Ev
+...
+080492cc  w    F .text	0000001e              _ZN1XD1Ev
+...
+08049205 g     F .text	00000033              main
+
+    main は X::X() や ~X::X() よりも小さいアドレスに配置されている.
+    つまり  main を含む基本ブロックが先に処理されるので
+    このようなことが発生してしまう.
+
+    現状
+
+    for (auto p : bb) {
+
+    }
+
+    のように処理しているが, 同じファイルでも
+
+    函数 A のアドレス < 函数 B のアドレス   ならば
+
+    函数 A の行番号　< 函数 B の行番号
+
+    は必ずしも成立しないので工夫が必要になる.
+
+(gdb) p debug(addrs)
+804920a  main
+804923d
+804924e
+804925c
+804928b
+8049293
+80492b3
+80492d1
+
+(gdb) p debug(bb)
+804920a - 8049237    main
+804923d - 0          _Z41__static_initialization_and_destruction_0ii
+804924e - 0
+804925c - 0
+804928b - 804928d    _Z41__static_initialization_and_destruction_0ii
+8049293 - 80492ac    _GLOBAL__sub_I_obj
+80492b3 - 80492cb    _ZN1XC1Ev
+80492d1 - 80492e9    _ZN1XD1Ev
+
+
+modify_loc_if
+#if 0
+  if (!TREE_OPERAND(expr, 1))
+    return;
+#endif
+
+           この修正がなぜ必要だったか不明. どこかのテストで発覚した
+	   はず. これが現状バグになっているので一旦上のようにコンパイル
+	   アウトしておく.
+
+	   => test008.c
+
+	   普通の if 文にもこれが適用されてしまう.
+
+
+           test008.c の f が c-parser.c の例の場所に来たときの tree 表現
+
+parm a < parm b ? signed 32 bit integer &function return signed 32 bit integer (pointer to signed 8 bit integer) printf(nop &"%d < %d
+",parm a,parm b) : signed 32 bit integer &function return signed 32 bit integer (pointer to signed 8 bit integer) printf(nop &"%d >= %d
+",parm a,parm b), block(null,null)
+
+           もうこの段階でこの形式になっている.
+
+
+	   
