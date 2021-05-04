@@ -1,23 +1,48 @@
-*** /home/khasegawa/gcc-10.2.0.org/gcc/gimplify.c	2020-07-23 15:35:17.644387858 +0900
---- /home/khasegawa/gcc-10.2.0/gcc/gimplify.c	2021-04-29 13:23:07.536783712 +0900
+*** gcc-10.2.0.org/gcc/gimplify.c	2020-07-23 15:35:17.644387858 +0900
+--- gcc-10.2.0/gcc/gimplify.c	2021-05-04 15:26:34.812436523 +0900
 ***************
 *** 4050,4055 ****
---- 4050,4069 ----
+--- 4050,4094 ----
     return false;
   }
   
++ #include <vector>
++ #include <algorithm>
++ #include <functional>
++ std::vector<std::pair<location_t, location_t> > cond_locs;
++ 
++ void add_cond_loc(location_t cond, location_t colon)
++ {
++   if (global_options.x_flag_profile_basic_block)
++     cond_locs.push_back(std::make_pair(cond, colon));
++ }
++ 
++ inline bool matched(std::pair<location_t, location_t> x, location_t loc)
++ {
++          // C case
++   return x.second == loc || x.first == loc;
++                             // C++ case
++ }
++ 
 + inline void modify_loc_if(tree expr, gimple_seq seq, bool second)
 + {
++   using namespace std;
 +   if (!global_options.x_flag_profile_basic_block)
 +     return;
-+   if (!TREE_OPERAND(expr, 1))
++   location_t loc = EXPR_LOCATION(expr);
++   typedef vector<pair<location_t, location_t> >::const_iterator IT;
++   IT it = find_if(cond_locs.begin(), cond_locs.end(),
++ 		  bind2nd(ptr_fun(matched), loc));
++   if (it == cond_locs.end())
 +     return;
 +   gimple* p = seq->next;
 +   for (; p->next ; p = p->next)
 +     ;
-+   location_t loc = second ? EXPR_LOCATION(expr)
-+     : EXPR_LOCATION(TREE_OPERAND(expr,0));
-+   gimple_set_location(p, loc);
++   if (!second) {
++     gimple_set_location(p, it->first);
++     return;
++   }
++   gimple_set_location(p, it->second);
 + }
 + 
   /*  Convert the conditional expression pointed to by EXPR_P '(p) ? a : b;'
@@ -25,7 +50,7 @@
   
 ***************
 *** 4238,4243 ****
---- 4250,4256 ----
+--- 4277,4283 ----
   	{
   	  gimplify_seq_add_stmt (&seq, gimple_build_label (label_true));
   	  have_then_clause_p = gimplify_stmt (&TREE_OPERAND (expr, 1), &seq);
@@ -35,7 +60,7 @@
   	     if (...) { code; return; } else { ... }
 ***************
 *** 4267,4272 ****
---- 4280,4286 ----
+--- 4307,4313 ----
       {
         gimplify_seq_add_stmt (&seq, gimple_build_label (label_false));
         have_else_clause_p = gimplify_stmt (&TREE_OPERAND (expr, 2), &seq);
@@ -43,3 +68,41 @@
       }
     if (label_cont)
       gimplify_seq_add_stmt (&seq, gimple_build_label (label_cont));
+*** gcc-10.2.0.org/gcc/c/c-parser.c	2020-07-23 15:35:17.304384112 +0900
+--- gcc-10.2.0/gcc/c/c-parser.c	2021-05-04 15:21:06.830536859 +0900
+***************
+*** 7739,7744 ****
+--- 7890,7897 ----
+  			   : NULL);
+      }
+    set_c_expr_source_range (&ret, start, exp2.get_finish ());
++   extern void add_cond_loc(location_t, location_t);
++   add_cond_loc(cond_loc, EXPR_LOCATION(ret.value));
+    return ret;
+  }
+  
+*** gcc-10.2.0.org/gcc/cp/parser.c	2020-07-23 15:35:17.528386580 +0900
+--- gcc-10.2.0/gcc/cp/parser.c	2021-05-04 15:32:25.133056861 +0900
+***************
+*** 9807,9814 ****
+--- 9807,9815 ----
+        parser->colon_corrects_to_scope_p = saved_colon_corrects_to_scope_p;
+      }
+  
++   location_t loc2 = cp_lexer_peek_token (parser->lexer)->location;
+    /* The next token should be a `:'.  */
+    cp_parser_require (parser, CPP_COLON, RT_COLON);
+    /* Parse the assignment-expression.  */
+    assignment_expr = cp_parser_assignment_expression (parser);
+    c_inhibit_evaluation_warnings -=
+***************
+*** 9822,9827 ****
+--- 9824,9831 ----
+    loc = make_location (loc,
+  		       logical_or_expr.get_start (),
+  		       assignment_expr.get_finish ());
++   extern void add_cond_loc(location_t, location_t);
++   add_cond_loc(loc, loc2);
+  
+    /* Build the conditional-expression.  */
+    return build_x_conditional_expr (loc, logical_or_expr,
