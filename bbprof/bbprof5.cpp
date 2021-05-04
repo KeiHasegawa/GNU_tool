@@ -332,7 +332,11 @@ inline bool output(const info_t& info)
       output_newline();
       prev_highlight = false;
     }
+#ifdef __CYGWIN__
+    cout << file << "\r\n";
+#else
     cout << file << '\n';
+#endif
     output_newline();
     prev_file = file;
     prev_func = func;
@@ -354,6 +358,7 @@ inline bool output(const info_t& info)
       column -= prev_column;
       prev_column = tmp;
     }
+    assert(func);
     if (strcmp(prev_func, func))
       prev_highlight = false;
     prev_func = func;
@@ -517,7 +522,10 @@ void debug(const info_t& p)
   cout << hex << p.addr << ',';
   cout << p.highlight << ',';
   cout << p.file << ',';
-  cout << p.func << ',';
+  if (p.func)
+    cout << p.func << ',';
+  else
+    cout << "null" << ',';
   cout << dec;
   cout << p.line << ',';
   cout << p.column << ',';

@@ -393,3 +393,37 @@ g++ -o bbprof.exe -DPACKAGE  bbprof5.o bbprof3_0.o my_dwarf2.o my_coffgen.o -lbf
      4 行目は iostream の 74 行目 25 カラムなのでここは正しそう.
      最後の行は問題なし.
 
+cygwin % ./bbprof1.exe test014.exe test014.out
+7ff634c910e5->1004010e5,main
+7ff634c9116f->10040116f,_GLOBAL__sub_I_obj
+7ff634c9110e->10040110e,_Z41__static_initialization_and_destruction_0ii
+7ff634c91127->100401127,_Z41__static_initialization_and_destruction_0ii
+7ff634c91135->100401135,_Z41__static_initialization_and_destruction_0ii
+7ff634c9d5c5->10040d5c5,.text$_ZN1XC1Ev
+7ff634c91163->100401163,_Z41__static_initialization_and_destruction_0ii
+7ff634c9d5f5->10040d5f5,.text$_ZN1XD1Ev
+
+OK 期待通り動作している.
+
+cygwin % ./bbprof2.exe test014.exe test014.out
+
+函数名が (char*)0 として返っている. bbprof2.cpp は
+bfd_find_nearest_line_discriminator を使用しているが, どうやらこれが期待通り
+動作していない. my_dwarf2.c ではカラム数を取り出せるだけの修正を行ったが,
+ここは単純に char* をコピーしているだけ.
+
+さて, どのように修正するべきか. ちなみに test015.cpp も函数名が 0 になっている.
+
+    o bbprof1.cpp はそもそもできている. bbprof2.cpp でできていないのは函数名が 0
+      になるというだけで, ファイル名や行番号や取り出せている.
+
+    o 根本的に libbfd.a を修正する.
+
+my_dwarf2.c:5210
+ done:
+  if (functionname_ptr && function && function->is_linkage)
+    *functionname_ptr = function->name;     ここで function->is_linkage = 0
+                                            なので "main" が入らないが
+					    function->is_linkage = 1
+					    が期待値
+

@@ -5209,6 +5209,10 @@ _bfd_dwarf2_find_nearest_line2 (bfd *abfd,
  done:
   if (functionname_ptr && function && function->is_linkage)
     *functionname_ptr = function->name;
+#ifdef __CYGWIN__
+  if (functionname_ptr && function)
+    *functionname_ptr = function->name;
+#endif // __CYGWIN__
   else if (functionname_ptr
 	   && (!*functionname_ptr
 	       || (function && !function->is_linkage)))
