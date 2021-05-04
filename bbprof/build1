@@ -1,0 +1,12 @@
+#! /bin/csh -vxf
+
+gcc -g -c $argv[1] --profile-basic-block || exit 1
+gcc -g -c profile_basic_block.cpp || exit 1
+if ($argv[1]:e == "cpp") then
+  g++ profile_basic_block.o $argv[1]:r.o -o $argv[1]:r.exe || exit 1
+else
+  gcc profile_basic_block.o $argv[1]:r.o -o $argv[1]:r.exe || exit 1
+endif
+./$argv[1]:r.exe
+mv bb.out $argv[1]:r.out || exit 1
+./bbprof.exe $argv[1]:r.exe $argv[1]:r.out > $argv[1]:r.res || exit 1
