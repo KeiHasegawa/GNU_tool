@@ -463,9 +463,16 @@ int main(int argc, char** argv)
 {
   using namespace std;
   set<string> ex;
-  while (getopt(argc, argv, "e:") != -1) {
-    ex.insert(optarg);
-    argc -= 2;
+  int ret;
+  while ((ret = getopt(argc, argv, "e:")) != -1) {
+    switch (ret) {
+    case 'e':
+      ex.insert(optarg);
+      argc -= 2;
+      break;
+    default:
+      break;
+    }
   }
 
   if (argc != 3) {
