@@ -237,8 +237,8 @@ struct info_t {
 
 inline bool operator<(const info_t& x, const info_t& y)
 {
-  if (strcmp(x.file, y.file))
-    return x.addr < y.addr;
+  if (int n = strcmp(x.file, y.file))
+    return n < 0;
 
   if (x.line < y.line)
     return true;
@@ -312,6 +312,19 @@ inline info_t collect(bfd* abfd, asymbol** syms,
   return res;
 }
 
+inline void tail(std::ifstream& ifs)
+{
+  using namespace std;
+  while (1) {
+    int c = ifs.get();
+    if (ifs.eof())
+      return;
+    cout.put(c);
+  }
+}
+
+std::unique_ptr<std::ifstream> ptr_ifs;
+
 inline bool output(const info_t& info)
 {
   using namespace std;
@@ -323,11 +336,11 @@ inline bool output(const info_t& info)
 
   static const char* prev_file;
   static const char* prev_func;
-  static unique_ptr<ifstream> ptr_ifs;
   static unsigned int prev_line, prev_column;
   static bool prev_highlight;
   if (!prev_file || strcmp(prev_file, file)) {
     if (prev_file) {
+      tail(*ptr_ifs.get());
       output_newline();
       output_newline();
       prev_highlight = false;
@@ -497,7 +510,7 @@ int main(int argc, char** argv)
 
   for_each(begin(info), end(info), output);
 
-  output_newline();
+  tail(*ptr_ifs.get());
 
   return 0;
 }
