@@ -6,6 +6,7 @@
 #include <map>
 #include <set>
 #include <cassert>
+#include <unistd.h>
 #include <bfd.h>
 #include <dis-asm.h>
 
@@ -265,6 +266,15 @@ inline bool match(const std::set<bfd_vma>& addrs, bfd_vma y)
 #endif // __CYGWIN__
 }
 
+inline bool match(const info_t& x, const std::set<std::string>& ex)
+{
+  using namespace std;
+  string fn = x.file;
+  auto p = find_if(begin(ex), end(ex),
+		   [fn](string s){ return s == fn.substr(0, s.length()); });
+  return p != end(ex);
+}
+
 extern "C"
 bfd_boolean my_func(bfd *abfd,
 		    asymbol **symbols,
@@ -443,16 +453,22 @@ inline bool output(const info_t& info)
 int main(int argc, char** argv)
 {
   using namespace std;
+  set<string> ex;
+  while (getopt(argc, argv, "e:") != -1) {
+    ex.insert(optarg);
+    argc -= 2;
+  }
+
   if (argc != 3) {
     cerr << "usage % " << argv[0] << " a.out bb.out" << endl;
     return 1;
   }
 
   set<bfd_vma> trace_points;
-  if (read_bb(argv[2], trace_points) < 0)
+  if (read_bb(argv[optind+1], trace_points) < 0)
     return 1;
 
-  bfd* abfd =  bfd_openr(argv[1], 0);
+  bfd* abfd =  bfd_openr(argv[optind], 0);
   if (!abfd) {
     cerr << "bfd_openr(" << argv[1] << ") failed" << endl;
     return 1;
@@ -506,6 +522,8 @@ int main(int argc, char** argv)
     if (addr = p.second)
       info.push_back(collect(abfd, syms, addr, hightlight));
   }
+  remove_if(begin(info), end(info),
+	    [&ex](const info_t& x){ return match(x,ex); });
   sort(begin(info), end(info));
 
   for_each(begin(info), end(info), output);
