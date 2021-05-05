@@ -6,7 +6,16 @@
 #include <map>
 #include <set>
 #include <cassert>
+#ifdef __CYGWIN__
+// Not refer to dll
+extern "C" {
+  int getopt(int, char**, const char*);
+  extern char* optarg;
+  extern int optind;
+}
+#else // __CYGWIN__
 #include <unistd.h>
+#endif // __CYGWIN__
 #include <bfd.h>
 #include <dis-asm.h>
 
