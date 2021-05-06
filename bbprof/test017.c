@@ -1,15 +1,17 @@
 #include <stdlib.h>
 
-int f(int a)
+void f()
 {
-  if (a) {
-    exit(1);
-  }
-  return a + 5;
+  exit(1);
+}
+
+void g()
+{
 }
 
 int main()
 {
-  f(1);
+  f();
+  g();
   return 0;
 }
