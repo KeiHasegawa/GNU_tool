@@ -1,0 +1,34 @@
+getopt の調査
+
+(*1) sample.c
+
+(*1) sample.c
+
+    man getopt(3) で使用例として sample.c が記載されているので
+    そのままコピーしてコンパイルしてみた.
+
+linux % gcc -g sample.c -o sample.exe
+linxu % ./sample.exe -n -t 123 hoge
+flags=1; tfnd=1; optind=4
+name argument = hoge
+
+    期待通り動作している. ところでこれを gdb から実行してみた:
+
+linux % gdb -q sample.exe
+(gdb) b sample.c:20
+(gdb) run -n -t 123 hoge
+(gdb) p optarg
+# 0x0 になっている. 期待値は argv[3]
+(gdb) b sample.c:32
+(gdb) c
+# 32 行目で停止した
+(gdb) p optind
+# 1 になっている. 期待値は 4
+
+    これは明らかに gdb が何かしている. それとも gcc が生成しているデバッグ
+    情報に問題があるのか. プログラムの動きは期待したものだが gdb の動きが
+    おかしい.
+
+    同じことを cygwin で試してみた.
+
+
