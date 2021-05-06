@@ -275,10 +275,9 @@ inline bool match(const std::set<bfd_vma>& addrs, bfd_vma y)
 #endif // __CYGWIN__
 }
 
-inline bool match(const info_t& x, const std::set<std::string>& ex)
+inline bool match(std::string fn, const std::set<std::string>& ex)
 {
   using namespace std;
-  string fn = x.file;
   auto p = find_if(begin(ex), end(ex),
 		   [fn](string s){ return s == fn.substr(0, s.length()); });
   return p != end(ex);
@@ -459,24 +458,44 @@ inline bool output(const info_t& info)
   return true;
 }
 
+inline void usage(const char* prog)
+{
+  using namespace std;
+  cerr << "usage % " << prog << " [-e dir][-h] a.out bb.out" << endl;
+}
+
+inline bool is_header(const char* fn)
+{
+  int len = strlen(fn);
+  if (len < 2)
+    return false;
+  if (fn[len-2] != '.')
+    return false;
+  return fn[len-1] == 'h';
+}
+
 int main(int argc, char** argv)
 {
   using namespace std;
+  bool exclude_header = false;
   set<string> ex;
   int ret;
-  while ((ret = getopt(argc, argv, "e:")) != -1) {
+  while ((ret = getopt(argc, argv, "e:h")) != -1) {
     switch (ret) {
     case 'e':
       ex.insert(optarg);
-      argc -= 2;
+      break;
+    case 'h':
+      exclude_header = true;
       break;
     default:
-      break;
+      usage(argv[0]);
+      return 1;
     }
   }
 
-  if (argc != 3) {
-    cerr << "usage % " << argv[0] << " a.out bb.out" << endl;
+  if (argc - optind != 2) {
+    usage(argv[0]);
     return 1;
   }
 
@@ -538,8 +557,14 @@ int main(int argc, char** argv)
     if (addr = p.second)
       info.push_back(collect(abfd, syms, addr, hightlight));
   }
-  remove_if(begin(info), end(info),
-	    [&ex](const info_t& x){ return match(x,ex); });
+  auto p = remove_if(begin(info), end(info),
+		     [&ex](const info_t& x){ return match(x.file, ex); });
+  info.erase(p, end(info));
+  if (exclude_header) {
+    auto p = remove_if(begin(info), end(info),
+		       [](const info_t& x){ return is_header(x.file); });
+    info.erase(p, end(info));
+  }
   sort(begin(info), end(info));
 
   for_each(begin(info), end(info), output);
@@ -583,4 +608,11 @@ void debug(const vector<info_t>& info)
 {
   for (auto p : info)
     debug(p);
+}
+
+#include <iterator>
+
+void debug(const set<string>& s)
+{
+  copy(begin(s), end(s), ostream_iterator<string>(cout,"\n"));
 }
