@@ -1,0 +1,124 @@
+DLL の調査
+
+(*1) getopt
+(*2) DLL と static リンクライブラリ
+
+(*1) getopt
+
+    man -s:3 getopt で使用例が記載されているのでそのままコピーしてコンパイルしてみた.
+
+cygwin % gcc -g test000.c -o test000.exe
+cygwin % ./test000.exe -n -t 123 hoge
+flags=1; tfnd=1; optind=4
+name argument = hoge
+
+    期待通り動作している.
+cygwin % gdb -q test000.exe    
+(gdb) b test000.c:20
+(gdb) run -n -t 123 hoge
+(gdb) p optarg
+# OK "123" を指している
+(gdb) b test000.c:32
+(gdb) c
+# 32 行目で停止した
+(gdb) p optind
+# OK 4 になっている.
+
+    そもそもこの調査をしたのは cygwin で getopt が期待通り動作していなかった
+    のだが, このように単純な環境では期待通り動作する.
+    基本ブロックプロファイルの bbprof.exe で getopt を使用していたのだが, これが期
+    待通り動作していなかった. そこで以下を試してみた:
+
+cygwin % gcc -g test000.c -o test000_2.exe d:/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/libiberty/libiberty.a
+cygwin % ./test000_2.exe -n -t 123 hoge
+Segmentation fault(core dumped)         # 不正メモリアクセス
+cygwin % gdb -q test000_2.exe
+(gdb) b test000.c:20
+(gdb) run -n -t 123 hoge
+(gdb) p optarg
+$1 = 0xffffcc8b "123"
+(gdb) x/5i $rip
+=> 0x7ff734f510b8 <main+72>:	
+    mov    0x70ed(%rip),%rax        # 0x7ff734f581ac <__imp_optarg>
+   0x7ff734f510bf <main+79>:	mov    (%rax),%rax
+   0x7ff734f510c2 <main+82>:	mov    %rax,%rcx
+   0x7ff734f510c5 <main+85>:	call   0x7ff734f520d0 <atoi>
+   0x7ff734f510ca <main+90>:	mov    %eax,-0x5c(%rbp)
+(gdb) stepi 3
+(gdb) p/x $rax
+$2 = 0x0      期待値は argv[3] で "123" のアドレス
+(gdb) nexti
+nexti
+      0 [main] test000 60 cygwin_exception::open_stackdumpfile: Dumping stack trace to test000.exe.stackdump
+
+     当時 bbprof.exe を開発したとき, これはすごく奇妙な現象に思われたがここまで
+     問題を切り分けられればだいぶバグが搾れるだろう.
+
+     ところで同じことを linux で試してみた.
+
+linux % gcc -g test000.c -o test000.exe
+linxu % ./test000.exe -n -t 123 hoge
+flags=1; tfnd=1; optind=4
+name argument = hoge
+
+    期待通り動作している. これを gdb から実行してみた:
+
+linux % gdb -q test000.exe
+(gdb) b test000.c:20
+(gdb) run -n -t 123 hoge
+(gdb) p optarg
+# 0x0 になっている. 期待値は argv[3]
+(gdb) b test000.c:32
+(gdb) c
+# 32 行目で停止した
+(gdb) p optind
+# 1 になっている. 期待値は 4
+
+    これは明らかに gdb が何かやらかしている. それとも gcc が生成しているデバッグ
+    情報に問題があるのか. プログラムの動きは期待したものだが gdb の動きがおかしい.
+    しかし linux の話は置いておこう.
+
+(*2) DLL と static リンクライブラリ
+
+    以下は単純に DLL で定義されている変数と函数を参照しているプログラム:
+
+cygwin % gcc -g -shared -o test001_dll.dll test001_dll.c
+cygwin % gcc -g test001.c -o test001.exe test001_dll.dll
+cygwin % ./test001.exe
+test001_dll.c::func called
+var = 3456
+
+cygwin % gcc -g test001_static.c -c
+cygwin % ar r test001_static.a test001_static.o
+cygwin % gcc -g test001.c -o test001_s.exe test001_static.a
+/usr/local/lib/gcc/x86_64-pc-cygwin/10.1.0/../../../../x86_64-pc-cygwin/bin/ld: /cygdrive/d/tmp/ccmdw7Xd.o: in function `main':
+/cygdrive/d/home/khasegawa/lang/53_GNU_tool/DLL/test001.c:7: undefined reference to `__imp_var'
+期待通りエラーになっている.
+
+cygwin % gcc -g test001.c -o test001_sd.exe test001_static.a test001_dll.dll
+cygwin % ./test001_sd.exe
+test001_static.c::func called
+var = 12345678
+
+呼び出したのは static リンクライブラリだが DLL の var を参照している.
+
+cygwin % gcc -g test001.c -o test001_ds.exe test001_dll.dll test001_static.a
+cygwin % ./test001_ds.exe
+test001_static.c::func called
+var = 12345678
+
+順番は関係ないらしい.
+
+       これの分かりにくいバージョンが cygwin の bbprof.exe で呼び出した
+       getopt で起こっていたことだった. optarg や optind が期待しない値になってし
+       まう原因がこれであった.
+
+       gdb は何をしていたかというと, 本来は DLL の optarg を参照するのが正しい
+       が, 実際は static リンクライブラリの変数を表示していたということ.
+
+% gdb -q test001_sd.exe
+(gdb) b main
+(gdb) run
+(gdb) p var
+$1 = 87654321       # static リンクライブラリの変数を表示している
+(gdb)
