@@ -370,3 +370,32 @@ g++ -o bbprof.exe -DPACKAGE  bbprof5.o bbprof3_0.o my_dwarf2.o my_coffgen.o -lbf
       ため結局期待通りには表示できない. groff についても同じである.
       そもそも html にある charset が JIS に対応しているかは, ブラウザ
       も含めて不明ではある.
+
+
+      試しに hcc1.exe を --profile-basic-block 付きでコンパイルしてみた.
+      これで
+
+int main()
+{
+  return 0;
+}
+
+      をコンパイルしてみたが残念ながら停止せず.
+      expr0.cpp main.cpp optimize.cpp だけこのオプションでコンパイル
+      してみたが, 不正メモリアクセスが発生.
+
+      まだまだ運用までは遠いな.
+      optimize.cpp を通常コンパイルして再リンクすれば不正メモリアクセス
+      は回避できている.
+      そこで main.cpp を見てみたが,
+
+      o _ の函数名の表示が変. もしかすると _ は特別扱いする必要がある
+      のかも.
+
+      o 以下の行がハイライトされていない
+
+    parse::position = file_t(cmdline::input,1);
+
+      o #ifdef 等でコンパイルアウトされているところもハイライトされている
+
+      などができていない.
