@@ -2578,10 +2578,8 @@ decode_line_info (struct comp_unit *unit)
 static bfd_vma
 lookup_address_in_line_info_table (struct line_info_table *table,
 				   bfd_vma addr,
-				   const char **filename_ptr,
-				   unsigned int *linenumber_ptr,
-				   unsigned int *column_ptr,
-				   unsigned int *discriminator_ptr)
+				   struct line_sequence** result,
+				   int* index)
 {
   struct line_sequence *seq = NULL;
   struct line_info *info;
@@ -2631,16 +2629,14 @@ lookup_address_in_line_info_table (struct line_info_table *table,
       && addr < seq->line_info_lookup[mid + 1]->address
       && !(info->end_sequence || info == seq->last_line))
     {
-      *filename_ptr = info->filename;
-      *linenumber_ptr = info->line;
-      *column_ptr = info->column;
-      if (discriminator_ptr)
-	*discriminator_ptr = info->discriminator;
+      *result = seq;
+      *index = mid;
       return seq->last_line->address - seq->low_pc;
     }
 
  fail:
-  *filename_ptr = NULL;
+  *result = 0;
+  *index = -1;
   return 0;
 }
 
@@ -3910,11 +3906,9 @@ comp_unit_contains_address (struct comp_unit *unit, bfd_vma addr)
 static bfd_vma
 comp_unit_find_nearest_line (struct comp_unit *unit,
 			     bfd_vma addr,
-			     const char **filename_ptr,
-			     struct funcinfo **function_ptr,
-			     unsigned int *linenumber_ptr,
-			     unsigned int *column_ptr,
-			     unsigned int *discriminator_ptr)
+			     struct line_sequence** seq,
+			     int* index,
+			     struct funcinfo **function_ptr)
 {
   bfd_boolean func_p;
 
@@ -3927,10 +3921,7 @@ comp_unit_find_nearest_line (struct comp_unit *unit,
     unit->stash->inliner_chain = *function_ptr;
 
   return lookup_address_in_line_info_table (unit->line_table, addr,
-					    filename_ptr,
-					    linenumber_ptr,
-					    column_ptr,
-					    discriminator_ptr);
+					    seq, index);
 }
 
 /* Check to see if line info is already decoded in a comp_unit.
@@ -4990,11 +4981,9 @@ _bfd_dwarf2_find_nearest_line2 (bfd *abfd,
 			       asymbol *symbol,
 			       asection *section,
 			       bfd_vma offset,
-			       const char **filename_ptr,
+			       struct line_sequence** seq,
+			       int* index,
 			       const char **functionname_ptr,
-			       unsigned int *linenumber_ptr,
-			       unsigned int *column_ptr,
-			       unsigned int *discriminator_ptr,
 			       const struct dwarf_debug_section *debug_sections,
 			       void **pinfo)
 {
@@ -5014,12 +5003,8 @@ _bfd_dwarf2_find_nearest_line2 (bfd *abfd,
   int found = FALSE;
   bfd_boolean do_line;
 
-  *filename_ptr = NULL;
   if (functionname_ptr != NULL)
     *functionname_ptr = NULL;
-  *linenumber_ptr = 0;
-  if (discriminator_ptr)
-    *discriminator_ptr = 0;
 
   if (! _bfd_dwarf2_slurp_debug_info (abfd, NULL, debug_sections,
 				      symbols, pinfo,
@@ -5101,10 +5086,12 @@ _bfd_dwarf2_find_nearest_line2 (bfd *abfd,
 
       if (stash->info_hash_status == STASH_INFO_HASH_ON)
 	{
+#if 0
 	  found = stash_find_line_fast (stash, symbol, addr, filename_ptr,
 					linenumber_ptr);
 	  if (found)
 	    goto done;
+#endif
 	}
       else
 	{
@@ -5114,10 +5101,12 @@ _bfd_dwarf2_find_nearest_line2 (bfd *abfd,
 		|| each->arange.high == 0
 		|| comp_unit_contains_address (each, addr))
 	      {
+#if 0
 		found = comp_unit_find_line (each, symbol, addr, filename_ptr,
 					     linenumber_ptr);
 		if (found)
 		  goto done;
+#endif
 	      }
 	}
     }
@@ -5137,10 +5126,7 @@ _bfd_dwarf2_find_nearest_line2 (bfd *abfd,
 	  found = ((each->arange.high == 0
 		    || comp_unit_contains_address (each, addr))
 		   && (range = (comp_unit_find_nearest_line
-				(each, addr, &local_filename,
-				 &local_function, &local_linenumber,
-				 &local_column,
-				 &local_discriminator))) != 0);
+				(each, addr, seq, index, &local_function))) != 0);
 	  if (found)
 	    {
 	      /* PRs 15935 15994: Bogus debug information may have provided us
@@ -5156,26 +5142,35 @@ _bfd_dwarf2_find_nearest_line2 (bfd *abfd,
 		 function is called.  */
 	      if (range <= min_range)
 		{
+#if 0
 		  if (filename_ptr && local_filename)
 		    * filename_ptr = local_filename;
+#endif
 		  if (local_function)
 		    function = local_function;
+#if 0
 		  if (discriminator_ptr && local_discriminator)
 		    * discriminator_ptr = local_discriminator;
 		  if (local_linenumber)
 		    * linenumber_ptr = local_linenumber;
 		  if (local_column)
 		    *column_ptr = local_column;
+#endif
 		  min_range = range;
+#if 1
+		  goto done;
+#endif
 		}
 	    }
 	}
 
+#if 0
       if (* linenumber_ptr)
 	{
 	  found = TRUE;
 	  goto done;
 	}
+#endif
     }
 
   /* Read each remaining comp. units checking each as they are read.  */
@@ -5187,29 +5182,31 @@ _bfd_dwarf2_find_nearest_line2 (bfd *abfd,
 	 to see if a compilation unit contains the given
 	 address.  */
       if (do_line)
+#if 0
 	found = (((symbol->flags & BSF_FUNCTION) == 0
 		  || each->arange.high == 0
 		  || comp_unit_contains_address (each, addr))
 		 && comp_unit_find_line (each, symbol, addr,
 					 filename_ptr, linenumber_ptr));
+#else
+        ;
+#endif
       else
 	found = ((each->arange.high == 0
 		  || comp_unit_contains_address (each, addr))
 		 && comp_unit_find_nearest_line (each, addr,
-						 filename_ptr,
-						 &function,
-						 linenumber_ptr,
-						 column_ptr,
-						 discriminator_ptr) != 0);
+						 seq, index,
+						 &function) != 0);
 
       if (found)
 	break;
     }
 
  done:
+#if 0
   if (functionname_ptr && function && function->is_linkage)
     *functionname_ptr = function->name;
-#ifdef __CYGWIN__
+#else
   if (functionname_ptr && function)
     *functionname_ptr = function->name;
 #endif // __CYGWIN__
@@ -5222,10 +5219,13 @@ _bfd_dwarf2_find_nearest_line2 (bfd *abfd,
       asection *sec = section;
 
       _bfd_dwarf2_stash_syms (stash, abfd, &sec, &syms);
+#if 0
       fun = _bfd_elf_find_function (abfd, syms, sec, offset,
 				    *filename_ptr ? NULL : filename_ptr,
 				    functionname_ptr);
-
+#else
+      fun = NULL;
+#endif
       if (!found && fun != NULL)
 	found = 2;
 

@@ -381,6 +381,20 @@ g++ -o bbprof.exe -DPACKAGE  bbprof5.o bbprof3_0.o my_dwarf2.o my_coffgen.o -lbf
       現状では, その部分が実行されたかのようにハイライトされて表示され
       てしまう.
 
+      実現方法の 1 つに cc1 に余分に call _profile_basic_block を
+      生成させる方法があるが, この方法だとプログラムの実行速度を
+      さらに低下させる原因になる.
+
+      bbprof.exe でコンパイルアウトされている箇所を認識できればよい.
+      しかし方法は今のところ明確にはなっていない.
+
+      if (!build_line_info(tabble, seq)) {
+         ...
+      }
+
+      このポイントで seq に期待するものが入っている.
+ 
+
 (*12) exit 問題
 
       test017.c は exit を呼び出す函数 f を呼び出している. この場合

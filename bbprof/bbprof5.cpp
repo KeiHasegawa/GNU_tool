@@ -18,6 +18,7 @@ extern "C" {
 #endif // __CYGWIN__
 #include <bfd.h>
 #include <dis-asm.h>
+#include "my_dwarf2.h"
 
 int read_bb(const char* bbout, std::set<bfd_vma>& res)
 {
@@ -58,7 +59,7 @@ struct create_bb1 {
   disassemble_info* m_info;
   create_bb1(bfd_vma sec_base, disassemble_info* info)
     : m_sec_base{sec_base}, m_info{info} {}
-  bool operator()(asymbol* sym, bfd_vma end)
+  bool operator()(bfd_symbol* sym, bfd_vma end)
   {
     using namespace std;
 #ifdef __CYGWIN__
@@ -151,7 +152,7 @@ void my_address_func(bfd_vma addr, disassemble_info* info)
   res->insert(make_pair(caller+5,0));  // +5 means next instrunction
 }
 
-void create_bb(bfd* abfd, asection* sect, asymbol** syms, int nsyms,
+void create_bb(bfd* abfd, asection* sect, bfd_symbol** syms, int nsyms,
 	       bfd_vma prof_addr, std::map<bfd_vma, bfd_vma>& res)
 {
   using namespace std;
@@ -159,14 +160,14 @@ void create_bb(bfd* abfd, asection* sect, asymbol** syms, int nsyms,
   if (!(flags & SEC_CODE))
     return;
 
-  vector<asymbol*> vs;
+  vector<bfd_symbol*> vs;
   copy_if(&syms[0], &syms[nsyms], back_inserter(vs),
-	  [sect](asymbol* p){ return p->section == sect; } );
+	  [sect](bfd_symbol* p){ return p->section == sect; } );
   if (vs.empty())
     return;
 
   sort(begin(vs), end(vs),
-       [](asymbol* x, asymbol* y){ return x->value < y->value; });
+       [](bfd_symbol* x, bfd_symbol* y){ return x->value < y->value; });
 
   disassemble_info info;
   init_disassemble_info(&info, 0, my_fprintf);
@@ -193,7 +194,7 @@ void create_bb(bfd* abfd, asection* sect, asymbol** syms, int nsyms,
 
   vector<bfd_vma> va;
   transform(begin(vs)+1, end(vs), back_inserter(va),
-	    [sec_base](asymbol* p){ return sec_base + p->value; });
+	    [sec_base](bfd_symbol* p){ return sec_base + p->value; });
   va.push_back(sec_base + size);
   mismatch(begin(vs), end(vs), begin(va), create_bb1(sec_base, &info));
 }
@@ -285,16 +286,14 @@ inline bool match(std::string fn, const std::set<std::string>& ex)
 
 extern "C"
 bfd_boolean my_func(bfd *abfd,
-		    asymbol **symbols,
+		    bfd_symbol **symbols,
 		    asection *section,
 		    bfd_vma offset,
-		    const char **filename_ptr,
-		    const char **functionname_ptr,
-		    unsigned int *line_ptr,
-		    unsigned int *column_ptr,
-		    unsigned int *discriminator_ptr);
+		    line_sequence** seq,
+		    int* index,
+		    const char **func);
 
-inline bool collect1(bfd* abfd, asection* sect, asymbol** syms, info_t* res)
+inline bool collect1(bfd* abfd, asection* sect, bfd_symbol** syms, info_t* res)
 {
   using namespace std;
   auto flags = sect->flags;
@@ -310,16 +309,22 @@ inline bool collect1(bfd* abfd, asection* sect, asymbol** syms, info_t* res)
   if (addr >= vma + size)
     return false;
 
-  auto ret = my_func(abfd, syms, sect, addr - vma, &res->file, &res->func,
-		     &res->line, &res->column, &res->disc);
+  line_sequence* seq;
+  int index;
+  auto ret = my_func(abfd, syms, sect, addr - vma, &seq, &index, &res->func);
   if (!ret) {
     cerr << hex << addr << " not found" << endl;
     return true;
   }
+  auto info = seq->line_info_lookup[index];
+  res->file = info->filename;
+  res->line = info->line;
+  res->column = info->column;
+  res->disc = info->discriminator;
   return true;
 }
 
-inline info_t collect(bfd* abfd, asymbol** syms,
+inline info_t collect(bfd* abfd, bfd_symbol** syms,
 		      bfd_vma addr, bool highlight)
 {
   info_t res = { addr, highlight };
@@ -509,16 +514,16 @@ int main(int argc, char** argv)
     return 1;
   }
 
-  if (!bfd_check_format(abfd, bfd_object)) {
-    cerr << "bfd_check_format failed" << endl;
-    return 1;
-  }
-
   struct sweeper {
     bfd* m_bfd;
     sweeper(bfd* b) : m_bfd{b} {}
     ~sweeper(){ bfd_close(m_bfd); }
   } sweeper(abfd);
+
+  if (!bfd_check_format(abfd, bfd_object)) {
+    cerr << "bfd_check_format failed" << endl;
+    return 1;
+  }
 
   int upper =  bfd_get_symtab_upper_bound(abfd);
   if (upper < 0) {
@@ -526,8 +531,8 @@ int main(int argc, char** argv)
     return 1;
   }
 
-  asymbol** syms = (asymbol**)(new char[upper]);
-  unique_ptr<asymbol*> sweeper2(syms);
+  bfd_symbol** syms = (bfd_symbol**)(new char[upper]);
+  unique_ptr<bfd_symbol*> sweeper2(syms);
   int nsyms = bfd_canonicalize_symtab(abfd, syms);
   if (nsyms < 0) {
     cerr << "bfd_canonicalize_symtab failed" << endl;
@@ -536,12 +541,12 @@ int main(int argc, char** argv)
 
   string fn = "_profile_basic_block_";
   auto it = find_if(&syms[0], &syms[nsyms],
-		    [fn](asymbol* p){ return p->name == fn; });
+		    [fn](bfd_symbol* p){ return p->name == fn; });
   if (it == &syms[nsyms]) {
     cerr << '`' << fn << "' not found" << endl;
     return 1;
   }
-  asymbol* sym = *it;
+  bfd_symbol* sym = *it;
   asection* sect = sym->section;
   bfd_vma prof_addr = sect->vma + sym->value;
 
