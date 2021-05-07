@@ -3,6 +3,7 @@
 #include <vector>
 #include <memory>
 #include <bfd.h>
+#include "my_dwarf2.h"
 
 #ifdef __x86_64__
 typedef uint64_t addr_type;
@@ -35,11 +36,9 @@ bfd_boolean my_func(bfd *abfd,
 		    asymbol **symbols,
 		    asection *section,
 		    bfd_vma offset,
-		    const char **filename_ptr,
-		    const char **functionname_ptr,
-		    unsigned int *line_ptr,
-		    unsigned int *column_ptr,
-		    unsigned int *discriminator_ptr);
+		    line_sequence** seq,
+		    int* index,
+		    const char **func);
 
 inline bool
 find_caller_1(bfd* abfd, asection* sect, asymbol** syms, addr_type addr)
@@ -60,20 +59,21 @@ find_caller_1(bfd* abfd, asection* sect, asymbol** syms, addr_type addr)
   if (addr >= vma + size)
     return false;
 
-  const char* file;
+  line_sequence* seq;
+  int index;
   const char* func;
-  unsigned int line;
-  unsigned int column;
-  unsigned int disc;
   auto ret = my_func(abfd, syms, sect, addr - vma,
-		     &file, &func, &line, &column,
-		     &disc);
+		     &seq, &index, &func);
   using namespace std;
   if (!ret) {
     cerr << hex << addr << " not found" << endl;
     return false;
   }
-
+  auto info = seq->line_info_lookup[index];
+  const char* file = info->filename;
+  auto line = info->line;
+  auto column = info->column;
+  auto disc = info->discriminator;
   cout << file << ':' << func << ':' << line << '.' << column;
   if (disc)
     cout << '.' << disc;
