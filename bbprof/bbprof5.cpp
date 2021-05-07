@@ -226,17 +226,10 @@ inline bool out_fB(bool prev_highlight, std::ifstream& ifs,
   if (!index)
     return true;
   auto array = seq->line_info_lookup;
-#if 0
-  return comp_line(array[index-1], curr);
-  // fail at test006.c
-#endif
-#if 1
   int m = min(index-1, prev_index+1);
   auto p = find_if(&array[m], &array[index],
 		   bind2nd(ptr_fun(comp_line), curr));
   return p != &array[index];
-  // pass at test006.c but fail at test000.c
-#endif
 }
 
 inline void output_newline()
