@@ -210,19 +210,9 @@ inline bool comp_line(line_info* p, int line)
   return p->line == line;
 }
 
-inline bool out_fB(bool prev_highlight, std::ifstream& ifs,
-		   int curr, line_sequence* seq, int index, int prev_index)
+inline bool out_fB1(int curr, line_sequence* seq, int index, int prev_index)
 {
   using namespace std;
-  if (!prev_highlight)
-    return false;
-#ifdef __CYGWIN__
-  if (ifs.peek() != '\r')
-    return true;
-  ifs.get();
-#endif // __CYGWIN__
-  if (ifs.peek() == '\n')
-    return false;
   if (!index)
     return true;
   auto array = seq->line_info_lookup;
@@ -230,6 +220,21 @@ inline bool out_fB(bool prev_highlight, std::ifstream& ifs,
   auto p = find_if(&array[m], &array[index],
 		   bind2nd(ptr_fun(comp_line), curr));
   return p != &array[index];
+}
+
+inline bool out_fB(bool prev_highlight, std::ifstream& ifs,
+		   int curr, line_sequence* seq, int index, int prev_index)
+{
+  if (!prev_highlight)
+    return false;
+#ifdef __CYGWIN__
+  if (ifs.peek() != '\r')
+    return out_fB1(curr, seq, index, prev_index);
+  ifs.get();
+#endif // __CYGWIN__
+  if (ifs.peek() == '\n')
+    return false;
+  return out_fB1(curr, seq, index, prev_index);
 }
 
 inline void output_newline()
