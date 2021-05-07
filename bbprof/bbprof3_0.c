@@ -23,11 +23,9 @@ coff_find_nearest_line2 (bfd *abfd,
 			asymbol **symbols,
 			asection *section,
 			bfd_vma offset,
-			const char **filename_ptr,
-			const char **functionname_ptr,
-			unsigned int *line_ptr,
-			unsigned int *column_ptr,
-			unsigned int *discriminator_ptr);
+			struct line_sequence** seq,
+			int* index,
+			const char **func);
 
 bfd_boolean my_func(bfd *abfd,
 		    asymbol **symbols,
@@ -47,7 +45,6 @@ bfd_boolean my_func(bfd *abfd,
 #endif // linux
 #ifdef __CYGWIN__
   return coff_find_nearest_line2 (abfd, symbols, section, offset,
-				  filename_ptr, functionname_ptr,
-				  line_ptr, column_ptr, discriminator_ptr);
+				  seq, index, func);
 #endif //  __CYGWIN__
 }
