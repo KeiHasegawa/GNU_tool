@@ -1,1 +1,70 @@
 gcc inline assembler
+
+(*1) Grammer
+
+Refer to `c-parser.c'
+
+   asm-qualifier:
+     volatile
+     inline
+     goto
+
+   asm-qualifier-list:
+     asm-qualifier-list asm-qualifier
+     asm-qualifier
+
+   asm-statement:
+     asm asm-qualifier-list[opt] ( asm-argument ) ;
+
+   asm-argument:
+     asm-string-literal
+     asm-string-literal : asm-operands[opt]
+     asm-string-literal : asm-operands[opt] : asm-operands[opt]
+     asm-string-literal : asm-operands[opt] : asm-operands[opt] \
+       : asm-clobbers[opt]
+     asm-string-literal : : asm-operands[opt] : asm-clobbers[opt] \
+       : asm-goto-operands
+
+(*2) Example 1
+
+    asm("bswap %0" : "=r" (x) : "0" (x))    // (*D)
+               ^^    ^^^^^^^^   ^^^^^^^
+             (*C)      (*A)       (*B)
+
+    (*A) : output operand
+    (*B) : input operand
+    (*C) : select operand
+
+    "=r"
+
+    Normaly used `='. `r' denotes register.
+    (*A) means storing the result into `x' using some register.
+
+    "0"
+
+    Normal specified number. 0 means 0'th of output operands, i.e.
+    "=r"
+
+    Finally, (*D) means
+    1. load `x' into, for example %eax
+    2. bswap %eax
+    3. store %eax into `x'
+
+(*3) Example 2
+
+    asm("xchgb %b0,%h0" : "=Q" (x) : "0" (x));
+
+    For output operand, "=Q" is specified. This also means 
+    storing using some register. The difference from "=r" is ambiguity at
+    this point.
+
+(*4) set the value of stack pointer into local variable
+
+     uint32_t x;
+     asm("movl %esp, %0" : "=r" (x));
+               ^^^^
+
+     Above is error because operand number is required after `%' character.
+
+     Is there a good way?
+

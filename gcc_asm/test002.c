@@ -1,15 +1,21 @@
 #include <stdint.h>
 #include <stdio.h>
 
-uint32_t clz(uint32_t x)
+uint32_t getsp()
 {
-  asm("clz %0" : "=r" (x) : "0" (x));
+  uint32_t x;
+#if 0
+  asm("mov %esp, %0" : "=r" (x));
+#endif
+#if 1
+  asm("mov %esp, %eax");
+  asm("mov %eax, -4(%ebp)");
+#endif
   return x;
 }
 
 int main()
 {
-  uint32_t x = 0x80000000;
-  printf("clz(%x) = %x\n", x, clz(x));
+  printf("getsp() = %x\n", getsp());
   return 0;
 }

@@ -1,1 +1,74 @@
 gcc インラインアセンブラ
+
+(*1) 構文
+(*2) 例1
+(*3) 例2
+(*4) スタックポインタの値をローカル変数にセット
+
+c-parser.c から
+
+   asm-qualifier:
+     volatile
+     inline
+     goto
+
+   asm-qualifier-list:
+     asm-qualifier-list asm-qualifier
+     asm-qualifier
+
+   asm-statement:
+     asm asm-qualifier-list[opt] ( asm-argument ) ;
+
+   asm-argument:
+     asm-string-literal
+     asm-string-literal : asm-operands[opt]
+     asm-string-literal : asm-operands[opt] : asm-operands[opt]
+     asm-string-literal : asm-operands[opt] : asm-operands[opt] \
+       : asm-clobbers[opt]
+     asm-string-literal : : asm-operands[opt] : asm-clobbers[opt] \
+       : asm-goto-operands
+
+(*2) 例1
+
+    asm("bswap %0" : "=r" (x) : "0" (x))    // (*D)
+               ^^    ^^^^^^^^   ^^^^^^^
+             (*C)      (*A)       (*B)
+
+    (*A) は出力オペランドを指定する.
+    (*B) は入力オペランドを指定する.
+    (*C) はオペランドの選択を表す
+
+    "=r"
+
+    ここは通常 = が指定されるが, + を指定することもできる.
+    r はレジスタを表す.
+    (*A) は x に結果を書き込むことを意味する. その際にレジスタを使って
+    もよいことを意味する.
+
+    "0"
+
+    ここは通常番号が指定される. 0 は出力オペランドの 0 番目すなわち
+    "=r" を意味する.
+
+    (*D) は x をレジスタ, 例えば %eax にロードするコードを出力し
+    bswap %eax を出力し
+    %eax の値を x にストアするコードを出力することを意味する.
+
+(*3) 例2
+
+    asm("xchgb %b0,%h0" : "=Q" (x) : "0" (x));
+
+    出力オペランドに "=Q" が指定されている. これもレジスタを使ってもよい
+    ことを表している. r と Q との違いはここでは不明.
+
+
+(*3) スタックポインタの値をローカル変数にセット
+
+     uint32_t x;
+     asm("movl %esp, %0" : "=r" (x));
+               ^^^^
+
+     これは残念ながらエラーになる. % の後にはオペランドの番号が必要
+     なのでレジスタ名を書くことはできない.
+
+     何かいい方法がないものか.
