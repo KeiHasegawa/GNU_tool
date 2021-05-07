@@ -205,18 +205,38 @@ namespace roff {
   const char* fR = "\\fR";
 } // end of namespace roff
 
-inline bool out_fB(bool prev_highlight, std::ifstream& ifs)
+inline bool comp_line(line_info* p, int line)
 {
-#ifdef __CYGWIN__
+  return p->line == line;
+}
+
+inline bool out_fB(bool prev_highlight, std::ifstream& ifs,
+		   int curr, line_sequence* seq, int index, int prev_index)
+{
+  using namespace std;
   if (!prev_highlight)
     return false;
+#ifdef __CYGWIN__
   if (ifs.peek() != '\r')
     return true;
   ifs.get();
-  return ifs.peek() != '\n';
-#else // __CYGWIN__
-  return prev_highlight && ifs.peek() != '\n';
 #endif // __CYGWIN__
+  if (ifs.peek() == '\n')
+    return false;
+  if (!index)
+    return true;
+  auto array = seq->line_info_lookup;
+#if 0
+  return comp_line(array[index-1], curr);
+  // fail at test006.c
+#endif
+#if 1
+  int m = min(index-1, prev_index+1);
+  auto p = find_if(&array[m], &array[index],
+		   bind2nd(ptr_fun(comp_line), curr));
+  return p != &array[index];
+  // pass at test006.c but fail at test000.c
+#endif
 }
 
 inline void output_newline()
@@ -239,29 +259,29 @@ inline bool unexpected_eof(const char* file)
 struct info_t {
   bfd_vma addr;
   bool highlight;
-  const char* file;
+  line_sequence* seq;
+  int index;
   const char* func;
-  unsigned int line;
-  unsigned int column;
-  unsigned int disc;
 };
 
 inline bool operator<(const info_t& x, const info_t& y)
 {
-  if (int n = strcmp(x.file, y.file))
+  auto xi = x.seq->line_info_lookup[x.index];
+  auto yi = y.seq->line_info_lookup[y.index];
+  if (int n = strcmp(xi->filename, yi->filename))
     return n < 0;
-
-  if (x.line < y.line)
+  
+  if (xi->line < yi->line)
     return true;
-  if (x.line > y.line)
+  if (xi->line > yi->line)
     return false;
 
-  if (x.column < y.column)
+  if (xi->column < yi->column)
     return true;
-  if (x.column > y.column)
+  if (xi->column > yi->column)
     return false;
 
-  return x.disc < y.disc;
+  return xi->discriminator < yi->discriminator;
 }
 
 inline bool match(const std::set<bfd_vma>& addrs, bfd_vma y)
@@ -311,16 +331,12 @@ inline bool collect1(bfd* abfd, asection* sect, bfd_symbol** syms, info_t* res)
 
   line_sequence* seq;
   int index;
-  auto ret = my_func(abfd, syms, sect, addr - vma, &seq, &index, &res->func);
+  auto ret = my_func(abfd, syms, sect, addr - vma,
+		     &res->seq, &res->index, &res->func);
   if (!ret) {
     cerr << hex << addr << " not found" << endl;
     return true;
   }
-  auto info = seq->line_info_lookup[index];
-  res->file = info->filename;
-  res->line = info->line;
-  res->column = info->column;
-  res->disc = info->discriminator;
   return true;
 }
 
@@ -351,16 +367,18 @@ std::unique_ptr<std::ifstream> ptr_ifs;
 inline bool output(const info_t& info)
 {
   using namespace std;
-  const char* file = info.file;
+  auto p = info.seq->line_info_lookup[info.index];
+  const char* file = p->filename;
   const char* func = info.func;
-  unsigned int line = info.line;
-  unsigned int column = info.column;
+  unsigned int line = p->line;
+  unsigned int column = p->column;
   bool highlight = info.highlight;
 
   static const char* prev_file;
   static const char* prev_func;
   static unsigned int prev_line, prev_column;
   static bool prev_highlight;
+  static int prev_index;
   if (!prev_file || strcmp(prev_file, file)) {
     if (prev_file) {
       tail(*ptr_ifs.get());
@@ -379,6 +397,7 @@ inline bool output(const info_t& info)
     prev_line = line;
     --line;
     prev_column = column;
+    prev_index = info.index;
     ptr_ifs.reset(new ifstream {file});
   }
   else {
@@ -409,7 +428,10 @@ inline bool output(const info_t& info)
   }
 
   while (line--) {
-    bool b = out_fB(prev_highlight, ifs);
+    int curr = prev_line - line - 1;
+    auto seq = info.seq;
+    auto index = info.index;
+    bool b = out_fB(prev_highlight, ifs, curr, seq, index, prev_index);
     if (b)
       cout << roff::fB;
     while (1) {
@@ -460,6 +482,7 @@ inline bool output(const info_t& info)
     cout << roff::fR;
 
   prev_highlight = highlight;
+  prev_index = info.index;
   return true;
 }
 
@@ -467,6 +490,11 @@ inline void usage(const char* prog)
 {
   using namespace std;
   cerr << "usage % " << prog << " [-e dir][-h] a.out bb.out" << endl;
+}
+
+inline const char* get_fn(const info_t& x)
+{
+  return x.seq->line_info_lookup[x.index]->filename;
 }
 
 inline bool is_header(const char* fn)
@@ -484,8 +512,7 @@ int main(int argc, char** argv)
   using namespace std;
   bool exclude_header = false;
   set<string> ex;
-  int ret;
-  while ((ret = getopt(argc, argv, "e:h")) != -1) {
+  for ( int ret; (ret = getopt(argc, argv, "e:h")) != -1 ; ) {
     switch (ret) {
     case 'e':
       ex.insert(optarg);
@@ -563,11 +590,11 @@ int main(int argc, char** argv)
       info.push_back(collect(abfd, syms, addr, hightlight));
   }
   auto p = remove_if(begin(info), end(info),
-		     [&ex](const info_t& x){ return match(x.file, ex); });
+		     [&ex](const info_t& x){ return match(get_fn(x), ex); });
   info.erase(p, end(info));
   if (exclude_header) {
     auto p = remove_if(begin(info), end(info),
-		       [](const info_t& x){ return is_header(x.file); });
+		       [](const info_t& x){ return is_header(get_fn(x)); });
     info.erase(p, end(info));
   }
   sort(begin(info), end(info));
@@ -598,15 +625,16 @@ void debug(const info_t& p)
 {
   cout << hex << p.addr << ',';
   cout << p.highlight << ',';
-  cout << p.file << ',';
+  auto q = p.seq->line_info_lookup[p.index];
+  cout << q->filename << ',';
   if (p.func)
     cout << p.func << ',';
   else
     cout << "null" << ',';
   cout << dec;
-  cout << p.line << ',';
-  cout << p.column << ',';
-  cout << p.disc << endl;
+  cout << q->line << ',';
+  cout << q->column << ',';
+  cout << q->discriminator << endl;
 }
 
 void debug(const vector<info_t>& info)
