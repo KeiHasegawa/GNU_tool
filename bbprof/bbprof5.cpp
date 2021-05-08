@@ -237,14 +237,16 @@ inline bool out_fB(bool prev_highlight, std::ifstream& ifs,
   return out_fB1(curr, seq, index, prev_index);
 }
 
+#ifdef __CYGWIN__
+const char* nl = "\r\n";
+#else // __CYGWIN__
+const char nl = '\n';
+#endif // __CYGWIN__
+
 inline void output_newline()
 {
   using namespace std;
-#ifdef __CYGWIN__
-  cout << "\r\n" << roff::br << "\r\n";
-#else // __CYGWIN__
-  cout << '\n' << roff::br << '\n';
-#endif // __CYGWIN__
+  cout << nl << roff::br << nl;
 }
 
 inline void unexpected_eof(const char* file)
@@ -392,13 +394,9 @@ inline void output(const info_t& info)
       prev_highlight = false;
     }
     else {
-      cout << ".char \\- \\N'45'\n";
+      cout << ".char \\- \\N'45'" << nl;
     }
-#ifdef __CYGWIN__
-    cout << file << "\r\n";
-#else
-    cout << file << '\n';
-#endif
+    cout << file << nl;
     output_newline();
     prev_file = file;
     prev_func = func;
