@@ -247,11 +247,10 @@ inline void output_newline()
 #endif // __CYGWIN__
 }
 
-inline bool unexpected_eof(const char* file)
+inline void unexpected_eof(const char* file)
 {
   using namespace std;
   cerr << "unexpected EOF at `" << file << "''\n";
-  return true;
 }
 
 struct info_t {
@@ -362,7 +361,15 @@ inline void tail(std::ifstream& ifs)
 
 std::unique_ptr<std::ifstream> ptr_ifs;
 
-inline bool output(const info_t& info)
+inline void output1(int c)
+{
+  using namespace std;
+  if (c == ' ' || c == '\t' || c == '-' || c == '\\')  // not support SJIS JIS
+    cout.put('\\');
+  cout.put(c);
+}
+
+inline void output(const info_t& info)
 {
   using namespace std;
   auto p = info.seq->line_info_lookup[info.index];
@@ -383,6 +390,9 @@ inline bool output(const info_t& info)
       output_newline();
       output_newline();
       prev_highlight = false;
+    }
+    else {
+      cout << ".char \\- \\N'45'\n";
     }
 #ifdef __CYGWIN__
     cout << file << "\r\n";
@@ -420,9 +430,9 @@ inline bool output(const info_t& info)
   auto& ifs = *ptr_ifs.get();
   if (!ifs) {
     if (ifs.eof())
-      return true;  // already error message outputed
+      return;  // already error message outputed
     cerr << "cannot open " << file << endl;
-    return true;
+    return;
   }
 
   while (line--) {
@@ -440,9 +450,7 @@ inline bool output(const info_t& info)
 	c = ifs.get();
       if (c == '\n')
 	break;
-      if (c == ' ' || c == '\t' || c == '\\')  // not support SJIS JIS
-	cout.put('\\');
-      cout.put(c);
+      output1(c);
     }
     if (b)
       cout << roff::fR;
@@ -450,7 +458,7 @@ inline bool output(const info_t& info)
   }
 
   if (!column)
-    return true;
+    return;
 
   bool b = prev_highlight && column != 1;
   if (b)
@@ -460,9 +468,7 @@ inline bool output(const info_t& info)
     int c = ifs.get();
     if (ifs.eof())
       return unexpected_eof(file);
-    if (c == ' ' || c == '\t' || c == '\\')  // not support SJIS JIS
-      cout.put('\\');
-    cout.put(c);
+    output1(c);
   }
 
   if (b)
@@ -481,7 +487,6 @@ inline bool output(const info_t& info)
 
   prev_highlight = highlight;
   prev_index = info.index;
-  return true;
 }
 
 inline void usage(const char* prog)
