@@ -1,0 +1,99 @@
+*** gcc-10.2.0.org/gcc/gimplify.c	2020-07-23 15:35:17.644387858 +0900
+--- gcc-10.2.0/gcc/gimplify.c	2021-05-08 18:16:14.550577712 +0900
+***************
+*** 1570,1575 ****
+--- 1570,1589 ----
+      }
+  }
+  
++ // add by khasegawa
++ inline void modify_loc_if2(tree stmt, gimple_seq seq)
++ {
++   if (!global_options.x_flag_profile_basic_block)
++     return;
++   gimple* p = seq->next;
++   if (!p)
++     return;
++   for (; p->next ; p = p->next)
++     ;
++   location_t loc = EXPR_LOCATION(stmt);
++   gimple_set_location(p, loc);
++ }
++ 
+  /* Gimplify a RETURN_EXPR.  If the expression to be returned is not a
+     GIMPLE value, it is assigned to a new temporary and the statement is
+     re-written to return the temporary.
+***************
+*** 1665,1670 ****
+--- 1679,1685 ----
+      TREE_OPERAND (ret_expr, 0) = result;
+  
+    gimplify_and_add (TREE_OPERAND (stmt, 0), pre_p);
++   modify_loc_if2(stmt, *pre_p);  // add by khasegwa
+  
+    maybe_add_early_return_predict_stmt (pre_p);
+    ret = gimple_build_return (result);
+*** gcc-10.2.0.org/gcc/c/c-parser.c	2020-07-23 15:35:17.304384112 +0900
+--- gcc-10.2.0/gcc/c/c-parser.c	2021-05-08 17:05:43.924467824 +0900
+***************
+*** 6126,6131 ****
+--- 6273,6286 ----
+    c_parser_statement_after_labels (parser, if_p, NULL);
+  }
+  
++ // add by khasegawa
++ inline void modify_loc_if(tree stmt, location_t loc)
++ {
++   if (!global_options.x_flag_profile_basic_block)
++     return;
++   SET_EXPR_LOCATION(stmt, loc);
++ }
++ 
+  /* Parse a statement, other than a labeled statement.  CHAIN is a vector
+     of if-else-if conditions.  All labels and standard attributes have
+     been parsed in the caller.
+***************
+*** 6209,6218 ****
+--- 6364,6376 ----
+  	  else
+  	    {
+  	      location_t xloc = c_parser_peek_token (parser)->location;
++ 	      if (global_options.x_flag_profile_basic_block)
++ 		xloc = loc;
+  	      struct c_expr expr = c_parser_expression_conv (parser);
+  	      mark_exp_read (expr.value);
+  	      stmt = c_finish_return (EXPR_LOC_OR_LOC (expr.value, xloc),
+  				      expr.value, expr.original_type);
++ 	      modify_loc_if(stmt, loc);  // add by khasegawa
+  	      goto expect_semicolon;
+  	    }
+  	  break;
+*** gcc-10.2.0.org/gcc/cp/parser.c	2020-07-23 15:35:17.528386580 +0900
+--- gcc-10.2.0/gcc/cp/parser.c	2021-05-08 17:19:07.907416655 +0900
+***************
+*** 13013,13018 ****
+--- 13060,13073 ----
+    return false;
+  }
+  
++ // add khasegawa
++ inline void modify_loc_if(tree stmt, location_t loc)
++ {
++   if (!global_options.x_flag_profile_basic_block)
++     return;
++   SET_EXPR_LOCATION(stmt, loc);
++ }
++ 
+  /* Parse a jump-statement.
+  
+     jump-statement:
+***************
+*** 13117,13122 ****
+--- 13172,13178 ----
+  	  /* Don't deduce from a discarded return statement.  */;
+  	else
+  	  statement = finish_return_stmt (expr);
++ 	modify_loc_if(statement, token->location);  // add khasegawa
+  	/* Look for the final `;'.  */
+  	cp_parser_require (parser, CPP_SEMICOLON, RT_SEMICOLON);
+        }
