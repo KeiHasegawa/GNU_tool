@@ -57,7 +57,7 @@ namespace my_fprintf_data {
 struct create_bb1 {
   bfd_vma m_sec_base;
   disassemble_info* m_info;
-  create_bb1(bfd_vma sec_base, disassemble_info* info)
+   create_bb1(bfd_vma sec_base, disassemble_info* info)
     : m_sec_base{sec_base}, m_info{info} {}
   bool operator()(bfd_symbol* sym, bfd_vma end)
   {
@@ -75,7 +75,8 @@ struct create_bb1 {
     while (p->m_caller != end) {
       int n = print_insn_i386(p->m_caller, m_info);
       p->m_prev = p->m_caller;
-      if (my_fprintf_data::last && !strncmp(my_fprintf_data::last, ret, len)) 
+      auto last = my_fprintf_data::last;
+      if (last && !strncmp(last, ret, len)) 
 	p->m_last_ret = p->m_caller;
       p->m_caller += n;
     }
@@ -85,8 +86,14 @@ struct create_bb1 {
       auto& second = it->second;
       assert(!second);
       assert(my_fprintf_data::last);
-      if (strncmp(my_fprintf_data::last, ret, len))
-	second = p->m_last_ret;
+      if (strncmp(my_fprintf_data::last, ret, len)) {
+	auto first = it->first;
+	auto last_ret = p->m_last_ret;
+	if (first < last_ret)
+	  second = last_ret;
+	else
+	  second = p->m_prev;
+      }
       else
 	second = p->m_prev;
     }
@@ -152,7 +159,7 @@ void my_address_func(bfd_vma addr, disassemble_info* info)
   res->insert(make_pair(caller+5,0));  // +5 means next instrunction
 }
 
-void create_bb(bfd* abfd, asection* sect, bfd_symbol** syms, int nsyms,
+void create_bb(bfd* abfd, bfd_section* sect, bfd_symbol** syms, int nsyms,
 	       bfd_vma prof_addr, std::map<bfd_vma, bfd_vma>& res)
 {
   using namespace std;
@@ -306,13 +313,14 @@ inline bool match(std::string fn, const std::set<std::string>& ex)
 extern "C"
 bfd_boolean my_func(bfd *abfd,
 		    bfd_symbol **symbols,
-		    asection *section,
+		    bfd_section *section,
 		    bfd_vma offset,
 		    line_sequence** seq,
 		    int* index,
 		    const char **func);
 
-inline bool collect1(bfd* abfd, asection* sect, bfd_symbol** syms, info_t* res)
+inline bool
+collect1(bfd* abfd, bfd_section* sect, bfd_symbol** syms, info_t* res)
 {
   using namespace std;
   auto flags = sect->flags;
@@ -343,7 +351,7 @@ inline info_t collect(bfd* abfd, bfd_symbol** syms,
 		      bfd_vma addr, bool highlight)
 {
   info_t res = { addr, highlight };
-  for (asection* sect = abfd->sections ; sect ; sect = sect->next) {
+  for (bfd_section* sect = abfd->sections ; sect ; sect = sect->next) {
     if (collect1(abfd, sect, syms, &res))
       return res;
   }
@@ -575,11 +583,11 @@ int main(int argc, char** argv)
     return 1;
   }
   bfd_symbol* sym = *it;
-  asection* sect = sym->section;
+  bfd_section* sect = sym->section;
   bfd_vma prof_addr = sect->vma + sym->value;
 
   map<bfd_vma, bfd_vma> bb;
-  for (asection* sect = abfd->sections ; sect ; sect = sect->next)
+  for (bfd_section* sect = abfd->sections ; sect ; sect = sect->next)
     create_bb(abfd, sect, syms, nsyms, prof_addr, bb);
 
   vector<info_t> info;

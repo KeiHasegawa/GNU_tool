@@ -10,8 +10,9 @@
 (*8) bbprof4.cpp
 (*9) 生成形式
 (*10) bbprof5.cpp
-(*11) exit 問題
-(*12) 試しに hcc1.exe を --profile-basic-block 付きでコンパイルしてみた.
+(*11) return のカラム数
+(*12) exit, longjmp, throw
+(*13) 試しに hcc1.exe を --profile-basic-block 付きでコンパイルしてみた.
 
 (*1) やりたいこと
 
@@ -21,11 +22,8 @@
 
 (*2) 最初のサンプル
 
-     test000.c を最初のサンプルに選んだ. これの期待値が test000.ppt
-     である. 現状はとりあえず ppt 形式にしているのだが, これはいずれ WEB
-     ブラウザなどで見られるようになるとよい. あるいは emacs などの
-     エディタでハイライト機能があるのでそれもよい.
-
+     test000.c を最初のサンプルに選んだ. これの期待値が test000.html
+     である.
      test000.c は通常次のようにビルドされる.
      
 % gcc test000.c -o test000.exe
@@ -69,14 +67,14 @@
 (*3) profile_basic_block.cpp
 
      この函数では, 呼び出し元のアドレスをファイルに書き込むことをしている.
-     改善点は色々あるが現時点ではこれで十分である. 改善点を挙げてみた:
+     問題点は色々あるが現時点ではこれで十分である. 問題点を挙げてみた:
 
-     o profile_basic_block.cpp を最適化してコンパイルすれば動作しない可能性
-       がある. 適切にインラインアセンブラを使用するべきである.
+     o profile_basic_block.cpp では適切にインラインアセンブラを使用する
+       べきである.
 
      o 複数スレッドを使うプログラムには対応していない.
 
-     o intel だけに対応している.
+     o intel 32 bit, intel 64 bit だけに対応している.
 
      o 運用の問題ではあるが, アドレスをファイルに書き込み続けた場合に
        何らかの問題が発生するかもしれない.
@@ -373,16 +371,33 @@ g++ -o bbprof.exe -DPACKAGE bbprof5.cpp bbprof3_0.o my_dwarf2.o my_coffgen.o -lb
       そもそも html にある charset が JIS に対応しているかは, ブラウザ
       も含めて不明ではある.
 
-(*11) exit 問題
+(*11) return のカラム数
+
+      私はいくつかテストをしたところ if と return の組み合わせにより
+      期待しない結果になっていることに気付いた. 例えば test018.c, test019.c
+      だが両方の return の部分がハイライトされてしまうのである.
+      これは行番号情報が
+
+      return expression ;
+
+      の expression の行番号情報を指定しているためであった. よって
+      「(*7) カラム数の扱い」と同様に行番号情報を修正する必要があった.
+      このためのパッチが profile_basic_block3.diff である. パッチの
+      適用方法は profile_basic_block2.diff と同様である.
+
+(*12) exit, longjmp, throw
 
       test017.c は exit を呼び出す函数 f を呼び出している. この場合
       f の呼び出しに続く g の呼び出しは当然実行されないのだが,
       g の呼び出しがあたかも実行されたかのようにハイライトされて
       表示されてしまう.
-      そして意図せず profile_basic_block.cpp のソースまでが表示
-      されている.
 
-(*12) 試しに hcc1.exe を --profile-basic-block 付きでコンパイルしてみた.
+      以下でも似たような問題が起こる.
+
+      longjmp => test026.c
+      C++ の throw => test027.cpp
+
+(*13) 試しに hcc1.exe を --profile-basic-block 付きでコンパイルしてみた.
 
       これで
 
