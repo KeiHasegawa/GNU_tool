@@ -8,6 +8,6 @@ int f(int a)
 
 int main()
 {
-  f(0);
+  f(1);
   return 0;
 }
