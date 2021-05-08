@@ -216,7 +216,7 @@ inline bool out_fB1(int curr, line_sequence* seq, int index, int prev_index)
   if (!index)
     return true;
   auto array = seq->line_info_lookup;
-  int m = min(index-1, prev_index+1);
+  int m = min(index-1, prev_index);
   auto p = find_if(&array[m], &array[index],
 		   bind2nd(ptr_fun(comp_line), curr));
   return p != &array[index];
@@ -478,7 +478,7 @@ inline void output(const info_t& info)
     int c = ifs.get();
     if (ifs.eof())
       return unexpected_eof(file);
-    cout.put(c);
+    output1(c);
   }
   if (highlight)
     cout << roff::fR;
