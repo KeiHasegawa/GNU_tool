@@ -15,6 +15,7 @@ extern "C" void _profile_basic_block_()
   asm("pushq	%r9");
 #else  // __x86_64__
   asm("push	%eax");
+  asm("push	%edx");  // support C++ exception
 #endif // __x86_64__
 #ifdef __CYGWIN__
   static FILE* fp;
@@ -36,6 +37,7 @@ extern "C" void _profile_basic_block_()
   asm("movl	4(%ebp), %eax");
   asm("mov	%eax, -12(%ebp)");  // assume that addr is located at -12(%ebp)
   fwrite(&addr, sizeof addr, 1, fp);
+  asm("pop	%edx");  // support C++ exception
   asm("pop	%eax");
 #endif // __x86_64__
 }

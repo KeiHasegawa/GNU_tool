@@ -11,6 +11,7 @@ Basic block profile
 (*9) Generation
 (*10) bbprof5.cpp
 (*11) column number of `return-stmt'
+(*12) exit, longjmp, throw
 
 (*1) What I want to do
 
@@ -358,4 +359,10 @@ g++ -o bbprof.exe -DPACKAGE  bbprof5.cpp bbprof3_0.o my_dwarf2.o my_coffgen.o -l
      Patch file `profile_basic_block3.diff' is available. Use of it
      is the same with `profile_basic_block2.diff'.
 
-     
+(*12) exit, longjmp, throw
+
+     test019.c shows the problem of `exit'. The expected result is
+     calling `g' should not be highlighted. The same kind problem
+
+     test020.c : longjmp
+     test021.cpp : throw
