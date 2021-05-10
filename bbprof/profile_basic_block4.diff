@@ -1,0 +1,261 @@
+*** gcc-10.2.0.org/gcc/gimplify.c	2020-07-23 15:35:17.644387858 +0900
+--- gcc-10.2.0/gcc/gimplify.c	2021-05-10 14:23:45.842663284 +0900
+***************
+*** 1734,1739 ****
+--- 1749,1772 ----
+    return NULL_TREE;
+  }
+  
++ // add by khasegawa
++ inline void modify_loc_if3(tree decl, gimple_seq seq)
++ {
++   if (!global_options.x_flag_profile_basic_block)
++     return;
++   gimple* p = seq;
++   if (!p)
++     return;
++   for (; p->next ; p = p->next)
++     ;
++   location_t loc = DECL_SOURCE_LOCATION(decl);
++   if (loc == UNKNOWN_LOCATION)
++     return;
++   if (!gimple_has_location(p))
++     return;
++   gimple_set_location(p, loc);
++ }
++ 
+  /* Gimplify a DECL_EXPR node *STMT_P by making any necessary allocation
+     and initialization explicit.  */
+  
+***************
+*** 1814,1819 ****
+--- 1847,1853 ----
+  	      DECL_INITIAL (decl) = NULL_TREE;
+  	      init = build2 (INIT_EXPR, void_type_node, decl, init);
+  	      gimplify_and_add (init, seq_p);
++ 	      modify_loc_if3(decl, *seq_p);  // add khasegawa
+  	      ggc_free (init);
+  	    }
+  	  else
+***************
+*** 5659,5664 ****
+--- 5735,5760 ----
+    return GS_ALL_DONE;
+  }
+  
++ inline void modify_loc_if4(tree expr, gimple* assign) 
++ {
++   if (!global_options.x_flag_profile_basic_block)
++     return;
++   location_t loc = EXPR_LOCATION(expr);
++   if (loc == UNKNOWN_LOCATION) {
++     if (TREE_CODE(expr) != INIT_EXPR)
++       return;
++     tree decl = TREE_OPERAND(expr, 0);
++     if (!VAR_P(decl))
++       return;
++     loc = DECL_SOURCE_LOCATION(decl);
++     if (loc == UNKNOWN_LOCATION)
++       return;
++   }
++   if (!gimple_has_location(assign))
++     return;
++   gimple_set_location(assign, loc);
++ }
++ 
+  /* Gimplify the MODIFY_EXPR node pointed to by EXPR_P.
+  
+        modify_expr
+***************
+*** 5938,5943 ****
+--- 6034,6040 ----
+      }
+  
+    gimplify_seq_add_stmt (pre_p, assign);
++   modify_loc_if4(*expr_p, assign);
+    gsi = gsi_last (*pre_p);
+    maybe_fold_stmt (&gsi);
+  
+*** gcc-10.2.0.org/gcc/c/c-parser.c	2020-07-23 15:35:17.304384112 +0900
+--- gcc-10.2.0/gcc/c/c-parser.c	2021-05-09 13:53:45.332321404 +0900
+***************
+*** 1765,1770 ****
+--- 1765,1844 ----
+    add_stmt (stmt);
+  }
++ 
++ inline void modify_loc_if3(tree decl, location_t loc)
++ {
++   if (!global_options.x_flag_profile_basic_block)
++     return;
++   DECL_SOURCE_LOCATION(decl) = loc;
++ }
++ 
+  /* Parse a declaration or function definition (C90 6.5, 6.7.1, C99
+     6.7, 6.9.1, C11 6.7, 6.9.1).  If FNDEF_OK is true, a function definition
+     is accepted; otherwise (old-style parameter declarations) only other
+***************
+*** 2232,2237 ****
+--- 2306,2312 ----
+  		     its initializer is parsed.  */
+  		  d = start_decl (declarator, specs, true,
+  				  chainon (postfix_attrs, all_prefix_attrs));
++ 		  modify_loc_if3(d, here);
+  		  if (!d)
+  		    d = error_mark_node;
+  		  if (omp_declare_simd_clauses.exists ())
+***************
+*** 7542,7547 ****
+--- 7708,7720 ----
+    return ret;
+  }
+  
++ inline void modify_loc_if4(tree expr, location_t loc)
++ {
++   if (!global_options.x_flag_profile_basic_block)
++     return;
++   SET_EXPR_LOCATION(expr, loc);
++ }
++ 
+  /* Parse an expression other than a compound expression; that is, an
+     assignment expression (C90 6.3.16, C99 6.5.16, C11 6.5.16).  If
+     AFTER is not NULL then it is an Objective-C message expression which
+***************
+*** 7566,7571 ****
+--- 7739,7745 ----
+    enum tree_code code;
+    location_t op_location, exp_location;
+    gcc_assert (!after || c_dialect_objc ());
++   location_t lhs_loc = c_parser_peek_token (parser)->location;
+    lhs = c_parser_conditional_expression (parser, after, omp_atomic_lhs);
+    op_location = c_parser_peek_token (parser)->location;
+    switch (c_parser_peek_token (parser)->type)
+***************
+*** 7614,7619 ****
+--- 7788,7794 ----
+    ret.value = build_modify_expr (op_location, lhs.value, lhs.original_type,
+  				 code, exp_location, rhs.value,
+  				 rhs.original_type);
++   modify_loc_if4(ret.value, lhs_loc);  // add by khasegawa
+    set_c_expr_source_range (&ret, lhs.get_start (), rhs.get_finish ());
+    if (code == NOP_EXPR)
+      ret.original_code = MODIFY_EXPR;
+*** gcc-10.2.0.org/gcc/cp/parser.c	2020-07-23 15:35:17.528386580 +0900
+--- gcc-10.2.0/gcc/cp/parser.c	2021-05-10 14:17:40.924225393 +0900
+***************
+*** 2231,2237 ****
+  static tree cp_parser_init_declarator
+    (cp_parser *, cp_parser_flags, cp_decl_specifier_seq *,
+     vec<deferred_access_check, va_gc> *, bool, bool, int, bool *, tree *,
+!    location_t *, tree *);
+  static cp_declarator *cp_parser_declarator
+    (cp_parser *, cp_parser_declarator_kind, cp_parser_flags, int *, bool *,
+     bool, bool, bool);
+--- 2231,2237 ----
+  static tree cp_parser_init_declarator
+    (cp_parser *, cp_parser_flags, cp_decl_specifier_seq *,
+     vec<deferred_access_check, va_gc> *, bool, bool, int, bool *, tree *,
+!    location_t *, tree *, location_t);
+  static cp_declarator *cp_parser_declarator
+    (cp_parser *, cp_parser_declarator_kind, cp_parser_flags, int *, bool *,
+     bool, bool, bool);
+***************
+*** 9830,9835 ****
+--- 9834,9846 ----
+                                     tf_warning_or_error);
+  }
+  
++ inline void modify_loc_if4(tree expr, location_t loc)
++ {
++   if (!global_options.x_flag_profile_basic_block)
++     return;
++   SET_EXPR_LOCATION(expr, loc);
++ }
++ 
+  /* Parse an assignment-expression.
+  
+     assignment-expression:
+***************
+*** 9848,9853 ****
+--- 9859,9865 ----
+  				 bool cast_p, bool decltype_p)
+  {
+    cp_expr expr;
++   location_t start_loc = cp_lexer_peek_token(parser->lexer)->location;
+  
+    /* If the next token is the `throw' keyword, then we're looking at
+       a throw-expression.  */
+***************
+*** 9910,9915 ****
+--- 9922,9928 ----
+                /* TODO: build_x_modify_expr doesn't honor the location,
+                   so we must set it here.  */
+                expr.set_location (loc);
++ 	      modify_loc_if4(expr, start_loc);
+  	    }
+  	}
+      }
+***************
+*** 13746,13752 ****
+  					&function_definition_p,
+  					maybe_range_for_decl,
+  					&init_loc,
+! 					&auto_result);
+        /* If an error occurred while parsing tentatively, exit quickly.
+  	 (That usually happens when in the body of a function; each
+  	 statement is treated as a declaration-statement until proven
+--- 13812,13819 ----
+  					&function_definition_p,
+  					maybe_range_for_decl,
+  					&init_loc,
+! 					&auto_result,
+! 					ds_start_loc);
+        /* If an error occurred while parsing tentatively, exit quickly.
+  	 (That usually happens when in the body of a function; each
+  	 statement is treated as a declaration-statement until proven
+***************
+*** 20514,20520 ****
+  			   bool* function_definition_p,
+  			   tree* maybe_range_for_decl,
+  			   location_t* init_loc,
+! 			   tree* auto_result)
+  {
+    cp_token *token = NULL, *asm_spec_start_token = NULL,
+             *attributes_start_token = NULL;
+--- 20678,20685 ----
+  			   bool* function_definition_p,
+  			   tree* maybe_range_for_decl,
+  			   location_t* init_loc,
+! 			   tree* auto_result,
+! 			   location_t ds_start_loc)
+  {
+    cp_token *token = NULL, *asm_spec_start_token = NULL,
+             *attributes_start_token = NULL;
+***************
+*** 20926,20931 ****
+--- 21095,21101 ----
+  			 `explicit' constructor cannot be used.  */
+  		      ((is_direct_init || !is_initialized)
+  		       ? LOOKUP_NORMAL : LOOKUP_IMPLICIT) | cf);
++       modify_loc_if3(decl, ds_start_loc);
+      }
+    else if ((cxx_dialect != cxx98) && friend_p
+  	   && decl && TREE_CODE (decl) == FUNCTION_DECL)
+***************
+*** 29517,29523 ****
+  				        member_p,
+  				        declares_class_or_enum,
+  				        &function_definition_p,
+! 					NULL, NULL, NULL);
+  
+      /* 7.1.1-1 [dcl.stc]
+  
+--- 29713,29720 ----
+  				        member_p,
+  				        declares_class_or_enum,
+  				        &function_definition_p,
+! 					NULL, NULL, NULL,
+! 					decl_spec_token_start->location);
+  
+      /* 7.1.1-1 [dcl.stc]
+  

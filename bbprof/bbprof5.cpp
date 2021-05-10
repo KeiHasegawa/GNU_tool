@@ -590,6 +590,12 @@ int main(int argc, char** argv)
   for (bfd_section* sect = abfd->sections ; sect ; sect = sect->next)
     create_bb(abfd, sect, syms, nsyms, prof_addr, bb);
 
+  if (bb.empty()) {
+    cerr << "No basic block." << endl;
+    cerr << "May not be compiled with `--profile-basic-block'" << endl;
+    return 1;
+  }
+
   vector<info_t> info;
   for (auto p : bb) {
     bfd_vma addr = p.first;
