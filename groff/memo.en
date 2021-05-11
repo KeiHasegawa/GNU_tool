@@ -1,1 +1,35 @@
 groff investigation
+
+      You can refer to:
+
+% man -s:1 groff
+% man -s:7 groff
+
+      You can know groff tag(?) from groff(7).
+      Macros used manual are define at
+
+/usr/local/share/groff/1.22.4/tmac/
+
+      For example, `.TH' macro is defined at
+
+an-old.tmac
+
+sample000.txt : UTF-8 Japanese character document. `man ./sample000.txt'
+	        works well but `groffer sample000' causes garbled
+		characters. This document doesn't use any groff tag.
+
+sample001.txt : Insert new line into the document
+
+sample002.txt : White space sample. You can know that the difference
+	        by executing `gproffer sample002.txt' rather than
+		`man ./sample002.txt'.
+
+sample003.txt : Hyphen sample. I wrote directly `-' into it. And
+	       `man ./sample003.txt' shows `-' with Japanese character.
+	       There are unexpected white space between each `-'.
+
+sample004.txt : The expected result of hyphen sample sample003.txt.
+
+sample005.txt : Highlight program text.
+
+sample006.txt : Under line sample. But acutally \fI means Italic Font.

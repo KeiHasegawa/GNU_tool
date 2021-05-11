@@ -1,1 +1,47 @@
-groff 調査
+groff の調査
+
+     基本的には
+
+% man -s:1 groff
+% man -s:7 groff
+
+     を参照するべき.
+
+     groff(7) の「Request Short Reference」のところにタグの説明がある.
+
+     また通常 man で使用されるマクロは
+
+/usr/local/share/groff/1.22.4/tmac/
+
+     にある. 例えばマニュアルのタイトルのための .TH マクロは
+
+an-old.tmac
+
+     に定義が書いてある.
+
+sample000.txt : UTF-8 の日本語. man ./sample000.txt のようにして表示で
+	        きたが groffer sample000.txt では文字化けしている.
+		sample000.txt はタグは一切使用していない.
+
+sample001.txt : .br により改行を入れるサンプル
+
+sample002.txt : 空白の扱いを試しているサンプル man ./sample002.txt では
+	        あまり違いが分からないが groffer sample002.txt で違いが
+		よく分かる.
+
+sample003.txt : ハイフン(-) を書いたサンプル. 期待せずこれは全角の -
+	        が表示されている. また - と - との間に空白が入っている
+		ように見える.
+
+sample004.txt : sample003.txt の問題を解消する例.
+
+sample005.txt : プログラムテキストの一部をハイライトさせる例.
+
+sample006.txt : アンダーラインの例. 実は \fI がイタリック体で \fR が
+	        ローマン体である. sample005.txt の \fB は Bold Font
+		ということなのだろう.
+
+
+
+
+
