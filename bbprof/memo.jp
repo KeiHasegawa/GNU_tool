@@ -14,12 +14,17 @@
 (*12) exit, longjmp, throw
 (*13) if の後の問題
 (*14) 試しに hcc1.exe を --profile-basic-block 付きでコンパイルしてみた.
+(*15) xlsoft のページ
+(*16) gcov を試してみた
 
 (*1) やりたいこと
 
      プログラムを実行した後, 実行した行をハイライトさせた形で表示する.
      例えば, テストを行ったときに通っているところ, いないところを明白
      にできる.
+
+     当初は gcov の存在を知らなかったので, これに着手したが, 知っていたら
+     やらなかったろうと思われる.
 
 (*2) 最初のサンプル
 
@@ -412,44 +417,21 @@ extern void longjmp (struct __jmp_buf_tag __env[1], int __val)
 
 (*13) if の後の問題
 
+    test101.cpp 
+
+  if ( !cmdline::input.empty() ){
+    c_compiler_in = fopen(cmdline::input.c_str(),"r");
+    if ( !c_compiler_in ){
+      error::cmdline::open(cmdline::input);
+      exit(1);
+    }
+    parse::position = file_t(cmdline::input,1);  << この行はハイライトされる
+  }　　　　　　　　　　　　　　　　　　　　　　　　のが期待値だが ); のみが
+  return 0;　　　　　　　　　　　　　　　　　　　　ハイライトされている.
+
+
     test039.cpp の対応で modify_loc_if5 を cp/parser.c に追加したところ
     test021.cpp で予期しない差分がある.
-
-    test040.cpp の結果は期待通りではない.
-
-  if (a)
-    f(b);   <<< この行が一部ハイライトされてしまっている. => 修正した.
-  return 0;  << この行が一部しかハイライトされていない.
-
-804922e,1,/home/khasegawa/lang/53_GNU_tool/bbprof/test040.cpp,main,18,3,0
-8049240,1,/home/khasegawa/lang/53_GNU_tool/bbprof/test040.cpp,__static_initialization_and_destruction_0,19,1,0
-8049274,1,/home/khasegawa/lang/53_GNU_tool/bbprof/test040.cpp,__static_initialization_and_destruction_0,19,1,0
-8049276,1,/home/khasegawa/lang/53_GNU_tool/bbprof/test040.cpp,__static_initialization_and_destruction_0,19,1,0
-804927c,1,/home/khasegawa/lang/53_GNU_tool/bbprof/test040.cpp,_GLOBAL__sub_I_a,19,1,0
-8049295,1,/home/khasegawa/lang/53_GNU_tool/bbprof/test040.cpp,_GLOBAL__sub_I_a,19,1,0
-804923a,1,/home/khasegawa/lang/53_GNU_tool/bbprof/test040.cpp,main,19,1,0
-
-
-main の 18 行目の 19 行目の間に余計な情報が入ってしまっている.
-
--  return xi->discriminator < yi->discriminator;
-+  if (xi->discriminator < yi->discriminator)
-+    return true;
-+  if (xi->discriminator > yi->discriminator)
-+    return false;
-+
-+  return strcmp(x.func, y.func);
- }
- 
-この修正を入れれば test040.cpp は期待した通り return 0 の部分も
-ハイライトされるが, 今度は test013.cpp がレベルダウンする.
-
-      test040.cpp は test101.cpp の簡易版
-
-    if ( !c_compiler_in ){
-      error::cmdline::open(cmdline::input); <<<< これが実行されていないのに
-      					    	 一部がハイライトされている.
-
 
 (*14) 試しに hcc1.exe を --profile-basic-block 付きでコンパイルしてみた.
 
@@ -468,3 +450,18 @@ int main()
       optimize.cpp を通常コンパイルして再リンクすれば不正メモリアクセス
       は回避できている.
 
+(*15) xlsoft のページ
+
+      おそらくだが似たようなことをしている
+      
+https://www.xlsoft.com/jp/products/intel/compilers/ccl/12/ug/optaps/common/optaps_pgo_covr.htm
+
+
+(*16) gcov を試してみた
+
+% gcc --coverage test000.c
+% ./a.out
+% gcov test000.c -m
+
+      とすることで test000.c.gcov にカバレッジ結果が書き込まれている.
+      3 項演算子は区別されていないものの, 概ね期待したものだった.
