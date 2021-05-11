@@ -83,6 +83,7 @@
 --- 1765,1844 ----
     add_stmt (stmt);
   }
+  
 + 
 + inline void modify_loc_if3(tree decl, location_t loc)
 + {
@@ -196,6 +197,16 @@
   	}
       }
 ***************
+*** 13615,13620 ****
+--- 13680,13686 ----
+       omitted only when declaring a class or enumeration, that is when
+       the decl-specifier-seq contains either a class-specifier, an
+       elaborated-type-specifier, or an enum-specifier.  */
++   location_t ds_start_loc = cp_lexer_peek_token (parser->lexer)->location;
+    cp_parser_decl_specifier_seq (parser,
+  				CP_PARSER_FLAGS_OPTIONAL,
+  				&decl_specifiers,
+***************
 *** 13746,13752 ****
   					&function_definition_p,
   					maybe_range_for_decl,
@@ -213,6 +224,24 @@
         /* If an error occurred while parsing tentatively, exit quickly.
   	 (That usually happens when in the body of a function; each
   	 statement is treated as a declaration-statement until proven
+***************
+*** 20445,20450 ****
+--- 20568,20614 ----
+    return type;
+  }
+  
++ 
++ // add by khasegawa
++ inline void modify_loc_if3(tree decl, location_t loc)
++ {
++   if (!global_options.x_flag_profile_basic_block)
++     return;
++   DECL_SOURCE_LOCATION(decl) = loc;
++ }
++ 
+  /* Declarators [gram.dcl.decl] */
+  
+  /* Parse an init-declarator.
 ***************
 *** 20514,20520 ****
   			   bool* function_definition_p,

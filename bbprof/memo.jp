@@ -12,7 +12,7 @@
 (*10) bbprof5.cpp
 (*11) return のカラム数
 (*12) exit, longjmp, throw
-(*13) if の後の宣言文, assignment-expression
+(*13) if の後の問題
 (*14) 試しに hcc1.exe を --profile-basic-block 付きでコンパイルしてみた.
 
 (*1) やりたいこと
@@ -398,58 +398,60 @@ g++ -o bbprof.exe -DPACKAGE bbprof5.cpp bbprof3_0.o my_dwarf2.o my_coffgen.o -lb
       longjmp => test020.c
       C++ の throw => test021.cpp
 
-      linux と cygwin とで test021.res が違っている.
-
 extern void exit (int __status) __THROW __attribute__ ((__noreturn__));
 extern void longjmp (struct __jmp_buf_tag __env[1], int __val)
      __THROW __attribute__ ((__noreturn__));
 
-      のように宣言されているから, この属性が付加されている
-      函数を特別扱いするという方法が考えられる. 
+      のように宣言されているから, この属性が付加されている函数を特別扱いす
+      るという方法が考えられる. しかし, これらの函数はポインタ経由で呼び出
+      されることも想定されるので, 最小限に 
 
-      __cxa_throw
+      call _profile_basic_block_
 
-      は宣言なしで呼び出されるのでこれがどのように扱われているか
-      は調べる必要がある. いずれにしても gcc の対応が必要.
+      を埋め込む完全な方法はない.
 
-(*13) if の後の宣言文, assignment-expression
+(*13) if の後の問題
 
+    test039.cpp の対応で modify_loc_if5 を cp/parser.c に追加したところ
+    test021.cpp で予期しない差分がある.
 
-80491dc,0,test026.c,f,4,1,0
-80491e5,0,test026.c,f,6,1,0
-80491eb,0,test026.c,g,9,1,0
-80491f0,0,test026.c,g,10,1,0
-80491f6,1,test026.c,main,13,1,0
-804920a,0,test026.c,main,15,13,0  (*) ここ
-8049222,1,test026.c,main,18,3,0
-8049228,1,test026.c,main,19,1,0
+    test040.cpp の結果は期待通りではない.
 
-    int n = f();
-1234567890123
+  if (a)
+    f(b);   <<< この行が一部ハイライトされてしまっている. => 修正した.
+  return 0;  << この行が一部しかハイライトされていない.
 
-	c-parser.c の modify_loc_if3 で n の宣言の行番号情報を 9 カラム
-	から 5 カラムに変更している.
-	最初, これに対応したときは gimplify.c の modify_loc_if3 で
-	n = f ()
-	の行番号の情報を 13 カラムから 5 カラムに変更していた.
-
-       一方
-
-    int n;
-    n = f();
-123456789
-       に対しては c-parser.c の　modify_loc_if4 で assignment-expression
-       の行番号情報を 7 カラムから 5 カラムに変更していた.
-       そしてこれを gimpilfy.c の modify_loc_if4 で
-       n = f ()
-       の行番号情報を 9 カラムから 5 カラムに変更している.
+804922e,1,/home/khasegawa/lang/53_GNU_tool/bbprof/test040.cpp,main,18,3,0
+8049240,1,/home/khasegawa/lang/53_GNU_tool/bbprof/test040.cpp,__static_initialization_and_destruction_0,19,1,0
+8049274,1,/home/khasegawa/lang/53_GNU_tool/bbprof/test040.cpp,__static_initialization_and_destruction_0,19,1,0
+8049276,1,/home/khasegawa/lang/53_GNU_tool/bbprof/test040.cpp,__static_initialization_and_destruction_0,19,1,0
+804927c,1,/home/khasegawa/lang/53_GNU_tool/bbprof/test040.cpp,_GLOBAL__sub_I_a,19,1,0
+8049295,1,/home/khasegawa/lang/53_GNU_tool/bbprof/test040.cpp,_GLOBAL__sub_I_a,19,1,0
+804923a,1,/home/khasegawa/lang/53_GNU_tool/bbprof/test040.cpp,main,19,1,0
 
 
-を追加したところ, ハイライトされている場所が
-	int までになっている.
-	この declaration の位置がカラム数 9 になっているのが原因.
+main の 18 行目の 19 行目の間に余計な情報が入ってしまっている.
 
-(*13) 試しに hcc1.exe を --profile-basic-block 付きでコンパイルしてみた.
+-  return xi->discriminator < yi->discriminator;
++  if (xi->discriminator < yi->discriminator)
++    return true;
++  if (xi->discriminator > yi->discriminator)
++    return false;
++
++  return strcmp(x.func, y.func);
+ }
+ 
+この修正を入れれば test040.cpp は期待した通り return 0 の部分も
+ハイライトされるが, 今度は test013.cpp がレベルダウンする.
+
+      test040.cpp は test101.cpp の簡易版
+
+    if ( !c_compiler_in ){
+      error::cmdline::open(cmdline::input); <<<< これが実行されていないのに
+      					    	 一部がハイライトされている.
+
+
+(*14) 試しに hcc1.exe を --profile-basic-block 付きでコンパイルしてみた.
 
       これで
 
@@ -465,24 +467,4 @@ int main()
       まだまだ運用までは遠そう.
       optimize.cpp を通常コンパイルして再リンクすれば不正メモリアクセス
       は回避できている.
-      そこで main.cpp を見てみたが,
-
-      o _ の函数名の表示が変. もしかすると _ は特別扱いする必要がある
-      のかも.
-
-      => emacs から man を起動した場合の特殊なケース
-         ハイライト領域で _ がある場合このような現象になる.
-
-      o 以下の行がハイライトされていない
-
-    parse::position = file_t(cmdline::input,1);
-
-       => test020.cpp, test021.cpp で再現できている
-
-          実はハイライトされていないのは正しい. hcc1 をこのときファイル名
-	  なしで実行したから(test019.cpp 相当). だがここで問題なのは
-
-    c_compiler_in = fopen(cmdline::input.c_str(),"r");
-
-          この行がハイライトされているのがそもそも間違い.
 

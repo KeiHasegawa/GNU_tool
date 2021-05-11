@@ -276,7 +276,7 @@ inline bool operator<(const info_t& x, const info_t& y)
   auto yi = y.seq->line_info_lookup[y.index];
   if (int n = strcmp(xi->filename, yi->filename))
     return n < 0;
-  
+
   if (xi->line < yi->line)
     return true;
   if (xi->line > yi->line)
@@ -287,7 +287,12 @@ inline bool operator<(const info_t& x, const info_t& y)
   if (xi->column > yi->column)
     return false;
 
-  return xi->discriminator < yi->discriminator;
+  if (xi->discriminator < yi->discriminator)
+    return true;
+  if (xi->discriminator > yi->discriminator)
+    return false;
+  
+  return strcmp(x.func, y.func) > 0;
 }
 
 inline bool match(const std::set<bfd_vma>& addrs, bfd_vma y)
