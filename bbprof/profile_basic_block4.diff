@@ -1,6 +1,56 @@
 *** gcc-10.2.0.org/gcc/gimplify.c	2020-07-23 15:35:17.644387858 +0900
 --- gcc-10.2.0/gcc/gimplify.c	2021-05-10 14:23:45.842663284 +0900
 ***************
+*** 523,529 ****
+  /* Return true if T is a CALL_EXPR or an expression that can be
+     assigned to a temporary.  Note that this predicate should only be
+     used during gimplification.  See the rationale for this in
+!    gimplify_modify_expr.  */
+  
+  static bool
+  is_gimple_reg_rhs_or_call (tree t)
+--- 523,529 ----
+  /* Return true if T is a CALL_EXPR or an expression that can be
+     assigned to a temporary.  Note that this predicate should only be
+     used during gimplification.  See the rationale for this in
+!    gimplify_modifyexpr.  */
+  
+  static bool
+  is_gimple_reg_rhs_or_call (tree t)
+***************
+*** 1570,1575 ****
+--- 1570,1589 ----
+      }
+  }
+  
++ // add by khasegawa
++ inline void modify_loc_if2(tree stmt, gimple_seq seq)
++ {
++   if (!global_options.x_flag_profile_basic_block)
++     return;
++   gimple* p = seq->next;
++   if (!p)
++     return;
++   for (; p->next ; p = p->next)
++     ;
++   location_t loc = EXPR_LOCATION(stmt);
++   gimple_set_location(p, loc);
++ }
++ 
+  /* Gimplify a RETURN_EXPR.  If the expression to be returned is not a
+     GIMPLE value, it is assigned to a new temporary and the statement is
+     re-written to return the temporary.
+***************
+*** 1665,1670 ****
+--- 1679,1685 ----
+      TREE_OPERAND (ret_expr, 0) = result;
+  
+    gimplify_and_add (TREE_OPERAND (stmt, 0), pre_p);
++   modify_loc_if2(stmt, *pre_p);  // add by khasegwa
+  
+    maybe_add_early_return_predict_stmt (pre_p);
+    ret = gimple_build_return (result);
+***************
 *** 1734,1739 ****
 --- 1749,1772 ----
     return NULL_TREE;
@@ -37,6 +87,75 @@
   	      ggc_free (init);
   	    }
   	  else
+***************
+*** 4050,4055 ****
+--- 4084,4129 ----
+    return false;
+  }
+  
++ // add by khasegawa
++ #include <vector>
++ #include <algorithm>
++ #include <functional>
++ std::vector<std::pair<location_t, location_t> > cond_locs;
++ 
++ void add_cond_loc(location_t cond, location_t colon)
++ {
++   if (global_options.x_flag_profile_basic_block)
++     cond_locs.push_back(std::make_pair(cond, colon));
++ }
++ 
++ inline bool matched(std::pair<location_t, location_t> x, location_t loc)
++ {
++          // C case
++   return x.second == loc || x.first == loc;
++                             // C++ case
++ }
++ 
++ inline void modify_loc_if(tree expr, gimple_seq seq, bool second)
++ {
++   using namespace std;
++   if (!global_options.x_flag_profile_basic_block)
++     return;
++   location_t loc = EXPR_LOCATION(expr);
++   typedef vector<pair<location_t, location_t> >::const_iterator IT;
++   IT it = find_if(cond_locs.begin(), cond_locs.end(),
++ 		  bind2nd(ptr_fun(matched), loc));
++   if (it == cond_locs.end())
++     return;
++   gimple* p = seq->next;
++   for (; p->next ; p = p->next)
++     ;
++   if (!second) {
++     gimple_set_location(p, it->first);
++     return;
++   }
++   gimple_set_location(p, it->second);
++ }
++ 
+  /*  Convert the conditional expression pointed to by EXPR_P '(p) ? a : b;'
+      into
+  
+***************
+*** 4238,4243 ****
+--- 4312,4318 ----
+  	{
+  	  gimplify_seq_add_stmt (&seq, gimple_build_label (label_true));
+  	  have_then_clause_p = gimplify_stmt (&TREE_OPERAND (expr, 1), &seq);
++ 	  modify_loc_if(expr, seq, false);  // add by khasegawa
+  	  /* For if (...) { code; } else {} or
+  	     if (...) { code; } else goto label; or
+  	     if (...) { code; return; } else { ... }
+***************
+*** 4267,4272 ****
+--- 4342,4348 ----
+      {
+        gimplify_seq_add_stmt (&seq, gimple_build_label (label_false));
+        have_else_clause_p = gimplify_stmt (&TREE_OPERAND (expr, 2), &seq);
++       modify_loc_if(expr, seq, true);  // add by khaseegawa
+      }
+    if (label_cont)
+      gimplify_seq_add_stmt (&seq, gimple_build_label (label_cont));
 ***************
 *** 5659,5664 ****
 --- 5735,5760 ----
@@ -77,13 +196,79 @@
     maybe_fold_stmt (&gsi);
   
 *** gcc-10.2.0.org/gcc/c/c-parser.c	2020-07-23 15:35:17.304384112 +0900
---- gcc-10.2.0/gcc/c/c-parser.c	2021-05-09 13:53:45.332321404 +0900
+--- gcc-10.2.0/gcc/c/c-parser.c	2021-05-11 08:44:09.194257804 +0900
 ***************
 *** 1765,1770 ****
 --- 1765,1844 ----
     add_stmt (stmt);
   }
   
++ // vvvvv add khasegawa
++ inline void out_doc_info_if(tree decl)
++ {
++   extern FILE* doc_info_file;
++   if (!doc_info_file)
++     return;
++   if (current_function_decl)
++     return;  // ignore declaration at function body
++   const char* file = DECL_SOURCE_FILE(decl);
++   int line = DECL_SOURCE_LINE(decl);
++   const char* name = get_name(decl);
++   if (TREE_CODE(decl) == TYPE_DECL) {
++     fprintf(doc_info_file, "$type $def %s \"%s\" %d ;\n", name, file, line);
++     return;
++   }
++   if (!TREE_PUBLIC(decl))
++     return;
++   if (TREE_CODE(decl) == FUNCTION_DECL) {
++     fprintf(doc_info_file, "$func $decl %s \"%s\" %d ;\n", name, file, line);
++     return;
++   }
++   if (DECL_EXTERNAL(decl)) {
++     fprintf(doc_info_file, "$var $decl %s \"%s\" %d ;\n", name, file, line);
++     return;
++   }
++   fprintf(doc_info_file, "$var $def %s \"%s\" %d ;\n", name, file, line);
++ }
++ 
++ #ifdef USE_TREE_FOR_OUT_DOC_INFO
++ inline void out_func_def_if(tree fnbody, location_t loc)
++ {
++   extern FILE* doc_info_file;
++   if (!doc_info_file)
++     return;
++   if (!TREE_PUBLIC(current_function_decl))
++     return;
++   if (DECL_DECLARED_INLINE_P(current_function_decl))
++     return;
++   const char* name = get_name(current_function_decl);
++   rich_location richloc(line_table, loc);
++   expanded_location exloc = richloc.get_expanded_location(0);
++   const char* file = exloc.file;
++   int line = exloc.line;
++   fprintf(doc_info_file, "$func $def %s \"%s\" %d\n",  name, file, line);
++   fprintf(doc_info_file, "{\n");
++   void out_doc_info(tree, line_maps*);
++   out_doc_info(fnbody, line_table);
++   fprintf(doc_info_file, "    $graph {}\n");
++   fprintf(doc_info_file, "}\n");
++ }
++ #endif // USE_TREE_FOR_OUT_DOC_INFO
++ 
++ void debug_loc(location_t loc)
++ {
++   if (loc == UNKNOWN_LOCATION) {
++     fprintf(stderr, "unknown location\n");
++     return;
++   }
++   rich_location richloc(line_table, loc);
++   expanded_location exloc = richloc.get_expanded_location(0);
++   const char* file = exloc.file;
++   int line = exloc.line;
++   int column = exloc.column;
++   fprintf(stderr, "%s:%d.%d\n", file, line, column);
++ }
++ //add khasegawa
 + 
 + inline void modify_loc_if3(tree decl, location_t loc)
 + {
@@ -106,15 +291,218 @@
   		    d = error_mark_node;
   		  if (omp_declare_simd_clauses.exists ())
 ***************
-*** 7542,7547 ****
---- 7708,7720 ----
+*** 2335,2340 ****
+--- 2410,2417 ----
+  	      if (d)
+  		finish_decl (d, UNKNOWN_LOCATION, NULL_TREE,
+  			     NULL_TREE, asm_name);
++ 	      if (d)
++ 		out_doc_info_if(d);  // add by khasegawa
+  	      
+  	      if (c_parser_next_token_is_keyword (parser, RID_IN))
+  		{
+***************
+*** 2504,2509 ****
+--- 2581,2591 ----
+        else
+  	fnbody = c_parser_compound_statement (parser, &endloc);
+        tree fndecl = current_function_decl;
++ 
++       // add by khasegawa
++ #ifdef USE_TREE_FOR_OUT_DOC_INFO
++       out_func_def_if(fnbody, here);
++ #endif // USE_TREE_FOR_OUT_DOC_INFO
+        if (nested)
+  	{
+  	  tree decl = current_function_decl;
+***************
+*** 2650,2655 ****
+--- 2732,2761 ----
+      }
+  }
+  
++ /* vvvvv add by khasegawa vvvvv */
++ inline void out_type_ref_if(tree spec, tree value,
++ 			    line_maps* line_table,
++ 			    location_t loc)
++ {
++   extern FILE* doc_info_file;
++   if (!doc_info_file)
++     return;
++   if (DECL_IS_BUILTIN(spec))
++     return;
++   if (!TYPE_FILE_SCOPE_P(spec))
++     return;
++   tree type = TREE_TYPE(spec);
++   if (!TYPE_FILE_SCOPE_P(type))
++     return;
++   const char* name = (const char*)value->identifier.id.str;
++   rich_location richloc(line_table, loc);
++   expanded_location exloc = richloc.get_expanded_location(0);
++   const char* file = exloc.file;
++   int line = exloc.line;
++   fprintf(doc_info_file, "$type $ref %s \"%s\" %d ;\n", name, file, line);
++ }
++ /* ^^^^^ add by khasegawa ^^^^^ */
++ 
+  /* Parse some declaration specifiers (possibly none) (C90 6.5, C99
+     6.7, C11 6.7), adding them to SPECS (which may already include some).
+     Storage class specifiers are accepted iff SCSPEC_OK; type
+***************
+*** 2852,2857 ****
+--- 2958,2968 ----
+  	      /* For a typedef name, record the meaning, not the name.
+  		 In case of 'foo foo, bar;'.  */
+  	      t.spec = lookup_name (value);
++ 
++ 	      // vvvvv add by khasegawa
++ 	      out_type_ref_if(t.spec, value,
++ 			      line_table, name_token->location);
++ 	      // ^^^^^ add by khasegawa
+  	    }
+  	  else
+  	    {
+***************
+*** 3128,3133 ****
+--- 3239,3258 ----
+      }
+    if (c_parser_next_token_is (parser, CPP_OPEN_BRACE))
+      {
++       // vvvvv add khasegawa vvvvv
++       if (ident) {
++ 	extern FILE* doc_info_file;
++ 	if (doc_info_file) {
++ 	  const char* name = (const char*)ident->identifier.id.str;
++ 	  rich_location richloc(line_table, ident_loc);
++ 	  expanded_location exloc = richloc.get_expanded_location(0);
++ 	  const char* file = exloc.file;
++ 	  int line = exloc.line;
++ 	  fprintf(doc_info_file, "$tag $decl %s \"%s\" %d ;\n",
++ 		  name, file, line);
++ 	}
++       }
++       // ^^^^ add khasegawa ^^^^^
+        /* Parse an enum definition.  */
+        struct c_enum_contents the_enum;
+        tree type;
+***************
+*** 3334,3339 ****
+--- 3459,3480 ----
+      {
+        /* Parse a struct or union definition.  Start the scope of the
+  	 tag before parsing components.  */
++       // vvvvv add khasegawa vvvvv
++       if (!current_function_decl) {
++ 	if (ident) {
++ 	  extern FILE* doc_info_file;
++ 	  if (doc_info_file) {
++ 	    const char* name = (const char*)ident->identifier.id.str;
++ 	    rich_location richloc(line_table, ident_loc);
++ 	    expanded_location exloc = richloc.get_expanded_location(0);
++ 	    const char* file = exloc.file;
++ 	    int line = exloc.line;
++ 	    fprintf(doc_info_file, "$tag $decl %s \"%s\" %d ;\n",
++ 		    name, file, line);
++ 	  }
++ 	}
++       }
++       // ^^^^ add khasegawa ^^^^^
+        class c_struct_parse_info *struct_info;
+        tree type = start_struct (struct_loc, code, ident, &struct_info);
+        tree postfix_attrs;
+***************
+*** 3461,3466 ****
+--- 3602,3621 ----
+    /* ??? Existing practice is that GNU attributes are ignored after
+       the struct or union keyword when not defining the members.  */
+    ret = parser_xref_tag (ident_loc, code, ident, have_std_attrs, std_attrs);
++ 
++   // vvvvv add khasegawa vvvvv
++   extern FILE* doc_info_file;
++   if (doc_info_file) {
++     const char* name = (const char*)ident->identifier.id.str;
++     rich_location richloc(line_table, ident_loc);
++     expanded_location exloc = richloc.get_expanded_location(0);
++     const char* file = exloc.file;
++     int line = exloc.line;
++     fprintf(doc_info_file, "// $tag $ref %s \"%s\" %d ;\n",
++ 	    name, file, line);
++   }
++   // ^^^^ add khasegawa ^^^^^
++ 
     return ret;
   }
   
+***************
+*** 6126,6131 ****
+--- 6281,6294 ----
+    c_parser_statement_after_labels (parser, if_p, NULL);
+  }
+  
++ // add by khasegawa
++ inline void modify_loc_if2(tree stmt, location_t loc)
++ {
++   if (!global_options.x_flag_profile_basic_block)
++     return;
++   SET_EXPR_LOCATION(stmt, loc);
++ }
++ 
+  /* Parse a statement, other than a labeled statement.  CHAIN is a vector
+     of if-else-if conditions.  All labels and standard attributes have
+     been parsed in the caller.
+***************
+*** 6209,6218 ****
+--- 6372,6384 ----
+  	  else
+  	    {
+  	      location_t xloc = c_parser_peek_token (parser)->location;
++ 	      if (global_options.x_flag_profile_basic_block)
++ 		xloc = loc;
+  	      struct c_expr expr = c_parser_expression_conv (parser);
+  	      mark_exp_read (expr.value);
+  	      stmt = c_finish_return (EXPR_LOC_OR_LOC (expr.value, xloc),
+  				      expr.value, expr.original_type);
++ 	      modify_loc_if2(stmt, loc);  // add by khasegawa
+  	      goto expect_semicolon;
+  	    }
+  	  break;
+***************
+*** 7542,7547 ****
+--- 7708,7747 ----
+    return ret;
+  }
+  
++ namespace modify_loc_if_impl {
++   inline bool decl_fscope(tree expr)
++   {
++     if (!DECL_P(expr))
++       return false;
++     return DECL_FILE_SCOPE_P(expr);
++   }
++   inline bool array_ref(tree expr)
++   {
++     if (TREE_CODE(expr) != ARRAY_REF)
++       return false;
++     return decl_fscope(TREE_OPERAND(expr, 1));
++   }
++   inline tree get_extra(tree expr)
++   {
++     tree x = TREE_OPERAND(expr, 0);
++     if (decl_fscope(x))
++       return TREE_OPERAND(expr, 1);
++     if (array_ref(x))
++       return x;
++     return 0;
++   }
++ }  // end of namespace modify_loc_if_impl
++ 
 + inline void modify_loc_if4(tree expr, location_t loc)
 + {
 +   if (!global_options.x_flag_profile_basic_block)
 +     return;
++   tree extra = modify_loc_if_impl::get_extra(expr);
++   if (extra)
++     expr = extra;
 +   SET_EXPR_LOCATION(expr, loc);
 + }
 + 
@@ -123,7 +511,7 @@
      AFTER is not NULL then it is an Objective-C message expression which
 ***************
 *** 7566,7571 ****
---- 7739,7745 ----
+--- 7766,7772 ----
     enum tree_code code;
     location_t op_location, exp_location;
     gcc_assert (!after || c_dialect_objc ());
@@ -133,7 +521,7 @@
     switch (c_parser_peek_token (parser)->type)
 ***************
 *** 7614,7619 ****
---- 7788,7794 ----
+--- 7815,7821 ----
     ret.value = build_modify_expr (op_location, lhs.value, lhs.original_type,
   				 code, exp_location, rhs.value,
   				 rhs.original_type);
@@ -141,8 +529,19 @@
     set_c_expr_source_range (&ret, lhs.get_start (), rhs.get_finish ());
     if (code == NOP_EXPR)
       ret.original_code = MODIFY_EXPR;
+***************
+*** 7739,7744 ****
+--- 7941,7948 ----
+  			   : NULL);
+      }
+    set_c_expr_source_range (&ret, start, exp2.get_finish ());
++   extern void add_cond_loc(location_t, location_t);  // add by khasegawa
++   add_cond_loc(cond_loc, EXPR_LOCATION(ret.value));
+    return ret;
+  }
+  
 *** gcc-10.2.0.org/gcc/cp/parser.c	2020-07-23 15:35:17.528386580 +0900
---- gcc-10.2.0/gcc/cp/parser.c	2021-05-10 14:17:40.924225393 +0900
+--- gcc-10.2.0/gcc/cp/parser.c	2021-05-12 06:28:46.125661497 +0900
 ***************
 *** 2231,2237 ****
   static tree cp_parser_init_declarator
@@ -161,15 +560,131 @@
     (cp_parser *, cp_parser_declarator_kind, cp_parser_flags, int *, bool *,
      bool, bool, bool);
 ***************
+*** 6833,6838 ****
+--- 6833,6879 ----
+  	  && integer_zerop (TREE_OPERAND (expr, 0)));
+  }
+  
++ namespace modify_loc_if_impl {
++   // modify also TARGET_EXPR and AGGR_INIT_EXPR location
++   inline void modify(tree arg, location_t loc)
++   {
++     if (!arg)
++       return;
++ 
++     if (EXPR_LOCATION(arg) != UNKNOWN_LOCATION)
++       SET_EXPR_LOCATION(arg, loc);
++ 
++     if (TREE_CODE(arg) != ADDR_EXPR)
++       return;
++     arg = TREE_OPERAND(arg, 0);
++     if (TREE_CODE(arg) != TARGET_EXPR)
++       return;
++     SET_EXPR_LOCATION(arg, loc);
++     arg = TREE_OPERAND(arg, 1);
++     if (TREE_CODE(arg) != AGGR_INIT_EXPR)
++       return;
++     SET_EXPR_LOCATION(arg, loc);
++   }
++ } // end of namespace modify_loc_if_impl
++ 
++ // add by khasegawa
++ inline void modify_loc_if5(tree expr, location_t loc)
++ {
++   if (!global_options.x_flag_profile_basic_block)
++     return;
++ 
++   if (TREE_CODE(expr) != CALL_EXPR)
++     return;
++ 
++   SET_EXPR_LOCATION(expr, loc);
++ 
++   int n = call_expr_nargs(expr);
++   for (int i = 0 ; i != n ; ++i) {
++     tree arg = CALL_EXPR_ARG(expr, i);
++     modify_loc_if_impl::modify(arg, loc);
++   }
++ }
++ 
+  /* Parse a postfix-expression.
+  
+     postfix-expression:
+***************
+*** 7473,7478 ****
+--- 7514,7520 ----
+  							 start_loc,
+  							 close_paren_loc);
+  		postfix_expression.set_location (combined_loc);
++ 		modify_loc_if5(postfix_expression, start_loc);
+  	      }
+  
+  	    /* The POSTFIX_EXPRESSION is certainly no longer an id.  */
+***************
+*** 9807,9814 ****
+--- 9849,9858 ----
+        parser->colon_corrects_to_scope_p = saved_colon_corrects_to_scope_p;
+      }
+  
++   location_t loc2 = cp_lexer_peek_token (parser->lexer)->location;
+    /* The next token should be a `:'.  */
+    cp_parser_require (parser, CPP_COLON, RT_COLON);
++ 
+    /* Parse the assignment-expression.  */
+    assignment_expr = cp_parser_assignment_expression (parser);
+    c_inhibit_evaluation_warnings -=
+***************
+*** 9822,9827 ****
+--- 9866,9873 ----
+    loc = make_location (loc,
+  		       logical_or_expr.get_start (),
+  		       assignment_expr.get_finish ());
++   extern void add_cond_loc(location_t, location_t);
++   add_cond_loc(loc, loc2);
+  
+    /* Build the conditional-expression.  */
+    return build_x_conditional_expr (loc, logical_or_expr,
+***************
 *** 9830,9835 ****
---- 9834,9846 ----
+--- 9876,9920 ----
                                      tf_warning_or_error);
   }
   
++ namespace modify_loc_if_impl {
++   inline bool decl_fscope_or_nmspc(tree expr)
++   {
++     if (TREE_CODE(expr) == VIEW_CONVERT_EXPR)
++       expr = TREE_OPERAND(expr, 0);
++     if (!DECL_P(expr))
++       return false;
++     if (DECL_FILE_SCOPE_P(expr))
++       return true;
++     tree ctx = DECL_CONTEXT(expr);
++     return TREE_CODE(ctx) == NAMESPACE_DECL;
++   }
++   inline bool array_ref(tree expr)
++   {
++     if (TREE_CODE(expr) != ARRAY_REF)
++       return false;
++     return decl_fscope_or_nmspc(TREE_OPERAND(expr, 1));
++   }
++   inline tree get_extra(tree expr)
++   {
++     tree x = TREE_OPERAND(expr, 0);
++     if (decl_fscope_or_nmspc(x))
++       return TREE_OPERAND(expr, 1);
++     if (array_ref(x))
++       return x;
++     return 0;
++   }
++ } // end of namespace modify_loc_if_impl
++ 
 + inline void modify_loc_if4(tree expr, location_t loc)
 + {
 +   if (!global_options.x_flag_profile_basic_block)
 +     return;
++   tree extra = modify_loc_if_impl::get_extra(expr);
++   if (extra)
++     expr = extra;
 +   SET_EXPR_LOCATION(expr, loc);
 + }
 + 
@@ -178,7 +693,7 @@
      assignment-expression:
 ***************
 *** 9848,9853 ****
---- 9859,9865 ----
+--- 9933,9939 ----
   				 bool cast_p, bool decltype_p)
   {
     cp_expr expr;
@@ -188,7 +703,7 @@
        a throw-expression.  */
 ***************
 *** 9910,9915 ****
---- 9922,9928 ----
+--- 9996,10002 ----
                 /* TODO: build_x_modify_expr doesn't honor the location,
                    so we must set it here.  */
                 expr.set_location (loc);
@@ -197,8 +712,96 @@
   	}
       }
 ***************
+*** 11754,11759 ****
+--- 11841,11885 ----
+    return statement;
+  }
+  
++ // vvvvv add by khasegawa
++ #ifdef USE_TREE_FOR_OUT_DOC_INFO
++ inline void out_func_def_if(tree fnbody)
++ {
++   extern FILE* doc_info_file;
++   if (!doc_info_file)
++     return;
++   if (!TREE_PUBLIC(current_function_decl))
++     return;
++   if (DECL_DECLARED_INLINE_P(current_function_decl))
++     return;
++   const char* file = DECL_SOURCE_FILE(current_function_decl);
++   int line = DECL_SOURCE_LINE(current_function_decl);
++   const char* decl_as_string_translate(tree, int);
++   const char* name = decl_as_string_translate(current_function_decl, 0);
++   fprintf(doc_info_file, "$func $def \"%s\" \"%s\" %d\n", name, file, line);
++   fprintf(doc_info_file, "{\n");
++   void out_doc_info(tree, line_maps*);
++   out_doc_info(fnbody, line_table);
++   fprintf(doc_info_file, "    $graph {}\n");
++   fprintf(doc_info_file, "}\n");
++ }
++ #endif // USE_TREE_FOR_OUT_DOC_INFO
++ 
++ void debug_loc(location_t loc)
++ {
++   if (loc == UNKNOWN_LOCATION) {
++     fprintf(stderr, "unknown location\n");
++     return;
++   }
++   rich_location richloc(line_table, loc);
++   expanded_location exloc = richloc.get_expanded_location(0);
++   const char* file = exloc.file;
++   int line = exloc.line;
++   int column = exloc.column;
++   fprintf(stderr, "%s:%d.%d\n", file, line, column);
++ }
++ // ^^^^^ add by khasegawa
++ 
+  /* Parse a compound-statement.
+  
+     compound-statement:
+***************
+*** 11795,11800 ****
+--- 11921,11930 ----
+    if (function_body)
+      maybe_splice_retval_cleanup (compound_stmt);
+  
++ #ifdef USE_TREE_FOR_OUT_DOC_INFO
++   out_func_def_if(compound_stmt);
++ #endif // USE_TREE_FOR_OUT_DOC_INFO
++ 
+    /* Finish the compound-statement.  */
+    finish_compound_stmt (compound_stmt);
+    /* Consume the `}'.  */
+***************
+*** 13013,13018 ****
+--- 13143,13156 ----
+    return false;
+  }
+  
++ // add khasegawa
++ inline void modify_loc_if2(tree stmt, location_t loc)
++ {
++   if (!global_options.x_flag_profile_basic_block)
++     return;
++   SET_EXPR_LOCATION(stmt, loc);
++ }
++ 
+  /* Parse a jump-statement.
+  
+     jump-statement:
+***************
+*** 13117,13122 ****
+--- 13255,13261 ----
+  	  /* Don't deduce from a discarded return statement.  */;
+  	else
+  	  statement = finish_return_stmt (expr);
++ 	modify_loc_if2(statement, token->location);  // add khasegawa
+  	/* Look for the final `;'.  */
+  	cp_parser_require (parser, CPP_SEMICOLON, RT_SEMICOLON);
+        }
+***************
 *** 13615,13620 ****
---- 13680,13686 ----
+--- 13754,13760 ----
        omitted only when declaring a class or enumeration, that is when
        the decl-specifier-seq contains either a class-specifier, an
        elaborated-type-specifier, or an enum-specifier.  */
@@ -215,7 +818,7 @@
         /* If an error occurred while parsing tentatively, exit quickly.
   	 (That usually happens when in the body of a function; each
   	 statement is treated as a declaration-statement until proven
---- 13812,13819 ----
+--- 13886,13893 ----
   					&function_definition_p,
   					maybe_range_for_decl,
   					&init_loc,
@@ -225,11 +828,138 @@
   	 (That usually happens when in the body of a function; each
   	 statement is treated as a declaration-statement until proven
 ***************
+*** 18489,18494 ****
+--- 18630,18639 ----
+  static tree
+  cp_parser_type_name (cp_parser* parser, bool typename_keyword_p)
+  {
++   /* vvvvv add by khasegawa vvvvv */
++   location_t loc = cp_lexer_peek_token (parser->lexer)->location;
++   /* ^^^^^ add by kahsegawa ^^^^^ */
++ 
+    tree type_decl;
+  
+    /* We can't know yet whether it is a class-name or not.  */
+***************
+*** 18541,18549 ****
+--- 18686,18731 ----
+  	return cp_parser_nonclass_name (parser);
+      }
+  
++   /* vvvvv add by khasegawa 2021/04/07 vvvvv */
++   extern FILE* doc_info_file;
++   if (doc_info_file) {
++     if (TREE_CODE(type_decl) == TYPE_DECL) {
++       rich_location richloc(line_table, loc);
++       expanded_location exloc = richloc.get_expanded_location(0);
++       const char* file = exloc.file;
++       int line = exloc.line;
++       tree id = DECL_NAME(type_decl);
++       const char* name = (const char*)((tree_identifier*)id)->id.str;
++       fprintf(doc_info_file, "// $ref $tag \"%s\" \"%s\" %d ;\n",
++ 	      name, file, line);
++     }
++   }
++   /* ^^^^^ add by khasegawa 2021/04/07 ^^^^^ */
+    return type_decl;
+  }
+  
++ // vvvvv add by khasegawa
++ inline void out_type_ref_if(tree type_decl, location_t loc)
++ {
++   extern FILE* doc_info_file;
++   if (!doc_info_file)
++     return;
++   if (TREE_CODE(type_decl) != TYPE_DECL)
++     return;
++   if (DECL_IS_BUILTIN(type_decl))
++     return;
++ 
++   const char* decl_as_string_translate(tree, int);
++   const char* name = decl_as_string_translate(type_decl, 0);
++   rich_location richloc(line_table, loc);
++   expanded_location exloc = richloc.get_expanded_location(0);
++   const char* file = exloc.file;
++   int line = exloc.line;
++   fprintf(doc_info_file, "$type $ref \"%s\" \"%s\" %d ;\n",
++ 	  name, file, line);
++ }
++ // ^^^^^ add by khasegawa
++ 
+  /* Parse a non-class type-name, that is, either an enum-name, a typedef-name,
+     or a concept-name.
+  
+***************
+*** 18608,18613 ****
+--- 18790,18797 ----
+  	   && !parser->scope)
+      maybe_note_name_used_in_class (identifier, type_decl);
+  
++   out_type_ref_if(type_decl, token->location);  // add by khasegawa
++ 
+    return type_decl;
+  }
+  
+***************
+*** 19029,19034 ****
+--- 19213,19231 ----
+       happens, the user was probably trying to form a template-id.  */
+    cp_parser_check_for_invalid_template_id (parser, type, tag_type,
+  					   token->location);
++   /* vvvvv add by khasegawa vvvvv */
++   extern FILE* doc_info_file;
++   if (doc_info_file) {
++     rich_location richloc(line_table, key_loc);
++     expanded_location exloc = richloc.get_expanded_location(0);
++     const char* file = exloc.file;
++     int line = exloc.line;
++     tree id = TYPE_IDENTIFIER(type);
++     const char* name = (const char*)((tree_identifier*)id)->id.str;
++     fprintf(doc_info_file, "// $ref $tag \"%s\" \"%s\" %d ;\n",
++ 	    name, file, line);
++   }
++   /* ^^^^^ add by khasegawa ^^^^^ */
+  
+    return type;
+  }
+***************
 *** 20445,20450 ****
---- 20568,20614 ----
+--- 20642,20691 ----
     return type;
   }
   
++ // vvvvv add by khasegawa
++ inline void out_doc_info_if(tree decl)
++ {
++   extern FILE* doc_info_file;
++   if (!doc_info_file)
++     return;
++   if (current_function_decl)
++     return;  // ignore declaration at function body
++   const char* decl_as_string_translate(tree, int);
++   const char* name = decl_as_string_translate(decl, 0);
++   const char* file = DECL_SOURCE_FILE(decl);
++   int line = DECL_SOURCE_LINE(decl);
++   if (TREE_CODE(decl) == TYPE_DECL) {
++     fprintf(doc_info_file, "$type $def \"%s\" \"%s\" %d ;\n",
++ 	    name, file, line);
++     return;
++   }
++   if (!TREE_PUBLIC(decl))
++     return;
++   if (TREE_CODE(decl) == FUNCTION_DECL) {
++     fprintf(doc_info_file, "$func $decl \"%s\" \"%s\" %d ;\n",
++ 	    name, file, line);
++     return;
++   }
++   if (DECL_EXTERNAL(decl)) {
++     fprintf(doc_info_file, "$var $decl \"%s\" \"%s\" %d ;\n",
++ 	    name, file, line);
++     return;
++   }
++   fprintf(doc_info_file, "$var $def \"%s\" \"%s\" %d ;\n", name, file, line);
++ }
++ // ^^^^^ add by khasegawa
 + 
 + // add by khasegawa
 + inline void modify_loc_if3(tree decl, location_t loc)
@@ -237,6 +967,9 @@
 +   if (!global_options.x_flag_profile_basic_block)
 +     return;
 +   DECL_SOURCE_LOCATION(decl) = loc;
++   if (modify_loc_if_impl::decl_fscope_or_nmspc(decl))
++     return;
++   input_location = loc;
 + }
 + 
   /* Declarators [gram.dcl.decl] */
@@ -251,7 +984,7 @@
   {
     cp_token *token = NULL, *asm_spec_start_token = NULL,
              *attributes_start_token = NULL;
---- 20678,20685 ----
+--- 20755,20762 ----
   			   bool* function_definition_p,
   			   tree* maybe_range_for_decl,
   			   location_t* init_loc,
@@ -261,15 +994,79 @@
     cp_token *token = NULL, *asm_spec_start_token = NULL,
              *attributes_start_token = NULL;
 ***************
-*** 20926,20931 ****
---- 21095,21101 ----
-  			 `explicit' constructor cannot be used.  */
-  		      ((is_direct_init || !is_initialized)
-  		       ? LOOKUP_NORMAL : LOOKUP_IMPLICIT) | cf);
-+       modify_loc_if3(decl, ds_start_loc);
+*** 20568,20573 ****
+--- 20810,20816 ----
+  			    flags, &ctor_dtor_or_conv_p,
+  			    /*parenthesized_p=*/NULL,
+  			    member_p, friend_p, /*static_p=*/false);
++ 
+    /* Gather up the deferred checks.  */
+    stop_deferring_access_checks ();
+  
+***************
+*** 20818,20823 ****
+--- 21061,21069 ----
+  	current_function_decl = saved_current_function_decl;
       }
-    else if ((cxx_dialect != cxx98) && friend_p
-  	   && decl && TREE_CODE (decl) == FUNCTION_DECL)
+  
++   if (decl)
++     out_doc_info_if(decl);  // add by khasegawa
++ 
+    /* Parse the initializer.  */
+    initializer = NULL_TREE;
+    is_direct_init = false;
+***************
+*** 20917,20922 ****
+--- 21163,21169 ----
+      {
+        int cf = (decl_spec_seq_has_spec_p (decl_specifiers, ds_constinit)
+  		? LOOKUP_CONSTINIT : 0);
++       modify_loc_if3(decl, ds_start_loc);
+        cp_finish_decl (decl,
+  		      initializer, !is_non_constant_init,
+  		      asm_specification,
+***************
+*** 24188,24200 ****
+--- 24435,24473 ----
+    return type;
+  }
+  
++ /* vvvvv add by khasegawa 2021/04/07 vvvvv */
++ inline void out_tag_def_if(tree spec, location_t loc)
++ {
++   extern FILE* doc_info_file;
++   if (!doc_info_file)
++     return;
++   tree id = TYPE_IDENTIFIER(spec);
++   if (IDENTIFIER_ANON_P(id))
++     return;
++   rich_location richloc(line_table, loc);
++   expanded_location exloc = richloc.get_expanded_location(0);
++   const char* file = exloc.file;
++   int line = exloc.line;
++   const char* name = (const char*)((tree_identifier*)id)->id.str;
++   fprintf(doc_info_file, "$tag $decl \"%s\" \"%s\" %d;\n", name, file, line);
++ }
++ /* ^^^^^ add by khasegawa 2021/04/07 ^^^^^ */
++ 
+  static tree
+  cp_parser_class_specifier (cp_parser* parser)
+  {
++   // add by khasegawa
++   location_t loc = cp_lexer_peek_token (parser->lexer)->location;
++ 
+    tree ret;
+    timevar_push (TV_PARSE_STRUCT);
+    ret = cp_parser_class_specifier_1 (parser);
+    timevar_pop (TV_PARSE_STRUCT);
++ 
++   // add by khasegawa
++   if (ret != error_mark_node)
++     out_tag_def_if(ret, loc);
++ 
+    return ret;
+  }
+  
 ***************
 *** 29517,29523 ****
   				        member_p,
@@ -279,7 +1076,7 @@
   
       /* 7.1.1-1 [dcl.stc]
   
---- 29713,29720 ----
+--- 29790,29797 ----
   				        member_p,
   				        declares_class_or_enum,
   				        &function_definition_p,
