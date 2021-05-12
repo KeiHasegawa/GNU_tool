@@ -1,0 +1,52 @@
+gcov の調査
+
+(*1) 導入
+
+     man gcov の内容を参考にした.
+
+% g++ --coverage tmp.cpp
+% ./a.out
+Success
+% gcov tmp.cpp -m
+...
+Creating 'tmp.cpp.gcov'
+
+     とすることで tmp.cpp.gcov にカバレッジの結果が生成される.
+     tmp.cpp では Foo<char> はインスタンシエーションはされているが
+     使用されていないので, 7 行目, 8 行目は Foo<char> に対しては
+     実行されていないが, Foo<int> に対して実行されたことを示している.
+
+     30 行目に対して以下のように * の文字が入っている.
+
+       1*:   30:  int v = total > 100 ? 1 : 2;
+
+     これは, この行は実行されたが, この行にある実行されなかった
+     基本ブロックがあることを表している.
+
+% gcov tmp.cpp -m -a
+...
+Creating 'tmp.cpp.gcov'
+
+     とすると基本ブックの情報も込みのカバレッジの結果が生成される.
+     30 行目に対しては以下のようになっている:
+
+       1*:   30:  int v = total > 100 ? 1 : 2;
+        1:   30-block  0
+    %%%%%:   30-block  1
+        1:   30-block  2
+        -:   31:
+
+     これは期待した結果で, 基本ブロック 1 は実行されず, 基本ブロック
+     0 と 2 のみが実行されたことを表している.
+
+% gcov tmp.cpp -m -b
+...
+Creating 'tmp.cpp.gcov'
+
+     とすると 30 行目には別の形式で結果を生成した:
+
+       1*:   30:  int v = total > 100 ? 1 : 2;
+branch  0 taken 0% (fallthrough)
+branch  1 taken 100%
+
+ 

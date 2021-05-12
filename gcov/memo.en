@@ -1,0 +1,48 @@
+gcov investigation
+
+(*1) Introduction
+
+     Refer to `man gcov'
+
+% g++ --coverage tmp.cpp
+% ./a.out
+Success
+% gcov tmp.cpp -m
+...
+Creating 'tmp.cpp.gcov'
+
+     This generates tmp.cpp.gcov which contains coverage results.
+     At tmp.cpp, Foo<char> is instantiated but not used, so,
+     for line 7 and 8, the line is executed for `Foo<int>' but not
+     for `Foo<char>'.
+
+     For line 30, the result is:
+
+       1*:   30:  int v = total > 100 ? 1 : 2;
+
+     This means the line is executed but it contains basic block
+     which is not executed.
+
+% gcov tmp.cpp -m -a
+...
+Creating 'tmp.cpp.gcov'
+
+     This contains basic block coverage results. For line 30,
+     the resut is:
+
+       1*:   30:  int v = total > 100 ? 1 : 2;
+        1:   30-block  0
+    %%%%%:   30-block  1
+        1:   30-block  2
+        -:   31:
+
+% gcov tmp.cpp -m -b
+...
+Creating 'tmp.cpp.gcov'
+
+      This contains basic block coverage result in a different way:
+
+       1*:   30:  int v = total > 100 ? 1 : 2;
+branch  0 taken 0% (fallthrough)
+branch  1 taken 100%
+
