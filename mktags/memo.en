@@ -1,0 +1,125 @@
+Tag generation
+
+(*1) How to use ctags (vi version)
+(*2) How to use ctags (emacs version)
+(*3) -e option objdump
+
+(*1) How to use ctags (vi version)
+
+Tag jump    vi -t <name>
+Tag jump    :ta <name>
+Tag jump    Ctrl-]
+Back	    Ctrl-T
+
+% cat a.c
+#include <stdio.h>
+
+void f();
+
+#define X 2
+
+int main()
+{
+  printf("hello\n");
+  f();
+  return 0;
+}
+% cat b.c
+#include "d.h"
+
+int a;
+
+void g(int);
+
+void f()
+{
+  g(a);
+  g(X);
+}
+
+int f2(location loc)
+{
+  return loc;
+}
+% cat c.c
+#include <stdio.h>
+#include "d.h"
+
+void g(int n)
+{
+  printf("n = %d\n", n);
+}
+
+extern int a;
+
+void h(struct S* ps)
+{
+  printf("ps->m = %d\n", ps->m);
+  printf("a = %d\n", a);
+}
+% cat d.h
+#ifndef D_H
+#define D_H
+
+#define X 1
+
+struct S {
+  int m;
+};
+
+typedef unsigned int location;
+
+#endif /* D_H */
+% ctags a.c b.c c.c d.h
+# Above generates `tags'
+% vi -t location
+# Run vi and display the definition part of `location' at `d.h'
+vi command
+:ta main
+jumps to `main'
+Set the cursor to what you want to search and
+
+Ctrl-]
+
+jumps there.
+
+Ctrl-T
+
+jumps back.
+
+(*2) How to use ctags (emacs version)
+
+Specify `TAGS'		M-x visit-tags-table
+Tag jump		M-.
+Back			M-*
+Next			C-u M-.
+
+% ctags -e b.c c.c hoge.c d.h
+# Above generates `TAGS'
+
+Run emacs and
+
+M-x visit-tags-table
+
+and specify `TAGS' you generated. Normally current working directory `TAGS'
+is being opened, so just [return] in that case.
+
+Set the cursor to what you want to search and
+
+M-.
+
+jumps there.
+
+M-*
+
+jumps back.
+
+C-u M-.
+
+Find the next definition for the last tag. a.c and d.h have
+macro `X' definition. 1st `X' tag jump goes to the macro `X' definition
+of a.c. And then
+
+C-u M-.
+
+jumps to the macro `X' definition of b.c

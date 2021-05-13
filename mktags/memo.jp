@@ -1,0 +1,138 @@
+タグ生成
+
+(*1) vi での ctags の簡単な使い方
+(*2) emacs での ctags の簡単な使い方
+(*3) プログラムファイルからタグファイルを生成する
+
+(*1) vi での ctags の簡単な使い方
+
+起動時にタグジャンプ	vi -t <タグ名>
+タグジャンプ		:ta <タグ名>
+タグジャンプ		Ctrl-]
+元に戻る		Ctrl-T
+
+% cat a.c
+#include <stdio.h>
+
+void f();
+
+#define X 2
+
+int main()
+{
+  printf("hello\n");
+  f();
+  return 0;
+}
+% cat b.c
+#include "d.h"
+
+int a;
+
+void g(int);
+
+void f()
+{
+  g(a);
+  g(X);
+}
+
+int f2(location loc)
+{
+  return loc;
+}
+% cat c.c
+#include <stdio.h>
+#include "d.h"
+
+void g(int n)
+{
+  printf("n = %d\n", n);
+}
+
+extern int a;
+
+void h(struct S* ps)
+{
+  printf("ps->m = %d\n", ps->m);
+  printf("a = %d\n", a);
+}
+% cat d.h
+#ifndef D_H
+#define D_H
+
+#define X 1
+
+struct S {
+  int m;
+};
+
+typedef unsigned int location;
+
+#endif /* D_H */
+% ctags a.c b.c c.c d.h
+# tags というファイルが生成される
+% vi -t location
+# vi が起動して d.h の location の定義位置が表示される
+vi のコマンドで
+:ta main
+のようにするとタグ main ジャンプできる.
+探したい名前のところにカーソルをもっていって
+
+Ctrl-] 
+
+とすればタグジャンプできる. タグジャンプした後
+
+Ctrl-T
+
+とすればもとに戻ることができる.
+
+(*2) emacs での ctags の簡単な使い方
+
+タグファイルを読み込む	M-x visit-tags-table
+タグジャンプ		M-.
+元に戻る		M-*
+次の候補		C-u M-.
+
+% ctags -e b.c c.c hoge.c d.h
+# TAGS というファイルが作成される
+
+emacs を起動して
+
+M-x visit-tags-table
+
+で生成した TAGS を指定する. 通常はカレントディレクトリの TAGS ファイルを
+開こうとしているから, その場合はリターンキーを押せばよい.
+
+ファイルを開いた状態で探したい名前のところにカーソルをもっていって
+
+M-.
+
+とすればタグジャンプできる. タグジャンプした後
+
+M-*
+
+とすればもとに戻ることができる.
+
+C-u M-.
+
+とすれば複数候補の次にジャンプする. a.c と d.h にマウロ X の
+定義がそれぞれあるので X にタグジャンプすると
+a.c の X の定義にジャンプする. その後
+
+C-u M-.
+
+とすると d.h の X の定義にジャンプする.
+
+(*3) プログラムファイルからタグファイルを生成する
+
+     mktags.exe のビルド
+
+linux % g++ -o mktags.exe mktags.cpp -g3 -DPACKAGE -lbfd -liberty -L/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/libiberty -ldl -lz
+
+% ./mktags.exe a.out
+# tags が生成される. vi 用
+% ./mktags -e a.out
+# TAGS が生成される. emacs 用.
+
+
