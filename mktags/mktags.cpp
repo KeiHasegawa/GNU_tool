@@ -7,13 +7,22 @@
 #include <memory>
 #include <algorithm>
 #include <fstream>
+#ifdef __CYGWIN__
+// Not refer to DLL
+extern "C" {
+  int getopt(int, char**, const char*);
+  extern char* optarg;
+  extern int optind;
+}
+#else // __CYGWIN__
 #include <unistd.h>
+#endif // __CYGWIN__
 #include <bfd.h>
 
 inline void usage(const char* prog)
 {
   using namespace std;
-  cerr << "usage % " << prog << "[-e] a.out" << endl;
+  cerr << "usage % " << prog << " [-e] a.out" << endl;
 }
 
 struct info_t {
@@ -39,14 +48,27 @@ collect(bfd_symbol* sym, bfd_symbol** syms, std::vector<info_t>& res)
   auto mask = BSF_FILE;
   if (flags & mask)
     return;
-  auto bfdp = sym->the_bfd;
+  const char* name = sym->name;
+  if (name[0] == '.')
+    return;
+  auto bp = sym->the_bfd;
   const char* file;
   unsigned int line;
-  const char* name = sym->name;
-  if (!bfd_find_line(bfdp, syms, sym, &file, &line))
+#ifdef __CYGWIN__
+  auto sec = sym->section;
+  auto off = sym->value;
+  const char* func;
+  if (!bfd_find_nearest_line(bp, sec, syms, off, &file, &func, &line))
+    return;
+  if (!line)
+    return;
+  --line;
+#else // __CYGWIN__
+  if (!bfd_find_line(bp, syms, sym, &file, &line))
     return;
   if (!file)
     return;
+#endif // __CYGWIN__
   info_t tmp = { name, file, (int)line, flags };
   res.push_back(tmp);
 }
@@ -91,6 +113,9 @@ build(const info_t& x, std::map<std::string, std::vector<tag_t> >& res)
   }
   int seek = ifs.tellg();
   seek -= text.length()+1;
+  auto len = text.length();
+  if (text[len-1] == '\r')
+    text.erase(len-1);
   tag_t tmp = { text, x.name, x.line, seek, x.flags };
   res[curr_file].push_back(tmp);
   curr_line = x.line;
@@ -224,6 +249,11 @@ int main(int argc, char** argv)
   for (auto p = &syms[0] ; p != &syms[nsym] ; ++p)
     collect(*p, syms, info);
 
+  if (info.empty()) {
+    cerr << "No line information" << endl;
+    return 1;
+  }
+
   sort(begin(info), end(info));
 
   map<string, vector<tag_t> > tags;
@@ -257,12 +287,13 @@ void debug(bfd_symbol** syms, int nsym)
 void debug2(const info_t& info)
 {
   cerr << info.name << ':' << info.file << ':' << dec << info.line;
-  cerr << hex << info.flags << endl;
+  cerr << ':' << hex << info.flags << endl;
 }
 
 void debug(const vector<info_t>& info)
 {
-  for_each(begin(info), end(info), debug2); 
+  for (const auto& x : info)
+    debug2(x);
 }
 
 void debug3(const tag_t& tag)

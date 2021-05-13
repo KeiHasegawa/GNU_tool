@@ -4,8 +4,15 @@ all:$(PROG)
 
 OBJS = mktags.o
 
-EXTRA_LIBS = -lbfd -liberty \
--L/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/libiberty -ldl -lz
+UNAME := $(shell uname)
+
+ifneq (,$(findstring CYGWIN,$(UNAME)))
+	LIB_INTL_FLAG = -lintl
+else
+	LIB_LIBIBERTY_FLAG = -L/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/libiberty
+endif
+
+EXTRA_LIBS = -lbfd -liberty $(LIB_LIBIBERTY_FLAG) -ldl -lz $(LIB_INTL_FLAG)
 
 $(PROG):$(OBJS)
 	g++ -o $(PROG) $(OBJS) $(EXTRA_LIBS)
