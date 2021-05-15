@@ -2,75 +2,415 @@
 #include <cstring>
 #include <vector>
 #include <map>
+#include <set>
 #include <iostream>
 #include <sstream>
 #include <memory>
 #include <algorithm>
 #include <fstream>
-#ifdef __CYGWIN__
-// Not refer to DLL
+#include <iterator>
+#include <cassert>
+
+// Not refer to Dynamic Link Library at CYGWIN
 extern "C" {
   int getopt(int, char**, const char*);
   extern char* optarg;
   extern int optind;
 }
-#else // __CYGWIN__
-#include <unistd.h>
-#endif // __CYGWIN__
+
 #include <bfd.h>
+#include "dwarf2.h"
 
 inline void usage(const char* prog)
 {
   using namespace std;
-  cerr << "usage % " << prog << " [-e] a.out" << endl;
+  cerr << "usage % " << prog << " [-aev] [-E dir] a.out" << endl;
 }
 
-struct info_t {
-  std::string name;
-  const char* file;
-  int line;
-  flagword flags;
-};
+extern "C" void my_display_debug_line(bfd*, bfd_section*, bfd_byte*);
 
-inline bool operator<(const info_t& x, const info_t& y)
-{
-  int n = strcmp(x.file, y.file);
-  if (n)
-    return n < 0;
-  return x.line < y.line;
-}
-
-inline void
-collect(bfd_symbol* sym, bfd_symbol** syms, std::vector<info_t>& res)
+inline void do_line(bfd* bp)
 {
   using namespace std;
-  auto flags = sym->flags;
-  auto mask = BSF_FILE;
-  if (flags & mask)
+  const char* name = ".debug_line";
+  auto section = bfd_get_section_by_name(bp, name);
+  if (!section) {
+    cerr << "Not foud : " << '"' << name << '"' << endl;
     return;
-  const char* name = sym->name;
-  if (name[0] == '.')
+  }
+
+  bfd_byte *buf;
+  if (!bfd_malloc_and_get_section(bp, section, &buf)) {
+    cerr << "bfd_malloc_and_get_section failed" << endl;
     return;
-  auto bp = sym->the_bfd;
-  const char* file;
-  unsigned int line;
-#ifdef __CYGWIN__
-  auto sec = sym->section;
-  auto off = sym->value;
-  const char* func;
-  if (!bfd_find_nearest_line(bp, sec, syms, off, &file, &func, &line))
+  }
+  struct sweeper {
+    bfd_byte* m_ptr;
+    sweeper(bfd_byte* p) : m_ptr{p} {}
+    ~sweeper(){ free(m_ptr); } 
+  } sweeper(buf);
+
+  my_display_debug_line(bp, section, buf);
+}
+
+namespace debug_line_impl {
+  using namespace std;
+  struct X {
+    vector<string> dirs;
+    vector<pair<string, int> > files;
+  };
+  map<int, X> info;
+  int current_off;
+  bool match(const X& x, string file)
+  {
+    const auto& files = x.files;
+    assert(!files.empty());
+    return files[0].first == file;
+  }
+  X* get(string file)
+  {
+    auto p = find_if(begin(info), end(info),
+	     [file](const pair<int, X>& p){ return match(p.second, file); });
+    assert(p != end(info));
+    return &p->second;
+  }
+} // end of namespace debgu_line_impl 
+
+extern "C" void dir_offset(long offset)
+{
+  debug_line_impl::current_off = offset;
+}
+
+extern "C" void dir_ent(unsigned char* s)
+{
+  using namespace debug_line_impl;
+  auto ss = reinterpret_cast<char*>(s);
+  info[current_off].dirs.push_back(ss);
+}
+
+extern "C" void file_entry(unsigned char* s, int dirno)
+{
+  using namespace debug_line_impl;
+  auto ss = reinterpret_cast<char*>(s);  
+  info[current_off].files.push_back(pair<string, int>(ss, dirno));
+}
+
+extern "C" void my_display_debug_info(bfd*, bfd_section*, bfd_byte*);
+
+inline void do_info(bfd* bp)
+{
+  using namespace std;
+  const char* name = ".debug_info";
+  auto section = bfd_get_section_by_name(bp, name);
+  if (!section) {
+    cerr << "Not foud : " << '"' << name << '"' << endl;
     return;
-  if (!line)
+  }
+
+  bfd_byte *buf;
+  if (!bfd_malloc_and_get_section(bp, section, &buf)) {
+    cerr << "bfd_malloc_and_get_section failed" << endl;
     return;
-  --line;
-#else // __CYGWIN__
-  if (!bfd_find_line(bp, syms, sym, &file, &line))
+  }
+  struct sweeper {
+    bfd_byte* m_ptr;
+    sweeper(bfd_byte* p) : m_ptr{p} {}
+    ~sweeper(){ free(m_ptr); } 
+  } sweeper(buf);
+
+  my_display_debug_info(bp, section, buf);
+}
+
+struct cont_t {
+  std::string name;
+  enum dwarf_tag kind;
+  int line;
+  int file;
+};
+
+namespace debug_info_impl {
+  using namespace std;
+  enum dwarf_tag curr_dt;
+  struct info_t {
+    string file;
+    string dir;
+    vector<cont_t>  contents;
+    info_t(const char* s) : file{s} {}
+  };
+  vector<info_t> info;
+  bool match(const info_t& x, string file)
+  {
+    return x.file == file;
+  }
+  info_t* get(string file)
+  {
+    auto p = find_if(begin(info), end(info),
+		     [file](const info_t& x){ return match(x, file); });
+    assert(p != end(info));
+    return &*p;
+  }
+} // end of namespace debug_info_impl
+
+extern "C" void  start_tag(enum dwarf_tag dt)
+{
+  debug_info_impl::curr_dt = dt;
+}
+
+extern "C" void set_name(unsigned const char* s)
+{
+  using namespace debug_info_impl;
+  auto ss = reinterpret_cast<const char*>(s);
+  switch (curr_dt) {
+  case DW_TAG_base_type:
     return;
-  if (!file)
+  case DW_TAG_compile_unit:
+    info.push_back(info_t(ss));
     return;
-#endif // __CYGWIN__
-  info_t tmp = { name, file, (int)line, flags };
-  res.push_back(tmp);
+  case DW_TAG_variable:
+  case DW_TAG_subprogram:
+  case DW_TAG_typedef:
+  case DW_TAG_structure_type:
+    {
+      assert(!info.empty());
+      auto& b = info.back();
+      cont_t tmp = { ss, curr_dt };
+      b.contents.push_back(tmp);
+      return;
+    }
+  default:
+    return;
+  }
+}
+
+extern "C" void comp_dir(const unsigned char* s)
+{
+  using namespace debug_info_impl;
+  auto ss = reinterpret_cast<const char*>(s);
+  switch (curr_dt) {
+  case DW_TAG_compile_unit:
+    {
+      assert(!info.empty());
+      auto& b = info.back();
+      assert(b.dir.empty());
+      b.dir = ss;
+      return;
+    }
+  default:
+    return;
+  }
+}
+
+extern "C" void set_decl_line(unsigned long long uvalue)
+{
+  using namespace debug_info_impl;
+  switch (curr_dt) {
+  case DW_TAG_variable:
+  case DW_TAG_subprogram:
+  case DW_TAG_typedef:
+  case DW_TAG_structure_type:
+    {
+      assert(!info.empty());
+      auto& i = info.back();
+      assert(!i.contents.empty());
+      auto& c = i.contents.back();
+      assert(!c.line);
+      c.line = uvalue;
+      return;
+    }
+  default:
+    return;
+  }
+}
+
+extern "C" void set_decl_file(unsigned long long uvalue)
+{
+  using namespace debug_info_impl;
+  switch (curr_dt) {
+  case DW_TAG_variable:
+  case DW_TAG_subprogram:
+  case DW_TAG_typedef:
+  case DW_TAG_structure_type:
+    {
+      assert(!info.empty());
+      auto& i = info.back();
+      assert(!i.contents.empty());
+      auto& c = i.contents.back();
+      assert(!c.file);
+      c.file = uvalue;
+      return;
+    }
+  default:
+    return;
+  }
+}
+
+extern "C" void
+my_display_debug_macro(bfd*, bfd_section*, bfd_byte*);
+
+inline void do_macro(bfd* bp)
+{
+  using namespace std;
+  auto section = bfd_get_section_by_name(bp, ".debug_macro");
+  if (!section)
+    return;
+  bfd_byte *buf;
+  if (!bfd_malloc_and_get_section(bp, section, &buf)) {
+    cerr << "bfd_malloc_and_get_section failed" << endl;
+    return;
+  }
+  struct sweeper {
+    bfd_byte* m_ptr;
+    sweeper(bfd_byte* p) : m_ptr{p} {}
+    ~sweeper(){ free(m_ptr); } 
+  } sweeper(buf);
+
+  my_display_debug_macro(bp, section, buf);
+}
+
+namespace debug_macro_impl {
+  using namespace std;
+  vector<int> filenos;
+  map<unsigned int, int> import;
+  debug_line_impl::X* current;
+  map<debug_line_impl::X*, vector<cont_t> > info;
+} // end of namespace debug_macro_impl
+
+extern "C"
+void macro_start_file(unsigned int lineno, unsigned int fileno,
+		      unsigned char* file, unsigned char* dir)
+{
+  if (!lineno) {
+    auto ss = reinterpret_cast<char*>(file);
+    debug_macro_impl::current = debug_line_impl::get(ss);
+  }
+  debug_macro_impl::filenos.push_back(fileno);
+}
+
+extern "C" void macro_end_file()
+{
+  using namespace debug_macro_impl;
+  assert(!filenos.empty());
+  filenos.pop_back();
+}
+
+extern "C" void macro_import(unsigned int offset)
+{
+  using namespace debug_macro_impl;
+  if (filenos.empty())
+    return;
+  auto fileno = filenos.back();
+  import[offset] = fileno;
+}
+
+extern "C"
+void macro_define(unsigned int lineno, const unsigned char* s,
+		  unsigned int sec_offset)
+{
+  using namespace std;
+  if (!lineno)
+    return;
+  string name;
+  for ( ; *s != '\0' ; ++s ) {
+    char c = *s;
+    if (c == ' ' || c == '\t' || c == '(')
+      break;
+    name += c;
+  }
+
+  using namespace debug_macro_impl;
+ if (!filenos.empty()) {
+   int fileno = filenos.back();
+   cont_t tmp = { name, (enum dwarf_tag)0, (int)lineno, fileno };
+   info[current].push_back(tmp);
+   return;
+ }
+
+ auto p = import.find(sec_offset);
+ assert(p != end(import));
+ auto fileno = p->second;
+ cont_t tmp = { name, (enum dwarf_tag)0, (int)lineno, fileno };
+ info[current].push_back(tmp);
+}
+
+struct comp {
+  bool operator()(const cont_t* x, const cont_t* y)
+  {
+    return x->line < y->line;
+  }
+};
+
+typedef std::set<const cont_t*, comp> value_t;
+typedef std::map<std::string, value_t> table_t;
+
+inline bool match(std::string ex, std::string dir)
+{
+  return dir.substr(0, ex.length()) == ex;
+}
+
+inline void create(const cont_t& c, bool abs_path_form,
+		   const std::set<std::string>& exclude,
+		   debug_line_impl::X* ptr, table_t& res,
+		   std::map<const cont_t*, std::string>& extra)
+{
+  int n = c.file;
+  assert(n);
+  --n;
+  const auto& files = ptr->files;
+  assert(n < files.size());
+  auto xn = files[n];
+  auto file = xn.first;
+  int m = xn.second;
+  if (!m) {
+    auto ptr = debug_info_impl::get(files[0].first);
+    auto dir = ptr->dir;
+    auto p = find_if(begin(exclude), end(exclude),
+		     bind2nd(ptr_fun(match), dir));
+    if (p != end(exclude))
+      return;
+    auto path = dir + '/' + file;
+    if (abs_path_form)
+      res[path].insert(&c);
+    else {
+      res[file].insert(&c);
+      extra[&c] = path;
+    }
+    return;
+  }
+  --m;
+  const auto& dirs = ptr->dirs;
+  assert(m < dirs.size());
+  auto dir = dirs[m];
+  auto p = find_if(begin(exclude), end(exclude),
+		   bind2nd(ptr_fun(match), dir));
+  if (p != end(exclude))
+    return;
+  auto path = dir + '/' + file;
+  res[path].insert(&c);
+}
+
+inline void create(const debug_info_impl::info_t& x,  bool abs_path_form, 
+		   const std::set<std::string>& exclude, table_t& res,
+		   std::map<const cont_t*, std::string>& extra)
+{
+  using namespace std;
+  auto file = x.file;
+  debug_line_impl::X* ptr = debug_line_impl::get(file);
+  for (const auto& c : x.contents)
+    create(c, abs_path_form, exclude, ptr, res, extra);
+}
+
+inline void create(bool abs_path_form,
+		   const std::set<std::string>& exclude, table_t& res,
+		   std::map<const cont_t*, std::string>& extra)
+{
+  for (const auto& x : debug_info_impl::info)
+    create(x, abs_path_form, exclude, res, extra);
+
+  for (const auto& x : debug_macro_impl::info) {
+    auto ptr = x.first;
+    for (const auto& c : x.second)
+      create(c, abs_path_form, exclude, ptr, res, extra);
+  }
 }
 
 struct tag_t {
@@ -78,31 +418,37 @@ struct tag_t {
   std::string name;
   int line;
   int seek;
-  flagword flags;
+  enum dwarf_tag kind;
 };
 
-inline void
-build(const info_t& x, std::map<std::string, std::vector<tag_t> >& res)
+inline void build(std::string file, const cont_t* pcont,
+		  const std::map<const cont_t*, std::string>& extra,
+		  std::vector<tag_t>& res)
 {
   using namespace std;
+  if (file[0] != '/') {
+    auto p = extra.find(pcont);
+    assert(p != end(extra));
+    file = p->second;
+  }
   static string curr_file;
   static ifstream ifs;
   static int curr_line;
-  if (curr_file != x.file) {
+  if (curr_file != file) {
     if (!curr_file.empty())
       ifs.close();
-    ifs.open(x.file);
+    ifs.open(file.c_str());
     if (!ifs) {
-      cerr << "cannot open " << x.file << endl;
+      cerr << "cannot open " << file << endl;
       return;
     }
-    curr_file = x.file;
+    curr_file = file;
     curr_line = 0;
   }
 
   string text;
   char buffer[256];
-  int line = x.line - curr_line;
+  int line = pcont->line - curr_line;
   while (line--) {
     do {
       ifs.clear();
@@ -116,10 +462,23 @@ build(const info_t& x, std::map<std::string, std::vector<tag_t> >& res)
   auto len = text.length();
   if (text[len-1] == '\r')
     text.erase(len-1);
-  tag_t tmp = { text, x.name, x.line, seek, x.flags };
-  res[curr_file].push_back(tmp);
-  curr_line = x.line;
+  tag_t tmp = { text, pcont->name, pcont->line, seek, pcont->kind };
+  res.push_back(tmp);
+  curr_line = pcont->line;
 }
+
+inline void build(const std::pair<std::string, value_t>& p,
+		  const std::map<const cont_t*, std::string>& extra,
+		  std::map<std::string, std::vector<tag_t> >& res)
+{
+  using namespace std;
+  for (const auto& x : p.second) {
+    string file = p.first;
+    build(file, x, extra, res[file]);
+  }
+}
+
+extern int verbose_flag;
 
 namespace for_vi {
   using namespace std;
@@ -127,12 +486,18 @@ namespace for_vi {
   output(ostream& os, const tag_t& tag, string fn)
   {
     os << tag.name << '\t' << fn << '\t';
-    os << "/^" << tag.text << "$/;" << '"' << '\t';
-    auto flags = tag.flags;
-    if (flags & BSF_FUNCTION)
-      os << 'f';
-    else if (flags & BSF_OBJECT)
-      os << 'v';
+    auto kind = tag.kind;
+    if (!kind)
+      os << tag.line << ';' << '"' << '\t' << 'd' << '\t' << "file:";
+    else {
+      os << "/^" << tag.text << "$/;" << '"' << '\t';
+      switch (kind) {
+      case DW_TAG_variable: os << 'v'; break;
+      case DW_TAG_subprogram: os << 'f'; break;
+      case DW_TAG_typedef: os << 't'; break;
+      case DW_TAG_structure_type: os << 's'; break;
+      }
+    }
     os << endl;
   }
   inline void
@@ -197,11 +562,22 @@ namespace for_emacs {
 int main(int argc, char** argv)
 {
   using namespace std;
+  bool abs_path_form = false;
+  set<string> exclude;
   enum class mode_t { vi, emacs } mode = mode_t::vi;
-  for (int opt ; (opt = getopt(argc, argv, "e")) != -1 ; ) {
+  for (int opt ; (opt = getopt(argc, argv, "aevE:")) != -1 ; ) {
     switch (opt) {
+    case 'a':
+      abs_path_form = true;
+      break;
     case 'e':
       mode = mode_t::emacs;
+      break;
+    case 'v':
+      verbose_flag = 1;
+      break;
+    case 'E':
+      exclude.insert(optarg);
       break;
     default:
       usage(argv[0]);
@@ -230,35 +606,19 @@ int main(int argc, char** argv)
     return 1;
   }
 
-  int n = bfd_get_symtab_upper_bound(bp);
-  if (n < 0) {
-    cerr << "bfd_get_symtab_upper_bound falied" << endl;
-    return 1;
-  }
+  do_line(bp);
 
-  auto syms = reinterpret_cast<bfd_symbol**>(new char[n]);
-  unique_ptr<bfd_symbol*> sweeper2(syms);
+  do_info(bp);
 
-  int nsym = bfd_canonicalize_symtab(bp, syms);
-  if (!nsym) {
-    cerr << "bfd_canonicalize_symtab failed" << endl;
-    return 1;
-  }
+  do_macro(bp);
 
-  vector<info_t> info;
-  for (auto p = &syms[0] ; p != &syms[nsym] ; ++p)
-    collect(*p, syms, info);
-
-  if (info.empty()) {
-    cerr << "No line information" << endl;
-    return 1;
-  }
-
-  sort(begin(info), end(info));
+  table_t tbl;
+  map<const cont_t*, string> extra;
+  create(abs_path_form, exclude, tbl, extra);
 
   map<string, vector<tag_t> > tags;
-  for (const auto& x : info)
-    build(x, tags);
+  for (const auto& x : tbl)
+    build(x, extra, tags);
 
   switch (mode) {
   case mode_t::vi:
@@ -272,42 +632,105 @@ int main(int argc, char** argv)
   return 0;
 }
 
-using namespace std;
-
-void debug1(bfd_symbol* sym)
+void debug(enum dwarf_tag dt)
 {
-  cerr << sym->name << ':' << hex << sym->value << endl;
+  using namespace std;
+  switch (dt) {
+  case DW_TAG_variable: cerr << 'v'; break;
+  case DW_TAG_subprogram: cerr << 'f'; break;
+  case DW_TAG_typedef: cerr << 't'; break;
+  case DW_TAG_structure_type: cerr << 's'; break;
+  default: cerr << 'd'; break;
+  }
 }
 
-void debug(bfd_symbol** syms, int nsym)
+void debug(const cont_t& x)
 {
-  for_each(&syms[0], &syms[nsym], debug1);
+  using namespace std;
+  cerr << '\t' << x.name << ',';
+  debug(x.kind);
+  cerr << ',' << x.line << ',' << x.file << endl;
 }
 
-void debug2(const info_t& info)
+void debug(const debug_info_impl::info_t& x)
 {
-  cerr << info.name << ':' << info.file << ':' << dec << info.line;
-  cerr << ':' << hex << info.flags << endl;
+  using namespace std;
+  cerr << x.file << ':' << x.dir << endl;
+  for (const auto& y : x.contents)
+    debug(y);
 }
 
-void debug(const vector<info_t>& info)
+void debug(const debug_line_impl::X& x)
 {
+  using namespace std;
+  auto dirs = x.dirs;
+  cerr << '\t' << "Directory:" << endl;
+  cerr << "\t\t";
+  copy(begin(dirs), end(dirs), ostream_iterator<string>(cerr, "\n\t\t"));
+  
+  cerr << '\b' << "Files:" << endl;
+  for (const auto& p : x.files)
+    cerr << "\t\t" << p.first << ':' << dec << p.second << endl;
+}
+
+void debug1()
+{
+  using namespace std;
+  using namespace debug_line_impl;
+  cerr << "DEBUG LINE" << endl;
+  for (const auto& x : info) {
+    cerr << '\t' << "OFFSET :" << hex << x.first << endl;
+    debug(x.second);
+  }
+}
+
+void debug2()
+{
+  using namespace debug_info_impl;
+  cerr << "DEBUG INFO" << endl;
   for (const auto& x : info)
-    debug2(x);
+    debug(x);
 }
 
-void debug3(const tag_t& tag)
+void debug3()
 {
-  cerr << tag.text << ':' << tag.name << ':';
-  cerr << dec << tag.line << ':'<<  tag.seek;
-  cerr << hex << tag.flags << endl;
+  using namespace debug_macro_impl;
+  cerr << "DEBUG MACRO" << endl;
+  for (const auto& x : info) {
+    const auto ptr = x.first;
+    const auto& files = ptr->files;
+    assert(!files.empty());
+    cerr << "Include from : " << files[0].first <<endl;
+    for (const auto& c : x.second)
+      debug(c);
+  }
 }
 
-void debug(const map<string, vector<tag_t> >& tags)
+void debug(const table_t& tbl)
 {
-  for (const auto& x : tags) {
+  using namespace std;
+  for (const auto& x : tbl) {
     cerr << x.first << endl;
-    const auto & v = x.second;
-    for_each(begin(v), end(v), debug3);
+    for (const auto& p : x.second)
+      debug(*p);
+  }
+}
+
+void debug(const tag_t& tag)
+{
+  using namespace std;
+  cerr << tag.text << ':' << tag.name << ':';
+  cerr << dec << tag.line << ':'<<  tag.seek << ':';
+  debug(tag.kind);
+  cerr << endl;
+}
+
+void debug(const std::map<std::string, std::vector<tag_t> >& tags)
+{
+  using namespace std;
+  for (const auto& p : tags) {
+    cerr << p.first << endl;
+    for (const auto& t : p.second)
+      debug(t);
   }
 }
