@@ -24,7 +24,7 @@ extern "C" {
 inline void usage(const char* prog)
 {
   using namespace std;
-  cerr << "usage % " << prog << " [-aev] [-E dir] a.out" << endl;
+  cerr << "usage % " << prog << " [-aev][-E dir] a.out" << endl;
 }
 
 extern "C" void my_display_debug_line(bfd*, bfd_section*, bfd_byte*);
@@ -61,16 +61,27 @@ namespace debug_line_impl {
   };
   map<int, X> info;
   int current_off;
-  bool match(const X& x, string file)
+  bool match(const X& x, string file, string dir)
   {
+    int n = 0;
+    if (!dir.empty()) {
+      const auto& dirs = x.dirs;
+      auto p = find(begin(dirs), end(dirs), dir);
+      assert(p != end(dirs));
+      n = distance(begin(dirs), p) + 1;
+    }
+
     const auto& files = x.files;
     assert(!files.empty());
-    return files[0].first == file;
+    auto p = find_if(begin(files), end(files),
+	     [n](const pair<string, int>& x){ return x.second == n; });
+    assert(p != end(files));
+    return p->first == file;
   }
-  X* get(string file)
+  X* get(string file, string dir)
   {
     auto p = find_if(begin(info), end(info),
-	     [file](const pair<int, X>& p){ return match(p.second, file); });
+   [file, dir](const pair<int, X>& p){ return match(p.second, file, dir); });
     assert(p != end(info));
     return &p->second;
   }
@@ -211,10 +222,16 @@ extern "C" void set_decl_line(unsigned long long uvalue)
     {
       assert(!info.empty());
       auto& i = info.back();
-      assert(!i.contents.empty());
-      auto& c = i.contents.back();
-      assert(!c.line);
-      c.line = uvalue;
+      auto& contents = i.contents;
+      assert(!contents.empty());
+      auto& c = contents.back();
+      if (!c.line) {
+	c.line = uvalue;
+	return;
+      }
+      auto tmp = c;
+      tmp.line = uvalue;
+      contents.push_back(tmp);
       return;
     }
   default:
@@ -233,10 +250,17 @@ extern "C" void set_decl_file(unsigned long long uvalue)
     {
       assert(!info.empty());
       auto& i = info.back();
-      assert(!i.contents.empty());
-      auto& c = i.contents.back();
-      assert(!c.file);
-      c.file = uvalue;
+      auto& contents = i.contents;
+      assert(!contents.empty());
+      auto& c = contents.back();
+      if (!c.file) {
+	c.file = uvalue;
+	return;
+      }
+      auto tmp = c;
+      tmp.file = uvalue;
+      tmp.line = 0;
+      contents.push_back(tmp);
       return;
     }
   default:
@@ -279,9 +303,14 @@ extern "C"
 void macro_start_file(unsigned int lineno, unsigned int fileno,
 		      unsigned char* file, unsigned char* dir)
 {
+  using namespace std;
   if (!lineno) {
     auto ss = reinterpret_cast<char*>(file);
-    debug_macro_impl::current = debug_line_impl::get(ss);
+    auto tt = reinterpret_cast<char*>(dir);
+    string tmp;
+    if (tt)
+      tmp = tt;
+    debug_macro_impl::current = debug_line_impl::get(ss, tmp);
   }
   debug_macro_impl::filenos.push_back(fileno);
 }
@@ -352,8 +381,10 @@ inline void create(const cont_t& c, bool abs_path_form,
 		   debug_line_impl::X* ptr, table_t& res,
 		   std::map<const cont_t*, std::string>& extra)
 {
+  using namespace std;
   int n = c.file;
-  assert(n);
+  if (!n)
+    return;
   --n;
   const auto& files = ptr->files;
   assert(n < files.size());
@@ -361,11 +392,14 @@ inline void create(const cont_t& c, bool abs_path_form,
   auto file = xn.first;
   int m = xn.second;
   if (!m) {
-    auto ptr = debug_info_impl::get(files[0].first);
+    auto p = find_if(begin(files), end(files),
+		     [](const pair<string, int>& x){ return !x.second; });
+    assert(p != end(files));
+    auto ptr = debug_info_impl::get(p->first);
     auto dir = ptr->dir;
-    auto p = find_if(begin(exclude), end(exclude),
+    auto q = find_if(begin(exclude), end(exclude),
 		     bind2nd(ptr_fun(match), dir));
-    if (p != end(exclude))
+    if (q != end(exclude))
       return;
     auto path = dir + '/' + file;
     if (abs_path_form)
@@ -394,7 +428,8 @@ inline void create(const debug_info_impl::info_t& x,  bool abs_path_form,
 {
   using namespace std;
   auto file = x.file;
-  debug_line_impl::X* ptr = debug_line_impl::get(file);
+  string tmp;
+  debug_line_impl::X* ptr = debug_line_impl::get(file, tmp);
   for (const auto& c : x.contents)
     create(c, abs_path_form, exclude, ptr, res, extra);
 }
@@ -462,7 +497,9 @@ inline void build(std::string file, const cont_t* pcont,
   auto len = text.length();
   if (text[len-1] == '\r')
     text.erase(len-1);
-  tag_t tmp = { text, pcont->name, pcont->line, seek, pcont->kind };
+  tag_t tmp = {
+    text, pcont->name, pcont->line, seek, pcont->kind
+  };
   res.push_back(tmp);
   curr_line = pcont->line;
 }
@@ -700,7 +737,10 @@ void debug3()
     const auto ptr = x.first;
     const auto& files = ptr->files;
     assert(!files.empty());
-    cerr << "Include from : " << files[0].first <<endl;
+    auto p = find_if(begin(files), end(files),
+		     [](const pair<string, int>& x){ return !x.second; });
+    assert(p != end(files));
+    cerr << "Include from : " << p->first <<endl;
     for (const auto& c : x.second)
       debug(c);
   }

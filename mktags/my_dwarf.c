@@ -2694,6 +2694,11 @@ read_and_display_attr_value (unsigned long           attribute,
 	      set_name(fetch_indirect_string (uvalue));
 	    }
 	  }
+	  if (attribute == DW_AT_name) {
+	    // For C++ compilatin unit
+	    void set_name(unsigned const char*);
+	    set_name(fetch_indirect_string (uvalue));
+	  }
 	}
       break;
 
