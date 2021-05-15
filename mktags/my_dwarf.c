@@ -2555,15 +2555,23 @@ read_and_display_attr_value (unsigned long           attribute,
       if (!do_loc)
 	printf ("%c%s", delimiter, dwarf_vmatoa ("d", uvalue));
       if (attribute == DW_AT_decl_line) {
-	if (level == 1) { 
-	  void set_decl_line(unsigned long long);
+	void set_decl_line(unsigned long long);
+	if (level == 1)
 	  set_decl_line(uvalue);
+	if (level == 2) {
+	  enum dwarf_tag curr_tag();
+	  if (curr_tag() == DW_TAG_member)
+	    set_decl_line(uvalue);
 	}
       }
       if (attribute == DW_AT_decl_file) {
-	if (level == 1) {
-	  void set_decl_file(unsigned long long);
+	void set_decl_file(unsigned long long);
+	if (level == 1)
 	  set_decl_file(uvalue);
+	if (level == 2) {
+	  enum dwarf_tag curr_tag();
+	  if (curr_tag() == DW_TAG_member)
+	    set_decl_file(uvalue);
 	}
       }
       break;
@@ -2631,9 +2639,13 @@ read_and_display_attr_value (unsigned long           attribute,
       if (!do_loc) {
 	printf ("%c%.*s", delimiter, (int) (end - data), data);
 	if (attribute == DW_AT_name) {
-	  if (level <= 1) {
-	    void set_name(unsigned const char*);
+	  void set_name(unsigned const char*);
+	  if (level <= 1)
 	    set_name(data);
+	  if (level == 2) {
+	    enum dwarf_tag curr_tag();
+	    if (curr_tag() == DW_TAG_member)
+	      set_name(data);
 	  }
 	}
       }
@@ -2689,7 +2701,6 @@ read_and_display_attr_value (unsigned long           attribute,
 	    comp_dir(fetch_indirect_string (uvalue));
 	  }
 	  if (attribute == DW_AT_name) {
-	    // For C++ compilatin unit
 	    void set_name(unsigned const char*);
 	    set_name(fetch_indirect_string (uvalue));
 	  }

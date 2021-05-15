@@ -81,6 +81,13 @@ namespace debug_line_impl {
   }
   X* get(string file, string dir)
   {
+    auto pos = file.find_last_of('/');
+    if (pos != string::npos) {
+      assert(dir.empty());
+      dir = file.substr(0, pos);
+      file.erase(0,pos+1);
+    }
+
     auto p = find_if(begin(info), end(info),
    [file, dir](const pair<int, X>& p){ return match(p.second, file, dir); });
 #ifdef __CYGWIN__
@@ -173,12 +180,21 @@ extern "C" void  start_tag(enum dwarf_tag dt)
   debug_info_impl::curr_dt = dt;
 }
 
+extern "C" enum dwarf_tag curr_tag()
+{
+  return debug_info_impl::curr_dt;
+}
+
+bool trace_break;
+
 extern "C" void set_name(unsigned const char* s)
 {
   using namespace debug_info_impl;
   auto ss = reinterpret_cast<const char*>(s);
   switch (curr_dt) {
   case DW_TAG_base_type:
+  case DW_TAG_unspecified_type:
+  case DW_TAG_formal_parameter:
     return;
   case DW_TAG_compile_unit:
     info.push_back(info_t(ss));
@@ -187,6 +203,12 @@ extern "C" void set_name(unsigned const char* s)
   case DW_TAG_subprogram:
   case DW_TAG_typedef:
   case DW_TAG_structure_type:
+  case DW_TAG_member:
+  case DW_TAG_namespace:
+  case DW_TAG_class_type:
+  case DW_TAG_enumerator:
+  case DW_TAG_template_type_param:
+  case DW_TAG_pointer_type:
     {
       assert(!info.empty());
       auto& b = info.back();
@@ -195,6 +217,8 @@ extern "C" void set_name(unsigned const char* s)
       return;
     }
   default:
+    if (trace_break)
+      asm("int3");
     return;
   }
 }
@@ -213,6 +237,8 @@ extern "C" void comp_dir(const unsigned char* s)
       return;
     }
   default:
+    if (trace_break)
+      asm("int3");
     return;
   }
 }
@@ -225,6 +251,12 @@ extern "C" void set_decl_line(unsigned long long uvalue)
   case DW_TAG_subprogram:
   case DW_TAG_typedef:
   case DW_TAG_structure_type:
+  case DW_TAG_member:
+  case DW_TAG_namespace:
+  case DW_TAG_class_type:
+  case DW_TAG_enumerator:
+  case DW_TAG_template_type_param:
+  case DW_TAG_pointer_type:
     {
       assert(!info.empty());
       auto& i = info.back();
@@ -233,6 +265,8 @@ extern "C" void set_decl_line(unsigned long long uvalue)
       auto& c = contents.back();
       if (!c.line) {
 	c.line = uvalue;
+	if (!uvalue)
+	  contents.pop_back();
 	return;
       }
       auto tmp = c;
@@ -241,6 +275,8 @@ extern "C" void set_decl_line(unsigned long long uvalue)
       return;
     }
   default:
+    if (trace_break)
+      asm("int3");
     return;
   }
 }
@@ -253,6 +289,12 @@ extern "C" void set_decl_file(unsigned long long uvalue)
   case DW_TAG_subprogram:
   case DW_TAG_typedef:
   case DW_TAG_structure_type:
+  case DW_TAG_member:
+  case DW_TAG_namespace:
+  case DW_TAG_class_type:
+  case DW_TAG_enumerator:
+  case DW_TAG_template_type_param:
+  case DW_TAG_pointer_type:
     {
       assert(!info.empty());
       auto& i = info.back();
@@ -270,6 +312,8 @@ extern "C" void set_decl_file(unsigned long long uvalue)
       return;
     }
   default:
+    if (trace_break)
+      asm("int3");
     return;
   }
 }
@@ -467,7 +511,8 @@ inline void build(std::string file, const cont_t* pcont,
 		  std::vector<tag_t>& res)
 {
   using namespace std;
-  if (file[0] != '/') {
+  char c = file[0];
+  if (c != '/' && c != '.') {
     auto p = extra.find(pcont);
     assert(p != end(extra));
     file = p->second;
@@ -535,10 +580,30 @@ namespace for_vi {
     else {
       os << "/^" << tag.text << "$/;" << '"' << '\t';
       switch (kind) {
-      case DW_TAG_variable: os << 'v'; break;
-      case DW_TAG_subprogram: os << 'f'; break;
-      case DW_TAG_typedef: os << 't'; break;
-      case DW_TAG_structure_type: os << 's'; break;
+      case DW_TAG_variable:
+	os << 'v'; break;
+      case DW_TAG_subprogram:
+	os << 'f'; break;
+      case DW_TAG_typedef:
+	os << 't'; break;
+      case DW_TAG_structure_type:
+	os << 's'; break;
+      case DW_TAG_member:
+	os << 'm'; break;
+      case DW_TAG_namespace:
+	os << 'N'; break;
+      case DW_TAG_class_type:
+	os << 'c'; break; 
+      case DW_TAG_enumerator:
+	os << 'e'; break;
+      case DW_TAG_template_type_param:
+	os << 'T'; break;
+      case DW_TAG_pointer_type:
+	os << 'P'; break;
+      default:
+	if (trace_break)
+	  asm("int3");
+	break;
       }
     }
     os << endl;
@@ -608,7 +673,7 @@ int main(int argc, char** argv)
   bool abs_path_form = false;
   set<string> exclude;
   enum class mode_t { vi, emacs } mode = mode_t::vi;
-  for (int opt ; (opt = getopt(argc, argv, "aevE:")) != -1 ; ) {
+  for (int opt ; (opt = getopt(argc, argv, "aevE:t")) != -1 ; ) {
     switch (opt) {
     case 'a':
       abs_path_form = true;
@@ -621,6 +686,9 @@ int main(int argc, char** argv)
       break;
     case 'E':
       exclude.insert(optarg);
+      break;
+    case 't':
+      trace_break = true;
       break;
     default:
       usage(argv[0]);
@@ -679,11 +747,21 @@ void debug(enum dwarf_tag dt)
 {
   using namespace std;
   switch (dt) {
+  case DW_TAG_padding: cerr << 'd'; break;
   case DW_TAG_variable: cerr << 'v'; break;
   case DW_TAG_subprogram: cerr << 'f'; break;
   case DW_TAG_typedef: cerr << 't'; break;
   case DW_TAG_structure_type: cerr << 's'; break;
-  default: cerr << 'd'; break;
+  case DW_TAG_member: cerr << 'm'; break;
+  case DW_TAG_namespace: cerr << 'N'; break;
+  case DW_TAG_class_type: cerr << 'c'; break; 
+  case DW_TAG_enumerator: cerr << 'e'; break;
+  case DW_TAG_template_type_param: cerr << 'T'; break;
+  case DW_TAG_pointer_type: cerr << 'P'; break;
+  default:
+    if (trace_break)
+      asm("int3");
+    break;
   }
 }
 
@@ -703,6 +781,13 @@ void debug(const debug_info_impl::info_t& x)
     debug(y);
 }
 
+void debug(const std::vector<std::pair<std::string, int> >& files)
+{
+  using namespace std;
+  for (const auto& p : files)
+    cerr << "\t\t" << p.first << ':' << dec << p.second << endl;
+}
+
 void debug(const debug_line_impl::X& x)
 {
   using namespace std;
@@ -712,8 +797,7 @@ void debug(const debug_line_impl::X& x)
   copy(begin(dirs), end(dirs), ostream_iterator<string>(cerr, "\n\t\t"));
   
   cerr << '\b' << "Files:" << endl;
-  for (const auto& p : x.files)
-    cerr << "\t\t" << p.first << ':' << dec << p.second << endl;
+  debug(x.files);
 }
 
 void debug1()
@@ -743,9 +827,13 @@ void debug3()
     const auto ptr = x.first;
     const auto& files = ptr->files;
     assert(!files.empty());
+#if 0
     auto p = find_if(begin(files), end(files),
 		     [](const pair<string, int>& x){ return !x.second; });
     assert(p != end(files));
+#else
+    auto p = begin(files);
+#endif
     cerr << "Include from : " << p->first <<endl;
     for (const auto& c : x.second)
       debug(c);
