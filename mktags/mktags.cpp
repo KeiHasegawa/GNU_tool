@@ -75,14 +75,20 @@ namespace debug_line_impl {
     assert(!files.empty());
     auto p = find_if(begin(files), end(files),
 	     [n](const pair<string, int>& x){ return x.second == n; });
-    assert(p != end(files));
+    if (p == end(files))
+      return false;
     return p->first == file;
   }
   X* get(string file, string dir)
   {
     auto p = find_if(begin(info), end(info),
    [file, dir](const pair<int, X>& p){ return match(p.second, file, dir); });
+#ifdef __CYGWIN__
+    if (p == end(info))
+      asm("int3");
+#else
     assert(p != end(info));
+#endif
     return &p->second;
   }
 } // end of namespace debgu_line_impl 
