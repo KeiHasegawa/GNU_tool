@@ -6,12 +6,17 @@ OBJS = mktags.o my_dwarf.o my_objdump.o
 
 UNAME := $(shell uname)
 
-BINUTILS_DIR = /home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1
+ifneq (,$(findstring CYGWIN,$(UNAME)))
+	BINUTILS_DIR = d:/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1
+else
+	BINUTILS_DIR = /home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1
+endif
+
+
+LIB_LIBIBERTY_FLAG = -L$(BINUTILS_DIR)/libiberty
 
 ifneq (,$(findstring CYGWIN,$(UNAME)))
 	LIB_INTL_FLAG = -lintl
-else
-	LIB_LIBIBERTY_FLAG = -L$(BINUTILS_DIR)/libiberty
 endif
 
 EXTRA_LIBS = $(BINUTILS_DIR)/binutils/bucomm.o \
