@@ -2688,12 +2688,6 @@ read_and_display_attr_value (unsigned long           attribute,
 	    void comp_dir(const unsigned char*);
 	    comp_dir(fetch_indirect_string (uvalue));
 	  }
-	  if (attribute == DW_TAG_entry_point) {
-	    if (level == 1) {
-	      void set_name(unsigned const char*);
-	      set_name(fetch_indirect_string (uvalue));
-	    }
-	  }
 	  if (attribute == DW_AT_name) {
 	    // For C++ compilatin unit
 	    void set_name(unsigned const char*);
