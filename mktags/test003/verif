@@ -1,0 +1,14 @@
+#! /bin/csh -f
+
+pushd ../test003_sub || exit 1
+gcc -g3 -c a.c -o a.o || exit 1
+gcc -g3 -c b.c -o b.o || exit 1
+ar r test003_sub.a a.o b.o || exit 1 
+popd || exit 1 
+gcc -g3 a.c ../test003_sub/test003_sub.a -o a.out || exit 1
+../mktags.exe a.out || exit 1
+diff tags tags.exp || exit 1
+../mktags.exe -e a.out || exit 1
+diff TAGS TAGS.e || exit 1
+
+
