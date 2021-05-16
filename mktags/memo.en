@@ -2,7 +2,7 @@ Tag generation
 
 (*1) How to use ctags (vi version)
 (*2) How to use ctags (emacs version)
-(*3) -e option objdump
+(*3) Create tag file from program
 
 (*1) How to use ctags (vi version)
 
@@ -123,3 +123,15 @@ of a.c. And then
 C-u M-.
 
 jumps to the macro `X' definition of b.c
+
+(*3) Create tag file from program
+
+     mktags.exe
+
+     Almost works like objdump -g. For building mktags.exe, it's necessary
+     to build objdump from binutils source files.
+
+% ./mktags.exe a.out
+# creating tags for vi
+% ./mktags.exe -e a.out
+# creating TAGS for emacs

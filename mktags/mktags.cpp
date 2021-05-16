@@ -61,25 +61,28 @@ namespace debug_line_impl {
   };
   map<int, X> info;
   int current_off;
-  bool match(const X& x, string file, string dir)
+  bool match(const X& x, string file, string dir, int* res)
   {
     int n = 0;
     if (!dir.empty()) {
       const auto& dirs = x.dirs;
       auto p = find(begin(dirs), end(dirs), dir);
-      assert(p != end(dirs));
-      n = distance(begin(dirs), p) + 1;
+      if (p != end(dirs))
+	n = distance(begin(dirs), p) + 1;
+      else {
+	assert(dir == ".");
+	n = 1;
+      }
     }
 
     const auto& files = x.files;
     assert(!files.empty());
-    auto p = find_if(begin(files), end(files),
-	     [n](const pair<string, int>& x){ return x.second == n; });
-    if (p == end(files))
-      return false;
-    return p->first == file;
+    auto p = find(begin(files), end(files),make_pair(file, n));
+    assert(p != end(files));
+    *res = distance(begin(files), p);
+    return true;
   }
-  X* get(string file, string dir)
+  pair<X*, int> get(string file, string dir)
   {
     auto pos = file.find_last_of('/');
     if (pos != string::npos) {
@@ -88,15 +91,12 @@ namespace debug_line_impl {
       file.erase(0,pos+1);
     }
 
+    int n;
     auto p = find_if(begin(info), end(info),
-   [file, dir](const pair<int, X>& p){ return match(p.second, file, dir); });
-#ifdef __CYGWIN__
-    if (p == end(info))
-      asm("int3");
-#else
+		     [file, dir, &n](const pair<int, X>& p)
+		     { return match(p.second, file, dir, &n); });
     assert(p != end(info));
-#endif
-    return &p->second;
+    return make_pair(&p->second,n);
   }
 } // end of namespace debgu_line_impl 
 
@@ -195,6 +195,8 @@ extern "C" void set_name(unsigned const char* s)
   case DW_TAG_base_type:
   case DW_TAG_unspecified_type:
   case DW_TAG_formal_parameter:
+  case DW_TAG_template_value_param:
+  case DW_TAG_GNU_template_parameter_pack:
     return;
   case DW_TAG_compile_unit:
     info.push_back(info_t(ss));
@@ -203,10 +205,12 @@ extern "C" void set_name(unsigned const char* s)
   case DW_TAG_subprogram:
   case DW_TAG_typedef:
   case DW_TAG_structure_type:
+  case DW_TAG_union_type:
   case DW_TAG_member:
   case DW_TAG_namespace:
   case DW_TAG_class_type:
   case DW_TAG_enumerator:
+  case DW_TAG_enumeration_type:
   case DW_TAG_template_type_param:
   case DW_TAG_pointer_type:
     {
@@ -251,17 +255,20 @@ extern "C" void set_decl_line(unsigned long long uvalue)
   case DW_TAG_subprogram:
   case DW_TAG_typedef:
   case DW_TAG_structure_type:
+  case DW_TAG_union_type:
   case DW_TAG_member:
   case DW_TAG_namespace:
   case DW_TAG_class_type:
   case DW_TAG_enumerator:
+  case DW_TAG_enumeration_type:
   case DW_TAG_template_type_param:
   case DW_TAG_pointer_type:
     {
       assert(!info.empty());
       auto& i = info.back();
       auto& contents = i.contents;
-      assert(!contents.empty());
+      if (contents.empty())
+	return;
       auto& c = contents.back();
       if (!c.line) {
 	c.line = uvalue;
@@ -289,17 +296,20 @@ extern "C" void set_decl_file(unsigned long long uvalue)
   case DW_TAG_subprogram:
   case DW_TAG_typedef:
   case DW_TAG_structure_type:
+  case DW_TAG_union_type:
   case DW_TAG_member:
   case DW_TAG_namespace:
   case DW_TAG_class_type:
   case DW_TAG_enumerator:
+  case DW_TAG_enumeration_type:
   case DW_TAG_template_type_param:
   case DW_TAG_pointer_type:
     {
       assert(!info.empty());
       auto& i = info.back();
       auto& contents = i.contents;
-      assert(!contents.empty());
+      if (contents.empty())
+	return;
       auto& c = contents.back();
       if (!c.file) {
 	c.file = uvalue;
@@ -345,8 +355,9 @@ namespace debug_macro_impl {
   using namespace std;
   vector<int> filenos;
   map<unsigned int, int> import;
-  debug_line_impl::X* current;
-  map<debug_line_impl::X*, vector<cont_t> > info;
+  typedef pair<debug_line_impl::X*, int> KEY;
+  KEY current;
+  map<KEY, vector<cont_t> > info;
 } // end of namespace debug_macro_impl
 
 extern "C"
@@ -381,6 +392,11 @@ extern "C" void macro_import(unsigned int offset)
   import[offset] = fileno;
 }
 
+inline bool match(std::string ex, std::string dir)
+{
+  return dir.substr(0, ex.length()) == ex;
+}
+
 extern "C"
 void macro_define(unsigned int lineno, const unsigned char* s,
 		  unsigned int sec_offset)
@@ -411,165 +427,166 @@ void macro_define(unsigned int lineno, const unsigned char* s,
  info[current].push_back(tmp);
 }
 
-struct comp {
-  bool operator()(const cont_t* x, const cont_t* y)
-  {
-    return x->line < y->line;
-  }
-};
-
-typedef std::set<const cont_t*, comp> value_t;
-typedef std::map<std::string, value_t> table_t;
-
-inline bool match(std::string ex, std::string dir)
-{
-  return dir.substr(0, ex.length()) == ex;
-}
-
-inline void create(const cont_t& c, bool abs_path_form,
-		   const std::set<std::string>& exclude,
-		   debug_line_impl::X* ptr, table_t& res,
-		   std::map<const cont_t*, std::string>& extra)
-{
+namespace table {
   using namespace std;
-  int n = c.file;
-  if (!n)
-    return;
-  --n;
-  const auto& files = ptr->files;
-  assert(n < files.size());
-  auto xn = files[n];
-  auto file = xn.first;
-  int m = xn.second;
-  if (!m) {
-    auto p = find_if(begin(files), end(files),
-		     [](const pair<string, int>& x){ return !x.second; });
-    assert(p != end(files));
-    auto ptr = debug_info_impl::get(p->first);
-    auto dir = ptr->dir;
-    auto q = find_if(begin(exclude), end(exclude),
+  struct comp {
+    bool operator()(const cont_t* x, const cont_t* y)
+    {
+      return x->line < y->line;
+    }
+  };
+  typedef set<const cont_t*, comp> value_t;
+  typedef map<string, value_t> result_t;
+  inline void create(const cont_t& c, bool abs_path_form,
+		     const set<string>& exclude,
+		     const pair<debug_line_impl::X*, int>& key,
+		     result_t& res,
+		     map<const cont_t*, string>& extra)
+  {
+    int n = c.file;
+    if (!n) {
+      if (trace_break)
+	asm("int3");
+      return;
+    }
+    auto ptr = key.first;
+    int base = key.second;
+    int pos = base + n - 1;
+    const auto& files = ptr->files;
+    assert(pos < files.size());
+    const auto bf = files[base].first;
+    const auto& x = files[pos];
+    auto file = x.first;
+    int m = x.second;
+    if (!m) {
+      auto ptr = debug_info_impl::get(bf);
+      auto dir = ptr->dir;
+      string path = dir + '/' + file;
+      if (abs_path_form)
+	res[path].insert(&c);
+      else {
+	res[file].insert(&c);
+	extra[&c] = path;
+      }
+      return;
+    }
+    if (trace_break)
+      asm("int3");
+    --m;
+    const auto& dirs = ptr->dirs;
+    assert(m < dirs.size());
+    auto dir = dirs[m];
+    auto p = find_if(begin(exclude), end(exclude),
 		     bind2nd(ptr_fun(match), dir));
-    if (q != end(exclude))
+    if (p != end(exclude))
       return;
     auto path = dir + '/' + file;
-    if (abs_path_form)
-      res[path].insert(&c);
-    else {
-      res[file].insert(&c);
-      extra[&c] = path;
-    }
-    return;
+    res[path].insert(&c);
   }
-  --m;
-  const auto& dirs = ptr->dirs;
-  assert(m < dirs.size());
-  auto dir = dirs[m];
-  auto p = find_if(begin(exclude), end(exclude),
-		   bind2nd(ptr_fun(match), dir));
-  if (p != end(exclude))
-    return;
-  auto path = dir + '/' + file;
-  res[path].insert(&c);
-}
+  inline void create(const debug_info_impl::info_t& x,  bool abs_path_form, 
+		     const set<string>& exclude, result_t& res,
+		     map<const cont_t*, string>& extra)
+  {
+    auto file = x.file;
+    auto key = debug_line_impl::get(file, "");
+    for (const auto& c : x.contents)
+      create(c, abs_path_form, exclude, key, res, extra);
+  }
 
-inline void create(const debug_info_impl::info_t& x,  bool abs_path_form, 
-		   const std::set<std::string>& exclude, table_t& res,
-		   std::map<const cont_t*, std::string>& extra)
-{
+  inline void
+  create(const debug_macro_impl::KEY& key, const vector<cont_t>& contents,
+	 bool abs_path_form, const set<string>& exclude,
+	 result_t& res, map<const cont_t*, string>& extra)
+  {
+    for (const auto& c : contents)
+      create(c, abs_path_form, exclude, key, res, extra);
+  }
+
+  inline void create(bool abs_path_form, const set<string>& exclude,
+		     result_t& res, map<const cont_t*, string>& extra)
+  {
+    for (const auto& x : debug_info_impl::info)
+      create(x, abs_path_form, exclude, res, extra);
+
+    for (const auto& x : debug_macro_impl::info)
+      create(x.first, x.second, abs_path_form, exclude, res, extra);
+  }
+} // end fo namespace table
+
+namespace goal {
   using namespace std;
-  auto file = x.file;
-  string tmp;
-  debug_line_impl::X* ptr = debug_line_impl::get(file, tmp);
-  for (const auto& c : x.contents)
-    create(c, abs_path_form, exclude, ptr, res, extra);
-}
-
-inline void create(bool abs_path_form,
-		   const std::set<std::string>& exclude, table_t& res,
-		   std::map<const cont_t*, std::string>& extra)
-{
-  for (const auto& x : debug_info_impl::info)
-    create(x, abs_path_form, exclude, res, extra);
-
-  for (const auto& x : debug_macro_impl::info) {
-    auto ptr = x.first;
-    for (const auto& c : x.second)
-      create(c, abs_path_form, exclude, ptr, res, extra);
-  }
-}
-
-struct tag_t {
-  std::string text;
-  std::string name;
-  int line;
-  int seek;
-  enum dwarf_tag kind;
-};
-
-inline void build(std::string file, const cont_t* pcont,
-		  const std::map<const cont_t*, std::string>& extra,
-		  std::vector<tag_t>& res)
-{
-  using namespace std;
-  char c = file[0];
-  if (c != '/' && c != '.') {
-    auto p = extra.find(pcont);
-    assert(p != end(extra));
-    file = p->second;
-  }
-  static string curr_file;
-  static ifstream ifs;
-  static int curr_line;
-  if (curr_file != file) {
-    if (!curr_file.empty())
-      ifs.close();
-    ifs.open(file.c_str());
-    if (!ifs) {
-      cerr << "cannot open " << file << endl;
-      return;
-    }
-    curr_file = file;
-    curr_line = 0;
-  }
-
-  string text;
-  char buffer[256];
-  int line = pcont->line - curr_line;
-  while (line--) {
-    do {
-      ifs.clear();
-      ifs.getline(&buffer[0], sizeof buffer);
-      if (!line)
-	text += buffer;
-    } while (ifs.rdstate() == ios_base::failbit);
-  }
-  int seek = ifs.tellg();
-  seek -= text.length()+1;
-  auto len = text.length();
-  if (text[len-1] == '\r')
-    text.erase(len-1);
-  tag_t tmp = {
-    text, pcont->name, pcont->line, seek, pcont->kind
+  struct tag_t {
+    string text;
+    string name;
+    int line;
+    int seek;
+    enum dwarf_tag kind;
   };
-  res.push_back(tmp);
-  curr_line = pcont->line;
-}
+  inline void build(string file, const cont_t* pcont,
+		    const map<const cont_t*, string>& extra,
+		    vector<tag_t>& res)
+  {
+    char c = file[0];
+    if (c != '/' && c != '.') {
+      auto p = extra.find(pcont);
+      assert(p != end(extra));
+      file = p->second;
+    }
+    static string curr_file;
+    static ifstream ifs;
+    static int curr_line;
+    if (curr_file != file) {
+      if (!curr_file.empty())
+	ifs.close();
+      ifs.open(file.c_str());
+      if (!ifs) {
+	cerr << "cannot open " << file << endl;
+	return;
+      }
+      curr_file = file;
+      curr_line = 0;
+    }
 
-inline void build(const std::pair<std::string, value_t>& p,
-		  const std::map<const cont_t*, std::string>& extra,
-		  std::map<std::string, std::vector<tag_t> >& res)
-{
-  using namespace std;
-  for (const auto& x : p.second) {
-    string file = p.first;
-    build(file, x, extra, res[file]);
+    string text;
+    char buffer[256];
+    int line = pcont->line - curr_line;
+    while (line--) {
+      do {
+	ifs.clear();
+	ifs.getline(&buffer[0], sizeof buffer);
+	if (!line)
+	  text += buffer;
+      } while (ifs.rdstate() == ios_base::failbit);
+    }
+    int seek = ifs.tellg();
+    seek -= text.length()+1;
+    auto len = text.length();
+    if (text[len-1] == '\r')
+      text.erase(len-1);
+    tag_t tmp = {
+      text, pcont->name, pcont->line, seek, pcont->kind
+    };
+    res.push_back(tmp);
+    curr_line = pcont->line;
   }
-}
+  using namespace table;
+  inline void build(const pair<string, value_t>& p,
+		    const map<const cont_t*, string>& extra,
+		    map<string, vector<tag_t> >& res)
+  {
+    for (const auto& x : p.second) {
+      string file = p.first;
+      build(file, x, extra, res[file]);
+    }
+  }
+
+} // end of namespace goal
 
 extern int verbose_flag;
 
 namespace for_vi {
   using namespace std;
+  using namespace goal;
   inline void
   output(ostream& os, const tag_t& tag, string fn)
   {
@@ -588,6 +605,8 @@ namespace for_vi {
 	os << 't'; break;
       case DW_TAG_structure_type:
 	os << 's'; break;
+      case DW_TAG_union_type:
+	os << 'u'; break;
       case DW_TAG_member:
 	os << 'm'; break;
       case DW_TAG_namespace:
@@ -596,6 +615,8 @@ namespace for_vi {
 	os << 'c'; break; 
       case DW_TAG_enumerator:
 	os << 'e'; break;
+      case DW_TAG_enumeration_type:
+	os << 'E'; break;
       case DW_TAG_template_type_param:
 	os << 'T'; break;
       case DW_TAG_pointer_type:
@@ -628,7 +649,8 @@ namespace for_vi {
 
 namespace for_emacs {
   using namespace std;
-  std::ostream& operator<<(std::ostream& os, const tag_t& x)
+  using namespace goal;
+  ostream& operator<<(ostream& os, const tag_t& x)
   {
     os << x.text << char(0177) << x.name << char(1);
     return os << x.line << ',' << x.seek;
@@ -723,13 +745,13 @@ int main(int argc, char** argv)
 
   do_macro(bp);
 
-  table_t tbl;
+  table::result_t tbl;
   map<const cont_t*, string> extra;
-  create(abs_path_form, exclude, tbl, extra);
+  table::create(abs_path_form, exclude, tbl, extra);
 
-  map<string, vector<tag_t> > tags;
+  map<string, vector<goal::tag_t> > tags;
   for (const auto& x : tbl)
-    build(x, extra, tags);
+    goal::build(x, extra, tags);
 
   switch (mode) {
   case mode_t::vi:
@@ -752,10 +774,12 @@ void debug(enum dwarf_tag dt)
   case DW_TAG_subprogram: cerr << 'f'; break;
   case DW_TAG_typedef: cerr << 't'; break;
   case DW_TAG_structure_type: cerr << 's'; break;
+  case DW_TAG_union_type: cerr << 'u'; break;
   case DW_TAG_member: cerr << 'm'; break;
   case DW_TAG_namespace: cerr << 'N'; break;
   case DW_TAG_class_type: cerr << 'c'; break; 
   case DW_TAG_enumerator: cerr << 'e'; break;
+  case DW_TAG_enumeration_type: cerr << 'E'; break;
   case DW_TAG_template_type_param: cerr << 'T'; break;
   case DW_TAG_pointer_type: cerr << 'P'; break;
   default:
@@ -788,16 +812,32 @@ void debug(const std::vector<std::pair<std::string, int> >& files)
     cerr << "\t\t" << p.first << ':' << dec << p.second << endl;
 }
 
+void debug(const std::vector<std::string>& dirs)
+{
+  using namespace std;
+  cerr << "\t\t";
+  copy(begin(dirs), end(dirs), ostream_iterator<string>(cerr, "\n\t\t"));
+}
+
 void debug(const debug_line_impl::X& x)
 {
   using namespace std;
   auto dirs = x.dirs;
   cerr << '\t' << "Directory:" << endl;
-  cerr << "\t\t";
-  copy(begin(dirs), end(dirs), ostream_iterator<string>(cerr, "\n\t\t"));
-  
+  debug(dirs);
+ 
   cerr << '\b' << "Files:" << endl;
   debug(x.files);
+}
+
+void debug(const debug_line_impl::X* x)
+{
+  using namespace std;
+  if (!x) {
+    cerr << "(null)" << endl;
+    return;
+  }
+  debug(*x);
 }
 
 void debug1()
@@ -824,23 +864,15 @@ void debug3()
   using namespace debug_macro_impl;
   cerr << "DEBUG MACRO" << endl;
   for (const auto& x : info) {
-    const auto ptr = x.first;
-    const auto& files = ptr->files;
-    assert(!files.empty());
-#if 0
-    auto p = find_if(begin(files), end(files),
-		     [](const pair<string, int>& x){ return !x.second; });
-    assert(p != end(files));
-#else
-    auto p = begin(files);
-#endif
-    cerr << "Include from : " << p->first <<endl;
+    auto key = x.first;
+    cerr << "Groupe : pair<debug_line_impl::X*, int>";
+    cerr << key.first << ',' << key.second << endl;
     for (const auto& c : x.second)
       debug(c);
   }
 }
 
-void debug(const table_t& tbl)
+void debug(const table::result_t& tbl)
 {
   using namespace std;
   for (const auto& x : tbl) {
@@ -848,9 +880,10 @@ void debug(const table_t& tbl)
     for (const auto& p : x.second)
       debug(*p);
   }
+  cerr << flush;
 }
 
-void debug(const tag_t& tag)
+void debug(const goal::tag_t& tag)
 {
   using namespace std;
   cerr << tag.text << ':' << tag.name << ':';
@@ -859,7 +892,7 @@ void debug(const tag_t& tag)
   cerr << endl;
 }
 
-void debug(const std::map<std::string, std::vector<tag_t> >& tags)
+void debug(const std::map<std::string, std::vector<goal::tag_t> >& tags)
 {
   using namespace std;
   for (const auto& p : tags) {
@@ -867,4 +900,19 @@ void debug(const std::map<std::string, std::vector<tag_t> >& tags)
     for (const auto& t : p.second)
       debug(t);
   }
+}
+
+void debug(const std::map<const cont_t*, std::string>& extra)
+{
+  using namespace std;
+  for (const auto& p : extra) {
+    debug(*p.first);
+    cerr << p.second << endl;
+  }
+}
+
+void debug(const std::set<std::string>& s)
+{
+  using namespace std;
+  copy(begin(s), end(s), ostream_iterator<string>(cerr, "\n"));
 }

@@ -2701,8 +2701,10 @@ read_and_display_attr_value (unsigned long           attribute,
 	    comp_dir(fetch_indirect_string (uvalue));
 	  }
 	  if (attribute == DW_AT_name) {
-	    void set_name(unsigned const char*);
-	    set_name(fetch_indirect_string (uvalue));
+	    if (level <= 1) {
+	      void set_name(unsigned const char*);
+	      set_name(fetch_indirect_string (uvalue));
+	    }
 	  }
 	}
       break;

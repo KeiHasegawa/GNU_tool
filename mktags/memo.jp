@@ -126,63 +126,31 @@ C-u M-.
 
 (*3) プログラムファイルからタグファイルを生成する
 
-     mktags.exe のビルド
+     mktags.exe
 
- linux % g++ -o mktags.exe mktags.cpp -g3 -DPACKAGE -lbfd -liberty -L/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/libiberty -ldl -lz
-
-cygwin % g++ -o mktags.exe mktags.cpp -g3 -DPACKAGE -lbfd -liberty -ldl -lz -lintl
-
-     linux ならば binutils のソースからビルドする必要がある(かもしれない).
+     ほとんど objdump -g に近い動作をする. このためビルドするためには
+     binutils のソースからビルドしなくてはならない.
 
 % ./mktags.exe a.out
 # tags が生成される. vi 用
 % ./mktags -e a.out
 # TAGS が生成される. emacs 用.
 
-     2021/05/13 11:09 ひとまず linux 版でそれなりに動作するようにしたが, マクロ
-     の定義と構造体, typedef は未対応. vi でタグジャンプしようとすると
 
-     Press ENTER or type command to continue
+2021.05.16 17:20
 
-     のようにいちいち聞いてくる.
+以下は期待通り動作するが
+    for (const auto& x : debug_macro_impl::info)
+      create(x.first, x.second, abs_path_form, exclude, res, extra);
 
-     cygwin 版は変数 a に対してタグが生成されていない. また cygwin 版の vi では
-     mktags.exe が生成した tags でタグジャンプできていない.
+以下は期待通り動作しない:
+    for (const auto& x : debug_macro_impl::info)
+      create(x, abs_path_form, exclude, res, extra);
 
-% cat tags
-main	/cygdrive/d/home/khasegawa/ctags_test/a.c	/^int main()$/;"	f
-f	/cygdrive/d/home/khasegawa/ctags_test/b.c	/^void f()$/;"	f
-f2	/cygdrive/d/home/khasegawa/ctags_test/b.c	/^int f2(location loc)$/;"	f
-g	/cygdrive/d/home/khasegawa/ctags_test/c.c	/^void g(int n)$/;"	f
-h	/cygdrive/d/home/khasegawa/ctags_test/c.c	/^void h(struct S* ps)$/;"	f
-WinMainCRTStartup	/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/../../.././winsup/cygwin/crt0.c	/^mainCRTStartup ()$/;"	f
-mainCRTStartup	/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/../../.././winsup/cygwin/crt0.c	/^$/;"	f
-_fmode	/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/../../.././winsup/cygwin/lib/_cygwin_crt0_common.cc	/^#endif$/;"	
-__cygwin_cxx_malloc	/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/../../.././winsup/cygwin/lib/_cygwin_crt0_common.cc	/^$/;"	
-_cygwin_crt0_common	/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/../../.././winsup/cygwin/lib/_cygwin_crt0_common.cc	/^_cygwin_crt0_common (MainFunc f, per_process *u)$/;"	f
-atexit	/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/../../.././winsup/cygwin/lib/atexit.c	/^atexit (void (*fn) (void))$/;"	f
-cygwin_attach_dll	/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/../../.././winsup/cygwin/lib/cygwin_attach_dll.c	/^cygwin_attach_dll (HMODULE h, MainFunc f)$/;"	f
-cygwin_crt0	/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/../../.././winsup/cygwin/lib/cygwin_crt0.c	/^cygwin_crt0 (MainFunc f)$/;"	f
-_cygwin_dll_entry	/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/../../.././winsup/cygwin/lib/dll_entry.c	/^$/;"	f
-__dynamically_loaded	/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/../../.././winsup/cygwin/lib/dll_entry.c	/^$/;"	
-_cygwin_noncygwin_dll_entry	/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/../../.././winsup/cygwin/lib/dll_entry.c	/^$/;"	f
-dll_index	/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/../../.././winsup/cygwin/lib/dll_entry.c	/^$/;"	
-storedHandle	/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/../../.././winsup/cygwin/lib/dll_entry.c	/^$/;"	
-storedReason	/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/../../.././winsup/cygwin/lib/dll_entry.c	/^$/;"	
-storedPtr	/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/../../.././winsup/cygwin/lib/dll_entry.c	/^$/;"	
-__dllMain	/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/../../.././winsup/cygwin/lib/dll_entry.c	/^$/;"	
-DllMain	/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/../../.././winsup/cygwin/lib/dll_main.cc	/^  return TRUE;$/;"	f
-cygwin_premain0	/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/../../.././winsup/cygwin/lib/premain0.c	/^{$/;"	f
-cygwin_premain1	/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/../../.././winsup/cygwin/lib/premain1.c	/^{$/;"	f
-cygwin_premain2	/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/../../.././winsup/cygwin/lib/premain2.c	/^{$/;"	f
-cygwin_premain3	/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/../../.././winsup/cygwin/lib/premain3.c	/^{$/;"	f
-_pei386_runtime_relocator	/cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin/../../.././winsup/cygwin/lib/pseudo-reloc-dummy.c	/^  return;$/;"	f
-% vi -t main
-E432: Tags file not sorted
-E426: tag not found: main
-Press ENTER or type command to continue
-...
-% cat tags  # 最初の 1 行だけにしてみた.
-% vi -t main
-これなら一応大丈夫. 謎.
+呼び出した先の create で x.first, x.second を参照している.
+x.second の型は vector<cont_t>
+
+簡単に map のテストをしてみたが再現しない.
+/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/map_test/test001.cpp
+
 
