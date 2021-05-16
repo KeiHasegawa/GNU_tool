@@ -70,7 +70,11 @@ namespace debug_line_impl {
       if (p != end(dirs))
 	n = distance(begin(dirs), p) + 1;
       else {
+#ifdef __CYGWIN__
+	asm("int3");
+#else
 	assert(dir == ".");
+#endif
 	n = 1;
       }
     }
