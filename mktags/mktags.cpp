@@ -11,12 +11,12 @@
 #include <iterator>
 #include <cassert>
 #ifdef __CYGWIN__
-// Not refer to Dynamic Link Library at CYGWIN
+// Not refer to getopt defined at Dynamic Link Library at CYGWIN
+// For above, not include <unistd.h>
 extern "C" {
   int getopt(int, char**, const char*);
   extern char* optarg;
   extern int optind;
-
   extern char* getcwd(char*, size_t);
 }
 #else // __CYGWIN__
@@ -60,60 +60,15 @@ inline void do_line(bfd* bp)
 
 namespace debug_line_impl {
   using namespace std;
-  struct X {
+  struct info_t {
     vector<string> dirs;
     vector<pair<string, int> > files;
   };
-  map<int, X> info;
+  map<int, info_t> info;
   int current_off;
-  bool match(const X& x, string file, string dir, int* res)
-  {
-    int n = 0;
-    if (!dir.empty()) {
-      const auto& dirs = x.dirs;
-      auto p = find(begin(dirs), end(dirs), dir);
-      if (p != end(dirs))
-	n = distance(begin(dirs), p) + 1;
-      else {
-#ifdef __CYGWIN__
-	if (dir != ".")
-	  asm("int3");
-#else
-	assert(dir == ".");
-#endif
-	n = 1;
-      }
-    }
+} // end of namespace debug_line_impl 
 
-    const auto& files = x.files;
-    assert(!files.empty());
-    auto p = find(begin(files), end(files),make_pair(file, n));
-    if (p == end(files))
-      return false;
-    *res = distance(begin(files), p);
-    return true;
-  }
-  pair<X*, int> get(string file, string dir)
-  {
-    if (dir == "../../.././winsup/cygwin/cygwin0.c")
-      asm("int3");
-    auto pos = file.find_last_of('/');
-    if (pos != string::npos) {
-      assert(dir.empty());
-      dir = file.substr(0, pos);
-      file.erase(0,pos+1);
-    }
-
-    int n;
-    auto p = find_if(begin(info), end(info),
-		     [file, dir, &n](const pair<int, X>& p)
-		     { return match(p.second, file, dir, &n); });
-    assert(p != end(info));
-    return make_pair(&p->second,n);
-  }
-} // end of namespace debgu_line_impl 
-
-extern "C" void dir_offset(long offset)
+extern "C" void set_offset(long offset)
 {
   debug_line_impl::current_off = offset;
 }
@@ -169,23 +124,12 @@ namespace debug_info_impl {
   using namespace std;
   enum dwarf_tag curr_dt;
   struct info_t {
-    string file;
-    string dir;
+    string compile_unit;
+    string comp_dir;
     vector<cont_t>  contents;
-    info_t(const char* s) : file{s} {}
+    info_t(const char* s) : compile_unit{s} {}
   };
   vector<info_t> info;
-  bool match(const info_t& x, string file)
-  {
-    return x.file == file;
-  }
-  info_t* get(string file)
-  {
-    auto p = find_if(begin(info), end(info),
-		     [file](const info_t& x){ return match(x, file); });
-    assert(p != end(info));
-    return &*p;
-  }
 } // end of namespace debug_info_impl
 
 extern "C" void  start_tag(enum dwarf_tag dt)
@@ -244,20 +188,11 @@ extern "C" void comp_dir(const unsigned char* s)
 {
   using namespace debug_info_impl;
   auto ss = reinterpret_cast<const char*>(s);
-  switch (curr_dt) {
-  case DW_TAG_compile_unit:
-    {
-      assert(!info.empty());
-      auto& b = info.back();
-      assert(b.dir.empty());
-      b.dir = ss;
-      return;
-    }
-  default:
-    if (trace_break)
-      asm("int3");
-    return;
-  }
+  assert(curr_dt == DW_TAG_compile_unit);
+  assert(!info.empty());
+  auto& b = info.back();
+  assert(b.comp_dir.empty());
+  b.comp_dir = ss;
 }
 
 extern "C" void set_decl_line(unsigned long long uvalue)
@@ -368,24 +303,20 @@ namespace debug_macro_impl {
   using namespace std;
   vector<int> filenos;
   map<unsigned int, int> import;
-  typedef pair<debug_line_impl::X*, int> KEY;
-  KEY current;
-  map<KEY, vector<cont_t> > info;
+  int current_off;
+  map<int, vector<cont_t> > info;
 } // end of namespace debug_macro_impl
+
+extern "C"
+void set_line_offset(unsigned long offset)
+{
+  debug_macro_impl::current_off = offset;
+}
 
 extern "C"
 void macro_start_file(unsigned int lineno, unsigned int fileno,
 		      unsigned char* file, unsigned char* dir)
 {
-  using namespace std;
-  if (!lineno) {
-    auto ss = reinterpret_cast<char*>(file);
-    auto tt = reinterpret_cast<char*>(dir);
-    string tmp;
-    if (tt)
-      tmp = tt;
-    debug_macro_impl::current = debug_line_impl::get(ss, tmp);
-  }
   debug_macro_impl::filenos.push_back(fileno);
 }
 
@@ -403,11 +334,6 @@ extern "C" void macro_import(unsigned int offset)
     return;
   auto fileno = filenos.back();
   import[offset] = fileno;
-}
-
-inline bool match(std::string ex, std::string dir)
-{
-  return dir.substr(0, ex.length()) == ex;
 }
 
 extern "C"
@@ -429,9 +355,7 @@ void macro_define(unsigned int lineno, const unsigned char* s,
   if (!filenos.empty()) {
     int fileno = filenos.back();
     cont_t tmp = { name, (enum dwarf_tag)0, (int)lineno, fileno };
-    info[current].push_back(tmp);
-    auto& debug = info[current].back();
-    cont_t* p = &debug;
+    info[current_off].push_back(tmp);
     return;
   }
 
@@ -439,7 +363,7 @@ void macro_define(unsigned int lineno, const unsigned char* s,
   assert(p != end(import));
   auto fileno = p->second;
   cont_t tmp = { name, (enum dwarf_tag)0, (int)lineno, fileno };
-  info[current].push_back(tmp);
+  info[current_off].push_back(tmp);
 }
 
 namespace table {
@@ -465,103 +389,107 @@ namespace table {
     }
     return ret;
   }
+  inline bool match(string ex, string dir)
+  {
+    return dir.substr(0, ex.length()) == ex;
+  }
   typedef vector<const cont_t*> value_t;
   typedef map<string, value_t> result_t;
-  inline void create(const cont_t& c, bool abs_path_form,
-		     const set<string>& exclude,
-		     const pair<debug_line_impl::X*, int>& key,
-		     result_t& res,
+  inline void create(const cont_t& c, string comp_dir,
+		     const debug_line_impl::info_t& li, bool abs_path_form,
+		     const set<string>& exclude, result_t& res,
 		     map<const cont_t*, string>& extra)
   {
     int n = c.file;
     if (!n) {
-      if (trace_break)
-	asm("int3");
+      // For example, case of `__builtin_va_list', `__dso_handle',
+      // `_GLOBAL__sub_I_main', `__static_initialization_and_destruction_0'
+      // Just ignore
       return;
     }
-    auto ptr = key.first;
-    int base = key.second;
-    int pos = base + n - 1;
-    const auto& files = ptr->files;
+    int pos = n - 1;
+    const auto& files = li.files;
     assert(pos < files.size());
-    const auto bf = files[base].first;
-    const auto& x = files[pos];
-    auto file = x.first;
-    int m = x.second;
+    const auto& y = files[pos];
+    auto file = y.first;
+    int m = y.second;
     if (!m) {
-      auto ptr = debug_info_impl::get(bf);
-      auto dir = ptr->dir;
-      string apath = dir + '/' + file;
+      string apath = comp_dir + '/' + file;
       if (abs_path_form)
 	res[apath].push_back(&c);
       else {
-	string rpath = get_rpath(dir);
+	string rpath = get_rpath(comp_dir);
 	rpath += file;
 	res[rpath].push_back(&c);
 	extra[&c] = apath;
       }
       return;
     }
-    if (trace_break)
-      asm("int3");
     --m;
-    const auto& dirs = ptr->dirs;
+    const auto& dirs = li.dirs;
     assert(m < dirs.size());
     auto dir = dirs[m];
-    auto p = find_if(begin(exclude), end(exclude),
+    auto q = find_if(begin(exclude), end(exclude),
 		     bind2nd(ptr_fun(match), dir));
-    if (p != end(exclude))
+    if (q != end(exclude))
       return;
     auto path = dir + '/' + file;
     res[path].push_back(&c);
   }
-  inline void create(const cont_t& c, bool abs_path_form,
-		     const set<string>& exclude,
-		     string file, string dir,
-		     result_t& res,
-		     map<const cont_t*, string>& extra)
+  inline void create(const debug_info_impl::info_t& x,
+		     const pair<int, debug_line_impl::info_t>& y,
+		     bool abs_path_form, const set<string>& exclude,
+		     result_t& res, map<const cont_t*, string>& extra)
   {
-    int n = c.file;
-    if (n != 1) {
-      auto key = debug_line_impl::get(file, "");
-      return create(c, abs_path_form, exclude, key, res, extra);
-    }
-
-    string path = dir + '/' + file;
-    if (abs_path_form) {
-      res[path].push_back(&c);
-      return;
-    }
-    string rpath = get_rpath(dir);
-    rpath += file;
-    res[rpath].push_back(&c);
-    extra[&c] = path;
-  }
-  inline void create(const debug_info_impl::info_t& x,  bool abs_path_form, 
-		     const set<string>& exclude, result_t& res,
-		     map<const cont_t*, string>& extra)
-  {
-    auto file = x.file;
-    auto dir = x.dir;
-    for (const auto& c : x.contents)
-      create(c, abs_path_form, exclude, file, dir, res, extra);
+    auto comp_dir = x.comp_dir;
+    const auto& contents = x.contents;
+    const auto& li = y.second;
+    for (const auto& c : contents)
+      create(c, comp_dir, li, abs_path_form, exclude, res, extra);
   }
   inline void
-  create(const debug_macro_impl::KEY& key, const vector<cont_t>& contents,
-	 bool abs_path_form, const set<string>& exclude,
-	 result_t& res, map<const cont_t*, string>& extra)
+  create(const vector<cont_t>& contents, string comp_dir,
+	 const debug_line_impl::info_t& li, bool abs_path_form,
+	 const set<string>& exclude, result_t& res,
+	 map<const cont_t*, string>& extra)
   {
     for (const auto& c : contents)
-      create(c, abs_path_form, exclude, key, res, extra);
+      create(c, comp_dir, li, abs_path_form, exclude, res, extra);
   }
+  struct create_t {
+    bool abs_path_form;
+    const set<string>& exclude;
+    result_t& res;
+    map<const cont_t*, string>& extra;
+    const map<int, vector<cont_t> >& z;
+    create_t(bool a, const set<string>& s, result_t& r,
+	     map<const cont_t*, string>& m,
+	     const map<int, vector<cont_t> >& zz) : abs_path_form{a},
+      exclude{s}, res{r}, extra{m}, z{zz} {}
+    bool operator()(const debug_info_impl::info_t& x,
+		    const pair<int, debug_line_impl::info_t>& y)
+    {
+      create(x, y, abs_path_form, exclude, res, extra);
+      auto line_offset = y.first;
+      auto p = z.find(line_offset);
+      if (p != end(z)) {
+	const auto& contents = p->second;
+	const auto comp_dir = x.comp_dir;
+	const auto& li = y.second;
+	create(contents, comp_dir, li, abs_path_form, exclude, res, extra);
+      }
+      return true;
+    }
+  };
   inline void create(bool abs_path_form, const set<string>& exclude,
 		     result_t& res, map<const cont_t*, string>& extra)
   {
-    for (const auto& x : debug_info_impl::info)
-      create(x, abs_path_form, exclude, res, extra);
-
-    for (const auto& x : debug_macro_impl::info)
-      create(x.first, x.second, abs_path_form, exclude, res, extra);
+    const auto& x = debug_info_impl::info;
+    const auto& y = debug_line_impl::info;
+    const auto& z = debug_macro_impl::info;
+    assert(x.size() == y.size());
+    mismatch(begin(x), end(x), begin(y),
+	     create_t(abs_path_form, exclude, res, extra, z));
   }
 } // end fo namespace table
 
@@ -859,7 +787,7 @@ void debug(const cont_t& x)
 void debug(const debug_info_impl::info_t& x)
 {
   using namespace std;
-  cerr << x.file << ':' << x.dir << endl;
+  cerr << x.compile_unit << ':' << x.comp_dir << endl;
   for (const auto& y : x.contents)
     debug(y);
 }
@@ -878,7 +806,7 @@ void debug(const std::vector<std::string>& dirs)
   copy(begin(dirs), end(dirs), ostream_iterator<string>(cerr, "\n\t\t"));
 }
 
-void debug(const debug_line_impl::X& x)
+void debug(const debug_line_impl::info_t& x)
 {
   using namespace std;
   auto dirs = x.dirs;
@@ -889,14 +817,14 @@ void debug(const debug_line_impl::X& x)
   debug(x.files);
 }
 
-void debug(const debug_line_impl::X* x)
+void debug(const debug_line_impl::info_t* p)
 {
   using namespace std;
-  if (!x) {
+  if (!p) {
     cerr << "(null)" << endl;
     return;
   }
-  debug(*x);
+  debug(*p);
 }
 
 void debug1()
@@ -905,7 +833,7 @@ void debug1()
   using namespace debug_line_impl;
   cerr << "debug_line_impl" << endl;
   for (const auto& x : info) {
-    cerr << '\t' << "OFFSET :" << hex << x.first << endl;
+    cerr << '\t' << "OFFSET :" << hex << "0x" << x.first << endl;
     debug(x.second);
   }
 }
@@ -923,9 +851,8 @@ void debug3()
   using namespace debug_macro_impl;
   cerr << "debug_macro_impl" << endl;
   for (const auto& x : info) {
-    auto key = x.first;
-    cerr << "Groupe : pair<debug_line_impl::X*, int> ";
-    cerr << key.first << ',' << key.second << endl;
+    auto line_offset = x.first;
+    cerr << "line offset : 0x" << hex << line_offset << endl;
     for (const auto& c : x.second)
       debug(c);
   }

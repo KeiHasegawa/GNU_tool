@@ -4414,6 +4414,8 @@ display_debug_lines_raw (struct dwarf_section *  section,
 	    return 0;
 
 	  printf (_("  Offset:                      0x%lx\n"), (long)(data - start));
+	  void set_offset(long);
+	  set_offset((long)(data - start));
 	  printf (_("  Length:                      %ld\n"), (long) linfo.li_length);
 	  printf (_("  DWARF Version:               %d\n"), linfo.li_version);
 	  if (linfo.li_version >= 5)
@@ -4471,18 +4473,14 @@ display_debug_lines_raw (struct dwarf_section *  section,
 	    }
 	  else
 	    {
-	      void dir_offset(long);
-	      if (*data == 0) {
+	      if (*data == 0)
 		printf (_("\n The Directory Table is empty.\n"));
-		dir_offset(0);
-	      }
 	      else
 		{
 		  unsigned int last_dir_entry = 0;
 
 		  printf (_("\n The Directory Table (offset 0x%lx):\n"),
 			  (long)(data - start));
-		  dir_offset((long)(data - start));
 
 		  while (data < end && *data != 0)
 		    {
@@ -5967,6 +5965,8 @@ display_debug_macro (struct dwarf_section *section,
 	  SAFE_BYTE_GET_AND_INC (line_offset, curr, offset_size, end);
 	  printf (_("  Offset into .debug_line:     0x%lx\n"),
 		  (unsigned long) line_offset);
+	  void set_line_offset(unsigned long);
+	  set_line_offset((unsigned long) line_offset);
 	}
       if (flags & 4)
 	{
@@ -6047,18 +6047,18 @@ display_debug_macro (struct dwarf_section *section,
 	      READ_ULEB (lineno, curr, end);
 	      string = curr;
 	      curr += strnlen ((char *) string, end - string) + 1;
-	      macro_define(lineno, string, sec_offset);
 	      printf (_(" DW_MACRO_define - lineno : %d macro : %s\n"),
 		      lineno, string);
+	      macro_define(lineno, string, sec_offset);
 	      break;
 
 	    case DW_MACRO_undef:
 	      READ_ULEB (lineno, curr, end);
 	      string = curr;
 	      curr += strnlen ((char *) string, end - string) + 1;
-	      macro_define(lineno, string, sec_offset);
 	      printf (_(" DW_MACRO_undef - lineno : %d macro : %s\n"),
 		      lineno, string);
+	      macro_define(lineno, string, sec_offset);
 	      break;
 
 	    case DW_MACRO_start_file:
@@ -6101,9 +6101,9 @@ display_debug_macro (struct dwarf_section *section,
 	      READ_ULEB (lineno, curr, end);
 	      SAFE_BYTE_GET_AND_INC (offset, curr, offset_size, end);
 	      string = fetch_indirect_string (offset);
-	      macro_define(lineno, string, sec_offset);
 	      printf (_(" DW_MACRO_define_strp - lineno : %d macro : %s\n"),
 		      lineno, string);
+	      macro_define(lineno, string, sec_offset);
 	      break;
 
 	    case DW_MACRO_undef_strp:
@@ -6150,7 +6150,6 @@ display_debug_macro (struct dwarf_section *section,
 	      READ_ULEB (offset, curr, end);
 	      string = (const unsigned char *)
 		fetch_indexed_string (offset, NULL, offset_size, FALSE);
-	      macro_define(lineno, string, sec_offset);
 	      if (op == DW_MACRO_define_strx)
 		printf (" DW_MACRO_define_strx ");
 	      else
@@ -6159,6 +6158,7 @@ display_debug_macro (struct dwarf_section *section,
 		printf (_("(with offset %s) "), dwarf_vmatoa ("x", offset));
 	      printf (_("lineno : %d macro : %s\n"),
 		      lineno, string);
+	      macro_define(lineno, string, sec_offset);
 	      break;
 
 	    default:

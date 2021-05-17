@@ -136,57 +136,22 @@ C-u M-.
 % ./mktags -e a.out
 # TAGS が生成される. emacs 用.
 
-test003 : tags.exp に期待値を作成した. これなら vi で期待通り動く.
+そもそも .debug_line を正しく読めていない. 
+ディレクトリが空の場合にオフセット 0 としているのがおかしい.
 
-(gdb) p debug1()
-DEBUG LINE
-	OFFSET :0
-	Directory:         ここが想定していたのと違っていた.
-	Files:
-		a.c:0
-		a.c:0
-		b.c:0
-$15 = void
-(gdb) p debug2()
-DEBUG INFO
-a.c:/home/khasegawa/lang/53_GNU_tool/mktags/test003
-	main,f,5,1
-a.c:/home/khasegawa/lang/53_GNU_tool/mktags/test003_sub
-	g,f,5,1                     しかしここで区別ができている
-	f,f,1,1
-b.c:/home/khasegawa/lang/53_GNU_tool/mktags/test003_sub
-	h,f,3,1
-$16 = void
-(gdb) p debug3()
-DEBUG MACRO
-Groupe : pair<debug_line_impl::X*, int>0x827cb9c,2
-	X,d,1,1
-$17 = void
-(gdb) 
+test004 : 
 
-この結果 tbl と extra は以下. extra はできている.
-(gdb) p debug(tbl)
-a.c
-	f,f,1,1
-	main,f,5,1
-b.c
-	X,d,1,1
-	h,f,3,1
-$18 = void
-(gdb) p debug(extra)
-	main,f,5,1
-/home/khasegawa/lang/53_GNU_tool/mktags/test003/a.c
-	X,d,1,1
-/home/khasegawa/lang/53_GNU_tool/mktags/test003_sub/b.c
-	h,f,3,1
-/home/khasegawa/lang/53_GNU_tool/mktags/test003_sub/b.c
-	g,f,5,1
-/home/khasegawa/lang/53_GNU_tool/mktags/test003/a.c
-	f,f,1,1
-/home/khasegawa/lang/53_GNU_tool/mktags/test003/a.c
-$19 = void
-(gdb) 
+C_H	a.c	2;"	d	file:  間違い ../test004_sub/d.h
+ABC	a.c	4;"	d	file:  間違い ../test004_sub/d.h
+main	a.c	/^int main()$/;"	f
+X	a.c	8;"	d	file:  間違い  ../test004_sub/a.c が正しい
 
-最初の間違いは test003_sub/a.c の g を test003/a.c の g としている
-というところだろうか?
 
+p debug3()
+debug_macro_impl
+Groupe : pair<debug_line_impl::X*, int> 0x827ebb4,0  <<< 間違い 1 が正しい
+	X,d,8,1
+	C_H,d,2,2
+	ABC,d,4,2
+Groupe : pair<debug_line_impl::X*, int> 0x827ebb4,3
+	X,d,3,1
