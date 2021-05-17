@@ -437,8 +437,11 @@ namespace table {
 		     bind2nd(ptr_fun(match), dir));
     if (q != end(exclude))
       return;
-    if (dir[0] == '.')
-      dir = comp_dir + '/' + dir;
+    if (dir[0] == '.') {
+      string rpath = get_rpath(comp_dir);
+      if (!rpath.empty())
+	dir = comp_dir + '/' + dir;
+    }
     auto path = dir + '/' + file;
     res[path].push_back(&c);
   }
