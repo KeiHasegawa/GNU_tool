@@ -400,6 +400,10 @@ namespace table {
 		     const set<string>& exclude, result_t& res,
 		     map<const cont_t*, string>& extra)
   {
+    auto p = find_if(begin(exclude), end(exclude),
+		     bind2nd(ptr_fun(match), comp_dir));
+    if (p != end(exclude))
+      return;
     int n = c.file;
     if (!n) {
       // For example, case of `__builtin_va_list', `__dso_handle',
@@ -433,6 +437,8 @@ namespace table {
 		     bind2nd(ptr_fun(match), dir));
     if (q != end(exclude))
       return;
+    if (dir[0] == '.')
+      dir = comp_dir + '/' + dir;
     auto path = dir + '/' + file;
     res[path].push_back(&c);
   }
