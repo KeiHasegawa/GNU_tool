@@ -16,6 +16,8 @@ extern "C" {
   int getopt(int, char**, const char*);
   extern char* optarg;
   extern int optind;
+
+  extern char* getcwd(char*, size_t);
 }
 #else // __CYGWIN__
 #include <unistd.h>
@@ -74,7 +76,8 @@ namespace debug_line_impl {
 	n = distance(begin(dirs), p) + 1;
       else {
 #ifdef __CYGWIN__
-	asm("int3");
+	if (dir != ".")
+	  asm("int3");
 #else
 	assert(dir == ".");
 #endif
@@ -92,6 +95,8 @@ namespace debug_line_impl {
   }
   pair<X*, int> get(string file, string dir)
   {
+    if (dir == "../../.././winsup/cygwin/cygwin0.c")
+      asm("int3");
     auto pos = file.find_last_of('/');
     if (pos != string::npos) {
       assert(dir.empty());

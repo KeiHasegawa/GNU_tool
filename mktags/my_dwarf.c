@@ -2648,6 +2648,10 @@ read_and_display_attr_value (unsigned long           attribute,
 	      set_name(data);
 	  }
 	}
+	if (attribute == DW_AT_comp_dir) {
+	  void comp_dir(const unsigned char*);
+	  comp_dir(data);
+	}
       }
       data += strnlen ((char *) data, end - data) + 1;
       break;
