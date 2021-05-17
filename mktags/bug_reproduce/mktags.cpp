@@ -10,51 +10,23 @@
 #include <fstream>
 #include <iterator>
 #include <cassert>
-#ifdef __CYGWIN__
-// Not refer to Dynamic Link Library at CYGWIN
-extern "C" {
-  int getopt(int, char**, const char*);
-  extern char* optarg;
-  extern int optind;
-}
-#else // __CYGWIN__
 #include <unistd.h>
-#endif // __CYGWIN__
 
-#include <bfd.h>
-#include "dwarf2.h"
-
-inline void usage(const char* prog)
-{
-  using namespace std;
-  cerr << "usage % " << prog << " [-aev][-E dir] a.out" << endl;
-}
-
-extern "C" void my_display_debug_line(bfd*, bfd_section*, bfd_byte*);
-
-inline void do_line(bfd* bp)
-{
-  using namespace std;
-  const char* name = ".debug_line";
-  auto section = bfd_get_section_by_name(bp, name);
-  if (!section) {
-    cerr << "Not foud : " << '"' << name << '"' << endl;
-    return;
-  }
-
-  bfd_byte *buf;
-  if (!bfd_malloc_and_get_section(bp, section, &buf)) {
-    cerr << "bfd_malloc_and_get_section failed" << endl;
-    return;
-  }
-  struct sweeper {
-    bfd_byte* m_ptr;
-    sweeper(bfd_byte* p) : m_ptr{p} {}
-    ~sweeper(){ free(m_ptr); } 
-  } sweeper(buf);
-
-  my_display_debug_line(bp, section, buf);
-}
+enum dwarf_tag {
+  DW_TAG_padding,
+  DW_TAG_variable,
+  DW_TAG_subprogram,
+  DW_TAG_typedef,
+  DW_TAG_structure_type,
+  DW_TAG_union_type,
+  DW_TAG_member,
+  DW_TAG_namespace,
+  DW_TAG_class_type,
+  DW_TAG_enumerator,
+  DW_TAG_enumeration_type,
+  DW_TAG_template_type_param,
+  DW_TAG_pointer_type,
+};
 
 namespace debug_line_impl {
   using namespace std;
@@ -85,8 +57,7 @@ namespace debug_line_impl {
     const auto& files = x.files;
     assert(!files.empty());
     auto p = find(begin(files), end(files),make_pair(file, n));
-    if (p == end(files))
-      return false;
+    assert(p != end(files));
     *res = distance(begin(files), p);
     return true;
   }
@@ -108,51 +79,6 @@ namespace debug_line_impl {
   }
 } // end of namespace debgu_line_impl 
 
-extern "C" void dir_offset(long offset)
-{
-  debug_line_impl::current_off = offset;
-}
-
-extern "C" void dir_ent(unsigned char* s)
-{
-  using namespace debug_line_impl;
-  auto ss = reinterpret_cast<char*>(s);
-  info[current_off].dirs.push_back(ss);
-}
-
-extern "C" void file_entry(unsigned char* s, int dirno)
-{
-  using namespace debug_line_impl;
-  auto ss = reinterpret_cast<char*>(s);  
-  info[current_off].files.push_back(pair<string, int>(ss, dirno));
-}
-
-extern "C" void my_display_debug_info(bfd*, bfd_section*, bfd_byte*);
-
-inline void do_info(bfd* bp)
-{
-  using namespace std;
-  const char* name = ".debug_info";
-  auto section = bfd_get_section_by_name(bp, name);
-  if (!section) {
-    cerr << "Not foud : " << '"' << name << '"' << endl;
-    return;
-  }
-
-  bfd_byte *buf;
-  if (!bfd_malloc_and_get_section(bp, section, &buf)) {
-    cerr << "bfd_malloc_and_get_section failed" << endl;
-    return;
-  }
-  struct sweeper {
-    bfd_byte* m_ptr;
-    sweeper(bfd_byte* p) : m_ptr{p} {}
-    ~sweeper(){ free(m_ptr); } 
-  } sweeper(buf);
-
-  my_display_debug_info(bp, section, buf);
-}
-
 struct cont_t {
   std::string name;
   enum dwarf_tag kind;
@@ -167,7 +93,6 @@ namespace debug_info_impl {
     string file;
     string dir;
     vector<cont_t>  contents;
-    info_t(const char* s) : file{s} {}
   };
   vector<info_t> info;
   bool match(const info_t& x, string file)
@@ -183,181 +108,7 @@ namespace debug_info_impl {
   }
 } // end of namespace debug_info_impl
 
-extern "C" void  start_tag(enum dwarf_tag dt)
-{
-  debug_info_impl::curr_dt = dt;
-}
-
-extern "C" enum dwarf_tag curr_tag()
-{
-  return debug_info_impl::curr_dt;
-}
-
 bool trace_break;
-
-extern "C" void set_name(unsigned const char* s)
-{
-  using namespace debug_info_impl;
-  auto ss = reinterpret_cast<const char*>(s);
-  switch (curr_dt) {
-  case DW_TAG_base_type:
-  case DW_TAG_unspecified_type:
-  case DW_TAG_formal_parameter:
-  case DW_TAG_template_value_param:
-  case DW_TAG_GNU_template_parameter_pack:
-    return;
-  case DW_TAG_compile_unit:
-    info.push_back(info_t(ss));
-    return;
-  case DW_TAG_variable:
-  case DW_TAG_subprogram:
-  case DW_TAG_typedef:
-  case DW_TAG_structure_type:
-  case DW_TAG_union_type:
-  case DW_TAG_member:
-  case DW_TAG_namespace:
-  case DW_TAG_class_type:
-  case DW_TAG_enumerator:
-  case DW_TAG_enumeration_type:
-  case DW_TAG_template_type_param:
-  case DW_TAG_pointer_type:
-    {
-      assert(!info.empty());
-      auto& b = info.back();
-      cont_t tmp = { ss, curr_dt };
-      b.contents.push_back(tmp);
-      return;
-    }
-  default:
-    if (trace_break)
-      asm("int3");
-    return;
-  }
-}
-
-extern "C" void comp_dir(const unsigned char* s)
-{
-  using namespace debug_info_impl;
-  auto ss = reinterpret_cast<const char*>(s);
-  switch (curr_dt) {
-  case DW_TAG_compile_unit:
-    {
-      assert(!info.empty());
-      auto& b = info.back();
-      assert(b.dir.empty());
-      b.dir = ss;
-      return;
-    }
-  default:
-    if (trace_break)
-      asm("int3");
-    return;
-  }
-}
-
-extern "C" void set_decl_line(unsigned long long uvalue)
-{
-  using namespace debug_info_impl;
-  switch (curr_dt) {
-  case DW_TAG_variable:
-  case DW_TAG_subprogram:
-  case DW_TAG_typedef:
-  case DW_TAG_structure_type:
-  case DW_TAG_union_type:
-  case DW_TAG_member:
-  case DW_TAG_namespace:
-  case DW_TAG_class_type:
-  case DW_TAG_enumerator:
-  case DW_TAG_enumeration_type:
-  case DW_TAG_template_type_param:
-  case DW_TAG_pointer_type:
-    {
-      assert(!info.empty());
-      auto& i = info.back();
-      auto& contents = i.contents;
-      if (contents.empty())
-	return;
-      auto& c = contents.back();
-      if (!c.line) {
-	c.line = uvalue;
-	if (!uvalue)
-	  contents.pop_back();
-	return;
-      }
-      auto tmp = c;
-      tmp.line = uvalue;
-      contents.push_back(tmp);
-      return;
-    }
-  default:
-    if (trace_break)
-      asm("int3");
-    return;
-  }
-}
-
-extern "C" void set_decl_file(unsigned long long uvalue)
-{
-  using namespace debug_info_impl;
-  switch (curr_dt) {
-  case DW_TAG_variable:
-  case DW_TAG_subprogram:
-  case DW_TAG_typedef:
-  case DW_TAG_structure_type:
-  case DW_TAG_union_type:
-  case DW_TAG_member:
-  case DW_TAG_namespace:
-  case DW_TAG_class_type:
-  case DW_TAG_enumerator:
-  case DW_TAG_enumeration_type:
-  case DW_TAG_template_type_param:
-  case DW_TAG_pointer_type:
-    {
-      assert(!info.empty());
-      auto& i = info.back();
-      auto& contents = i.contents;
-      if (contents.empty())
-	return;
-      auto& c = contents.back();
-      if (!c.file) {
-	c.file = uvalue;
-	return;
-      }
-      auto tmp = c;
-      tmp.file = uvalue;
-      tmp.line = 0;
-      contents.push_back(tmp);
-      return;
-    }
-  default:
-    if (trace_break)
-      asm("int3");
-    return;
-  }
-}
-
-extern "C" void
-my_display_debug_macro(bfd*, bfd_section*, bfd_byte*);
-
-inline void do_macro(bfd* bp)
-{
-  using namespace std;
-  auto section = bfd_get_section_by_name(bp, ".debug_macro");
-  if (!section)
-    return;
-  bfd_byte *buf;
-  if (!bfd_malloc_and_get_section(bp, section, &buf)) {
-    cerr << "bfd_malloc_and_get_section failed" << endl;
-    return;
-  }
-  struct sweeper {
-    bfd_byte* m_ptr;
-    sweeper(bfd_byte* p) : m_ptr{p} {}
-    ~sweeper(){ free(m_ptr); } 
-  } sweeper(buf);
-
-  my_display_debug_macro(bp, section, buf);
-}
 
 namespace debug_macro_impl {
   using namespace std;
@@ -368,73 +119,9 @@ namespace debug_macro_impl {
   map<KEY, vector<cont_t> > info;
 } // end of namespace debug_macro_impl
 
-extern "C"
-void macro_start_file(unsigned int lineno, unsigned int fileno,
-		      unsigned char* file, unsigned char* dir)
-{
-  using namespace std;
-  if (!lineno) {
-    auto ss = reinterpret_cast<char*>(file);
-    auto tt = reinterpret_cast<char*>(dir);
-    string tmp;
-    if (tt)
-      tmp = tt;
-    debug_macro_impl::current = debug_line_impl::get(ss, tmp);
-  }
-  debug_macro_impl::filenos.push_back(fileno);
-}
-
-extern "C" void macro_end_file()
-{
-  using namespace debug_macro_impl;
-  assert(!filenos.empty());
-  filenos.pop_back();
-}
-
-extern "C" void macro_import(unsigned int offset)
-{
-  using namespace debug_macro_impl;
-  if (filenos.empty())
-    return;
-  auto fileno = filenos.back();
-  import[offset] = fileno;
-}
-
 inline bool match(std::string ex, std::string dir)
 {
   return dir.substr(0, ex.length()) == ex;
-}
-
-extern "C"
-void macro_define(unsigned int lineno, const unsigned char* s,
-		  unsigned int sec_offset)
-{
-  using namespace std;
-  if (!lineno)
-    return;
-  string name;
-  for ( ; *s != '\0' ; ++s ) {
-    char c = *s;
-    if (c == ' ' || c == '\t' || c == '(')
-      break;
-    name += c;
-  }
-
-  using namespace debug_macro_impl;
-  if (!filenos.empty()) {
-    int fileno = filenos.back();
-    cont_t tmp = { name, (enum dwarf_tag)0, (int)lineno, fileno };
-    info[current].push_back(tmp);
-    auto& debug = info[current].back();
-    cont_t* p = &debug;
-    return;
-  }
-
-  auto p = import.find(sec_offset);
-  assert(p != end(import));
-  auto fileno = p->second;
-  cont_t tmp = { name, (enum dwarf_tag)0, (int)lineno, fileno };
-  info[current].push_back(tmp);
 }
 
 namespace table {
@@ -460,7 +147,13 @@ namespace table {
     }
     return ret;
   }
-  typedef vector<const cont_t*> value_t;
+  struct comp {
+    bool operator()(const cont_t* x, const cont_t* y)
+    {
+      return x->line < y->line;
+    }
+  };
+  typedef set<const cont_t*, comp> value_t;
   typedef map<string, value_t> result_t;
   inline void create(const cont_t& c, bool abs_path_form,
 		     const set<string>& exclude,
@@ -468,6 +161,8 @@ namespace table {
 		     result_t& res,
 		     map<const cont_t*, string>& extra)
   {
+    if (c.name == "g")
+      asm("int3");
     int n = c.file;
     if (!n) {
       if (trace_break)
@@ -488,11 +183,11 @@ namespace table {
       auto dir = ptr->dir;
       string apath = dir + '/' + file;
       if (abs_path_form)
-	res[apath].push_back(&c);
+	res[apath].insert(&c);
       else {
 	string rpath = get_rpath(dir);
 	rpath += file;
-	res[rpath].push_back(&c);
+	res[rpath].insert(&c);
 	extra[&c] = apath;
       }
       return;
@@ -508,39 +203,19 @@ namespace table {
     if (p != end(exclude))
       return;
     auto path = dir + '/' + file;
-    res[path].push_back(&c);
-  }
-  inline void create(const cont_t& c, bool abs_path_form,
-		     const set<string>& exclude,
-		     string file, string dir,
-		     result_t& res,
-		     map<const cont_t*, string>& extra)
-  {
-    int n = c.file;
-    if (n != 1) {
-      auto key = debug_line_impl::get(file, "");
-      return create(c, abs_path_form, exclude, key, res, extra);
-    }
-
-    string path = dir + '/' + file;
-    if (abs_path_form) {
-      res[path].push_back(&c);
-      return;
-    }
-    string rpath = get_rpath(dir);
-    rpath += file;
-    res[rpath].push_back(&c);
-    extra[&c] = path;
+    res[path].insert(&c);
   }
   inline void create(const debug_info_impl::info_t& x,  bool abs_path_form, 
 		     const set<string>& exclude, result_t& res,
 		     map<const cont_t*, string>& extra)
   {
     auto file = x.file;
-    auto dir = x.dir;
+    auto key = debug_line_impl::get(file, "");
     for (const auto& c : x.contents)
-      create(c, abs_path_form, exclude, file, dir, res, extra);
+      create(c, abs_path_form, exclude, key, res, extra);
   }
+
+#ifndef BUG_REPRODUCE
   inline void
   create(const debug_macro_impl::KEY& key, const vector<cont_t>& contents,
 	 bool abs_path_form, const set<string>& exclude,
@@ -549,14 +224,32 @@ namespace table {
     for (const auto& c : contents)
       create(c, abs_path_form, exclude, key, res, extra);
   }
+#else // BUG_REPRODUCE
+  inline void
+  create(const pair<debug_macro_impl::KEY, vector<cont_t> >& p,
+	 bool abs_path_form, const set<string>& exclude,
+	 result_t& res, map<const cont_t*, string>& extra)
+  {
+    const auto& key = p.first;
+    const auto& contents = p.second;
+    for (const auto& c : contents)
+      create(c, abs_path_form, exclude, key, res, extra);
+  }
+#endif // BUG_REPRODUCE
+
   inline void create(bool abs_path_form, const set<string>& exclude,
 		     result_t& res, map<const cont_t*, string>& extra)
   {
     for (const auto& x : debug_info_impl::info)
       create(x, abs_path_form, exclude, res, extra);
 
+#ifndef BUG_REPRODUCE
     for (const auto& x : debug_macro_impl::info)
       create(x.first, x.second, abs_path_form, exclude, res, extra);
+#else // BUG_REPRODUCE
+    for (const auto& x : debug_macro_impl::info)
+      create(x, abs_path_form, exclude, res, extra);
+#endif // BUG_REPRODUCE
   }
 } // end fo namespace table
 
@@ -597,7 +290,6 @@ namespace goal {
     string text;
     char buffer[256];
     int line = pcont->line - curr_line;
-    assert(line >= 0);
     while (line--) {
       do {
 	ifs.clear();
@@ -617,26 +309,18 @@ namespace goal {
     res.push_back(tmp);
     curr_line = pcont->line;
   }
-  inline bool comp(const cont_t* x, const cont_t* y)
-  {
-    return x->line < y->line;
-  }
   using namespace table;
   inline void build(const pair<string, value_t>& p,
 		    const map<const cont_t*, string>& extra,
 		    map<string, vector<tag_t> >& res)
   {
-    value_t v = p.second;
-    sort(begin(v), end(v), comp);
-    for (const auto& x : v) {
+    for (const auto& x : p.second) {
       string file = p.first;
       build(file, x, extra, res[file]);
     }
   }
 
 } // end of namespace goal
-
-extern int verbose_flag;
 
 namespace for_vi {
   using namespace std;
@@ -749,73 +433,58 @@ int main(int argc, char** argv)
   bool abs_path_form = false;
   set<string> exclude;
   enum class mode_t { vi, emacs } mode = mode_t::vi;
-  for (int opt ; (opt = getopt(argc, argv, "aevE:t")) != -1 ; ) {
-    switch (opt) {
-    case 'a':
-      abs_path_form = true;
-      break;
-    case 'e':
-      mode = mode_t::emacs;
-      break;
-    case 'v':
-      verbose_flag = 1;
-      break;
-    case 'E':
-      exclude.insert(optarg);
-      break;
-    case 't':
-      trace_break = true;
-      break;
-    default:
-      usage(argv[0]);
-      return 1;
-    }
+  {
+    using namespace debug_line_impl;
+    auto& files = info[0].files;
+    files.push_back({ "a.c", 0 });
+    files.push_back({ "b.c", 0 });
+    files.push_back({ "d.h", 0 });
+    files.push_back({ "c.c", 0 });
+    files.push_back({ "d.h", 0 });
   }
-  if (argc - optind != 1) {
-    usage(argv[0]);
-    return 1;
+  {
+    using namespace debug_info_impl;
+    info.push_back({
+      "a.c", "/home/khasegawa/lang/53_GNU_tool/mktags/test000",
+	{ { "main" , DW_TAG_subprogram, 3,1 }}});
+    info.push_back({
+      "b.c", "/home/khasegawa/lang/53_GNU_tool/mktags/test000",
+	{ { "location" , DW_TAG_typedef, 10,2 },
+	    { "a" , DW_TAG_variable, 3,1 },
+	    { "f2" , DW_TAG_subprogram, 13,1 },
+	    { "f" , DW_TAG_subprogram, 7,1 },
+	      }
+    });
+    info.push_back({
+      "c.c", "/home/khasegawa/lang/53_GNU_tool/mktags/test000",
+	{ { "S" , DW_TAG_structure_type, 6,2 },
+	  { "m" , DW_TAG_member, 7,2 },
+	  { "h" , DW_TAG_subprogram, 12,1 },
+	  { "g" , DW_TAG_subprogram, 3,1 },
+	      }
+    });
   }
-
-  bfd* bp = bfd_openr(argv[optind], 0);
-  if (!bp) {
-    cerr << "bfd_openr(" << argv[optind] << ") faled" << endl;
-    return 1;
+  {
+    using namespace debug_macro_impl;
+    info[{&debug_line_impl::info[0], 0}] = {
+      {"X", DW_TAG_padding ,1,1}
+    };
+    info[{&debug_line_impl::info[0], 1}] = {
+      {"D_H", DW_TAG_padding ,2,2},
+      {"X", DW_TAG_padding ,4,2}
+    };
+    info[{&debug_line_impl::info[0], 3}] = {
+      {"X", DW_TAG_padding ,7,1},
+      {"X", DW_TAG_padding ,8,1}
+    };
   }
-
-  struct sweeper {
-    bfd* m_bp;
-    sweeper(bfd* bp) : m_bp{bp} {}
-    ~sweeper(){ bfd_close(m_bp); }
-  } sweeper(bp); 
-
-  if (!bfd_check_format(bp, bfd_object)) {
-    cerr << "bfd_check_format falied" << endl;
-    return 1;
-  }
-
-  do_line(bp);
-
-  do_info(bp);
-
-  do_macro(bp);
 
   table::result_t tbl;
   map<const cont_t*, string> extra;
   table::create(abs_path_form, exclude, tbl, extra);
 
-  map<string, vector<goal::tag_t> > tags;
-  for (const auto& x : tbl)
-    goal::build(x, extra, tags);
-
-  switch (mode) {
-  case mode_t::vi:
-    for_vi::output(tags);
-    break;
-  case mode_t::emacs:
-    for_emacs::output(tags);
-    break;
-  }
-
+  extern void debug(const table::result_t&);
+  debug(tbl);
   return 0;
 }
 
@@ -898,7 +567,7 @@ void debug1()
 {
   using namespace std;
   using namespace debug_line_impl;
-  cerr << "debug_line_impl" << endl;
+  cerr << "DEBUG LINE" << endl;
   for (const auto& x : info) {
     cerr << '\t' << "OFFSET :" << hex << x.first << endl;
     debug(x.second);
@@ -908,7 +577,7 @@ void debug1()
 void debug2()
 {
   using namespace debug_info_impl;
-  cerr << "debug_info" << endl;
+  cerr << "DEBUG INFO" << endl;
   for (const auto& x : info)
     debug(x);
 }
@@ -916,7 +585,7 @@ void debug2()
 void debug3()
 {
   using namespace debug_macro_impl;
-  cerr << "debug_macro_impl" << endl;
+  cerr << "DEBUG MACRO" << endl;
   for (const auto& x : info) {
     auto key = x.first;
     cerr << "Groupe : pair<debug_line_impl::X*, int> ";
