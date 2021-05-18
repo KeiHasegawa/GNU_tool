@@ -422,7 +422,7 @@ namespace table {
 	break;
     }
     ret += "..";
-    assert(tails.size() > k+1);
+    assert(tails.size() > k);
     for (int i = k+1 ; i != tails.size() ; ++i)
       ret += "/..";
     ret = accumulate(rbegin(tails), rend(tails), ret);
