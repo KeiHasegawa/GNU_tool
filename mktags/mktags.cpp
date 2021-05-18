@@ -553,14 +553,33 @@ namespace goal {
     int seek;
     enum dwarf_tag kind;
   };
+  inline bool has_extra(string file)
+  {
+    char c = file[0];
+    if (c == '.')
+      return false;
+    if (c == '/')
+      return false;
+#ifdef __CYGWIN__
+    if (file.length() < 3)
+      return true;
+    if (file[1] != ':')
+      return true;
+    return file[2] != '/';
+#else // __CYGWIN__
+    return true;
+#endif // __CYGWIN__
+  }
   inline void build(string file, const cont_t* pcont,
 		    const map<const cont_t*, string>& extra,
 		    vector<tag_t>& res)
   {
-    char c = file[0];
-    if (c != '/' && c != '.') {
+    if (has_extra(file)) {
       auto p = extra.find(pcont);
-      assert(p != end(extra));
+      if (p == end(extra)) {
+	cerr << file << endl;
+	abort();
+      }
       file = p->second;
     }
     static set<string> cannot_open;
