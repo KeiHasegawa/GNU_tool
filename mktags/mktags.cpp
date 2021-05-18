@@ -563,6 +563,14 @@ namespace goal {
   {
     return x->line < y->line;
   }
+  inline bool comp2(const cont_t* x, const cont_t* y)
+  {
+    if (x->name != y->name)
+      return false;
+    if (x->line != y->line)
+      return false;
+    return x->file == y->file;
+  }
   using namespace table;
   inline void build(const pair<string, value_t>& p,
 		    const map<const cont_t*, string>& extra,
@@ -570,7 +578,9 @@ namespace goal {
   {
     value_t v = p.second;
     sort(begin(v), end(v), comp);
-    for (const auto& x : v) {
+    value_t vv;
+    unique_copy(begin(v), end(v), back_inserter(vv), comp2);
+    for (const auto& x : vv) {
       string file = p.first;
       build(file, x, extra, res[file]);
     }
