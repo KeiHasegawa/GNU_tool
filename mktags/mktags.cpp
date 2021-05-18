@@ -521,15 +521,19 @@ namespace goal {
       assert(p != end(extra));
       file = p->second;
     }
+    static set<string> cannot_open;
+    if (cannot_open.find(file) != end(cannot_open))
+      return;
     static string curr_file;
     static ifstream ifs;
     static int curr_line;
     if (curr_file != file) {
       if (!curr_file.empty())
 	ifs.close();
-      ifs.open(file.c_str());
+      ifs.open(file);
       if (!ifs) {
 	cerr << "cannot open " << file << endl;
+	cannot_open.insert(file);
 	return;
       }
       curr_file = file;
@@ -680,8 +684,11 @@ namespace for_emacs {
   output(const map<string, vector<tag_t> >& tags)
   {
     map<string, string> raw;
-    for (const auto& x : tags)
-      raw[x.first] = conv(x.second);
+    for (const auto& x : tags) {
+      const auto& v = x.second;
+      if (!v.empty())
+	raw[x.first] = conv(v);
+    }
 
     const char* tag_f = "TAGS";
     ofstream ofs(tag_f);
