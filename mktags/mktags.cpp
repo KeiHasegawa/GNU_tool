@@ -1,5 +1,4 @@
 #include <string>
-#include <cstring>
 #include <vector>
 #include <map>
 #include <set>
@@ -9,6 +8,7 @@
 #include <algorithm>
 #include <fstream>
 #include <iterator>
+#include <numeric>
 #include <cassert>
 #ifdef __CYGWIN__
 // Not refer to getopt defined at Dynamic Link Library at CYGWIN
@@ -17,7 +17,7 @@ extern "C" {
   int getopt(int, char**, const char*);
   extern char* optarg;
   extern int optind;
-  extern char* getcwd(char*, size_t);
+  extern char* get_current_dir_name();
 }
 #else // __CYGWIN__
 #include <unistd.h>
@@ -368,26 +368,65 @@ void macro_define(unsigned int lineno, const unsigned char* s,
 
 namespace table {
   using namespace std;
+  map<string, string> cache;
   string get_rpath(string dir)
   {
-    char cwd[256];
-    getcwd(&cwd[0], sizeof cwd);
+    auto p = cache.find(dir);
+    if (p != end(cache))
+      return p->second;
+    char* cwd = get_current_dir_name();
+    if (!cwd) {
+      cerr << "get_current_dir_name failed" << endl;
+      return "";
+    }
+    struct sweeper {
+      char* ptr;
+      sweeper(char* p) : ptr{p} {}
+      ~sweeper(){ free(ptr); }
+    } sweeper(cwd);
     if (dir == cwd)
       return "";
     string x = dir;
+    int n = count(begin(x), end(x), '/');
     string y = cwd;
+    int m = count(begin(y), end(y), '/');
     string ret;
+
+    if (n < m) {
+      while (n != m) {
+	auto p = y.find_last_of('/');
+	y = y.substr(0,p);
+	ret += "../";
+	--m;
+      }
+    }
+    vector<string> tails;
+    if (n > m) {
+      while (n != m) {
+	auto p = x.find_last_of('/');
+	auto tail = x.substr(p);
+	tails.push_back(tail);
+	x = x.substr(0, p);
+	--n;
+      }
+    }
+    int k = tails.size();
     while (1) {
       auto p = x.find_last_of('/');
       auto tail = x.substr(p);
+      tails.push_back(tail);
       x = x.substr(0, p);
       auto q = y.find_last_of('/');
       y = y.substr(0, q);
-      ret += ".." + tail + '/';
       if (x == y)
 	break;
     }
-    return ret;
+    ret += "..";
+    assert(tails.size() > k+1);
+    for (int i = k+1 ; i != tails.size() ; ++i)
+      ret += "/..";
+    ret = accumulate(rbegin(tails), rend(tails), ret);
+    return cache[dir] = ret;
   }
   inline bool match(string ex, string dir)
   {
@@ -423,7 +462,10 @@ namespace table {
 	res[apath].push_back(&c);
       else {
 	string rpath = get_rpath(comp_dir);
-	rpath += file;
+	if (!rpath.empty())
+	  rpath += '/' + file;
+	else
+	  rpath = file;
 	res[rpath].push_back(&c);
 	extra[&c] = apath;
       }
