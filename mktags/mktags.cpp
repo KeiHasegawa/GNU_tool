@@ -118,6 +118,7 @@ struct cont_t {
   enum dwarf_tag kind;
   int line;
   int file;
+  bool ext;
 };
 
 namespace debug_info_impl {
@@ -274,6 +275,32 @@ extern "C" void set_decl_file(unsigned long long uvalue)
       asm("int3");
     return;
   }
+}
+
+extern "C" void set_ext()
+{
+  using namespace debug_info_impl;
+  if (curr_dt != DW_TAG_variable)
+    return;
+  auto& i = info.back();
+  auto& contents = i.contents;
+  assert(!contents.empty());
+  auto& c = contents.back();
+  c.ext = true;
+}
+
+extern "C" void  set_loc(unsigned char*)
+{
+  using namespace debug_info_impl;
+  if (curr_dt != DW_TAG_variable)
+    return;
+  auto& i = info.back();
+  auto& contents = i.contents;
+  assert(!contents.empty());
+  auto& c = contents.back();
+  if (c.ext)
+    return;
+  contents.pop_back();
 }
 
 extern "C" void
@@ -988,4 +1015,10 @@ void debug(const std::set<std::string>& s)
 {
   using namespace std;
   copy(begin(s), end(s), ostream_iterator<string>(cerr, "\n"));
+}
+
+void debug(const std::vector<cont_t>& v)
+{
+  for (const auto& c : v)
+    debug(c);
 }
