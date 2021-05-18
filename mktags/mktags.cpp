@@ -603,10 +603,7 @@ namespace goal {
   {
     if (has_extra(file)) {
       auto p = extra.find(pcont);
-      if (p == end(extra)) {
-	cerr << file << endl;
-	abort();
-      }
+      assert(p != end(extra));
       file = p->second;
     }
     static set<string> cannot_open;
@@ -645,10 +642,14 @@ namespace goal {
     auto len = text.length();
     if (text[len-1] == '\r')
       text.erase(len-1);
+    static string last_text;
+    if (text.empty())
+      text = last_text;
     tag_t tmp = {
       text, pcont->name, pcont->line, seek, pcont->kind
     };
     res.push_back(tmp);
+    last_text = text;
     curr_line = pcont->line;
   }
   inline bool comp(const cont_t* x, const cont_t* y)
@@ -972,13 +973,18 @@ void debug3()
   }
 }
 
+void debug(const table::value_t& v)
+{
+  for (auto p : v)
+    debug(*p);
+}
+
 void debug(const table::result_t& tbl)
 {
   using namespace std;
   for (const auto& x : tbl) {
     cerr << x.first << endl;
-    for (const auto& p : x.second)
-      debug(*p);
+    debug(x.second);
   }
   cerr << flush;
 }
