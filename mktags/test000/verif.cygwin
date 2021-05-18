@@ -4,7 +4,6 @@ set E_opt = '-E /cygdrive/d/home/khasegawa/gcc-10.1.0 -E /cygdrive/d/home/khaseg
 
 gcc -g3 a.c b.c c.c -o a.out || exit 1
 ../mktags.exe $E_opt a.out || exit 1
-unix2dos tags || exit 1
-diff tags tags.exp || exit 1
+diff tags tags.exp.cygwin || exit 1
 ../mktags.exe -e $E_opt a.out || exit 1
-diff TAGS TAGS.e || exit 1
+diff TAGS TAGS.e.cygwin || exit 1
