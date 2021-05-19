@@ -554,9 +554,11 @@ namespace table {
       extra[&c] = path;
       return;
     }
-    string rpath = get_rpath(comp_dir);
-    if (!rpath.empty())
-      dir = comp_dir + '/' + dir;
+    if (dir[0] == '.') {
+      string rpath = get_rpath(comp_dir);
+      if (!rpath.empty())
+	dir = comp_dir + '/' + dir;
+    }
     auto path = dir + '/' + file;
     res[path].push_back(&c);
   }
@@ -609,9 +611,11 @@ namespace table {
       return;
     if (dir == ".")
       return;
-    string rpath = get_rpath(comp_dir);
-    if (!rpath.empty())
-      dir = comp_dir + '/' + dir;
+    if (dir[0] == '.') {
+      string rpath = get_rpath(comp_dir);
+      if (!rpath.empty())
+	dir = comp_dir + '/' + dir;
+    }
     auto path = dir + '/' + file;
     auto r = res.find(path);
     if (r != end(res))
