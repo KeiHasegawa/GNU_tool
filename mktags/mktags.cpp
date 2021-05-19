@@ -131,6 +131,43 @@ namespace debug_info_impl {
     info_t(const char* s) : compile_unit{s} {}
   };
   vector<info_t> info;
+  inline bool is_enum(const cont_t& c)
+  {
+    return c.kind == DW_TAG_enumeration_type;
+  }
+  inline bool is_enumerator(const cont_t& x)
+  {
+    return x.kind == DW_TAG_enumerator;
+  }
+  inline void modify_enumerator(cont_t& x, const cont_t& y)
+  {
+    if (x.line)
+      return;
+    x.line = y.line;
+    x.file = y.file;
+  }
+  inline void modify_enumerator(info_t& x)
+  {
+    auto& contents = x.contents; 
+    auto p = begin(contents);
+    for (auto p = begin(contents) ; p != end(contents) ; ) {
+      p = find_if(p, end(contents), is_enum);
+      if (p != end(contents)) {
+	const auto& enum_type = *p;
+	auto b = p + 1;
+	auto e = find_if(b, end(contents), not1(ptr_fun(is_enumerator)));
+	for ( ; b != e ; ++b)
+	  modify_enumerator(*b, enum_type);
+	p = e;
+      }
+    }
+  }
+  inline void modify_enumerator()
+  {
+    // Add line and file information to enumerator
+    for (auto& x : info)
+      modify_enumerator(x);
+  }
 } // end of namespace debug_info_impl
 
 extern "C" void  start_tag(enum dwarf_tag dt)
@@ -799,24 +836,12 @@ int main(int argc, char** argv)
   enum class mode_t { vi, emacs } mode = mode_t::vi;
   for (int opt ; (opt = getopt(argc, argv, "aevE:t")) != -1 ; ) {
     switch (opt) {
-    case 'a':
-      abs_path_form = true;
-      break;
-    case 'e':
-      mode = mode_t::emacs;
-      break;
-    case 'v':
-      verbose_flag = 1;
-      break;
-    case 'E':
-      exclude.insert(optarg);
-      break;
-    case 't':
-      trace_break = true;
-      break;
-    default:
-      usage(argv[0]);
-      return 1;
+    case 'a': abs_path_form = true;   break;
+    case 'e': mode = mode_t::emacs;   break;
+    case 'v': verbose_flag = 1;       break;
+    case 'E': exclude.insert(optarg); break;
+    case 't': trace_break = true;     break;
+    default:  usage(argv[0]);         return 1;
     }
   }
   if (argc - optind != 1) {
@@ -844,6 +869,7 @@ int main(int argc, char** argv)
   do_line(bp);
 
   do_info(bp);
+  debug_info_impl::modify_enumerator();
 
   do_macro(bp);
 
@@ -867,9 +893,10 @@ int main(int argc, char** argv)
   return 0;
 }
 
+inline namespace {
+using namespace std;
 void debug(enum dwarf_tag dt)
 {
-  using namespace std;
   switch (dt) {
   case DW_TAG_padding: cerr << 'd'; break;
   case DW_TAG_variable: cerr << 'v'; break;
@@ -890,10 +917,9 @@ void debug(enum dwarf_tag dt)
     break;
   }
 }
-
+	 
 void debug(const cont_t& x)
 {
-  using namespace std;
   cerr << '\t' << x.name << ',';
   debug(x.kind);
   cerr << ',' << x.line << ',' << x.file << endl;
@@ -901,29 +927,25 @@ void debug(const cont_t& x)
 
 void debug(const debug_info_impl::info_t& x)
 {
-  using namespace std;
   cerr << x.compile_unit << ':' << x.comp_dir << endl;
   for (const auto& y : x.contents)
     debug(y);
 }
 
-void debug(const std::vector<std::pair<std::string, int> >& files)
+void debug(const vector<pair<string, int> >& files)
 {
-  using namespace std;
   for (const auto& p : files)
     cerr << "\t\t" << p.first << ':' << dec << p.second << endl;
 }
 
-void debug(const std::vector<std::string>& dirs)
+void debug(const vector<string>& dirs)
 {
-  using namespace std;
   cerr << "\t\t";
   copy(begin(dirs), end(dirs), ostream_iterator<string>(cerr, "\n\t\t"));
 }
 
 void debug(const debug_line_impl::info_t& x)
 {
-  using namespace std;
   auto dirs = x.dirs;
   cerr << '\t' << "Directory:" << endl;
   debug(dirs);
@@ -934,7 +956,6 @@ void debug(const debug_line_impl::info_t& x)
 
 void debug(const debug_line_impl::info_t* p)
 {
-  using namespace std;
   if (!p) {
     cerr << "(null)" << endl;
     return;
@@ -944,7 +965,6 @@ void debug(const debug_line_impl::info_t* p)
 
 void debug1()
 {
-  using namespace std;
   using namespace debug_line_impl;
   cerr << "debug_line_impl" << endl;
   for (const auto& x : info) {
@@ -981,26 +1001,22 @@ void debug(const table::value_t& v)
 
 void debug(const table::result_t& tbl)
 {
-  using namespace std;
   for (const auto& x : tbl) {
     cerr << x.first << endl;
     debug(x.second);
   }
-  cerr << flush;
 }
 
 void debug(const goal::tag_t& tag)
 {
-  using namespace std;
   cerr << tag.text << ':' << tag.name << ':';
   cerr << dec << tag.line << ':'<<  tag.seek << ':';
   debug(tag.kind);
   cerr << endl;
 }
 
-void debug(const std::map<std::string, std::vector<goal::tag_t> >& tags)
+void debug(const map<string, vector<goal::tag_t> >& tags)
 {
-  using namespace std;
   for (const auto& p : tags) {
     cerr << p.first << endl;
     for (const auto& t : p.second)
@@ -1008,23 +1024,23 @@ void debug(const std::map<std::string, std::vector<goal::tag_t> >& tags)
   }
 }
 
-void debug(const std::map<const cont_t*, std::string>& extra)
+void debug(const map<const cont_t*, string>& extra)
 {
-  using namespace std;
   for (const auto& p : extra) {
     debug(*p.first);
     cerr << p.second << endl;
   }
 }
 
-void debug(const std::set<std::string>& s)
+void debug(const set<string>& s)
 {
-  using namespace std;
   copy(begin(s), end(s), ostream_iterator<string>(cerr, "\n"));
 }
 
-void debug(const std::vector<cont_t>& v)
+void debug(const vector<cont_t>& v)
 {
   for (const auto& c : v)
     debug(c);
 }
+
+} // end of inline namespace 
