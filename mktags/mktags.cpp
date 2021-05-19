@@ -116,8 +116,8 @@ inline void do_info(bfd* bp)
 struct cont_t {
   std::string name;
   enum dwarf_tag kind;
-  int line;
   int file;
+  int line;
   bool ext;
 };
 
@@ -146,10 +146,19 @@ namespace debug_info_impl {
     x.line = y.line;
     x.file = y.file;
   }
+  inline bool local(const cont_t& c)
+  {
+    return c.kind == DW_TAG_variable && !c.ext;
+  }
+  inline void erase_local(info_t& x)
+  {
+    auto& contents = x.contents; 
+    auto p = remove_if(begin(contents), end(contents), local);
+    contents.erase(p, end(contents));
+  }
   inline void modify_enumerator(info_t& x)
   {
     auto& contents = x.contents; 
-    auto p = begin(contents);
     for (auto p = begin(contents) ; p != end(contents) ; ) {
       p = find_if(p, end(contents), is_enum);
       if (p != end(contents)) {
@@ -162,11 +171,21 @@ namespace debug_info_impl {
       }
     }
   }
+  inline void erase_local()
+  {
+    for (auto& x : info)
+      erase_local(x);
+  }
   inline void modify_enumerator()
   {
     // Add line and file information to enumerator
     for (auto& x : info)
       modify_enumerator(x);
+  }
+  inline void modify()
+  {
+    erase_local();
+    modify_enumerator();
   }
 } // end of namespace debug_info_impl
 
@@ -326,20 +345,6 @@ extern "C" void set_ext()
   c.ext = true;
 }
 
-extern "C" void  set_loc(unsigned char*)
-{
-  using namespace debug_info_impl;
-  if (curr_dt != DW_TAG_variable)
-    return;
-  auto& i = info.back();
-  auto& contents = i.contents;
-  assert(!contents.empty());
-  auto& c = contents.back();
-  if (c.ext)
-    return;
-  contents.pop_back();
-}
-
 extern "C" void
 my_display_debug_macro(bfd*, bfd_section*, bfd_byte*);
 
@@ -418,7 +423,7 @@ void macro_define(unsigned int lineno, const unsigned char* s,
   using namespace debug_macro_impl;
   if (!filenos.empty()) {
     int fileno = filenos.back();
-    cont_t tmp = { name, (enum dwarf_tag)0, (int)lineno, fileno };
+    cont_t tmp = { name, (enum dwarf_tag)0, fileno, (int)lineno };
     info[current_off].push_back(tmp);
     return;
   }
@@ -426,7 +431,7 @@ void macro_define(unsigned int lineno, const unsigned char* s,
   auto p = import.find(sec_offset);
   assert(p != end(import));
   auto fileno = p->second;
-  cont_t tmp = { name, (enum dwarf_tag)0, (int)lineno, fileno };
+  cont_t tmp = { name, (enum dwarf_tag)0, fileno, (int)lineno };
   info[current_off].push_back(tmp);
 }
 
@@ -573,7 +578,7 @@ namespace table {
 	auto p = res.find(apath);
 	if (p != end(res))
 	  return;
-	cont_t* tmp = new cont_t{ "", (enum dwarf_tag)0, 1, 0 };
+	cont_t* tmp = new cont_t{ "", (enum dwarf_tag)0, 0, 1 };
 	res[apath].push_back(tmp);
 	return;
       }
@@ -585,7 +590,7 @@ namespace table {
       auto p = res.find(rpath);
       if (p != end(res))
 	return;
-      cont_t* tmp = new cont_t{ file, (enum dwarf_tag)0, 1, 0 };
+      cont_t* tmp = new cont_t{ file, (enum dwarf_tag)0, 0, 1 };
       res[rpath].push_back(tmp);
       extra[tmp] = apath;
       return;
@@ -607,7 +612,7 @@ namespace table {
     auto r = res.find(path);
     if (r != end(res))
       return;
-    cont_t* tmp = new cont_t{ file, (enum dwarf_tag)0, 1, 0 };
+    cont_t* tmp = new cont_t{ file, (enum dwarf_tag)0, 0, 1 };
     res[path].push_back(tmp);
   }
   inline void create(const debug_info_impl::info_t& x,
@@ -959,7 +964,7 @@ int main(int argc, char** argv)
   do_line(bp);
 
   do_info(bp);
-  debug_info_impl::modify_enumerator();
+  debug_info_impl::modify();
 
   do_macro(bp);
 
@@ -1012,7 +1017,7 @@ void debug(const cont_t& x)
 {
   cerr << '\t' << x.name << ',';
   debug(x.kind);
-  cerr << ',' << x.line << ',' << x.file << endl;
+  cerr << ',' << ',' << x.file << x.line << ',' << x.ext << endl;
 }
 
 void debug(const debug_info_impl::info_t& x)

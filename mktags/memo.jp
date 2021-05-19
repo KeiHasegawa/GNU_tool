@@ -273,20 +273,25 @@ int main()
      デバッグビルドした cc1 に mktags.exe を実行した結果:
 
 linux % date ; ~/lang/53_GNU_tool/mktags/mktags.exe cc1 -e  ; date
-2021年  5月 19日 水曜日 05:18:43 JST
-2021年  5月 19日 水曜日 05:21:49 JST
 
-       これは mktag.exe を -O0 ビルドしたもの. 3 分で終了している. -O3
-       ビルドで試してみたところ 2 分 20 秒くらいだった.
+     これは mktag.exe を -O0 ビルドしたもの. 3 分で終了している. -O3
+     ビルドで試してみたところ 2 分 20 秒くらいだった.
 
-       生成した TAGS を使用して気付いたこと:
+     生成した TAGS を使用して気付いたこと:
 
-       end に対してタグジャンプすると, とある函数のローカル変数のところ
-       にジャンプしている. これは修正するべき.
+     end に対してタグジャンプすると, とある函数のローカル変数のところ
+     にジャンプしている. これは修正するべき.
 
-       mktags.exe 自身の TAGS ファイルに対して気付いたこと:
+     mktags.exe 自身の TAGS ファイルに対して気付いたこと:
 
-       o endl に対してタグが生成されていない.
+       o endl に対してタグが生成されていない. 実際 objdump -g の結果
+         にも出現していない.
+
+~/gcc-10.2.0/libstdc++-v3/include/std/ostream
+  template<typename _CharT, typename _Traits>
+    inline basic_ostream<_CharT, _Traits>&
+    endl(basic_ostream<_CharT, _Traits>& __os)
+    { return flush(__os.put(__os.widen('\n'))); }
        
        o do_line に対してのジャンプ先がとある函数のローカル変数.
          cc1 と同じバグが出ている.

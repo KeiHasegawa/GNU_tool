@@ -3295,8 +3295,6 @@ read_and_display_attr_value (unsigned long           attribute,
 	  printf (")");
 	  if (need_frame_base && !have_frame_base)
 	    printf (_(" [without DW_AT_frame_base]"));
-	  void  set_loc(unsigned char*);
-	  set_loc(block_start);
 	}
       break;
 
