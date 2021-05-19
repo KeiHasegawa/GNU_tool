@@ -3,6 +3,13 @@
 (*1) vi での ctags の簡単な使い方
 (*2) emacs での ctags の簡単な使い方
 (*3) プログラムファイルからタグファイルを生成する
+(*4) mktags.exe のビルド方法
+(*5) tags のフォーマット
+(*6) TAGS のフォーマット
+(*7) C++ の STL に emacs でタグジャンプする.
+(*8) コンテキスト
+(*9) gcc の -g3 オプション
+(*10) 使っていて気付いたこと
 
 (*1) vi での ctags の簡単な使い方
 
@@ -126,32 +133,186 @@ C-u M-.
 
 (*3) プログラムファイルからタグファイルを生成する
 
-     mktags.exe
-
-     ほとんど objdump -g に近い動作をする. このためビルドするためには
-     binutils のソースからビルドしなくてはならない.
-
 % ./mktags.exe a.out
 # tags が生成される. vi 用
 % ./mktags -e a.out
 # TAGS が生成される. emacs 用.
 
-そもそも .debug_line を正しく読めていない. 
-ディレクトリが空の場合にオフセット 0 としているのがおかしい.
+オプション:
 
-test004 : 
+-a : 絶対パスで生成する. デフォルトでは相対パスで生成.
+-e : TAGS を生成する. emacs 用. デフォルトでは tags を生成する. vi 用.
+-v : objdump -g が出力する結果を標準出力に書き出す.
+-E <ディレクトリ> : -E /usr のように使用する. /usr から始まるファイルを
+                    無視する.
 
-C_H	a.c	2;"	d	file:  間違い ../test004_sub/d.h
-ABC	a.c	4;"	d	file:  間違い ../test004_sub/d.h
-main	a.c	/^int main()$/;"	f
-X	a.c	8;"	d	file:  間違い  ../test004_sub/a.c が正しい
+(*4) mktags.exe のビルド方法
 
+1. binutils をソースファイルからビルドする.
 
-p debug3()
-debug_macro_impl
-Groupe : pair<debug_line_impl::X*, int> 0x827ebb4,0  <<< 間違い 1 が正しい
-	X,d,8,1
-	C_H,d,2,2
-	ABC,d,4,2
-Groupe : pair<debug_line_impl::X*, int> 0x827ebb4,3
-	X,d,3,1
+    トップ -> 「GNU のツール」->
+    「linux での binutils 2.36.1 インストールメモ」
+
+    が参考になる. cygwin でもトラブルが発生せずビルドとインストールが
+    できている.
+
+2. このページにある mktags.cpp my_dwarf.c my_objdump.c Makefile
+   をダウンロードして以下のように実行する:
+
+% make -n
+# g++, gcc の起動方法を確認する. Makefile の BINUTILS_DIR を自分の環境に
+# 合わせて修正する.
+% make
+# 正しく動けば同じディレクトリに mktags.exe をビルドできる.
+
+(*5) tags のフォーマット
+
+(タグ名)	(ファイル名)	(vi コマンド)"	[fvdsm]	[file:]
+
+例えば
+HOGE	./a.c	1;"	d	file:
+main	./a.c	/^int main()$/;"	f
+
+は
+
+    o タグ HOGE に対して ./a.c を開いて 1 行目にジャンプするということを
+      意味しているようである.
+    o タグ main に対して ./a.c を開いて正規表現 ^int main()$
+      を検索することを意味しているようである.
+
+(*6) TAGS のフォーマット
+
+    (*5) を TAGS で表現すると以下のようになる:
+
+^L
+./a.c,45
+#define HOGE 1^?HOGE^A1,0
+int main()^?main^A3,16
+
+     ^L : エスケープ文字 '\f'
+     45 : #define ... 16 までのバイト数
+     ^? : 0177 を putc したもの
+     ^A : 1 を putc したもの
+
+^L
+ファイル名,バイト数
+テキスト1^Lタグ名1^A行番号1,ファイル内オフセット1
+...
+
+     のようになる.
+
+(*7) C++ の STL に emacs でタグジャンプする.
+% cat a.cpp
+#include <vector>
+
+int main()
+{
+  using namespace std;
+  vector<int> vi;
+  return 0;
+}
+% g++ -g3 a.cpp -o a.out
+% ./mktags.exe -e a.out
+
+     として TAGS を生成する. emacs で vector へタグジャンプしてみる.
+     ジャンプした先は
+
+/usr/local/include/c++/10.2.0/vector
+
+     の 1 行目であった. これはどういうことかというと, emacs の対応する
+     Lisp の函数の仕様で, ファイル名に vector というものがあればそこに
+     ジャンプするということらしい.
+
+     ファイル名ではなくて vector の宣言にジャンプするには
+     Find tag の引数に以下を指定する:
+
+vector<int, std::allocator<int> >
+
+     これは面倒だが機能してはいる. std::vector ではなくて単に vector
+     になっているのは a.cpp の書き方に依存しているようである.
+
+     タグ名がなければファイル名にジャンプするという emacs Lisp の対応
+     する函数の仕様は期せずして有用なものではある. 例えば mktags.exe 自
+     身の TAGS を生成して dwarf2.h にタグジャンプすれば全く身に覚えのない,
+     しかしビルド時に参照しているヘッダーファイルを簡単に開くことができる.
+
+(*8) コンテキスト
+
+     当然ながら emacs のタグジャンプでは対象が何かを判断していない.
+     そういう仕様だからであるし, これは妥当に思える. 高望みすればタグ
+     ジャンプする先は最小限であってほしい. コンテキストを理解すれば
+
+#include <vector> ここでタグジャンプしたらファイル vector を開く
+
+int main()
+{
+  using namespace std;
+  vector<int> vi; ここでタグジャンプしたら vector のクラス宣言にジャンプ
+  return 0;       次の候補は vector のデフォルトコンストラクタ
+}
+
+     コンパイラはその情報を生成している. しかし実現は難しい.
+     mktags.exe では vector にタグジャンプすると
+
+     第一候補 : ファイル vector
+     第二候補 : メンバ名の const bfd_target *vector
+     第三候補 : vector のデフォルトコンストラクタ
+
+     になっていた. 第二候補が出るのは仕様とはいえ, 非常に残念である.
+
+(*9) gcc の -g3 オプション
+
+     -g オプションとの違いはマクロの情報が生成されることである.
+     gdb や mktags.exe はこれらの情報を使用してプログラマに有用な
+     情報を提供する. しかし -g オプションだけでも通常のデバッグ
+     情報が生成されるので, マクロへのタグジャンプが必要でなければ
+     これで十分である.
+
+(*10) 使っていて気付いたこと
+
+     デバッグビルドした cc1 に mktags.exe を実行した結果:
+
+linux % date ; ~/lang/53_GNU_tool/mktags/mktags.exe cc1 -e  ; date
+2021年  5月 19日 水曜日 05:18:43 JST
+2021年  5月 19日 水曜日 05:21:49 JST
+
+       これは mktag.exe を -O0 ビルドしたもの. 3 分で終了している. -O3
+       ビルドで試してみたところ 2 分 20 秒くらいだった.
+
+       生成した TAGS を使用して気付いたこと:
+
+       end に対してタグジャンプすると, とある函数のローカル変数のところ
+       にジャンプしている. これは修正するべき.
+
+       mktags.exe 自身の TAGS ファイルに対して気付いたこと:
+
+       o endl に対してタグが生成されていない.
+       
+       o do_line に対してのジャンプ先がとある函数のローカル変数.
+         cc1 と同じバグが出ている.
+
+       o string に対してのジャンプ先に
+
+  typedef basic_string<char>    string;
+
+         がない. TAGS にはその部分はある. Lisp の函数の問題なのか TAGS
+	 の問題かは不明.
+
+       o contents に対してタグジャンプすると, これもとある函数の
+       　ローカル変数にジャンプする.
+
+       o get_rpath に対してタグジャンプできていない.
+
+       o create に対してタグジャンプすると 4 つ目の候補にパラメータの
+         create とする函数にジャンプしてしまう.
+
+       o table に対してタグジャンプすると名前空間の table にジャンプ
+         できていない. 例えば他の debug_macro_impl などの名前空間
+	 ならば期待通りタグジャンプできている.
+
+       o mode_t::emacs は emacs でタグジャンプして期待する動作に
+         なっている.
+
+        
+
+              

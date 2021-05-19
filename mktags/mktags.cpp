@@ -551,6 +551,65 @@ namespace table {
     auto path = dir + '/' + file;
     res[path].push_back(&c);
   }
+  inline void create_if(const pair<string, int>& x,
+			string comp_dir,
+			const debug_line_impl::info_t& li,
+			bool abs_path_form,
+			const set<string>& exclude,
+			result_t& res,
+			map<const cont_t*, string>& extra)
+  {
+    auto p = find_if(begin(exclude), end(exclude),
+		     bind2nd(ptr_fun(match), comp_dir));
+    if (p != end(exclude))
+      return;
+    auto file = x.first;
+    if (file[0] == '<' && file.back() == '>')
+      return;  // skip if builtin
+    int m = x.second;
+    if (!m) {
+      string apath = comp_dir + '/' + file;
+      if (abs_path_form) {
+	auto p = res.find(apath);
+	if (p != end(res))
+	  return;
+	cont_t* tmp = new cont_t{ "", (enum dwarf_tag)0, 1, 0 };
+	res[apath].push_back(tmp);
+	return;
+      }
+      string rpath = get_rpath(comp_dir);
+      if (!rpath.empty())
+	rpath += '/' + file;
+      else
+	rpath = file;
+      auto p = res.find(rpath);
+      if (p != end(res))
+	return;
+      cont_t* tmp = new cont_t{ file, (enum dwarf_tag)0, 1, 0 };
+      res[rpath].push_back(tmp);
+      extra[tmp] = apath;
+      return;
+    }
+    --m;
+    const auto& dirs = li.dirs;
+    assert(m < dirs.size());
+    auto dir = dirs[m];
+    auto q = find_if(begin(exclude), end(exclude),
+		     bind2nd(ptr_fun(match), dir));
+    if (q != end(exclude))
+      return;
+    if (dir[0] == '.') {
+      string rpath = get_rpath(comp_dir);
+      if (!rpath.empty())
+	dir = comp_dir + '/' + dir;
+    }
+    auto path = dir + '/' + file;
+    auto r = res.find(path);
+    if (r != end(res))
+      return;
+    cont_t* tmp = new cont_t{ file, (enum dwarf_tag)0, 1, 0 };
+    res[path].push_back(tmp);
+  }
   inline void create(const debug_info_impl::info_t& x,
 		     const pair<int, debug_line_impl::info_t>& y,
 		     bool abs_path_form, const set<string>& exclude,
@@ -570,6 +629,18 @@ namespace table {
   {
     for (const auto& c : contents)
       create(c, comp_dir, li, abs_path_form, exclude, res, extra);
+  }
+  inline void create_if(const debug_info_impl::info_t& x,
+			const pair<int, debug_line_impl::info_t>& y,
+			bool abs_path_form, const set<string>& exclude,
+			result_t& res, map<const cont_t*, string>& extra)
+  {
+    auto comp_dir = x.comp_dir;
+    const auto& contents = x.contents;
+    const auto& li = y.second;
+    const auto& files = li.files;
+    for (const auto& x : files)
+      create_if(x, comp_dir, li, abs_path_form, exclude, res, extra);
   }
   struct create_t {
     bool abs_path_form;
@@ -596,6 +667,23 @@ namespace table {
       return true;
     }
   };
+  struct create_if_t {
+    bool abs_path_form;
+    const set<string>& exclude;
+    result_t& res;
+    map<const cont_t*, string>& extra;
+    const map<int, vector<cont_t> >& z;
+    create_if_t(bool a, const set<string>& s, result_t& r,
+		map<const cont_t*, string>& m,
+		const map<int, vector<cont_t> >& zz) : abs_path_form{a},
+      exclude{s}, res{r}, extra{m}, z{zz} {}
+    bool operator()(const debug_info_impl::info_t& x,
+		    const pair<int, debug_line_impl::info_t>& y)
+    {
+      create_if(x, y, abs_path_form, exclude, res, extra);
+      return true;
+    }
+  };
   inline void create(bool abs_path_form, const set<string>& exclude,
 		     result_t& res, map<const cont_t*, string>& extra)
   {
@@ -605,6 +693,8 @@ namespace table {
     assert(x.size() == y.size());
     mismatch(begin(x), end(x), begin(y),
 	     create_t(abs_path_form, exclude, res, extra, z));
+    mismatch(begin(x), end(x), begin(y),
+	     create_if_t(abs_path_form, exclude, res, extra, z));
   }
 } // end fo namespace table
 
