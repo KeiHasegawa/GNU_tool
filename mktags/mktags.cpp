@@ -548,11 +548,15 @@ namespace table {
 		     bind2nd(ptr_fun(match), dir));
     if (q != end(exclude))
       return;
-    if (dir[0] == '.') {
-      string rpath = get_rpath(comp_dir);
-      if (!rpath.empty())
-	dir = comp_dir + '/' + dir;
+    if (dir == ".") {
+      res[file].push_back(&c);
+      auto path = comp_dir + '/' + file;
+      extra[&c] = path;
+      return;
     }
+    string rpath = get_rpath(comp_dir);
+    if (!rpath.empty())
+      dir = comp_dir + '/' + dir;
     auto path = dir + '/' + file;
     res[path].push_back(&c);
   }
@@ -603,11 +607,11 @@ namespace table {
 		     bind2nd(ptr_fun(match), dir));
     if (q != end(exclude))
       return;
-    if (dir[0] == '.') {
-      string rpath = get_rpath(comp_dir);
-      if (!rpath.empty())
-	dir = comp_dir + '/' + dir;
-    }
+    if (dir == ".")
+      return;
+    string rpath = get_rpath(comp_dir);
+    if (!rpath.empty())
+      dir = comp_dir + '/' + dir;
     auto path = dir + '/' + file;
     auto r = res.find(path);
     if (r != end(res))
@@ -790,11 +794,17 @@ namespace goal {
   }
   inline bool comp2(const cont_t* x, const cont_t* y)
   {
+#if 1
+    if (x->name != y->name)
+      return false;
+    return x->line == y->line;
+#else
     if (x->name != y->name)
       return false;
     if (x->line != y->line)
       return false;
     return x->file == y->file;
+#endif
   }
   using namespace table;
   inline void build(const pair<string, value_t>& p,
@@ -1017,7 +1027,7 @@ void debug(const cont_t& x)
 {
   cerr << '\t' << x.name << ',';
   debug(x.kind);
-  cerr << ',' << ',' << x.file << x.line << ',' << x.ext << endl;
+  cerr << ',' << x.file << ',' << x.line << ',' << x.ext << endl;
 }
 
 void debug(const debug_info_impl::info_t& x)
