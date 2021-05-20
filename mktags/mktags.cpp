@@ -491,6 +491,34 @@ namespace table {
   {
     return dir.substr(0, ex.length()) == ex;
   }
+  inline string not_redundant(string path)
+  {
+    for (auto p = 0 ; p != string::npos ;) {
+      auto debug = path.substr(p);
+      p = path.find('.', p);
+      if (p == string::npos)
+	return path;
+      switch (path[p+1]) {
+      case '.':
+	{
+	  assert(path[p+2] == '/');
+	  assert(path[p-1] == '/');
+	  auto q = path.find_last_of('/', p-2);
+	  assert(q != string::npos);
+	  path.erase(q, p - q + 2);
+	  p = q;
+	  break;
+	}
+      case '/':
+	path.erase(p, 2);
+	break;
+      default:
+	++p;
+	break;
+      }
+    }
+    return path;
+  }
   typedef vector<const cont_t*> value_t;
   typedef map<string, value_t> result_t;
   inline void create(const cont_t& c, string comp_dir,
@@ -556,6 +584,7 @@ namespace table {
     if (dir[0] == '.')
       dir = comp_dir + '/' + dir;
     auto path = dir + '/' + file;
+    path = not_redundant(path);
     res[path].push_back(&c);
   }
   inline void create_if(const pair<string, int>& x,
@@ -618,6 +647,7 @@ namespace table {
     if (dir[0] == '.')
       dir = comp_dir + '/' + dir;
     auto path = dir + '/' + file;
+    path = not_redundant(path);
     auto r = res.find(path);
     if (r != end(res))
       return;
@@ -813,8 +843,6 @@ namespace goal {
     value_t vv;
     unique_copy(begin(v), end(v), back_inserter(vv), comp2);
     string file = p.first;
-    if (file == "algorithm")
-      asm("int3");
     auto& dst = res[file];
     for (const auto& x : vv)
       build(file, x, extra, dst);
