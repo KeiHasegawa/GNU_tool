@@ -23,7 +23,7 @@ extern "C" {
 #include <unistd.h>
 #endif // __CYGWIN__
 
-#include <bfd.h>
+#include "bfd.h"
 #include "dwarf2.h"
 
 inline void usage(const char* prog)
@@ -141,10 +141,33 @@ namespace debug_info_impl {
   }
   inline void modify_enumerator(cont_t& x, const cont_t& y)
   {
-    if (x.line)
-      return;
+    assert(!x.line);
     x.line = y.line;
+    assert(!x.file);
     x.file = y.file;
+  }
+  inline void modify_enumerator(info_t& x)
+  {
+    auto& contents = x.contents; 
+    for (auto p = begin(contents) ; p != end(contents) ; ) {
+      p = find_if(p, end(contents), is_enum);
+      if (p != end(contents)) {
+	const auto& enum_type = *p;
+	auto b = p + 1;
+	assert(b != end(contents));
+	auto e = find_if(b, end(contents), not1(ptr_fun(is_enumerator)));
+	assert(b < e);
+	for ( ; b != e ; ++b)
+	  modify_enumerator(*b, enum_type);
+	p = e;
+      }
+    }
+  }
+  inline void modify_enumerator()
+  {
+    // Add line and file information to enumerator
+    for (auto& x : info)
+      modify_enumerator(x);
   }
   inline bool local(const cont_t& c)
   {
@@ -156,31 +179,10 @@ namespace debug_info_impl {
     auto p = remove_if(begin(contents), end(contents), local);
     contents.erase(p, end(contents));
   }
-  inline void modify_enumerator(info_t& x)
-  {
-    auto& contents = x.contents; 
-    for (auto p = begin(contents) ; p != end(contents) ; ) {
-      p = find_if(p, end(contents), is_enum);
-      if (p != end(contents)) {
-	const auto& enum_type = *p;
-	auto b = p + 1;
-	auto e = find_if(b, end(contents), not1(ptr_fun(is_enumerator)));
-	for ( ; b != e ; ++b)
-	  modify_enumerator(*b, enum_type);
-	p = e;
-      }
-    }
-  }
   inline void erase_local()
   {
     for (auto& x : info)
       erase_local(x);
-  }
-  inline void modify_enumerator()
-  {
-    // Add line and file information to enumerator
-    for (auto& x : info)
-      modify_enumerator(x);
   }
   inline void modify()
   {
@@ -194,24 +196,11 @@ extern "C" void  start_tag(enum dwarf_tag dt)
   debug_info_impl::curr_dt = dt;
 }
 
-extern "C" enum dwarf_tag curr_tag()
-{
-  return debug_info_impl::curr_dt;
-}
-
-bool trace_break;
-
 extern "C" void set_name(unsigned const char* s)
 {
   using namespace debug_info_impl;
   auto ss = reinterpret_cast<const char*>(s);
   switch (curr_dt) {
-  case DW_TAG_base_type:
-  case DW_TAG_unspecified_type:
-  case DW_TAG_formal_parameter:
-  case DW_TAG_template_value_param:
-  case DW_TAG_GNU_template_parameter_pack:
-    return;
   case DW_TAG_compile_unit:
     info.push_back(info_t(ss));
     return;
@@ -235,8 +224,6 @@ extern "C" void set_name(unsigned const char* s)
       return;
     }
   default:
-    if (trace_break)
-      asm("int3");
     return;
   }
 }
@@ -252,50 +239,20 @@ extern "C" void comp_dir(const unsigned char* s)
   b.comp_dir = ss;
 }
 
-extern "C" void set_decl_line(unsigned long long uvalue)
+inline void assert_dt()
 {
   using namespace debug_info_impl;
-  switch (curr_dt) {
-  case DW_TAG_variable:
-  case DW_TAG_subprogram:
-  case DW_TAG_typedef:
-  case DW_TAG_structure_type:
-  case DW_TAG_union_type:
-  case DW_TAG_member:
-  case DW_TAG_namespace:
-  case DW_TAG_class_type:
-  case DW_TAG_enumerator:
-  case DW_TAG_enumeration_type:
-  case DW_TAG_template_type_param:
-  case DW_TAG_pointer_type:
-    {
-      assert(!info.empty());
-      auto& i = info.back();
-      auto& contents = i.contents;
-      if (contents.empty())
-	return;
-      auto& c = contents.back();
-      if (!c.line) {
-	c.line = uvalue;
-	if (!uvalue)
-	  contents.pop_back();
-	return;
-      }
-      auto tmp = c;
-      tmp.line = uvalue;
-      contents.push_back(tmp);
-      return;
-    }
-  default:
-    if (trace_break)
-      asm("int3");
+  if (curr_dt == DW_TAG_structure_type)
     return;
-  }
+  if (curr_dt == DW_TAG_union_type)
+    return;
+  assert(curr_dt == DW_TAG_enumeration_type);
 }
 
 extern "C" void set_decl_file(unsigned long long uvalue)
 {
   using namespace debug_info_impl;
+  assert(curr_dt != DW_TAG_enumerator);
   switch (curr_dt) {
   case DW_TAG_variable:
   case DW_TAG_subprogram:
@@ -305,7 +262,6 @@ extern "C" void set_decl_file(unsigned long long uvalue)
   case DW_TAG_member:
   case DW_TAG_namespace:
   case DW_TAG_class_type:
-  case DW_TAG_enumerator:
   case DW_TAG_enumeration_type:
   case DW_TAG_template_type_param:
   case DW_TAG_pointer_type:
@@ -314,21 +270,57 @@ extern "C" void set_decl_file(unsigned long long uvalue)
       auto& i = info.back();
       auto& contents = i.contents;
       if (contents.empty())
-	return;
+	return assert_dt();
       auto& c = contents.back();
-      if (!c.file) {
-	c.file = uvalue;
+      auto kind = c.kind;
+      if (kind == DW_TAG_enumerator)
 	return;
-      }
-      auto tmp = c;
-      tmp.file = uvalue;
-      tmp.line = 0;
-      contents.push_back(tmp);
+      if (kind != curr_dt)
+	return assert_dt();
+      assert(!c.file);
+      c.file = uvalue;
       return;
     }
   default:
-    if (trace_break)
-      asm("int3");
+    return;
+  }
+}
+
+extern "C" void set_decl_line(unsigned long long uvalue)
+{
+  using namespace debug_info_impl;
+  assert(curr_dt != DW_TAG_enumerator);
+  switch (curr_dt) {
+  case DW_TAG_variable:
+  case DW_TAG_subprogram:
+  case DW_TAG_typedef:
+  case DW_TAG_structure_type:
+  case DW_TAG_union_type:
+  case DW_TAG_member:
+  case DW_TAG_namespace:
+  case DW_TAG_class_type:
+  case DW_TAG_enumeration_type:
+  case DW_TAG_template_type_param:
+  case DW_TAG_pointer_type:
+    {
+      assert(!info.empty());
+      auto& i = info.back();
+      auto& contents = i.contents;
+      if (contents.empty())
+	return assert_dt();
+      auto& c = contents.back();
+      auto kind = c.kind;
+      if (kind == DW_TAG_enumerator)
+	return;
+      if (kind != curr_dt)
+	return assert_dt();
+      assert(!c.line);
+      if (!uvalue)
+	return contents.pop_back();
+      c.line = uvalue;
+      return;
+    }
+  default:
     return;
   }
 }
@@ -342,6 +334,9 @@ extern "C" void set_ext()
   auto& contents = i.contents;
   assert(!contents.empty());
   auto& c = contents.back();
+  auto kind = c.kind;
+  assert(kind == DW_TAG_variable);
+  assert(!c.ext);
   c.ext = true;
 }
 
@@ -554,11 +549,14 @@ namespace table {
       extra[&c] = path;
       return;
     }
-    if (dir[0] == '.') {
-      string rpath = get_rpath(comp_dir);
-      if (!rpath.empty())
-	dir = comp_dir + '/' + dir;
+    string rpath = get_rpath(comp_dir);
+    if (rpath.empty()) {
+      res[file].push_back(&c);
+      extra[&c] = comp_dir;
+      return;
     }
+    if (dir[0] == '.')
+      dir = comp_dir + '/' + dir;
     auto path = dir + '/' + file;
     res[path].push_back(&c);
   }
@@ -611,11 +609,14 @@ namespace table {
       return;
     if (dir == ".")
       return;
-    if (dir[0] == '.') {
-      string rpath = get_rpath(comp_dir);
-      if (!rpath.empty())
-	dir = comp_dir + '/' + dir;
+    auto rpath = get_rpath(comp_dir);
+    if (rpath.empty()) {
+      auto p = res.find(file);
+      if (p != end(res))
+	return;
     }
+    if (dir[0] == '.')
+      dir = comp_dir + '/' + dir;
     auto path = dir + '/' + file;
     auto r = res.find(path);
     if (r != end(res))
@@ -798,17 +799,9 @@ namespace goal {
   }
   inline bool comp2(const cont_t* x, const cont_t* y)
   {
-#if 1
     if (x->name != y->name)
       return false;
     return x->line == y->line;
-#else
-    if (x->name != y->name)
-      return false;
-    if (x->line != y->line)
-      return false;
-    return x->file == y->file;
-#endif
   }
   using namespace table;
   inline void build(const pair<string, value_t>& p,
@@ -827,7 +820,7 @@ namespace goal {
 
 } // end of namespace goal
 
-extern int verbose_flag;
+bool trace_break;
 
 namespace for_vi {
   using namespace std;
@@ -943,6 +936,7 @@ int main(int argc, char** argv)
   bool abs_path_form = false;
   set<string> exclude;
   enum class mode_t { vi, emacs } mode = mode_t::vi;
+  extern int verbose_flag;
   for (int opt ; (opt = getopt(argc, argv, "aevE:t")) != -1 ; ) {
     switch (opt) {
     case 'a': abs_path_form = true;   break;
