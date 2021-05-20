@@ -904,9 +904,21 @@ namespace for_vi {
     }
     for (const auto& x : tags) {
       auto fn = x.first;
-      const auto& v = x.second;
-      for (const auto& tag : v)
-	output(ofs, tag, fn);
+      auto c = fn[0];
+      if (c != '.' && c != '/') {
+	const auto& v = x.second;
+	for (const auto& tag : v)
+	  output(ofs, tag, fn);
+      }
+    }
+    for (const auto& x : tags) {
+      auto fn = x.first;
+      auto c = fn[0];
+      if (c == '.' || c == '/') {
+	const auto& v = x.second;
+	for (const auto& tag : v)
+	  output(ofs, tag, fn);
+      }
     }
   }
 } // end of namespace for_vi
@@ -951,8 +963,19 @@ namespace for_emacs {
       return;
     }
 
-    for (const auto& x : raw)
-      output1(ofs, x);
+    for (const auto& x : raw) {
+      auto file = x.first;
+      auto c = file[0];
+      if (c != '.' && c != '/')
+	output1(ofs, x);
+    }
+
+    for (const auto& x : raw) {
+      auto file = x.first;
+      auto c = file[0];
+      if (c == '.' || c == '/')
+	output1(ofs, x);
+    }
   }
 } // end of namespace for_emacs
 
