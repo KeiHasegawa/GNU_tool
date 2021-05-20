@@ -37,11 +37,11 @@ $(PROG):$(OBJS)
 
 EXTRA_DEFINES = -DPACKAGE
 
-%.o : %.cpp
-	g++ -g3 -O0 -c $(EXTRA_DEFINES) -I$(BINUTILS_DIR)/include $< -o $@
-
 EXTRA_INCLUDES = -I$(BINUTILS_DIR)/binutils -I$(BINUTILS_DIR)/include \
 		 -I$(BINUTILS_DIR)/bfd
+
+%.o : %.cpp
+	g++ -g3 -O0 -c $(EXTRA_DEFINES) $(EXTRA_INCLUDES) $< -o $@
 
 %.o : %.c
 	gcc -g3 -O0 -c $(EXTRA_INCLUDES) $< -o $@
