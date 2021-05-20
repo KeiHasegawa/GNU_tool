@@ -6,10 +6,14 @@
 (*4) mktags.exe のビルド方法
 (*5) tags のフォーマット
 (*6) TAGS のフォーマット
-o(*7) C++ の STL に emacs でタグジャンプする.
+(*7) C++ の STL に emacs でタグジャンプする.
 (*8) コンテキスト
 (*9) gcc の -g3 オプション
-(*10) 使っていて気付いたこと
+(*10) 巨大なプログラムに対する動作
+(*11) emacs のタグジャンプのゆるさ
+(*12) 不完全型構造体の扱い
+(*13) C++ テンプレートのインスタンシエーション
+(*14) 気付いたこと
 
 (*1) vi での ctags の簡単な使い方
 
@@ -223,7 +227,7 @@ int main()
 /usr/local/include/c++/10.2.0/vector
 
      の 1 行目であった. これはどういうことかというと, emacs の対応する
-     Lisp の函数の仕様で, ファイル名に vector というものがあればそこに
+     lisp の函数の仕様で, ファイル名に vector というものがあればそこに
      ジャンプするということらしい.
 
      ファイル名ではなくて vector の宣言にジャンプするには
@@ -234,7 +238,7 @@ vector<int, std::allocator<int> >
      これは面倒だが機能してはいる. std::vector ではなくて単に vector
      になっているのは a.cpp の書き方に依存しているようである.
 
-     ファイル名にもジャンプするという emacs Lisp の対応する函数の仕様は
+     ファイル名にもジャンプするという emacs lisp の対応する函数の仕様は
      期せずして有用なものではある. 例えば mktags.exe 自身の TAGS を生成
      して dwarf2.h にタグジャンプすれば全く身に覚えのない,
      しかしビルド時に参照しているヘッダーファイルを簡単に開くことができる.
@@ -271,17 +275,77 @@ int main()
      -g オプションとの違いはマクロの情報が生成されることである.
      gdb や mktags.exe はこれらの情報を使用してプログラマに有用な
      情報を提供する. しかし -g オプションだけでも通常のデバッグ
-     情報が生成されるので, マクロへのタグジャンプが必要でなければ
+     情報が生成されるので, マクロへのタグジャンプをしないのであれば
      必要ない.
 
-(*10) 使っていて気付いたこと
+(*10) 巨大なプログラムに対する動作
 
      デバッグビルドした cc1 に mktags.exe を実行した結果:
 
+linux % ls -l cc1
+-rwxrwxr-x 1 khasegawa khasegawa 140158720  Mon 11 08:44 cc1
 linux % date ; ~/lang/53_GNU_tool/mktags/mktags.exe cc1 -e  ; date
 
      mktag.exe を -O0 ビルドしたものでは 3 分で終了している. -O3
      ビルドで試してみたところ 2 分 20 秒くらいだった.
+
+     mktags.exe の動作は objdump -g よりも少し複雑な動作をしている
+     からそれよりも時間がかかることになる(と予想した). インストールされて
+     いる  objdump は -O2 ビルドされているが, cc1 に対する実行結果は
+     3 分 30 秒くらいだった. 予想とは違い objdump -g のほうが実行時間
+     が長かったが, これは I/O アクセスのコストが高いということ
+     だと考えられる.
+
+(*11) emacs のタグジャンプのゆるさ
+
+     mktags.exe 自身の TAGS を生成すると create に対するタグが 4 つ
+     生成されている. しかし 5 個目の候補もある. それが以下.
+
+static struct data_struct *
+find_chunk (bfd *abfd, bfd_vma vma, bfd_boolean create)
+
+     これにジャンプしてしまう. おそらく lisp の函数がそういう仕様なの
+     だろう. 上は勿論 find_chunk というタグに対応した箇所である. 
+
+(*12) 不完全型構造体の扱い
+
+% cat a.c
+struct S;
+
+int main()
+{
+  struct S* ps = 0;
+  return 0;
+}
+% gcc -g3 a.c -o a.out
+% ./mktags.exe a.out
+# tags には構造体 S のタグが生成されていない
+
+      これは残念ながら gcc がそういう扱いをしているのでタグが生成されない
+      ということになる.
+
+(*13) C++ テンプレートのインスタンシエーション
+
+% cat a.cpp
+template<class C1> struct S1 {};
+
+template<class C2> struct S2 {};
+
+int main()
+{
+  S1<int>* p = nullptr;
+  S2<int> si;
+  return 0;
+}
+% g++ -g a.cpp -o a.out
+% ./mktags.exe a.out
+# tags には S1<int> のタグは生成されていない. S2<int> に対してはタグが生成
+# されている.
+
+     これも gcc が S1<int> に対して行番号情報を生成していないのでこういう
+     結果になっている.
+
+(*14) 気付いたこと
 
      mktags.exe 自身の TAGS ファイルに対して気付いたこと:
 
@@ -304,15 +368,6 @@ linux % date ; ~/lang/53_GNU_tool/mktags/mktags.exe cc1 -e  ; date
        に対してはなぜタグが生成されないのか. test020 を試してみたが
        これも期待通り動作している.
         
-     o create に対してタグジャンプすると 6 つ目の候補にパラメータを
-       create とする函数:
-
-static struct data_struct *
-find_chunk (bfd *abfd, bfd_vma vma, bfd_boolean create)
-
-        にジャンプしてしまう. 確認してみたが create に対する
-        タグは意図した通り生成されていた. おそらく Lisp の函数がそういう
-        仕様なのだろう.
 
       o bfd_openr 等に対しては函数の宣言と定義の両方に対してタグが生成
         されている. しかし通常は宣言に対してはタグが生成されない.

@@ -568,7 +568,18 @@ namespace table {
       return;
     if (dir == ".") {
       auto path = comp_dir + '/' + file;
-      res[path].push_back(&c);
+      if (abs_path_form)
+	res[path].push_back(&c);
+      else {
+	auto rpath = get_rpath(comp_dir);
+	if (rpath.empty())
+	  res[file].push_back(&c);
+	else {
+	  rpath = rpath + '/' + file;
+	  res[rpath].push_back(&c);
+	}
+	extra[&c] = path;
+      }
       return;
     }
     if (dir[0] == '/') {
