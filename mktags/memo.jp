@@ -6,7 +6,7 @@
 (*4) mktags.exe のビルド方法
 (*5) tags のフォーマット
 (*6) TAGS のフォーマット
-(*7) C++ の STL に emacs でタグジャンプする.
+o(*7) C++ の STL に emacs でタグジャンプする.
 (*8) コンテキスト
 (*9) gcc の -g3 オプション
 (*10) 使っていて気付いたこと
@@ -17,6 +17,7 @@
 タグジャンプ		:ta <タグ名>
 タグジャンプ		Ctrl-]
 元に戻る			Ctrl-T
+次の候補			???
 
 % cat a.c
 #include <stdio.h>
@@ -110,6 +111,8 @@ M-x visit-tags-table
 
 で生成した TAGS を指定する. 通常はカレントディレクトリの TAGS ファイルを
 開こうとしているから, その場合はリターンキーを押せばよい.
+これは明示的にやらなくてもタグジャンプしようとするとどの TAGS を
+使うか聞いてくるのでそれに答えればよい.
 
 ファイルを開いた状態で探したい名前のところにカーソルをもっていって
 
@@ -231,10 +234,12 @@ vector<int, std::allocator<int> >
      これは面倒だが機能してはいる. std::vector ではなくて単に vector
      になっているのは a.cpp の書き方に依存しているようである.
 
-     タグ名がなければファイル名にジャンプするという emacs Lisp の対応
-     する函数の仕様は期せずして有用なものではある. 例えば mktags.exe 自
-     身の TAGS を生成して dwarf2.h にタグジャンプすれば全く身に覚えのない,
+     ファイル名にもジャンプするという emacs Lisp の対応する函数の仕様は
+     期せずして有用なものではある. 例えば mktags.exe 自身の TAGS を生成
+     して dwarf2.h にタグジャンプすれば全く身に覚えのない,
      しかしビルド時に参照しているヘッダーファイルを簡単に開くことができる.
+     ジャンプ先は dwarf2 ではなく dwarf2.h である. そうしないと意図した
+     ところにジャンプできない.
 
 (*8) コンテキスト
 
@@ -251,8 +256,9 @@ int main()
   return 0;       次の候補は vector のデフォルトコンストラクタ
 }
 
-     コンパイラはその情報を生成している. しかし実現は難しい.
-     mktags.exe では vector にタグジャンプすると
+     コンパイラはその情報を生成してはいる. しかしタグジャンプで
+     上のような動作を実現することは難しい. mktags.exe の生成した
+     タグファイルで vector にタグジャンプすると
 
      第一候補 : ファイル vector
      第二候補 : メンバ名の const bfd_target *vector
@@ -266,7 +272,7 @@ int main()
      gdb や mktags.exe はこれらの情報を使用してプログラマに有用な
      情報を提供する. しかし -g オプションだけでも通常のデバッグ
      情報が生成されるので, マクロへのタグジャンプが必要でなければ
-     これで十分である.
+     必要ない.
 
 (*10) 使っていて気付いたこと
 
@@ -274,177 +280,50 @@ int main()
 
 linux % date ; ~/lang/53_GNU_tool/mktags/mktags.exe cc1 -e  ; date
 
-     これは mktag.exe を -O0 ビルドしたもの. 3 分で終了している. -O3
+     mktag.exe を -O0 ビルドしたものでは 3 分で終了している. -O3
      ビルドで試してみたところ 2 分 20 秒くらいだった.
-
-     enumerator の行番号を生成する修正を加えると cc1 に対するタグ生成で
-     不正メモリアクセスがきっかけなのか bad_alloc が投げられる.
-
-     生成した TAGS を使用して気付いたこと:
-
-last_text はいらないように思える.
 
      mktags.exe 自身の TAGS ファイルに対して気付いたこと:
 
-       o TAGS を見ると contents に対して同じものが並んでいる.
-         なので 2 つ目の候補にたどりつくのが難しい.
-
-しかし, 以下の同じ行が TAGS に出現する.
-  unsigned char *contents;contents1152,40241
-
-../../../binutils-2.36.1-2.src/binutils-2.36.1/bfd/bfd.h,6775219
-/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/bfd/./bfd.h,507667
-/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/bfd/bfd.h,389684
-/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/binutils/../bfd/bfd.h,822165
-/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/libctf/./../bfd/bfd.h,2569655
-/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/opcodes/../bfd/bfd.h,659513
-
-上の 6 つが異なるとしてだぶっている.
-
-     test014 で再現環境を作って, これを修正したつもりだがエンバグしている.
-
-     test014 での修正をキャンセルした状態で cc1 に対して TAGS を生成すると
-     予期しない例外がスローされている.
-
-     test013 での修正はカレントディレクトリに対する対処だった.
-
-     git の最新版で試してもやはり cc1 に対してエラーしている.
-
-% git cat-file -p cb4e82052d2d1aa8ba5dfbfd43d69fb48f96493c:mktags/mktags.cpp > mktags.cpp  # test013 の対応前の状態
-
-% ~/lang/53_GNU_tool/mktags/mktags.exe cc1 -e
-cannot open /home/khasegawa/gcc-10.2.0/host-i686-pc-linux-gnu/gcc//usr/include/_G_config.h
-...
-cannot open /home/khasegawa/gcc-10.2.0/i686-pc-linux-gnu/libstdc++-v3/src/c++98//usr/include/wchar.h
-terminate called after throwing an instance of 'std::bad_alloc'
-  what():  std::bad_alloc
-アボート
-% 
-
-
-% git cat-file -p 1c02e1511d3cfdd7042794c203e4ec44e2498043:mktags/mktags.cpp > mktags.cpp # test012 の対応前の状態
-% ~/lang/53_GNU_tool/mktags/mktags.exe cc1 -e
-terminate called after throwing an instance of 'std::bad_alloc'
-  what():  std::bad_alloc
-アボート
-% 
-
-% git cat-file -p 90951767e4a12cbc17311a233d3f9f834dc2f1bd:mktags/mktags.cpp > mktags.cpp
-% git cat-file -p 90951767e4a12cbc17311a233d3f9f834dc2f1bd:mktags/my_dwarf.c > my_dwarf.c
-% make
-% pushd
-% date ; ~/lang/53_GNU_tool/mktags/mktags.exe cc1 -e  ; date
-terminate called after throwing an instance of 'std::bad_alloc'
-  what():  std::bad_alloc
-アボート
-% 
-
-% git cat-file -p 05eaf8110dceaf0d762d4ad4e195098ccd9b1d97:mktags/mktags.cpp > mktags.cpp
-% make
-% !pu
-% !da
-date ; ~/lang/53_GNU_tool/mktags/mktags.exe cc1 -e ; date
-2021年  5月 20日 木曜日 06:42:35 JST
-terminate called after throwing an instance of 'std::bad_alloc'
-  what():  std::bad_alloc
-アボート
-2021年  5月 20日 木曜日 06:46:16 JST
-
-% git cat-file -p 8315dd873855986aaa8616f09b9e76e614dd8051:mktags/mktags.cpp > mktags.cpp
-% !ma
-% !pu
-% !da
-date ; ~/lang/53_GNU_tool/mktags/mktags.exe cc1 -e ; date
-2021年  5月 20日 木曜日 06:48:01 JST
-2021年  5月 20日 木曜日 06:51:09 JST
-
-ということは...
-
-% git cat-file -p 05eaf8110dceaf0d762d4ad4e195098ccd9b1d97:mktags/mktags.cpp > mktags.cpp.bug
-% diff -rc mktags.cpp mktags.cpp.bug
-
-enumerator の対処の修正でバグっていたらしい.
-
-% mv mktags.cpp mktags.cpp.ok
-% cp mktags.cpp.bug mktags.cpp
-% !ma
-% !pu
-% !da
-勿論だが, 再現している
-
-% diff -rc mktags.cpp mktags.cpp.bug 
-*** mktags.cpp	2021-05-20 07:06:49.799922520 +0900
---- mktags.cpp.bug	2021-05-20 06:56:56.925334469 +0900
-***************
-*** 869,875 ****
-    do_line(bp);
-  
-    do_info(bp);
-!   // debug_info_impl::modify_enumerator();
-  
-    do_macro(bp);
-  
---- 869,875 ----
-    do_line(bp);
-  
-    do_info(bp);
-!   debug_info_impl::modify_enumerator();
-  
-    do_macro(bp);
-  
-% !ma
-% pushd
-% !date
-正常終了
-
-
-impl_conv
-ix86_entity
-
-そもそも enum_type の後に enumerator が来ないというのはどういうケース
-なんだろう.
-
-set_decl_file で contents が空のケースはどういう場合?
-すでに file がセットされているのはどういう場合?
-
--e オプションなしだと正常終了する... => 勘違い
-
-
-       o endl に対してタグが生成されていない. 実際 objdump -g の結果
-         にも出現していない. endl の定義は以下:
+    o endl に対してタグが生成されていない. 実際 objdump -g の結果
+      にも出現していないのでタグが生成されないのは正しい.
+      しかし objdump -g に出現しないのはなぜだろうか. endl の定義は以下:
 
 ~/gcc-10.2.0/libstdc++-v3/include/std/ostream
   template<typename _CharT, typename _Traits>
     inline basic_ostream<_CharT, _Traits>&
     endl(basic_ostream<_CharT, _Traits>& __os)
     { return flush(__os.put(__os.widen('\n'))); }
+
+       そもそも operator<< に対してもタグが生成されていない.
+       test019 で operator<< をテストしてみたが期待通りの動作.
+       それならば
+
+       ostream&  std::operator<<(std::ostream&, const char*);
        
-       o string に対してのジャンプ先に
-
-  typedef basic_string<char>    string;
-
-         がない. TAGS にはその部分はある. Lisp の函数の問題なのか TAGS
-	 の問題かは不明.
+       に対してはなぜタグが生成されないのか. test020 を試してみたが
+       これも期待通り動作している.
         
-       o get_rpath に対してタグジャンプできていない.
+     o create に対してタグジャンプすると 6 つ目の候補にパラメータを
+       create とする函数:
 
-       o create に対してタグジャンプすると 4 つ目の候補にパラメータの
-         create とする函数にジャンプしてしまう.
+static struct data_struct *
+find_chunk (bfd *abfd, bfd_vma vma, bfd_boolean create)
 
-       o table に対してタグジャンプすると名前空間の table にジャンプ
-         できていない. 例えば他の debug_macro_impl などの名前空間
-	 ならば期待通りタグジャンプできている.
+        にジャンプしてしまう. 確認してみたが create に対する
+        タグは意図した通り生成されていた. おそらく Lisp の函数がそういう
+        仕様なのだろう.
 
-       o mode_t::emacs は emacs でタグジャンプして期待する動作に
-         なっている.
+      o bfd_openr 等に対しては函数の宣言と定義の両方に対してタグが生成
+        されている. しかし通常は宣言に対してはタグが生成されない.
+	objdump -g がそうなっているからで mktags.exe 自体の問題ではないが
+	気になるところ.
+	free も宣言に対してタグジャンプできている.
 
-       o TAGS を見ると分かるが mktags.cpp や my_dwarf.c my_objdump.c
-         が後になっている. これが先にくるべき.
+      o ostringstream に対してタグジャンプすると
 
-       o cywin 版で cannot open のメッセージが多数出ているが, おそらく
-         パスの作り方に誤りがある. => linux 版でも再現している.
+  typedef basic_ostringstream<char> 	ostringstream;
 
-
-        
-
-              
+        期待するところへジャンプできている. しかし
+	basic_ostringstream の宣言は TAGS にない. これは...
+	必要な情報が生成されていないということなのだろうか.

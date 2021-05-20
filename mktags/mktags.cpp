@@ -50,9 +50,9 @@ inline void do_line(bfd* bp)
     return;
   }
   struct sweeper {
-    bfd_byte* m_ptr;
-    sweeper(bfd_byte* p) : m_ptr{p} {}
-    ~sweeper(){ free(m_ptr); } 
+    bfd_byte* ptr;
+    sweeper(bfd_byte* p) : ptr{p} {}
+    ~sweeper(){ free(ptr); } 
   } sweeper(buf);
 
   my_display_debug_line(bp, section, buf);
@@ -105,9 +105,9 @@ inline void do_info(bfd* bp)
     return;
   }
   struct sweeper {
-    bfd_byte* m_ptr;
-    sweeper(bfd_byte* p) : m_ptr{p} {}
-    ~sweeper(){ free(m_ptr); } 
+    bfd_byte* ptr;
+    sweeper(bfd_byte* p) : ptr{p} {}
+    ~sweeper(){ free(ptr); } 
   } sweeper(buf);
 
   my_display_debug_info(bp, section, buf);
@@ -349,9 +349,9 @@ inline void do_macro(bfd* bp)
     return;
   }
   struct sweeper {
-    bfd_byte* m_ptr;
-    sweeper(bfd_byte* p) : m_ptr{p} {}
-    ~sweeper(){ free(m_ptr); } 
+    bfd_byte* ptr;
+    sweeper(bfd_byte* p) : ptr{p} {}
+    ~sweeper(){ free(ptr); } 
   } sweeper(buf);
 
   my_display_debug_macro(bp, section, buf);
@@ -567,9 +567,8 @@ namespace table {
     if (q != end(exclude))
       return;
     if (dir == ".") {
-      res[file].push_back(&c);
       auto path = comp_dir + '/' + file;
-      extra[&c] = path;
+      res[path].push_back(&c);
       return;
     }
     if (dir[0] == '/') {
@@ -1008,9 +1007,9 @@ int main(int argc, char** argv)
   }
 
   struct sweeper {
-    bfd* m_bp;
-    sweeper(bfd* bp) : m_bp{bp} {}
-    ~sweeper(){ bfd_close(m_bp); }
+    bfd* bp;
+    sweeper(bfd* p) : bp{p} {}
+    ~sweeper(){ bfd_close(bp); }
   } sweeper(bp); 
 
   if (!bfd_check_format(bp, bfd_object)) {
@@ -1113,34 +1112,46 @@ void debug(const debug_line_impl::info_t* p)
   debug(*p);
 }
 
-void debug1()
+void debug(const map<int, debug_line_impl::info_t>& m)
 {
-  using namespace debug_line_impl;
-  cerr << "debug_line_impl" << endl;
-  for (const auto& x : info) {
+  for (const auto& x : m) {
     cerr << '\t' << "OFFSET :" << hex << "0x" << x.first << endl;
     debug(x.second);
   }
 }
 
-void debug2()
+void debug1()
 {
-  using namespace debug_info_impl;
-  cerr << "debug_info" << endl;
-  for (const auto& x : info)
+  cerr << "debug_line_impl" << endl;
+  debug(debug_line_impl::info);
+}
+
+void debug(const vector<debug_info_impl::info_t>& v)
+{
+  for (const auto& x : v)
     debug(x);
 }
 
-void debug3()
+void debug2()
 {
-  using namespace debug_macro_impl;
-  cerr << "debug_macro_impl" << endl;
-  for (const auto& x : info) {
+  cerr << "debug_info" << endl;
+  debug(debug_info_impl::info);
+}
+
+void debug(const map<int, vector<cont_t> >& m)
+{
+  for (const auto& x : m) {
     auto line_offset = x.first;
     cerr << "line offset : 0x" << hex << line_offset << endl;
     for (const auto& c : x.second)
       debug(c);
   }
+}
+
+void debug3()
+{
+  cerr << "debug_macro_impl" << endl;
+  debug(debug_macro_impl::info);
 }
 
 void debug(const table::value_t& v)
