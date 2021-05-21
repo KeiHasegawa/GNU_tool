@@ -3,6 +3,20 @@ Tag generation
 (*1) How to use ctags (vi version)
 (*2) How to use ctags (emacs version)
 (*3) Create tag file from program
+(*4) How to build mktags.exe
+(*5) tags fromat
+(*6) TAGS format
+(*7) Tag jump to C++ STL
+(*8) Context
+(*9) gcc -g3 option
+(*10) For large program
+(*11) emacs agnostic tag jump
+(*12) Incomplete structure, union or class
+(*13) C++ template instantiation
+(*14) C++ template instantiation (part 2)
+(*15) Enumerator
+(*16) emacs for Windows
+(*17) Function declaration
 
 (*1) How to use ctags (vi version)
 
@@ -126,12 +140,280 @@ jumps to the macro `X' definition of b.c
 
 (*3) Create tag file from program
 
-     mktags.exe
-
-     Almost works like objdump -g. For building mktags.exe, it's necessary
-     to build objdump from binutils source files.
-
 % ./mktags.exe a.out
 # creating tags for vi
 % ./mktags.exe -e a.out
 # creating TAGS for emacs
+
+Option:
+
+-a : Absolute path form. By default, relative path form.
+-e : Creating TAGS for emacs. By default, creating tags for vi
+-v : Message out like objdump -g
+-E <dir> : Use like -e /usr. Ignore the file whose head of path is "/usr".
+
+(*4) How to build mktags.exe
+
+1. Build binutils from source file
+
+     Refer to:
+
+     Top -> "GNU tool" -> "linux binutils 2.36.1 install memo"
+
+2. Download  mktags.cpp my_dwarf.c my_objdump.c adn Makefile
+   and
+
+% make -n
+# Confirm that the way of envocation g++, gcc. And modify BINUTILS_DIR variable
+# defined at Makefile for your environment.
+% make
+# If succeed, mktags.exe will be built.
+
+(*5) tags fromat
+
+(tag-name)	(file-name)	(vi command)"	[fvdsm]	[file:]
+
+For example,
+HOGE	./a.c	1;"	d	file:
+main	./a.c	/^int main()$/;"	f
+
+means:
+
+    o For `HOGE' open ./a.c and jump to 1st line
+    o For `main' open ./a.c and search regular expression ^int main()$
+
+(*6) TAGS format
+
+    TAGS version of (*5) becomes like below:
+
+^L
+./a.c,45
+#define HOGE 1^?HOGE^A1,0
+int main()^?main^A3,16
+
+     ^L : Escape character '\f'
+     45 : Bytes of #define ... 16
+     ^? : putcchar(0177)
+     ^A : putchar(1)
+
+     Generally say,
+
+^L
+file-name1,bytes1
+text1^Ltag-name1^Aline-number1,offset1
+...
+
+    where file-name1, byte1, text1, line-number1 and offset1
+    are information for tag-name1.
+
+(*7) Tag jump to C++ STL
+
+     Generato TAGS like below:
+
+% cat a.cpp
+#include <vector>
+
+int main()
+{
+  using namespace std;
+  vector<int> vi;
+  return 0;
+}
+% g++ -g3 a.cpp -o a.out
+% ./mktags.exe -e a.out
+
+     And tag jump for `vector' goes to 1st line of
+
+/usr/local/include/c++/10.2.0/vector
+
+     I guess that find-tag also accepts file-name, where find-tag
+     is a lisp function assigned to M-.
+
+     If you want to the declaration of vector, specify the arugment
+     of find-tag as
+
+vector<int, std::allocator<int> >
+
+     It is troublesome, but works. Note that just `vector<...>'
+     not `std::vector<...>' is correct in this case.
+
+     find-tag facility of jump to file name is sometimes useful.
+     For example, generating TAGS of mktags.exe itself and tag jump
+     to dwarf2.h
+
+#include "dwarf2.h"  // Tag jump here
+
+     You can open dwarf2.h easily. Note that the arugment of find-tag
+     must be dwarf2.h not dwarf2. If not, jump to wrong file.
+
+(*8) Context
+
+     It's natural that find-tag doesn't understand context of it's
+     argument. It's valid specification. But I hope that find-tag
+     understantd the context. If find-tag can understand the context:
+
+#include <vector> // Jump to the file `verctor' from here 
+
+int main()
+{
+  using namespace std;
+  vector<int> vi; // Jump to the declaration of `vector' from here
+  return 0;       // 2nd candidacy may be default constuctor of `vector'
+}
+
+     Compiler generates its information. But it's very difficult to
+     implement find-tag which satisfies above. I tryied to tag-jump
+     using TAGS which was generated from mktags.exe itself.
+
+     1st candidacy : File `vector'
+     2nd candidacy : Member `const bfd_target *vector'
+     3rd candidacy : Default constructor of `vector'
+
+     2nd candidacy is not bug. But it's unfortunate.
+
+(*9) gcc -g3 option
+
+     -g3 option also generates macro information. If you don't
+     tag jump to name of macro, -g option is enough.
+
+(*10) For large program
+
+     For cc1 built with -g option, I tried like below:
+
+linux % ls -l cc1
+-rwxrwxr-x 1 khasegawa khasegawa 140158720  Mon 11 08:44 cc1
+linux % date ; ~/lang/53_GNU_tool/mktags/mktags.exe cc1 -e  ; date
+
+     mktags.exe built with -O0 ran for about 3.0 minites.
+     mktags.exe built with -O3 ran for about 2.5 minites.
+
+     Here, `objdump -g cc1' ran for 3.5 minites.
+
+(*11) emacs agnostic tag jump
+
+     mktags.exe generates TAGS for mktags.exe itself which containes
+     4 `create' tags. But 5th candidacy becomes below:
+
+static struct data_struct *
+find_chunk (bfd *abfd, bfd_vma vma, bfd_boolean create)
+
+     find-tag seems to be agnostic. Above is, of caurse, for `find_chunk'.
+
+(*12) Incomplete structure, union or class
+
+% cat a.c
+struct S;
+
+int main()
+{
+  struct S* ps = 0;
+  return 0;
+}
+% gcc -g3 a.c -o a.out
+% ./mktags.exe a.out
+# There is no entry for `S' at tags
+
+     Unfortunately, gcc doesn't generate line information for above `S'.
+
+(*13) C++ template instantiation
+
+% cat a.cpp
+template<class C1> struct S1 {};
+
+template<class C2> struct S2 {};
+
+int main()
+{
+  S1<int>* p = nullptr;
+  S2<int> si;
+  return 0;
+}
+% g++ -g a.cpp -o a.out
+% ./mktags.exe a.out
+# There is no entry for `S1<int>' even though there exists entry 
+# for `S2<int>' at tags
+
+     This result is spawn because g++ just generates line information
+     for S2<int> but not for S1<int>.
+
+(*14) C++ template instantiation (part 2)
+
+% cat a.cpp
+template<class C> struct S {};
+
+extern template class S<int>;
+
+int main()
+{
+  return 0;
+}
+% g++ -g a.cpp -o a.out
+% ./mktags.exe a.out
+# No entry for `S<int>' at tags
+
+     g++ doesn't genreate only line information but either name
+     for `S<int>'. If this is based on some specification, it's should be 
+     fixed, I think.
+
+     Hello world program of C++ version:
+
+% cat a.cpp
+#include <iostream>
+
+int main()
+{
+  using namespace std;
+  cout << "hello" << endl;
+  return 0;
+}
+
+     Because g++ doesn't generate debug information for `operator<<'
+     or `endl', No entry exists for these at tag file. So you can
+     not tag jump for these. But for `cout', you can, because `cout'
+     is declared as variable.
+
+(*15) Enumerator
+
+     Currently for enumerators, mktags.exe fabricate line information
+     which is same with tag name of enumerator:
+
+enum E {  // tag name : E
+  a,      // enumerator
+  b,      // enumerator
+  c       // enumerator
+};
+
+     For above example, gcc doesn't genrate line information for `a', `b',
+     and `c', mktags.exe adds the same line information with `E'.
+     This means tag jump to `c' leads to the position of `E'. 
+
+(*16) emacs for Windows
+
+     This description is about version 26.3.
+
+     M-. is not key binded to `find-tag' but to `find-tag-noselect'.
+     In the first place, `find-tag' doesn't exits.
+
+     For a tag which have some candidacies, executing M-. shows the list.
+     It seems to be useful but I don't know to how to jump to the file.
+
+     C-u M-. is not for the next candidacy. It's for the definiton
+     of specified tag. But at least, mktags.exe just generate tags
+     information distincted with declaration and definition.
+     
+     M-* is not binded for `pop-tag-mark'.
+
+(*17) Function declaration
+
+     Normally, tag is not generated for declaration because gcc doesn't
+     generate debug information for declaration.
+
+     But TAGS generated from mktags.exe itself contains the entries for
+     declaration and definition  of `bfd_openr', for example.
+
+     This is because g++ generates debug information for `bfd_openr',
+     it's not problem of mktags.exe. But I take care of it a little.
+
+     Also for `free', tag is generated for the declaration of it.
+     The reason is not clear currently.
+

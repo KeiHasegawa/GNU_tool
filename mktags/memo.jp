@@ -13,7 +13,10 @@
 (*11) emacs のタグジャンプのゆるさ
 (*12) 不完全型構造体の扱い
 (*13) C++ テンプレートのインスタンシエーション
-(*14) 気付いたこと
+(*14) C++ テンプレートのインスタンシエーション(その2)
+(*15) enum のメンバ
+(*16) Windows 版の emacs
+(*17) 函数の宣言
 
 (*1) vi での ctags の簡単な使い方
 
@@ -21,7 +24,6 @@
 タグジャンプ		:ta <タグ名>
 タグジャンプ		Ctrl-]
 元に戻る			Ctrl-T
-次の候補			???
 
 % cat a.c
 #include <stdio.h>
@@ -209,6 +211,7 @@ int main()^?main^A3,16
      のようになる.
 
 (*7) C++ の STL に emacs でタグジャンプする.
+
 % cat a.cpp
 #include <vector>
 
@@ -226,30 +229,35 @@ int main()
 
 /usr/local/include/c++/10.2.0/vector
 
-     の 1 行目であった. これはどういうことかというと, emacs の対応する
-     lisp の函数の仕様で, ファイル名に vector というものがあればそこに
-     ジャンプするということらしい.
+     の 1 行目であった. これはどういうことかというと, find-tag の仕様で,
+     ファイル名に vector というものがあればそこにジャンプするということ
+     らしい. ここで　find-tag は M-. に割り当てられた lisp の函数のこと
+     である.
 
      ファイル名ではなくて vector の宣言にジャンプするには
-     Find tag の引数に以下を指定する:
+     find-tag の引数に以下を指定する:
 
 vector<int, std::allocator<int> >
 
      これは面倒だが機能してはいる. std::vector ではなくて単に vector
      になっているのは a.cpp の書き方に依存しているようである.
 
-     ファイル名にもジャンプするという emacs lisp の対応する函数の仕様は
-     期せずして有用なものではある. 例えば mktags.exe 自身の TAGS を生成
-     して dwarf2.h にタグジャンプすれば全く身に覚えのない,
-     しかしビルド時に参照しているヘッダーファイルを簡単に開くことができる.
-     ジャンプ先は dwarf2 ではなく dwarf2.h である. そうしないと意図した
-     ところにジャンプできない.
+     ファイル名にもジャンプするという find-tag の仕様は期せずして有用な
+     ものではある. 例えば mktags.exe 自身の TAGS を生成して dwarf2.h に
+     タグジャンプすれば
+
+#include "dwarf2.h"  ここでタグジャンプ
+
+     全く身に覚えのない, しかしビルド時に参照しているヘッダーファイルを簡単
+     に開くことができる. ジャンプ先は dwarf2 ではなく dwarf2.h である. そう
+     しないと意図したところにジャンプできない.
 
 (*8) コンテキスト
 
      当然ながら emacs のタグジャンプでは対象が何かを判断していない.
      そういう仕様だからであるし, これは妥当に思える. 高望みすればタグ
-     ジャンプする先は最小限であってほしい. コンテキストを理解すれば
+     ジャンプする先は最小限であってほしい. find-tag がコンテキストを
+     理解すれば
 
 #include <vector> ここでタグジャンプしたらファイル vector を開く
 
@@ -276,7 +284,7 @@ int main()
      gdb や mktags.exe はこれらの情報を使用してプログラマに有用な
      情報を提供する. しかし -g オプションだけでも通常のデバッグ
      情報が生成されるので, マクロへのタグジャンプをしないのであれば
-     必要ない.
+     -g で十分である.
 
 (*10) 巨大なプログラムに対する動作
 
@@ -304,7 +312,7 @@ linux % date ; ~/lang/53_GNU_tool/mktags/mktags.exe cc1 -e  ; date
 static struct data_struct *
 find_chunk (bfd *abfd, bfd_vma vma, bfd_boolean create)
 
-     これにジャンプしてしまう. おそらく lisp の函数がそういう仕様なの
+     これにジャンプしてしまう. おそらく find-tag がそういう仕様なの
      だろう. 上は勿論 find_chunk というタグに対応した箇所である. 
 
 (*12) 不完全型構造体の扱い
@@ -342,43 +350,86 @@ int main()
 # tags には S1<int> のタグは生成されていない. S2<int> に対してはタグが生成
 # されている.
 
-     これも gcc が S1<int> に対して行番号情報を生成していないのでこういう
+     これも g++ が S1<int> に対して行番号情報を生成していないのでこういう
      結果になっている.
 
-(*14) 気付いたこと
+(*14) C++ テンプレートのインスタンシエーション(その2)
 
-     mktags.exe 自身の TAGS ファイルに対して気付いたこと:
+% cat a.cpp
+template<class C> struct S {};
 
-    o endl に対してタグが生成されていない. 実際 objdump -g の結果
-      にも出現していないのでタグが生成されないのは正しい.
-      しかし objdump -g に出現しないのはなぜだろうか. endl の定義は以下:
+extern template class S<int>;
 
-~/gcc-10.2.0/libstdc++-v3/include/std/ostream
-  template<typename _CharT, typename _Traits>
-    inline basic_ostream<_CharT, _Traits>&
-    endl(basic_ostream<_CharT, _Traits>& __os)
-    { return flush(__os.put(__os.widen('\n'))); }
+int main()
+{
+  return 0;
+}
+% g++ -g a.cpp -o a.out
+% ./mktags.exe a.out
+# S<int> のタグは生成されない
 
-       そもそも operator<< に対してもタグが生成されていない.
-       test019 で operator<< をテストしてみたが期待通りの動作.
-       それならば
+     これも g++ が S<int> に対して, 行番号はおろか, 名前すらも生成してい
+     ないからこのような結果になってしまっている. これが仕様だとするならば,
+     それ自体に問題がある.
 
-       ostream&  std::operator<<(std::ostream&, const char*);
-       
-       に対してはなぜタグが生成されないのか. test020 を試してみたが
-       これも期待通り動作している.
-        
+     C++ 版の hello world だが
 
-      o bfd_openr 等に対しては函数の宣言と定義の両方に対してタグが生成
-        されている. しかし通常は宣言に対してはタグが生成されない.
-	objdump -g がそうなっているからで mktags.exe 自体の問題ではないが
-	気になるところ.
-	free も宣言に対してタグジャンプできている.
+% cat a.cpp
+#include <iostream>
 
-      o ostringstream に対してタグジャンプすると
+int main()
+{
+  using namespace std;
+  cout << "hello" << endl;
+  return 0;
+}
 
-  typedef basic_ostringstream<char> 	ostringstream;
+     これに対して operator<< や endl に対してタグが生成されないのも
+     同じ理由である. cout は変数なので期待するタグは生成されている.
 
-        期待するところへジャンプできている. しかし
-	basic_ostringstream の宣言は TAGS にない. これは...
-	必要な情報が生成されていないということなのだろうか.
+(*15) enum のメンバ
+
+     現状 enum のメンバに対してタグを生成しているが, これは enum の
+     タグ名に対する行番号を mktags.exe で付加している:
+
+enum E {  // タグ名が E
+  a,      // enum のメンバ
+  b,      // enum のメンバ
+  c       // enum のメンバ
+};
+
+     上の例なら, gcc が a, b, c に対して行番号情報を生成しないので E の
+     行番号情報を付加しているということである. だから a に対してタグ
+     ジャンプすると E の行にカーソルが移動する.
+
+(*16) Windows 版の emacs
+
+     バージョン 26.3 での結果. (linux 版の emacs は 23.3.1 と少し古め)
+
+     M-. は find-tag ではなくて find-tag-noselect に対応している.
+     そもそも find-tag はないらしい.
+
+     複数候補あるタグに対して M-. をすると一覧がでてきて分かりやすい
+     かと思いきや, そこから選択して目的のファイルにジャンプする方法が
+     分からない.
+
+     C-u M-. は次の候補ではなくて定義位置にジャンプするらしいが, 少なくとも
+     mktags.exe が生成している TAGS は定義位置と定義ではない宣言位置を
+     区別してはいない.
+     
+     M-* は pop-tag-mark にキーバインドされていない. 自分で設定する必要
+     がある.
+
+(*17) 函数の宣言
+
+     通常は宣言に対してはタグが生成されない. これは gcc がタグを生成する
+     情報をだしていないためである.
+
+     しかし mktags.exe 自身の TAGS ファイルで試したところ bfd_openr 等に対
+     しては函数の宣言と定義の両方に対してタグが生成されている.
+
+     objdump -g がそうなっているからで mktags.exe 自体の問題ではないが
+     気になるところではある.
+
+     free に対しても宣言に対してタグが生成されている. 原因は調査中で,
+     単純なテストでは再現しない.
