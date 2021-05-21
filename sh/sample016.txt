@@ -1,0 +1,28 @@
+#!/bin/sh -vx
+# disk eater report
+
+passwd=/home/hasegawa/shell/sh/etcpasswd
+tops=10
+
+# This subshell generates 'username filesize homedirectory'
+(
+IFS=:			# Set divided charcter ':'
+set -f			# prohibit expanding Meta-charcter "*" to filename
+#
+# Get field using set command
+#
+while read line ; do
+	set $line	# $1 username
+			# $3 UID
+			# $6 home directory
+			# If there is "*" in passwd field, sh expands "*" to filename.
+			# So, like as above, set -f prohibit it.
+
+	if [ $3 -gt 0 ]; then		# root's UID is zero
+		if [ -d $6 ]; then	# existension of home directory 
+			echo $1 `du -s $6` # disk check
+		fi
+	fi
+
+done < $passwd
+)

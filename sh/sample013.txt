@@ -1,0 +1,32 @@
+#! /bin/sh
+
+username=$USER
+mimedecode=1
+debug=0
+hostname=
+
+# analisis option
+while getopts 'u:xd' opt ; do
+    case $opt in
+	'u') username=$OPTARG;;
+	'x') mimmedecode=0;;
+	'd') debug=1;;
+	'?') cat << EOF 1>&2
+usage	: $0 [-u username] [-x] [-d] hostname
+ -u	: sepcify username (default $USER) 	 	
+ -x	: don't decode MIME header
+ -d	: debug mode
+EOF
+	     exit 0
+	     ;;
+    esac
+done
+
+echo $username
+echo $mimedecode
+echo $debug
+echo $hostname
+echo $OPTIND
+
+
+

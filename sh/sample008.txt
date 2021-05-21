@@ -1,0 +1,39 @@
+#!/bin/sh
+echo x - foo.c
+cat > foo.c << EOF-foo.c
+#include <stdio.h>
+
+#include "foo.h"
+
+int main()
+{
+  float x[] = {2,3.0,5.5,34,44,879};
+  int n = sizeof x/sizeof x[0];
+
+  printf("Numbers are :");
+  for (int i = 0; i < n; i++)
+    printf("%8.3f",x[i]);  /* format */
+  printf("\n");
+  printf("Max is : %8.3f\n",max_float(x,n));
+  return 0;
+}
+
+float max_float(float* x, int n)
+{
+  float max = x[0];
+  for (int i = 1 ; i < n ; i++ )
+    if ( max < x[i] )
+      max = x[i];
+  return max;
+}
+EOF-foo.c
+echo x - foo.h
+cat > foo.h << EOF-foo.h
+float max_float(float* x, int n);
+EOF-foo.h
+echo x - Makefile
+cat > Makefile << EOF-Makefile
+foo:
+	gcc -o foo.exe -g foo.c 
+EOF-Makefile
+exit 0

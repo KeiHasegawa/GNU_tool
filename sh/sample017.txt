@@ -1,0 +1,32 @@
+#!/bin/sh
+##!/bin/sh -vx
+#echo -n "]0;$1"
+
+
+case $TERM in
+xterm*|kterm)
+	;;				# able
+*)
+	echo only xterm or kterm 1>&2	# In this terminal, this shell script is
+	exit 1;				# unenable.	
+esac
+
+case $# in				# According to the number of arguments	
+0)					# If no argument, use hostname as window name.
+					# If hostname contains "." like foo.bar.co.jp, 
+					# use foo as window name.
+	host=`IFS=. ; set \`hostname\`; echo $1`	
+	;;	
+*)
+	host $*
+	;;
+esac
+
+seq="|]0;${host}~"			# Build escape sequence.
+					# We express escape symbol with '|' 
+					# and bell symbol with '~' 
+					# So, these charcter cannot be display
+
+echo -n $seq | tr '|~' '\033\007'	# transpose these charcter using tr command
+exit 0
+

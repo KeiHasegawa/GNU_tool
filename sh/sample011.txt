@@ -1,0 +1,19 @@
+#!/bin/sh
+
+for i in *
+do
+    if [ -d $i ]
+    then echo $i directory
+    else # $i is file (may be) 
+	case $i in
+	    *.c) echo $i C program file;;
+	    *.h) echo $i C header file;;
+	    *.tex) echo $i TeX source file;;
+	    *.dvi) echo $i TeX DVI file;;
+	    *.txt) echo $i text file;;
+	    *.html) echo $i html file;;
+	    *) echo $i unknown type;;
+	esac
+    fi
+done
+ 

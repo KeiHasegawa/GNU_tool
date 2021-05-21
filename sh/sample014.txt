@@ -1,0 +1,44 @@
+#!/bin/sh
+#
+# 'new' cal command
+#
+# Usage : cal	 	; For the current month 
+#	: cal m 	; For the specified month of the current year
+#				(1 <= m <= 12)
+#	: cal y 	; For the specified year (1900 <= y <= 1999)
+#	: cal m y 	; For the same as original cal
+
+# original cal
+cal=/bin/cal
+
+# Classify according to the number of argument
+case $# in
+0)	# For the current month
+	exec $cal
+	;;
+1)	# For the specified month of the current year or  the specified year
+	month=$1
+	case $month in
+	????)	# For the specified year
+		exec $cal $month
+		;;
+	*) # For the specified month of the current year
+		LANG=C;export LANG 	# Display in English
+		set `date`		# Consult the current year
+					# Get the result of date command 
+					# usign set command
+					#
+					# Sat Aug 15 18:15:19 JST 1998
+					# $1  $2  $3    $4    $5   $6
+					#
+		year=$6
+		exec $cal $month $year
+		;;
+	esac
+	;;
+2)	# For the same as original cal
+	exec $cal $1 $2
+	;;
+*)	# Otherwise,
+	exec $cal $*
+esac
