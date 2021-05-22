@@ -1,0 +1,54 @@
+bash の式
+
+> cat sample000.txt
+#! /usr/local/bin/bash
+
+n=5-3
+echo $n
+echo $((n))
+echo $n
+> ./sample000.txt
+5-3
+2
+5-3
+>
+
+      $((式)) のように書いたときに算術式が評価されるらしい.
+
+> cat sample001.txt 
+#! /usr/local/bin/bash
+
+n=2
+
+if [ $n==2 ]
+then
+	echo "ok"
+else
+	echo "unexpected"
+fi
+> ./sample001.txt 
+ok
+> 
+
+       これは見た目期待通り動作しているように思えるが,
+
+> cat sample002.txt 
+#! /usr/local/bin/bash
+
+n=2
+
+if [ $n!=2 ]
+then
+	echo "unexpected"
+else
+	echo "ok"
+fi
+> ./sample002.txt 
+unexpected
+> 
+
+       こうなってしまう. 正解は          $((n!=2)) 
+       かと思ったが実は違っていた.
+
+
+
