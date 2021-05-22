@@ -780,7 +780,7 @@ namespace goal {
   }
   inline void build(string file, const cont_t* pcont,
 		    const map<const cont_t*, string>& extra,
-		    vector<tag_t>& res)
+		    vector<tag_t>& res, bool warn)
   {
     if (has_extra(file)) {
       auto p = extra.find(pcont);
@@ -798,7 +798,8 @@ namespace goal {
 	ifs.close();
       ifs.open(file);
       if (!ifs) {
-	cerr << "cannot open " << file << endl;
+	if (warn)
+	  cerr << "cannot open " << file << endl;
 	cannot_open.insert(file);
 	return;
       }
@@ -846,7 +847,7 @@ namespace goal {
   using namespace table;
   inline void build(const pair<string, value_t>& p,
 		    const map<const cont_t*, string>& extra,
-		    map<string, vector<tag_t> >& res)
+		    map<string, vector<tag_t> >& res, bool warn)
   {
     value_t v = p.second;
     sort(begin(v), end(v), comp);
@@ -855,7 +856,7 @@ namespace goal {
     string file = p.first;
     auto& dst = res[file];
     for (const auto& x : vv)
-      build(file, x, extra, dst);
+      build(file, x, extra, dst, warn);
   }
 
 } // end of namespace goal
@@ -996,12 +997,14 @@ int main(int argc, char** argv)
   set<string> exclude;
   enum class mode_t { vi, emacs } mode = mode_t::vi;
   extern int verbose_flag;
-  for (int opt ; (opt = getopt(argc, argv, "aevE:t")) != -1 ; ) {
+  bool warn = true;
+  for (int opt ; (opt = getopt(argc, argv, "aevE:wt")) != -1 ; ) {
     switch (opt) {
     case 'a': abs_path_form = true;   break;
     case 'e': mode = mode_t::emacs;   break;
     case 'v': verbose_flag = 1;       break;
     case 'E': exclude.insert(optarg); break;
+    case 'w': warn = false;           break;
     case 't': trace_break = true;     break;
     default:  usage(argv[0]);         return 1;
     }
@@ -1041,7 +1044,7 @@ int main(int argc, char** argv)
 
   map<string, vector<goal::tag_t> > tags;
   for (const auto& x : tbl)
-    goal::build(x, extra, tags);
+    goal::build(x, extra, tags, warn);
 
   switch (mode) {
   case mode_t::vi:
