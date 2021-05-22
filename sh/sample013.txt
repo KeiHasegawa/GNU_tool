@@ -1,4 +1,4 @@
-#! /bin/sh
+#! /usr/local/bin/bash
 
 username=$USER
 mimedecode=1
@@ -9,7 +9,7 @@ hostname=
 while getopts 'u:xd' opt ; do
     case $opt in
 	'u') username=$OPTARG;;
-	'x') mimmedecode=0;;
+	'x') mimedecode=0;;
 	'd') debug=1;;
 	'?') cat << EOF 1>&2
 usage	: $0 [-u username] [-x] [-d] hostname
@@ -17,16 +17,24 @@ usage	: $0 [-u username] [-x] [-d] hostname
  -x	: don't decode MIME header
  -d	: debug mode
 EOF
-	     exit 0
+	     exit 1
 	     ;;
     esac
 done
+
+echo $OPTIND
+echo ${#BASH_ARGV[@]}
+
+n=2 # ${#BASH_ARGV[@]} - $OPTIND
+if [ n != 2 ]   # not work
+then
+    echo "usage	: $0 [-u username] [-x] [-d] hostname"
+    exit 1
+fi
+
+hostname=${BASH_ARGV[OPTIND]}   ## not work
 
 echo $username
 echo $mimedecode
 echo $debug
 echo $hostname
-echo $OPTIND
-
-
-
