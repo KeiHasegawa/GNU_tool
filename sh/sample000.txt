@@ -1,6 +1,14 @@
-#! /usr/local/bin/bash
+#! /bin/sh
 
-n=5-3
-echo $n
-echo $((n))
-echo $n
+echo $BASH_ARGC
+echo $BASH_ARGV
+
+i=0
+for e in ${BASH_ARGV[@]}; do
+    echo "BASH_ARGV[$i] = ${e}"
+    let i++
+done
+
+for ((i = 0; i < ${#BASH_ARGV[@]}; ++i)) {
+    echo "BASH_ARGV[$i] = ${BASH_ARGV[i]}"
+}
