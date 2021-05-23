@@ -1,0 +1,83 @@
+BackSpace キー
+
+カーソルの後ろの文字を消したくて BackSpace キーを押したがミニバッファに
+
+C-h (Type ? for further options)-
+
+というメッセージが表示された. これは自分が意図した動作ではなかった.
+
+~/.emacs
+
+に以下を追加すると期待通り動作するらしい.
+
+(global-set-key "\C-h" 'delete-backward-char)
+
+とはいえ, これには突っ込みどころがたくさんある.
+これはおそらく Ctrl-H に delete-backward-char という Lisp の
+函数を割り当てるということなのだろう. カーソルの後ろの文字を消したいの
+ならば
+
+M-x delete-backward-char
+
+とすればいいということなのだ. M-x は Esc キーを押した後 x を押す
+ことを意味している.
+上の ~/.emacs を追加する前の状態で Ctrl-H には何が割り当てられていたか.
+これを調べるには
+
+M-x help
+
+としていわゆるヘルプをを見ることができる. そこにはさらに
+
+b
+
+をタイプするとキーバインドを見れるらしいことが分かる. b を押してみた.
+
+...
+C-h		help-command
+...
+
+そこで ~/.emacs を以下のようにした.
+
+(global-set-key "\C-h" 'delete-backward-char)
+
+(global-set-key "\M-?"  'help-command)
+
+1 つ目は Ctrl-H に delete-backward-char が
+2 つ目は M-? に help-command がそれぞれキーバインドされているということ
+である. M-? は Esc キーを押した後 ? を押すことを意味しているらしい.
+
+これを emacs に読み込ませるために一旦 emacs を終了してからもう一度
+起動してもよいのだが
+
+M-x load-file
+
+として
+
+~/.emacs
+
+と入力すればよい. BackSpace キーでヘルプが表示されることはなくなる.
+
+もう一度 help を表示してキーバインドを確かめてみる.
+
+M-? b
+
+と入力する. ~/.emacs を編集する前とは何やら様子が少し異なるが
+キーバインドを見ることはできている.
+
+...
+C-h		delete-backward-char
+...
+M-?		help-command
+...
+<f1>		help-command
+...
+
+C-h には delete-backward-char が
+M-? には help-command がそれぞれ割り当てられていることを確かめられるだろう.
+F1 も help-command に割り当てられている.
+
+F1 を押してみた. これは ~/.emacs を編集する前の状況と似ている:
+
+f1 (Type ? for further options)-
+
+上のようにミニバッファに表示されている.
