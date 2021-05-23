@@ -1,0 +1,222 @@
+(*) http://www.math.s.chiba-u.ac.jp/~matsu/lisp/ は参考になる
+
+(*) /usr/bin/emacs はバージョン 27.1 で cygwin のインストーラーでインスト
+ールしたものだが
+
+M-x gdb でデバッグできるようである.
+
+M-x man は相変わらず動作しない. M-x man で grep と入力したとき
+
+Unmatched '''.
+BEGIN: Command not found.
+anonblank=0: Command not found.
+}: Command not found.
+Illegal variable name.
+{: Command not found.
+}: Command not found.
+Illegal variable name.
+Badly placed ()'s.
+Unmatched '''.
+
+process exited abnormally with code 1
+
+
+が表示された. おまけにこっちの emacs はこのファイルを開いても文字化けしている.
+
+Illegal varialbe name.
+
+や
+
+process exited abnormally with code 1
+
+は例のメッセージということだろうか.
+
+(*) Windows 10 で emacs-26.3 を使用しているが, M-x gdb でデバッグしようと
+しても期待通り動作しない.
+
+emacs を使用しなければ gdb は期待通り動作している.
+
+M-x gdb  <- ここでリターンキー押下
+gdb -i=mi a.exe  <- さらにここでリターンキー押下
+
+で gdb のコマンドプロンプトが表示される.
+
+(gdb) b main
+
+でリターンキーを押すと list a.c:1 の結果が延々表示されてしまう.
+
+(*) Windows 10 で M-x man を実行してみても動作しない.
+M-x man <- ここでリターン
+grep <- さらにリターン
+
+Illegal variable name.
+
+process exited abnormally with code 1
+
+と表示される. man をターミナルから実行すれば期待通り動作している.
+
+(*) M-x desribe-function <- ここでリターンキー押下
+gdb <- さらにここでリターンキー押下
+
+とすると *Help* バッファに gdb という Lisp の函数の説明が表示される.
+*Help* バッファの 
+
+`gdb-mi.el'
+
+でさらにリターンキーを押してみる. そこには
+
+(defun gdb (command-line)
+
+の行があるファイルが表示された. このファイル名は
+
+d:/emacs-26.3/share/emacs/26.3/lisp/progmodes/gdb-mi.el
+
+であった. この函数の終わりはおそらく次の函数の始まり
+
+(defun gdb-init-1 ()
+
+の直前の ')' だと推測し, そこにカーソルを移動して
+
+M-x edebug-defun
+
+(gdb "gdb -i=mi a.exe")
+
+(*) debug-on-entry でデバッグ
+
+以下の函数 triangle-bugged を C-x C-e で評価する.
+
+(defun triangle-bugged (number)
+  "Return sum of numbers 1 through NUMBER inclusive."
+  (let ((total 0))
+    (while (> number 0)
+      (setq total (+ total number))
+      (setq number (1- number)))
+    total))
+
+そして
+
+M-x debug-on-entry <- ここでリターン
+triangle-bugged <- さらにここでリターン
+
+とする. そして以下の式を C-x C-e で評価する. 
+
+(triangle-bugged 5)
+
+そうすると *Backtrace* バッファが表示される.
+デバッガを終了するには q を入力する.
+C-x C-e でデバッガが動作しないようにするためには
+
+M-x cancel-debug-on-entry <- ここでリターン
+
+とする.
+*Backtrace* バッファで d を入力すれば Lisp の式を 1 つずつ評価しながら
+実行できる.
+
+(*) edebug-defun でデバッグ
+カーソルを triangle-bugged 函数内にある状態で
+
+M-x edebug-defun <- ここでリターン
+
+とする. そして以下の式を C-x C-e で評価する.
+
+(triangle-bugged 5)
+
+そうするとソースレベルデバッグができる. 終了するには q を押す.
+C-x C-e でデバッガが動作しないようにするためには
+triangle-bugged 函数の定義の最後の ')' で C-x C-e で評価し直せばよい. 
+
+(*) M-x man を edebug でデバッグしてみる.
+
+通常通り
+M-x man <- ここでリターン
+grep <- さらにここでリターン
+を実行した場合
+
+Illegal variable name.
+
+process exited abnormally with code 1
+
+が表示される.
+
+M-x describe-function <- ここでリターン
+man <- さらにここでリターン
+
+とすると *Help* バッファに Lisp の man 函数の説明が表示される.
+`man.el' にカーソルを持って行ってそこでリターンキーを押下する.
+
+d:/emacs-26.3/share/emacs/26.3/lisp/man.el
+
+が表示された. man 函数の定義内にカーソルを移動して
+
+M-x edebug-defun <- ここでリターン
+
+とする. そして
+
+M-x man
+
+とする. そうすると edebug でソースレベルデバッグができる.
+途中でコマンド(man ページ)を入力するように促されるので
+
+grep
+
+を入力しておく.
+
+この man 函数の最後の式
+
+(Man-getpage-in-background man-args)
+
+を実行したところで以下が表示される.
+
+Illegal variable name.
+
+process exited abnormally with code 1
+
+man 函数の定義の最後で C-x C-e としておけば edebug が発動しないようにできる.
+以下の式
+
+(Man-getpage-in-background "grep")
+
+を評価すれば M-x man grep とした結果と同じになるわけで, 実際そうなっている.
+
+(*) edebug-defun のコマンド
+
+M-x describe-function で edebug-defun の函数の説明を見てみる.
+やはり *Help* バッファに edebug-defun 函数の説明が表示される.
+残念ながらこれだけでは edebug 内でのコマンドが何かが分からない.
+
+? を edebug 中に押すとコマンドが表示されるらしい.
+
+b でブレークポイントを設定できて, c で continue できている.
+i で step-in できるらしい.
+
+(Man-notify-when-ready buffer)
+
+を実行したところで
+
+Illegal variable name.
+
+process exited abnormally with code 1
+
+が表示された.
+
+さらに追跡すると
+
+(display-buffer man-buffer 'not-this-window))
+
+を実行したところで
+
+Illegal variable name.
+
+process exited abnormally with code 1
+
+が表示された.
+
+(defun display-buffer (buffer-or-name &optional action frame)
+
+window.el
+
+の中を実行していたが迷ってしまっている. まぁそう簡単にはいかないんだろうな.
+
+(Man-getpage-in-background "grep")
+
+(buffer-file-name)
