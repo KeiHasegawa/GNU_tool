@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iterator>
 #include <numeric>
+#include <iomanip>
 #include <cassert>
 #ifdef __CYGWIN__
 // Not refer to getopt defined at Dynamic Link Library at CYGWIN
@@ -29,7 +30,7 @@ extern "C" {
 inline void usage(const char* prog)
 {
   using namespace std;
-  cerr << "usage % " << prog << " [-aev][-E dir] a.out" << endl;
+  cerr << "usage % " << prog << " [-aenv][-E dir] a.out" << endl;
 }
 
 extern "C" void my_display_debug_line(bfd*, bfd_section*, bfd_byte*);
@@ -739,7 +740,8 @@ namespace table {
     }
   };
   inline void create(bool abs_path_form, const set<string>& exclude,
-		     result_t& res, map<const cont_t*, string>& extra)
+		     result_t& res, map<const cont_t*, string>& extra,
+		     bool create_empty_file_entry)
   {
     const auto& x = debug_info_impl::info;
     const auto& y = debug_line_impl::info;
@@ -747,8 +749,9 @@ namespace table {
     assert(x.size() == y.size());
     mismatch(begin(x), end(x), begin(y),
 	     create_t(abs_path_form, exclude, res, extra, z));
-    mismatch(begin(x), end(x), begin(y),
-	     create_if_t(abs_path_form, exclude, res, extra, z));
+    if (create_empty_file_entry)
+      mismatch(begin(x), end(x), begin(y),
+	       create_if_t(abs_path_form, exclude, res, extra, z));
   }
 } // end fo namespace table
 
@@ -993,22 +996,27 @@ namespace for_emacs {
 int main(int argc, char** argv)
 {
   using namespace std;
+  extern char* program_name;
+  program_name = argv[0];
   bool abs_path_form = false;
   set<string> exclude;
   enum class mode_t { vi, emacs } mode = mode_t::vi;
   extern int verbose_flag;
+  bool create_empty_file_entry = true;
   bool warn = true;
-  for (int opt ; (opt = getopt(argc, argv, "aevE:wt")) != -1 ; ) {
+  for (int opt ; (opt = getopt(argc, argv, "aevE:wnt")) != -1 ; ) {
     switch (opt) {
     case 'a': abs_path_form = true;   break;
     case 'e': mode = mode_t::emacs;   break;
     case 'v': verbose_flag = 1;       break;
     case 'E': exclude.insert(optarg); break;
     case 'w': warn = false;           break;
+    case 'n': create_empty_file_entry = false; break;
     case 't': trace_break = true;     break;
     default:  usage(argv[0]);         return 1;
     }
   }
+
   if (argc - optind != 1) {
     usage(argv[0]);
     return 1;
@@ -1040,7 +1048,8 @@ int main(int argc, char** argv)
 
   table::result_t tbl;
   map<const cont_t*, string> extra;
-  table::create(abs_path_form, exclude, tbl, extra);
+  table::create(abs_path_form, exclude, tbl, extra,
+		create_empty_file_entry);
 
   map<string, vector<goal::tag_t> > tags;
   for (const auto& x : tbl)
@@ -1221,6 +1230,16 @@ void debug(const vector<cont_t>& v)
 {
   for (const auto& c : v)
     debug(c);
+}
+
+void debug(const bfd_byte* ptr, size_t sz)
+{
+  for (int i = 0 ; i != sz ; ++i) {
+    if (i && !(i & 0xf))
+      cerr << '\n';
+    cerr << ' ' << setw(2) << setfill('0') << hex << int(ptr[i]);
+  }
+  cerr << endl;
 }
 
 } // end of inline namespace 
