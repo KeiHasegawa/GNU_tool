@@ -11556,58 +11556,6 @@ struct dwarf_section_display debug_displays[] =
 /* A static assertion.  */
 extern int debug_displays_assert[ARRAY_SIZE (debug_displays) == max ? 1 : -1];
 
-#ifdef __CYGWIN__
-void
-my_display_debug_macro(struct bfd* bp,
-		       struct bfd_section* section,
-		       bfd_byte* start)
-{
-  if (bfd_big_endian (bp))
-    byte_get = byte_get_big_endian;
-  else
-    byte_get = byte_get_little_endian;
-
-  struct dwarf_section tmp = { 0 };
-  tmp.uncompressed_name = section->name;
-  tmp.name = section->name;
-  tmp.start = start;
-  tmp.size = section->size;
-  display_debug_macro(&tmp, bp);
-}
-
-void my_display_debug_info(struct bfd* bp,
-			   struct bfd_section* section, bfd_byte* start)
-{
-  if (bfd_big_endian (bp))
-    byte_get = byte_get_big_endian;
-  else
-    byte_get = byte_get_little_endian;
-
-  struct dwarf_section tmp = { 0 };
-  tmp.uncompressed_name = section->name;
-  tmp.name = section->name;
-  tmp.start = start;
-  tmp.size = section->size;
-  display_debug_info(&tmp, bp);
-}
-
-void my_display_debug_line(struct bfd* bp,
-			   struct bfd_section* section, bfd_byte* start)
-{
-  if (bfd_big_endian (bp))
-    byte_get = byte_get_big_endian;
-  else
-    byte_get = byte_get_little_endian;
-
-  struct dwarf_section tmp = { 0 };
-  tmp.uncompressed_name = section->name;
-  tmp.name = section->name;
-  tmp.start = start;
-  tmp.size = section->size;
-  display_debug_lines(&tmp, bp);
-}
-#endif // __CYGWIN__
-
 int verbose_flag;
 
 int printf (const char* fmt, ...)

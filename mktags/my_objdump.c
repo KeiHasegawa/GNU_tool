@@ -4961,6 +4961,10 @@ dump_bfd (bfd *abfd, bfd_boolean is_mainfile)
 
   if (dump_debugging)
     {
+#ifdef __CYGWIN__
+      dwarf_select_sections_all ();
+      dump_dwarf (abfd);
+#else // __CYGWIN__
       void *dhandle;
 
       dhandle = read_debugging_info (abfd, syms, symcount, TRUE);
@@ -4984,6 +4988,7 @@ dump_bfd (bfd *abfd, bfd_boolean is_mainfile)
 	  dwarf_select_sections_all ();
 	  dump_dwarf (abfd);
 	}
+#endif // __CYGWIN__
     }
 
   if (syms)
