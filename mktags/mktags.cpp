@@ -36,30 +36,35 @@ inline void usage(const char* prog)
 namespace debug_line_impl {
   using namespace std;
   struct info_t {
+    int offset;
     vector<string> dirs;
     vector<pair<string, int> > files;
   };
-  map<int, info_t> info;
-  int current_off;
+  vector<info_t> info;
 } // end of namespace debug_line_impl 
 
 extern "C" void set_offset(long offset)
 {
-  debug_line_impl::current_off = offset;
+  using namespace debug_line_impl;
+  info.push_back(info_t { offset });
 }
 
 extern "C" void dir_ent(unsigned char* s)
 {
   using namespace debug_line_impl;
   auto ss = reinterpret_cast<char*>(s);
-  info[current_off].dirs.push_back(ss);
+  assert(!info.empty());
+  auto& b = info.back();
+  b.dirs.push_back(ss);
 }
 
 extern "C" void file_entry(unsigned char* s, int dirno)
 {
   using namespace debug_line_impl;
   auto ss = reinterpret_cast<char*>(s);  
-  info[current_off].files.push_back(pair<string, int>(ss, dirno));
+  assert(!info.empty());
+  auto& b = info.back();
+  b.files.push_back(pair<string, int>{ss, dirno});
 }
 
 struct cont_t {
@@ -591,15 +596,14 @@ namespace table {
     res[path].push_back(tmp);
   }
   inline void create(const debug_info_impl::info_t& x,
-		     const pair<int, debug_line_impl::info_t>& y,
+		     const debug_line_impl::info_t& y,
 		     bool abs_path_form, const set<string>& exclude,
 		     result_t& res, map<const cont_t*, string>& extra)
   {
     auto comp_dir = x.comp_dir;
     const auto& contents = x.contents;
-    const auto& li = y.second;
     for (const auto& c : contents)
-      create(c, comp_dir, li, abs_path_form, exclude, res, extra);
+      create(c, comp_dir, y, abs_path_form, exclude, res, extra);
   }
   inline void
   create(const vector<cont_t>& contents, string comp_dir,
@@ -611,16 +615,15 @@ namespace table {
       create(c, comp_dir, li, abs_path_form, exclude, res, extra);
   }
   inline void create_if(const debug_info_impl::info_t& x,
-			const pair<int, debug_line_impl::info_t>& y,
+			const debug_line_impl::info_t& y,
 			bool abs_path_form, const set<string>& exclude,
 			result_t& res, map<const cont_t*, string>& extra)
   {
     auto comp_dir = x.comp_dir;
     const auto& contents = x.contents;
-    const auto& li = y.second;
-    const auto& files = li.files;
+    const auto& files = y.files;
     for (const auto& x : files)
-      create_if(x, comp_dir, li, abs_path_form, exclude, res, extra);
+      create_if(x, comp_dir, y, abs_path_form, exclude, res, extra);
   }
   struct create_t {
     bool abs_path_form;
@@ -633,16 +636,15 @@ namespace table {
 	     const map<int, vector<cont_t> >& zz) : abs_path_form{a},
       exclude{s}, res{r}, extra{m}, z{zz} {}
     bool operator()(const debug_info_impl::info_t& x,
-		    const pair<int, debug_line_impl::info_t>& y)
+		    const debug_line_impl::info_t& y)
     {
       create(x, y, abs_path_form, exclude, res, extra);
-      auto line_offset = y.first;
+      auto line_offset= y.offset;
       auto p = z.find(line_offset);
       if (p != end(z)) {
 	const auto& contents = p->second;
 	const auto comp_dir = x.comp_dir;
-	const auto& li = y.second;
-	create(contents, comp_dir, li, abs_path_form, exclude, res, extra);
+	create(contents, comp_dir, y, abs_path_form, exclude, res, extra);
       }
       return true;
     }
@@ -658,7 +660,7 @@ namespace table {
 		const map<int, vector<cont_t> >& zz) : abs_path_form{a},
       exclude{s}, res{r}, extra{m}, z{zz} {}
     bool operator()(const debug_info_impl::info_t& x,
-		    const pair<int, debug_line_impl::info_t>& y)
+		    const debug_line_impl::info_t& y)
     {
       create_if(x, y, abs_path_form, exclude, res, extra);
       return true;
@@ -1021,10 +1023,10 @@ void debug(const vector<string>& dirs)
 
 void debug(const debug_line_impl::info_t& x)
 {
+  cerr << '\t' << "OFFSET :" << hex << "0x" << x.offset << endl;
   auto dirs = x.dirs;
   cerr << '\t' << "Directory:" << endl;
   debug(dirs);
- 
   cerr << '\b' << "Files:" << endl;
   debug(x.files);
 }
@@ -1038,12 +1040,10 @@ void debug(const debug_line_impl::info_t* p)
   debug(*p);
 }
 
-void debug(const map<int, debug_line_impl::info_t>& m)
+void debug(const vector<debug_line_impl::info_t>& v)
 {
-  for (const auto& x : m) {
-    cerr << '\t' << "OFFSET :" << hex << "0x" << x.first << endl;
-    debug(x.second);
-  }
+  for (const auto& x : v)
+    debug(x);
 }
 
 void debug1()
