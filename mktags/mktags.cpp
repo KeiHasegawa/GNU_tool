@@ -33,6 +33,34 @@ inline void usage(const char* prog)
   cerr << "usage % " << prog << " [-aenv][-E dir] a.out" << endl;
 }
 
+#ifdef __CYGWIN__
+extern "C" void my_display_debug_line(bfd*, bfd_section*, bfd_byte*);
+
+inline void do_line(bfd* bp)
+{
+  using namespace std;
+  const char* name = ".debug_line";
+  auto section = bfd_get_section_by_name(bp, name);
+  if (!section) {
+    cerr << "Not foud : " << '"' << name << '"' << endl;
+    return;
+  }
+
+  bfd_byte *buf;
+  if (!bfd_malloc_and_get_section(bp, section, &buf)) {
+    cerr << "bfd_malloc_and_get_section failed" << endl;
+    return;
+  }
+  struct sweeper {
+    bfd_byte* ptr;
+    sweeper(bfd_byte* p) : ptr{p} {}
+    ~sweeper(){ free(ptr); } 
+  } sweeper(buf);
+
+  my_display_debug_line(bp, section, buf);
+}
+#endif // __CYGWIN__
+
 namespace debug_line_impl {
   using namespace std;
   struct info_t {
@@ -61,6 +89,34 @@ extern "C" void file_entry(unsigned char* s, int dirno)
   auto ss = reinterpret_cast<char*>(s);  
   info[current_off].files.push_back(pair<string, int>(ss, dirno));
 }
+
+#ifdef __CYGWIN__
+extern "C" void my_display_debug_info(bfd*, bfd_section*, bfd_byte*);
+
+inline void do_info(bfd* bp)
+{
+  using namespace std;
+  const char* name = ".debug_info";
+  auto section = bfd_get_section_by_name(bp, name);
+  if (!section) {
+    cerr << "Not foud : " << '"' << name << '"' << endl;
+    return;
+  }
+
+  bfd_byte *buf;
+  if (!bfd_malloc_and_get_section(bp, section, &buf)) {
+    cerr << "bfd_malloc_and_get_section failed" << endl;
+    return;
+  }
+  struct sweeper {
+    bfd_byte* ptr;
+    sweeper(bfd_byte* p) : ptr{p} {}
+    ~sweeper(){ free(ptr); } 
+  } sweeper(buf);
+
+  my_display_debug_info(bp, section, buf);
+}
+#endif // __CYGWIN__
 
 struct cont_t {
   std::string name;
@@ -282,6 +338,31 @@ extern "C" void set_ext()
   assert(!c.ext);
   c.ext = true;
 }
+
+#ifdef __CYGWIN__
+extern "C" void
+my_display_debug_macro(bfd*, bfd_section*, bfd_byte*);
+
+inline void do_macro(bfd* bp)
+{
+  using namespace std;
+  auto section = bfd_get_section_by_name(bp, ".debug_macro");
+  if (!section)
+    return;
+  bfd_byte *buf;
+  if (!bfd_malloc_and_get_section(bp, section, &buf)) {
+    cerr << "bfd_malloc_and_get_section failed" << endl;
+    return;
+  }
+  struct sweeper {
+    bfd_byte* ptr;
+    sweeper(bfd_byte* p) : ptr{p} {}
+    ~sweeper(){ free(ptr); } 
+  } sweeper(buf);
+
+  my_display_debug_macro(bp, section, buf);
+}
+#endif // __CYGWIN__
 
 namespace debug_macro_impl {
   using namespace std;
@@ -914,8 +995,10 @@ namespace for_emacs {
   }
 } // end of namespace for_emacs
 
+#ifndef __CYGWIN__
 extern "C" void
 display_file (char *filename, char *target, bfd_boolean last_file);
+#endif // __CYGWIN__
 
 int main(int argc, char** argv)
 {
@@ -940,6 +1023,36 @@ int main(int argc, char** argv)
     }
   }
 
+#ifdef __CYGWIN__
+  if (argc - optind != 1) {
+    usage(argv[0]);
+    return 1;
+  }
+
+  bfd* bp = bfd_openr(argv[optind], 0);
+  if (!bp) {
+    cerr << "bfd_openr(" << argv[optind] << ") faled" << endl;
+    return 1;
+  }
+
+  struct sweeper {
+    bfd* bp;
+    sweeper(bfd* p) : bp{p} {}
+    ~sweeper(){ bfd_close(bp); }
+  } sweeper(bp); 
+
+  if (!bfd_check_format(bp, bfd_object)) {
+    cerr << "bfd_check_format falied" << endl;
+    return 1;
+  }
+
+  do_line(bp);
+
+  do_info(bp);
+  debug_info_impl::modify();
+
+  do_macro(bp);
+#else // __CYGWIN__
   extern int dump_debugging;
   dump_debugging = 1;
 
@@ -949,8 +1062,8 @@ int main(int argc, char** argv)
     for ( ; optind < argc ; ++optind )
       display_file(argv[optind], nullptr, optind == argc - 1);
   }
-
   debug_info_impl::modify();
+#endif // __CYGWIN__
 
   table::result_t tbl;
   map<const cont_t*, string> extra;
