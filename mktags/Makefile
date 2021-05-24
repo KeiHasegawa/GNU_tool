@@ -12,8 +12,8 @@ else
 	BINUTILS_DIR = /home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1
 endif
 
-
-LIB_LIBIBERTY_FLAG = -L$(BINUTILS_DIR)/libiberty
+LIB_BFD =  $(BINUTILS_DIR)/bfd/libbfd.a
+LIB_LIBIBERTY = $(BINUTILS_DIR)/libiberty/libiberty.a
 
 ifneq (,$(findstring CYGWIN,$(UNAME)))
 	LIB_INTL_FLAG = -lintl
@@ -30,7 +30,7 @@ EXTRA_LIBS = $(BINUTILS_DIR)/binutils/bucomm.o \
 	     $(BINUTILS_DIR)/binutils/version.o \
 	     $(BINUTILS_DIR)/opcodes/libopcodes.a \
 	     $(BINUTILS_DIR)/libctf/.libs/libctf.a \
-	     -lbfd -liberty $(LIB_LIBIBERTY_FLAG) -ldl -lz $(LIB_INTL_FLAG)
+	     $(LIB_BFD) $(LIB_LIBIBERTY) -ldl -lz $(LIB_INTL_FLAG)
 
 $(PROG):$(OBJS)
 	g++ -o $(PROG) $(OBJS) $(EXTRA_LIBS)

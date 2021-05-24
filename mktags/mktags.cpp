@@ -33,32 +33,6 @@ inline void usage(const char* prog)
   cerr << "usage % " << prog << " [-aenv][-E dir] a.out" << endl;
 }
 
-extern "C" void my_display_debug_line(bfd*, bfd_section*, bfd_byte*);
-
-inline void do_line(bfd* bp)
-{
-  using namespace std;
-  const char* name = ".debug_line";
-  auto section = bfd_get_section_by_name(bp, name);
-  if (!section) {
-    cerr << "Not foud : " << '"' << name << '"' << endl;
-    return;
-  }
-
-  bfd_byte *buf;
-  if (!bfd_malloc_and_get_section(bp, section, &buf)) {
-    cerr << "bfd_malloc_and_get_section failed" << endl;
-    return;
-  }
-  struct sweeper {
-    bfd_byte* ptr;
-    sweeper(bfd_byte* p) : ptr{p} {}
-    ~sweeper(){ free(ptr); } 
-  } sweeper(buf);
-
-  my_display_debug_line(bp, section, buf);
-}
-
 namespace debug_line_impl {
   using namespace std;
   struct info_t {
@@ -86,32 +60,6 @@ extern "C" void file_entry(unsigned char* s, int dirno)
   using namespace debug_line_impl;
   auto ss = reinterpret_cast<char*>(s);  
   info[current_off].files.push_back(pair<string, int>(ss, dirno));
-}
-
-extern "C" void my_display_debug_info(bfd*, bfd_section*, bfd_byte*);
-
-inline void do_info(bfd* bp)
-{
-  using namespace std;
-  const char* name = ".debug_info";
-  auto section = bfd_get_section_by_name(bp, name);
-  if (!section) {
-    cerr << "Not foud : " << '"' << name << '"' << endl;
-    return;
-  }
-
-  bfd_byte *buf;
-  if (!bfd_malloc_and_get_section(bp, section, &buf)) {
-    cerr << "bfd_malloc_and_get_section failed" << endl;
-    return;
-  }
-  struct sweeper {
-    bfd_byte* ptr;
-    sweeper(bfd_byte* p) : ptr{p} {}
-    ~sweeper(){ free(ptr); } 
-  } sweeper(buf);
-
-  my_display_debug_info(bp, section, buf);
 }
 
 struct cont_t {
@@ -333,29 +281,6 @@ extern "C" void set_ext()
   assert(kind == DW_TAG_variable);
   assert(!c.ext);
   c.ext = true;
-}
-
-extern "C" void
-my_display_debug_macro(bfd*, bfd_section*, bfd_byte*);
-
-inline void do_macro(bfd* bp)
-{
-  using namespace std;
-  auto section = bfd_get_section_by_name(bp, ".debug_macro");
-  if (!section)
-    return;
-  bfd_byte *buf;
-  if (!bfd_malloc_and_get_section(bp, section, &buf)) {
-    cerr << "bfd_malloc_and_get_section failed" << endl;
-    return;
-  }
-  struct sweeper {
-    bfd_byte* ptr;
-    sweeper(bfd_byte* p) : ptr{p} {}
-    ~sweeper(){ free(ptr); } 
-  } sweeper(buf);
-
-  my_display_debug_macro(bp, section, buf);
 }
 
 namespace debug_macro_impl {
@@ -864,8 +789,6 @@ namespace goal {
 
 } // end of namespace goal
 
-bool trace_break;
-
 namespace for_vi {
   using namespace std;
   using namespace goal;
@@ -900,8 +823,6 @@ namespace for_vi {
       case DW_TAG_enumeration_type:
 	os << 'E'; break;
       default:
-	if (trace_break)
-	  asm("int3");
 	break;
       }
     }
@@ -993,6 +914,9 @@ namespace for_emacs {
   }
 } // end of namespace for_emacs
 
+extern "C" void
+display_file (char *filename, char *target, bfd_boolean last_file);
+
 int main(int argc, char** argv)
 {
   using namespace std;
@@ -1004,47 +928,29 @@ int main(int argc, char** argv)
   extern int verbose_flag;
   bool create_empty_file_entry = true;
   bool warn = true;
-  for (int opt ; (opt = getopt(argc, argv, "aevE:wnt")) != -1 ; ) {
+  for (int opt ; (opt = getopt(argc, argv, "aevE:wn")) != -1 ; ) {
     switch (opt) {
-    case 'a': abs_path_form = true;   break;
-    case 'e': mode = mode_t::emacs;   break;
-    case 'v': verbose_flag = 1;       break;
-    case 'E': exclude.insert(optarg); break;
-    case 'w': warn = false;           break;
+    case 'a': abs_path_form = true;            break;
+    case 'e': mode = mode_t::emacs;            break;
+    case 'v': verbose_flag = 1;                break;
+    case 'E': exclude.insert(optarg);          break;
+    case 'w': warn = false;                    break;
     case 'n': create_empty_file_entry = false; break;
-    case 't': trace_break = true;     break;
-    default:  usage(argv[0]);         return 1;
+    default:  usage(argv[0]); return 1;
     }
   }
 
-  if (argc - optind != 1) {
-    usage(argv[0]);
-    return 1;
+  extern int dump_debugging;
+  dump_debugging = 1;
+
+  if (optind == argc)
+    display_file (const_cast<char*>("a.out"), nullptr, TRUE);
+  else {
+    for ( ; optind < argc ; ++optind )
+      display_file(argv[optind], nullptr, optind == argc - 1);
   }
 
-  bfd* bp = bfd_openr(argv[optind], 0);
-  if (!bp) {
-    cerr << "bfd_openr(" << argv[optind] << ") faled" << endl;
-    return 1;
-  }
-
-  struct sweeper {
-    bfd* bp;
-    sweeper(bfd* p) : bp{p} {}
-    ~sweeper(){ bfd_close(bp); }
-  } sweeper(bp); 
-
-  if (!bfd_check_format(bp, bfd_object)) {
-    cerr << "bfd_check_format falied" << endl;
-    return 1;
-  }
-
-  do_line(bp);
-
-  do_info(bp);
   debug_info_impl::modify();
-
-  do_macro(bp);
 
   table::result_t tbl;
   map<const cont_t*, string> extra;
@@ -1084,8 +990,6 @@ void debug(enum dwarf_tag dt)
   case DW_TAG_enumerator: cerr << 'e'; break;
   case DW_TAG_enumeration_type: cerr << 'E'; break;
   default:
-    if (trace_break)
-      asm("int3");
     break;
   }
 }

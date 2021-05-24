@@ -112,7 +112,7 @@ static int wide_output;			/* -w */
 static int insn_width;			/* --insn-width */
 static bfd_vma start_address = (bfd_vma) -1; /* --start-address */
 static bfd_vma stop_address = (bfd_vma) -1;  /* --stop-address */
-static int dump_debugging;		/* --debugging */
+int dump_debugging;		/* --debugging */
 static int dump_debugging_tags;		/* --debugging-tags */
 static int suppress_bfd_header;
 static int dump_special_syms = 0;	/* --special-syms */
@@ -3748,6 +3748,17 @@ get_build_id (void * data)
 }
 #endif /* HAVE_LIBDEBUGINFOD */
 
+static int skip(const char* name)
+{
+  if (!strcmp(name, ".debug_line"))
+    return 0;
+  if (!strcmp(name, ".debug_info"))
+    return 0;
+  if (!strcmp(name, ".debug_macro"))
+    return 0;
+  return 1;
+}
+
 static void
 dump_dwarf_section (bfd *abfd, asection *section,
 		    void *arg ATTRIBUTE_UNUSED)
@@ -3768,6 +3779,9 @@ dump_dwarf_section (bfd *abfd, asection *section,
 	&& *debug_displays [i].enabled)
       {
 	struct dwarf_section *sec = &debug_displays [i].section;
+	const char* name = sec->uncompressed_name;
+	if (skip(name))
+	  continue;
 
 	if (strcmp (sec->uncompressed_name, match) == 0)
 	  sec->name = sec->uncompressed_name;
@@ -5098,7 +5112,7 @@ display_any_bfd (bfd *file, int level)
     display_object_bfd (file);
 }
 
-static void
+void
 display_file (char *filename, char *target, bfd_boolean last_file)
 {
   bfd *file;
