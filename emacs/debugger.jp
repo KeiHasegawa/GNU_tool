@@ -1,0 +1,77 @@
+Lisp のデバッガ
+
+「Lisp の函数を定義する(その2)」で定義した my-sum をデバッガ
+の制御のもとで動作させてみる.
+
+カーソルを my-sum 函数内にある状態で
+
+M-x edebug-defun <- ここでリターン
+
+とする. そして以下の式を C-x C-e で評価する.
+
+(my-sum 5)
+
+そうするとソースレベルデバッグができる. 終了するには q を押す.
+C-x C-e でデバッガが動作しないようにするためには
+my-sum 函数の定義の最後の ')' で C-x C-e で評価し直せばよい. 
+
+n : gdb でいうところの next らしい.
+
+これは実は edebug-next-mode という函数にキーバインドされている.
+デバッガを実行した状態で M-x help としさらに b を押してキーバインド
+を確かめてみる:
+
+...
+Major Mode Bindings:
+key             binding
+---             -------
+
+C-c		Prefix Command
+C-x		Prefix Command
+ESC		Prefix Command
+SPC		edebug-step-mode
+...
+n		edebug-next-mode
+...
+
+これで確認できる. スペースキーが gdb でいうところの step で
+n が gdb でいうところの next ということなのだろう.
+
+ところで「Lisp の函数を定義する」で述べた間違っている hello-world
+に対して同じことをしてみたところ:
+
+edebug-syntax-error: Invalid read syntax: "Expected", ([&rest arg] [&optional ["&optional" arg &rest arg]] &optional ["&rest" arg])
+
+と表示された. これはなんとなくだが, 期待した結果ではある.
+
+別の方法
+M-x debug-on-entry <- ここでリターン
+my-sum <- さらにここでリターン
+
+とする. そして以下の式を C-x C-e で評価する. 
+
+(my-sum 5)
+
+そうすると *Backtrace* バッファが以下のように表示される:
+
+Debugger entered--entering a function:
+* my-sum(5)
+  eval((my-sum 5))
+  eval-last-sexp-1(nil)
+  eval-last-sexp(nil)
+  call-interactively(eval-last-sexp nil nil)
+
+もし表示されないようなら一度
+
+M-x cancel-debug-on-entry <- ここでリターン
+
+としてからもう一度試すとできるかもしれない.
+
+デバッガを終了するには q を入力する.
+C-x C-e でデバッガが動作しないようにするためには
+
+M-x cancel-debug-on-entry <- ここでリターン
+
+とする.
+*Backtrace* バッファで d を入力すれば Lisp の式を 1 つずつ評価しながら
+実行できるらしい. しかしこれは非常に分かりにくい.

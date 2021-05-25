@@ -1,0 +1,64 @@
+Lisp の函数を定義する(その2)
+
+hello world でつまずいた. ここは謙虚にできているサンプルを
+試してみる.
+
+引数 number に対して 1 + 2 + ... + number を求める Lisp の函数は
+以下のようになるらしい:
+
+(defun my-sum (number)
+  "Return sum of numbers 1 through NUMBER."
+  (let ((total 0))
+    (while (> number 0)
+      (setq total (+ total number))
+      (setq number (1- number)))
+    total))
+
+C-x C-e として上の式を評価した後, 以下の式を評価した:
+
+(my-sum 5)
+
+ミニバッファに 15 と表示されている. 検算のため以下の式も評価した:
+
+(+ 1 2 3 4 5)
+
+合っている.
+
+M-x describe-function
+my-sum
+
+としたところ以下のように *Help* バッファに表示された:
+
+my-sum is a Lisp function.
+
+(my-sum NUMBER)
+
+Return sum of numbers 1 through NUMBER.
+
+[back]
+
+
+これは期待する結果になっている. ここで気付くことがある.
+「Lisp の函数を定義する」では describe-function の結果は
+実は正しくなかったのだ.
+
+以下が正解:
+
+(defun hello-world ()
+       "This part is explanation of function."
+       (message "hello world"))
+
+そしてこの函数は以下の式を評価することで呼び出すことができる:
+
+(hello-world)
+
+みにバッファに
+
+"hello world"
+
+と表示されていることを確認できる.
+
+hello-world
+
+を評価しても期待する結果は得られない. ( ) が必要なようだ.
+
