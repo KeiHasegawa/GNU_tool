@@ -1,0 +1,25 @@
+No problem at linux. I did like below:
+
+% wget -q ftp://ftp.cwru.edu/pub/bash/bash-5.0.tar.gz
+% gunzip -c bash-5.0.tar.gz | tar xf -
+% cd bash-5.0
+% ./configure
+% make
+% sudo make install
+
+Problem occured at cygwin:
+% gunzip -c bash-5.0.tar.gz | tar xf -
+% cd bash-5.0
+% ./configure
+% make
+/usr/local/lib/gcc/x86_64-pc-cygwin/10.1.0/../../../../x86_64-pc-cygwin/bin/ld: ./lib/termcap/libtermcap.a(termcap.o):/cygdrive/d/home/khasegawa/bash-5.0/lib/termcap/termcap.c:295: multiple definition of `PC'; ./lib/readline/libreadline.a(terminal.o):/cygdrive/d/home/khasegawa/bash-5.0/lib/readline/terminal.c:109: first defined here
+/usr/local/lib/gcc/x86_64-pc-cygwin/10.1.0/../../../../x86_64-pc-cygwin/bin/ld: ./lib/termcap/libtermcap.a(tparam.o):/cygdrive/d/home/khasegawa/bash-5.0/lib/termcap/tparam.c:127: multiple definition of `UP'; ./lib/readline/libreadline.a(terminal.o):/cygdrive/d/home/khasegawa/bash-5.0/lib/readline/terminal.c:109: first defined here
+/usr/local/lib/gcc/x86_64-pc-cygwin/10.1.0/../../../../x86_64-pc-cygwin/bin/ld: ./lib/termcap/libtermcap.a(tparam.o):/cygdrive/d/home/khasegawa/bash-5.0/lib/termcap/tparam.c:126: multiple definition of `BC'; ./lib/readline/libreadline.a(terminal.o):/cygdrive/d/home/khasegawa/bash-5.0/lib/readline/terminal.c:109: first defined here
+collect2: error: ld returned 1 exit status
+make: *** [Makefile:582: bash.exe] Error 1
+
+Modified below for link error
+bash-5.0/lib/termcap/termcap.c
+bash-5.0/lib/termcap/tparam.c
+% make
+% make install

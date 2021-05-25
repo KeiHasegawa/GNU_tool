@@ -1,0 +1,55 @@
+bash expression
+
+> cat sample001.txt
+#! /usr/local/bin/bash
+
+n=5-3
+echo $n
+echo $((n))
+echo $n
+> ./sample001.txt
+5-3
+2
+5-3
+>
+
+      $((expr)) invokes evaluation, I think.
+
+> cat sample002.txt 
+#! /usr/local/bin/bash
+
+n=2
+
+if [ $n==2 ]
+then
+	echo "ok"
+else
+	echo "unexpected"
+fi
+> ./sample002.txt 
+ok
+> 
+
+      Above works as I expected. But
+
+> cat sample003.txt 
+#! /usr/local/bin/bash
+
+n=2
+
+if [ $n!=2 ]
+then
+	echo "unexpected"
+else
+	echo "ok"
+fi
+> ./sample003.txt 
+unexpected
+> 
+
+       Above doesn't work. I wondered that
+
+$((n!=2)) 
+
+       was correct, but it's not.
+
