@@ -46,7 +46,7 @@ namespace debug_line_impl {
 extern "C" void set_offset(long offset)
 {
   using namespace debug_line_impl;
-  info.push_back(info_t { offset });
+  info.push_back(info_t { (int)offset });
 }
 
 extern "C" void dir_ent(unsigned char* s)
