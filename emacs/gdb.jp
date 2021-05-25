@@ -1,0 +1,86 @@
+M-x gdb
+
+emacs 27.2 で M-x gdb とすると
+
+Run gdb (like this): gdb -i=mi mktags.exe
+
+のように gdb を -i=mi オプションで起動しようとしているようである.
+
+一方 emacs 2.24.4 では
+
+Run gdb (like this): gdb --annotate=3 mktags.exe
+
+のように --annotate=3 オプションなっている. この文章では伝わらないが
+
+Run gdb (like this):
+
+の部分の色合いも少し異なっている.
+ところで man gdb としても --annotate については記述されていない.
+emacs ではなく, 普通にコンソール(ターミナル)から gdb を実行してみる
+
+% gdb --annotate=3
+
+これは明らかに通常と動作が異なっている. マニュアルには記載されていないが
+そういうオプションがあるのだ.
+
+% gdb -i=mi
+
+これも明らかに違っている.
+
+ところで emacs 2.24.4 では快適に M-x gdb が動作していたのに emacs 27.2
+では何かおかしい. 例えば
+
+   o gdb のプロンプト (gdb) が表示されるべきところで表示されていない
+   o バッファが 3 分割になる.
+
+     (1) gdb のプロンプトのバッファ
+     (2) プログラムのソースファイルのバッファ
+     (3) おそらくデバッグされるプログラムの標準出力, 標準エラー出力
+
+     これは意図してこうしているのだろうが, 今までと異なっていて何か
+     不便である.
+
+試しに emacs 27.2 で
+
+M-x gdb
+Run gdb (like this): gdb --annotate=3 mktags.exe
+
+としてみたところ...
+
+
+Error: you did not specify -i=mi on GDB's command line!
+GNU gdb (GDB) 10.2
+Copyright (C) 2021 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+Type "show copying" and "show warranty" for details.
+This GDB was configured as "i686-pc-linux-gnu".
+Type "show configuration" for configuration details.
+For bug reporting instructions, please see:
+<https://www.gnu.org/software/gdb/bugs/>.
+Find the GDB manual and other documentation resources online at:
+    <http://www.gnu.org/software/gdb/documentation/>.
+
+For help, type "help".
+Type "apropos word" to search for commands related to "word"...
+Reading symbols from mktags.exe...
+(gdb) Undefined command: "1-inferior-tty-set".  Try "help".
+(gdb) Undefined command: "2-gdb-set".  Try "help".
+(gdb) Undefined command: "3-gdb-set".  Try "help".
+(gdb) Undefined command: "4-enable-pretty-printing".  Try "help".
+(gdb) Undefined command: "5-enable-frame-filters".  Try "help".
+(gdb) Undefined command: "6-file-list-exec-source-files".  Try "help".
+(gdb) Undefined command: "7-file-list-exec-source-file".  Try "help".
+(gdb) Undefined command: "8-gdb-show".  Try "help".
+(gdb) Undefined command: "9-stack-info-frame".  Try "help".
+(gdb) Undefined command: "10-thread-info".  Try "help".
+(gdb) Undefined command: "11-break-list".  Try "help".
+(gdb) Undefined command: "12-thread-info".  Try "help".
+(gdb) Undefined command: "13-break-list".  Try "help".
+(gdb) b main
+Undefined command: "-interpreter-exec".  Try "help".
+(gdb) 
+
+だめらしい. しょうがないので gdb を使用するときは emacs 2.24.4 を
+使うべきである. というより早く Lisp をマスターして原因を究明するべきだろう.
