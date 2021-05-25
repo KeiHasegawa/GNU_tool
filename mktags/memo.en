@@ -15,8 +15,7 @@ Tag generation
 (*13) C++ template instantiation
 (*14) C++ template instantiation (part 2)
 (*15) Enumerator
-(*16) emacs for Windows
-(*17) Function declaration
+(*16) Function declaration
 
 (*1) How to use ctags (vi version)
 
@@ -24,6 +23,7 @@ Tag jump    vi -t <name>
 Tag jump    :ta <name>
 Tag jump    Ctrl-]
 Back	    Ctrl-T
+Select	    :ts <name>
 
 % cat a.c
 #include <stdio.h>
@@ -101,12 +101,24 @@ Ctrl-T
 
 jumps back.
 
+:ts X
+
+shows the list of X and you can chose destination.
+
 (*2) How to use ctags (emacs version)
 
 Specify `TAGS'		M-x visit-tags-table
 Tag jump		M-.
-Back			M-*
-Next			C-u M-.
+Back			M-*		(*A)
+Next			C-u M-.		(*B)
+
+(*A) At emacs 27.2, not binded.
+     You can insert below into ~/.emacs:
+
+(global-set-key "\M-*" 'pop-tag-mark)
+
+(*B) emacs 23.3.1 only
+     At emacs 27.2, bind to other function.
 
 % ctags -e b.c c.c hoge.c d.h
 # Above generates `TAGS'
@@ -152,6 +164,7 @@ Option:
 -v : Message out like objdump -g
 -E <dir> : Use like -e /usr. Ignore the file whose head of path is "/usr".
 -w : No warning when opening source file is failed.
+-n : Not create dummy tag for empty file. By default create it.
 
 (*4) How to build mktags.exe
 
@@ -228,7 +241,8 @@ int main()
 /usr/local/include/c++/10.2.0/vector
 
      I guess that find-tag also accepts file-name, where find-tag
-     is a lisp function assigned to M-.
+     is a lisp function assigned to M-. But this phenomenon is
+     restricted within emacs 23.3.1.
 
      If you want to the declaration of vector, specify the arugment
      of find-tag as
@@ -246,6 +260,9 @@ vector<int, std::allocator<int> >
 
      You can open dwarf2.h easily. Note that the arugment of find-tag
      must be dwarf2.h not dwarf2. If not, jump to wrong file.
+
+     And I noticed that dwarf2.h could be opened at emacs 27.2. It's
+     very storage.
 
 (*8) Context
 
@@ -272,6 +289,14 @@ int main()
 
      2nd candidacy is not bug. But it's unfortunate.
 
+     Repeatedly say this is restricted within emacs 23.3.1.
+     At emacs 27.2, fin-tag shows the below list:
+
+     1st candidacy          : Member `const bfd_target *vector'
+     2nd candidacy and more : vector constructors
+
+     This is, anyway, very easy to understand.
+
 (*9) gcc -g3 option
 
      -g3 option also generates macro information. If you don't
@@ -289,6 +314,12 @@ linux % date ; ~/lang/53_GNU_tool/mktags/mktags.exe cc1 -e  ; date
      mktags.exe built with -O3 ran for about 2.5 minites.
 
      Here, `objdump -g cc1' ran for 3.5 minites.
+
+     If you want to create tag for just special files, you can do like:
+
+% ./mktags.exe a.o
+% ./mktags.exe a.o b.o c.o
+% ./mktags.exe libxxx.a
 
 (*11) emacs agnostic tag jump
 
@@ -388,22 +419,7 @@ enum E {  // tag name : E
      and `c', mktags.exe adds the same line information with `E'.
      This means tag jump to `c' leads to the position of `E'. 
 
-(*16) emacs for Windows
-
-     This description is about version 26.3.
-
-     M-. is not binded to `find-tag' but to `find-tag-noselect'.
-
-     For a tag which have some candidacies, executing M-. shows the list.
-     It seems to be useful. Type 'p' cause jump to the selected position.
-
-     C-u M-. is not for the next candidacy. It's for the definiton
-     of specified tag. But at least, mktags.exe just generate tags
-     information distincted with declaration and definition.
-     
-     M-* is not binded for `pop-tag-mark'.
-
-(*17) Function declaration
+(*16) Function declaration
 
      Normally, tag is not generated for declaration because gcc doesn't
      generate debug information for declaration.
@@ -416,4 +432,3 @@ enum E {  // tag name : E
 
      Also for `free', tag is generated for the declaration of it.
      The reason is not clear currently.
-
