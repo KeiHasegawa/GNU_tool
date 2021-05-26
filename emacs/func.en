@@ -1,0 +1,146 @@
+Define Lisp function
+
+(*) hello world
+
+(defun hello-world
+       "This part is explanation of function."
+       (message "hello world"))
+
+For above Lisp expression, I evaluated with C-x C-e, then
+*Backtrace* became like below:
+
+Debugger entered--Lisp error: (error "Malformed arglist: This part is explanation of fun...")
+  signal(error ("Malformed arglist: This part is explanation of fun..."))
+  error("Malformed arglist: %s" "This part is explanation of function.")
+  #f(compiled-function (name arglist &optional docstring decl &rest body) "Define NAME as a function.\nThe definition is (lambda ARGLIST [DOCSTRING] BODY...).\nSee also the function `interactive'.\nDECL is a declaration, optional, of the form (declare DECLS...) where\nDECLS is a list of elements of the form (PROP . VALUES).  These are\ninterpreted according to `defun-declarations-alist'.\nThe return value is undefined." #<bytecode -0x124b4fe3>)(hello-world "This part is explanation of function." (message "hello world"))
+  macroexpand((defun hello-world "This part is explanation of function." (message "hello world")) nil)
+  macroexp-macroexpand((defun hello-world "This part is explanation of function." (message "hello world")) nil)
+  macroexp--expand-all((defun hello-world "This part is explanation of function." (message "hello world")))
+  macroexpand-all((defun hello-world "This part is explanation of function." (message "hello world")))
+  elisp--eval-last-sexp(nil)
+  eval-last-sexp(nil)
+  funcall-interactively(eval-last-sexp nil)
+  call-interactively(eval-last-sexp nil nil)
+  command-execute(eval-last-sexp)
+
+I guessed that something was wrong. By the way, I confirmed key bind
+
+C-x C-e		eval-last-sexp
+
+i.e. this is what I called evaluating Lisp expression. And *Backtrace*
+infomation confuesed me but it may be usefull. I changed the view point
+of the peice of my function:
+
+(message "hello world")
+
+For above expression, I evalueated with C-x C-e, then
+
+"hello world"
+
+into mini buffer. But it's diffrent from what I expected.
+It's not nccesary double quotation. Try below:
+
+(message hello world)
+
+then, below message was displayed with warning beep:
+
+eval: Symbol’s value as variable is void: hello
+
+This was wrong, I thought. At once, I decided to defer double quotation
+problemn.
+
+I wondered how wrong 1st expression was, and again evaluated with
+C-x C-e, but at this time, no *Backtrace* was displayed and just
+displyaed below message:
+
+Malformed arglist: This part is explanation of function.
+
+at mini buffer. This phenomenon is, ... no idea.
+I tried erase the part
+
+"This part is explanation of function."
+
+and again evalueated below:
+
+(defun hello-world2
+       (message "hello world"))
+
+For above, message was displayed like below:
+
+Malformed arglist: (message hello world)
+
+I noticed that I could not get rid of this error. As a result,
+I reached to below:
+
+(defun hello-world
+       "This part is explanation of function."
+       ('message "hello world"))
+
+This expression has single quotation before `message'
+の前に ' が付加されている. C-x C-e で評価してみたところ
+エラーメッセージは出ない. ミニバッファに hello-world と出ている.
+さてこの函数を呼び出してみる
+
+hello-world
+
+としてこの Lisp の式を評価してみた. *Backtrace* バッファは以下のようになった.
+
+Debugger entered--Lisp error: (void-variable hello-world)
+  eval(hello-world)
+  eval-last-sexp-1(nil)
+  eval-last-sexp(nil)
+  call-interactively(eval-last-sexp nil nil)
+  recursive-edit()
+  byte-code("..." [unread-command-char debugger-args x debugger-buffer noninteractive debugger-batch-max-lines -1 debug backtrace-debug 4 t backtrace-frame lambda 5 pop-to-buffer debugger-mode debugger-setup-buffer count-lines 2 "...\n" message "%s" buffer-string kill-emacs "" nil recursive-edit middlestart buffer-read-only standard-output] 4)
+  debug(error (invalid-function (lambda "This part is explanation of function." (... "hello world"))))
+  hello-world()
+  eval((hello-world))
+  eval-last-sexp-1(nil)
+  eval-last-sexp(nil)
+  call-interactively(eval-last-sexp nil nil)
+  recursive-edit()
+  byte-code("..." [unread-command-char debugger-args x debugger-buffer noninteractive debugger-batch-max-lines -1 debug backtrace-debug 4 t backtrace-frame lambda 5 pop-to-buffer debugger-mode debugger-setup-buffer count-lines 2 "...\n" message "%s" buffer-string kill-emacs "" nil recursive-edit middlestart buffer-read-only standard-output] 4)
+  debug(error (void-variable hello-world))
+  eval(hello-world)
+  eval-last-sexp-1(nil)
+  eval-last-sexp(nil)
+  call-interactively(eval-last-sexp nil nil)
+
+何かがマズいらしい. 括弧が必要なのだろうかと思い
+
+(hello-world)
+
+上の式を評価してみた.
+
+Debugger entered--Lisp error: (invalid-function (lambda "This part is explanation of function." ((quote message) "hello world")))
+  hello-world()
+  eval((hello-world))
+  eval-last-sexp-1(nil)
+  eval-last-sexp(nil)
+  call-interactively(eval-last-sexp nil nil)
+  recursive-edit()
+  byte-code("..." [unread-command-char debugger-args x debugger-buffer noninteractive debugger-batch-max-lines -1 debug backtrace-debug 4 t backtrace-frame lambda 5 pop-to-buffer debugger-mode debugger-setup-buffer count-lines 2 "...\n" message "%s" buffer-string kill-emacs "" nil recursive-edit middlestart buffer-read-only standard-output] 4)
+  debug(error (void-variable hello-world))
+  eval(hello-world)
+  eval-last-sexp-1(nil)
+  eval-last-sexp(nil)
+  call-interactively(eval-last-sexp nil nil)
+
+*Backtrace* バッファの内容は違うがやはりエラーには変わりなさそうである.
+
+M-x describe-function
+hello-world
+
+としてみた. *Help* バッファには以下のように表示されている.
+
+hello-world is a Lisp function.
+
+This part is explanation of function.
+
+Not documented.
+
+[back]
+
+なんとなくではあるが期待したものにはなっている.
+
+「Lisp の函数を定義する(その2)」に hello-world の修正版が記載されている.
