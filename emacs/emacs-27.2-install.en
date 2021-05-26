@@ -1,0 +1,166 @@
+Install at linux
+
+Install operations are same with that of cygwin except for X11 library.
+
+% emacs -nw
+
+works well. But still cannot execute as a X window program.
+
+Install at cygwin -> not work
+
+% wget -q http://cygwin.mirror.constant.com/x86_64/release/emacs/emacs-27.2-1-src.tar.xz
+% xz -d -c emacs-27.2-1-src.tar.xz | tar xf -
+% cd emacs-27.2-1.src
+% xz -d -c emacs-27.2.tar.xz | tar xf -
+% cd emacs-27.2
+% ./configure
+...
+checking tiffio.h usability... no
+checking tiffio.h presence... no
+checking for tiffio.h... no
+checking gif_lib.h usability... no
+checking gif_lib.h presence... no
+checking for gif_lib.h... no
+configure: error: The following required libraries were not found:
+     libgif/libungif libtiff gnutls
+Maybe some development libraries/packages are missing?
+To build anyway, give:
+     --with-gif=ifavailable --with-tiff=ifavailable --with-gnutls=ifavailable
+as options to configure.
+%
+
+Install giflib
+
+% wget -q http://cygwin.mirror.constant.com/x86_64/release/giflib/giflib-5.1.4-1-src.tar.xz
+% xz -d -c giflib-5.1.4-1-src.tar.xz | tar xf -
+% cd giflib-5.1.4-1.src
+% bunzip2 -c giflib-5.1.4.tar.bz2 | tar xf -
+% cd giflib-5.1.4
+% ./configure
+% make
+% make install
+
+Install tiff
+
+% wget -q http://cygwin.mirror.constant.com/x86_64/release/tiff/tiff-4.3.0-1-src.tar.xz
+% xz -d -c tiff-4.3.0-1-src.tar.xz | tar xf -
+% cd tiff-4.3.0-1.src/
+% bunzip2 -c libtiff-v4.3.0.tar.bz2 | tar xf -
+% cd libtiff-v4.3.0/
+% autoconf
+configure.ac:36: error: possibly undefined macro: AM_INIT_AUTOMAKE
+      If this token and others are legitimate, please use m4_pattern_allow.
+      See the Autoconf documentation.
+configure.ac:38: error: possibly undefined macro: AM_MAINTAINER_MODE
+configure.ac:107: error: possibly undefined macro: AM_PROG_CC_C_O
+configure.ac:146: error: possibly undefined macro: AM_CONDITIONAL
+configure.ac:158: error: possibly undefined macro: AM_SILENT_RULES
+% aclocal
+% autoconf
+% ./configure
+configure: error: cannot find install-sh, install.sh, or shtool in config "."/config
+%
+
+I could not get of this error.
+I decided to use setup-x86_64.exe for this installation.
+
+Install gnutls
+
+% xz -d -c gnutls-3.6.9-1-src.tar.xz | tar xf -
+% cd gnutls-3.6.9-1.src
+% xz -d -c gnutls-3.6.9.tar.xz | tar xf -
+% cd gnutls-3.6.9
+% ./configure
+checking for NETTLE... no
+configure: error: 
+  ***
+  *** Libnettle 3.4.1 was not found.
+
+%
+
+Install nettle
+
+% wget -q http://cygwin.mirror.constant.com/x86_64/release/nettle/nettle-3.4.1-1-src.tar.xz
+% xz -d -c nettle-3.4.1-1-src.tar.xz | tar xf -
+% cd nettle-3.4.1-1.src
+% xz -d -c nettle-3.4.1-hobbled.tar.xz | tar xf -
+% cd nettle-3.4.1
+% ./configure
+% make
+Makefile:384: warning: ignoring prerequisites on suffix rule definition
+Makefile:651: ecc-224.o.d: No such file or directory
+make: *** No rule to make target 'ecc-224.o.d'.  Stop.
+
+I comment-outed the last line of Makefile.
+% make
+...
+make[1]: *** No rule to make target 'ecc-192.c', needed by 'ecc-192.o'.  Stop.
+make[1]: Leaving directory '/cygdrive/d/home/khasegawa/nettle-3.4.1-1.src/nettle-3.4.1'
+make: *** [Makefile:49: all] Error 2
+
+I could not get rid of this error, so used setup-x86_64.exe for this
+installation.
+
+Again continue to install emacs
+
+% cd emacs-27.2-1.src/emacs-27.2
+% ./configure
+...
+configure: error: The required function 'tputs' was not found in any library.
+The following libraries were tried (in order):
+  libtinfo, libncurses, libterminfo, libcurses, libtermcap
+Please try installing whichever of these libraries is most appropriate
+for your system, together with its header files.
+For example, a libncurses-dev(el) or similar package.
+%
+
+Again I used setup-x86_64.exe for libncurses-devel installation.
+
+% ./configure
+Anyway, sucessed.
+% make
+...
+Byte counts: header=80 hot=7262536 discardable=123360 cold=3266904
+Reloc counts: hot=395237 discardable=4746
+Adding name emacs-27.2.1
+Adding new name: Operation not permitted, /cygdrive/d/home/khasegawa/emacs-27.2-1.src/emacs-27.2/src/emacs, /cygdrive/d/home/khasegawa/emacs-27.2-1.src/emacs-27.2/src/emacs-27.2.1
+make[1]: *** [Makefile:588: emacs.pdmp] Error 255
+make[1]: Leaving directory '/cygdrive/d/home/khasegawa/emacs-27.2-1.src/emacs-27.2/src'
+make: *** [Makefile:424: src] Error 2
+% cd src
+% cp emacs.exe emacs-27.2.1.exe
+% make
+# Nothing to be done
+% cd ..
+% make
+% make install
+% ls /usr/local/bin/emacs*
+# Not installed
+% cp src/emacs.exe /usr/local/bin
+
+I confirmed if it worked in cygwin X server environment.
+
+% /usr/bin/startx
+
+sh-4.4$ /usr/local/bin/emacs
+...
+Loading /usr/local/share/emacs/27.2/lisp/leim/leim-list.el (source)...done
+Finding pointers to doc strings...
+Finding pointers to doc strings...done
+
+** (emacs:33363): WARNING **: Error retrieving accessibility bus address: org.freedesktop.DBus.Error.Spawn.ChildExited: Process org.a11y.Bus exited with status 1
+
+(emacs:33363): Gtk-WARNING **: Could not load a pixbuf from icon theme.
+This may indicate that pixbuf loaders or the mime database could not be found.
+**
+Gtk:ERROR:/usr/src/ports/gtk3/gtk3-3.22.28-1.x86_64/src/gtk+-3.22.28/gtk/gtkiconhelper.c:494:ensure_surface_for_gicon: assertion failed (error == NULL): Failed to load /usr/share/icons/Adwaita/24x24/status/image-missing.png: Unrecognized image file format (gdk-pixbuf-error-quark, 3)
+Fatal error 6: Aborted
+Aborted (core dumped)
+sh-4.4$
+
+This phenomenon is very like to the situation described at
+"About cygwin X server". At a moment, the window was displayed.
+It was very mysterious that the emacs at that time run differently.
+
+
+

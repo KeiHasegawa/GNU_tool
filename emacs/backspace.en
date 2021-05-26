@@ -1,0 +1,88 @@
+BackSpace key
+
+I pressed BackSpace key for deleting the character at cursor.
+But the message was displayed at mini buffer like below:
+
+C-h (Type ? for further options)-
+
+This was not what I expected. The way of fixing this problem
+is writing
+
+(global-set-key "\C-h" 'delete-backward-char)
+
+into
+
+~/.emacs
+
+I guessed that this meaned Ctrl-H was binded to the lisp function
+delete-backward-char. i.e. If you want to delete the character at cursor,
+execute like below:
+
+M-x delete-backward-char
+
+where M-x means press Esc and press x (at Japanese keyboard)
+
+Before inserting above lisp expression into ~/.emacs
+I wanted to investigate what was binded to Ctrl-H. For this,
+execute
+
+M-x help
+
+and more, you found type
+
+b
+
+for seeing key bind. And typed b:
+
+...
+C-h		help-command
+...
+
+Then I decided added into ~/.emacs like below:
+
+(global-set-key "\C-h" 'delete-backward-char)
+
+(global-set-key "\M-?" 'help-command)
+
+1st : Ctrl-H is binded to delete-backward-char ‚ª
+2nd : M-? is binded to help-command
+
+where M-? means press Esc and press ? (at Japanese keyboard)
+
+For reflecting ~/.emacs, it's OK to restart emacs. But
+
+M-x load-file
+
+and input
+
+~/.emacs
+
+also works well. After this, help command is not envoked by
+BackSpace key.
+
+Again confirm key bind by help. Execute like below:
+
+M-? b
+
+Somewhat the situation is a little different from
+that of modifing ~/.emacs, but can see the key bind list:
+
+...
+C-h		delete-backward-char
+...
+M-?		help-command
+...
+<f1>		help-command
+...
+
+C-h is binded to delete-backward-char,
+M-? is binded to help-command
+and
+F1 is also binded to help-command.
+
+I pressed F1. This situation was very similar to that of
+before modifying ~/.emacs:
+
+f1 (Type ? for further options)-
+
+Above message was displayed at mini buffer.

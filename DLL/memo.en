@@ -1,3 +1,67 @@
 DLL investigation
 
-(*1) getopt
+(*1) getopt sample
+(*2) DLL and static link library
+
+cygwin % gcc -g test000.c -o test000.exe
+cygwin % ./test000.exe -n -t 123 hoge
+flags=1; tfnd=1; optind=4
+name argument = hoge
+
+OK. getopt function works well.
+
+cygwin % gcc -g test000.c -o test000_2.exe d:/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/libiberty/libiberty.a
+cygwin % ./test000_2.exe -n -t 123 hoge
+Segmentation fault(core dumped)
+cygwin % gdb -q test000_2.exe
+(gdb) b test000.c:20
+(gdb) run -n -t 123 hoge
+(gdb) p optarg
+$1 = 0xffffcc8b "123"
+(gdb) x/5i $rip
+=> 0x7ff734f510b8 <main+72>:	
+    mov    0x70ed(%rip),%rax        # 0x7ff734f581ac <__imp_optarg>
+   0x7ff734f510bf <main+79>:	mov    (%rax),%rax
+   0x7ff734f510c2 <main+82>:	mov    %rax,%rcx
+   0x7ff734f510c5 <main+85>:	call   0x7ff734f520d0 <atoi>
+   0x7ff734f510ca <main+90>:	mov    %eax,-0x5c(%rbp)
+(gdb) stepi 3
+(gdb) p/x $rax
+$2 = 0x0      # Expected result is the value of argv[3]
+              # which points to "123"
+(gdb) nexti
+nexti
+      0 [main] test000 60 cygwin_exception::open_stackdumpfile: Dumping stack trace to test000.exe.stackdump
+
+      This happend while I developed bbprof.exe. But now the situation is
+      very simple.
+
+(*2) DLL and static link library
+
+     test001.exe just refers variable and function defined at a DLL.
+
+cygwin % gcc -g -shared -o test001_dll.dll test001_dll.c
+cygwin % gcc -g test001.c -o test001.exe test001_dll.dll
+cygwin % ./test001.exe
+test001_dll.c::func called
+var = 3456
+
+     This is expected result.
+
+cygwin % gcc -g test001_static.c -c
+cygwin % ar r test001_static.a test001_static.o
+cygwin % gcc -g test001.c -o test001_s.exe test001_static.a
+/usr/local/lib/gcc/x86_64-pc-cygwin/10.1.0/../../../../x86_64-pc-cygwin/bin/ld: /cygdrive/d/tmp/ccmdw7Xd.o: in function `main':
+/cygdrive/d/home/khasegawa/lang/53_GNU_tool/DLL/test001.c:7: undefined reference to `__imp_var'
+
+Link failed as expected.
+
+cygwin % gcc -g test001.c -o test001_sd.exe test001_static.a test001_dll.dll
+cygwin % ./test001_sd.exe
+test001_static.c::func called
+var = 12345678
+
+Called function is define at static link library, and refered varialbe
+is define at DLL.
+
+        The almost same thing happend for getopt of bbprof.exe.
