@@ -16,6 +16,7 @@ Tag generation
 (*14) C++ template instantiation (part 2)
 (*15) Enumerator
 (*16) Function declaration
+(*17) If tag jump doesn't work well
 
 (*1) How to use ctags (vi version)
 
@@ -175,6 +176,16 @@ Option:
 -E <dir> : Use like -e /usr. Ignore the file whose head of path is "/usr".
 -w : No warning when opening source file is failed.
 -n : Not create dummy tag for empty file. By default create it.
+-o <file> : Specify output file name. By default, output file is "tags".
+            If -e specified, default output file is "TAGS".
+-p <dir> : Use like  -p d:/cygwin64 or -p /cygdrive/d. At Windows environment,
+           this option converts file name
+           /usr/local/include/c++/10.2.0/bits/stl_vector.h
+	   to
+	   d:/cygwin64/usr/local/include/c++/10.2.0/bits/stl_vector.h
+	   or
+	   /cygdrive/d/usr/local/include/c++/10.2.0/bits/stl_vector.h
+	   respectively.
 
 (*4) How to build mktags.exe
 
@@ -442,3 +453,17 @@ enum E {  // tag name : E
 
      Also for `free', tag is generated for the declaration of it.
      The reason is not clear currently.
+
+(*17) If tag jump doesn't work well
+
+      The reasons are:
+
+      o Generated tag file is not correct.
+      o find-tag doesn't work well
+
+      I recomend you that you might open generated tag file and search
+      the pattern. Refer to (*5), (*6).
+      Perhaps, tag is generated correctly with the form which you don't
+      expected. Refrer to (*7).
+
+      

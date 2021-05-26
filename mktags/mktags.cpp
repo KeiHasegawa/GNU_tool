@@ -791,13 +791,27 @@ namespace goal {
 
 } // end of namespace goal
 
+inline bool out_prefix(std::string prefix, std::string fn)
+{
+  using namespace std;
+  if (prefix.empty())
+    return false;
+  if (fn[0] != '/')
+    return false;
+  string s = "cygdrive";
+  return fn.substr(1,s.length()) != s;
+}
+
 namespace for_vi {
   using namespace std;
   using namespace goal;
   inline void
-  output(ostream& os, const tag_t& tag, string fn)
+  output(ostream& os, const tag_t& tag, string fn, string prefix)
   {
-    os << tag.name << '\t' << fn << '\t';
+    os << tag.name << '\t';
+    if (out_prefix(prefix, fn))
+      os << prefix;
+    os << fn << '\t';
     auto kind = tag.kind;
     if (!kind)
       os << tag.line << ';' << '"' << '\t' << 'd' << '\t' << "file:";
@@ -830,31 +844,30 @@ namespace for_vi {
     }
     os << endl;
   }
-  inline void
-  output(const map<string, vector<tag_t> >& tags)
+  inline void output(const map<string, vector<tag_t> >& tags,
+		     string out_file, string prefix)
   {
-    const char* tag_f = "tags";
-    ofstream ofs(tag_f);
+    if (out_file.empty())
+      out_file = "tags";
+    ofstream ofs(out_file);
     if (!ofs) {
-      cerr << "cannot open " << '"' << tag_f << '"' << '\n';
+      cerr << "cannot open " << '"' << out_file << '"' << '\n';
       return;
     }
     for (const auto& x : tags) {
       auto fn = x.first;
-      auto c = fn[0];
-      if (c != '.' && c != '/') {
+      if (goal::has_extra(fn)) {
 	const auto& v = x.second;
 	for (const auto& tag : v)
-	  output(ofs, tag, fn);
+	  output(ofs, tag, fn, prefix);
       }
     }
     for (const auto& x : tags) {
       auto fn = x.first;
-      auto c = fn[0];
-      if (c == '.' || c == '/') {
+      if (!goal::has_extra(fn)) {
 	const auto& v = x.second;
 	for (const auto& tag : v)
-	  output(ofs, tag, fn);
+	  output(ofs, tag, fn, prefix);
       }
     }
   }
@@ -876,15 +889,18 @@ namespace for_emacs {
     return ost.str();
   }
   inline void
-  output1(ostream& os, const pair<string, string>& x)
+  output1(ostream& os, const pair<string, string>& x, string prefix)
   {
     string fn = x.first;
     string contents = x.second;
     int len = contents.length();
-    os << '\f' << '\n' << fn << ',' << len << '\n' << contents;
+    os << '\f' << '\n';
+    if (out_prefix(prefix, fn))
+      os << prefix;
+    os << fn << ',' << len << '\n' << contents;
   }
-  inline void
-  output(const map<string, vector<tag_t> >& tags)
+  inline void output(const map<string, vector<tag_t> >& tags,
+		     string out_file, string prefix)
   {
     map<string, string> raw;
     for (const auto& x : tags) {
@@ -893,25 +909,24 @@ namespace for_emacs {
 	raw[x.first] = conv(v);
     }
 
-    const char* tag_f = "TAGS";
-    ofstream ofs(tag_f);
+    if (out_file.empty())
+      out_file = "TAGS";
+    ofstream ofs(out_file);
     if (!ofs) {
-      cerr << "cannot open " << '"' << tag_f << '"' << endl;
+      cerr << "cannot open " << '"' << out_file << '"' << endl;
       return;
     }
 
     for (const auto& x : raw) {
       auto file = x.first;
-      auto c = file[0];
-      if (c != '.' && c != '/')
-	output1(ofs, x);
+      if (goal::has_extra(file))
+	output1(ofs, x, prefix);
     }
 
     for (const auto& x : raw) {
       auto file = x.first;
-      auto c = file[0];
-      if (c == '.' || c == '/')
-	output1(ofs, x);
+      if (!goal::has_extra(file))
+	output1(ofs, x, prefix);
     }
   }
 } // end of namespace for_emacs
@@ -930,7 +945,9 @@ int main(int argc, char** argv)
   extern int verbose_flag;
   bool create_empty_file_entry = true;
   bool warn = true;
-  for (int opt ; (opt = getopt(argc, argv, "aevE:wn")) != -1 ; ) {
+  string out_file;
+  string prefix;
+  for (int opt ; (opt = getopt(argc, argv, "aevE:wno:p:")) != -1 ; ) {
     switch (opt) {
     case 'a': abs_path_form = true;            break;
     case 'e': mode = mode_t::emacs;            break;
@@ -938,6 +955,8 @@ int main(int argc, char** argv)
     case 'E': exclude.insert(optarg);          break;
     case 'w': warn = false;                    break;
     case 'n': create_empty_file_entry = false; break;
+    case 'o': out_file = optarg;               break;
+    case 'p': prefix = optarg;                 break;
     default:  usage(argv[0]); return 1;
     }
   }
@@ -964,10 +983,10 @@ int main(int argc, char** argv)
 
   switch (mode) {
   case mode_t::vi:
-    for_vi::output(tags);
+    for_vi::output(tags, out_file, prefix);
     break;
   case mode_t::emacs:
-    for_emacs::output(tags);
+    for_emacs::output(tags, out_file, prefix);
     break;
   }
 
