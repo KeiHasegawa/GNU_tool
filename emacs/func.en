@@ -76,14 +76,18 @@ I reached to below:
        "This part is explanation of function."
        ('message "hello world"))
 
-This expression has single quotation before `message'
-の前に ' が付加されている. C-x C-e で評価してみたところ
-エラーメッセージは出ない. ミニバッファに hello-world と出ている.
-さてこの函数を呼び出してみる
+This expression has a single quotation before `message' and
+I evaluated above then
 
 hello-world
 
-としてこの Lisp の式を評価してみた. *Backtrace* バッファは以下のようになった.
+was displayed at mini buffer. I guessed that I could define
+lisp function correctly. So I wanted to call `hello-world'.
+I evaluated below with C-x Ce below:
+
+hello-world
+
+But *Backtrace* buffer became like below: 
 
 Debugger entered--Lisp error: (void-variable hello-world)
   eval(hello-world)
@@ -106,11 +110,12 @@ Debugger entered--Lisp error: (void-variable hello-world)
   eval-last-sexp(nil)
   call-interactively(eval-last-sexp nil nil)
 
-何かがマズいらしい. 括弧が必要なのだろうかと思い
+I felt that there was something wrong. I guessed that parentheses were
+necessary. And tried to evaluate below:
 
 (hello-world)
 
-上の式を評価してみた.
+Then again *Backtrace* buffer became like below: 
 
 Debugger entered--Lisp error: (invalid-function (lambda "This part is explanation of function." ((quote message) "hello world")))
   hello-world()
@@ -126,12 +131,15 @@ Debugger entered--Lisp error: (invalid-function (lambda "This part is explanatio
   eval-last-sexp(nil)
   call-interactively(eval-last-sexp nil nil)
 
-*Backtrace* バッファの内容は違うがやはりエラーには変わりなさそうである.
+There were some different point from the situation of no parentheses,
+But anyway error still happened.
+
+Byt the way, I also tried below:
 
 M-x describe-function
 hello-world
 
-としてみた. *Help* バッファには以下のように表示されている.
+Then *Help* buffer became like below:
 
 hello-world is a Lisp function.
 
@@ -141,6 +149,8 @@ Not documented.
 
 [back]
 
-なんとなくではあるが期待したものにはなっている.
+I thought this was expected one.
 
-「Lisp の函数を定義する(その2)」に hello-world の修正版が記載されている.
+The correct version of `hello-world' is described at
+"Define Lisp function(part 2)"
+
