@@ -1,0 +1,63 @@
+Define Lisp function(part 2)
+
+I failed hello world. Here, modestly try well known sample.
+
+For argument `number', Lisp function which returns 1 + 2 + ... + number
+becomes like below:
+
+(defun my-sum (number)
+  "Return sum of numbers 1 through NUMBER."
+  (let ((total 0))
+    (while (> number 0)
+      (setq total (+ total number))
+      (setq number (1- number)))
+    total))
+
+After evaluating with C-x C-e, I evaluated below Lisp expression:
+
+(my-sum 5)
+
+15 was displayed at mini buffer. For checking, also evaluated below:
+
+(+ 1 2 3 4 5)
+
+It's consistency. Also I did:
+
+M-x describe-function
+my-sum
+
+*Help* buffer became like below:
+
+my-sum is a Lisp function.
+
+(my-sum NUMBER)
+
+Return sum of numbers 1 through NUMBER.
+
+[back]
+
+This was expected result. I noticed, here, that as described at
+"Define Lisp function", the result of describe-function was
+not correct.
+
+The right answer is:
+
+(defun hello-world ()
+       "This part is explanation of function."
+       (message "hello world"))
+
+And we can call this function by evaluating below expression:
+
+(hello-world)
+
+The result is displayed at mini buffer:
+
+"hello world"
+
+If you evaluate below expression:
+
+hello-world
+
+The result is not what I expect. Parentheses might be nececessary.
+
+

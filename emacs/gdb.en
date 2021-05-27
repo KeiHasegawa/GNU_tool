@@ -29,28 +29,30 @@ but the options actually exist.
 
 % gdb -i=mi
 
-This resul also is very diffent.
+This resul is also very different.
 
-ところで emacs 23.3.1 では快適に M-x gdb が動作していたのに emacs 27.2
-では何かおかしい. 例えば
+Again by the way, M-x gdb works well at emacs 23.3.1 but
+doesn't work well at emacs 27.2. For example
 
-   o gdb のプロンプト (gdb) が表示されるべきところで表示されていない
-   o バッファが 3 分割になる.
+   o gdb prompt `(gdb)' should be displayed but not, not always but sometimes.
+   o By step execution, echo source line to gdb command buffer. Source file
+     is already displayed, so this is redundant.
+   o By C-x SPC , not insert breakpoint (You can bind yourself)
+   o devieds 3 windows(buffer?)
 
-     (1) gdb のプロンプトのバッファ
-     (2) プログラムのソースファイルのバッファ
-     (3) おそらくデバッグされるプログラムの標準出力, 標準エラー出力
+     (1) window for gdb command
+     (2) window for program source file
+     (3) window for debugged program standard output and standard error output
 
-     これは意図してこうしているのだろうが, 今までと異なっていて何か
-     不便である.
+     I think this is intentionally done, but little different from the
+     situation of emas 23.3.1 and the facility annoys me.
 
-試しに emacs 27.2 で
+I tried below at emacs 27.2:
 
 M-x gdb
 Run gdb (like this): gdb --annotate=3 a.out
 
-としてみたところ...
-
+became like below:
 
 Error: you did not specify -i=mi on GDB's command line!
 GNU gdb (GDB) 10.2
@@ -86,5 +88,5 @@ Reading symbols from a.out...
 Undefined command: "-interpreter-exec".  Try "help".
 (gdb) 
 
-だめらしい. しょうがないので gdb を使用するときは emacs 23.3.1 を
-使うべきである. というより早く Lisp をマスターして原因を究明するべきだろう.
+
+It didn't work well. I think I should use emacs 23.3.1 for gdb.

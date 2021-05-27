@@ -2,13 +2,13 @@ M-x gdb
 
 emacs 27.2 で M-x gdb とすると
 
-Run gdb (like this): gdb -i=mi mktags.exe
+Run gdb (like this): gdb -i=mi a.out
 
 のように gdb を -i=mi オプションで起動しようとしているようである.
 
 一方 emacs 23.3.1 では
 
-Run gdb (like this): gdb --annotate=3 mktags.exe
+Run gdb (like this): gdb --annotate=3 a.out
 
 のように --annotate=3 オプションなっている. この文章では伝わらないが
 
@@ -31,6 +31,10 @@ emacs ではなく, 普通にコンソール(ターミナル)から gdb を実行してみる
 では何かおかしい. 例えば
 
    o gdb のプロンプト (gdb) が表示されるべきところで表示されていない
+   o ステップ実行するたびに該当するソースがコマンドバッファに表示される
+     ソースのバッファがあるからこれは冗長である.
+   o C-x SPC でブレークポイントがセットされない(これは自分でキーバインド
+     を設定すればよい)
    o バッファが 3 分割になる.
 
      (1) gdb のプロンプトのバッファ
@@ -43,7 +47,7 @@ emacs ではなく, 普通にコンソール(ターミナル)から gdb を実行してみる
 試しに emacs 27.2 で
 
 M-x gdb
-Run gdb (like this): gdb --annotate=3 mktags.exe
+Run gdb (like this): gdb --annotate=3 a.out
 
 としてみたところ...
 
@@ -64,7 +68,7 @@ Find the GDB manual and other documentation resources online at:
 
 For help, type "help".
 Type "apropos word" to search for commands related to "word"...
-Reading symbols from mktags.exe...
+Reading symbols from a.out...
 (gdb) Undefined command: "1-inferior-tty-set".  Try "help".
 (gdb) Undefined command: "2-gdb-set".  Try "help".
 (gdb) Undefined command: "3-gdb-set".  Try "help".
