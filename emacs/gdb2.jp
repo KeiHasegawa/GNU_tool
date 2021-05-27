@@ -1,0 +1,98 @@
+M-x gdb(その2)
+
+emacs 27.2 を起動して
+
+M-x describe-function
+gdb
+
+としてみると *Help* バッファに何やら有効な情報が表示されている.
+
+gdb is an interactive Lisp closure in ‘gdb-mi.el.gz’.
+
+It is bound to <menu-bar> <tools> <gdb>.
+
+(gdb COMMAND-LINE)
+
+  Probably introduced at or before Emacs version 18.50.
+
+Run gdb passing it COMMAND-LINE as arguments.
+
+If COMMAND-LINE names a program FILE to debug, gdb will run in
+a buffer named *gud-FILE*, and the directory containing FILE
+becomes the initial working directory and source-file directory
+for your debugger.
+If COMMAND-LINE requests that gdb attaches to a process PID, gdb
+will run in *gud-PID*, otherwise it will run in *gud*; in these
+cases the initial working directory is the default-directory of
+the buffer in which this command was invoked.
+
+COMMAND-LINE should include "-i=mi" to use gdb’s MI text interface.
+Note that the old "--annotate" option is no longer supported.
+
+If option ‘gdb-many-windows’ is nil (the default value) then gdb just
+pops up the GUD buffer unless ‘gdb-show-main’ is t.  In this case
+it starts with two windows: one displaying the GUD buffer and the
+other with the source file with the main routine of the inferior.
+
+If option ‘gdb-many-windows’ is t, regardless of the value of
+‘gdb-show-main’, the layout below will appear.  Keybindings are
+shown in some of the buffers.
+
+Watch expressions appear in the speedbar/slowbar.
+
+The following commands help control operation :
+
+‘gdb-many-windows’    - Toggle the number of windows gdb uses.
+‘gdb-restore-windows’ - To restore the window layout.
+
+See Info node ‘(emacs)GDB Graphical Interface’ for a more
+detailed description of this mode.
+
+
++----------------------------------------------------------------------+
+|                               GDB Toolbar                            |
++-----------------------------------+----------------------------------+
+| GUD buffer (I/O of GDB)           | Locals buffer                    |
+|                                   |                                  |
+|                                   |                                  |
+|                                   |                                  |
++-----------------------------------+----------------------------------+
+| Source buffer                     | I/O buffer (of debugged program) |
+|                                   | (comint-mode)                    |
+|                                   |                                  |
+|                                   |                                  |
+|                                   |                                  |
+|                                   |                                  |
+|                                   |                                  |
+|                                   |                                  |
++-----------------------------------+----------------------------------+
+| Stack buffer                      | Breakpoints buffer               |
+| RET      gdb-select-frame         | SPC    gdb-toggle-breakpoint     |
+|                                   | RET    gdb-goto-breakpoint       |
+|                                   | D      gdb-delete-breakpoint     |
++-----------------------------------+----------------------------------+
+
+[back]
+
+ここで gdb-mi.el.gz の部分にカーソルを移動してリターンキーを押してみた.
+すると, この圧縮されたファイルを簡単に開いてくれた. これはこれで
+かなり有用である. 自分が知らない函数のところに即座にジャンプできるという
+わけだ.
+
+開いたファイルの Window で C-x C-f としてみるとそのディレクトリが判明し,
+実際開いているのは
+
+/usr/local/share/emacs/27.2/lisp/progmodes/gdb-mi.el.gz
+
+であった.
+
+そこで emacs 23.3.1 でも同様のことを行ってみた. 開かれたファイルは
+
+/usr/share/emacs/23.3/lisp/progmodes/gdb-ui.el.gz
+
+であった. そこで私は ~/.emacs に以下のように追加した.
+
+(load-file "/usr/share/emacs/23.3/lisp/progmodes/gdb-ui.el.gz")
+
+そして emacs 27.2 を起動して M-x gdb を実行してみた. これは自分が期待した
+ように emacs 23.3.1 の状態で操作できているようである.
