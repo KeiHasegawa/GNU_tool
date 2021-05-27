@@ -513,6 +513,23 @@ namespace table {
       }
       return;
     }
+    if (dir[0] != '/' && dir[0] != '.') {
+      auto path = comp_dir + '/' + dir + '/' + file;
+      if (abs_path_form)
+	res[path].push_back(&c);
+      else {
+	auto rpath = get_rpath(comp_dir);
+	auto df = dir + '/' + file;
+	if (rpath.empty())
+	  res[df].push_back(&c);
+	else {
+	  rpath = rpath + '/' + df;
+	  res[rpath].push_back(&c);
+	}
+	extra[&c] = path;
+      }
+      return;
+    }
     if (dir[0] == '/') {
       string rpath = get_rpath(dir);
       if (rpath.empty()) {
