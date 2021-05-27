@@ -1,0 +1,91 @@
+Lisp debugger
+
+Here, execute Lisp function described at "Define Lisp function(part 2)"
+under control debugger.
+
+Place cursor at `my-sum' and
+
+M-x edebug-defun <- Press return
+
+And then evaluate below expression with C-x C-e:
+
+(my-sum 5)
+
+Then you can debug at source level. To quit, type q.
+If you don't want to execute debugger by evaluating the expression,
+again evaluate Lisp expression which defines `my-sum' by C-x C-e.
+
+n : correspond to `next' command of gdb
+
+Acutually `n' is binded to Lisp function `edebug-next-mode'.
+While executing debugger, confirm key bind like below:
+
+M-x help
+
+and type
+
+b
+
+...
+Major Mode Bindings:
+key             binding
+---             -------
+
+C-c		Prefix Command
+C-x		Prefix Command
+ESC		Prefix Command
+SPC		edebug-step-mode
+...
+n		edebug-next-mode
+...
+
+
+Space key is correspond to `step' command of gdb.
+
+By the way, hello-world described at "Define Lisp function"
+was not correct. Now apply
+
+M-x edebug-defun
+
+to the wrong hello-world:
+
+edebug-syntax-error: Invalid read syntax: "Expected", ([&rest arg] [&optional ["&optional" arg &rest arg]] &optional ["&rest" arg])
+
+Above message was displayed. This is, somewhat expected result.
+
+Anthoer way:
+M-x debug-on-entry <- Press return
+my-sum <- input and press return
+
+And then evaluate below Lisp expression by C-x C-e: 
+
+(my-sum 5)
+
+*Backtrace* becomes like below:
+
+Debugger entered--entering a function:
+* my-sum(5)
+  eval((my-sum 5))
+  eval-last-sexp-1(nil)
+  eval-last-sexp(nil)
+  call-interactively(eval-last-sexp nil nil)
+
+If not displayed, try like below:
+
+M-x cancel-debug-on-entry <- Press return
+
+And again do M-x debug-on-entry.
+
+To quit, type q.
+If you don't want to execute debugger by evaluating the expression,
+Do like below:
+
+M-x cancel-debug-on-entry <- Press return
+
+At *Backtrace* buffer, type
+
+d
+
+enable you to evaluate Lisp exprression one by one.
+But this way is difficult to understand.
+
