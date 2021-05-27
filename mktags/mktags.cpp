@@ -990,6 +990,10 @@ int main(int argc, char** argv)
   extern int exit_status;
   if (exit_status)
     return exit_status;
+  if (debug_info_impl::info.empty()) {
+    cerr << "No .debug_info section. No tag is generated." << endl;
+    return 1;
+  }
   debug_info_impl::modify();
 
   table::result_t tbl;
