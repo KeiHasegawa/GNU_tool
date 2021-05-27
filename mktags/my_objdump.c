@@ -76,7 +76,7 @@
 #include "aout/aout64.h"
 
 /* Exit status.  */
-static int exit_status = 0;
+int exit_status = 0;
 
 static char *default_target = NULL;	/* Default at runtime.  */
 

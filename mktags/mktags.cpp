@@ -982,11 +982,14 @@ int main(int argc, char** argv)
   dump_debugging = 1;
 
   if (optind == argc)
-    display_file (const_cast<char*>("a.out"), nullptr, TRUE);
+    display_file(const_cast<char*>("a.out"), nullptr, TRUE);
   else {
     for ( ; optind != argc ; ++optind )
       display_file(argv[optind], nullptr, optind == argc - 1);
   }
+  extern int exit_status;
+  if (exit_status)
+    return exit_status;
   debug_info_impl::modify();
 
   table::result_t tbl;
