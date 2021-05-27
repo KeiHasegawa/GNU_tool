@@ -1,0 +1,94 @@
+M-x gdb(part 2)
+
+Execute emacs 27.2 and do like below: 
+
+M-x describe-function
+gdb
+
+At *Help* buffer, some usefull information will be displayed:
+
+
+gdb is an interactive Lisp closure in 'gdb-mi.el.gz'.
+
+It is bound to <menu-bar> <tools> <gdb>.
+
+(gdb COMMAND-LINE)
+
+  Probably introduced at or before Emacs version 18.50.
+
+Run gdb passing it COMMAND-LINE as arguments.
+
+If COMMAND-LINE names a program FILE to debug, gdb will run in
+a buffer named *gud-FILE*, and the directory containing FILE
+becomes the initial working directory and source-file directory
+for your debugger.
+If COMMAND-LINE requests that gdb attaches to a process PID, gdb
+will run in *gud-PID*, otherwise it will run in *gud*; in these
+cases the initial working directory is the default-directory of
+the buffer in which this command was invoked.
+
+COMMAND-LINE should include "-i=mi" to use gdb's MI text interface.
+Note that the old "--annotate" option is no longer supported.
+
+If option 'gdb-many-windows' is nil (the default value) then gdb just
+pops up the GUD buffer unless 'gdb-show-main' is t.  In this case
+it starts with two windows: one displaying the GUD buffer and the
+other with the source file with the main routine of the inferior.
+
+If option 'gdb-many-windows' is t, regardless of the value of
+'gdb-show-main', the layout below will appear.  Keybindings are
+shown in some of the buffers.
+
+Watch expressions appear in the speedbar/slowbar.
+
+The following commands help control operation :
+
+'gdb-many-windows'    - Toggle the number of windows gdb uses.
+'gdb-restore-windows' - To restore the window layout.
+
+See Info node '(emacs)GDB Graphical Interface' for a more
+detailed description of this mode.
+
+
++----------------------------------------------------------------------+
+|                               GDB Toolbar                            |
++-----------------------------------+----------------------------------+
+| GUD buffer (I/O of GDB)           | Locals buffer                    |
+|                                   |                                  |
+|                                   |                                  |
+|                                   |                                  |
++-----------------------------------+----------------------------------+
+| Source buffer                     | I/O buffer (of debugged program) |
+|                                   | (comint-mode)                    |
+|                                   |                                  |
+|                                   |                                  |
+|                                   |                                  |
+|                                   |                                  |
+|                                   |                                  |
+|                                   |                                  |
++-----------------------------------+----------------------------------+
+| Stack buffer                      | Breakpoints buffer               |
+| RET      gdb-select-frame         | SPC    gdb-toggle-breakpoint     |
+|                                   | RET    gdb-goto-breakpoint       |
+|                                   | D      gdb-delete-breakpoint     |
++-----------------------------------+----------------------------------+
+
+[back]
+
+At *Help* buffer, move the cursor to 'gdb-mi.el.gz' and press return key.
+Then emacs 'll open it. It's very usefull facility. This seems to be a
+kind of tag jump witout tag file. At opend file window, by executing
+C-x C-f, I noticed that the file was:
+
+/usr/local/share/emacs/27.2/lisp/progmodes/gdb-mi.el.gz
+
+For emacs 23.3.1, I did the same thing. The opend file was:
+
+/usr/share/emacs/23.3/lisp/progmodes/gdb-ui.el.gz
+
+Then I added intot ~/.emacs below:
+
+(load-file "/usr/share/emacs/23.3/lisp/progmodes/gdb-ui.el.gz")
+
+And restarting emacs 27.2, executing M-x gdb at emacs 27.2.
+The result was what I expected.

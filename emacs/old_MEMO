@@ -41,6 +41,8 @@ gdb -i=mi a.exe  <- さらにここでリターンキー押下
 
 で gdb のコマンドプロンプトが表示される.
 
+Windows 版の emacs 26.3 の場合
+
 (gdb) b main
 
 でリターンキーを押すと list a.c:1 の結果が延々表示されてしまう.
@@ -80,50 +82,6 @@ d:/emacs-26.3/share/emacs/26.3/lisp/progmodes/gdb-mi.el
 M-x edebug-defun
 
 (gdb "gdb -i=mi a.exe")
-
-(*) debug-on-entry でデバッグ
-
-以下の函数 triangle-bugged を C-x C-e で評価する.
-
-(defun triangle-bugged (number)
-  "Return sum of numbers 1 through NUMBER inclusive."
-  (let ((total 0))
-    (while (> number 0)
-      (setq total (+ total number))
-      (setq number (1- number)))
-    total))
-
-そして
-
-M-x debug-on-entry <- ここでリターン
-triangle-bugged <- さらにここでリターン
-
-とする. そして以下の式を C-x C-e で評価する. 
-
-(triangle-bugged 5)
-
-そうすると *Backtrace* バッファが表示される.
-デバッガを終了するには q を入力する.
-C-x C-e でデバッガが動作しないようにするためには
-
-M-x cancel-debug-on-entry <- ここでリターン
-
-とする.
-*Backtrace* バッファで d を入力すれば Lisp の式を 1 つずつ評価しながら
-実行できる.
-
-(*) edebug-defun でデバッグ
-カーソルを triangle-bugged 函数内にある状態で
-
-M-x edebug-defun <- ここでリターン
-
-とする. そして以下の式を C-x C-e で評価する.
-
-(triangle-bugged 5)
-
-そうするとソースレベルデバッグができる. 終了するには q を押す.
-C-x C-e でデバッガが動作しないようにするためには
-triangle-bugged 函数の定義の最後の ')' で C-x C-e で評価し直せばよい. 
 
 (*) M-x man を edebug でデバッグしてみる.
 
