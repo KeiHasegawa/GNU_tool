@@ -30,7 +30,9 @@ extern "C" {
 inline void usage(const char* prog)
 {
   using namespace std;
-  cerr << "usage % " << prog << " [-aenv][-E dir] a.out" << endl;
+  aevE:wno:p:
+  cerr << "usage % " << prog;
+  cerr << " [-aenvw][-E dir][-o file][-p dir] a.out" << endl;
 }
 
 namespace debug_line_impl {
@@ -549,6 +551,10 @@ namespace table {
     auto path = dir + '/' + file;
     path = not_redundant(path);
     res[path].push_back(&c);
+    if (path[0] != '/') {
+      auto apath = comp_dir + '/' + path;
+      extra[&c] = apath;
+    }
   }
   inline void create_if(const pair<string, int>& x,
 			string comp_dir,
@@ -616,6 +622,10 @@ namespace table {
       return;
     cont_t* tmp = new cont_t{ file, (enum dwarf_tag)0, 0, 1 };
     res[path].push_back(tmp);
+    if (path[0] != '/') {
+      auto apath = comp_dir + '/' + path;
+      extra[tmp] = apath;
+    }
   }
   inline void create(const debug_info_impl::info_t& x,
 		     const debug_line_impl::info_t& y,
