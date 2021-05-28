@@ -1,0 +1,135 @@
+H8 cross compile environment
+
+(*1) H8
+https://en.wikipedia.org/wiki/H8
+
+(*2) binutils install
+
+% xz -d -c binutils-2.36.1.tar.xz | tar xf -
+% mv binutils-2.36.1 binutils-2.36.1.h8300-elf
+% cd binutils-2.36.1.h8300-elf
+% ./configure --prefix=/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG --target=h8300-elf
+% make
+% make install
+
+(*2) gcc install
+
+% xz -d -c gcc-10.2.0.tar.xz | tar xf -
+% mv gcc-10.2.0 gcc-10.2.0.h8300-elf
+% cd gcc-10.2.0.h8300-elf
+% ./configure --prefix=/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG --target=h8300-elf --disable-libstdc++-v3 --disable-libssp --disable-libquadmath --disable-libgfortran --disable-libobjc
+% make
+...
+Adding multilib support to Makefile in ../../../../.././libgcc
+with_multisubdir=h8sx/normal/int32
+make[2]: Entering directory `/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.h8300-elf/h8300-elf/libgcc'
+Makefile:183: ../.././gcc/libgcc.mvars: No such file
+make[2]: *** No rule to make target `../.././gcc/libgcc.mvars'.  Stop.
+make[2]: Leaving directory `/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.h8300-elf/h8300-elf/libgcc'
+make[1]: *** [all-target-libgcc] Error 2
+make[1]: Leaving directory `/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.h8300-elf'
+make: *** [all] Error 2
+%
+
+Change below of libgcc/Makefile.in:
+
+host_subdir = @host_subdir@
+
+to
+
+host_subdir = host-i686-pc-linux-gnu
+
+If your build host is cygwin at Windows 10 (64 bit),
+
+host_subdir = host-x86_64-pc-cygwin
+
+This should be better, but let's do abolve for now.
+Again execute configure:
+
+% ./configure --prefix=/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG --target=h8300-elf --disable-libstdc++-v3 --disable-libssp --disable-libquadmath --disable-libgfortran --disable-libobjc
+% make
+
+This `make' execution failed for the target name
+
+configure-target-libbacktrace
+
+So, change ./Makefile like bellow:
+
+configure-target-libbacktrace:
+
+# Empty target
+
+And create h8300-elf/libbacktrace/Makefile like:
+
+all:
+
+install:
+
+However, in this way, C++ runtime library will not be installed.
+This stuff should be improved.
+
+% make install
+
+h8300-elf-gcc will be installed into the same directory where
+h8300-elf-as is installed.
+
+(*3) gdb install
+
+% xz -d -c gdb-10.2.tar.xz | tar xf -
+% mv gdb-10.2 gdb-10.2.h8300-elf
+% cd gdb-10.2.h8300-elf
+% ./configure --prefix=/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG --target=h8300-elf
+% make
+% make install
+
+h8300-elf-gdb is installed into the same directory where
+h8300-elf-as is installed.
+
+(*4) newlib install
+
+% gunzip -c newlib-4.1.0.tar.gz | tar xf -
+% mv newlib-4.1.0 newlib-4.1.0.h8300-elf
+% cd newlib-4.1.0.h8300-elf
+% ./configure --prefix=/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG --target=h8300-elf
+% make
+% make install
+
+(*5) Verification
+
+% h8300-elf-gcc -g -o hello.elf hello.c
+% h8300-elf-gdb hello.elf
+(gdb) target sim
+Connected to the simulator.
+(gdb) load
+Loading section .init, size 0xa vma 0x100
+Loading section .text, size 0x30e6 vma 0x10c
+Loading section .fini, size 0x6 vma 0x31f2
+Loading section .rodata, size 0x28 vma 0x31f8
+Loading section .eh_frame, size 0x4 vma 0x3220
+Loading section .ctors, size 0x4 vma 0x3224
+Loading section .dtors, size 0x4 vma 0x3228
+Loading section .data, size 0x46c vma 0x322c
+Start address 0x10c
+Transfer rate: 109744 bits in <1 sec.
+(gdb) b main
+Breakpoint 1 at 0x1f4: file hello.c, line 5.
+(gdb) run
+Starting program: /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/hello.elf 
+
+Breakpoint 1, main () at hello.c:5
+(gdb) disassemble
+Dump of assembler code for function main:
+   0x000001f0 <+0>:	mov.w	r6,@-r7
+   0x000001f2 <+2>:	mov.w	r7,r6
+=> 0x000001f4 <+4>:	mov.w	#0x31f8,r0
+   0x000001f8 <+8>:	jsr	@0x2c4:24
+   0x000001fc <+12>:	sub.w	r2,r2
+   0x000001fe <+14>:	mov.w	r2,r0
+   0x00000200 <+16>:	mov.w	@r7+,r6
+   0x00000202 <+18>:	rts	
+End of assembler dump.
+(gdb) c
+Continuing.
+hello world
+[Inferior 1 (process 42000) exited normally]
+(gdb)
