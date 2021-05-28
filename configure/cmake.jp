@@ -1,0 +1,96 @@
+cmake-3.20.0 のインストールで発生した問題
+
+% ./configure
+---------------------------------------------
+CMake 3.20.0, Copyright 2000-2021 Kitware, Inc. and Contributors
+Found GNU toolchain
+C compiler on this system is: gcc   
+C++ compiler on this system is: g++    
+Makefile processor on this system is: make
+g++ has setenv
+g++ has unsetenv
+g++ does not have environ in stdlib.h
+g++ has stl wstring
+g++ has <ext/stdio_filebuf.h>
+---------------------------------------------
+make: Warning: File 'Makefile' has modification time 0.58 s in the future
+make: 'cmake' is up to date.
+make: warning:  Clock skew detected.  Your build may be incomplete.
+loading initial cache file /cygdrive/d/home/khasegawa/cmake-3.20.0-1.src/cmake-3.20.0/Bootstrap.cmk/InitialCacheFlags.cmake
+CMake Error at CMakeLists.txt:107 (message):
+  The C++ compiler does not support C++11 (e.g.  std::unique_ptr).
+
+
+-- Configuring incomplete, errors occurred!
+See also "/cygdrive/d/home/khasegawa/cmake-3.20.0-1.src/cmake-3.20.0/CMakeFiles/CMakeOutput.log".
+See also "/cygdrive/d/home/khasegawa/cmake-3.20.0-1.src/cmake-3.20.0/CMakeFiles/CMakeError.log".
+---------------------------------------------
+Error when bootstrapping CMake:
+Problem while running initial CMake
+---------------------------------------------
+%
+
+これは判定の仕方をおそらく間違えている. 私が使っている g++ は 10.1.0 で勿論
+unique_ptr を使えているからだ.
+
+カレントディレクトリに CMakeLists.txt がある. そしてその 107 行目は
+
+  if(NOT CMake_HAVE_CXX_UNIQUE_PTR)
+    message(FATAL_ERROR "The C++ compiler does not support C++11 (e.g. std::unique_ptr).")
+  endif()
+
+のようになっている. これはよくわからないが if の条件が成立して, 問題のメッセージが
+が表示されていると考えるのが普通だろう.
+
+しかしではある. どのプログラムがこのメッセージをどのように出力したかがまるで
+不明なのだ. おそらくだが cmake なるプログラムがこれを表示しているのだろう.
+
+% find . -name config.log
+%
+
+config.log はない.
+
+configure の中を見てみた:
+% cat configure
+#!/bin/sh
+cmake_source_dir=`cd "\`dirname \"$0\"\`";pwd`
+exec "${cmake_source_dir}/bootstrap" "$@"
+%
+
+これは... 自分が知っている autoconf が生成した configure ではない.
+./configure を実行すれば ./bootstrap を実行することになる.
+
+./bootstrap で unique_ptr を検索すると見つかる. おそらくこの C++ テストソース
+を期待した通りコンパイルできないからか, あるいは実行できないからエラーしていると推測
+できる. しかしあくまでも推測である.
+
+% bash -vx bootstrap
+...
+このログを bootstrap.log.2021.05.28 に保存しておいた.
+
+このログを見ると, おそらく最後に実行されたコマンドは
+
+/cygdrive/d/home/khasegawa/cmake-3.20.0-1.src/cmake-3.20.0/Bootstrap.cmk/cmake /cygdrive/d/home/khasegawa/cmake-3.20.0-1.src/cmake-3.20.0 -C/cygdrive/d/home/khasegawa/cmake-3.20.0-1.src/cmake-3.20.0/Bootstrap.cmk/InitialCacheFlags.cmake '-GUnix Makefiles' -DCMAKE_BOOTSTRAP=1
+
+であると推測できるので, 実際に実行してみた:
+
+% /cygdrive/d/home/khasegawa/cmake-3.20.0-1.src/cmake-3.20.0/Bootstrap.cmk/cmake /cygdrive/d/home/khasegawa/cmake-3.20.0-1.src/cmake-3.20.0 -C/cygdrive/d/home/khasegawa/cmake-3.20.0-1.src/cmake-3.20.0/Bootstrap.cmk/InitialCacheFlags.cmake '-GUnix Makefiles' -DCMAKE_BOOTSTRAP=1
+loading initial cache file /cygdrive/d/home/khasegawa/cmake-3.20.0-1.src/cmake-3.20.0/Bootstrap.cmk/InitialCacheFlags.cmake
+CMake Error at CMakeLists.txt:107 (message):
+  The C++ compiler does not support C++11 (e.g.  std::unique_ptr).
+
+
+-- Configuring incomplete, errors occurred!
+See also "/cygdrive/d/home/khasegawa/cmake-3.20.0-1.src/cmake-3.20.0/CMakeFiles/CMakeOutput.log".
+See also "/cygdrive/d/home/khasegawa/cmake-3.20.0-1.src/cmake-3.20.0/CMakeFiles/CMakeError.log".
+%
+エラーが再現できているという意味で正解である. しかし, 残念ながら実行したコマンド
+cmake の動きが分からない以上エラーの回避は難しい.
+
+当初は何かをインストールするときに cmake が必要になったのでしょうがなく
+cmake をソースからビルドしてみたのだが, このようになってしまった.
+cygwin では setup-x86_64.exe でインストールできているから問題ないのだが,
+linux でも同じような問題があった.
+
+でも今回はここまで.
+
