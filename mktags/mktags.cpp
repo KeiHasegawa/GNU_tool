@@ -1003,8 +1003,10 @@ int main(int argc, char** argv)
       display_file(argv[optind], nullptr, optind == argc - 1);
   }
   extern int exit_status;
-  if (exit_status)
+  if (exit_status) {
+    cerr << "objdump common routine detected some error." << endl;
     return exit_status;
+  }
   if (debug_info_impl::info.empty()) {
     cerr << "No .debug_info section. No tag is generated." << endl;
     return 1;
