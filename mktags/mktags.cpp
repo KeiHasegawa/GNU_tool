@@ -425,7 +425,6 @@ namespace table {
   inline string not_redundant(string path)
   {
     for (auto p = 0 ; p != string::npos ;) {
-      auto debug = path.substr(p);
       p = path.find('.', p);
       if (p == string::npos)
 	return path;
@@ -435,9 +434,14 @@ namespace table {
 	  assert(path[p+2] == '/');
 	  assert(path[p-1] == '/');
 	  auto q = path.find_last_of('/', p-2);
-	  assert(q != string::npos);
-	  path.erase(q, p - q + 2);
-	  p = q;
+	  if (q == string::npos) {
+	    path.erase(0, p + 3);
+	    p = 0;
+	  }
+	  else {
+	    path.erase(q, p - q + 2);
+	    p = q;
+	  }
 	  break;
 	}
       case '/':
