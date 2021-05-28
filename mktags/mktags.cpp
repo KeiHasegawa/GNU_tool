@@ -435,6 +435,7 @@ namespace table {
 	  assert(path[p-1] == '/');
 	  auto q = path.find_last_of('/', p-2);
 	  if (q == string::npos) {
+	    /* path = "dir/../a.c" */
 	    path.erase(0, p + 3);
 	    p = 0;
 	  }
@@ -518,12 +519,12 @@ namespace table {
       return;
     }
     if (dir[0] != '/' && dir[0] != '.') {
-      auto path = comp_dir + '/' + dir + '/' + file;
+      auto df = not_redundant(dir + '/' + file);
+      auto path = comp_dir + '/' + df;
       if (abs_path_form)
 	res[path].push_back(&c);
       else {
 	auto rpath = get_rpath(comp_dir);
-	auto df = dir + '/' + file;
 	if (rpath.empty())
 	  res[df].push_back(&c);
 	else {

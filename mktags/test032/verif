@@ -1,0 +1,7 @@
+#! /bin/csh -f
+
+gcc -g3 dir/../a.c -o a.out || exit 1
+../mktags.exe a.out || exit 1
+diff tags tags.exp || exit 1
+../mktags.exe -e a.out || exit 1
+diff TAGS TAGS.e || exit 1
