@@ -110,7 +110,7 @@ namespace debug_info_impl {
 	auto b = p + 1;
 	assert(b != end(contents));
 	auto e = find_if(b, end(contents), not1(ptr_fun(is_enumerator)));
-	assert(b < e);
+	assert(b <= e);
 	for ( ; b != e ; ++b)
 	  modify_enumerator(*b, enum_type);
 	p = e;
