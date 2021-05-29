@@ -1220,6 +1220,10 @@ decode_location_expression (unsigned char * data,
 	case DW_OP_addr:
 	  SAFE_BYTE_GET_AND_INC (uvalue, data, pointer_size, end);
 	  printf ("DW_OP_addr: %s", dwarf_vmatoa ("x", uvalue));
+	  {
+	    extern void set_addr(uint64_t);
+	    set_addr(uvalue);
+	  }
 	  break;
 	case DW_OP_deref:
 	  printf ("DW_OP_deref");

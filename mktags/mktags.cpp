@@ -290,6 +290,21 @@ extern "C" void set_ext()
   c.ext = true;
 }
 
+extern "C" void set_addr(uint64_t)
+{
+  using namespace debug_info_impl;
+  if (curr_dt != DW_TAG_variable)
+    return;
+  auto& i = info.back();
+  auto& contents = i.contents;
+  assert(!contents.empty());
+  auto& c = contents.back();
+  auto kind = c.kind;
+  if (kind != DW_TAG_variable)
+    return;
+  c.ext = true;
+}
+
 namespace debug_macro_impl {
   using namespace std;
   vector<int> filenos;
