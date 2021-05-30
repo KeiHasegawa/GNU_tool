@@ -492,7 +492,8 @@ namespace table {
     }
     int pos = n - 1;
     const auto& files = li.files;
-    assert(pos < files.size());
+    if (pos >= files.size())
+      return;
     const auto& y = files[pos];
     auto file = y.first;
     int m = y.second;

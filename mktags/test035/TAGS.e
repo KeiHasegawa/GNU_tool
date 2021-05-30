@@ -1,0 +1,9 @@
+
+a.c,21
+int main()main3,16
+
+b.c,20
+int main()main1,0
+
+c.h,24
+#define ABC 123ABC1,0
