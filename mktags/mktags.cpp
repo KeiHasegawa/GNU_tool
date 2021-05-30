@@ -282,6 +282,8 @@ extern "C" void set_ext()
   using namespace debug_info_impl;
   if (curr_dt != DW_TAG_variable)
     return;
+  if (info.empty())
+    return;
   auto& i = info.back();
   auto& contents = i.contents;
   assert(!contents.empty());
