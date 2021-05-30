@@ -5024,6 +5024,10 @@ display_object_bfd (bfd *abfd)
 
   if (bfd_check_format_matches (abfd, bfd_object, &matching))
     {
+      if (abfd->flags & EXEC_P) {
+	extern void notify_exec();
+	notify_exec();
+      }
       dump_bfd (abfd, TRUE);
       return;
     }

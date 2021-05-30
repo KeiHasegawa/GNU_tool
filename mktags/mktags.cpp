@@ -216,7 +216,8 @@ extern "C" void set_decl_file(unsigned long long uvalue)
   case DW_TAG_class_type:
   case DW_TAG_enumeration_type:
     {
-      assert(!info.empty());
+      if (info.empty())
+	return;
       auto& i = info.back();
       auto& contents = i.contents;
       if (contents.empty())
@@ -255,7 +256,8 @@ extern "C" void set_decl_line(unsigned long long uvalue)
   case DW_TAG_class_type:
   case DW_TAG_enumeration_type:
     {
-      assert(!info.empty());
+      if (info.empty())
+	return;
       auto& i = info.back();
       auto& contents = i.contents;
       if (contents.empty())
@@ -492,8 +494,7 @@ namespace table {
     }
     int pos = n - 1;
     const auto& files = li.files;
-    if (pos >= files.size())
-      return;
+    assert(pos < files.size());
     const auto& y = files[pos];
     auto file = y.first;
     int m = y.second;
@@ -714,19 +715,37 @@ namespace table {
       return true;
     }
   };
-  inline void create(bool abs_path_form, const set<string>& exclude,
+  inline void create(const vector<debug_info_impl::info_t>& x,
+		     const vector<debug_line_impl::info_t>& y,
+		     const map<int, vector<cont_t> >& z,
+		     bool abs_path_form, const set<string>& exclude,
 		     result_t& res, map<const cont_t*, string>& extra,
 		     bool create_empty_file_entry)
   {
-    const auto& x = debug_info_impl::info;
-    const auto& y = debug_line_impl::info;
-    const auto& z = debug_macro_impl::info;
     assert(x.size() == y.size());
     mismatch(begin(x), end(x), begin(y),
 	     create_t(abs_path_form, exclude, res, extra, z));
     if (create_empty_file_entry)
       mismatch(begin(x), end(x), begin(y),
 	       create_if_t(abs_path_form, exclude, res, extra, z));
+  }
+  typedef vector<debug_info_impl::info_t> X;
+  typedef vector<debug_line_impl::info_t> Y;
+  typedef map<int, vector<cont_t> > Z;
+  vector<tuple<X,Y,Z> > saved;
+  inline void create(bool abs_path_form, const set<string>& exclude,
+		     result_t& res, map<const cont_t*, string>& extra,
+		     bool create_empty_file_entry)
+  {
+    for (const auto& t : saved)
+      create(get<0>(t), get<1>(t), get<2>(t), abs_path_form,
+	     exclude, res, extra, create_empty_file_entry);
+
+    const auto& x = debug_info_impl::info;
+    const auto& y = debug_line_impl::info;
+    const auto& z = debug_macro_impl::info;
+    create(x, y, z, abs_path_form, exclude, res, extra,
+	   create_empty_file_entry);
   }
 } // end fo namespace table
 
@@ -982,6 +1001,23 @@ namespace for_emacs {
 extern "C" void
 display_file (char *filename, char *target, bfd_boolean last_file);
 
+extern "C"
+void notify_exec()
+{
+  using namespace std;
+  static int cnt;
+  if (++cnt == 1)
+    return;
+  debug_info_impl::modify();
+  tuple<table::X, table::Y, table::Z> tmp = {
+    debug_info_impl::info, debug_line_impl::info, debug_macro_impl::info
+  };
+  table::saved.push_back(tmp);
+  debug_info_impl::info.clear();
+  debug_line_impl::info.clear();
+  debug_macro_impl::info.clear();
+}
+
 int main(int argc, char** argv)
 {
   using namespace std;
@@ -1128,6 +1164,12 @@ void debug1()
   debug(debug_line_impl::info);
 }
 
+void debug(const vector<vector<debug_line_impl::info_t> >& v)
+{
+  for (const auto& x : v)
+    debug(x);
+}
+
 void debug(const vector<debug_info_impl::info_t>& v)
 {
   for (const auto& x : v)
@@ -1138,6 +1180,12 @@ void debug2()
 {
   cerr << "debug_info" << endl;
   debug(debug_info_impl::info);
+}
+
+void debug(const vector<vector<debug_info_impl::info_t> >& v)
+{
+  for (const auto& x : v)
+    debug(x);
 }
 
 void debug(const map<int, vector<cont_t> >& m)
@@ -1154,6 +1202,12 @@ void debug3()
 {
   cerr << "debug_macro_impl" << endl;
   debug(debug_macro_impl::info);
+}
+
+void debug(const vector<map<int, vector<cont_t> > >& v)
+{
+  for (const auto& x : v)
+    debug(x);
 }
 
 void debug(const table::value_t& v)
