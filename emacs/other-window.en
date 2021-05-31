@@ -1,0 +1,122 @@
+C-x o
+
+While using emacs, spliting window is sometimes convenience.
+I almost always split upside and down by C-x 2. 
+
+When moving to other to another window, C-x o is used.
+I confirmed that key bind by <f1> b:
+
+C-x o		other-window
+
+other-window was a corresponding Lisp function.
+I also did like below:
+
+M-x describe-function
+other-window
+
+*Help* buffer said that other-window
+
+  o is defined at window.el
+  o takes COUNT argument
+  o optionally takes FRAME argument
+
+and so on.
+
+Now let's split to 4 windows and try to move them by C-x o.
+
++-----+-----+
+|  1  |  2  |
++-----+-----+
+|  3  |  4  |
++-----+-----+
+
+You can notice that cursor moves in above order cyclically.
+Here, at the situation where the cursor in window 1,
+
+C-u 2 C-x o
+
+jumps to window 3.
+
+From this example, I understand
+
+C-u 2
+
+means the pass 2 as a arugment to othe-window.
+
+If you annoy typing `C-u 2',  evalueate below expression:
+
+(other-window 2)
+
+And also you can bind above to some key. But this is not so
+useful. Not so important to bind some key.
+
+Similary, 
+
+C-u -1 C-x o
+
+jumps to previous window. But to begin with, I just split to only 2 window.
+Jumpt to previous window is not necesssary for me.
+But here, for practice, I tried to bind key like below:
+
+(global-set-key "\C-x\C-p" (other-window -1))
+
+I aimed that above binds jumping previous window to C-x C-p.
+And I evallueated above. Then tried to use C-x C-p in the
+4 windows situation.
+
+Unfortunately, it didn't work. emacs messaged
+
+C-x C-p is undefined 
+
+So tried to evaluate below:
+
+(global-set-key "\C-x\C-p" (message "hello world"))
+
+Then, C-x C-p outputed
+
+hello world
+
+into current buffer. This reminded me of "Define Lisp function" or
+"Define Lisp function(part 2)" situation. The `hello-world' displayed
+the message with double quotation into mini buffer. But this action
+was very near to what I expected. But I commited escapades.
+
+Right answer is:
+
+(global-set-key "\C-x\C-n" 'other-window)
+
+(defun other-window-backward ()
+  "Select the previous window."
+  (interactive)
+  (other-window -1))
+
+(global-set-key "\C-x\C-p" 'other-window-backward)
+
+I see. The 2nd argument of global-set-key should be function
+name with single quotation. But on the other hand, it's not
+error to bind printing "hello world" to C-x C-p. But that's enough for today.
+
+By the way,
+
+M-x describe-function
+other-window
+
+*Help* buffer says that other-window uses `next-window'.
+Place the cursor to `next-window' and press return key.
+*Help* buffer becomes that of `next-window':
+
+next-window is a built-in function in ÅeC source codeÅf.
+
+...
+I see. So next-window is not a Lisp function and it's a C function.
+Similary with above, place the cursor to `C source code' and press
+return key...
+
+I built this emacs from source files. So jump to like below:
+
+DEFUN ("next-window", Fnext_window, Snext_window, 0, 3, 0,
+       doc: /* Return live window after WINDOW in the cyclic ordering of window
+
+This file is:
+
+emacs-27.2-1.src/emacs-27.2/src/window.c
