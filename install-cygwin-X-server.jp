@@ -299,8 +299,76 @@ d:/cygwin64/usr/share/opengl/api
 d:/cygwin64/usr/local/share/opengl
 
 このディレクトリはない. さてこのファイルどうやって取得することができるだろうか.
-2021/05/31 17:00
+インターネットを検索してみたが, それらしい情報は得られなかった.
+
+setup-x86_64.exe
+
+で
+
+khronos-opengl-registry-20171010_gitc6a99aff-1.tar.xz
+
+がダウンロードできそうなので, ダウンロードして中を確かめてみた.
+
+drwxrwxr-x appveyor/None     0 2020-03-30 22:17 usr/
+drwxrwxr-x appveyor/None     0 2020-03-30 22:17 usr/share/
+drwxrwxr-x appveyor/None     0 2020-03-30 22:17 usr/share/opengl/
+drwxrwxr-x appveyor/None     0 2020-03-30 22:17 usr/share/opengl/api/
+-rw-r--r-- appveyor/None 2700552 2020-03-30 22:17 usr/share/opengl/api/gl.xml
+-rw-r--r-- appveyor/None  113806 2020-03-30 22:17 usr/share/opengl/api/glx.xml
+-rw-r--r-- appveyor/None  129148 2020-03-30 22:17 usr/share/opengl/api/readme.pdf
+-rw-r--r-- appveyor/None   54417 2020-03-30 22:17 usr/share/opengl/api/reg.py
+-rw-r--r-- appveyor/None    8610 2020-03-30 22:17 usr/share/opengl/api/registry.rnc
+-rw-r--r-- appveyor/None  103739 2020-03-30 22:17 usr/share/opengl/api/wgl.xml
+drwxrwxr-x appveyor/None       0 2020-03-30 22:17 usr/share/opengl/api/__pycache__/
+-rw-r--r-- appveyor/None   23792 2020-03-30 22:17 usr/share/opengl/api/__pycache__/reg.cpython-36.opt-1.pyc
+-rw-r--r-- appveyor/None   22059 2020-03-30 22:17 usr/share/opengl/api/__pycache__/reg.cpython-36.opt-2.pyc
+-rw-r--r-- appveyor/None   23792 2020-03-30 22:17 usr/share/opengl/api/__pycache__/reg.cpython-36.pyc
+drwxrwxr-x appveyor/None       0 2020-03-30 22:17 usr/share/pkgconfig/
+-rw-r--r-- appveyor/None     158 2020-03-30 22:17 usr/share/pkgconfig/khronos-opengl-registry.pc
+
+ここにはないが, おそらく近いのかも.
+
+
+hw/xwin/glx/Makefile
+
+の
+
+KHRONOS_SPEC_DIR = .
+
+を書き換えた. これで /usr/share/opengl/api を参照することはなくなるので
+後は必要なファイルは空のファイルとして作成し, エラーを回避した.
+
+% make
+...
+/usr/include/w32api/rpcdce.h:142:88: error: expected ';', ',' or ')' before 'int'
+
+標準ヘッダでエラーが発生している.
+
+  142 |   typedef void __RPC_API RPC_OBJECT_INQ_FN(UUID *ObjectUuid,UUID *TypeUuid,RPC_STATUS *Status);
+
+この宣言で
+
+/usr/include/w32api/rpcdce.h:210:51: error: unknown type name 'RPC_OBJECT_INQ_FN'; did you mean 'RPC_S_OBJECT_NOT_FOUND'?
+
+ということなのだが, むしろ __RPC_API が何にも define されていないのが問題の
+ように思える.
+
+このディレクトリのエラーを回避できなかったのでひとまず
+
+all:
+
+install:
+
+の Makefile で回避した.
+
+% cd ~/xorg-server-1.12.2/
+% make
+...
+hw/xwin
+
+の make で失敗している. 上と似たようなエラー.
 
 
 
+  
 
