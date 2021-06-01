@@ -1,6 +1,7 @@
 interactive
 
-C-x o では 1 つ前に移動する函数を定義した. そこでは不明な函数を呼び出していた:
+C-x o では 1 つ前に移動する函数を定義した. そこでは不明な函数 interactive
+を呼び出していた:
 
 (defun other-window-backward ()
   "Select the previous window."
@@ -20,11 +21,54 @@ M-x describe-function
   (interactive "p\nP")
 ...
 
-のようになっている. しかもこれは思いのほかいろいろなことをやっているらしい.
+のようになっている. しかもこれは思いのほか色々なことをやっているらしい.
 そしてここでも interactive が何やら "p\nP" という引数を伴って使われている.
 
 まずは interactive の定義を見てみよう. やはり M-x describe-function を
 使う.
+
+そうすると *Help* バッファに次のように表示された:
+
+interactive is a special form in ‘C source code’.
+
+これは「C-x o」で触れた next-window と似ているが少し違う:
+
+next-window is a built-in function in ‘C source code’.
+
+しかしいずれも C の函数が実体である. next-window は built-in という
+単語が使われていたが, interactive は built-in という単語は使われて
+いない. そもそも私が勝手に built-in は Lisp の函数ではなくて C で
+書かれているものと思っていたがそれも違うのかも.
+
+さらに *Help* を読み進めると
+
+(interactive)
+
+は引数を渡さずにコマンドを呼ぶとある.
+そこで以下を試してみた.
+
+(defun foo () "test func" (interactive)(message "hello world"))
+
+(global-set-key "\C-x\C-p" 'foo)
+
+上の 2 つの式を評価して C-x C-p としてみるとミニバッファに
+ダブルクォーテーションなしで
+
+hello world
+
+と表示された. (interacitve) を削除した以下
+
+(defun foo () "test func" (message "hello world"))
+
+で C-x C-p を試すとミニバッファには警告音とともに以下が表示される:
+
+command-execute: Wrong type argument: commandp, foo
+
+間違っているらしい. もう一度期待通り動く (interactive) 付きの
+ほうを評価して C-x C-p を試してみた.
+なるほど, (global-set-key "\C-x\C-p" 'foo) のほうは評価し直す
+必要がないわけだ. 何となくではあるが foo の前にあるシングルクォーテーション
+の意味するところが推測できる.
 
 
 
