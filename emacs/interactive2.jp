@@ -1,0 +1,97 @@
+interactive(その 2)
+
+「interactive」で述べたように interactive は以下のように文字列リテラルを
+引数としてとるらしい:
+
+(defun delete-backward-char (n &optional killflag)
+  "...."
+  (declare (interactive-only delete-char))
+  (interactive "p\nP")
+...
+
+M-x describe-function
+interactive
+
+とすれば例によって説明を見ることができる.
+
+*Help* バッファには以下のような部分がある
+
+Code letters available are:
+a -- Function name: symbol with a function definition.
+...
+
+これは Lisp をよくわかっていない自分にはギリシャ語のようなものであるが,
+
+d -- Value of point as number.  Does not do I/O.
+
+これを試してみようと思う.
+
+(defun d-test (n) "try `d' format of interactive" (interactive "d")(+ n 1))
+
+この式を評価して, そして以下の式を評価してみた:
+
+(d-test 10)
+
+ミニバッファには
+
+11 (#o13, #xb, ?\C-k)
+
+のように表示された. 期待した結果には近い. 以下も評価してみた:
+
+(d-test)
+
+そうすると以下のように *Backtrace* バッファが表示された:
+
+Debugger entered--Lisp error: (wrong-number-of-arguments (lambda (n) "try `d' format of interactive" (interactive "d") (+ n 1)) 0)
+  d-test()
+  eval((d-test) nil)
+  elisp--eval-last-sexp(nil)
+  eval-last-sexp(nil)
+  funcall-interactively(eval-last-sexp nil)
+  call-interactively(eval-last-sexp nil nil)
+  command-execute(eval-last-sexp)
+
+
+以下も試してみた:
+
+(d-test "hello")
+
+そうするとミニバッファには以下が表示されている.
+
+Wrong type argument: number-or-marker-p, "hello"
+
+いずれの結果もエラーが予想されるところではエラーなのでこれは納得の結果である.
+
+「Lisp の函数を定義する(その2)」では 1 + 2 + ... + number を計算する函数を
+定義した:
+
+(defun my-sum (number)
+  "Return sum of numbers 1 through NUMBER."
+  (let ((total 0))
+    (while (> number 0)
+      (setq total (+ total number))
+      (setq number (1- number)))
+    total))
+
+そこで以下を評価してみた:
+
+(my-sum "hello")
+
+ミニバッファには以下が表示されている:
+
+Wrong type argument: number-or-marker-p, "hello"
+
+これは, ... (interactive "d") の有無で違いが良く分かっていない.
+そこで d-test から (interactive "d") を削除してみた:
+
+(defun d-test (n) "not use interactive" (+ n 1))
+
+(d-test 10)
+
+(d-test)
+
+(d-test "hello")
+
+結果は (interactive "d") の有無で変わらない. なんだかまた釈然としない
+結果だったが今回はここまで.
+
