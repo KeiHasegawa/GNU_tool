@@ -1,0 +1,35 @@
+frv-elf
+
+./01_new_batch で最後の frv-elf-gdb 確認までエラーなく進む.
+
+% frv-elf-gcc -g 00_batch.verify.c -o 00_batch.verify.elf
+/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/frv-elf/10.2.0/../../../../frv-elf/bin/ld: error: /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/frv-elf/10.2.0/frvbegin.o: size of section .ctors is not multiple of address size
+/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/frv-elf/10.2.0/../../../../frv-elf/bin/ld: 最終リンクに失敗しました: bad value
+collect2: エラー: ld はステータス 1 で終了しました
+%
+
+のようにエラーになってしまうが,
+
+% cat my_start.S
+	.text
+	.global	_start
+_start:
+	nop
+
+	.global	__main
+__main:
+	nop
+% frv-elf-gcc -g -c 00_batch.verify.c
+% frv-elf-gcc -g -c my_start.S -o my_start.o
+% /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/libexec/gcc/frv-elf/10.2.0/collect2 -o 00_batch.verify.elf my_start.o 00_batch.verify.o frv-elf/lib/libc.a frv-elf/lib/libsim.a
+
+のようにすれば一応 00_batch.verify.elf はできる.
+
+% frv-elf-gdb 00_batch.verify.elf
+(gdb) target sim
+(gdb) load
+(gdb) b main
+
+ここまでは期待通り動作する. なので後は my_start.S でちゃんと _main を呼び出す
+ようなコードがあればよい.
+

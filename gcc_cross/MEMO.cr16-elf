@@ -1,0 +1,48 @@
+gcc-10.2 のインストールでラインタイムライブラリを
+作成中にビルドしたターゲットコンパイラが内部エラーをおこしている.
+
+/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/ -B/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/cr16-elf/bin/ -B/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/cr16-elf/lib/ -isystem /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/cr16-elf/include -isystem /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/cr16-elf/sys-include    -g -O2 -fPIC -mcr16cplus -mdata-model=far -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../../host-i686-pc-linux-gnu/gcc -I../../.././libgcc -I../../.././libgcc/. -I../../.././libgcc/../gcc -I../../.././libgcc/../include  -DHAVE_CC_TLS  -o _ashldi3.o -MT _ashldi3.o -MD -MP -MF _ashldi3.dep -DL_ashldi3 -c ../../.././libgcc/libgcc2.c 
+../../.././libgcc/libgcc2.c: 関数 ‘__ashldi3’ 内:
+../../.././libgcc/libgcc2.c:455:1: エラー: 認識できない命令:
+  455 | }
+      | ^
+(insn/f 113 112 114 2 (set (reg/f:SI 15 sp)
+        (plus:SI (reg/f:SI 15 sp)
+            (const_int 4294967288 [0xfffffff8]))) "../../.././libgcc/libgcc2.c":433:1 -1
+     (nil))
+during RTL pass: cprop_hardreg
+../../.././libgcc/libgcc2.c:455:1: コンパイラ内部エラー: extract_insn 内、位置 recog.c:2294
+0x816f631 _fatal_insn(char const*, rtx_def const*, char const*, int, char const*)
+	../.././gcc/rtl-error.c:108
+0x816f65c _fatal_insn_not_found(rtx_def const*, char const*, int, char const*)
+	../.././gcc/rtl-error.c:116
+0x816ea9a extract_insn(rtx_insn*)
+	../.././gcc/recog.c:2294
+0x8607e9d extract_constrain_insn(rtx_insn*)
+	../.././gcc/recog.c:2193
+0x860ac6c copyprop_hardreg_forward_1
+	../.././gcc/regcprop.c:802
+0x860b9b7 execute
+	../.././gcc/regcprop.c:1367
+Please submit a full bug report,
+with preprocessed source if appropriate.
+Please include the complete backtrace with any bug report.
+See <https://gcc.gnu.org/bugs/> for instructions.
+make[4]: *** [_ashldi3.o] Error 1
+make[4]: Leaving directory `/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.cr16-elf/cr16-elf/far-pic/libgcc'
+make[3]: *** [multi-do] Error 1
+make[3]: Leaving directory `/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.cr16-elf/cr16-elf/libgcc'
+make[2]: *** [all-multi] Error 2
+make[2]: Leaving directory `/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.cr16-elf/cr16-elf/libgcc'
+make[1]: *** [all-target-libgcc] Error 2
+make[1]: Leaving directory `/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.cr16-elf'
+make: *** [all] Error 2
+perl ../modify.pl Makefile > Makefile.$$ || exit 1
+perl ../modify.pl Makefile
+mv Makefile.$$ Makefile || exit 1
+mv Makefile.22682 Makefile
+mv ../Makefile.empty $TARGET/libbacktrace/Makefile || exit 1
+mv ../Makefile.empty cr16-elf/libbacktrace/Makefile
+mv: '../Makefile.empty' から 'cr16-elf/libbacktrace/Makefile' へ移動できません: そのようなファイルやディレクトリはありません
+exit 1
+>

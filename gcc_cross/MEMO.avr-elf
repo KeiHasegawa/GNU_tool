@@ -1,0 +1,56 @@
+gcc-10.2.0 のインストールで何やら同じようなビルドを繰り返して
+かなりのディスクと時間を消費する.
+
+newlib-4.1.0 ではどうも意図的に libc.a libm.a のビルドを
+避けているような configure になっている.
+
+通常の通りの hello world 確認プログラムはビルドできない.
+
+% avr-elf-gcc -g -c a.c -o a.o
+% /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/libexec/gcc/avr-elf/10.2.0/collect2 -plugin /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/libexec/gcc/avr-elf/10.2.0/liblto_plugin.so "-plugin-opt=/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/libexec/gcc/avr-elf/10.2.0/lto-wrapper" "-plugin-opt=-fresolution=/tmp/cc0IVNdf.res" "-plugin-opt=-pass-through=-lgcc"  -o a.elf -L/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/avr-elf/10.2.0 -L/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/avr-elf/10.2.0/../../../../avr-elf/lib a.o --start-group -lgcc --end-group
+% cat a.x
+target sim
+load
+b main
+run
+disassemble
+quit
+% avr-elf-gdb -q a.elf -x a.x
+Reading symbols from a.elf...
+Connected to the simulator.
+Loading section .text, size 0x12 lma 0x0
+Start address 0x0
+Transfer rate: 144 bits in <1 sec.
+Breakpoint 1 at 0x8: file a.c, line 3.
+
+Breakpoint 1, main () at a.c:3
+3	  return 0;
+Dump of assembler code for function main:
+   0x00000000 <+0>:	push	r28
+   0x00000002 <+2>:	push	r29
+   0x00000004 <+4>:	in	r28, 0x3d	; 61
+   0x00000006 <+6>:	in	r29, 0x3e	; 62
+=> 0x00000008 <+8>:	ldi	r24, 0x00	; 0
+   0x0000000a <+10>:	ldi	r25, 0x00	; 0
+   0x0000000c <+12>:	pop	r29
+   0x0000000e <+14>:	pop	r28
+   0x00000010 <+16>:	ret
+End of assembler dump.
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
+%
+
+
+
+
+ 
+ 
+
+
+
+
+
+

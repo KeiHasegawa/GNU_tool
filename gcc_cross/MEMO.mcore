@@ -1,0 +1,133 @@
+% mcore-elf-gcc -g -o 00_batch.verify.elf 00_batch.verify.c
+/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/mcore-elf/10.2.0/../../../../mcore-elf/bin/ld: /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/mcore-elf/10.2.0/../../../../mcore-elf/lib/libc.a(lib_a-isattyr.o): in function `_isatty_r':
+/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/newlib-4.1.0.mcore-elf/mcore-elf/newlib/libc/reent/../../../.././newlib/libc/reent/isattyr.c:55: undefined reference to `_isatty'
+collect2: エラー: ld はステータス 1 で終了しました
+%
+
+newlib を修正
+
+_isatty_r で呼び出している _isatty を isatty に変更した.
+
+% mcore-elf-gcc -g -o 00_batch.verify.elf 00_batch.verify.c
+/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/mcore-elf/10.2.0/../../../../mcore-elf/bin/ld: /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/mcore-elf/10.2.0/../../../../mcore-elf/lib/libc.a(lib_a-sysisatty.o): in function `isatty':
+/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/newlib-4.1.0.mcore-elf/mcore-elf/newlib/libc/syscalls/../../../.././newlib/libc/syscalls/sysisatty.c:14: undefined reference to `_isatty'
+collect2: エラー: ld はステータス 1 で終了しました
+%
+
+newlib の修正がまずい.
+
+newlib-4.1.0.mcore-elf/newlib/libc/syscalls/sysisatty.c
+
+を以下のように変更
+
+#define REENTRANT_SYSCALLS_PROVIDED    これを追加
+
+int
+isatty (int fd)
+{
+#ifdef REENTRANT_SYSCALLS_PROVIDED
+  return _isatty_r (_REENT, fd);
+#else
+  return _isatty (fd);
+#endif
+}
+
+問題のリンクエラーは回避できた.
+
+今度は
+
+mcore-elf-gdb
+
+実行時以下のようなエラーが発生.
+
+
+% /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/bin/mcore-elf-gdb
+arch-utils.c:693: internal-error: initialize_current_architecture: Selection of initial architecture failed
+A problem internal to GDB has been detected,
+further debugging may prove unreliable.
+Quit this debugging session? (y or n) セグメントエラー
+%
+
+gdb で mcore-elf-gdb の動作を確認したところ, 以下の函数が
+event = 0 の引数で呼び出されているのが不正メモリアクセスの
+直接の原因.
+
+void
+serial_event_clear (struct serial_event *event)
+{
+  struct serial *ser = (struct serial *) event;
+#ifndef USE_WIN32API
+  int r;
+
+  do
+    {
+      char c;
+
+      r = read (ser->fd, &c, 1);
+    }
+  while (r > 0 || (r < 0 && errno == EINTR));
+
+しかしその前に
+
+arch-utils.c:693: internal-error: initialize_current_architecture: Selection of initial architecture failed
+A problem internal to GDB has been detected,
+further debugging may prove unreliable.
+Quit this debugging session? (y or n) 
+
+のメッセージが出ている. おそらく mcore のシミュレータとの通信が
+正常でないのだろう.
+
+問題の箇所
+
+(gdb) b arch-utils.c:693
+
+として実行.
+
+  if (! gdbarch_update_p (info))
+    internal_error (__FILE__, __LINE__,
+		    _("initialize_current_architecture: Selection of "
+		      "initial architecture failed"));
+
+(gdb) ptype gdbarch_update_p
+type = int (gdbarch_info)
+
+ここから判断すると gdbarch_update_p が 0 を返したということ.
+
+gdbarch_update_p では gdbarch_find_by_info を呼び出していて
+これが 0 を返しているので gdbarch_update_p が 0 を返している.
+
+
+
+  for (rego = gdbarch_registry;
+       rego != NULL;
+       rego = rego->next)
+    if (rego->bfd_architecture == info.bfd_arch_info->arch)
+      break;
+  if (rego == NULL)
+
+gdbarch_registry が 0 これがセットされるのは
+
+gdbarch_register
+
+という函数だが, そもそもこれが呼び出されていない.
+
+h8300 なら以下の函数からよびだされていた.
+
+void
+_initialize_h8300_tdep ()
+{
+  register_gdbarch_init (bfd_arch_h8300, h8300_gdbarch_init);
+}
+
+gdb-10.2.h8300-elf/gdb/h8300-tdep.c
+
+というファイルで定義されているのだが, これに相当する
+
+gdb-10.2.mcore-elf/gdb/mcore-tdep.c
+
+がない. h8300 に限らず *-tdep.c という名前のファイルがあるが
+mcore バージョンはない.
+
+これは今すぐ直すのは難しい. とりあえず保留.
+
+
