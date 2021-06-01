@@ -1,0 +1,77 @@
+interactive(その3)
+
+「interactive(その2)」では "d" の引数について調べてみたが, 残念ながら
+釈然としない結果で終わってしまった.
+
+M-x describe-function
+interactive
+
+を改めて見てみると
+
+Code letters available are:
+...
+p -- Prefix arg converted to number.  Does not do I/O.
+...
+
+というものがある. これは以前「interactive」や「interactive(その2)」でも
+述べた delete-backward-char でおそらく使われていたものである. 実際は
+"p\nP" だが, おそらく単なる "p" よりも複雑なことを行っているのだろう.
+
+再び以下の函数を定義して評価してみた:
+
+(defun p-test (n) "test `p' format of interactive" (interactive "p")(+ n 1))
+
+そして以下を評価してみた:
+
+(p-test 10)
+
+ミニバッファには
+
+11 (#o13, #xb, ?\C-k)
+
+のように表示されている. 以下も評価してみた:
+
+(p-test)
+
+*Backtrace* バッファが以下のようにならない場合は一旦 C-x C-b でバッファリスト
+を表示した後 *Backtrace* バッファのところで d を押してもう一度上の式を
+評価すれば以下のようになると思う:
+
+Debugger entered--Lisp error: (wrong-number-of-arguments (lambda (n) "test `p' format of interactive" (interactive "p") (+ n 1)) 0)
+  p-test()
+  eval((p-test) nil)
+  elisp--eval-last-sexp(nil)
+  eval-last-sexp(nil)
+  funcall-interactively(eval-last-sexp nil)
+  call-interactively(eval-last-sexp nil nil)
+  command-execute(eval-last-sexp)
+
+また以下も評価してみた:
+
+(p-test "hello")
+
+ミニバッファにはやはり以下が表示されている:
+
+Wrong type argument: number-or-marker-p, "hello"
+
+ここでもやはり C-x C-b から *Backtrace* バッファのところで d を押してもう一度
+上の式を評価すれば *Backtrace* バッファは以下のようになる.
+
+Debugger entered--Lisp error: (wrong-type-argument number-or-marker-p "hello")
+  +("hello" 1)
+  p-test("hello")
+  eval((p-test "hello") nil)
+  elisp--eval-last-sexp(nil)
+  eval-last-sexp(nil)
+  funcall-interactively(eval-last-sexp nil)
+  call-interactively(eval-last-sexp nil nil)
+  command-execute(eval-last-sexp)
+
+なるほど, 少し横道にそれたが, そういう仕様だったのだ.
+しかし, いずれにしろ
+
+o (interactive "p")
+o (interactive "d")
+
+の効果は不明である. あってもなくても動作の違いを理解できていない.
+さて, どうしたものか.
