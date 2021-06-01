@@ -336,39 +336,614 @@ hw/xwin/glx/Makefile
 KHRONOS_SPEC_DIR = .
 
 を書き換えた. これで /usr/share/opengl/api を参照することはなくなるので
-後は必要なファイルは空のファイルとして作成し, エラーを回避した.
+後はこのディレクトリのすべてのファイルをカレントディレクトリにコピーし
+gl.spec などの必要なファイルは空のファイルとして作成し, エラーを回避した.
 
 % make
 ...
+In file included from ../../../hw/xwin/winms.h:42,
+                 from ../../../hw/xwin/win.h:193,
+                 from winpriv.c:9:
 /usr/include/w32api/rpcdce.h:142:88: error: expected ';', ',' or ')' before 'int'
+  142 |   typedef void __RPC_API RPC_OBJECT_INQ_FN(UUID *ObjectUuid,UUID *TypeUuid,RPC_STATUS *Status);
+      |                                                                                        ^~~~~~
+In file included from /usr/include/w32api/rpc.h:82,
+                 from /usr/include/w32api/objbase.h:7,
+                 from ../../../hw/xwin/ddraw.h:6,
+                 from ../../../hw/xwin/winms.h:45,
+                 from ../../../hw/xwin/win.h:193,
+                 from winpriv.c:9:
 
 標準ヘッダでエラーが発生している.
+プリプロセスの結果を winpriv.i に保存してそれを見てみると
 
-  142 |   typedef void __RPC_API RPC_OBJECT_INQ_FN(UUID *ObjectUuid,UUID *TypeUuid,RPC_STATUS *Status);
+  typedef void RPC_OBJECT_INQ_FN(UUID *ObjectUuid,UUID *TypeUuid,RPC_STATUS *int);
 
-この宣言で
+のようになっている. これは *int の部分がおかしい. どういうトリックでこのようになってい
+るのか...
 
-/usr/include/w32api/rpcdce.h:210:51: error: unknown type name 'RPC_OBJECT_INQ_FN'; did you mean 'RPC_S_OBJECT_NOT_FOUND'?
+Status
 
-ということなのだが, むしろ __RPC_API が何にも define されていないのが問題の
-ように思える.
+を int に define しているとこうなる.
 
-このディレクトリのエラーを回避できなかったのでひとまず
+$macro $def Status "/usr/include/X11/Xwindows.h" 71 ;
+...
+$macro $def Status "/usr/include/X11/Xwindows.h" 78 ;
 
-all:
+1 つ目は
 
-install:
+#define Status wStatus
 
-の Makefile で回避した.
+2 つ目は
 
-% cd ~/xorg-server-1.12.2/
+#define Status int
+
+である. Status が　int に変換される原因は判明したの.
+
+../../../hw/xwin/ddraw.h
+
+で
+
+#undef Status               これを追加
+#include <objbase.h>
+
+のようにしてエラーを回避した.
+
 % make
 ...
-hw/xwin
+In file included from /usr/include/w32api/ole2.h:18,
+                 from /usr/include/w32api/wtypesbase.h:13,
+                 from /usr/include/w32api/combaseapi.h:153,
+                 from /usr/include/w32api/objbase.h:14,
+                 from ../../../hw/xwin/ddraw.h:7,
+                 from ../../../hw/xwin/winms.h:45,
+                 from ../../../hw/xwin/win.h:193,
+                 from winpriv.c:9:
+/usr/include/w32api/oleauto.h:123:27: error: unknown type name 'LONG64'; did you mean 'ULONG64'?
+  123 | WINOLEAUTAPI VarUI1FromI8(LONG64 i64In,BYTE *pbOut);
 
-の make で失敗している. 上と似たようなエラー.
+これは LONG64 が typedef されているべきなのに typedef されていないのでこうなって
+いるようである.
+
+../../../hw/xwin/ddraw.h
+
+で
+
+#undef Status
+typedef long long int LONG64          これを追加した
+#include <objbase.h>
+
+% make
+...
+In file included from /usr/include/w32api/rpc.h:39,
+                 from /usr/include/w32api/objbase.h:7,
+                 from ../../../hw/xwin/ddraw.h:9,
+                 from ../../../hw/xwin/winms.h:45,
+                 from ../../../hw/xwin/win.h:193,
+                 from winpriv.c:9:
+/usr/include/w32api/pshpack8.h:7:9: error: expected '=', ',', ';', 'asm' or '__attribute__' before '#pragma'
+    7 | #pragma pack(push,8)
+      |         ^~~~
+In file included from /usr/include/w32api/ole2.h:18,
+                 from /usr/include/w32api/wtypesbase.h:13,
+                 from /usr/include/w32api/combaseapi.h:153,
+                 from /usr/include/w32api/objbase.h:14,
+                 from ../../../hw/xwin/ddraw.h:9,
+                 from ../../../hw/xwin/winms.h:45,
+                 from ../../../hw/xwin/win.h:193,
+                 from winpriv.c:9:
+/usr/include/w32api/oleauto.h:123:27: error: unknown type name 'LONG64'; did you mean 'ULONG64'?
+  123 | WINOLEAUTAPI VarUI1FromI8(LONG64 i64In,BYTE *pbOut);
+      |                           ^~~~~~
+
+最初のエラーは LONG64 の typedef を入れる前は出ていなかったエラーである.
+また 2 つ目のエラーを回避したつもりだが回避できていない.
+
+試しに
+
+../../../hw/xwin/ddraw.h
+
+で
+
+#undef Status
+#define LONG64 typedef long long int        こうやって対処してみた
+#include <objbase.h>
+
+winpriv.c
+
+のコンパイル時のエラーはこれで一応回避できる.
+
+
+% make
+...
+warning がエラーとして扱われているので Makefile から
+-Werror... の部分を削除した
 
 
 
-  
+
+% make
+...
+  CC       indirect.lo
+indirect.c:88:10: fatal error: wgl_ext_api.h: No such file or directory
+   88 | #include <wgl_ext_api.h>
+      |          ^~~~~~~~~~~~~~~
+compilation terminated.
+
+ファイルがないらしい.
+
+Makefile から indirect.lo を削除してビルドしないようにした.
+
+wgl_ext_api.lo でも同じエラーが発生したのでビルドしないようにした.
+
+% make
+...
+cc1: some warnings being treated as errors
+make[2]: *** [Makefile:906: InitOutput.o] Error 1
+make[2]: Leaving directory '/cygdrive/d/home/khasegawa/xorg-server-1.12.2/hw/xwin'
+make[1]: *** [Makefile:1022: all-recursive] Error 1
+make[1]: Leaving directory '/cygdrive/d/home/khasegawa/xorg-server-1.12.2/hw/xwin'
+make: *** [Makefile:747: all] Error 2
+
+hw/xwin/Makefile
+
+から -Werror... を削除した.
+
+% make
+...
+InitOutput.c:903:13: error: ‘g_fSilentDupError’ undeclared (first use in this function); did you mean ‘g_fSilentFatalError’?
+  903 |         if (g_fSilentDupError)
+      |             ^~~~~~~~~~~~~~~~~
+      |             g_fSilentFatalError
+
+グローバル変数を追加した.
+int g_fSilentDupError;
+
+% make
+...
+  CC       winmonitors.o
+...
+winmonitors.c:31:10: fatal error: winmonitors.h: No such file or directory
+   31 | #include "winmonitors.h"
+      |          ^~~~~~~~~~~~~~~
+compilation terminated.
+make[2]: *** [Makefile:906: winmonitors.o] Error 1
+make[2]: Leaving directory '/cygdrive/d/home/khasegawa/xorg-server-1.12.2/hw/xwin'
+make[1]: *** [Makefile:1022: all-recursive] Error 1
+make[1]: Leaving directory '/cygdrive/d/home/khasegawa/xorg-server-1.12.2/hw/xwin'
+
+%
+% find ~/xorg-server-1.12.2/ -name winmonitors.h
+%
+
+ないらしい.
+インターネットを検索したところ以下を発見した.
+
+https://cgit.freedesktop.org/xorg/xserver/tree/hw/xwin
+
+% make
+...
+winshaddd.c:45:69: error: expected ‘=’, ‘,’, ‘;’, ‘asm’ or ‘__attribute__’ before ‘GUID_SECT’
+
+以下のようにコンパイルアウトした:
+#ifdef DEFINE_GUID
+#if 0
+#undef DEFINE_GUID
+#define DEFINE_GUID(n,l,w1,w2,b1,b2,b3,b4,b5,b6,b7,b8) const GUID n GUID_SECT = {l,w1,w2,{b1,b2,b3,b4,b5,b6,b7,b8}}
+#endif
+#endif                          /* DEFINE_GUID */
+
+
+
+% make
+...
+  CCLD     XWin.exe
+/usr/local/lib/gcc/x86_64-pc-cygwin/10.1.0/../../../../x86_64-pc-cygwin/bin/ld:
+winglobals.o:/cygdrive/d/home/khasegawa/xorg-server-1.12.2/hw/xwin/winglobals.c:79: multiple definition of `g_fSilentDupError'; InitOutput.o:/cygdrive/d/home/khasegawa/xorg-server-1.12.2/hw/xwin/InitOutput.c:876: first defined here
+/usr/local/lib/gcc/x86_64-pc-cygwin/10.1.0/../../../../x86_64-pc-cygwin/bin/ld: InitOutput.o: in function `ddxPushProviders':
+
+追加した InitOutput.c の g_fSilentDupError でエラーしている. extern に
+書き換えた.
+
+% make
+...
+  CCLD     XWin.exe
+/usr/local/lib/gcc/x86_64-pc-cygwin/10.1.0/../../../../x86_64-pc-cygwin/bin/ld: InitOutput.o: in function `ddxPushProviders':
+/cygdrive/d/home/khasegawa/xorg-server-1.12.2/hw/xwin/InitOutput.c:156: undefined reference to `glxWinPushNativeProvider'
+
+
+hw/xwin/glx/generated_gl_wrappers.c
+
+に
+
+glxWinPushNativeProvider
+
+の函数定義を追加した.
+
+% make
+...
+  CCLD     XWin.exe
+/usr/local/lib/gcc/x86_64-pc-cygwin/10.1.0/../../../../x86_64-pc-cygwin/bin/ld: windialogs.o: in function `winAboutDlgProc':
+/cygdrive/d/home/khasegawa/xorg-server-1.12.2/hw/xwin/windialogs.c:638: undefined reference to `cygwin_conv_to_win32_path'
+/usr/local/lib/gcc/x86_64-pc-cygwin/10.1.0/../../../../x86_64-pc-cygwin/bin/ld: winengine.o:winengine.c:(.rdata$.refptr.IID_IDirectDraw4[.refptr.IID_IDirectDraw4]+0x0): undefined reference to `IID_IDirectDraw4'
+...
+
+
+hw/xwin/windialogs.c
+
+に
+
+cygwin_conv_to_win32_path
+
+の函数定義を追加した.
+
+% make
+...
+  CCLD     XWin.exe
+/usr/local/lib/gcc/x86_64-pc-cygwin/10.1.0/../../../../x86_64-pc-cygwin/bin/ld: winengine.o:winengine.c:(.rdata$.refptr.IID_IDirectDraw4[.refptr.IID_IDirectDraw4]+0x0): undefined reference to `IID_IDirectDraw4'
+
+const GUID  IID_IDirectDraw4 ;
+
+を追加した.
+
+% make
+...
+  CCLD     XWin.exe
+/usr/local/lib/gcc/x86_64-pc-cygwin/10.1.0/../../../../x86_64-pc-cygwin/bin/ld: ../../hw/xwin/glx/.libs/libXwinGLX.a(glwrap.o):glwrap.c:(.rdata$.refptr.glxWinDebugSettings[.refptr.glxWinDebugSettings]+0x0): undefined reference to `glxWinDebugSettings'
+...
+
+% make
+% make install
+% ls /usr/local/bin/*X*
+/usr/local/bin/X
+/usr/local/bin/XWin.exe
+/usr/local/bin/Xnest.exe
+/usr/local/bin/Xvfb.exe
+/usr/local/bin/cygX11-6.dll
+/usr/local/bin/cygX11-xcb-1.dll
+/usr/local/bin/cygXmu-6.dll
+/usr/local/bin/cygXmuu-1.dll
+%
+
+動作確認
+
+% which startx
+/usr/local/bin/startx
+% startx
+xauth:  file /cygdrive/d/home/khasegawa/.serverauth.8681 does not exist
+
+xinit: giving up
+xinit: unable to connect to X server: Connection refused
+xinit: server error
+% bash -vx startx
+#!/bin/sh
+
+#
+# This is just a sample implementation of a slightly less primitive
+# interface than xinit. It looks for user .xinitrc and .xserverrc
+# files, then system xinitrc and xserverrc files, else lets xinit choose
+# its default. The system xinitrc should probably do things like check
+# for .Xresources files and merge them in, start up a window manager,
+# and pop a clock and several xterms.
+#
+# Site administrators are STRONGLY urged to write nicer versions.
+#
+
+unset DBUS_SESSION_BUS_ADDRESS
++ unset DBUS_SESSION_BUS_ADDRESS
+unset SESSION_MANAGER
++ unset SESSION_MANAGER
+userclientrc=$HOME/.xinitrc
++ userclientrc=/cygdrive/d/home/khasegawa/.xinitrc
+sysclientrc=/usr/local/etc/X11/xinit/xinitrc
++ sysclientrc=/usr/local/etc/X11/xinit/xinitrc
+
+userserverrc=$HOME/.xserverrc
++ userserverrc=/cygdrive/d/home/khasegawa/.xserverrc
+sysserverrc=/usr/local/etc/X11/xinit/xserverrc
++ sysserverrc=/usr/local/etc/X11/xinit/xserverrc
+defaultclient=xterm
++ defaultclient=xterm
+defaultserver=/usr/local/bin/X
++ defaultserver=/usr/local/bin/X
+defaultclientargs=""
++ defaultclientargs=
+defaultserverargs=""
++ defaultserverargs=
+defaultdisplay=""
++ defaultdisplay=
+clientargs=""
++ clientargs=
+serverargs=""
++ serverargs=
+vtarg=""
++ vtarg=
+enable_xauth=1
++ enable_xauth=1
+
+
+# Automatically determine an unused $DISPLAY
+d=0
++ d=0
+while true ; do
+    [ -e "/tmp/.X$d-lock" -o -S "/tmp/.X11-unix/X$d" ] || break
+    d=$(($d + 1))
+done
++ true
++ '[' -e /tmp/.X0-lock -o -S /tmp/.X11-unix/X0 ']'
++ break
+defaultdisplay=":$d"
++ defaultdisplay=:0
+unset d
++ unset d
+
+whoseargs="client"
++ whoseargs=client
+while [ x"$1" != x ]; do
+    case "$1" in
+    # '' required to prevent cpp from treating "/*" as a C comment.
+    /''*|\./''*)
+ if [ "$whoseargs" = "client" ]; then
+     if [ x"$client" = x ] && [ x"$clientargs" = x ]; then
+  client="$1"
+     else
+  clientargs="$clientargs $1"
+     fi
+ else
+     if [ x"$server" = x ] && [ x"$serverargs" = x ]; then
+  server="$1"
+     else
+  serverargs="$serverargs $1"
+     fi
+ fi
+ ;;
+    --)
+ whoseargs="server"
+ ;;
+    *)
+ if [ "$whoseargs" = "client" ]; then
+     clientargs="$clientargs $1"
+ else
+     # display must be the FIRST server argument
+     if [ x"$serverargs" = x ] && \
+   expr "$1" : ':[0-9][0-9]*$' > /dev/null 2>&1; then
+  display="$1"
+     else
+  serverargs="$serverargs $1"
+     fi
+ fi
+ ;;
+    esac
+    shift
+done
++ '[' x '!=' x ']'
+
+# process client arguments
+if [ x"$client" = x ]; then
+    client=$defaultclient
+
+    # For compatibility reasons, only use startxrc if there were no client command line arguments
+    if [ x"$clientargs" = x ]; then
+        if [ -f "$userclientrc" ]; then
+            client=$userclientrc
+        elif [ -f "$sysclientrc" ]; then
+            client=$sysclientrc
+        fi
+    fi
+fi
++ '[' x = x ']'
++ client=xterm
++ '[' x = x ']'
++ '[' -f /cygdrive/d/home/khasegawa/.xinitrc ']'
++ '[' -f /usr/local/etc/X11/xinit/xinitrc ']'
++ client=/usr/local/etc/X11/xinit/xinitrc
+
+# if no client arguments, use defaults
+if [ x"$clientargs" = x ]; then
+    clientargs=$defaultclientargs
+fi
++ '[' x = x ']'
++ clientargs=
+
+# process server arguments
+if [ x"$server" = x ]; then
+    server=$defaultserver
+    # For compatibility reasons, only use xserverrc if there were no server command line arguments
+    if [ x"$serverargs" = x -a x"$display" = x ]; then
+ if [ -f "$userserverrc" ]; then
+     server=$userserverrc
+ elif [ -f "$sysserverrc" ]; then
+     server=$sysserverrc
+ fi
+    fi
+fi
++ '[' x = x ']'
++ server=/usr/local/bin/X
++ '[' x = x -a x = x ']'
++ '[' -f /cygdrive/d/home/khasegawa/.xserverrc ']'
++ '[' -f /usr/local/etc/X11/xinit/xserverrc ']'
+
+# if no server arguments, use defaults
+if [ x"$serverargs" = x ]; then
+    serverargs=$defaultserverargs
+fi
++ '[' x = x ']'
++ serverargs=
+
+# if no vt is specified add vtarg (which may be empty)
+have_vtarg="no"
++ have_vtarg=no
+for i in $serverargs; do
+    if expr "$i" : 'vt[0-9][0-9]*$' > /dev/null; then
+        have_vtarg="yes"
+    fi
+done
+if [ "$have_vtarg" = "no" ]; then
+    serverargs="$serverargs $vtarg"
+fi
++ '[' no = no ']'
++ serverargs=' '
+
+# if no display, use default
+if [ x"$display" = x ]; then
+    display=$defaultdisplay
+fi
++ '[' x = x ']'
++ display=:0
+
+if [ x"$enable_xauth" = x1 ] ; then
+    if [ x"$XAUTHORITY" = x ]; then
+        XAUTHORITY=$HOME/.Xauthority
+        export XAUTHORITY
+    fi
+
+    removelist=
+
+    # set up default Xauth info for this machine
+    case `uname` in
+    Linux*)
+        if [ -z "`hostname --version 2>&1 | grep GNU`" ]; then
+            hostname=`hostname -f`
+        else
+            hostname=`hostname`
+        fi
+        ;;
+    *)
+        hostname=`hostname`
+        ;;
+    esac
+
+    authdisplay=${display:-:0}
+
+    mcookie=`/usr/bin/mcookie`
+
+
+
+
+
+
+
+    if test x"$mcookie" = x; then
+        echo "Couldn't create cookie"
+        exit 1
+    fi
+    dummy=0
+
+    # create a file with auth information for the server. ':0' is a dummy.
+    xserverauthfile=$HOME/.serverauth.$$
+    trap "rm -f '$xserverauthfile'" HUP INT QUIT ILL TRAP KILL BUS TERM
+    xauth -q -f "$xserverauthfile" << EOF
+add :$dummy . $mcookie
+EOF
+
+    xserverauthfilequoted=$(echo ${xserverauthfile} | sed "s/'/'\\\\''/g")
+    serverargs=${serverargs}" -auth '"${xserverauthfilequoted}"'"
+
+
+
+
+    # now add the same credentials to the client authority file
+    # if '$displayname' already exists do not overwrite it as another
+    # server may need it. Add them to the '$xserverauthfile' instead.
+    for displayname in $authdisplay $hostname$authdisplay; do
+        authcookie=`xauth list "$displayname" \
+        | sed -n "s/.*$displayname[[:space:]*].*[[:space:]*]//p"` 2>/dev/null;
+        if [ "z${authcookie}" = "z" ] ; then
+            xauth -q << EOF
+add $displayname . $mcookie
+EOF
+        removelist="$displayname $removelist"
+        else
+            dummy=$(($dummy+1));
+            xauth -q -f "$xserverauthfile" << EOF
+add :$dummy . $authcookie
+EOF
+        fi
+    done
+fi
++ '[' x1 = x1 ']'
++ '[' x = x ']'
++ XAUTHORITY=/cygdrive/d/home/khasegawa/.Xauthority
++ export XAUTHORITY
++ removelist=
++ case `uname` in
+++ uname
+++ hostname
++ hostname=DESKTOP-1V4KK5P
++ authdisplay=:0
+++ /usr/bin/mcookie
++ mcookie=875e496a35e6ecb9b6dbe0ddf9d3c0fe
++ test x875e496a35e6ecb9b6dbe0ddf9d3c0fe = x
++ dummy=0
++ xserverauthfile=/cygdrive/d/home/khasegawa/.serverauth.8701
++ trap 'rm -f '\''/cygdrive/d/home/khasegawa/.serverauth.8701'\''' HUP INT QUIT ILL TRAP KILL BUS TERM
++ xauth -q -f /cygdrive/d/home/khasegawa/.serverauth.8701
+xauth:  file /cygdrive/d/home/khasegawa/.serverauth.8701 does not exist
+++ echo /cygdrive/d/home/khasegawa/.serverauth.8701
+++ sed 's/'\''/'\''\\'\'''\''/g'
++ xserverauthfilequoted=/cygdrive/d/home/khasegawa/.serverauth.8701
++ serverargs='  -auth '\''/cygdrive/d/home/khasegawa/.serverauth.8701'\'''
++ for displayname in $authdisplay $hostname$authdisplay
+++ xauth list :0
+++ sed -n 's/.*:0[[:space:]*].*[[:space:]*]//p'
++ authcookie=3d0a0b33eabb66d8de2d6385f0a016b5
++ '[' z3d0a0b33eabb66d8de2d6385f0a016b5 = z ']'
++ dummy=1
++ xauth -q -f /cygdrive/d/home/khasegawa/.serverauth.8701
++ for displayname in $authdisplay $hostname$authdisplay
+++ xauth list DESKTOP-1V4KK5P:0
+++ sed -n 's/.*DESKTOP-1V4KK5P:0[[:space:]*].*[[:space:]*]//p'
++ authcookie=
++ '[' z = z ']'
++ xauth -q
++ removelist='DESKTOP-1V4KK5P:0 '
+
+
+eval xinit \"$client\" $clientargs -- \"$server\" $display $serverargs
++ eval xinit '"/usr/local/etc/X11/xinit/xinitrc"' -- '"/usr/local/bin/X"' :0 -auth ''\''/cygdrive/d/home/khasegawa/.serverauth.8701'\'''
+xinit "/usr/local/etc/X11/xinit/xinitrc" -- "/usr/local/bin/X" :0 -auth '/cygdrive/d/home/khasegawa/.serverauth.8701'
+++ xinit /usr/local/etc/X11/xinit/xinitrc -- /usr/local/bin/X :0 -auth /cygdrive/d/home/khasegawa/.serverauth.8701
+
+xinit: giving up
+xinit: unable to connect to X server: Connection refused
+xinit: server error
+
+
+
+retval=$?
++ retval=1
+
+if [ x"$enable_xauth" = x1 ] ; then
+    if [ x"$removelist" != x ]; then
+        xauth remove $removelist
+    fi
+    if [ x"$xserverauthfile" != x ]; then
+        rm -f "$xserverauthfile"
+    fi
+fi
++ '[' x1 = x1 ']'
++ '[' 'xDESKTOP-1V4KK5P:0 ' '!=' x ']'
++ xauth remove DESKTOP-1V4KK5P:0
++ '[' x/cygdrive/d/home/khasegawa/.serverauth.8701 '!=' x ']'
++ rm -f /cygdrive/d/home/khasegawa/.serverauth.8701
+exit $retval
++ exit 1
+%
+
+xinit から /usr/local/bin/X を起動しているが何かが原因で失敗しているらしい.
+
+% ls ~/.serverauth.6922
+ファイルがある.
+% xinit /usr/local/etc/X11/xinit/xinitrc -- /usr/local/bin/X :0 -auth /cygdrive/d/home/khasegawa/.serverauth.6922
+
+xinit: giving up
+xinit: unable to connect to X server: Connection refused
+xinit: server error
+%
+
+/usr/bin/xinit /usr/etc/
+
+/usr/bin/xinit xterm -- /usr/bin/X :0
+
+のようにしてみたがやはり linux マシンから xeyes でウィンドウを開くことはできなかった.
 
