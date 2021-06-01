@@ -1,0 +1,69 @@
+ft32-elf
+
+./01_new_batch で最後の動作確認まで成功
+
+% ft32-elf-gcc -g -o 00_batch.verify.elf 00_batch.verify.c
+
+ではリンクエラーになるが,
+
+% ft32-elf-gcc -g -c 00_batch.verify.c
+% /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/libexec/gcc/ft32-elf/10.2.0/collect2 -o 00_batch.verify.elf /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/ft32-elf/lib/crt0.o /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/ft32-elf/10.2.0/crtbegin.o -L/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/ft32-elf/10.2.0 -L/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/ft32-elf/lib 00_batch.verify.o -lgcc -lc -lsim /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/ft32-elf/10.2.0/crtend.o /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/ft32-elf/10.2.0/crtn.o -T sim.ld
+
+とすれば一応 00_batch.verify.elf ができる.
+
+% ft32-elf-gdb 00_batch.verify.elf
+...
+(gdb) target sim
+Connected to the simulator.
+(gdb) load
+Loading section .text, size 0x3658 lma 0x0
+Loading section .tors, size 0x10 lma 0x800000
+Loading section .data, size 0x852 lma 0x3658
+Loading section .eh_frame, size 0x4 lma 0x3f04
+Start address 0x0
+Transfer rate: 128496 bits in <1 sec.
+(gdb) b main
+Breakpoint 1 at 0x1b4: file 00_batch.verify.c, line 5.
+(gdb) run
+Starting program: /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/00_batch.verify.elf 
+
+Breakpoint 1, main () at 00_batch.verify.c:5
+5	  printf("hello world\n");
+(gdb) disassemble
+Dump of assembler code for function main:
+   0x000001b0 <+0>:	95d00000 link $r29,0
+=> 0x000001b4 <+4>:	64000850 ldk.l $r0,2128
+   0x000001b8 <+8>:	003400b1 call 0x2c4 <puts>
+   0x000001bc <+12>:	64000000 ldk.l $r0,0
+   0x000001c0 <+16>:	99d00000 unlink $r29
+   0x000001c4 <+20>:	a0000000 return 
+End of assembler dump.
+(gdb) c
+Continuing.
+Unknown IO write 00000000 to to 00010009
+Unknown IO write 00000000 to to 0001000d
+Unknown IO write 00000000 to to 00010011
+Unknown IO write 00000012 to to 00010015
+Unknown IO write 00000000 to to 0001006d
+Unknown IO write 00000002 to to 00010017
+Unknown IO write 00000000 to to 00010019
+Unknown IO write 00000000 to to 0001001d
+Unknown IO write 00000000 to to 00010021
+Unknown IO write 00000000 to to 00010065
+Unknown IO write 00000000 to to 00010066
+Unknown IO write 00000000 to to 00010067
+Unknown IO write 00000000 to to 00010068
+Unknown IO write 00000000 to to 00010069
+Unknown IO write 00000000 to to 0001006a
+Unknown IO write 00000000 to to 0001006b
+Unknown IO write 00000000 to to 0001006c
+Unknown IO write 00010009 to to 00010025
+Unknown IO write 00002240 to to 00010029
+Unknown IO write 0000228c to to 0001002d
+Unknown IO write 00002338 to to 00010031
+Unknown IO write 00002380 to to 00010035
+[Inferior 1 (process 42000) exited normally]
+(gdb)
+
+のようになる. 最後は期待する動作ではないが, 一応これで満足しておく.
+
