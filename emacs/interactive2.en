@@ -1,0 +1,102 @@
+interactive(part 2)
+
+As described at "interactive", `interactive' takes string literal argument
+like below:
+
+(defun delete-backward-char (n &optional killflag)
+  "...."
+  (declare (interactive-only delete-char))
+  (interactive "p\nP")
+...
+
+As before:
+
+M-x describe-function
+interactive
+
+then, you can see the explanation of `interactive'.
+*Help* buffer says:
+
+Code letters available are:
+a -- Function name: symbol with a function definition.
+...
+
+These are Greek to me, but this time try this one: 
+
+d -- Value of point as number.  Does not do I/O.
+
+So I defined the below:
+
+(defun d-test (n) "try `d' format of interactive" (interactive "d")(+ n 1))
+
+I evaluated above expression and also evaluated below expression:
+
+(d-test 10)
+
+then displayed below into mini buffer:
+
+11 (#o13, #xb, ?\C-k)
+
+This was neart to what I expected. And also evaluated below:
+
+(d-test)
+
+then *Backtrace* became like below:
+
+Debugger entered--Lisp error: (wrong-number-of-arguments (lambda (n) "try `d' format of interactive" (interactive "d") (+ n 1)) 0)
+  d-test()
+  eval((d-test) nil)
+  elisp--eval-last-sexp(nil)
+  eval-last-sexp(nil)
+  funcall-interactively(eval-last-sexp nil)
+  call-interactively(eval-last-sexp nil nil)
+  command-execute(eval-last-sexp)
+
+
+Also evaluated below:
+
+(d-test "hello")
+
+then displayed below message into mini buffer:
+
+Wrong type argument: number-or-marker-p, "hello"
+
+These results convinced me. Errors were handled suitably.
+
+By the way, we defined the function which returns
+
+1 + 2 + ... + number
+
+for argument `number' at "Define Lisp function(part 2)":
+
+(defun my-sum (number)
+  "Return sum of numbers 1 through NUMBER."
+  (let ((total 0))
+    (while (> number 0)
+      (setq total (+ total number))
+      (setq number (1- number)))
+    total))
+
+And I evaluated below:
+
+(my-sum "hello")
+
+then displayed messsage into mini buffer:
+
+Wrong type argument: number-or-marker-p, "hello"
+
+This is ... I cannot know the difference betweeen existence of
+`(interactive "d")' and no existence.
+Then I tried to erase `(interactive "d")' from `d-test':
+
+(defun d-test (n) "not use interactive" (+ n 1))
+
+(d-test 10)
+
+(d-test)
+
+(d-test "hello")
+
+The results are the same. The exsistence of `(interactive "d")'
+doesn't affect to the result. I just don't feel satisfied with these,
+but that's enough for today.
