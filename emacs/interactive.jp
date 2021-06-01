@@ -1,0 +1,34 @@
+interactive
+
+C-x o では 1 つ前に移動する函数を定義した. そこでは不明な函数を呼び出していた:
+
+(defun other-window-backward ()
+  "Select the previous window."
+  (interactive)
+  (other-window -1))
+
+ところで, 「BackSpace キー」のところでは BackSpace キーに delete-backward-char
+を割り当てたがこれの定義を例によって
+
+M-x describe-function
+
+で見てみよう. 定義されているファイル simple.el を見てみると:
+
+(defun delete-backward-char (n &optional killflag)
+  "...."
+  (declare (interactive-only delete-char))
+  (interactive "p\nP")
+...
+
+のようになっている. しかもこれは思いのほかいろいろなことをやっているらしい.
+そしてここでも interactive が何やら "p\nP" という引数を伴って使われている.
+
+まずは interactive の定義を見てみよう. やはり M-x describe-function を
+使う.
+
+
+
+
+
+
+
