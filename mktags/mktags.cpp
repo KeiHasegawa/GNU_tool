@@ -381,6 +381,8 @@ namespace table {
   map<string, string> cache;
   string get_rpath(string dir)
   {
+    if (dir.empty())
+      return dir;
     assert(dir[0] == '/');
     auto p = cache.find(dir);
     if (p != end(cache))
