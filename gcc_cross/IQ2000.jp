@@ -1,0 +1,142 @@
+IQ2000 のクロスコンパイル環境
+
+(*1) IQ2000
+VITESSE という会社がシミュレータ部分を作成したらしいが不明.
+
+(*2) スクリプトによるインストール
+
+% cat 01_new_batch
+#! /bin/csh -vxf
+
+set PREFIX = `pwd`
+set TARGET = iq2000-elf
+
+if (-d binutils-2.36.1.$TARGET) then
+  echo "gdb-10.2.$TARGET exists"
+  exit 1
+endif
+xz -d -c binutils-2.36.1.tar.xz | tar xf - || exit 1
+mv binutils-2.36.1 binutils-2.36.1.$TARGET || exit 1
+cd binutils-2.36.1.$TARGET || exit 1
+./configure --prefix=$PREFIX --target=$TARGET || exit 1
+make || exit 1
+make install || exit 1
+cd .. || exit 1
+
+if (-d gcc-10.2.0.$TARGET) then
+  echo "gdb-10.2.$TARGET exists"
+  exit 1
+endif
+xz -d -c gcc-10.2.0.tar.xz | tar xf - || exit 1
+mv gcc-10.2.0 gcc-10.2.0.$TARGET || exit 1
+cd gcc-10.2.0.$TARGET || exit 1
+./configure --prefix=$PREFIX --target=$TARGET \
+ --disable-libstdc++-v3 --disable-libssp --disable-libquadmath \
+ --disable-libgfortran --disable-libobjc || exit 1
+sed \
+ -e 's/host_subdir = @host_subdir@/host_subdir = host-i686-pc-linux-gnu/' \
+ libgcc/Makefile.in > libgcc/Makefile.in.$$ || exit 1
+mv libgcc/Makefile.in.$$ libgcc/Makefile.in || exit 1
+make && (echo "unexpected sucessed" ; exit 1)
+perl ../modify.pl Makefile > Makefile.$$ || exit 1
+mv Makefile.$$ Makefile || exit 1
+cp ../Makefile.empty $TARGET/libbacktrace/Makefile || exit 1
+make || exit 1
+make install || exit 1
+cd .. || exit 1
+
+if (-d gdb-10.2.$TARGET) then
+  echo "gdb-10.2.$TARGET exists"
+  exit 1
+endif
+xz -d -c gdb-10.2-1.src/gdb-10.2.tar.xz | tar xf - || exit 1
+mv gdb-10.2 gdb-10.2.$TARGET || exit 1
+cd gdb-10.2.$TARGET || exit 1
+./configure --prefix=$PREFIX --target=$TARGET || exit 1
+make all || exit 1
+make install || exit 1
+cd ..
+
+if (-d newlib-4.1.0.$TARGET) then
+  echo "gdb-10.2.$TARGET exists"
+  exit 1
+endif
+gunzip -c newlib-4.1.0.tar.gz | tar xf - || exit 1
+mv newlib-4.1.0 newlib-4.1.0.$TARGET || exit 1
+cd newlib-4.1.0.$TARGET || exit 1
+./configure --prefix=$PREFIX --target=$TARGET || exit 1
+make || exit 1
+make install || exit 1
+cd ..
+% cat modify.pl
+while (<>) {
+    chop $_;
+    if (/^configure-target-libbacktrace: /) {
+	print $_, "\n";
+	$state = 1;
+	next;
+    }
+    if ($state == 1) {
+	if (/^$/) {
+	    $state = 0;
+	}
+	next;
+    }
+    print $_, "\n";
+}
+% cat Makefile.empty
+all:
+
+install:
+
+% ./01_new_batch
+
+実行すると iq2000-elf-gcc, iq2000-elf-gdb 等が
+
+./bin
+
+にインストールされる. このスクリプトの経緯については「H8」を参照.
+
+(*3) 動作確認
+
+% iq200-elf-gcc -g -o hello.elf hello.c
+% iq200-elf-gdb hello.elf
+(gdb) target sim
+Connected to the simulator.
+(gdb) load
+Loading section .text, size 0x6730 lma 0x80000000
+Loading section .data, size 0x84c lma 0x1000
+Loading section .eh_frame, size 0xf4 lma 0x184c
+Loading section .rodata, size 0x68 lma 0x1940
+Start address 0x80000000
+Transfer rate: 231104 bits in <1 sec.
+(gdb) b main
+Breakpoint 1 at 0x58: main. (2 locations)
+(gdb) run
+
+Breakpoint 1, 0x80000058 in main ()
+(gdb) disassemble
+Dump of assembler code for function main:
+   0x80000048 <+0>:	addiu r29,r29,0xfff8
+   0x8000004c <+4>:	sw r31,0x4(r29)
+   0x80000050 <+8>:	sw r27,0x0(r29)
+   0x80000054 <+12>:	or r27,r0,r29
+=> 0x80000058 <+16>:	lui r2,0x0
+   0x8000005c <+20>:	addiu r4,r2,0x1940
+   0x80000060 <+24>:	lui r3,0x0
+   0x80000064 <+28>:	addiu r3,r3,0x1b0
+   0x80000068 <+32>:	jalr r31,r3
+   0x8000006c <+36>:	nop
+   0x80000070 <+40>:	or r2,r0,r0
+   0x80000074 <+44>:	or r29,r0,r27
+   0x80000078 <+48>:	lw r31,0x4(r29)
+   0x8000007c <+52>:	lw r27,0x0(r29)
+   0x80000080 <+56>:	nop
+   0x80000084 <+60>:	addiu r29,r29,0x8
+   0x80000088 <+64>:	jr r31
+   0x8000008c <+68>:	nop
+End of assembler dump.
+Heap and stack collision
+(gdb) c
+hello world
+(gdb)
