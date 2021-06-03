@@ -1,0 +1,41 @@
+or1k-elf
+
+01_new_batch を実行した結果, 以下のエラーとなった.
+これは msp430-elf と同じ現象. だめらしい.
+
+かと思ったが, msp430-elf は実はオペミスでそれなりに動作していることが確認
+できている.
+
+make[3]: Leaving directory `/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.or1k-elf/host-i686-pc-linux-gnu/libcc1'
+make[2]: Leaving directory `/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.or1k-elf/host-i686-pc-linux-gnu/libcc1'
+Checking multilib configuration for libgcc...
+mkdir -p -- or1k-elf/libgcc
+Configuring in or1k-elf/libgcc
+configure: creating cache ./config.cache
+checking build system type... i686-pc-linux-gnu
+checking host system type... or1k-unknown-elf
+checking for --enable-version-specific-runtime-libs... no
+checking for a BSD-compatible install... /usr/local/bin/install -c
+checking for gawk... gawk
+checking for or1k-elf-ar... or1k-elf-ar
+checking for or1k-elf-lipo... or1k-elf-lipo
+checking for or1k-elf-nm... /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.or1k-elf/host-i686-pc-linux-gnu/gcc/nm
+checking for or1k-elf-ranlib... or1k-elf-ranlib
+checking for or1k-elf-strip... or1k-elf-strip
+checking whether ln -s works... yes
+checking for or1k-elf-gcc... /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.or1k-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.or1k-elf/host-i686-pc-linux-gnu/gcc/ -B/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/or1k-elf/bin/ -B/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/or1k-elf/lib/ -isystem /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/or1k-elf/include -isystem /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/or1k-elf/sys-include   
+checking for suffix of object files... configure: error: in `/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.or1k-elf/or1k-elf/libgcc':
+configure: error: cannot compute suffix of object files: cannot compile
+See `config.log' for more details
+make[1]: *** [configure-target-libgcc] Error 1
+make[1]: Leaving directory `/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.or1k-elf'
+make: *** [all] Error 2
+perl ../modify.pl Makefile > Makefile.$$ || exit 1
+perl ../modify.pl Makefile
+mv Makefile.$$ Makefile || exit 1
+mv Makefile.26752 Makefile
+cp ../Makefile.empty $TARGET/libbacktrace/Makefile || exit 1
+cp ../Makefile.empty or1k-elf/libbacktrace/Makefile
+cp: 通常ファイル 'or1k-elf/libbacktrace/Makefile' を作成できません: そのようなファイルやディレクトリはありません
+exit 1
+>
