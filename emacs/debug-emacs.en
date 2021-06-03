@@ -76,9 +76,9 @@ Breakpoint 1, Finteractive (args=0x0) at callint.c:112
 #23 0x081b9e1f in main (argc=1, argv=0xbffb68e4) at emacs.c:2067
 (gdb) 
 
-これを見て気付いたが interactive という Lisp の函数は Finteracitve
-のように F が付いた C の函数として定義されている. F から始まる函数全て
-がそうなのかは不明だが例えば上の
+これを見て気付いたが interactive という函数は Finteracitve
+のように F が付いている. F から始まる函数全てがそうなのかは不明だが
+例えば上の
 
 Fcall_interactively
 
@@ -90,13 +90,3 @@ Fcall_interactively
 
 のところにすぐにたどり着けて便利なのだが, 27.2 の emacs で M-x gdb が思った通り
 動作しないので 23.2.1 の emacs で M-x gdb のようにしている.
-
-ところで, この Finteractive だが, それは引数に依存せず単に 0 を返しているだけで
-ある. これに関しては
-
-M-x describe-function
-interactive
-
-で表示される内容と合致している. そしてそれは C のソースである
-
-
