@@ -333,7 +333,7 @@ int main()
 
 linux % ls -l cc1
 -rwxrwxr-x 1 khasegawa khasegawa 140158720  Mon 11 08:44 cc1
-linux % date ; ~/lang/53_GNU_tool/mktags/mktags.exe cc1 -e  ; date
+linux % date ; mktags.exe cc1 -e  ; date
 
      mktags.exe built with -O0 ran for about 3.0 minites.
      mktags.exe built with -O3 ran for about 2.5 minites.
@@ -451,16 +451,43 @@ enum E {  // tag name : E
 (*16) Function declaration
 
      Normally, tag is not generated for function declaration because gcc
-     doesn't generate debug information for declaration.
+     doesn't generate debug information for declaration. But
 
-     But TAGS generated from mktags.exe itself contains the entries for
-     declaration and definition  of `bfd_openr', for example.
+     o -g or -g3 specified with -O2 option
+     o The declared function is called or refered its address
+     o The declared function is defined at another compilation unit
 
-     This is because g++ generates debug information for `bfd_openr',
-     it's not problem of mktags.exe. But I take care of it a little.
+     Above conditions are satisfied, gcc generates debug information
+     for the declared function. Therefore the tag is generated:
 
-     Also for `free', tag is generated for the declaration of it.
-     The reason is not clear currently.
+% cat a.c
+void f();
+
+void g()
+{
+  f();
+}
+% gcc -g -O2 a.c -c
+% ./mktags.exe a.o
+% cat tags
+f	a.c	/^void f();$/;"	f         *** This is generated!
+g	a.c	/^void g()$/;"	f
+%
+
+     It becomes more obvious if specified -S not -c and you investigate
+     a.s.
+
+     If this information exists or not, program behaviour is not changed.
+     And I guess, gdb might work well. Expected specification is:
+
+     o If -g or -g3 specified
+     o Regardless optimization
+     o Regardless another compilation unit or the same one
+
+     For function declaration, gcc should generate debug information.
+     If the function is not called or not refered its address, the
+     debug information should not be generated because of unification
+     of others (structure or typedef).
 
 (*17) If tag jump doesn't work well
 

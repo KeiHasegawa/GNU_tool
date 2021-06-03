@@ -2556,19 +2556,20 @@ read_and_display_attr_value (unsigned long           attribute,
     case DW_FORM_data2:
     case DW_FORM_sdata:
     case DW_FORM_udata:
-      if (!do_loc)
+      if (!do_loc) {
 	printf ("%c%s", delimiter, dwarf_vmatoa ("d", uvalue));
-      if (attribute == DW_AT_decl_line) {
-	void set_decl_line(unsigned long long);
-	set_decl_line(uvalue);
-      }
-      if (attribute == DW_AT_decl_file) {
-	void set_decl_file(unsigned long long);
-	set_decl_file(uvalue);
-      }
-      if (attribute == DW_AT_external) {
-	void set_ext();
-	set_ext();
+	if (attribute == DW_AT_decl_line) {
+	  void set_decl_line(unsigned long long);
+	  set_decl_line(uvalue);
+	}
+	if (attribute == DW_AT_decl_file) {
+	  void set_decl_file(unsigned long long);
+	  set_decl_file(uvalue);
+	}
+	if (attribute == DW_AT_external) {
+	  void set_ext();
+	  set_ext();
+	}
       }
       break;
 
