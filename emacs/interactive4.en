@@ -1,0 +1,51 @@
+interactive(part 4)
+
+I still don't understand `interactive' which is first described at "C-x o"
+like below:
+
+(defun other-window-backward ()
+  "Select the previous window."
+  (interactive)
+  (other-window -1))
+
+At first, I mentioned that it didn't work well if I erased `(interactive)'
+from above. But it's not correct. i.e. We can not evaluate below:
+
+(other-window-backward)
+
+Try first, `(interactive)' exist version. You can know that
+it works well, of cause. And second, evaluate below:
+
+(defun other-window-backward ()
+  "Select the previous window."
+  (other-window -1))
+
+And after evaluate below:
+
+(other-window-backward)
+
+Then you can also know that this version also works well.
+
+I also try
+
+M-x other-window-backward
+
+If other-window-backward is the version without `(interactive)',
+complement by tab key doesn't work, and even if you type directly and execute
+then, it becomes like below:
+
+M-x other-window-backward[No match]
+
+On the other hand, `(interactive)' exit version works well.
+
+Here, this argument concludes that:
+
+If `(interactive)' doesn't exists, it work as a function, but
+M-x function-name doesn't work.
+
+And more,
+
+(global-set-key "\C-x\C-p" 'function-name)
+
+Above just works well by C-x C-p if the function is the `(interactive)'
+exist version.

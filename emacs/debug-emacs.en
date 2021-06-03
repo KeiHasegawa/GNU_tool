@@ -1,6 +1,6 @@
-emacs をデバッグ
+Debug emacs
 
-(*1) emacs のデバッグビルド
+(*1) Build emacs with -O0 option
 
 % cd emacs-27.2
 % cat /tmp/y
@@ -13,25 +13,26 @@ mv $argv[1].$$ $argv[1]
 % find . -name 'Makefile' -exec /tmp/y {} \;
 % make
 
-Makefile を見たところ期待通り -O0 になっていた. -O2 ビルドを
-回避できたようである.
+I confirmed that a Makefile was changed as I expected.
 
-% ./emacs -nw              # デバッグビルドした emacs を起動
+% ./emacs -nw              # Execute emacs built with -O0 option
 
 ...
 
-これとは別のターミナルから emacs を実行し, ps -ef | grep emacs
-のようにすれば ./emacs の形で実行されている emacs を発見できる.
-そのプロセス ID を指定して
+Then, from different terminal, execute emacs and confirm the
+process ID by, for example:
+
+% ps -ef | grep emacs
+
+And then execute
 
 M-x gdb
 gdb --annotate=3 -p 11654
 
-のように実行する. 11654 はこのときの ./emacs のプロセス ID だった.
-gdb がアタッチするとデバッグされている emacs の動きは一旦止まる
-ことが確認できる.
+where 11654 is the process ID of `./emacs'. When gdb attaches to the process,
+`./emacs' wil stop because it is controlled by gdb.
 
-とりあえず
+For now, set break-point to `interactive' function which is used like:
 
 (defun other-window-backward ()
   "Select the previous window."
@@ -40,13 +41,12 @@ gdb がアタッチするとデバッグされている emacs の動きは一旦止まる
 
 (global-set-key "\C-x\C-p" 'other-window-backward)
 
-でやった interactive にブレークポイントをかけてみる.
-例のマクロにくるまれていて函数名は不明なので行番号指定した.
+Becase I don't know the function name, I specified file name and line number:
 
 (gdb) b callint.c:112
 
-そして上の other-window を C-x C-p で動作させてみた.
-以下はブレークポイントにヒットしてスタックフレームを表示したもの:
+And I tried to execute `other-window' by C-x C-p.
+The break-point was hit, and `where' command said the stack frame like below:
 
 Breakpoint 1, Finteractive (args=0x0) at callint.c:112
 (gdb) where
@@ -76,17 +76,61 @@ Breakpoint 1, Finteractive (args=0x0) at callint.c:112
 #23 0x081b9e1f in main (argc=1, argv=0xbffb68e4) at emacs.c:2067
 (gdb) 
 
-これを見て気付いたが interactive という函数は Finteracitve
-のように F が付いている. F から始まる函数全てがそうなのかは不明だが
-例えば上の
+According to this result, the Lisp function named `interactive' was
+defined as C function named `Finteracitve'. It's not clear
+that if the function name starting with 'F', it's defined as
+C function of corresponding Lisp function. But
 
 Fcall_interactively
 
-は interactive の Help で述べられている call-interactively と思われる.
+is the Lisp function naemd `call-interactively' which is described at
+*Help* of `interactive', I guessed. 
 
-本当はデバッグされる emacs と同じソースからビルドされた emacs でデバッグすれば
+Rightfully, I should use the same emacs which is debugged. If I use it,
+I could jump to easyly by just pressing return key: 
 
 ‘C source code’
 
-のところにすぐにたどり着けて便利なのだが, 27.2 の emacs で M-x gdb が思った通り
-動作しないので 23.2.1 の emacs で M-x gdb のようにしている.
+But as far as emacs 27.2, M-x gdb doesn't work as I expected.
+There is no way using 23.2.1 emacs.
+
+By tye way, `Finteractive' just returns 0. This fact is
+consistent with the contents of
+
+M-x describe-function
+interactive
+
+And that is:
+
+emacs-27.2/src/callint.c:
+
+DEFUN ("interactive", Finteractive, Sinteractive, 0, UNEVALLED, 0,
+       doc: /* Specify a way of parsing arguments for interactive use of a function.
+For example, write
+ (defun foo (arg buf) "Doc string" (interactive "P\\nbbuffer: ") .... )
+ to make ARG be the raw prefix argument, and set BUF to an existing buffer,
+ when `foo' is called as a command.
+
+The "call" to `interactive' is actually a declaration rather than a
+ function; it tells `call-interactively' how to read arguments to pass
+ to the function.  When actually called, `interactive' just returns
+ nil.
+...
+usage: (interactive &optional ARG-DESCRIPTOR)  */
+       attributes: const)
+  (Lisp_Object args)
+{
+  return Qnil;
+}
+
+
+From this fact,
+
+(interactive)
+
+or
+
+(interactive "p")
+
+does not effect the Lisp function execution. It effects something
+when the Lisp function is evaluated.
