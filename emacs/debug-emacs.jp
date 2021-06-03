@@ -1,0 +1,89 @@
+emacs をデバッグ
+
+(*1) emacs のデバッグビルド
+
+% cd emacs-27.2
+% cat /tmp/y
+#! /bin/csh -f
+
+sed -e 's/-O2/-O0/g' $argv[1] > $argv[1].$$
+mv $argv[1].$$ $argv[1]
+% find . -name 'Makefile.in' -exec /tmp/y {} \;
+% ./configure --with-tiff=ifavailable --with-gnutls=ifavailable
+% find . -name 'Makefile' -exec /tmp/y {} \;
+% make
+
+Makefile を見たところ期待通り -O0 になっていた. -O2 ビルドを
+回避できたようである.
+
+% ./emacs -nw              # デバッグビルドした emacs を起動
+
+...
+
+これとは別のターミナルから emacs を実行し, ps -ef | grep emacs
+のようにすれば ./emacs の形で実行されている emacs を発見できる.
+そのプロセス ID を指定して
+
+M-x gdb
+gdb --annotate=3 -p 11654
+
+のように実行する. 11654 はこのときの ./emacs のプロセス ID だった.
+gdb がアタッチするとデバッグされている emacs の動きは一旦止まる
+ことが確認できる.
+
+とりあえず
+
+(defun other-window-backward ()
+  "Select the previous window."
+  (interactive)
+  (other-window -1))
+
+(global-set-key "\C-x\C-p" 'other-window-backward)
+
+でやった interactive にブレークポイントをかけてみる.
+例のマクロにくるまれていて函数名は不明なので行番号指定した.
+
+(gdb) b callint.c:112
+
+そして上の other-window を C-x C-p で動作させてみた.
+以下はブレークポイントにヒットしてスタックフレームを表示したもの:
+
+Breakpoint 1, Finteractive (args=0x0) at callint.c:112
+(gdb) where
+#0  Finteractive (args=0x0) at callint.c:112
+#1  0x082b01cf in eval_sub (form=0x895c313) at eval.c:2227
+#2  0x082acd14 in Fprogn (body=0x895c2e3) at eval.c:462
+#3  0x082b22a1 in funcall_lambda (fun=0x895c2a3, nargs=0, arg_vector=0xbffb603c) at eval.c:3061
+#4  0x082b17fe in Ffuncall (nargs=1, args=0xbffb6038) at eval.c:2809
+#5  0x082a667d in Ffuncall_interactively (nargs=1, args=0xbffb6038) at callint.c:254
+#6  0x082b19a6 in funcall_subr (subr=0x8742e58 <Sfuncall_interactively>, numargs=1, args=0xbffb6038) at eval.c:2848
+#7  0x082b16df in Ffuncall (nargs=2, args=0xbffb6034) at eval.c:2795
+#8  0x082b09bc in Fapply (nargs=3, args=0xbffb6034) at eval.c:2378
+#9  0x082a69df in Fcall_interactively (function=0x1ff9d0, record_flag=0x0, keys=0x8a37895) at callint.c:342
+#10 0x082b1a94 in funcall_subr (subr=0x8742e70 <Scall_interactively>, numargs=3, args=0xbffb6240) at eval.c:2873
+#11 0x082b16df in Ffuncall (nargs=4, args=0xbffb623c) at eval.c:2795
+#12 0x0830b078 in exec_byte_code (bytestr=0xb697ab34, vector=0xb697a885, maxdepth=0x36, args_template=0x1006, nargs=1, args=0xbffb6570) at bytecode.c:633
+#13 0x082b1fbe in funcall_lambda (fun=0xb697a86d, nargs=1, arg_vector=0xbffb656c) at eval.c:2990
+#14 0x082b1723 in Ffuncall (nargs=2, args=0xbffb6568) at eval.c:2797
+#15 0x082b11ce in call1 (fn=0x1e00, arg1=0x1ff9d0) at eval.c:2655
+#16 0x081c114e in command_loop_1 () at keyboard.c:1463
+#17 0x082ae6fb in internal_condition_case (bfun=0x81c095d <command_loop_1>, handlers=0x48, hfun=0x81c0166 <cmd_error>) at eval.c:1356
+#18 0x081c064a in command_loop_2 (ignore=0x0) at keyboard.c:1091
+#19 0x082ae10e in internal_catch (tag=0x64e0, func=0x81c0626 <command_loop_2>, arg=0x0) at eval.c:1117
+#20 0x081c05eb in command_loop () at keyboard.c:1070
+#21 0x081bfdb2 in recursive_edit_1 () at keyboard.c:714
+#22 0x081bff22 in Frecursive_edit () at keyboard.c:786
+#23 0x081b9e1f in main (argc=1, argv=0xbffb68e4) at emacs.c:2067
+(gdb) 
+
+これを見て気付いたが interactive という函数は Finteracitve
+のように F が付いている. F から始まる函数全てがそうなのかは不明だが
+例えば上の
+
+Fcall_interactively
+
+は interactive の Help で述べられている call-interactively と思われる.
+
+本当はデバッグされる emacs と同じバージョンの emacs でデバッグすれば
+便利なのだが, 27.2 の emacs で M-x gdb が思った通り動作しないので
+23.2.1 の emacs で M-x gdb のようにしている.
