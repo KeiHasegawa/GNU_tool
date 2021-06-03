@@ -915,6 +915,20 @@ namespace for_vi {
     }
     os << endl;
   }
+  inline void output(ostream& os, string prefix,
+		     const pair<tag_t, string>& p)
+  {
+    const auto& tag = p.first;
+    auto fn = p.second;
+    output(os, tag, fn, prefix);
+  }
+  inline void output(ostream& os, string prefix,
+		     const pair<string, vector<pair<tag_t, string> > >& p)
+  {
+    const auto& v = p.second;
+    for (const auto& x : v)
+      output(os, prefix, x);
+  }
   inline void output(const map<string, vector<tag_t> >& tags,
 		     string out_file, string prefix)
   {
@@ -925,12 +939,13 @@ namespace for_vi {
       cerr << "cannot open " << '"' << out_file << '"' << '\n';
       return;
     }
+    map<string, vector<pair<tag_t, string> > > tmp;
     for (const auto& x : tags) {
       auto fn = x.first;
       if (goal::has_extra(fn)) {
 	const auto& v = x.second;
 	for (const auto& tag : v)
-	  output(ofs, tag, fn, prefix);
+	  tmp[tag.name].push_back(make_pair(tag, fn));
       }
     }
     for (const auto& x : tags) {
@@ -938,9 +953,11 @@ namespace for_vi {
       if (!goal::has_extra(fn)) {
 	const auto& v = x.second;
 	for (const auto& tag : v)
-	  output(ofs, tag, fn, prefix);
+	  tmp[tag.name].push_back(make_pair(tag, fn));
       }
     }
+    for (const auto& p : tmp)
+      output(ofs, prefix, p);
   }
 } // end of namespace for_vi
 
