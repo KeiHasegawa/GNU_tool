@@ -1,0 +1,47 @@
+interactive(part 5)
+
+Here, I'll draw a conclusion from previous work related with `interactive'.
+At first, evaluate just below:
+
+(global-set-key "\C-x\C-p" 'interactive-test)
+
+This just binds undefined `interactive-test' to C-x C-p.
+So if you execute C-x C-p, because the function is not defined,
+emacs says below messsage into mini buffer:
+
+Wrong type argument: commandp, interactive-test
+
+But this is expected result. Now define `interactive-test' like below:
+
+(defun interactive-test ()
+       "test of interactive"
+       (interactive)
+       (message "hello world"))
+
+Evaluate above, then execute C-x C-p. The below message is displayed
+into mini buffer:
+
+hello world
+
+And next, evaluate below expression:
+
+(defun interactive-test (n)
+       "test of interactive `p' format"
+       (interactive "p")
+       (message "hello world %d" (+ n 10)))
+
+And execute C-x C-p, then The below message is displayed init mini
+buffer:
+
+hello world 11
+
+If argument is omitted, 1 might be passed as a argument.
+Then execute C-u 10 C-x C-p, the below message is displayed inito
+mini buffer:
+
+hello world 20
+
+
+
+
+
