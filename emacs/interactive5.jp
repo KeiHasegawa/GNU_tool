@@ -1,0 +1,45 @@
+interactive(その5)
+
+interactive やその他についてこれまで判明したことが分かる例をまとめた.
+まずは単独で以下の式を評価する:
+
+(global-set-key "\C-x\C-p" 'interactive-test)
+
+これで C-x C-p としても interactive-test が定義されていないので
+ミニバッファには以下のように表示される:
+
+Wrong type argument: commandp, interactive-test
+
+しかしこれは期待した結果である. それでは interactive-test を改めて定義
+しよう.
+
+(defun interactive-test ()
+       "test of interactive"
+       (interactive)
+       (message "hello world"))
+
+この式を評価する. そして C-x C-p としてみよう. ミニバッファに
+
+hello world
+
+と表示されるだろう. 今度は以下の式を評価してみる:
+
+(defun interactive-test (n)
+       "test of interactive `p' format"
+       (interactive "p")
+       (message "hello world %d" (+ n 10)))
+
+そして C-x C-p としてみよう. ミニバッファに
+
+hello world 11
+
+と表示される. 引数を省略した場合は 1 がセットされるらしい. それでは
+C-u 10 C-x C-p としてみよう. ミニバッファに
+
+hello world 20
+
+と表示される. 明示的に引数を指定することもできる.
+
+
+
+
