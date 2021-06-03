@@ -99,4 +99,25 @@ interactive
 
 で表示される内容と合致している. そしてそれは C のソースである
 
+emacs-27.2/src/callint.c:
 
+DEFUN ("interactive", Finteractive, Sinteractive, 0, UNEVALLED, 0,
+       doc: /* Specify a way of parsing arguments for interactive use of a function.
+For example, write
+ (defun foo (arg buf) "Doc string" (interactive "P\\nbbuffer: ") .... )
+ to make ARG be the raw prefix argument, and set BUF to an existing buffer,
+ when `foo' is called as a command.
+
+The "call" to `interactive' is actually a declaration rather than a
+ function; it tells `call-interactively' how to read arguments to pass
+ to the function.  When actually called, `interactive' just returns
+ nil.
+...
+usage: (interactive &optional ARG-DESCRIPTOR)  */
+       attributes: const)
+  (Lisp_Object args)
+{
+  return Qnil;
+}
+
+そのものらしい.
