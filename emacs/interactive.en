@@ -46,9 +46,9 @@ Just Åe(interactive)Åf means pass no arguments to the command ...
 
 So I tried like below:
 
-(defun foo () "test func" (interactive)(message "hello world"))
+(defun hello-world () "test func" (interactive)(message "hello world"))
 
-(global-set-key "\C-x\C-p" 'foo)
+(global-set-key "\C-x\C-p" 'hello-world)
 
 After evaluating above expressions, execute C-x C-p then,
 display
@@ -59,18 +59,18 @@ into mini buffer without double quotation.
 
 And also tried `(interacitve)' erased version:
 
-(defun foo () "test func" (message "hello world"))
+(defun hello-world () "test func" (message "hello world"))
 
 C-x C-p displays the message with warning beep:
 
-command-execute: Wrong type argument: commandp, foo
+command-execute: Wrong type argument: commandp, hello-world
 
 Something wrong. I again evaluated right version expression and
 executed C-x C-p.
 
 I see. The expression
 
-(global-set-key "\C-x\C-p" 'foo)
+(global-set-key "\C-x\C-p" 'hello-world)
 
 is not necessary to re-evaluate. Somehow, I guess the facility of single
-quotation added before `foo'.
+quotation added before `hello-world'.
