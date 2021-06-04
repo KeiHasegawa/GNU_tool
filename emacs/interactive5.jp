@@ -40,6 +40,37 @@ hello world 20
 
 と表示される. 明示的に引数を指定することもできる.
 
+interactive-test は Lisp の式から以下のように呼び出すことができる:
 
+(interactive-test 5)
 
+上の式を評価すると
 
+"hello world 15"
+
+のようにダブルクォーテーション付きでミニバッファに表示される.
+C-u 5 C-x C-p との違いがある.
+
+引数を意図的に省略した:
+
+(interactive-test)
+
+上を評価するとミニバッファに
+
+Wrong number of arguments: (lambda (n) "test of interactive `p' format" (interactive "p") (message "hello world %d" (+ n 10))), 0
+
+のように表示される. Lisp の式から呼ばれた場合に引数を省略しても
+それなりに動作するようにするには以下のようにする
+
+(defun interactive-test (&optional n)
+       "test of interactive `p' format"
+       (interactive "p")
+       (if n
+              (message "hello world %d" (+ n 10))
+	      (message "hello world")))
+
+改めて以下を評価してみる:
+
+(interactive-test)
+
+ミニバッファにダブルクォーテーション付きで "hello world" と表示される.

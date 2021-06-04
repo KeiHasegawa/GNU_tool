@@ -41,7 +41,37 @@ mini buffer:
 
 hello world 20
 
+`interactive-test' can be called from Lisp expression:
 
+(interactive-test 5)
 
+Evaluate above, then the below message is displayed into mini buffer:
 
+"hello world 15"
 
+Note that above message is added double quotation and there is
+a difference from C-u 5 C-x C-p.
+
+Intentionally omitted argument:
+
+(interactive-test)
+
+Evaluate above, then the below message is displayed into mini buffer:
+
+Wrong number of arguments: (lambda (n) "test of interactive `p' format" (interactive "p") (message "hello world %d" (+ n 10))), 0
+
+Let `interactive-test' work even if `interactive-test' is called from
+Lisp function with no argument:
+
+(defun interactive-test (&optional n)
+       "test of interactive `p' format"
+       (interactive "p")
+       (if n
+              (message "hello world %d" (+ n 10))
+	      (message "hello world")))
+
+Again evaluate below:
+
+(interactive-test)
+
+Then "hello world" (added double quotation) is displayed into mini buffer.
