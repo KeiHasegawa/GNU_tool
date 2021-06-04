@@ -1,0 +1,178 @@
+制御構造
+
+(*1) if
+(*2) while
+
+「interactive(その5)」では (if 式1 式2 式3) という式が,
+「Lisp の函数を定義する(その2)」では (while 式1 式2... 式n)
+
+のように if や while が登場した. ここでは他にどのようなものがあるか
+調べてみたい.
+
+(*1) if
+
+まずは既にやった if だが
+
+(defun if-test (n m) "if test"
+   (if (> n m) (n) (m)))
+
+これはよくある max(n,m) のつもりで書いた. しかし以下の式を評価したところ
+
+(if-test 1 2)
+
+ミニバッファには以下が警告音とともに表示された.
+
+if: Symbol’s function definition is void: m
+
+*Backtrace* バッファを一旦削除して, もう一度上の式を評価したところ
+*Backtrace* バッファは以下のようになった:
+
+Debugger entered--Lisp error: (void-function m)
+  apply(debug error (void-function m))
+  edebug(error (void-function m))
+  (m)
+  (if (> n m) (n) (m))
+  if-test(1 2)
+  eval((if-test 1 2) nil)
+  elisp--eval-last-sexp(nil)
+
+これは, おそらくかっこが多すぎたのだ. 以下で試してみた:
+
+(defun if-test (n m) "if test"
+   (if (> n m) n m))
+
+(if-test 3 2)
+
+今度は期待通り動作している.
+
+M-x describe-function
+if
+
+としてみた. なるほど,
+
+if is a special form in ‘C source code’.
+
+buit-in ではなく sepcial form だと.
+
+(if COND THEN ELSE...)
+
+という構文らしい. ELSE... は式を書かなくてもよいし, 複数書いてもいいらしい.
+
+よくある再帰的な函数を定義してみた.
+
+(defun my-fact (n) "factorial of N"
+       (if (> n 1) (* n my-fact (- n 1)) 1))
+
+(my-fact 5)
+
+だめらしい. *Backtrace* バッファは以下:
+
+Debugger entered--Lisp error: (void-variable my-fact)
+  apply(debug error (void-variable my-fact))
+  edebug(error (void-variable my-fact))
+  (* n my-fact (- n 1))
+  (if (> n 1) (* n my-fact (- n 1)) 1)
+  my-fact(5)
+  eval((my-fact 5) nil)
+
+もしやと思い呼び出す my-fact にシングルクオーテーションを付けてみた.
+
+(defun my-fact (n) "factorial of N"
+       (if (> n 1) (* n 'my-fact (- n 1)) 1))
+
+Debugger entered--Lisp error: (wrong-type-argument number-or-marker-p my-fact)
+  apply(debug error (wrong-type-argument number-or-marker-p my-fact))
+  edebug(error (wrong-type-argument number-or-marker-p my-fact))
+  signal(wrong-type-argument (number-or-marker-p my-fact))
+  edebug-signal(wrong-type-argument (number-or-marker-p my-fact))
+  *(5 my-fact 4)
+  (if (> n 1) (* n (quote my-fact) (- n 1)) 1)
+  my-fact(5)
+  eval((my-fact 5) nil)
+
+むむ. これはそもそもかっこが足りていないのか... 以下のようにしてみた:
+
+(defun my-fact (n) "factorial of N"
+       (if (> n 1) (* n (my-fact (- n 1))) 1))
+
+シングルクオーテーションは必要なかった. 単純にかっこがなかったのだった.
+
+(*2) while
+
+M-x describe-function
+while
+
+としてみたところ
+
+if is a special form in ‘C source code’.
+
+(while TEST BODY...)
+
+というのが構文らしい.
+
+(defun test-while (n) "test while"
+       (while (- n 1) (message "%d" n)))
+
+(test-while 5)
+
+としてみた. 予定では 5 4 3 2 1 とカウントダウンするつもりだったが
+どうやら無限ループに入っているようである. ひとまず C-g を押したら
+戻ってきたようである.
+
+test-while のところにカーソルを移動して
+
+M-x edebug-defun
+
+としてから
+
+(test-while 5)
+
+を評価してみたところデバッグできている. n はデクリメントされていなかったのだ.
+
+(setq n (1- n))
+
+これである. 1- や setq を
+
+M-x describe-function
+
+で一応 *Help* を見て大体理解した. 改めて
+
+(defun test-while (n) "test while"
+       (while n (message "%d" n)
+              (setq n (1- n))))
+
+これを試してみた. しかし期待した通りは動作せず, 5 4 3 2 1 0 -1 ....
+のようになってしまった. 改めて:
+
+(defun test-while (n) "test while"
+       (while (> n 0) (message "%d" n)
+              (setq n (1- n))))
+
+(test-while 5)
+
+評価したところミニバッファには
+
+nil
+
+と表示された. もう一度 edebug-defun を test-while に対して適用し
+デバッグしてみた. 期待通り動作しているが, ミニバッファに連続してメッセージが
+書き込まれると最後の nil 以外は人間の目では確認できないのだ.
+そこで以下のようにしてみた:
+
+(defun test-while (n) "test while"
+       (while (> n 0) (message "%d" n)
+              (setq n (1- n))
+	      (sleep-for 1)))
+
+これは, 一応期待した通りには動いている.
+
+or
+and
+if
+cond
+progn
+prog1
+setq
+quote
+function
+defvaralias
