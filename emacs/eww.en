@@ -2,24 +2,25 @@ eww
 
 At emacs 27.2, M-x eww enables us to web browse. It's very useful.
 
-現状私は訳あってこのテキストファイルを Shift-JIS にしている. UTF-8 だと
-ブラウザによって文字化けしてしまうからだ.
+At present state, I' m writing this Japanese version document with
+Shift-JIS. If with UTF-8, some web browser causes character corruption.
 
-eww でページを閲覧するとデフォルトで UTF-8 になる. なのでこのページを
-閲覧すると残念ながら文字化けしてしまうのだ.
+By default, eww uses UTF-8. So, eww browsing this Japanese version web page
+casues character corruption.
 
-回避策は勿論あって
+Of cause, there is a way to sepcifiy character code:
 
 M-x eww-set-character-encoding
 sjis
 
-とすれば Shift-JIS で表示することができる.
+By executing above, eww browses web page with Shift-JIS.
 
-この機能を F2 キーに割り当ててみた:
+I binded this function into F2 key:
 
 (global-set-key (kbd "<f2>") 'eww-set-character-encoding)
 
-これは機能する. しかし sjis と入力する必要はないのだ. 以下のようにしてみた.
+This works well. But it's not ncessary to input `sjis'. So I did
+like below:
 
 (defun eww-set-character-encoding-sjis ()
   "eww set sjis"
@@ -28,31 +29,31 @@ sjis
 
 (global-set-key (kbd "<f2>") 'eww-set-character-encoding-sjis)
 
-これで Shift-JIS のテキストファイルの web ページを開いたときに F2 を押してみた
-ところミニバッファに以下のように警告音とともに表示された:
+Now, when I visited Shift-JIS web page, I tried to press F2 key.
+But the below message was displayed into mini buffer:
 
 Symbol’s value as variable is void: sjis
 
-なるほど, このメッセージはおそらく sjis なんて変数は定義されていないという
-ことなのだ. そこで以下のようにダブルクォーテーションで囲ってみた:
+I see. This message probably means that No such variable `sjis'.
+So I fixed like below:
 
 (defun eww-set-character-encoding-sjis ()
   "eww set sjis"
   (interactive)
  (eww-set-character-encoding "sjis"))
 
-そして再び Shift-JIS のテキストファイルの web ページを開いたときに F2 を押してみた.
-今度も警告音とともに, ミニバッファで以下のように表示された:
+And again tried to press F2 when visited Shift-JIS web page.
+But again the below message was displayed into mini buffer:
 
 Wrong type argument: symbolp, "sjis"
 
-引数の指定の仕方が間違っているのだろう.
+I thought the way of specifing the argument was wrong.
+Then I tried like below:
 
 M-x describe-function
 eww-set-character-encoding
 
-としてみた. そしてその函数が定義されているらしい eww.el を開いてみた.
-こんな感じである.
+And then open the file which defined the function, name `eww.el':
 
 (defun eww-set-character-encoding (charset)
   "Set character encoding to CHARSET.
@@ -62,24 +63,25 @@ If CHARSET is nil then use UTF-8."
       (eww-reload nil 'utf-8)
     (eww-reload nil charset)))
 
-そこでダブルクォーテーションではなく, シングルクオーテーションにしてみた.
+Then I changed like below:
 
 (defun eww-set-character-encoding-sjis ()
   "eww set sjis"
   (interactive)
  (eww-set-character-encoding 'sjis))
 
-今度は F2 キーで期待通り動作している.
+Now, F2 key worked well.
 
-課題はまだある. そのページが Shift-JIS だと分かっているのに UTF-8 で開くのは
-無駄である. Shift-JIS のページを UTF-8 で開こうとすると何かに時間がかかってしまう
-のだ.
+There are still some problem to be solved. If the web page have been
+known that its character code was Shift-JIS, it's no use to browse
+with UTF-8. It takes some time to browse Shift-JIS web page with UTF-8.
 
-だから, 例えば F2 キーを押したらそのページを Shift-JIS で閲覧するということが
-できれば快適にはなる.
+So, for example, it's very convinient to visit web page with Shift-JIS
+by F2 key.
 
-もっというと, web ページの文字コードが HTML に記載されていないならば,
-Shift-JIS か UTF-8 か調べて, 適切な文字コードで開くということができるとなおよい.
+And more, if the character code of the web page  is not described at
+HTML document, then investigate character code, browse it with
+suitably character code. It's better.
 
-しかし今回はここまで.
+But that's enough for today.
 
