@@ -2,12 +2,12 @@
 
 (*1) if
 (*2) while
+(*3) その他
 
 「interactive(その5)」では (if 式1 式2 式3) という式が,
 「Lisp の函数を定義する(その2)」では (while 式1 式2... 式n)
 
-のように if や while が登場した. ここでは他にどのようなものがあるか
-調べてみたい.
+のように if や while が登場した. これらを調べてみたい.
 
 (*1) if
 
@@ -50,9 +50,9 @@ if
 
 としてみた. なるほど,
 
-if is a special form in ‘C source code’.
+if is a special form in `C source code'.
 
-buit-in ではなく sepcial form だと.
+buit-in ではなく sepcial form ということ. いまだに違いは分からないが.
 
 (if COND THEN ELSE...)
 
@@ -104,7 +104,7 @@ while
 
 としてみたところ
 
-if is a special form in ‘C source code’.
+if is a special form in `C source code'.
 
 (while TEST BODY...)
 
@@ -117,7 +117,7 @@ if is a special form in ‘C source code’.
 
 としてみた. 予定では 5 4 3 2 1 とカウントダウンするつもりだったが
 どうやら無限ループに入っているようである. ひとまず C-g を押したら
-戻ってきたようである.
+式を評価するのを止めてくれたようである.
 
 test-while のところにカーソルを移動して
 
@@ -131,7 +131,8 @@ M-x edebug-defun
 
 (setq n (1- n))
 
-これである. 1- や setq を
+これである. 似たようなことを「Lisp の函数を定義する(その2)」でやっていた.
+1- や setq を
 
 M-x describe-function
 
@@ -166,6 +167,14 @@ nil
 
 これは, 一応期待した通りには動いている.
 
+(*3) その他
+
+if や while の対応する emacs の C のソースは
+
+emacs-27.2/src/eval.c
+
+であった. そしてここで定義されている函数は以下:
+
 or
 and
 if
@@ -176,3 +185,41 @@ setq
 quote
 function
 defvaralias
+default-toplevel-value
+set-default-toplevel-value
+internal--define-uninitialized-variable
+defvar
+defconst
+internal-make-var-non-special
+let*
+let
+while
+macroexpand
+catch
+throw
+unwind-protect
+condition-case
+signal
+commandp
+autoload
+autoload-do-load
+eval
+apply
+run-hooks
+run-hook-with-args
+run-hook-with-args-until-success
+run-hook-with-args-until-failure
+run-hook-wrapped
+functionp
+funcall
+func-arity
+fetch-bytecode
+special-variable-p
+backtrace-debug
+mapbacktrace
+backtrace-frame--internal
+backtrace--frames-from-thread
+backtrace-eval
+backtrace--locals
+
+まぁ今はこんなところで満足しておく.
