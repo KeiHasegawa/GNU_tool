@@ -1,0 +1,85 @@
+eww
+
+emacs 27.2 には M-x eww で web をブラウズする機能があってとても便利である.
+
+現状私は訳あってこのテキストファイルを Shift-JIS にしている. UTF-8 だと
+ブラウザによって文字化けしてしまうからだ.
+
+eww でページを閲覧するとデフォルトで UTF-8 になる. なのでこのページを
+閲覧すると残念ながら文字化けしてしまうのだ.
+
+回避策は勿論あって
+
+M-x eww-set-character-encoding
+sjis
+
+とすれば Shift-JIS で表示することができる.
+
+この機能を F2 キーに割り当ててみた:
+
+(global-set-key (kbd "<f2>") 'eww-set-character-encoding)
+
+これは機能する. しかし sjis と入力する必要はないのだ. 以下のようにしてみた.
+
+(defun eww-set-character-encoding-sjis ()
+  "eww set sjis"
+  (interactive)
+  (eww-set-character-encoding sjis))
+
+(global-set-key (kbd "<f2>") 'eww-set-character-encoding-sjis)
+
+これで Shift-JIS のテキストファイルの web ページを開いたときに F2 を押してみた
+ところミニバッファに以下のように警告音とともに表示された:
+
+Symbol’s value as variable is void: sjis
+
+なるほど, このメッセージはおそらく sjis なんて変数は定義されていないという
+ことなのだ. そこで以下のようにダブルクォーテーションで囲ってみた:
+
+(defun eww-set-character-encoding-sjis ()
+  "eww set sjis"
+  (interactive)
+ (eww-set-character-encoding "sjis"))
+
+そして再び Shift-JIS のテキストファイルの web ページを開いたときに F2 を押してみた.
+今度も警告音とともに, ミニバッファで以下のように表示された:
+
+Wrong type argument: symbolp, "sjis"
+
+引数の指定の仕方が間違っているのだろう.
+
+M-x describe-function
+eww-set-character-encoding
+
+としてみた. そしてその函数が定義されているらしい eww.el を開いてみた.
+こんな感じである.
+
+(defun eww-set-character-encoding (charset)
+  "Set character encoding to CHARSET.
+If CHARSET is nil then use UTF-8."
+  (interactive "zUse character set (default utf-8): ")
+  (if (null charset)
+      (eww-reload nil 'utf-8)
+    (eww-reload nil charset)))
+
+そこでダブルクォーテーションではなく, シングルクオーテーションにしてみた.
+
+(defun eww-set-character-encoding-sjis ()
+  "eww set sjis"
+  (interactive)
+ (eww-set-character-encoding 'sjis))
+
+今度は F2 キーで期待通り動作している.
+
+課題はまだある. そのページが Shift-JIS だと分かっているのに UTF-8 で開くのは
+無駄である. Shift-JIS のページを UTF-8 で開こうとすると何かに時間がかかってしまう
+のだ.
+
+だから, 例えば F2 キーを押したらそのページを Shift-JIS で閲覧するということが
+できれば快適にはなる.
+
+もっというと, web ページの文字コードが HTML に記載されていないならば,
+Shift-JIS か UTF-8 か調べて, 適切な文字コードで開くということができるとなおよい.
+
+しかし今回はここまで.
+
