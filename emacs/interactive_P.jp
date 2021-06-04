@@ -1,0 +1,64 @@
+interactive "P"
+
+ここでは (interactive "P") について調べてみる.
+
+*Help* には
+
+p -- Prefix arg converted to number.  Does not do I/O.
+P -- Prefix arg in raw form.  Does not do I/O.
+
+"p" については「interactive(その5)」で理解が深まったが, "P" については
+全くもって意味不明である.
+しかし, しょうがないので試してみる. 以下の 2 つの式を評価してみた.
+
+(global-set-key "\C-x\C-p" 'interactive-test)
+
+(defun interactive-test (&optional n)
+       "test of interactive `P' format"
+       (interactive "P")
+       (message "hello world %d" (+ (prefix-numeric-value n) 10)))
+
+C-x C-p とすればミニバッファに
+
+hello world 11
+
+のように表示される. C-u 10 C-x C-p とすれば
+
+hello world 20
+
+のように表示される. 以下の式
+
+(interactive-test 5)
+
+を評価すればミニバッファに
+
+"hello world 15"
+
+と表示される.
+
+M-x describe-function
+prefix-numeric-value
+
+としてみた. すると *Help* バッファに以下のように表示された.
+
+prefix-numeric-value is a built-in function in ‘C source code’.
+
+(prefix-numeric-value RAW)
+
+Return numeric meaning of raw prefix argument RAW.
+A raw prefix argument is what you get from ‘(interactive "P")’.
+Its numeric meaning is what you would get from ‘(interactive "p")’.
+
+これは, なんだか冗長に書いただけのような感じがある. この説明からでは何のため
+に "P" の引数があるのかは理解できない.
+
+まあ文句をいってもしょうがない. 自分は "p" を使えばよいのだ.
+
+(interactive-test)
+
+を評価してみると "P" と "p" との違いが分かるかもしれない. "p" バージョンでは
+明示的に if が必要だったが "P" の場合は必要ない. しかしそれは
+
+prefix-numeric-value
+
+を知っているプログラマが使える技である.

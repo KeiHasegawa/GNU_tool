@@ -1,0 +1,233 @@
+(*1) if
+(*2) while
+(*3) Others
+
+As described at "interactive(part 5)", we used (if expr1 expr2 expr3).
+And at "Define Lisp function(part 2)", we used (while expr1 expr2... exprn).
+
+Here, we'll investigate them more precicely.
+
+(*1) if
+
+The below is meant to `max' of C language:
+
+(defun if-test (n m) "if test"
+   (if (> n m) (n) (m)))
+
+But after evaluating above, evaluating below:
+
+(if-test 1 2)
+
+causes message into mini buffer:
+
+if: Symbolfs function definition is void: m
+
+Onnce I deleted *Backtrace* buffer and again evaluated above again. Then
+*Backtrace* buffer became like below:
+
+Debugger entered--Lisp error: (void-function m)
+  apply(debug error (void-function m))
+  edebug(error (void-function m))
+  (m)
+  (if (> n m) (n) (m))
+  if-test(1 2)
+  eval((if-test 1 2) nil)
+  elisp--eval-last-sexp(nil)
+
+I thought that unnecessary parenthesis exist. So tried below:
+
+(defun if-test (n m) "if test"
+   (if (> n m) n m))
+
+(if-test 3 2)
+
+At this time, it worked as I expected.
+I also executed like below:
+
+M-x describe-function
+if
+
+if is a special form in `C source code'.
+
+I see. `if' is not built-in but special form even though I still have not
+understanded the diffrence
+
+The grammer is:
+
+(if COND THEN ELSE...)
+
+*Help* said that ELSE... can be zero or more expressions.
+
+I also define very common recursive function:
+
+(defun my-fact (n) "factorial of N"
+       (if (> n 1) (* n my-fact (- n 1)) 1))
+
+(my-fact 5)
+
+Not OK. *Backtrace* buffer became like below:
+
+Debugger entered--Lisp error: (void-variable my-fact)
+  apply(debug error (void-variable my-fact))
+  edebug(error (void-variable my-fact))
+  (* n my-fact (- n 1))
+  (if (> n 1) (* n my-fact (- n 1)) 1)
+  my-fact(5)
+  eval((my-fact 5) nil)
+
+By any chance, I thought single quotation is necessary before
+my-fact to be called:
+
+(defun my-fact (n) "factorial of N"
+       (if (> n 1) (* n 'my-fact (- n 1)) 1))
+
+Debugger entered--Lisp error: (wrong-type-argument number-or-marker-p my-fact)
+  apply(debug error (wrong-type-argument number-or-marker-p my-fact))
+  edebug(error (wrong-type-argument number-or-marker-p my-fact))
+  signal(wrong-type-argument (number-or-marker-p my-fact))
+  edebug-signal(wrong-type-argument (number-or-marker-p my-fact))
+  *(5 my-fact 4)
+  (if (> n 1) (* n (quote my-fact) (- n 1)) 1)
+  my-fact(5)
+  eval((my-fact 5) nil)
+
+Hum. This means, ... at the first place, parenthesis are necessary,
+I thought. I tried below:
+
+(defun my-fact (n) "factorial of N"
+       (if (> n 1) (* n (my-fact (- n 1))) 1))
+
+This worked well. As far as this case, mistake is around for parenthesis,
+not single quotation.
+
+(*2) while
+
+M-x describe-function
+while
+
+*Help* buffer said:
+
+if is a special form in `C source code'.
+
+(while TEST BODY...)
+
+I roughly understood. So defined like below:
+
+(defun test-while (n) "test while"
+       (while (- n 1) (message "%d" n)))
+
+And evaluated below:
+
+(test-while 5)
+
+I was going to display like:
+
+5 4 3 2 1
+
+But, this caused infinit loop. For the time being, C-g made it stopped.
+
+Then I moved the cursor to `test-while', executed
+
+M-x edebug-defun
+
+And again evalueate below:
+
+(test-while 5)
+
+OK. edebug-defun facility worked well. And I noticed that `n'
+was not decremented. That is:
+
+(setq n (1- n))
+
+I've already done the same thing at "Define Lisp function(part 2)".
+For `1-' and `setq', I executed
+
+M-x describe-function
+
+and roughly understood. Again tried below:
+
+(defun test-while (n) "test while"
+       (while n (message "%d" n)
+              (setq n (1- n))))
+
+But above did not work, caused infinit loop:
+5 4 3 2 1 0 -1 .... 
+Again tried below:
+
+(defun test-while (n) "test while"
+       (while (> n 0) (message "%d" n)
+              (setq n (1- n))))
+
+(test-while 5)
+
+I evaluated above, the message was deisplayed into mini buffer like below:
+
+nil
+
+Again I used edebug-defun facility for `test-while' and I noticed
+that it worked as I expected but because messages were successively written
+into mini buffer, I coulnd't confirm the messsage. So I tried below:
+
+(defun test-while (n) "test while"
+       (while (> n 0) (message "%d" n)
+              (setq n (1- n))
+	      (sleep-for 1)))
+
+OK. It worked as I expected.
+
+(*3) Others
+
+`if' and `while' are defined at
+
+emacs-27.2/src/eval.c
+
+And I examined other function defined at the file:
+
+or
+and
+if
+cond
+progn
+prog1
+setq
+quote
+function
+defvaralias
+default-toplevel-value
+set-default-toplevel-value
+internal--define-uninitialized-variable
+defvar
+defconst
+internal-make-var-non-special
+let*
+let
+while
+macroexpand
+catch
+throw
+unwind-protect
+condition-case
+signal
+commandp
+autoload
+autoload-do-load
+eval
+apply
+run-hooks
+run-hook-with-args
+run-hook-with-args-until-success
+run-hook-with-args-until-failure
+run-hook-wrapped
+functionp
+funcall
+func-arity
+fetch-bytecode
+special-variable-p
+backtrace-debug
+mapbacktrace
+backtrace-frame--internal
+backtrace--frames-from-thread
+backtrace-eval
+backtrace--locals
+
+But that's enough for today.

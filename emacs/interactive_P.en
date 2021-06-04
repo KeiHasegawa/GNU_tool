@@ -1,0 +1,70 @@
+interactive "P"
+
+Here, we'll investigate `(interactive "P")'.
+
+*Help* buffer says that:
+
+p -- Prefix arg converted to number.  Does not do I/O.
+P -- Prefix arg in raw form.  Does not do I/O.
+
+As described at "interactive(part 5)", we understood `(interactive "p")'.
+But Above explanation about "P" is not clear.
+Any way, I tried to evaluate below:
+
+(global-set-key "\C-x\C-p" 'interactive-test)
+
+(defun interactive-test (&optional n)
+       "test of interactive `P' format"
+       (interactive "P")
+       (message "hello world %d" (+ (prefix-numeric-value n) 10)))
+
+And then, by executing C-x C-p, the below message is displayed into mini
+buffer:
+
+hello world 11
+
+By C-u 10 C-x C-p, the below message is displayed into mini buffer:
+
+hello world 20
+
+By evaluating below:
+
+(interactive-test 5)
+
+The below message is displayed into mini buffer:
+
+"hello world 15"
+
+I tried like below:
+
+M-x describe-function
+prefix-numeric-value
+
+Then *Help* buffer said:
+
+------------------------------------------------------------------------
+prefix-numeric-value is a built-in function in ÅeC source codeÅf.
+
+(prefix-numeric-value RAW)
+
+Return numeric meaning of raw prefix argument RAW.
+A raw prefix argument is what you get from Åe(interactive "P")Åf.
+Its numeric meaning is what you would get from Åe(interactive "p")Åf.
+------------------------------------------------------------------------
+
+From this explanation, I felt "P" was just redundant version of "p" and
+could not understand the reason why "P" facility was necessary.
+
+OK. I'll use just "p".
+By the way, try to evaluate below: 
+
+(interactive-test)
+
+You might notice the difference between "p" and "P". In "p" version,
+explicit `if' expression is required but in "P" version `if' is not
+required. But only programmers which know the specification of
+
+prefix-numeric-value
+
+can use this technique.
+
