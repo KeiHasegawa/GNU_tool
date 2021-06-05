@@ -1,7 +1,7 @@
-all:dummy-gdb.exe TAGS
+all:dummy-gdb2.exe TAGS
 
-dummy-gdb.exe:dummy-gdb.cpp
+dummy-gdb2.exe:dummy-gdb2.cpp
 	g++ -g3 $< -o $@
 
-TAGS:dummy-gdb.exe
+TAGS:dummy-gdb2.exe
 	mktags.exe -e $<

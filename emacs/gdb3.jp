@@ -1,7 +1,7 @@
 M-x gdb(その3)
 
 「M-x gdb(その2)」では emacs 27.2 でだましだまし emacs から gdb を
-使用する方法を述べたが, そもそも emacs と gdb の間でどのようなインターフェース
+使用する方法を述べたが, そもそも emacs と gdb との間でどのようなインターフェース
 になっているのか調べてみた.
 
 % cat a.c
@@ -11,13 +11,13 @@ int main()
 }
 % gcc -g3 a.c -o a.out
 
-確認ではあるが, emacs 27.2 と
+改めてではあるが, emacs 27.2 と
 
 /usr/share/emacs/23.3/lisp/progmodes/gdb-ui.el.gz
 
 との組み合わせで emacs から M-x gdb である程度期待通りデバッグできることが
 確認できる.
-そこで以下の dummy-gdb.exe をビルドする.
+そこで以下のように dummy-gdb.exe をビルドする.
 % g++ -g3 dummy-gdb.cpp -o dummy-gdb.exe
 
 dumy-gdb.cpp はこのページにからダウンロードできる.
