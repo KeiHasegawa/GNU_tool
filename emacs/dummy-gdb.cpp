@@ -28,7 +28,11 @@ inline void run()
   cout << '\n' << char(032) << char(032) << "frame-begin 0 0x8049145" << '\n';
   cout << "main () at a.c:3" << '\n';
   cout << '\n' << char(032) << char(032);
+#ifdef __CYGWIN__
+  cout << "source d:/home/khasegawa/lang/53_GNU_tool/emacs/a.c:3:13:beg:0x8049145" << '\n';  
+#else  
   cout << "source /home/khasegawa/lang/53_GNU_tool/emacs/a.c:3:13:beg:0x8049145" << '\n';
+#endif  
   cout << '\n' << char(032) << char(032) << "stopped" << '\n';
 }
 

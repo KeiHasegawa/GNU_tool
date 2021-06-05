@@ -1,4 +1,4 @@
-all:dummy-gdb.exe
+all:dummy-gdb.exe TAGS
 
 dummy-gdb.exe:dummy-gdb.cpp
 	g++ -g3 $< -o $@
