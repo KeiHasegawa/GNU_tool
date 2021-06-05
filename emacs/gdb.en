@@ -37,7 +37,15 @@ doesn't work well at emacs 27.2. For example
    o gdb prompt `(gdb)' should be displayed but not, not always but sometimes.
    o By step execution, echo source line to gdb command buffer. Source file
      is already displayed, so this is redundant.
-   o By C-x SPC , not insert breakpoint (You can bind yourself)
+   o By C-x SPC , not insert breakpoint. You can bind yourself like below:
+
+(global-set-key "\C-x " 'gud-break)
+
+     Unfortunately, C-x SPC doesn't work well. If you execute C-x SPC,
+     gdb command prompt turns on the situation where gdb does something.
+     And at this situation, if you execute some command, it doesn't work
+     as you expected.
+
    o devieds 3 windows(buffer?)
 
      (1) window for gdb command
