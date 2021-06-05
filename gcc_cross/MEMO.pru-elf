@@ -1,38 +1,19 @@
 pru-elf
 
-01_new_batch を実行した結果, 以下のエラーとなった.
-これは msp430-elf, or1k-elf と同じ現象. だめらしい.
+01_new_batch を実行した結果, 最後の確認
+でエラーになっている.
 
-make[3]: Leaving directory `/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.pru-elf/host-i686-pc-linux-gnu/libcc1'
-make[2]: Leaving directory `/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.pru-elf/host-i686-pc-linux-gnu/libcc1'
-Checking multilib configuration for libgcc...
-mkdir -p -- pru-elf/libgcc
-Configuring in pru-elf/libgcc
-configure: creating cache ./config.cache
-checking build system type... i686-pc-linux-gnu
-checking host system type... pru-unknown-elf
-checking for --enable-version-specific-runtime-libs... no
-checking for a BSD-compatible install... /usr/local/bin/install -c
-checking for gawk... gawk
-checking for pru-elf-ar... pru-elf-ar
-checking for pru-elf-lipo... pru-elf-lipo
-checking for pru-elf-nm... /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.pru-elf/host-i686-pc-linux-gnu/gcc/nm
-checking for pru-elf-ranlib... pru-elf-ranlib
-checking for pru-elf-strip... pru-elf-strip
-checking whether ln -s works... yes
-checking for pru-elf-gcc... /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.pru-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.pru-elf/host-i686-pc-linux-gnu/gcc/ -B/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/pru-elf/bin/ -B/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/pru-elf/lib/ -isystem /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/pru-elf/include -isystem /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/pru-elf/sys-include   
-checking for suffix of object files... configure: error: in `/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.pru-elf/pru-elf/libgcc':
-configure: error: cannot compute suffix of object files: cannot compile
-See `config.log' for more details
-make[1]: *** [configure-target-libgcc] Error 1
-make[1]: Leaving directory `/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.pru-elf'
-make: *** [all] Error 2
-perl ../modify.pl Makefile > Makefile.$$ || exit 1
-perl ../modify.pl Makefile
-mv Makefile.$$ Makefile || exit 1
-mv Makefile.4072 Makefile
-cp ../Makefile.empty $TARGET/libbacktrace/Makefile || exit 1
-cp ../Makefile.empty pru-elf/libbacktrace/Makefile
-cp: 通常ファイル 'pru-elf/libbacktrace/Makefile' を作成できません: そのようなファイルやディレクトリはありません
-exit 1
-> 
+% pru-elf-gcc -g -o 00_batch.verify.elf 00_batch.verify.c -Tpruelf-sim.x
+
+のようにすればいいらしい. しかし,
+
+% pru-elf-gdb 00_batch.verify.elf
+arch-utils.c:693: internal-error: initialize_current_architecture: Selection of initial architecture failed
+A problem internal to GDB has been detected,
+further debugging may prove unreliable.
+Quit this debugging session? (y or n) セグメントエラー
+%
+
+のようになってしまう.
+
+

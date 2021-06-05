@@ -1,38 +1,31 @@
 rx-elf
 
-01_new_batch を実行した結果, 以下のエラーとなった.
-これは msp430-elf, or1k-elf, pru-elf と同じ現象. だめらしい.
+01_new_batch を実行した結果, 最後の確認まで期待通り動作しているっぽい.
+しかし以下の結果になる.
 
-make[3]: Leaving directory `/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.rx-elf/host-i686-pc-linux-gnu/libcc1'
-make[2]: Leaving directory `/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.rx-elf/host-i686-pc-linux-gnu/libcc1'
-Checking multilib configuration for libgcc...
-mkdir -p -- rx-elf/libgcc
-Configuring in rx-elf/libgcc
-configure: creating cache ./config.cache
-checking build system type... i686-pc-linux-gnu
-checking host system type... rx-unknown-elf
-checking for --enable-version-specific-runtime-libs... no
-checking for a BSD-compatible install... /usr/local/bin/install -c
-checking for gawk... gawk
-checking for rx-elf-ar... rx-elf-ar
-checking for rx-elf-lipo... rx-elf-lipo
-checking for rx-elf-nm... /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.rx-elf/host-i686-pc-linux-gnu/gcc/nm
-checking for rx-elf-ranlib... rx-elf-ranlib
-checking for rx-elf-strip... rx-elf-strip
-checking whether ln -s works... yes
-checking for rx-elf-gcc... /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.rx-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.rx-elf/host-i686-pc-linux-gnu/gcc/ -B/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/rx-elf/bin/ -B/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/rx-elf/lib/ -isystem /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/rx-elf/include -isystem /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/rx-elf/sys-include   
-checking for suffix of object files... configure: error: in `/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.rx-elf/rx-elf/libgcc':
-configure: error: cannot compute suffix of object files: cannot compile
-See `config.log' for more details
-make[1]: *** [configure-target-libgcc] Error 1
-make[1]: Leaving directory `/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.rx-elf'
-make: *** [all] Error 2
-perl ../modify.pl Makefile > Makefile.$$ || exit 1
-perl ../modify.pl Makefile
-mv Makefile.$$ Makefile || exit 1
-mv Makefile.29441 Makefile
-cp ../Makefile.empty $TARGET/libbacktrace/Makefile || exit 1
-cp ../Makefile.empty rx-elf/libbacktrace/Makefile
-cp: 通常ファイル 'rx-elf/libbacktrace/Makefile' を作成できません: そのようなファイルやディレクトリはありません
-exit 1
->
+% rx-elf-gcc -g -o 00_batch.verify.elf 00_batch.verify.c
+during RTL pass: dwarf2
+00_batch.verify.c: 関数 ‘main’ 内:
+00_batch.verify.c:7:1: コンパイラ内部エラー: dwarf2out_frame_debug_adjust_cfa 内、位置 dwarf2cfi.c:1189
+    7 | }
+      | ^
+0x816697a dwarf2out_frame_debug_adjust_cfa
+	../.././gcc/dwarf2cfi.c:1189
+0x816697a dwarf2out_frame_debug
+	../.././gcc/dwarf2cfi.c:2098
+0x8315f16 scan_insn_after
+	../.././gcc/dwarf2cfi.c:2547
+0x8315f16 scan_trace
+	../.././gcc/dwarf2cfi.c:2714
+0x8316441 create_cfi_notes
+	../.././gcc/dwarf2cfi.c:2758
+0x8316441 execute_dwarf2_frame
+	../.././gcc/dwarf2cfi.c:3122
+0x8316441 execute
+	../.././gcc/dwarf2cfi.c:3610
+Please submit a full bug report,
+with preprocessed source if appropriate.
+Please include the complete backtrace with any bug report.
+See <https://gcc.gnu.org/bugs/> for instructions.
+> rx-elf-gcc -g -o 00_batch.verify.elf 00_batch.verify.c
+%
