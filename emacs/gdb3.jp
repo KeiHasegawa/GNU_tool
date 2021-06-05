@@ -1,0 +1,64 @@
+M-x gdb(その3)
+
+「M-x gdb(その2)」では emacs 27.2 でだましだまし emacs から gdb を
+使用する方法を述べたが, そもそも emacs と gdb の間でどのようなインターフェース
+になっているのか調べてみた.
+
+% cat a.c
+int main()
+{
+  return 0;
+}
+% gcc -g3 a.c -o a.out
+
+確認ではあるが, emacs 27.2 と
+
+/usr/share/emacs/23.3/lisp/progmodes/gdb-ui.el.gz
+
+との組み合わせで emacs から M-x gdb である程度期待通りデバッグできることが
+確認できる.
+そこで以下の dummy-gdb.exe をビルドする.
+% g++ -g3 dummy-gdb.cpp -o dummy-gdb.exe
+
+dumy-gdb.cpp はこのページにからダウンロードできる.
+但しブレークポイントにヒットしたときに開こうとしているファイルが私の環境の
+ものなので, あなたが実際に確かめるためには自分の環境に合わせたパスに書き換えてほしい.
+
+この dummy-gdb.exe を M-x gdb で以下のように起動する:
+
+Run gdb (like this): ./dummy-gdb.exe --annotate=3 a.out
+
+当たり前だが a.out は必要ない. 本来これは
+
+Run gdb (like this): gdb --annotate=3 a.out
+
+のように起動するべきものだったから, それと単純に引数を合わせているだけなのだ.
+
+バッファは *gud-a.out* に切り替わって以下のようになる:
+Current directory is d:/home/khasegawa/lang/53_GNU_tool/emacs/
+(dummy-gdb)
+
+この dummy-gdb だが
+
+b main
+run
+quit
+(空のコマンド)
+
+のみ受け付けるようになっている. それ以外のコマンドを入力してもエコーする
+だけである.
+
+それでは main にブレークポイントをセットしてそこまで実行してみよう:
+
+(dummy-gdb) b main
+Breakpoint 1 at 0x8049145: file a.c, line 3.
+(dummy-gdb) run
+
+ブレークポイントにヒットして画面が 2 分割され, ソースが表示されている.
+期待した動作をしている. というか捏造できている. dummy-gdb.cpp を見て分かる通り
+ポイントとなるのは
+
+  032
+
+を 2 つ標準出力に putc した後, 特殊な命令のようなものをさらに出力していることで
+ある. これは gdb ユーザーの目には見えない.

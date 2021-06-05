@@ -1,6 +1,8 @@
 #include <string>
 #include <iostream>
 
+#define BUG_REPRODUCE
+
 inline void output_prompt()
 {
   using namespace std;
@@ -15,7 +17,11 @@ inline void output_prompt()
 inline void bmain()
 {
   using namespace std;
+#ifndef BUG_REPRODUCE  
   cout << "Breakpoint 1 at 0x8049145: file a.c, line 3." << '\n';
+#else  
+  cout << "Breakpoint 1 at 0x10040107d: file a.c, line 3." << '\n';
+#endif
 }
 
 inline void run()
@@ -25,11 +31,19 @@ inline void run()
   cout << "breakpoint 1" << '\n';
   cout << '\n';
   cout << "Breakpoint 1,";
+#ifndef BUG_REPRODUCE 
   cout << '\n' << char(032) << char(032) << "frame-begin 0 0x8049145" << '\n';
+#else
+  cout << '\n' << char(032) << char(032) << "frame-begin 0 0x7ff75ee7107d" << '\n';
+#endif  
   cout << "main () at a.c:3" << '\n';
   cout << '\n' << char(032) << char(032);
 #ifdef __CYGWIN__
+#ifndef BUG_REPRODUCE  
   cout << "source d:/home/khasegawa/lang/53_GNU_tool/emacs/a.c:3:13:beg:0x8049145" << '\n';
+#else
+  cout << "source d:/home/khasegawa/lang/53_GNU_tool/emacs/a.c:3:13:beg:0x7ff75ee7107d" << '\n';
+#endif
 #else  // __CYGWIN__
   cout << "source /home/khasegawa/lang/53_GNU_tool/emacs/a.c:3:13:beg:0x8049145" << '\n';
 #endif  // __CYGWIN__
