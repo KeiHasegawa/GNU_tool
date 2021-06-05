@@ -62,3 +62,54 @@ Breakpoint 1 at 0x8049145: file a.c, line 3.
 
 を 2 つ標準出力に putc した後, 特殊な命令のようなものをさらに出力していることで
 ある. これは gdb ユーザーの目には見えない.
+
+さて問題は Windows 版の emacs 26.2 と gdb との問題だがパス名の問題で
+ソースが表示できていないことが判明した.
+
+/cygdrive/d/home/...
+
+のようなパス名は
+
+d:/home/...
+
+のようにしないと現状はソースの表示ができない.
+
+本来ならば Lisp の函数から呼び出されるファイルをオープンする機能を CYGWIN 対応にする
+のが正しいように思える. だから emacs を修正する必要がおそらくある. そうすれば
+これまで動作していた Lisp ライブラリは修正なしで動作する.
+
+しかし gdb を修正しても期待通り動作するので今回はそういう gdb を修正することにした.
+本当は良くない. gdb-10.2 ならば
+
+gdb-10.2/gdb/annotate.c
+
+の以下の函数を修正すれば期待通り動作することになる:
+
+static void
+annotate_source (const char *filename, int line, int character, int mid,
+		 struct gdbarch *gdbarch, CORE_ADDR pc)
+{
+  if (annotation_level > 1)
+    printf_filtered (("\n\032\032source "));
+  else
+    printf_filtered (("\032\032"));
+
+#ifdef __CYGWIN__
+  using namespace std;
+  string tmp = filename;
+  string cygdrive = "/cygdrive/";
+  int len = cygdrive.length();
+  if (tmp.substr(0, len) == cygdrive) {
+    if (tmp.length() > len+1) {
+      auto drive = tmp.substr(len, 1);
+      tmp.erase(0, len+1);
+      tmp = drive + ':' + tmp;
+    }
+  }
+  printf_filtered (("%s:%d:%d:%s:%s\n"), tmp.c_str(), line, character,
+		   mid ? "middle" : "beg", paddress (gdbarch, pc));
+#else // __CYGWIN__
+  printf_filtered (("%s:%d:%d:%s:%s\n"), filename, line, character,
+		   mid ? "middle" : "beg", paddress (gdbarch, pc));
+#endif // __CYGWIN__
+}
