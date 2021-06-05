@@ -1,0 +1,119 @@
+M-x gdb(part 3)
+
+As described at "M-x gdb(part 2)", we can use emacs 27.2 and gdb
+trick int the book.
+Here, in the 1st place, I think we should investigate the interface
+between emacs and gdb.
+
+% cat a.c
+int main()
+{
+  return 0;
+}
+% gcc -g3 a.c -o a.out
+
+Again I say, use of emacs 27.2 and
+
+/usr/share/emacs/23.3/lisp/progmodes/gdb-ui.el.gz
+
+enable us to execute M-x gdb and it works well.
+
+Then, build `dummy-gdb.exe' like below:
+% g++ -g3 dummy-gdb.cpp -o dummy-gdb.exe
+
+Here, `dumy-gdb.cpp' is avairable on this web page.
+But note that when break-point is hit, the file path is for my
+environment. So change it for your environment if you actually
+confirm how dummy-gdb.exe works.
+
+Now execute `dummy-gdb.exe' by M-x gdb like below:
+
+Run gdb (like this): ./dummy-gdb.exe --annotate=3 a.out
+
+Of cause, it's not ncessary to specify `a.out'. Originally `a.out'
+is specified like below:
+
+Run gdb (like this): gdb --annotate=3 a.out
+
+Here, simply, specify the same arguments.
+
+After execute M-x gdb, *gud-a.out* buffer becomes like below:
+
+Current directory is d:/home/khasegawa/lang/53_GNU_tool/emacs/
+(dummy-gdb)
+
+This `dummy-gdb.exe' just supports below command:
+
+b main
+run
+quit
+(empty line)
+
+For othe command, just echo back.
+
+Now set the break-point to `main' and execute until the break-point is hit:
+
+(dummy-gdb) b main
+Breakpoint 1 at 0x8049145: file a.c, line 3.
+(dummy-gdb) run
+
+After the break-point is hit, the screen is devided into 2 windows.
+And source file `a.c' is displayed. This is expected result. In other words,
+this invention works as I expected. See dummy-gdb.cpp, The point is
+`putc' two
+
+  032
+
+into stdout and output something like instruction. And these are
+not visible for gdb users.
+
+Now the problem is emacs 26.2 on Windows 10 and gdb don't work
+because of windows path including drive name. For example, path like
+
+/cygdrive/d/home/...
+
+should be converted to
+
+d:/home/...
+
+and try to open it.
+
+Originally, the facility called from Lisp function which opens the
+file should correspond to CYGWIN environment. Maybe we have to fix
+emacs, then all Lisp libraries work well without modification.
+
+But if I fix gdb for above stuff, it' ll work, but it should not be.
+Any way, for gdb-10.2
+
+gdb-10.2/gdb/annotate.c
+
+You can change like below:
+
+static void
+annotate_source (const char *filename, int line, int character, int mid,
+		 struct gdbarch *gdbarch, CORE_ADDR pc)
+{
+  if (annotation_level > 1)
+    printf_filtered (("\n\032\032source "));
+  else
+    printf_filtered (("\032\032"));
+
+#ifdef __CYGWIN__
+  using namespace std;
+  string tmp = filename;
+  string cygdrive = "/cygdrive/";
+  int len = cygdrive.length();
+  if (tmp.substr(0, len) == cygdrive) {
+    if (tmp.length() > len+1) {
+      auto drive = tmp.substr(len, 1);
+      tmp.erase(0, len+1);
+      tmp = drive + ':' + tmp;
+    }
+  }
+  printf_filtered (("%s:%d:%d:%s:%s\n"), tmp.c_str(), line, character,
+		   mid ? "middle" : "beg", paddress (gdbarch, pc));
+#else // __CYGWIN__
+  printf_filtered (("%s:%d:%d:%s:%s\n"), filename, line, character,
+		   mid ? "middle" : "beg", paddress (gdbarch, pc));
+#endif // __CYGWIN__
+}
