@@ -1,0 +1,106 @@
+(*1) cygwin の X サーバーのビルド
+
+% cd
+% wget -q http://cygwin.mirror.constant.com/x86_64/release/xorg-server/xorg-server-1.20.9-1-src.tar.xz
+% xz -d -c xorg-server-1.20.9-1-src.tar.xz | tar xf -
+% cd xorg-server-1.20.9-1.src
+% bunzip2 -c xserver-xserver-cygwin-1.20.9-1.tar.bz2 | tar xf -
+% cd xserver-xserver-cygwin-1.20.9-1/
+% ls
+COPYING
+Makefile.am
+README.md
+Xext
+Xi
+autogen.sh
+composite
+config
+configure.ac
+damageext
+dbe
+devbook.am
+dix
+doc
+docbook.am
+dri3
+exa
+fb
+fix-miregion
+fix-miregion-private
+fix-patch-whitespace
+fix-region
+glamor
+glx
+hw
+include
+m4
+man
+manpages.am
+meson.build
+meson_options.txt
+mi
+miext
+os
+present
+pseudoramiX
+randr
+record
+render
+test
+xfixes
+xkb
+xorg-server.m4
+xorg-server.pc.in
+xserver.ent.in
+                         # configure がない
+% autoconf
+configure.ac:38: error: must install xorg-macros 1.14 or later before running autoconf/autogen
+configure.ac:38: the top level
+autom4te-2.69: /usr/bin/m4 failed with exit status: 1
+%
+                         # autoconf が fail している
+
+なんだか良く分からないが, 今までは configure 実行時に何かをチェックしていたのに,
+今回は configure 生成時にエラーしている.
+
+ともあれ上のメッセージは xorg-macros なるライブラリかパッケージがないのでエラーしている
+と予測した.
+
+(*2) xorg-macros のインストール
+
+% cd
+% wget -q https://www.x.org/releases/X11R7.7/src/everything/util-macros-1.17.tar.bz2
+% bunzip2 -c util-macros-1.17.tar.bz2 | tar xf -
+% cd util-macros-1.17
+% ./configure
+% make
+% make install
+
+/usr/local/share/pkgconfig/xorg-macros.pc
+
+が作成されている.
+
+(*3) X サーバーのビルド再開
+
+% cd ~/xorg-server-1.20.9-1.src/xserver-xserver-cygwin-1.20.9-1
+% autoconf
+configure.ac:38: error: must install xorg-macros 1.14 or later before running autoconf/autogen
+configure.ac:38: the top level
+autom4te-2.69: /usr/bin/m4 failed with exit status: 1
+%
+           # エラーを回避できていない
+
+% ls -ltr
+           # autom4te.cache というディレクトリがある. ついさっき作られたらしい.
+% rm -r -f autom4te.cache
+% autoconf
+configure.ac:38: error: must install xorg-macros 1.14 or later before running autoconf/autogen
+configure.ac:38: the top level
+autom4te-2.69: /usr/bin/m4 failed with exit status: 1
+%
+          # やはりエラーを回避できていない
+
+autoconf はすでにインストールされているが, せっかくなのでソースから
+インストールすることにした.
+
+  => 「autoconf のインストール」参照
