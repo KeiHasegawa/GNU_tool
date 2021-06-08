@@ -71,29 +71,31 @@ Loading DB routines from perl5db.pl version 1.57
 Editor support enabled.
 
 Enter h or 'h h' for help, or 'man perldebug' for more help.
-                        # リスタート
-  DB<4> c               # 例のブレークポイントまで実行
+                        # Restart
+  DB<4> c               # Run until the break-point is hit
   DB<4> step
   DB<4> step
   DB<4> step
 
-なんだかこれはデバッガが期待通り動作していない...
+This seems perl debugger doesn't work as I expected.
 
-handle_m4 は !$req->valid ならば呼び出すということだが, そもそも $req->valid = 0
-の時点で期待しない動作になっているということなのだろうか.
+Here, I wondered:
 
-perl スクリプトのデバッグは今の自分には少し難しい.
+    If !$req->valid then, call `handle_m4' but at the first place,
+    $req->valid = 0 was unexpected result.
 
-ところで d:/cygwin64/usr/local/bin
+Debugging perl script is very difficult for me at this point.
 
-にやはり autom4te.cache というディレクトリが作成されていることに気付いた.
+By the way, in the directory `d:/cygwin64/usr/local/bin'
 
-ここまでやって, 実は configure.ac がそもそも間違えているからこのような
-エラーになっているのではと予測した:
+I noticed that `autom4te.cache' directory was created, again.
+
+As this result, I guessed that `configure.ac' was not correct
+in fact.
 
 % cd ~/xorg-server-1.20.9-1.src/xserver-xserver-cygwin-1.20.9-1
 % cp configure.ac configure.ac.org
-                    # configure.ac を編集
+                    # I modified `configure.ac'
 % diff -c configure.ac.org configure.ac
 *** configure.ac.org	Mon Jun  7 09:19:20 2021
 --- configure.ac	Mon Jun  7 09:20:36 2021
@@ -143,10 +145,11 @@ configure.ac:52: error: must install font-util 1.1 or later before running autoc
 configure.ac:52: the top level
 autom4te: /usr/bin/m4 failed with exit status: 1
 %
-               # これは, 該当箇所のエラーは回避できている.
+               # Above modification could get rid of the error even though
+	       # Another error occured.
 
-現時点で font-util というライブラリかパッケージはおそらくインストールされていないが,
-上がエラーしているのはそれとは異なる原因だと考えた.
+At this point, the package or library named `front-util' was not
+installed, but I thouguht above error caused by different reason.
 
 % diff -c configure.ac.org configure.ac
 *** configure.ac.org	Mon Jun  7 09:19:20 2021
@@ -209,8 +212,10 @@ configure.ac:939: error: possibly undefined macro: AC_DEFINE_DIR
 configure.ac:2202: error: possibly undefined macro: _AM_DEPENDENCIES
 %
 
-            # エラーは回避できているが, 違うエラーがでている.
-	    # 確かこれはおまじないがあったはず.
+            # Again, above modification could get rid of the error, even
+	    # though another error again occured.
+	    # For above error, there may be good luck charm .
+
 % aclocal
 configure.ac:34: error: Autoconf version 2.65 or higher is required
 /usr/share/aclocal-1.15/init.m4:29: AM_INIT_AUTOMAKE is expanded from...
@@ -218,4 +223,6 @@ configure.ac:34: the top level
 autom4te: /usr/bin/m4 failed with exit status: 63
 aclocal-1.15: error: echo failed with exit status: 63
 %
-            # インストールされているのは 2.64 なのでこれはしょうがない.
+            # Now installed autoconf's version is 2.64.
+	    # So I have to install newer version.
+	    
