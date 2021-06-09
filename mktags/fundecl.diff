@@ -1,0 +1,167 @@
+*** gcc-10.2.0.org/gcc/dwarf2out.c	2020-07-23 15:35:17.584387196 +0900
+--- gcc-10.2.0/gcc/dwarf2out.c	2021-06-09 12:10:09.180153796 +0900
+***************
+*** 27269,27281 ****
+  		x = XVECEXP (x, 0, 0);
+  	      if (GET_CODE (x) == SET)
+  		x = SET_SRC (x);
+! 	      if (GET_CODE (x) == CALL)
+  		x = XEXP (x, 0);
+  	      if (!MEM_P (x)
+  		  || GET_CODE (XEXP (x, 0)) != SYMBOL_REF
+  		  || !SYMBOL_REF_DECL (XEXP (x, 0))
+  		  || (TREE_CODE (SYMBOL_REF_DECL (XEXP (x, 0)))
+! 		      != FUNCTION_DECL))
+  		{
+  		  call_insn = loc_note;
+  		  loc_note = NULL;
+--- 27269,27286 ----
+  		x = XVECEXP (x, 0, 0);
+  	      if (GET_CODE (x) == SET)
+  		x = SET_SRC (x);
+! 	      bool x_was_call = false;
+! 	      if (GET_CODE (x) == CALL) {
+  		x = XEXP (x, 0);
++ 		x_was_call = true;
++ 	      }
+  	      if (!MEM_P (x)
+  		  || GET_CODE (XEXP (x, 0)) != SYMBOL_REF
+  		  || !SYMBOL_REF_DECL (XEXP (x, 0))
+  		  || (TREE_CODE (SYMBOL_REF_DECL (XEXP (x, 0)))
+! 		      != FUNCTION_DECL)
+! 		  || ((TREE_CODE (SYMBOL_REF_DECL (XEXP (x, 0)))
+! 		       == FUNCTION_DECL) && x_was_call))
+  		{
+  		  call_insn = loc_note;
+  		  loc_note = NULL;
+***************
+*** 32357,32359 ****
+--- 32362,32489 ----
+  }
+  
+  #include "gt-dwarf2out.h"
++ 
++ #include <iostream>
++ void print(dwarf_tag tag)
++ {
++   using namespace std;
++   switch (tag) {
++   case DW_TAG_padding: cout << "DW_TAG_padding" << '\n'; return;
++   case DW_TAG_array_type: cout << "DW_TAG_array_type" << '\n'; return;
++   case DW_TAG_class_type: cout << "DW_TAG_class_type" << '\n'; return;
++   case DW_TAG_entry_point: cout << "DW_TAG_entry_point" << '\n'; return;
++   case DW_TAG_enumeration_type: cout << "DW_TAG_enumeration_type" << '\n'; return;
++   case DW_TAG_formal_parameter: cout << "DW_TAG_formal_parameter" << '\n'; return;
++   case DW_TAG_imported_declaration: cout << "DW_TAG_imported_declaration" << '\n'; return;
++   case DW_TAG_label: cout << "DW_TAG_label" << '\n'; return;
++   case DW_TAG_lexical_block: cout << "DW_TAG_lexical_block" << '\n'; return;
++   case DW_TAG_member: cout << "DW_TAG_member" << '\n'; return;
++   case DW_TAG_pointer_type: cout << "DW_TAG_pointer_type" << '\n'; return;
++   case DW_TAG_reference_type: cout << "DW_TAG_reference_type" << '\n'; return;
++   case DW_TAG_compile_unit: cout << "DW_TAG_compile_unit" << '\n'; return;
++   case DW_TAG_string_type: cout << "DW_TAG_string_type" << '\n'; return;
++   case DW_TAG_structure_type: cout << "DW_TAG_structure_type" << '\n'; return;
++   case DW_TAG_subroutine_type: cout << "DW_TAG_subroutine_type" << '\n'; return;
++   case DW_TAG_typedef: cout << "DW_TAG_typedef" << '\n'; return;
++   case DW_TAG_union_type: cout << "DW_TAG_union_type" << '\n'; return;
++   case DW_TAG_unspecified_parameters: cout << "DW_TAG_unspecified_parameters" << '\n'; return;
++   case DW_TAG_variant: cout << "DW_TAG_variant" << '\n'; return;
++   case DW_TAG_common_block: cout << "DW_TAG_common_block" << '\n'; return;
++   case DW_TAG_common_inclusion: cout << "DW_TAG_common_inclusion" << '\n'; return;
++   case DW_TAG_inheritance: cout << "DW_TAG_inheritance" << '\n'; return;
++   case DW_TAG_inlined_subroutine: cout << "DW_TAG_inlined_subroutine" << '\n'; return;
++   case DW_TAG_module: cout << "DW_TAG_module" << '\n'; return;
++   case DW_TAG_ptr_to_member_type: cout << "DW_TAG_ptr_to_member_type" << '\n'; return;
++   case DW_TAG_set_type: cout << "DW_TAG_set_type" << '\n'; return;
++   case DW_TAG_subrange_type: cout << "DW_TAG_subrange_type" << '\n'; return;
++   case DW_TAG_with_stmt: cout << "DW_TAG_with_stmt" << '\n'; return;
++   case DW_TAG_access_declaration: cout << "DW_TAG_access_declaration" << '\n'; return;
++   case DW_TAG_base_type: cout << "DW_TAG_base_type" << '\n'; return;
++   case DW_TAG_catch_block: cout << "DW_TAG_catch_block" << '\n'; return;
++   case DW_TAG_const_type: cout << "DW_TAG_const_type" << '\n'; return;
++   case DW_TAG_constant: cout << "DW_TAG_constant" << '\n'; return;
++   case DW_TAG_enumerator: cout << "DW_TAG_enumerator" << '\n'; return;
++   case DW_TAG_file_type: cout << "DW_TAG_file_type" << '\n'; return;
++   case DW_TAG_friend: cout << "DW_TAG_friend" << '\n'; return;
++   case DW_TAG_namelist: cout << "DW_TAG_namelist" << '\n'; return;
++   case DW_TAG_namelist_item: cout << "DW_TAG_namelist_item" << '\n'; return;
++   case DW_TAG_packed_type: cout << "DW_TAG_packed_type" << '\n'; return;
++   case DW_TAG_subprogram: cout << "DW_TAG_subprogram" << '\n'; return;
++   case DW_TAG_template_type_param: cout << "DW_TAG_template_type_param" << '\n'; return;
++   case DW_TAG_template_value_param: cout << "DW_TAG_template_value_param" << '\n'; return;
++   case DW_TAG_thrown_type: cout << "DW_TAG_thrown_type" << '\n'; return;
++   case DW_TAG_try_block: cout << "DW_TAG_try_block" << '\n'; return;
++   case DW_TAG_variant_part: cout << "DW_TAG_variant_part" << '\n'; return;
++   case DW_TAG_volatile_type: cout << "DW_TAG_volatile_type" << '\n'; return;
++   case DW_TAG_dwarf_procedure: cout << "DW_TAG_dwarf_procedure" << '\n'; return;
++   case DW_TAG_restrict_type: cout << "DW_TAG_restrict_type" << '\n'; return;
++   case DW_TAG_interface_type: cout << "DW_TAG_interface_type" << '\n'; return;
++   case DW_TAG_namespace: cout << "DW_TAG_namespace" << '\n'; return;
++   case DW_TAG_imported_module: cout << "DW_TAG_imported_module" << '\n'; return;
++   case DW_TAG_unspecified_type: cout << "DW_TAG_unspecified_type" << '\n'; return;
++   case DW_TAG_partial_unit: cout << "DW_TAG_partial_unit" << '\n'; return;
++   case DW_TAG_imported_unit: cout << "DW_TAG_imported_unit" << '\n'; return;
++   case DW_TAG_condition: cout << "DW_TAG_condition" << '\n'; return;
++   case DW_TAG_shared_type: cout << "DW_TAG_shared_type" << '\n'; return;
++   case DW_TAG_type_unit: cout << "DW_TAG_type_unit" << '\n'; return;
++   case DW_TAG_rvalue_reference_type: cout << "DW_TAG_rvalue_reference_type" << '\n'; return;
++   case DW_TAG_template_alias: cout << "DW_TAG_template_alias" << '\n'; return;
++   case DW_TAG_coarray_type: cout << "DW_TAG_coarray_type" << '\n'; return;
++   case DW_TAG_generic_subrange: cout << "DW_TAG_generic_subrange" << '\n'; return;
++   case DW_TAG_dynamic_type: cout << "DW_TAG_dynamic_type" << '\n'; return;
++   case DW_TAG_atomic_type: cout << "DW_TAG_atomic_type" << '\n'; return;
++   case DW_TAG_call_site: cout << "DW_TAG_call_site" << '\n'; return;
++   case DW_TAG_call_site_parameter: cout << "DW_TAG_call_site_parameter" << '\n'; return;
++   case DW_TAG_skeleton_unit: cout << "DW_TAG_skeleton_unit" << '\n'; return;
++   case DW_TAG_immutable_type: cout << "DW_TAG_immutable_type" << '\n'; return;
++   case DW_TAG_lo_user: cout << "DW_TAG_lo_user" << '\n'; return;
++   case DW_TAG_hi_user: cout << "DW_TAG_hi_user" << '\n'; return;
++   case DW_TAG_MIPS_loop: cout << "DW_TAG_MIPS_loop" << '\n'; return;
++   case DW_TAG_HP_array_descriptor: cout << "DW_TAG_HP_array_descriptor" << '\n'; return;
++   case DW_TAG_HP_Bliss_field: cout << "DW_TAG_HP_Bliss_field" << '\n'; return;
++   case DW_TAG_HP_Bliss_field_set: cout << "DW_TAG_HP_Bliss_field_set" << '\n'; return;
++   case DW_TAG_format_label: cout << "DW_TAG_format_label" << '\n'; return;
++   case DW_TAG_function_template: cout << "DW_TAG_function_template" << '\n'; return;
++   case DW_TAG_class_template: cout << "DW_TAG_class_template" << '\n'; return;
++   case DW_TAG_GNU_BINCL: cout << "DW_TAG_GNU_BINCL" << '\n'; return;
++   case DW_TAG_GNU_EINCL: cout << "DW_TAG_GNU_EINCL" << '\n'; return;
++   case DW_TAG_GNU_template_template_param: cout << "DW_TAG_GNU_template_template_param" << '\n'; return;
++   case DW_TAG_GNU_template_parameter_pack: cout << "DW_TAG_GNU_template_parameter_pack" << '\n'; return;
++   case DW_TAG_GNU_formal_parameter_pack: cout << "DW_TAG_GNU_formal_parameter_pack" << '\n'; return;
++   case DW_TAG_GNU_call_site: cout << "DW_TAG_GNU_call_site" << '\n'; return;
++   case DW_TAG_GNU_call_site_parameter: cout << "DW_TAG_GNU_call_site_parameter" << '\n'; return;
++   case DW_TAG_upc_shared_type: cout << "DW_TAG_upc_shared_type" << '\n'; return;
++   case DW_TAG_upc_strict_type: cout << "DW_TAG_upc_strict_type" << '\n'; return;
++   case DW_TAG_PGI_kanji_type: cout << "DW_TAG_PGI_kanji_type" << '\n'; return;
++   case DW_TAG_PGI_interface_block: cout << "DW_TAG_PGI_interface_block" << '\n'; return;
++   default: cout << "unknown" << '\n'; return;
++   }
++ }
++ 
++ void ws(int level)
++ {
++   using namespace std;
++   while (level--)
++     cout << ' ';
++ }
++ 
++ void print1(dw_die_ref die, int level)
++ {
++   using namespace std;
++   ws(level << 2);
++   cout << "(dw_die_ref)" << die << " : ";
++   print(die->die_tag);
++ 
++   dw_die_ref c = die->die_child;
++   if (!c)
++     return;
++   do {
++     c = c->die_sib;
++     print1(c, level+1);
++   } while (c != die->die_child);
++ }
++ 
++ void print(dw_die_ref die)
++ {
++   print1(die, 0);
++ }
