@@ -490,7 +490,17 @@ g	a.c	/^void g()$/;"	f
      of others (structure or typedef).
 
      For function declaration debug information, I created `fundecl.diff'
-     on this web page.
+     on this web page. The way of applying this patch file is:
+     Save as `fundecl.diff' as `/tmp/fundecl.diff' and
+
+% cd gcc-10.2.0
+% patch -p1< /tmp/fundecl.diff 
+patching file gcc/dwarf2out.c
+
+     By this patch, gcc willl generate debug information for function
+     declaration which is called somewhere. Unfortunately, for just
+     refering  to the address of the function, gcc won't generate
+     debug information.
 
 (*17) If tag jump doesn't work well
 
