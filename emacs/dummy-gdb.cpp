@@ -29,7 +29,7 @@ inline void run()
   cout << "main () at a.c:3" << '\n';
   cout << '\n' << char(032) << char(032);
 #ifdef __CYGWIN__
-  cout << "source d:/home/khasegawa/lang/53_GNU_tool/emacs/a.c:3:13:beg:0x8049145" << '\n';
+  cout << "source /cygdrive/d/home/khasegawa/lang/53_GNU_tool/emacs/a.c:3:13:beg:0x8049145" << '\n';
 #else  // __CYGWIN__
   cout << "source /home/khasegawa/lang/53_GNU_tool/emacs/a.c:3:13:beg:0x8049145" << '\n';
 #endif  // __CYGWIN__
