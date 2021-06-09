@@ -1,0 +1,544 @@
+Fix for the function declaration debug information
+
+事前に判明していること
+
+-g -O2 で宣言のみを書けば宣言に対してデバッグ情報が
+生成される.
+
+(*) 変数に対しては
+宣言だけであればデバッグ情報は生成されていない.
+宣言された変数に対して参照があればデバッグ情報が生成される.
+
+(*) 函数に対して
+
+% cat sample.c
+extern int abcdef();
+
+int f()
+{
+  return abcdef();
+}
+%
+(gdb) run -quiet sample.c -quiet -dumpbase sample.c "-mtune=generic" "-march=pentiumpro" -auxbase sample -g -O2 -o sample.s
+
+とすれば　sample.s に "abcdef" という文字列が出ている.
+上の起動の引数から -O2 をはずせば "abcdef" という文字列は出ない.
+
+それぞれの結果を sample.s.O0 と sample.s.O2 とに保存しておいた.
+
+最初の差分
+
+.p2align 4
+
+の部分はあってもなくても影響することがなさそうだが, せっかくなので
+修正しておく.
+
+.Ltext0:
+	.p2align 4                これ
+	.globl	f
+	.type	f, @function
+
+まずはこれを出しているところを突き止める.
+「cc1 アセンブラ生成の調査」によれば final_1 という函数に
+ブレークポイントをセットするのが良さそう.
+
+(gdb) b final_1
+
+としてこの函数まで実行した.
+
+(gdb) p *file
+
+とすることにより, この段階では既に該当部分が生成されている
+ことに気付く.
+
+(gdb) p file._IO_read_ptr
+$2 = 0xb784b000 "\t.file\t\"sample.c\"\n\t.text\n.Ltext0:\n\t.p2align 4\n\t.globl\tf\n\t.type\tf, @function\nf:\n.LFB0:\n\t.file 1 \"sample.c\"\n\t.loc 1 4 1 view -0\n\t.cfi_startproc\n"
+
+(gdb) p file._IO_read_ptr+25
+$4 = 0xb784b019 ".Ltext0:\n\t.p2align 4\n\t.globl\tf\n\t.type\tf, @function\nf:\n.LFB0:\n\t.file 1 \"sample.c\"\n\t.loc 1 4 1 view -0\n\t.cfi_startproc\n"
+
+なので $4 のアドレスに書き込む瞬間をとらえる:
+
+(gdb) watch *(char*)0xb784b019
+(gdb) run
+
+ヒットした. これは期待通り.
+
+この後同様に .p2align を生成している部分はウォッチポイントを
+
+(gdb) watch *(char*)0xb784b022  # $4 のアドレスよりさらに少し高いアドレス
+
+にセットすることにより
+
+      ASM_OUTPUT_MAX_SKIP_ALIGN (asm_out_file, align_log, max_skip);
+
+であると判明した. しかしここは最適化云々は関係なく実行されていそう
+だが...
+
+しかし当然ではあるが, -O2 ありならば実行されていて, なしならば
+実行されていない.
+
+-O2 ありでもなしでもこの函数は実行されている:
+  assemble_start_function (current_function_decl, fnname);
+
+
+  if (! DECL_USER_ALIGN (decl)
+      && align_functions.levels[0].log > align
+      && optimize_function_for_speed_p (cfun)) {
+
+   ...
+      ASM_OUTPUT_MAX_SKIP_ALIGN (asm_out_file, align_log, max_skip);
+
+      こういうことだった. なのでここの差分は -O2 なしのときは
+      なくて構わない.
+
+  }
+
+2 つ目の差分は
+
+< 	.loc 1 4 1
+---
+> 	.loc 1 4 1 view -0
+
+でこれがおそらく関係していると予測した.
+これも final_1 にきた時点ですでに生成されているので view -0  を
+出力している瞬間をとらえる:
+
+(gdb) p file._IO_read_ptr+118
+$30 = 0xb784b076 "view -0\n\t.cfi_startproc\n"
+
+なので
+(gdb) watch *(char*)0xb784b076
+(gdb) run
+
+としてとらえられる:
+
+	      if (FORCE_RESETTING_VIEW_P (table->view))
+		fputs (" view -0", asm_out_file);
+	      else
+		fputs (" view 0", asm_out_file);
+
+ここだった. この部分にあるコメントを読んだがなんだか
+これも修正する必要はないらしい.
+
+次の差分はコード生成に関するもの. -O2 のものは以下:
+
+ 	.loc 1 5 3 view .LVU1
+ 	.loc 1 5 10 is_stmt 0 view .LVU2
+ 	jmp	abcdef
+
+なるほど, jmp とすればよいわけだ. ところで
+
+.loc 1 5 3  は return の 'r' の行番号情報.
+.loc 1 5 10 は return abcdef(); の 'a' の行番号情報である.
+
+これは...よく分からないが -O2 のものにだけあるべきように思える.
+
+少し味方を変えて objdump -g の比較を行ってみた:
+
+% cp sample.s.O0 sample_O0.s
+% gcc -c sample_O0.s
+% ls -l sample_O0.o
+-rw-rw-r-- 1 khasegawa khasegawa 1768  6月  8 16:07 sample_O0.o
+% objdump -g sample_O0.o > sample_O0.objdump
+% cp sample.s.O2 sample_O2.s
+% gcc -c sample_O2.s 
+% ls -l sample_O2.o 
+-rw-rw-r-- 1 khasegawa khasegawa 1844  6月  8 16:08 sample_O2.o
+% objdump -g sample_O2.o > sample_O2.objdump
+% 
+
+決定的な差分は以下の部分:
+
+>  <1><4e>: 省略番号: 5 (DW_TAG_subprogram)
+>     <4f>   DW_AT_external    : 1
+>     <4f>   DW_AT_declaration : 1
+>     <4f>   DW_AT_linkage_name: (間接文字列、オフセット: 0x5d): abcdef
+>     <53>   DW_AT_name        : (間接文字列、オフセット: 0x5d): abcdef
+>     <57>   DW_AT_decl_file   : 1
+>     <58>   DW_AT_decl_line   : 1
+>     <59>   DW_AT_decl_column : 12
+
+これは sample.s.O2 の以下の部分が該当している.
+
+	.uleb128 0x5
+	.long	.LASF3
+	.long	.LASF3
+	.byte	0x1
+	.byte	0x1
+	.byte	0xc
+	.byte	0
+
+そこでやはりこの部分を出力している瞬間をとらえる:
+
+final1 から finish してもこの部分はまだ書き込まれていない:
+
+(gdb) fin
+Run till exit from #0  final_1 (first=0xb79070e0, file=0xa670cd0, seen=0, optimize_p=2) at ../.././gcc/final.c:1961
+0x087f85cd in rest_of_handle_final () at ../.././gcc/final.c:4666
+(gdb) p asm_out_file._IO_read_ptr+118
+$34 = 0xb784b076 "view -0\n\t.cfi_startproc\n\t.loc 1 5 3 view .LVU1\n\t.loc 1 5 10 is_stmt 0 view .LVU2\n\tjmp\tabcdef\n.LVL0:\n"
+(gdb)
+
+asm_out_file._IO_read_ptr+0x2e0
+以降
+asm_out_file._IO_read_ptr+0x2f0
+が該当する箇所あたりなので
+大雑把だが
+
+(gdb) p asm_out_file._IO_read_ptr+0x2f0
+$35 = 0xb784b2f0 ""
+(gdb) watch *(char*)0xb784b2f0
+Hardware watchpoint 7: *(char*)0xb784b2f0
+(gdb)
+
+のようにウォッチポイントをセットした.
+
+このウォッチポイントにヒットした.
+
+(gdb) p asm_out_file._IO_read_ptr+0x2e0
+$38 = 0xb784b2e0 "t\"\n\t.uleb128 0x5\n"
+(gdb)
+
+期待通り. この部分をとらえられた.
+
+static void
+output_die (dw_die_ref die)
+{
+  dw_attr_node *a;
+  dw_die_ref c;
+  unsigned long size;
+  unsigned ix;
+
+  dw2_asm_output_data_uleb128 (die->die_abbrev, "(DIE (%#lx) %s)",
+			       (unsigned long)die->die_offset,
+			       dwarf_tag_name (die->die_tag));
+  ここで出しているらしい.
+  この後の処理で
+
+	.uleb128 0x5
+	.long	.LASF3   ここが出ている
+	.long	.LASF3
+
+　ことを確認した.
+
+-O2 オプションなしのときはそもそも, 該当する die がないのかもしれない.
+
+もう一つスタックを遡ってみた:
+(gdb) up
+
+ソースはこんな感じ
+
+  FOR_EACH_CHILD (die, c, output_die (c));
+
+#define FOR_EACH_CHILD(die, c, expr) do {	\
+  c = die->die_child;				\
+  if (c) do {					\
+    c = c->die_sib;				\
+    expr;					\
+  } while (c != die->die_child);		\
+} while (0)
+
+おそらく die->die_child の要素に 
+
+>  <1><4e>: 省略番号: 5 (DW_TAG_subprogram)
+>     <4f>   DW_AT_external    : 1
+>     <4f>   DW_AT_declaration : 1
+>     <4f>   DW_AT_linkage_name: (間接文字列、オフセット: 0x5d): abcdef
+>     <53>   DW_AT_name        : (間接文字列、オフセット: 0x5d): abcdef
+>     <57>   DW_AT_decl_file   : 1
+>     <58>   DW_AT_decl_line   : 1
+>     <59>   DW_AT_decl_column : 12
+
+に相当するものが -O2 ではあるが -O2 なしだとないので
+-O2 なら出て, -O2 なしなら出ていないというわけだ.
+
+だから -O2 オプションありのときに問題の die に
+対して die->die_child がセットされる瞬間をとらえればよい.
+
+  FOR_EACH_CHILD (die, c, output_die (c));
+
+のところで
+
+(gdb) p die
+$4 = (dw_die_ref) 0xb7869b70
+(gdb) p die->die_child
+$5 = (dw_die_ref) 0xb78f9990
+(gdb) p &die->die_child
+$6 = (dw_die_ref *) 0xb7869b7c
+(gdb) watch *(int*)0xb7869b7c
+Hardware watchpoint 3: *(int*)0xb7869b7c
+(gdb) run
+
+...
+Hardware watchpoint 3: *(int*)0xb7869b7c
+
+Old value = 0
+New value = -1215326384
+0x08734ab0 in add_child_die (die=0xb7869b70, child_die=0xb78f9750) at ../.././gcc/dwarf2out.c:5606
+(gdb)
+
+これはとらえられている. 4 回ウォッチポイントがヒットするが 4 回目が問題の
+-1215325808 = 0xb78f9990
+になる.
+
+さて例によって
+
+dw_die_ref
+
+とはそもそも何なのか, これをデバッグする函数で gdb のコマンドラインか
+ら呼び出すものが必要になる. ざっと見たところだがそういう便利な
+函数はないらしい. 残念だが自分で作るしかない.
+
+そういうものがないかと探していたら, ソースファイルに
+DW_AT_linkage_name
+というものを見つけた. これは例の abcdef を指定するものであったので
+これに関連している部分にとりあえず, ブレークポイントをセットしてみた:
+
+  if (dwarf_version >= 4)
+    add_AT_string (die, DW_AT_linkage_name, name);  ここにきている
+  else
+    add_AT_string (die, DW_AT_MIPS_linkage_name, name);
+
+上の行が実行されたとき name = "abcdef" だった.
+
+時系列で述べると
+
+(1) die_child のウォッチポイント 4 回目
+(2) add_AT_string (die, DW_AT_linkage_name, name);
+(3) asm_out_file._IO_read_ptr+0x2e0 のウォッチポイント
+
+ということである.
+
+-O2 なしで gdb から実行したとき, 当然だが die_child で 3 回目まで
+はウォッチポイントにヒットするが 4 回目は来ない.
+
+なので 4 回目がなぜ -O2 できているかを調査する.
+
+簡単な print(dw_die_ref) を作成して分かったが,
+
+例のウォッチポイント
+
+1 回目 : おそらくメモリ確保
+2 回目 : die は DW_TAG_compile_unit, child_die は DW_TAG_subprogram
+3 回目 :        DW_TAG_compile_unit               DW_TAG_base_type
+4 回目 :        DW_TAG_compile_unit               DW_TAG_subprogram
+
+のようになっていた.
+
+-O2 指定時 4 回目はここから呼ばれていた.
+そしてここにブレークポイントがヒットするのは実行後 1 回目.
+
+		if (pdie == NULL)
+		  {
+		    /* Creating a full DIE for tdecl is overly expensive and
+		       at this point even wrong when in the LTO phase
+		       as it can end up generating new type DIEs we didn't
+		       output and thus optimize_external_refs will crash.  */
+		    tdie = new_die (DW_TAG_subprogram, cdie, NULL_TREE);
+
+ここは -O2 なしだとこない.
+このブレークポイントにヒットしたとき
+
+(gdb) p print(tdecl)
+function return signed 32 bit integer (null) abcdef
+(gdb)
+
+のようになっている. なので -O2 を指定しないとき, なぜここにこないのかを
+調査するべき.
+
+上は resolve_addr という函数だがこれが
+
+  FOR_EACH_CHILD (die, c, resolve_addr (c));
+
+のように呼び出されている.
+
+  for (ctnode = comdat_type_list; ctnode != NULL; ctnode = ctnode->next)
+    resolve_addr (ctnode->root_die);
+  resolve_addr (comp_unit_die ());  ここにきたとき
+
+comp_unit_die() の戻り値に対して print() を適用してみた:
+
+-O2 を指定したときは
+
+(gdb) p print($8)
+(dw_die_ref)0xb7869b70 : DW_TAG_compile_unit
+    (dw_die_ref)0xb78f9750 : DW_TAG_subprogram
+        (dw_die_ref)0xb78f9960 : DW_TAG_GNU_call_site
+    (dw_die_ref)0xb78f9780 : DW_TAG_base_type
+$9 = void
+(gdb)
+
+のようになっている. 一方 -O2 を指定しないと
+
+(gdb) p print($10) 
+(dw_die_ref)0xb7869b70 : DW_TAG_compile_unit
+    (dw_die_ref)0xb78f9750 : DW_TAG_subprogram
+    (dw_die_ref)0xb78f9780 : DW_TAG_base_type
+$11 = void
+(gdb)
+
+のようになっている. -O2 を指定すると問題の abcdef のデバッグ情報が
+
+(gdb) p print(die)
+(dw_die_ref)0xb7869b70 : DW_TAG_compile_unit
+    (dw_die_ref)0xb78f9750 : DW_TAG_subprogram
+        (dw_die_ref)0xb78f9960 : DW_TAG_GNU_call_site
+    (dw_die_ref)0xb78f9780 : DW_TAG_base_type
+    (dw_die_ref)0xb78f9990 : DW_TAG_subprogram    これ
+$12 = void
+(gdb)
+
+のように付加される. DW_TAG_GNU_call_site の部分が影響しているか
+どうかは不明だが
+
+sample_O2.objdump
+
+を見る限りは関係なさそう.
+
+なので -O2 を指定したとき
+
+  resolve_addr (comp_unit_die ());
+
+ここからどのようにして (dw_die_ref)0xb78f9990 : DW_TAG_subprogram
+が追加されるのかを調べればよい.
+
+調査してみると, 実は関係なさそうと予測していた
+
+        (dw_die_ref)0xb78f9960 : DW_TAG_GNU_call_site
+
+これが実は関係していた. そこでこれが生成される瞬間をとらえる:
+
+(gdb) watch *(int*)0xb78f9960
+(gdb) run
+
+とらえられた. そしてそれは
+
+	      if (die == NULL
+		  && (ca_loc->symbol_ref || tloc))
+		die = gen_call_site_die (decl, subr_die, ca_loc);  (*A)
+
+ここだった. -O2 ありのときはこの if 文にきているが -O2 なしではきていない.
+なのでこの条件そのものが影響しているわけではない.
+
+この一つ上のフレーム
+
+      if (decl)
+        gen_subprogram_die (decl, context_die);
+
+では -O2 ありでもなしでもきている. そしてこの函数も実行されている.
+-O2 ありのとき 2 回目で (*A) のところにきている.
+
+さらに調べてみると -O2 ありのときは
+
+      if (call_arg_locations && (!dwarf_strict || dwarf_version >= 5))  (*B)
+
+1 回目は条件が成立しない. 2 回目に条件が成立している. その結果 (*A)
+が実行されている.
+
+(gdb) p call_arg_locations 
+$38 = (call_arg_loc_node *) 0xb78f6780
+(gdb) p dwarf_strict
+$39 = 0
+
+条件が成立している 2 回目はこうなっていた.
+
+一方 -O2 なしの場合
+
+(gdb) p call_arg_locations
+$41 = (call_arg_loc_node *) 0x0
+(gdb)
+
+なのでこの値が 0 であることが (*A) が実行されない直接の原因.
+
+(gdb) watch call_arg_locations
+
+-O2 を指定したとき 0 でない値を書き込むのはここだった.
+
+       call_arg_loc_last = ca_loc;             (*C)
+      
+そして値は変更されることなく (*B) の部分で判定されている.
+
+
+	if ((debug_variable_location_views || call_insn != NULL)
+	    && !DECL_IGNORED_P (current_function_decl))
+	  debug_hooks->var_location (insn);   ここ
+
+-O2 を指定したときも, 指定しなかったときも
+
+debug_hooks->var_location (insn);
+
+が実行されているが, -O2 指定時は (*C) が実行され, 指定しなければ
+(*C) が実行されないことが判明した.
+
+そしてどちらも
+(gdb) p print(insn)
+CALL_INSN
+(gdb)
+
+となっている. どこかで作った, つたない函数がここで役にはたっている.
+
+static void
+dwarf2out_var_location (rtx_insn *loc_note)
+{
+...
+	  if (find_reg_note (loc_note, REG_CALL_ARG_LOCATION, NULL_RTX))  (*D)
+	    {
+	      call_insn = loc_note;
+	      loc_note = NULL;
+	      var_loc_p = false;
+
+	      next_real = dwarf2out_next_real_insn (call_insn);
+	      next_note = NULL;
+	      cached_next_real_insn = NULL;
+	      goto create_label;       -O2 を指定したときは上の (*D)
+	                           の条件が成立してここで goto している
+	    }
+	  if (optimize == 0 && !flag_var_tracking)
+	    {
+            -O2 を指定しなかったときはここにきている. (*D) の
+	    条件は勿論成立していない.
+	    
+
+そこでここ:
+
+	      if (!MEM_P (x)
+		  || GET_CODE (XEXP (x, 0)) != SYMBOL_REF
+		  || !SYMBOL_REF_DECL (XEXP (x, 0))
+		  || (TREE_CODE (SYMBOL_REF_DECL (XEXP (x, 0)))
+		      != FUNCTION_DECL))     (*E)
+		{
+		  call_insn = loc_note;
+		  loc_note = NULL;
+		  var_loc_p = false;
+
+		  next_real = dwarf2out_next_real_insn (call_insn);
+		  next_note = NULL;
+		  cached_next_real_insn = NULL;
+		  goto create_label;
+		}
+
+(*E) の条件のいずれも成立しないので goto create_label; が実行されない
+のだが, この条件が成立するように条件を付加することが考えられる.
+
+そこで以下のように修正した:
+
+	      bool x_was_call = false;         これを追加
+	      if (GET_CODE (x) == CALL) {
+		x = XEXP (x, 0);
+		x_was_call = true;
+	      }
+	      if (!MEM_P (x)
+		  || GET_CODE (XEXP (x, 0)) != SYMBOL_REF
+		  || !SYMBOL_REF_DECL (XEXP (x, 0))
+		  || (TREE_CODE (SYMBOL_REF_DECL (XEXP (x, 0)))
+		      != FUNCTION_DECL)
+		  || ((TREE_CODE (SYMBOL_REF_DECL (XEXP (x, 0)))
+		       == FUNCTION_DECL) && x_was_call)) この条件を追加
+		{
+		  call_insn = loc_note;
+
+少し無理矢理感があるが, これは一応期待通り動作している.
+
+函数のアドレス参照している場合, -g -O2 の組み合わせでも残念ながら
+デバッグ情報は出ていない. なのでそっちの対応はやめておく.
