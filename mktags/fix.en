@@ -1,15 +1,17 @@
-Fix for the function declaration debug information
+Fix for the function declaration debugging information
 
-事前に判明していること
+The fact already konwn:
 
--g -O2 で宣言のみを書けば宣言に対してデバッグ情報が
-生成される.
+With -g -O2 option, gcc generates debugging information for function
+declaration.
 
-(*) 変数に対しては
-宣言だけであればデバッグ情報は生成されていない.
-宣言された変数に対して参照があればデバッグ情報が生成される.
+(*) For variable
 
-(*) 函数に対して
+If it is not refered, debugging information is not generated
+even though there exists it's declaration.
+If it is refered, debugging information is generated for the declaration.
+
+(*) For function
 
 % cat sample.c
 extern int abcdef();
@@ -21,8 +23,9 @@ int f()
 %
 (gdb) run -quiet sample.c -quiet -dumpbase sample.c "-mtune=generic" "-march=pentiumpro" -auxbase sample -g -O2 -o sample.s
 
-とすれば　sample.s に "abcdef" という文字列が出ている.
-上の起動の引数から -O2 をはずせば "abcdef" という文字列は出ない.
+As above result, the string "abcdef" is generated into `sample.s'.
+If -O2 is erased from above `run' command, the string "abcdef" is not
+generated.
 
 それぞれの結果を sample.s.O0 と sample.s.O2 とに保存しておいた.
 
