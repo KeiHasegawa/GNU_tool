@@ -20,7 +20,7 @@ int main()
 そこで以下のように dummy-gdb.exe をビルドする.
 % g++ -g3 dummy-gdb.cpp -o dummy-gdb.exe
 
-dumy-gdb.cpp はこのページにからダウンロードできる.
+dumy-gdb.cpp はこのページからダウンロードできる.
 但しブレークポイントにヒットしたときに開こうとしているファイルが私の環境の
 ものなので, あなたが実際に確かめるためには自分の環境に合わせたパスに書き換えてほしい.
 
@@ -38,7 +38,7 @@ Run gdb (like this): gdb --annotate=3 a.out
 Current directory is d:/home/khasegawa/lang/53_GNU_tool/emacs/
 (dummy-gdb)
 
-この dummy-gdb だが
+この dummy-gdb.exe だが
 
 b main
 run
@@ -79,11 +79,9 @@ d:/home/...
 これまで動作していた Lisp ライブラリは修正なしで動作する.
 
 しかし gdb を修正しても期待通り動作するので今回は gdb を修正することにした.
-本当は良くない. 多分だが, M-x man が Windows 版の emacs と man で
-動作しないのも, これが原因かもしれない. しかし一方で M-x perldb は期待した動作
-になっている. もしかすると Lisp の函数 perldb で CYGWIN のパス名の問題を
-解決しているのかもしれない. あるいは相対パスを指定してこのような問題が発生しなかった
-のかもしれない.
+本当は良くない. しかし一方で M-x perldb は期待した動作になっている. もしかす
+ると Lisp の函数 perldb で CYGWIN のパス名の問題を解決しているのかもしれない.
+あるいは相対パスで扱っていたからこのような問題が発生しなかったのかもしれない.
 
 gdb-10.2 ならば
 

@@ -1,0 +1,228 @@
+(*1) cygwin X server build restart
+
+% cd ~/xorg-server-1.20.9-1.src/xserver-xserver-cygwin-1.20.9-1
+% autoconf
+configure.ac:38: error: must install xorg-macros 1.14 or later before running autoconf/autogen
+configure.ac:38: the top level
+autom4te: /usr/bin/m4 failed with exit status: 1
+%
+                  # It should be better to confirm the error reason
+% sh -vx /usr/local/bin/autoconf
+...
++ exec /usr/local/bin/autom4te --language=autoconf --output=configure configure.ac
+configure.ac:38: error: must install xorg-macros 1.14 or later before running autoconf/autogen
+configure.ac:38: the top level
+autom4te: /usr/bin/m4 failed with exit status: 1
+%
+          # From above, the last "+ exec" part was executed and error occured.
+
+
+% file /usr/local/bin/autom4te
+/usr/local/bin/autom4te: Perl script text executable
+% /usr/local/bin/autom4te --language=autoconf --output=configure configure.ac
+configure.ac:38: error: must install xorg-macros 1.14 or later before running autoconf/autogen
+configure.ac:38: the top level
+autom4te: /usr/bin/m4 failed with exit status: 1
+%
+            # OK. I could reproduce the error.
+
+M-x perldb
+Run perldb (like this): perl -d d:/cygwin64/usr/local/bin/autom4te --language=autoconf --output=configure d:/home/khasegawa/xorg-server-1.20.9-1.src/xserver-xserver-cygwin-1.20.9-1/configure.ac
+
+Above enabled me to debug from emacs.
+
+Current directory is d:/cygwin64/usr/local/bin/
+
+Loading DB routines from perl5db.pl version 1.57
+Editor support enabled.
+
+Enter h or 'h h' for help, or 'man perldebug' for more help.
+
+  DB<1> c
+d:/home/khasegawa/xorg-server-1.20.9-1.src/xserver-xserver-cygwin-1.20.9-1/configure.ac:38: error: must install xorg-macros 1.14 or later before running autoconf/autogen
+d:/home/khasegawa/xorg-server-1.20.9-1.src/xserver-xserver-cygwin-1.20.9-1/configure.ac:38: the top level
+autom4te: /usr/bin/m4 failed with exit status: 1
+  DB<1>
+           # OK. I also confirmed that `perl -d' caused the same error.
+
+I noticed that when `handle_m4' was executed, the error was occured.
+
+# We need to run M4 if (i) the user wants it (--force), (ii) $REQ is
+# invalid.
+handle_m4 ($req, keys %{$req->macro})
+  if $force || ! $req->valid;
+
+
+  DB<3> b 1007         # Set break-point the line `handle_m4 ...'
+  DB<4> c
+                       # Run until the break-point was hit.
+  DB<4> n
+  DB<4> n
+d:/home/khasegawa/xorg-server-1.20.9-1.src/xserver-xserver-cygwin-1.20.9-1/configure.ac:38: error: must install xorg-macros 1.14 or later before running autoconf/autogen
+d:/home/khasegawa/xorg-server-1.20.9-1.src/xserver-xserver-cygwin-1.20.9-1/configure.ac:38: the top level
+autom4te: /usr/bin/m4 failed with exit status: 1
+  DB<4>
+                        # OK. I could reproduce the error.
+
+  DB<4> R
+Warning: some settings and command-line options may be lost!
+
+Loading DB routines from perl5db.pl version 1.57
+Editor support enabled.
+
+Enter h or 'h h' for help, or 'man perldebug' for more help.
+                        # Restart
+  DB<4> c               # Run until the break-point is hit
+  DB<4> step
+  DB<4> step
+  DB<4> step
+
+This seems perl debugger doesn't work as I expected.
+
+Here, I wondered:
+
+    If !$req->valid then, call `handle_m4' but at the first place,
+    $req->valid = 0 was unexpected result.
+
+Debugging perl script is very difficult for me at this point.
+
+By the way, in the directory `d:/cygwin64/usr/local/bin'
+
+I noticed that `autom4te.cache' directory was created, again.
+
+As this result, I guessed that `configure.ac' was not correct
+in fact.
+
+% cd ~/xorg-server-1.20.9-1.src/xserver-xserver-cygwin-1.20.9-1
+% cp configure.ac configure.ac.org
+                    # I modified `configure.ac'
+% diff -c configure.ac.org configure.ac
+*** configure.ac.org	Mon Jun  7 09:19:20 2021
+--- configure.ac	Mon Jun  7 09:20:36 2021
+***************
+*** 35,53 ****
+  AC_USE_SYSTEM_EXTENSIONS
+  
+  # Require xorg-macros minimum of 1.14 for XORG_COMPILER_BRAND in XORG_DEFAULT_OPTIONS
+! m4_ifndef([XORG_MACROS_VERSION],
+!           [m4_fatal([must install xorg-macros 1.14 or later before running autoconf/autogen])])
+! XORG_MACROS_VERSION(1.14)
+! XORG_DEFAULT_OPTIONS
+! XORG_WITH_DOXYGEN(1.6.1)
+! XORG_CHECK_SGML_DOCTOOLS(1.8)
+! XORG_ENABLE_DOCS
+! XORG_ENABLE_DEVEL_DOCS
+! XORG_WITH_XMLTO(0.0.20)
+! XORG_WITH_FOP
+! XORG_WITH_XSLTPROC
+! XORG_ENABLE_UNIT_TESTS
+! XORG_LD_WRAP([optional])
+  
+  m4_ifndef([XORG_FONT_MACROS_VERSION], [m4_fatal([must install font-util 1.1 or later before running autoconf/autogen])])
+  XORG_FONT_MACROS_VERSION(1.1)
+--- 35,53 ----
+  AC_USE_SYSTEM_EXTENSIONS
+  
+  # Require xorg-macros minimum of 1.14 for XORG_COMPILER_BRAND in XORG_DEFAULT_OPTIONS
+! #m4_ifndef([XORG_MACROS_VERSION],
+! #          [m4_fatal([must install xorg-macros 1.14 or later before running autoconf/autogen])])
+! #XORG_MACROS_VERSION(1.14)
+! #XORG_DEFAULT_OPTIONS
+! #XORG_WITH_DOXYGEN(1.6.1)
+! #XORG_CHECK_SGML_DOCTOOLS(1.8)
+! #XORG_ENABLE_DOCS
+! #XORG_ENABLE_DEVEL_DOCS
+! #XORG_WITH_XMLTO(0.0.20)
+! #XORG_WITH_FOP
+! #XORG_WITH_XSLTPROC
+! #XORG_ENABLE_UNIT_TESTS
+! #XORG_LD_WRAP([optional])
+  
+  m4_ifndef([XORG_FONT_MACROS_VERSION], [m4_fatal([must install font-util 1.1 or later before running autoconf/autogen])])
+  XORG_FONT_MACROS_VERSION(1.1)
+% autoconf
+configure.ac:52: error: must install font-util 1.1 or later before running autoconf/autogen
+configure.ac:52: the top level
+autom4te: /usr/bin/m4 failed with exit status: 1
+%
+               # Above modification could get rid of the error even though
+	       # Another error occured.
+
+At this point, the package or library named `front-util' was not
+installed, but I thouguht above error caused by different reason.
+
+% diff -c configure.ac.org configure.ac
+*** configure.ac.org	Mon Jun  7 09:19:20 2021
+--- configure.ac	Mon Jun  7 09:24:28 2021
+***************
+*** 35,55 ****
+  AC_USE_SYSTEM_EXTENSIONS
+  
+  # Require xorg-macros minimum of 1.14 for XORG_COMPILER_BRAND in XORG_DEFAULT_OPTIONS
+! m4_ifndef([XORG_MACROS_VERSION],
+!           [m4_fatal([must install xorg-macros 1.14 or later before running autoconf/autogen])])
+  XORG_MACROS_VERSION(1.14)
+! XORG_DEFAULT_OPTIONS
+! XORG_WITH_DOXYGEN(1.6.1)
+! XORG_CHECK_SGML_DOCTOOLS(1.8)
+! XORG_ENABLE_DOCS
+! XORG_ENABLE_DEVEL_DOCS
+! XORG_WITH_XMLTO(0.0.20)
+! XORG_WITH_FOP
+! XORG_WITH_XSLTPROC
+! XORG_ENABLE_UNIT_TESTS
+! XORG_LD_WRAP([optional])
+  
+! m4_ifndef([XORG_FONT_MACROS_VERSION], [m4_fatal([must install font-util 1.1 or later before running autoconf/autogen])])
+  XORG_FONT_MACROS_VERSION(1.1)
+  
+  dnl this gets generated by autoheader, and thus contains all the defines.  we
+--- 35,55 ----
+  AC_USE_SYSTEM_EXTENSIONS
+  
+  # Require xorg-macros minimum of 1.14 for XORG_COMPILER_BRAND in XORG_DEFAULT_OPTIONS
+! #m4_ifndef([XORG_MACROS_VERSION],
+! #          [m4_fatal([must install xorg-macros 1.14 or later before running autoconf/autogen])])
+  XORG_MACROS_VERSION(1.14)
+! #XORG_DEFAULT_OPTIONS
+! #XORG_WITH_DOXYGEN(1.6.1)
+! #XORG_CHECK_SGML_DOCTOOLS(1.8)
+! #XORG_ENABLE_DOCS
+! #XORG_ENABLE_DEVEL_DOCS
+! #XORG_WITH_XMLTO(0.0.20)
+! #XORG_WITH_FOP
+! #XORG_WITH_XSLTPROC
+! #XORG_ENABLE_UNIT_TESTS
+! #XORG_LD_WRAP([optional])
+  
+! #m4_ifndef([XORG_FONT_MACROS_VERSION], [m4_fatal([must install font-util 1.1 or later before running autoconf/autogen])])
+  XORG_FONT_MACROS_VERSION(1.1)
+  
+  dnl this gets generated by autoheader, and thus contains all the defines.  we
+% autoconf
+configure.ac:34: error: possibly undefined macro: AM_INIT_AUTOMAKE
+      If this token and others are legitimate, please use m4_pattern_allow.
+      See the Autoconf documentation.
+configure.ac:76: error: possibly undefined macro: AM_PROG_AS
+configure.ac:127: error: possibly undefined macro: AC_DEFINE
+configure.ac:141: error: possibly undefined macro: AM_CONDITIONAL
+configure.ac:641: error: possibly undefined macro: XTRANS_CONNECTION_FLAGS
+configure.ac:694: error: possibly undefined macro: AC_LANG_SOURCE
+configure.ac:939: error: possibly undefined macro: AC_DEFINE_DIR
+configure.ac:2202: error: possibly undefined macro: _AM_DEPENDENCIES
+%
+
+            # Again, above modification could get rid of the error, even
+	    # though another error again occured.
+	    # For above error, there may be good luck charm .
+
+% aclocal
+configure.ac:34: error: Autoconf version 2.65 or higher is required
+/usr/share/aclocal-1.15/init.m4:29: AM_INIT_AUTOMAKE is expanded from...
+configure.ac:34: the top level
+autom4te: /usr/bin/m4 failed with exit status: 63
+aclocal-1.15: error: echo failed with exit status: 63
+%
+            # Now installed autoconf's version is 2.64.
+	    # So I have to install newer version.
+	    

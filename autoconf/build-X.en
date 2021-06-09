@@ -1,0 +1,108 @@
+(*1) cygwin X server build
+
+% cd
+% wget -q http://cygwin.mirror.constant.com/x86_64/release/xorg-server/xorg-server-1.20.9-1-src.tar.xz
+% xz -d -c xorg-server-1.20.9-1-src.tar.xz | tar xf -
+% cd xorg-server-1.20.9-1.src
+% bunzip2 -c xserver-xserver-cygwin-1.20.9-1.tar.bz2 | tar xf -
+% cd xserver-xserver-cygwin-1.20.9-1/
+% ls
+COPYING
+Makefile.am
+README.md
+Xext
+Xi
+autogen.sh
+composite
+config
+configure.ac
+damageext
+dbe
+devbook.am
+dix
+doc
+docbook.am
+dri3
+exa
+fb
+fix-miregion
+fix-miregion-private
+fix-patch-whitespace
+fix-region
+glamor
+glx
+hw
+include
+m4
+man
+manpages.am
+meson.build
+meson_options.txt
+mi
+miext
+os
+present
+pseudoramiX
+randr
+record
+render
+test
+xfixes
+xkb
+xorg-server.m4
+xorg-server.pc.in
+xserver.ent.in
+                         # No `configure'
+% autoconf
+configure.ac:38: error: must install xorg-macros 1.14 or later before running autoconf/autogen
+configure.ac:38: the top level
+autom4te-2.69: /usr/bin/m4 failed with exit status: 1
+%
+                         # autoconf failed
+
+I've ever experienced configure error at its run time. But this time,
+error occured at its generation..
+
+Anyway, I guessed that because some package or library named `xorg-macros'
+did not exist, error occured.
+
+(*2) xorg-macros install
+
+% cd
+% wget -q https://www.x.org/releases/X11R7.7/src/everything/util-macros-1.17.tar.bz2
+% bunzip2 -c util-macros-1.17.tar.bz2 | tar xf -
+% cd util-macros-1.17
+% ./configure
+% make
+% make install
+
+I confirmed that
+
+/usr/local/share/pkgconfig/xorg-macros.pc
+
+was installed.
+
+(*3) X server build restart
+
+% cd ~/xorg-server-1.20.9-1.src/xserver-xserver-cygwin-1.20.9-1
+% autoconf
+configure.ac:38: error: must install xorg-macros 1.14 or later before running autoconf/autogen
+configure.ac:38: the top level
+autom4te-2.69: /usr/bin/m4 failed with exit status: 1
+%
+           # I counld not get rid of above error.
+
+% ls -ltr
+           # autom4te.cache directory was create just now.
+% rm -r -f autom4te.cache
+% autoconf
+configure.ac:38: error: must install xorg-macros 1.14 or later before running autoconf/autogen
+configure.ac:38: the top level
+autom4te-2.69: /usr/bin/m4 failed with exit status: 1
+%
+          # I counld not still get rid of above error.
+
+autoconf is already installed. But I decided to build from source file
+and install.
+
+  => Refer to "autoconf install"
