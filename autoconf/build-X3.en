@@ -400,16 +400,22 @@ While building, error occured but ignored. I saved the log:
 
 % cd ~/libxml2-2.9.9-2.src/libxml2-2.9.9/python
 % make
-リンクでエラーする libpython2.7.dll を参照しているらしかったので
-試しに libpython3.8.dll を参照するようにしてみたら
-undefined reference to XXX
-のエラーが多数出る.
 
-しょうがないのでこのディレクトリの Makefile は空のものにして libxml2-2.9.9
-の make を完了した.
+Error occured while linking. libpython2.7.dll was linked. So I
+tried to change Makefile to link with libpython3.8.dll.
+But the error
+undefined reference to XXX
+occurred.
+
+There is no way to make
+
+~/libxml2-2.9.9-2.src/libxml2-2.9.9/python/Makefile
+
+empty Makefile, and finish libxml2-2.9.9 build like below:
+% cd ~/libxml2-2.9.9-2.src/libxml2-2.9.9
 % make install
 
-libxslt のインストール
+(*) libxslt install
 
 % cd
 % wget -q http://cygwin.mirror.constant.com/x86_64/release/libxslt/libxslt-1.1.29-1-src.tar.xz
@@ -421,7 +427,7 @@ libxslt のインストール
 % make
 % make install
 
-(*) python-lxml のインストール再開
+(*) python-lxml build restart
 
 % cd ~/python-lxml-4.6.2-1.src/lxml-4.6.2
 % make
@@ -451,14 +457,19 @@ error: command 'gcc' failed with exit status 1
 make: *** [Makefile:33: inplace] Error 1
 %
 
-libxml2 と libxslt のエラーは回避できている.
-上のエラーはおそらく python ライブラリを使用しようとしてエラーしているっぽい.
+I could get rid of error about `libxm2' and `libxslt'.
+And above erorr may occured because of using python library.
 
-このエラーを回避するには python2.7 ではなっくて python3.8 を使用するように
-変更すればよいのだが変更の仕方が分からなかった.
+For getting rid of above error, chnage include directory
 
-しょうがないので cygwin の setup-x86_64.exe で pytho2.7-lxml をインストール
-した.
+/usr/include/python2.7
+
+to
+
+/usr/include/python3.8
+
+But I could not change it. There was no way to install pytho2.7-lxml
+using cygwin setup-x86_64.exe.
 
 % cd ~/xorg-server-1.20.9-1.src/xserver-xserver-cygwin-1.20.9-1
 % ./configure --enable-libdrm=no
@@ -468,15 +479,17 @@ ModuleNotFoundError: No module named 'lxml'
 configure: error: not found
 ...
 
-エラーを回避できていない.
-configure でエラーにしている部分をコメントアウトした.
+I could not get rid of this error.
+
+I comment-outed the error part of `configure':
+
 printf %s "checking for python module lxml... " >&6; }
 #           $PYTHON3 -c "import lxml;"
 #           if test $? -ne 0 ; then
 #                as_fn_error $? "not found" "$LINENO" 5
 #           fi
 
-もう一度トライ
+Again I tried
 
 % ./configure --enable-libdrm=no
 ...
@@ -493,5 +506,5 @@ config.status: creating Makefile
 config.status: error: cannot find input file: `glx/Makefile.in'
 %
 
-これはなんだか必要なファイルが欠落しているらしい.
-残念ながら今回はここまで.
+Some necessary files did not exist.
+Unfortunately, I gave up at this point.

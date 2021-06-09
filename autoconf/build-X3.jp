@@ -297,7 +297,7 @@ libXfont2 のインストール
 ./configure: line 12955: `	     XORG_CHECK_LINKER_FLAGS(-Wl,-z,parent=conftest.parent -G,'
 %
 
-エラーしている configure の箇所をコメントアウトした.
+エラーしている configure の該当箇所をコメントアウトした.
 
 % ./configure --enable-libdrm=no
 ...
@@ -457,7 +457,43 @@ libxml2 と libxslt のエラーは回避できている.
 上のエラーはおそらく python ライブラリを使用しようとしてエラーしているっぽい.
 
 このエラーを回避するには python2.7 ではなっくて python3.8 を使用するように
-変更すればよいのだが, おそらくその結果リンクエラーを引き起こすことになる.
+変更すればよいのだが変更の仕方が分からなかった.
 
-ここで断念.
+しょうがないので cygwin の setup-x86_64.exe で pytho2.7-lxml をインストール
+した.
 
+% cd ~/xorg-server-1.20.9-1.src/xserver-xserver-cygwin-1.20.9-1
+% ./configure --enable-libdrm=no
+checking for python module lxml... Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+ModuleNotFoundError: No module named 'lxml'
+configure: error: not found
+...
+
+エラーを回避できていない.
+configure でエラーにしている部分をコメントアウトした.
+printf %s "checking for python module lxml... " >&6; }
+#           $PYTHON3 -c "import lxml;"
+#           if test $? -ne 0 ; then
+#                as_fn_error $? "not found" "$LINENO" 5
+#           fi
+
+もう一度トライ
+
+% ./configure --enable-libdrm=no
+...
+checking for XWAYLANDMODULES... no
+checking whether to build Xwayland DDX... no
+configure: WARNING:
+             ***********************************************
+             Neither HAL nor udev backend will be enabled.
+             Input device hotplugging will not be available!
+             ***********************************************
+checking that generated files are newer than configure... done
+configure: creating ./config.status
+config.status: creating Makefile
+config.status: error: cannot find input file: `glx/Makefile.in'
+%
+
+これはなんだか必要なファイルが欠落しているらしい.
+残念ながら今回はここまで.
