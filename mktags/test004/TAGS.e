@@ -1,5 +1,8 @@
 
-a.c,21
+a.c,89
+extern int f();f1,0
+extern int g();g2,16
+extern int h();h3,32
 int main()main5,49
 
 ../test004_sub/a.c,50

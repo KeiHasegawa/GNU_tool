@@ -3,8 +3,9 @@ a.c,39
 #define X 3X1,0
 int main()main3,13
 
-b.c,60
+b.c,80
 int a;a3,16
+void g(int);g5,24
 void f()f7,38
 int f2(location loc)f213,68
 
