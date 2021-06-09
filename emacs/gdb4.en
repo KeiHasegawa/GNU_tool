@@ -1,0 +1,35 @@
+M-x gdb(part 4)
+
+(global-set-key "\C-x " 'gud-break)
+
+As usual, C-x SPC does not work as I expected at emacs 27.2 environment.
+
+M-x describe-function
+gud-break
+
+This seems to be different from the situation I know.
+Normally, I can jump to `gud-break' definition, but could not at this time.
+I colud not understand this situation.
+
+At emacs 23.3.1 environment, I tried the same thing. But the result were
+the same situation.
+
+I also tried
+
+M-x describe-function
+gdb
+
+OK. This worked well as I expected. Then, I jumped to the file
+where `gdb' was defined. And tried to search `gud-break':
+
+  (gud-def gud-break  "break %f:%l"  "\C-b" "Set breakpoint at current line.")
+
+It exsisted. This was not the definition I knew. And more, I had no
+idea about "\C-b". I just knew that `gud-break' was bind into
+C-x SPC.
+
+Originally, I wanted to know the reason why C-x SPC did not work
+at emacs 27.2 environment. But I made a digression.
+
+That's enough today.
+
