@@ -1,5 +1,4 @@
 SKK のインストールメモ
-
 インターネットで検索したら
 
 https://ddskk.readthedocs.io/ja/latest/04_settings.html
@@ -15,7 +14,8 @@ http://openlab.jp/skk/
 % gunzip -c ddskk-16.2.tar.gz | tar xf -
 % cd ddskk-16.2
 % make
-> make
+     # このログは cygwin でビルドした emacs 27.2 で残念ながら X のプログラムとしては
+     # まだ起動できていないもの. とりあえずやってみた.
 emacs -batch -q -no-site-file -l SKK-MK -f SKK-MK-compile
 Warning: arch-dependent data dir '/usr/local/libexec/emacs/27.2/x86_64-pc-cygwin/': No such file or directory
 Loading loadup.el (source)...
@@ -849,7 +849,7 @@ d:/emacs-26.3/share/emacs/26.3/site-lisp/
 
 Source file ‘d:/emacs-26.3/share/emacs/26.3/site-lisp/skk/cdb.el’ newer than byte-compiled file
 
-のようなメッセージが多数でるので
+のようなメッセージが多数出るので
 
 % \cp -f -p *.el d:/emacs-26.3/share/emacs/26.3/site-lisp/skk
 
@@ -869,6 +869,17 @@ https://ddskk.readthedocs.io/ja/latest/04_settings.html
 (global-set-key "\C-xt" 'skk-tutorial)
 
 を追加するとよいらしい.
+
+この場合は理由は不明であるが, そして何となくは推測できるが
+
+M-x load-file
+~/.emacs
+
+とすると
+
+eval-buffer: Cannot open load file: No such file or directory, skk-autoloads
+
+のようになってしまう. 一旦 emacs を起動し直す必要があるらしい.
 
 C-x C-j でミニバッファの上が
 
@@ -897,17 +908,42 @@ L
 長谷
 
 で登録してしまった. さてこれを修正するにはどうすればよいか.
-何とか使えているからそのうち修正方法が判明するだろう.
 
+emacs を終了するときや
 
+M-x skk-save-jisyo
 
+とすると
+
+~/.skk-jisyo
+~/.skk-jisyo.BAK
+
+が更新されるようである. そこでここに間違えている候補があるので
+それを emacs で修正するとよい.
+
+更新した辞書を emacs で読み込む方法があると思うのだが, とりあえず
+起動し直せばうまくいく.
+
+emacs から
+
+~/.skk-jisyo
+
+を修正すると
+
+~/.skk-jisyo.BAK
+
+に保存されるようなので,
+
+% cp ~/.skk-jisyo.BAK ~/.skk-jisyo
+
+として上書きする.
 
 (*) linux でインストール
 gunzip -c ddskk-16.2.tar.gz | tar xf -
-> cd ddskk-16.2/
-> make -n
+% cd ddskk-16.2/
+% make -n
 emacs -batch -q -no-site-file -l SKK-MK -f SKK-MK-compile
-> make
+% make
 emacs -batch -q -no-site-file -l SKK-MK -f SKK-MK-compile
 Loading /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/ddskk-16.2/SKK-CFG...
 Loading /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/ddskk-16.2/skk-autoloads.el (source)...
@@ -916,12 +952,12 @@ Package cl is deprecated
 In skk-annotation-start-python:
 skk-annotation.el:1042:41:Warning: ‘set-buffer-process-coding-system’ is for
     interactive use only; use ‘set-process-coding-system’ instead.
-> make install
+% make install
 emacs -batch -q -no-site-file -l SKK-MK -f SKK-MK-install
 Loading /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/ddskk-16.2/SKK-CFG...
 Creating directory: 許可がありません, /usr/local/share/emacs/27.2/site-lisp/skk
 make: *** [Makefile:46: install] エラー 255
-> sudo make install
+% sudo make install
 emacs -batch -q -no-site-file -l SKK-MK -f SKK-MK-install
 Loading /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/ddskk-16.2/SKK-CFG...
 Generating autoloads for /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/ddskk-16.2/skk-viper.el...
@@ -1011,12 +1047,12 @@ Generating autoloads for /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/ddskk-
 Loading /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/ddskk-16.2/skk-autoloads.el (source)...
 Symbol's value as variable is void: us-ascii
 make: *** [install] Error 255
-> make
+% make
 emacs -batch -q -no-site-file -l SKK-MK -f SKK-MK-compile
 Loading /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/ddskk-16.2/SKK-CFG...
 Loading /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/ddskk-16.2/skk-autoloads.el (source)...
 Package cl is deprecated
-> sudo make install
+% sudo make install
 emacs -batch -q -no-site-file -l SKK-MK -f SKK-MK-install
 Loading /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/ddskk-16.2/SKK-CFG...
 Generating autoloads for /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/ddskk-16.2/skk-viper.el...
@@ -1106,7 +1142,7 @@ Generating autoloads for /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/ddskk-
 Loading /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/ddskk-16.2/skk-autoloads.el (source)...
 Symbol's value as variable is void: us-ascii
 make: *** [install] Error 255
-> su
+% su
 パスワード:
 [root@localhost ddskk-16.2]# pwd
 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/ddskk-16.2
@@ -1116,7 +1152,7 @@ emacs: error while loading shared libraries: libjpeg.so.9: cannot open shared ob
 make: *** [Makefile:46: install] エラー 127
 [root@localhost ddskk-16.2]# tcsh
 [khasegawa@localhost ddskk-16.2]# source ~khasegawa/.tcshrc
-> make install
+% make install
 emacs -batch -q -no-site-file -l SKK-MK -f SKK-MK-install
 Loading /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/ddskk-16.2/SKK-CFG...
 Loading /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/ddskk-16.2/skk-autoloads.el (source)...
@@ -1686,13 +1722,15 @@ Tagifying skk.info...
 Tagifying skk.info...done
 Formatting Info file...done.
 skk.info -> /usr/local/share/info
-> file /usr/local/share/skk/SKK.tut
+% file /usr/local/share/skk/SKK.tut
 /usr/local/share/skk/SKK.tut: ASCII text, with escape sequences
-> pushd ~/lang/53_GNU_tool/emacs/
+% pushd ~/lang/53_GNU_tool/emacs/
 /root/lang/53_GNU_tool/emacs/: そのようなファイルやディレクトリはありません.
-> exit
-> exit
+% exit
+% exit
 [root@localhost ddskk-16.2]# exit
 exit
-> whoami
+% whoami
 khasegawa
+
+何とかインストールできたようだ.
