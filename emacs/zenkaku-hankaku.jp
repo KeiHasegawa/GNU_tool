@@ -3,7 +3,7 @@ cygwin の X サーバーに  linux マシンから X のプログラムとして表示したときの問題
 最初の難題は「全角半角キー」だった.
 
 Windows 版の emacs を使用しているときは「全角半角キー」を押して日本語と
-ascii 文字の切り替えを行っていたのだが, ミニバッファにに以下のように表示
+ascii 文字の切り替えを行っていたのだが, ミニバッファに以下のように表示
 されてしまう.
 
 <zenkaku-hankaku> is undefined
@@ -19,5 +19,39 @@ toggle-input-method
 として説明を読んでみた. この機能は Windows 版の emacs でも使用できる
 らしい.
 
+さて default-input-method に変換方法を指定するらしい. 例によってそこにカーソルを
+移動してリターンキーを押したところ
 
-default-input-method
+default-input-method is a variable defined in ‘mule-cmds.el’.
+Its value is "japanese"
+Original value was nil
+
+  You can customize this variable.
+  Probably introduced at or before Emacs version 21.1.
+
+Documentation:
+Default input method for multilingual text (a string).
+This is the input method activated automatically by the command
+‘toggle-input-method’ (C-\).
+
+
+のように表示された. 変数の値らしい. そしてその値は "japanese" らしい.
+
+M-x set-input-method
+
+とすればこの変数を変更できるらしい.
+
+japanese 	japanese-ascii 	japanese-hankaku-kana
+japanese-hiragana 	japanese-katakana 	japanese-zenkaku
+
+が補完の候補として表れている. 試しに japanese-katakana をセットしてみると
+全角カタカナを入力できている.
+
+日本語入力していて気付いたのだが, 変換結果が適切でないことが多い. 辞書に登録したいのだが
+やり方がいまのところ分らない.
+
+quail-japanese-toggle-kana
+
+変換
+
+
