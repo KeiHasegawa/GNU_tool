@@ -1,0 +1,48 @@
+rl78-elf
+
+03_new_batch
+
+を実行すると
+
+gdb のビルドで以下のエラーになる.
+
+gcc -DHAVE_CONFIG_H       -DDEFAULT_INLINE=0      -Wall   -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes  -g -O2  -o run \
+	  main.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -ldl -lnsl  -L../../zlib -lz  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(load.o):/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gdb-10.2.rl78-elf/sim/rl78/cpu.h:42: multiple definition of `pc'; /usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: DWARF error: section .debug_str is larger than its filesize! (0x11462 vs 0x110ec)
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: DWARF error: section .debug_str is larger than its filesize! (0x11462 vs 0x110ec)
+
+メッセージが分かりにくいが, pc という変数が多重定義されているための
+エラーが出ている.
+
+cpu.h
+
+というファイルの pc の宣言を以下のように書き換える:
+
+extern SI pc;
+
+cpu.c
+
+というファイルの最後に以下を追加する:
+
+SI pc;
+
+この対処で最後の動作確認まで期待通り動作する.
+
+動作確認のログだが
+
+Breakpoint 1, main () at hello.c:5
+5	  printf("hello world\n");
+Dump of assembler code for function main:
+   0x00002184 <+0>:	subw	sp, #2
+=> 0x00002186 <+2>:	movw	ax, #0x2000
+   0x00002189 <+5>:	movw	[sp+0], ax
+   0x0000218b <+7>:	call	!!0x2294 <puts>
+   0x0000218f <+11>:	movw	0xffef0, #0
+   0x00002193 <+15>:	addw	sp, #2
+   0x00002195 <+17>:	ret
+End of assembler dump.
+^@hello world
+[Inferior 1 (process 42000) exited normally]
+
+のように余計な ^@ が出ている.
+
