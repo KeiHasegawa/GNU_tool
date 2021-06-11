@@ -1,0 +1,2165 @@
+(*1) XWin.exe を gdb から実行してみた
+
+M-x gdb
+gdb --annotate=3 XWin.exe
+
+(gdb) run :0
+run :0
+Starting program: /cygdrive/d/home/khasegawa/xorg-server-1.12.2/hw/xwin/XWin.exe :0
+[New Thread 8224.0x1b04]
+[New Thread 8224.0x1e6c]
+[New Thread 8224.0x2e8c]
+[New Thread 8224.0x18a0]
+[New Thread 8224.0x2934]
+Welcome to the XWin X Server
+Vendor: The X.Org Foundation
+Release: 1.12.2.0 (11202000)
+
+
+Contact: xorg@lists.freedesktop.org
+XWin was started with the following command line:
+
+/cygdrive/d/home/khasegawa/xorg-server-1.12.2/hw/xwin/XWin :0 
+
+
+Fatal server error:
+Can't read lock file /tmp/.X0-lock
+
+
+Fatal server error:
+Cannot open log file "/usr/local/var/log/XWin.0.log"
+
+warning: `/cygdrive/c/WINDOWS/WinSxS/x86_microsoft.windows.common-controls_6595b64144ccf1df_6.0.17134.1304_none_1ba91cf2911002f6/comctl32.dll': Shared library architecture i386 is not compatible with target architecture i386:x86-64.
+winDeinitMultiWindowWM - Noting shutdown in progress
+[Thread 8224.0x2934 exited with code 1]
+[Thread 8224.0x864 exited with code 1]
+[Thread 8224.0x18a0 exited with code 1]
+[Thread 8224.0x2e8c exited with code 1]
+[Thread 8224.0x1e6c exited with code 1]
+
+Program terminated with signal SIGHUP, Hangup.
+The program no longer exists.
+
+(*2) Can't read lock file /tmp/.X0-lock の調査
+
+Fatal server error:
+Can't read lock file /tmp/.X0-lock
+
+これがどこで出ているのか調査する.
+
+(gdb) main
+(gdb) run
+
+ブレークポイントにヒットしたとき, ソースファイルを表示できている.
+
+        OsInit();
+
+この函数を実行したとき
+
+Fatal server error:
+Can't read lock file /tmp/.X0-lock
+
+
+Fatal server error:
+Cannot open log file "/usr/local/var/log/XWin.0.log"
+
+warning: `/cygdrive/c/WINDOWS/WinSxS/x86_microsoft.windows.common-controls_6595b64144ccf1df_6.0.17134.1304_none_1ba91cf2911002f6/comctl32.dll': Shared library architecture i386 is not compatible with target architecture i386:x86-64.
+winDeinitMultiWindowWM - Noting shutdown in progress
+[Thread 11944.0x2e9c exited with code 1]
+[Thread 11944.0x208c exited with code 1]
+[Thread 11944.0x7a8 exited with code 1]
+[Thread 11944.0x1500 exited with code 1]
+[Thread 11944.0x204c exited with code 1]
+[Thread 11944.0xd84 exited with code 1]
+
+Program terminated with signal SIGHUP, Hangup.
+The program no longer exists.
+
+のようになっている.
+
+(gdb) b OsInit
+(gdb) run
+(gdb) c
+
+OsInit で停止.
+
+        LockServer();
+
+この函数を実行したときに
+
+Fatal server error:
+Can't read lock file /tmp/.X0-lock
+
+
+Fatal server error:
+Cannot open log file "/usr/local/var/log/XWin.0.log"
+
+warning: `/cygdrive/c/WINDOWS/WinSxS/x86_microsoft.windows.common-controls_6595b64144ccf1df_6.0.17134.1304_none_1ba91cf2911002f6/comctl32.dll': Shared library architecture i386 is not compatible with target architecture i386:x86-64.
+winDeinitMultiWindowWM - Noting shutdown in progress
+[Thread 8988.0x1d08 exited with code 1]
+[Thread 8988.0x2820 exited with code 1]
+[Thread 8988.0x10b4 exited with code 1]
+[Thread 8988.0x1498 exited with code 1]
+[Thread 8988.0x27dc exited with code 1]
+[Thread 8988.0x2bfc exited with code 1]
+
+Program terminated with signal SIGHUP, Hangup.
+The program no longer exists.
+
+のようになっている.
+
+(gdb) b LockServer
+(gdb) run
+(gdb) c
+(gdb) c
+
+LockServer
+
+で停止した.
+
+            lfd = open(LockFile, O_RDONLY | O_NOFOLLOW);
+            if (lfd < 0) {
+                unlink(tmp);
+                FatalError("Can't read lock file %s\n", LockFile);
+
+問題のメッセージはここで出ている.
+LockFile = /tmp/.X0-lock
+で, これを open で失敗している.
+
+/usr/bin/startx を実行するとこのスクリプトで /tmp/.X-lock を作成している
+っぽい.
+
+違った. 実際に動作させて確かめたところ
+
+d:/cygwin64/tmp/.X11-unix/X0
+d:/cygwin64/tmp/.X11-unix/X0.lock
+
+が作成されていた. X を終了すると
+
+d:/cygwin64/tmp/.X11-unix/X0.lock
+
+だけになっている.
+一旦 gdb を終了させて.
+
+実行してみた.
+
+> sh -vx /usr/local/bin/startx
+#!/bin/sh
+
+#
+# This is just a sample implementation of a slightly less primitive
+# interface than xinit. It looks for user .xinitrc and .xserverrc
+# files, then system xinitrc and xserverrc files, else lets xinit choose
+# its default. The system xinitrc should probably do things like check
+# for .Xresources files and merge them in, start up a window manager,
+# and pop a clock and several xterms.
+#
+# Site administrators are STRONGLY urged to write nicer versions.
+#
+
+unset DBUS_SESSION_BUS_ADDRESS
++ unset DBUS_SESSION_BUS_ADDRESS
+unset SESSION_MANAGER
++ unset SESSION_MANAGER
+userclientrc=$HOME/.xinitrc
++ userclientrc=/cygdrive/d/home/khasegawa/.xinitrc
+sysclientrc=/usr/local/etc/X11/xinit/xinitrc
++ sysclientrc=/usr/local/etc/X11/xinit/xinitrc
+
+userserverrc=$HOME/.xserverrc
++ userserverrc=/cygdrive/d/home/khasegawa/.xserverrc
+sysserverrc=/usr/local/etc/X11/xinit/xserverrc
++ sysserverrc=/usr/local/etc/X11/xinit/xserverrc
+defaultclient=xterm
++ defaultclient=xterm
+defaultserver=/usr/local/bin/X
++ defaultserver=/usr/local/bin/X
+defaultclientargs=""
++ defaultclientargs=
+defaultserverargs=""
++ defaultserverargs=
+defaultdisplay=""
++ defaultdisplay=
+clientargs=""
++ clientargs=
+serverargs=""
++ serverargs=
+vtarg=""
++ vtarg=
+enable_xauth=1
++ enable_xauth=1
+
+
+# Automatically determine an unused $DISPLAY
+d=0
++ d=0
+while true ; do
+    [ -e "/tmp/.X$d-lock" -o -S "/tmp/.X11-unix/X$d" ] || break
+    d=$(($d + 1))
+done
++ true
++ '[' -e /tmp/.X0-lock -o -S /tmp/.X11-unix/X0 ']'
++ break
+defaultdisplay=":$d"
++ defaultdisplay=:0
+unset d
++ unset d
+
+whoseargs="client"
++ whoseargs=client
+while [ x"$1" != x ]; do
+    case "$1" in
+    # '' required to prevent cpp from treating "/*" as a C comment.
+    /''*|\./''*)
+ if [ "$whoseargs" = "client" ]; then
+     if [ x"$client" = x ] && [ x"$clientargs" = x ]; then
+  client="$1"
+     else
+  clientargs="$clientargs $1"
+     fi
+ else
+     if [ x"$server" = x ] && [ x"$serverargs" = x ]; then
+  server="$1"
+     else
+  serverargs="$serverargs $1"
+     fi
+ fi
+ ;;
+    --)
+ whoseargs="server"
+ ;;
+    *)
+ if [ "$whoseargs" = "client" ]; then
+     clientargs="$clientargs $1"
+ else
+     # display must be the FIRST server argument
+     if [ x"$serverargs" = x ] && \
+   expr "$1" : ':[0-9][0-9]*$' > /dev/null 2>&1; then
+  display="$1"
+     else
+  serverargs="$serverargs $1"
+     fi
+ fi
+ ;;
+    esac
+    shift
+done
++ '[' x '!=' x ']'
+
+# process client arguments
+if [ x"$client" = x ]; then
+    client=$defaultclient
+
+    # For compatibility reasons, only use startxrc if there were no client command line arguments
+    if [ x"$clientargs" = x ]; then
+        if [ -f "$userclientrc" ]; then
+            client=$userclientrc
+        elif [ -f "$sysclientrc" ]; then
+            client=$sysclientrc
+        fi
+    fi
+fi
++ '[' x = x ']'
++ client=xterm
++ '[' x = x ']'
++ '[' -f /cygdrive/d/home/khasegawa/.xinitrc ']'
++ '[' -f /usr/local/etc/X11/xinit/xinitrc ']'
++ client=/usr/local/etc/X11/xinit/xinitrc
+
+# if no client arguments, use defaults
+if [ x"$clientargs" = x ]; then
+    clientargs=$defaultclientargs
+fi
++ '[' x = x ']'
++ clientargs=
+
+# process server arguments
+if [ x"$server" = x ]; then
+    server=$defaultserver
+    # For compatibility reasons, only use xserverrc if there were no server command line arguments
+    if [ x"$serverargs" = x -a x"$display" = x ]; then
+ if [ -f "$userserverrc" ]; then
+     server=$userserverrc
+ elif [ -f "$sysserverrc" ]; then
+     server=$sysserverrc
+ fi
+    fi
+fi
++ '[' x = x ']'
++ server=/usr/local/bin/X
++ '[' x = x -a x = x ']'
++ '[' -f /cygdrive/d/home/khasegawa/.xserverrc ']'
++ '[' -f /usr/local/etc/X11/xinit/xserverrc ']'
+
+# if no server arguments, use defaults
+if [ x"$serverargs" = x ]; then
+    serverargs=$defaultserverargs
+fi
++ '[' x = x ']'
++ serverargs=
+
+# if no vt is specified add vtarg (which may be empty)
+have_vtarg="no"
++ have_vtarg=no
+for i in $serverargs; do
+    if expr "$i" : 'vt[0-9][0-9]*$' > /dev/null; then
+        have_vtarg="yes"
+    fi
+done
+if [ "$have_vtarg" = "no" ]; then
+    serverargs="$serverargs $vtarg"
+fi
++ '[' no = no ']'
++ serverargs=' '
+
+# if no display, use default
+if [ x"$display" = x ]; then
+    display=$defaultdisplay
+fi
++ '[' x = x ']'
++ display=:0
+
+if [ x"$enable_xauth" = x1 ] ; then
+    if [ x"$XAUTHORITY" = x ]; then
+        XAUTHORITY=$HOME/.Xauthority
+        export XAUTHORITY
+    fi
+
+    removelist=
+
+    # set up default Xauth info for this machine
+    case `uname` in
+    Linux*)
+        if [ -z "`hostname --version 2>&1 | grep GNU`" ]; then
+            hostname=`hostname -f`
+        else
+            hostname=`hostname`
+        fi
+        ;;
+    *)
+        hostname=`hostname`
+        ;;
+    esac
+
+    authdisplay=${display:-:0}
+
+    mcookie=`/usr/bin/mcookie`
+
+
+
+
+
+
+
+    if test x"$mcookie" = x; then
+        echo "Couldn't create cookie"
+        exit 1
+    fi
+    dummy=0
+
+    # create a file with auth information for the server. ':0' is a dummy.
+    xserverauthfile=$HOME/.serverauth.$$
+    trap "rm -f '$xserverauthfile'" HUP INT QUIT ILL TRAP KILL BUS TERM
+    xauth -q -f "$xserverauthfile" << EOF
+add :$dummy . $mcookie
+EOF
+
+    xserverauthfilequoted=$(echo ${xserverauthfile} | sed "s/'/'\\\\''/g")
+    serverargs=${serverargs}" -auth '"${xserverauthfilequoted}"'"
+
+
+
+
+    # now add the same credentials to the client authority file
+    # if '$displayname' already exists do not overwrite it as another
+    # server may need it. Add them to the '$xserverauthfile' instead.
+    for displayname in $authdisplay $hostname$authdisplay; do
+        authcookie=`xauth list "$displayname" \
+        | sed -n "s/.*$displayname[[:space:]*].*[[:space:]*]//p"` 2>/dev/null;
+        if [ "z${authcookie}" = "z" ] ; then
+            xauth -q << EOF
+add $displayname . $mcookie
+EOF
+        removelist="$displayname $removelist"
+        else
+            dummy=$(($dummy+1));
+            xauth -q -f "$xserverauthfile" << EOF
+add :$dummy . $authcookie
+EOF
+        fi
+    done
+fi
++ '[' x1 = x1 ']'
++ '[' x = x ']'
++ XAUTHORITY=/cygdrive/d/home/khasegawa/.Xauthority
++ export XAUTHORITY
++ removelist=
++ case `uname` in
+++ uname
+++ hostname
++ hostname=DESKTOP-1V4KK5P
++ authdisplay=:0
+++ /usr/bin/mcookie
++ mcookie=a43bdd65d5561d3de7b44aeb3e7f5d7e
++ test xa43bdd65d5561d3de7b44aeb3e7f5d7e = x
++ dummy=0
++ xserverauthfile=/cygdrive/d/home/khasegawa/.serverauth.11999
++ trap 'rm -f '\''/cygdrive/d/home/khasegawa/.serverauth.11999'\''' HUP INT QUIT ILL TRAP KILL BUS TERM
++ xauth -q -f /cygdrive/d/home/khasegawa/.serverauth.11999
+xauth:  file /cygdrive/d/home/khasegawa/.serverauth.11999 does not exist
+++ echo /cygdrive/d/home/khasegawa/.serverauth.11999
+++ sed 's/'\''/'\''\\'\'''\''/g'
++ xserverauthfilequoted=/cygdrive/d/home/khasegawa/.serverauth.11999
++ serverargs='  -auth '\''/cygdrive/d/home/khasegawa/.serverauth.11999'\'''
++ for displayname in $authdisplay $hostname$authdisplay
+++ xauth list :0
+++ sed -n 's/.*:0[[:space:]*].*[[:space:]*]//p'
++ authcookie=3d0a0b33eabb66d8de2d6385f0a016b5
++ '[' z3d0a0b33eabb66d8de2d6385f0a016b5 = z ']'
++ dummy=1
++ xauth -q -f /cygdrive/d/home/khasegawa/.serverauth.11999
++ for displayname in $authdisplay $hostname$authdisplay
+++ xauth list DESKTOP-1V4KK5P:0
+++ sed -n 's/.*DESKTOP-1V4KK5P:0[[:space:]*].*[[:space:]*]//p'
++ authcookie=
++ '[' z = z ']'
++ xauth -q
++ removelist='DESKTOP-1V4KK5P:0 '
+
+
+eval xinit \"$client\" $clientargs -- \"$server\" $display $serverargs
++ eval xinit '"/usr/local/etc/X11/xinit/xinitrc"' -- '"/usr/local/bin/X"' :0 -auth ''\''/cygdrive/d/home/khasegawa/.serverauth.11999'\'''
+xinit "/usr/local/etc/X11/xinit/xinitrc" -- "/usr/local/bin/X" :0 -auth '/cygdrive/d/home/khasegawa/.serverauth.11999'
+++ xinit /usr/local/etc/X11/xinit/xinitrc -- /usr/local/bin/X :0 -auth /cygdrive/d/home/khasegawa/.serverauth.11999
+
+xinit: giving up
+xinit: unable to connect to X server: Connection refused
+xinit: server error
+
+
+
+retval=$?
++ retval=1
+
+if [ x"$enable_xauth" = x1 ] ; then
+    if [ x"$removelist" != x ]; then
+        xauth remove $removelist
+    fi
+    if [ x"$xserverauthfile" != x ]; then
+        rm -f "$xserverauthfile"
+    fi
+fi
++ '[' x1 = x1 ']'
++ '[' 'xDESKTOP-1V4KK5P:0 ' '!=' x ']'
++ xauth remove DESKTOP-1V4KK5P:0
++ '[' x/cygdrive/d/home/khasegawa/.serverauth.11999 '!=' x ']'
++ rm -f /cygdrive/d/home/khasegawa/.serverauth.11999
+exit $retval
++ exit 1
+>
+
+
+これを見て気付いたが /usr/bin/startx のときは xterm が client にセットされている
+が /usr/local/bin/startx の場合は xinitrc が client にセットされている.
+
+
+ソースを見る限り /tmp/.X0-lock がなくてもそれなりに動きそうだが
+空の /tmp/.X0-lock を作成しておいた.
+
+再び gdb から XWin.exe を引数 :0 で実行.
+
+問題のところで FatalError とすることは一応回避したが, unlink
+して再び開こうとして FatalError のようにしている... 一体何したいんだろう?
+
+このエラーはよくわからないのでとりあえず保留する.
+
+(*3) Cannot open log file "/usr/local/var/log/XWin.0.log"
+
+もう一つ Fatal のメッセージに
+
+Fatal server error:
+Cannot open log file "/usr/local/var/log/XWin.0.log"
+
+のようにあったので
+
+/usr/local/var/log
+
+のディレクトリを作成しておいた.
+
+再び gdb から実行.
+
+LockServer
+
+でステップ実行しロックファイルを開けず FatalError が呼ばれている.
+
+haslock = (link(tmp, LockFile) == 0);
+
+としているが, tmp = /tmp/.tX0-lock
+だる link というのは Linux の man マニュアルを読むと
+
+       #include <unistd.h>
+
+       int link(const char *oldpath, const char *newpath);
+       
+らしい.
+
+説明
+       link() は存在するファイルへの新しいリンク (link) (ハード・リンク (hard
+       link) ともいう) を作成する。
+
+Windows だからこれが成功する (0 が返る) ことはなさそう. 実際簡単なテストで
+link() で -1 が返っている.
+
+xorg-server-1.12.2/os/utils.c
+
+に以下を追加した
+
+#ifdef __CYGWIN__
+int link(const char *oldpath, const char *newpath)
+{
+  FILE* in = fopen(oldpath,"r");
+  if (!in)
+    return -1;
+  FILE* out = fopen(newpath, "w");
+  if (!out)
+    return -1;
+  for (int c ; (c = fgetc(in)) != EOF ; )
+    fputc(c, out);
+  fclose(in);
+  fclose(out);
+  return 0;
+}
+#endif // __CYGWIN__
+
+これで問題の
+
+FatalError
+
+を回避できたが, 例のダイアログボックスが表示された.
+
+--------------------------------------------------------------------------
+Windows セキュリティの重要な警告
+
+このアプリの機能のいくつかが Windows Defender ファイアウォールにより XWin.exe の
+機能のいくつかがブロックされています.
+
+名前(N):  XWin.exe
+発行元(P): 不明
+パス(H): d:/cygwin64/home/khasegawa/xorg-server-1.12.2/hw/xwin/XWin.exe
+
+XWin.exe にこれらのネットワーク上での通信を許可する:
+
+プライベートネットワーク(ホームネットワークや社内ねっとわーくなど)(R)
+
+パブリックネットワーク(空港, 喫茶店など)(非推奨)(U)
+(このようなネットワークは多くの場合, セキュリティが低いかセキュリティが設定されていません)
+
+アクセスを許可する(A)     キャンセル
+--------------------------------------------------------------------------
+ここで「アクセスを許可する」を選択した.
+
+そしてもう一度 gdb から実行した:
+(gdb) run
+Starting program: /cygdrive/d/home/khasegawa/xorg-server-1.12.2/hw/xwin/XWin.exe :0
+[New Thread 5704.0x211c]
+[New Thread 5704.0x2e4]
+[New Thread 5704.0x2f90]
+[New Thread 5704.0x1214]
+Welcome to the XWin X Server
+Vendor: The X.Org Foundation
+Release: 1.12.2.0 (11202000)
+
+
+Contact: xorg@lists.freedesktop.org
+XWin was started with the following command line:
+
+/cygdrive/d/home/khasegawa/xorg-server-1.12.2/hw/xwin/XWin :0 
+
+
+Thread 1 "XWin" hit Breakpoint 1, LockServer () at utils.c:266
+(gdb) c
+Continuing.
+winInitializeScreens - 1
+winInitializeScreen - 0
+[New Thread 5704.0x27f4]
+[New Thread 5704.0x2d00]
+_XSERVTransmkdir: Mode of /tmp/.X11-unix should be set to 1777
+_XSERVTransmkdir: this may cause subsequent errors
+(II) xorg.conf is not supported
+(II) See http://x.cygwin.com/docs/faq/cygwin-x-faq.html for more information
+LoadPreferences: /cygdrive/d/home/khasegawa/.XWinrc not found
+LoadPreferences: Loading /usr/local/etc/X11/system.XWinrc
+LoadPreferences: Done parsing the configuration file...
+winDetectSupportedEngines - DirectDraw installed
+winDetectSupportedEngines - Allowing PrimaryDD
+winDetectSupportedEngines - Returning, supported engines 0000001b
+winSetEngine - Using Shadow DirectDraw
+winScreenInit - Using Windows display depth of 32 bits per pixel
+[New Thread 5704.0x2930]
+winAllocateFBShadowDD - Failed DD2 query: 80004002
+winFinishScreenInitFB - Could not allocate framebuffer
+winScreenInit - winFinishScreenInit () failed
+winReleasePrimarySurfaceShadowDD - Hello
+winReleasePrimarySurfaceShadowDD - Released primary surface
+
+Fatal server error:
+InitOutput - Couldn't add screen 0
+Server terminated with error (1). Closing log file.
+warning: `/cygdrive/c/WINDOWS/WinSxS/x86_microsoft.windows.common-controls_6595b64144ccf1df_6.0.17134.1304_none_1ba91cf2911002f6/comctl32.dll': Shared library architecture i386 is not compatible with target architecture i386:x86-64.
+winDeinitMultiWindowWM - Noting shutdown in progress
+[Thread 5704.0x2f90 exited with code 1]
+[Thread 5704.0x1ff4 exited with code 1]
+[Thread 5704.0x2930 exited with code 1]
+[Thread 5704.0x2d00 exited with code 1]
+[Thread 5704.0x27f4 exited with code 1]
+[Thread 5704.0x1214 exited with code 1]
+[Thread 5704.0x2e4 exited with code 1]
+
+Program terminated with signal SIGHUP, Hangup.
+The program no longer exists.
+(gdb)
+
+一瞬スクリーンが表示された.
+
+_XSERVTransmkdir
+
+のメッセージを確認してみる.
+
+CreateWellKnownSockets();
+
+の実行で出ているらしい.
+
+(gdb) b CreateWellKnownSockets
+(gdb) run
+
+#if !defined(WIN32)
+    for (i = 0; i < MaxClients; i++)
+        ConnectionTranslation[i] = 0;
+#else
+    ClearConnectionTranslation();
+#endif
+
+ステップ実行したら上を通っている. WIN32 は define されていないが
+これはどっちを通るべきか...
+とりあえず保留. 現状維持.
+
+_XSERVTransMakeAllCOTSServerListeners(...)
+
+の呼び出しで
+
+_XSERVTransmkdir
+
+のメッセージが出ている.
+
+(gdb) b _XSERVTransMakeAllCOTSServerListeners
+
+
+    if ((_XSERVTransMakeAllCOTSServerListeners(port, &partial,
+                                               &ListenTransCount,
+                                               &ListenTransConns) >= 0) &&
+
+ブレークポイントをセットできているがステップインできていない.
+このディレクトリには *.j ファイルがない. ということは...
+おそらく /usr/local/bin/gcc は少なくとも動いていないのか?
+
+例えば WaitFor.c をコンパイルするのに以下のようにしているらしい:
+
+echo "  CC      " WaitFor.lo;/bin/sh ../libtool --silent --tag=CC   --mode=compile gcc -DHAVE_CONFIG_H -I. -I../include    -DHAVE_DIX_CONFIG_H -Wall -Wpointer-arith -Wmissing-declarations -Wformat=2 -Wstrict-prototypes -Wmissing-prototypes -Wnested-externs -Wbad-function-cast -Wold-style-definition -Wdeclaration-after-statement -Wunused -Wuninitialized -Wshadow -Wcast-qual -Wmissing-noreturn -Wmissing-format-attribute -Wredundant-decls -fno-strict-aliasing -fno-strict-aliasing -I/usr/local/include -D_BSD_SOURCE -DHAS_FCHOWN -DHAS_STICKY_DIR_BIT -I/usr/include/pixman-1 -I/usr/include/freetype2 -I/usr/include/libpng16  -I../include -I../include -I../Xext -I../composite -I../damageext -I../xfixes -I../Xi -I../mi -I../miext/sync -I../miext/shadow  -I../miext/damage -I../render -I../randr -I../fb  -g -O2 -DFD_SETSIZE=256 -MT WaitFor.lo -MD -MP -MF .deps/WaitFor.Tpo -c -o WaitFor.lo WaitFor.c
+  CC       WaitFor.lo
+
+このやり方だと環境変数が引き継がれないのだろうか. そんなことはありえないのだが....
+しょうがないので Makefile に
+
+-foutput-doc-info
+
+を指定した. しかし *.j ファイルは生成されない...
+
+> rm utils.lo
+rm: remove regular file 'utils.lo'? y
+> make
+echo "  CC      " utils.lo;/bin/sh ../libtool --silent --tag=CC   --mode=compile gcc -DHAVE_CONFIG_H -I. -I../include -foutput-doc-info    -DHAVE_DIX_CONFIG_H -Wall -Wpointer-arith -Wmissing-declarations -Wformat=2 -Wstrict-prototypes -Wmissing-prototypes -Wnested-externs -Wbad-function-cast -Wold-style-definition -Wdeclaration-after-statement -Wunused -Wuninitialized -Wshadow -Wcast-qual -Wmissing-noreturn -Wmissing-format-attribute -Wredundant-decls -fno-strict-aliasing -fno-strict-aliasing -I/usr/local/include -D_BSD_SOURCE -DHAS_FCHOWN -DHAS_STICKY_DIR_BIT -I/usr/include/pixman-1 -I/usr/include/freetype2 -I/usr/include/libpng16  -I../include -I../include -I../Xext -I../composite -I../damageext -I../xfixes -I../Xi -I../mi -I../miext/sync -I../miext/shadow  -I../miext/damage -I../render -I../randr -I../fb  -g -O2 -DFD_SETSIZE=256 -MT utils.lo -MD -MP -MF .deps/utils.Tpo -c -o utils.lo utils.c
+  CC       utils.lo
+...
+> ls utils.*
+utils.c
+utils.c~
+utils.lo
+>
+
+訳が分からない.
+
+直接実行してみた:
+> /bin/sh ../libtool --silent --tag=CC   --mode=compile gcc -DHAVE_CONFIG_H -I. -I../include -foutput-doc-info    -DHAVE_DIX_CONFIG_H -Wall -Wpointer-arith -Wmissing-declarations -Wformat=2 -Wstrict-prototypes -Wmissing-prototypes -Wnested-externs -Wbad-function-cast -Wold-style-definition -Wdeclaration-after-statement -Wunused -Wuninitialized -Wshadow -Wcast-qual -Wmissing-noreturn -Wmissing-format-attribute -Wredundant-decls -fno-strict-aliasing -fno-strict-aliasing -I/usr/local/include -D_BSD_SOURCE -DHAS_FCHOWN -DHAS_STICKY_DIR_BIT -I/usr/include/pixman-1 -I/usr/include/freetype2 -I/usr/include/libpng16  -I../include -I../include -I../Xext -I../composite -I../damageext -I../xfixes -I../Xi -I../mi -I../miext/sync -I../miext/shadow  -I../miext/damage -I../render -I../randr -I../fb  -g -O2 -DFD_SETSIZE=256 -MT utils.lo -MD -MP -MF .deps/utils.Tpo -c -o utils.lo utils.c
+
+> ls -l utils.*
+-rw-r--r-- 1 khasegawa 48489 Jun  6 09:46 utils.c
+-rw-r--r-- 1 khasegawa 48171 May 18  2012 utils.c~
+-rw-r--r-- 1 khasegawa 262 Jun  6 12:19 utils.lo
+> find . -name 'utils*'
+./utils.c
+./.deps/utils.Tpo
+./utils.c~
+./.libs/utils.j
+./.libs/utils.o
+./utils.lo
+> 
+
+なるほど, そういうことだったのだ. 一旦 .o を .libs ディレクトリに作成
+していたということ.
+
+というわけで Makefile は修正する必要がなかったのだ.
+
+改めて
+
+b _XSERVTransMakeAllCOTSServerListeners
+
+だがこれはビルド時のソースファイルの情報が
+
+/usr/local/include/X11/Xtrans/Xtrans.c
+
+のようになっている. もしかするとソースからビルドしなかったのかも.
+
+しかし
+
+~/xtrans-1.2.7
+
+はある. ビルドしたのだろうか. そういえば「configure 実行時のエラーの対処」のページで
+インストールしたということを書いている. ビルドしたかどうかは不明.
+
+一旦 ~/xtrans-1.2.7 で make clean の後 make してみたが
+そもそも何もコンパイルしている感じはない.
+
+> make -n install
+fail= failcom='exit 1'; \
+for f in x $MAKEFLAGS; do \
+  case $f in \
+    *=* | --[!k]*);; \
+    *k*) failcom='fail=yes';; \
+  esac; \
+done; \
+dot_seen=no; \
+target=`echo install-recursive | sed s/-recursive//`; \
+list='doc'; for subdir in $list; do \
+  echo "Making $target in $subdir"; \
+  if test "$subdir" = "."; then \
+    dot_seen=yes; \
+    local_target="$target-am"; \
+  else \
+    local_target="$target"; \
+  fi; \
+  (CDPATH="${ZSH_VERSION+.}:" && cd $subdir && make  $local_target) \
+  || eval $failcom; \
+done; \
+if test "$dot_seen" = "no"; then \
+  make  "$target-am" || exit 1; \
+fi; test -z "$fail"
+Making install in doc
+make[1]: Entering directory '/cygdrive/d/home/khasegawa/xtrans-1.2.7/doc'
+make  install-exec-am install-data-am
+make[2]: Entering directory '/cygdrive/d/home/khasegawa/xtrans-1.2.7/doc'
+make[2]: Nothing to be done for 'install-exec-am'.
+:
+test -z "/usr/local/share/doc/xtrans" || /usr/bin/mkdir -p "/usr/local/share/doc/xtrans"
+list='xtrans.xml '; test -n "/usr/local/share/doc/xtrans" || list=; \
+for p in $list; do \
+  if test -f "$p"; then d=; else d="./"; fi; \
+  echo "$d$p"; \
+done | sed '$!N;$!N;$!N;$!N;$!N;$!N;$!N;s/\n/ /g' | sed '$!N;$!N;$!N;$!N;s/\n/ /g' | \
+while read files; do \
+  echo " /usr/bin/install -c -m 644 $files '/usr/local/share/doc/xtrans'"; \
+  /usr/bin/install -c -m 644 $files "/usr/local/share/doc/xtrans" || exit $?; \
+done
+:
+test -z "/usr/local/share/doc/xtrans" || /usr/bin/mkdir -p "/usr/local/share/doc/xtrans"
+list='xtrans.html   xtrans.html.db xtrans.pdf.db'; test -n "/usr/local/share/doc/xtrans" || list=; \
+for p in $list; do \
+  if test -f "$p"; then d=; else d="./"; fi; \
+  echo "$d$p"; \
+done | sed '$!N;$!N;$!N;$!N;$!N;$!N;$!N;s/\n/ /g' | sed '$!N;$!N;$!N;$!N;s/\n/ /g' | \
+while read files; do \
+  echo " /usr/bin/install -c -m 644 $files '/usr/local/share/doc/xtrans'"; \
+  /usr/bin/install -c -m 644 $files "/usr/local/share/doc/xtrans" || exit $?; \
+done
+make[2]: Leaving directory '/cygdrive/d/home/khasegawa/xtrans-1.2.7/doc'
+make[1]: Leaving directory '/cygdrive/d/home/khasegawa/xtrans-1.2.7/doc'
+make[1]: Entering directory '/cygdrive/d/home/khasegawa/xtrans-1.2.7'
+make  install-exec-am install-data-am
+make[2]: Entering directory '/cygdrive/d/home/khasegawa/xtrans-1.2.7'
+make[2]: Nothing to be done for 'install-exec-am'.
+:
+test -z "/usr/local/include/X11/Xtrans" || /usr/bin/mkdir -p "/usr/local/include/X11/Xtrans"
+list='Xtrans.h Xtrans.c Xtransint.h Xtranslcl.c Xtranssock.c Xtranstli.c Xtransutil.c transport.c'; test -n "/usr/local/include/X11/Xtrans" || list=; \
+for p in $list; do \
+  if test -f "$p"; then d=; else d="./"; fi; \
+  echo "$d$p"; \
+done | sed '$!N;$!N;$!N;$!N;$!N;$!N;$!N;s/\n/ /g' | sed '$!N;$!N;$!N;$!N;s/\n/ /g' | \
+while read files; do \
+  echo " /usr/bin/install -c -m 644 $files '/usr/local/include/X11/Xtrans'"; \
+  /usr/bin/install -c -m 644 $files "/usr/local/include/X11/Xtrans" || exit $?; \
+done
+:
+test -z "/usr/local/share/aclocal" || /usr/bin/mkdir -p "/usr/local/share/aclocal"
+list='xtrans.m4'; test -n "/usr/local/share/aclocal" || list=; \
+for p in $list; do \
+  if test -f "$p"; then d=; else d="./"; fi; \
+  echo "$d$p"; \
+done | sed '$!N;$!N;$!N;$!N;$!N;$!N;$!N;s/\n/ /g' | sed '$!N;$!N;$!N;$!N;s/\n/ /g' | \
+while read files; do \
+  echo " /usr/bin/install -c -m 644 $files '/usr/local/share/aclocal'"; \
+  /usr/bin/install -c -m 644 $files "/usr/local/share/aclocal" || exit $?; \
+done
+:
+test -z "/usr/local/share/pkgconfig" || /usr/bin/mkdir -p "/usr/local/share/pkgconfig"
+list='xtrans.pc'; test -n "/usr/local/share/pkgconfig" || list=; \
+for p in $list; do \
+  if test -f "$p"; then d=; else d="./"; fi; \
+  echo "$d$p"; \
+done | sed '$!N;$!N;$!N;$!N;$!N;$!N;$!N;s/\n/ /g' | sed '$!N;$!N;$!N;$!N;s/\n/ /g' | \
+while read files; do \
+  echo " /usr/bin/install -c -m 644 $files '/usr/local/share/pkgconfig'"; \
+  /usr/bin/install -c -m 644 $files "/usr/local/share/pkgconfig" || exit $?; \
+done
+make[2]: Leaving directory '/cygdrive/d/home/khasegawa/xtrans-1.2.7'
+make[1]: Leaving directory '/cygdrive/d/home/khasegawa/xtrans-1.2.7'
+> 
+
+単純にコピーしているだけだった. このため行番号が適切でない形になっている.
+問題の箇所は以下のように思える:
+
+d:/cygwin64/usr/local/include/X11/Xtrans/Xtransutil.c
+
+#ifndef WIN32
+	if (mkdir(path, mode) == 0) {
+	    if (chmod(path, mode)) {
+		prmsg(1, "mkdir: ERROR: Mode of %s should be set to %04o\n",
+		      path, mode);
+#ifdef FAIL_HARD
+		return -1;
+#endif
+	    }
+#else
+	if (mkdir(path) == 0) {
+#endif
+	} else {
+	    prmsg(1, "mkdir: ERROR: Cannot create %s\n",
+		  path);
+	    return -1;
+	}
+
+	return 0;
+
+しょうがないが, ここは致命的なエラーを起こしているわけではなさそうだから
+保留する. しかしここでも
+
+WIN32
+
+というマクロが参照されている.
+
+致命的なエラーが発生するのは
+InitOutput()
+
+の呼び出し.
+
+(gdb) b InitOutput
+(gdb) run
+
+InitOutput のブレークポイントにヒット
+
+        if (-1 == AddScreen(winScreenInit, argc, argv)) {
+            FatalError("InitOutput - Couldn't add screen %d", i);
+        }
+
+ここでエラーしていた. AddScreen でエラーしているらしい.
+
+AddScreen
+では以下の呼び出しでエラーしているっぽい.
+    if (!(*pfnInit) (i, pScreen, argc, argv)) {
+
+pfnInit は winScreenInit
+
+winScreenInit
+では以下の呼び出しでエラーしている
+    if (!((*pScreenPriv->pwinFinishScreenInit) (index, pScreen, argc, argv))) {
+        ErrorF("winScreenInit - winFinishScreenInit () failed\n");
+
+
+上の呼び出しでは
+winFinishScreenInitFB(int index, ScreenPtr pScreen, int argc, char **argv)
+が呼び出されていた.
+
+
+ここでエラーしていた.
+static Bool
+winInitScreenShadowDD(ScreenPtr pScreen)
+{
+...
+
+
+この呼び出しでエラーしていた.
+~/xorg-server-1.12.2/hw/xwin/winshaddd.c:253
+    ddrval = IDirectDraw_QueryInterface(pScreenPriv->pdd,
+                                        &IID_IDirectDraw2,
+                                        (LPVOID *) & pScreenPriv->pdd2);
+    if (FAILED(ddrval)) {
+        ErrorF("winAllocateFBShadowDD - Failed DD2 query: %08x\n",
+
+上はマクロ展開の結果だが, ポインタ経由の函数呼び出しで
+結局は
+
+DirectDrawCreate
+
+の呼び出し.
+
+winAllocateFBShadowDD では
+
+DirectDrawCreateClipper /* Create a clipper */
+DSoundHelp /* Attach the clipper to our display window */
+DirectDrawCreate /* Create a DirectDraw object, store the address at lpdd */
+DirectDrawCreate /* Get a DirectDraw2 interface pointer */
+
+という呼び出しでこの 4 つ目がエラーしている. しかし
+なんだか 2 つ目のコメントと実際呼び出している API があっていない
+ように思える.
+
+2 つ目の呼び出しは以下のようなマクロ展開の結果.
+
+    ddrval = (pScreenPriv->pddcPrimary)->lpVtbl->SetHWnd (pScreenPriv->pddcPrimary,0,pScreenPriv->hwndScreen)
+
+(HRESULT (*)(IDirectDrawClipper *, DWORD, HWND)) 0x7ffd1e9c86c0 <DSoundHelp+7824>
+
+これは... なんだか函数の途中に函数コールしそうな感じなのだが, 一応呼び出したら
+戻ってきているから, そこには函数があるのだろう.
+
+ひとまず, (pScreenPriv->pddcPrimary)->lpVtbl->SetHWnd
+のアドレスが 0x7ffd1ea1a4c0
+であることが判明しているのでここにウォッチポイントをかけてみた.
+
+Thread 1 "XWin" hit Hardware watchpoint 4: *(int*)0x7ffd1ea1a4c0
+
+Old value = 0
+New value = 513574592
+0x00007ffd1e9dc33c in SetAppCompatData () from /cygdrive/c/WINDOWS/SYSTEM32/ddraw.dll
+(gdb)
+
+そのまま, winAllocateFBShadowDD が呼び出され
+
+(pScreenPriv->pddcPrimary)->lpVtbl->SetHWnd
+
+の値は変更されていない.
+
+ddraw.dll を
+
+    g_hmodDirectDraw = LoadLibraryEx("ddraw.dll", NULL, 0);
+
+のように明示的にロードしているところで値がセットされているが, おそらく
+何か勘違いしている.
+
+1 つ目の函数
+DirectDrawCreateClipper /* Create a clipper */
+をポインタ経由で呼び出したとき,
+
+    ddrval = (*g_fpDirectDrawCreateClipper) (0,
+                                             &pScreenPriv->pddcPrimary, NULL);
+                                              ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+第 2 引数に値がセットされる. それまではこの変数は 0
+2 つ目の函数は 1 つ目の函数呼び出しの結果を受けて
+
+    ddrval = (pScreenPriv->pddcPrimary)->lpVtbl->SetHWnd (pScreenPriv->pddcPrimary,0,pScreenPriv->hwndScreen)
+
+のようにやっている.
+
+HRESULT DirectDrawCreateClipper(
+  DWORD               dwFlags,
+  LPDIRECTDRAWCLIPPER *lplpDDClipper,
+  IUnknown            *pUnkOuter
+);
+
+1 つ目の函数呼び出しの結果
+
+(gdb) p *(pScreenPriv->pddcPrimary->lpVtbl)
+$12 = {QueryInterface = 0x7ffd1e9c8280 <DSoundHelp+6736>, AddRef = 0x7ffd1e9c7d20 <DSoundHelp+5360>, Release = 0x7ffd1e9c83e0 <DSoundHelp+7088>, GetClipList = 0x7ffd1e9c7e00 <DSoundHelp+5584>, GetHWnd = 0x7ffd1e9c7f20 <DSoundHelp+5872>, Initialize = 0x7ffd1e9c8000 <DSoundHelp+6096>, IsClipListChanged = 0x7ffd1e9c8190 <DSoundHelp+6496>, SetClipList = 0x7ffd1e9c84d0 <DSoundHelp+7328>, SetHWnd = 0x7ffd1e9c86c0 <DSoundHelp+7824>}
+
+
+4 つ目の函数呼び出し
+はマクロ展開でこうなる.
+    ddrval = (pScreenPriv->pdd)->lpVtbl->QueryInterface (pScreenPriv->pdd,&IID_IDirectDraw2,(LPVOID *) & pScreenPriv->pdd2)
+
+そもそも2 つ目の函数が呼び出したものがでたらめなアドレスだったとしたら,
+函数呼び出しから戻ってくるのは難しいはず.
+
+なのになぜ戻ってきているか.
+
+ptype pScreenPriv->pddcPrimary->lpVtbl
+type = struct IDirectDrawClipperVtbl {
+    HRESULT (*QueryInterface)(IDirectDrawClipper *, const IID * const, LPVOID *);
+    ULONG (*AddRef)(IDirectDrawClipper *);
+    ULONG (*Release)(IDirectDrawClipper *);
+    HRESULT (*GetClipList)(IDirectDrawClipper *, LPRECT, LPRGNDATA, LPDWORD);
+    HRESULT (*GetHWnd)(IDirectDrawClipper *, HWND *);
+    HRESULT (*Initialize)(IDirectDrawClipper *, LPDIRECTDRAW, DWORD);
+    HRESULT (*IsClipListChanged)(IDirectDrawClipper *, BOOL *);
+    HRESULT (*SetClipList)(IDirectDrawClipper *, LPRGNDATA, DWORD);
+    HRESULT (*SetHWnd)(IDirectDrawClipper *, DWORD, HWND);
+} *
+(gdb)
+
+MidcroSoft のマニュアルにあるのと少し違っている.
+
+IDirectDrawClipper::GetClipList 
+IDirectDrawClipper::GetHWnd 
+IDirectDrawClipper::Initialize 
+IDirectDrawClipper::IsClipListChanged 
+IDirectDrawClipper::SetClipList 
+IDirectDrawClipper::SetHWnd
+
+以下は Visual Studio のヘッダにあったもの.
+DECLARE_INTERFACE_( IDirectDrawClipper, IUnknown )
+{
+    /*** IUnknown methods ***/
+    STDMETHOD(QueryInterface) (THIS_ REFIID riid, LPVOID FAR * ppvObj) PURE;
+    STDMETHOD_(ULONG,AddRef) (THIS)  PURE;
+    STDMETHOD_(ULONG,Release) (THIS) PURE;
+    /*** IDirectDrawClipper methods ***/
+    STDMETHOD(GetClipList)(THIS_ LPRECT, LPRGNDATA, LPDWORD) PURE;
+    STDMETHOD(GetHWnd)(THIS_ HWND FAR *) PURE;
+    STDMETHOD(Initialize)(THIS_ LPDIRECTDRAW, DWORD) PURE;
+    STDMETHOD(IsClipListChanged)(THIS_ BOOL FAR *) PURE;
+    STDMETHOD(SetClipList)(THIS_ LPRGNDATA,DWORD) PURE;
+    STDMETHOD(SetHWnd)(THIS_ DWORD, HWND ) PURE;
+};
+
+なるほど, こういう感じらしい.
+QueryInterface でエラーしているから, そっちをみるべき.
+
+template<class Q>
+HRESULT
+STDMETHODCALLTYPE
+QueryInterface(_COM_Outptr_ Q** pp)
+{
+    return QueryInterface(__uuidof(Q), (void **)pp);
+}
+
+戻り値は
+
+0x80004002
+
+だが,
+
+#define E_NOINTERFACE _HRESULT_TYPEDEF_(0x80004002)
+
+Query したがないといわれているように見える.
+
+エラーを回避できなさそうなのでコンパイルアウトした:
+
+#if 0
+    /* Get a DirectDraw2 interface pointer */
+    ddrval = IDirectDraw_QueryInterface(pScreenPriv->pdd,
+                                        &IID_IDirectDraw2,
+                                        (LPVOID *) & pScreenPriv->pdd2);
+...
+#endif
+    /* Create the primary surface */
+    if (!winCreatePrimarySurfaceShadowDD(pScreen)) {
+...
+
+
+#if 0
+    /* Create the primary surface */
+    ddrval = IDirectDraw2_CreateSurface(pScreenPriv->pdd2,
+                                        &ddsd, &pScreenPriv->pddsPrimary, NULL);
+    if (FAILED(ddrval)) {
+        ErrorF("winCreatePrimarySurfaceShadowDD - Could not create primary "
+               "surface: %08x\n", (unsigned int) ddrval);
+        return FALSE;
+    }
+#endif    
+
+#if 0    
+    /*
+     * Attach a clipper to the primary surface that will clip our blits to our
+     * display window.
+     */
+    ddrval = IDirectDrawSurface2_SetClipper(pScreenPriv->pddsPrimary,
+                                            pScreenPriv->pddcPrimary);
+    if (FAILED(ddrval)) {
+        ErrorF("winCreatePrimarySurfaceShadowDD - Primary attach clipper "
+               "failed: %08x\n", (unsigned int) ddrval);
+        return FALSE;
+    }
+#endif
+
+コンパイルアウトとしたがだめっぽい.
+
+    /* Get a DirectDraw2 interface pointer */
+    ddrval = IDirectDraw_QueryInterface(pScreenPriv->pdd,
+                                        &IID_IDirectDraw2,
+                                        (LPVOID *) & pScreenPriv->pdd2);
+
+これの呼び出しだが, 結果的に
+
+DirectDrawCreate
+
+を呼び出している. そしてこれが
+
+#define E_NOINTERFACE _HRESULT_TYPEDEF_(0x80004002)
+
+を返している. しかし何か釈然としない.
+
+Query なのだから DirectDrawCreate を呼び出すのはおかしい気もする.
+
+もう一度
+winAllocateFBShadowDD
+でやっていることを整理してみた.
+
+    ddrval = (*g_fpDirectDrawCreateClipper) (0,
+                                             &pScreenPriv->pddcPrimary, NULL);
+
+は結果的に
+
+DirectDrawCreateClipper
+
+を呼び出している.
+
+    ddrval = IDirectDrawClipper_SetHWnd(pScreenPriv->pddcPrimary,
+                                        0, pScreenPriv->hwndScreen);
+
+は結果的に
+
+DSoundHelp
+
+を呼び出している.
+なんだかここがすごく怪しい.
+
+紆余曲折あったが, エラーしている 4 つ目の函数呼び出しを以下のように
+修正した.
+
+    /* Get a DirectDraw2 interface pointer */
+#if 0    
+    ddrval = IDirectDraw_QueryInterface(pScreenPriv->pdd,
+                                        &IID_IDirectDraw2,
+                                        (LPVOID *) & pScreenPriv->pdd2);
+#else
+    ddrval = IDirectDraw_QueryInterface(pScreenPriv->pdd,
+                                        &my_IID_IDirectDraw2,
+                                        (LPVOID *) & pScreenPriv->pdd2);
+#endif
+
+ここで my_IID_IDirectDraw2 だがこのファイル
+~/xorg-server-1.12.2/hw/xwin/winshaddd.c
+の先頭部分に以下のように追加した
+
+/*
+ * FIXME: Headers are broken, IID_IDirectDraw2 has to be defined
+ * here manually.  Should be handled by ddraw.h
+ */
+#ifndef IID_IDirectDraw2
+#if 0
+DEFINE_GUID(IID_IDirectDraw2, 0xB3A6F3E0, 0x2B43, 0x11CF, 0xA2, 0xDE, 0x00,
+            0xAA, 0x00, 0xB9, 0x33, 0x56);
+#endif
+#endif                          /* IID_IDirectDraw2 */
+
+
+struct _GUID my_IID_IDirectDraw2 = {
+				   0xB3A6F3E0,
+				   0x2B43, 0x11CF, 0xA2, 0xDE, 0x00,
+                0xAA, 0x00, 0xB9, 0x33, 0x56
+};
+
+これが原因だったらしい.
+
+(*) 改めて gdb から実行してみた.
+
+(gdb) run :0
+The program being debugged has been started already.
+Start it from the beginning? (y or n) [answered Y; input not from terminal]
+Starting program: /cygdrive/d/home/khasegawa/xorg-server-1.12.2/hw/xwin/XWin.exe :0
+[New Thread 15528.0x3c20]
+[New Thread 15528.0x3750]
+[New Thread 15528.0x2dec]
+[New Thread 15528.0x3b48]
+Welcome to the XWin X Server
+Vendor: The X.Org Foundation
+Release: 1.12.2.0 (11202000)
+
+
+Contact: xorg@lists.freedesktop.org
+XWin was started with the following command line:
+
+/cygdrive/d/home/khasegawa/xorg-server-1.12.2/hw/xwin/XWin :0 
+
+winInitializeScreens - 1
+winInitializeScreen - 0
+[New Thread 15528.0x39d8]
+[New Thread 15528.0x3b5c]
+_XSERVTransmkdir: Mode of /tmp/.X11-unix should be set to 1777
+_XSERVTransmkdir: this may cause subsequent errors
+(II) xorg.conf is not supported
+(II) See http://x.cygwin.com/docs/faq/cygwin-x-faq.html for more information
+LoadPreferences: /cygdrive/d/home/khasegawa/.XWinrc not found
+LoadPreferences: Loading /usr/local/etc/X11/system.XWinrc
+LoadPreferences: Done parsing the configuration file...
+winDetectSupportedEngines - DirectDraw installed
+winDetectSupportedEngines - Allowing PrimaryDD
+winDetectSupportedEngines - Returning, supported engines 0000001b
+winSetEngine - Using Shadow DirectDraw
+winScreenInit - Using Windows display depth of 32 bits per pixel
+[New Thread 15528.0x3b00]
+winFinishScreenInitFB - Masks: 00ff0000 0000ff00 000000ff
+winInitVisualsShadowDD - Masks 00ff0000 0000ff00 000000ff BPRGB 8 d 24 bpp 32
+Screen 0 added at virtual desktop coordinate (0,0).
+MIT-SHM extension disabled due to lack of kernel support
+[New Thread 15528.0x3c60]
+[New Thread 15528.0x2a84]
+(II) AIGLX: Loaded and initialized swrast
+(II) GLX: Initialized DRISWRAST GL provider for screen 0
+[New Thread 15528.0x3b4c]
+sigaction: Bad address
+
+Thread 1 "XWin" received signal SIGSEGV, Segmentation fault.
+0x0000000000000000 in ?? ()
+(gdb)
+
+SIGSEGV を受けている. どこかで不正メモリアクセスしているということなのだろうか.
+
+(gdb) c
+Continuing.
+winPointerWarpCursor - Discarding first warp: 680 349
+(--) 5 mouse buttons found
+(--) Setting autorepeat to delay=500, rate=31
+(II) Loading US keyboard layout.
+(--) Windows keyboard layout: "00000411" (00000411) "Japanese", type 7
+(--) Found matching XKB configuration "Japanese"
+(--) Model = "jp106" Layout = "jp" Variant = "none" Options = "none"
+Rules = "base" Model = "jp106" Layout = "jp" Variant = "none" Options = "none"
+sigaction: Bad address
+
+Thread 1 "XWin" received signal SIGSEGV, Segmentation fault.
+0x0000000000000000 in ?? ()
+(gdb) c
+Continuing.
+
+ここで X サーバーが起動したように見える. しかし SIGSEGV を受けて continue できる
+というのは一体どういうことなのだろう.
+
+さらに気付くいたことがある.「cygwin の X サーバーのメモ」ではキーボードの配置
+が日本語から英語に切り替わってしまっていたので画面右下の部分をクリックして配置
+をもとに戻す必要があった. しかし, このときは切り替わっていない.
+
+別のプログラムを動作させたから違う結果になるのはそれほど不思議ではないが, 動作が
+異なっている.
+
+そこで以下を試してみた.
+
+% xeyes -display localhost:0.0 &
+
+このコマンドは X サーバー内ではなくて, 例えば emacs 内の shell から実行した.
+そして表示されている. 以下はそのときのログ
+
+(gdb) c
+Continuing.
+winProcEstablishConnection - Hello
+winInitClipboard ()
+[New Thread 15512.0x3c0c]
+winProcEstablishConnection - winInitClipboard returned.
+winClipboardProc - Hello
+winClipboardProc - DISPLAY=127.0.0.1:0.0
+[New Thread 15512.0x132c]
+[New Thread 15512.0x3eec]
+winClipboardProc - XOpenDisplay () returned and successfully opened the display.
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 9, Request Code: 1, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 10, Request Code: 18, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 11, Request Code: 2, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 12, Request Code: 22, Minor Code: 0
+winClipboardProc - Could not set PRIMARY owner
+winClipboardProc - XDestroyWindow succeeded.
+winClipboardProc - trying to restart clipboard thread 
+winInitClipboard ()
+[New Thread 15512.0x39b0]
+winClipboardProc - Hello
+winClipboardProc - DISPLAY=127.0.0.1:0.0
+winClipboardProc - XOpenDisplay () returned and successfully opened the display.
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 9, Request Code: 1, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 10, Request Code: 18, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 11, Request Code: 2, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 12, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of PRIMARY
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 14, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of CLIPBOARD
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 16, Request Code: 22, Minor Code: 0
+winClipboardProc - Could not set PRIMARY owner
+winClipboardProc - XDestroyWindow succeeded.
+[Thread 15512.0x3c0c exited with code 0]
+
+Thread 1 "XWin" received signal SIGSEGV, Segmentation fault.
+0x00000000ffffc598 in ?? ()
+(gdb) c
+Continuing.
+winClipboardProc - trying to restart clipboard thread 
+winInitClipboard ()
+
+Thread 1 "XWin" received signal SIGSEGV, Segmentation fault.
+0x0000000000000000 in ?? ()
+(gdb) 
+Continuing.
+[New Thread 15512.0x2efc]
+winClipboardProc - Hello
+winClipboardProc - DISPLAY=127.0.0.1:0.0
+winClipboardProc - XOpenDisplay () returned and successfully opened the display.
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 9, Request Code: 1, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 10, Request Code: 18, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 11, Request Code: 2, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 12, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of PRIMARY
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 14, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of CLIPBOARD
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 16, Request Code: 22, Minor Code: 0
+winClipboardProc - Could not set PRIMARY owner
+winClipboardProc - XDestroyWindow succeeded.
+winClipboardProc - trying to restart clipboard thread 
+winInitClipboard ()
+[Thread 15512.0x39b0 exited with code 0]
+[New Thread 15512.0x3fd0]
+winClipboardProc - Hello
+winClipboardProc - DISPLAY=127.0.0.1:0.0
+winClipboardProc - XOpenDisplay () returned and successfully opened the display.
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 9, Request Code: 1, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 10, Request Code: 18, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 11, Request Code: 2, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 12, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of PRIMARY
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 14, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of CLIPBOARD
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 16, Request Code: 22, Minor Code: 0
+winClipboardProc - Could not set PRIMARY owner
+winClipboardProc - XDestroyWindow succeeded.
+winClipboardProc - trying to restart clipboard thread 
+winInitClipboard ()
+[Thread 15512.0x2efc exited with code 0]
+[New Thread 15512.0x1114]
+winClipboardProc - Hello
+winClipboardProc - DISPLAY=127.0.0.1:0.0
+winClipboardProc - XOpenDisplay () returned and successfully opened the display.
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 9, Request Code: 1, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 10, Request Code: 18, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 11, Request Code: 2, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 12, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of PRIMARY
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 14, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of CLIPBOARD
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 16, Request Code: 22, Minor Code: 0
+winClipboardProc - Could not set PRIMARY owner
+winClipboardProc - XDestroyWindow succeeded.
+winClipboardProc - trying to restart clipboard thread 
+winInitClipboard ()
+[Thread 15512.0x3fd0 exited with code 0]
+[New Thread 15512.0x568]
+winClipboardProc - Hello
+winClipboardProc - DISPLAY=127.0.0.1:0.0
+winClipboardProc - XOpenDisplay () returned and successfully opened the display.
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 9, Request Code: 1, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 10, Request Code: 18, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 11, Request Code: 2, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 12, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of PRIMARY
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 14, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of CLIPBOARD
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 16, Request Code: 22, Minor Code: 0
+winClipboardProc - Could not set PRIMARY owner
+winClipboardProc - XDestroyWindow succeeded.
+winClipboardProc - trying to restart clipboard thread 
+winInitClipboard ()
+[Thread 15512.0x1114 exited with code 0]
+[New Thread 15512.0x3990]
+winClipboardProc - Hello
+winClipboardProc - DISPLAY=127.0.0.1:0.0
+winClipboardProc - XOpenDisplay () returned and successfully opened the display.
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 9, Request Code: 1, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 10, Request Code: 18, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 11, Request Code: 2, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 12, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of PRIMARY
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 14, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of CLIPBOARD
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 16, Request Code: 22, Minor Code: 0
+winClipboardProc - Could not set PRIMARY owner
+winClipboardProc - XDestroyWindow succeeded.
+winClipboardProc - trying to restart clipboard thread 
+winInitClipboard ()
+[Thread 15512.0x568 exited with code 0]
+[New Thread 15512.0x3e1c]
+winClipboardProc - Hello
+winClipboardProc - DISPLAY=127.0.0.1:0.0
+winClipboardProc - XOpenDisplay () returned and successfully opened the display.
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 9, Request Code: 1, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 10, Request Code: 18, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 11, Request Code: 2, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 12, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of PRIMARY
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 14, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of CLIPBOARD
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 16, Request Code: 22, Minor Code: 0
+winClipboardProc - Could not set PRIMARY owner
+winClipboardProc - XDestroyWindow succeeded.
+winClipboardProc - trying to restart clipboard thread 
+winInitClipboard ()
+[Thread 15512.0x3990 exited with code 0]
+[New Thread 15512.0x1bc4]
+winClipboardProc - Hello
+winClipboardProc - DISPLAY=127.0.0.1:0.0
+winClipboardProc - XOpenDisplay () returned and successfully opened the display.
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 9, Request Code: 1, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 10, Request Code: 18, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 11, Request Code: 2, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 12, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of PRIMARY
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 14, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of CLIPBOARD
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 16, Request Code: 22, Minor Code: 0
+winClipboardProc - Could not set PRIMARY owner
+winClipboardProc - XDestroyWindow succeeded.
+winClipboardProc - trying to restart clipboard thread 
+winInitClipboard ()
+[Thread 15512.0x3e1c exited with code 0]
+[New Thread 15512.0x3b38]
+winClipboardProc - Hello
+winClipboardProc - DISPLAY=127.0.0.1:0.0
+winClipboardProc - XOpenDisplay () returned and successfully opened the display.
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 9, Request Code: 1, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 10, Request Code: 18, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 11, Request Code: 2, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 12, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of PRIMARY
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 14, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of CLIPBOARD
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 16, Request Code: 22, Minor Code: 0
+winClipboardProc - Could not set PRIMARY owner
+winClipboardProc - XDestroyWindow succeeded.
+winClipboardProc - trying to restart clipboard thread 
+winInitClipboard ()
+[Thread 15512.0x1bc4 exited with code 0]
+[New Thread 15512.0x2c90]
+winClipboardProc - Hello
+winClipboardProc - DISPLAY=127.0.0.1:0.0
+winClipboardProc - XOpenDisplay () returned and successfully opened the display.
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 9, Request Code: 1, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 10, Request Code: 18, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 11, Request Code: 2, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 12, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of PRIMARY
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 14, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of CLIPBOARD
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 16, Request Code: 22, Minor Code: 0
+winClipboardProc - Could not set PRIMARY owner
+winClipboardProc - XDestroyWindow succeeded.
+winClipboardProc - trying to restart clipboard thread 
+winInitClipboard ()
+[Thread 15512.0x3b38 exited with code 0]
+[New Thread 15512.0x2d90]
+winClipboardProc - Hello
+winClipboardProc - DISPLAY=127.0.0.1:0.0
+winClipboardProc - XOpenDisplay () returned and successfully opened the display.
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 9, Request Code: 1, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 10, Request Code: 18, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 11, Request Code: 2, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 12, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of PRIMARY
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 14, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of CLIPBOARD
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 16, Request Code: 22, Minor Code: 0
+winClipboardProc - Could not set PRIMARY owner
+winClipboardProc - XDestroyWindow succeeded.
+winClipboardProc - trying to restart clipboard thread 
+winInitClipboard ()
+[Thread 15512.0x2c90 exited with code 0]
+[New Thread 15512.0x1da4]
+winClipboardProc - Hello
+winClipboardProc - DISPLAY=127.0.0.1:0.0
+winClipboardProc - XOpenDisplay () returned and successfully opened the display.
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 9, Request Code: 1, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 10, Request Code: 18, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 11, Request Code: 2, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 12, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of PRIMARY
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 14, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of CLIPBOARD
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 16, Request Code: 22, Minor Code: 0
+winClipboardProc - Could not set PRIMARY owner
+winClipboardProc - XDestroyWindow succeeded.
+winClipboardProc - trying to restart clipboard thread 
+winInitClipboard ()
+[Thread 15512.0x2d90 exited with code 0]
+[New Thread 15512.0x29a4]
+winClipboardProc - Hello
+winClipboardProc - DISPLAY=127.0.0.1:0.0
+winClipboardProc - XOpenDisplay () returned and successfully opened the display.
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 9, Request Code: 1, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 10, Request Code: 18, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 11, Request Code: 2, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 12, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of PRIMARY
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 14, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of CLIPBOARD
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 16, Request Code: 22, Minor Code: 0
+winClipboardProc - Could not set PRIMARY owner
+winClipboardProc - XDestroyWindow succeeded.
+winClipboardProc - trying to restart clipboard thread 
+winInitClipboard ()
+[Thread 15512.0x1da4 exited with code 0]
+[New Thread 15512.0x5e4]
+winClipboardProc - Hello
+winClipboardProc - DISPLAY=127.0.0.1:0.0
+winClipboardProc - XOpenDisplay () returned and successfully opened the display.
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 9, Request Code: 1, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 10, Request Code: 18, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 11, Request Code: 2, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 12, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of PRIMARY
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 14, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of CLIPBOARD
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 16, Request Code: 22, Minor Code: 0
+winClipboardProc - Could not set PRIMARY owner
+winClipboardProc - XDestroyWindow succeeded.
+winClipboardProc - trying to restart clipboard thread 
+winInitClipboard ()
+[Thread 15512.0x29a4 exited with code 0]
+[New Thread 15512.0x1d1c]
+winClipboardProc - Hello
+winClipboardProc - DISPLAY=127.0.0.1:0.0
+winClipboardProc - XOpenDisplay () returned and successfully opened the display.
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 9, Request Code: 1, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 10, Request Code: 18, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 11, Request Code: 2, Minor Code: 0
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 12, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of PRIMARY
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 14, Request Code: 22, Minor Code: 0
+winClipboardWindowProc - WM_DRAWCLIPBOARD - Could not reassert ownership of CLIPBOARD
+winClipboardErrorHandler - ERROR: 
+	BadWindow (invalid Window parameter)
+	Serial: 16, Request Code: 22, Minor Code: 0
+winClipboardProc - Could not set PRIMARY owner
+[Thread 15512.0x5e4 exited with code 0]
+
+Thread 1 "XWin" received signal SIGSEGV, Segmentation fault.
+0x0000000000000000 in ?? ()
+(gdb)
+
+そしてメモを取っているところで X Server が不正メモリアクセスで停止している.
+
+もう一度 gdb から X サーバを動作し, 今度は Windows で動作する emacs の
+shell から
+
+% xeyes -display 192.168.100.17:0.0 &
+
+のようにしてみた. これも表示できている. それでは linux マシンから同じコマンドを
+実行してみた.
+
+linux % xeyes -display 192.168.100.17:0.0 &
+Error: Can't open display: 192.168.100.17:0.0
+linux %
+
+すぐにエラーにならずに, 少し間があってこのようになっている.
+
+試しに DOS 窓から tcsh を起動して以下のように startx を実行してみた:
+
+C:\Users\khasegawa\Desktop>D:\cygwin64\bin\tcsh.exe
+> ls /tmp/.X*
+/tmp/.X0-lock
+
+/tmp/.X11-unix:
+X0
+> rm /tmp/.X0-lock /tmp/.X11-unix/X0
+rm: remove regular file '/tmp/.X0-lock'? y
+rm: remove socket '/tmp/.X11-unix/X0'? y
+> sh -vx /usr/local/bin/startx
+#!/bin/sh
+
+#
+# This is just a sample implementation of a slightly less primitive
+# interface than xinit. It looks for user .xinitrc and .xserverrc
+# files, then system xinitrc and xserverrc files, else lets xinit choose
+# its default. The system xinitrc should probably do things like check
+# for .Xresources files and merge them in, start up a window manager,
+# and pop a clock and several xterms.
+#
+# Site administrators are STRONGLY urged to write nicer versions.
+#
+
+unset DBUS_SESSION_BUS_ADDRESS
++ unset DBUS_SESSION_BUS_ADDRESS
+unset SESSION_MANAGER
++ unset SESSION_MANAGER
+userclientrc=$HOME/.xinitrc
++ userclientrc=/cygdrive/d/home/khasegawa/.xinitrc
+sysclientrc=/usr/local/etc/X11/xinit/xinitrc
++ sysclientrc=/usr/local/etc/X11/xinit/xinitrc
+
+userserverrc=$HOME/.xserverrc
++ userserverrc=/cygdrive/d/home/khasegawa/.xserverrc
+sysserverrc=/usr/local/etc/X11/xinit/xserverrc
++ sysserverrc=/usr/local/etc/X11/xinit/xserverrc
+defaultclient=xterm
++ defaultclient=xterm
+defaultserver=/usr/local/bin/X
++ defaultserver=/usr/local/bin/X
+defaultclientargs=""
++ defaultclientargs=
+defaultserverargs=""
++ defaultserverargs=
+defaultdisplay=""
++ defaultdisplay=
+clientargs=""
++ clientargs=
+serverargs=""
++ serverargs=
+vtarg=""
++ vtarg=
+enable_xauth=1
++ enable_xauth=1
+
+
+# Automatically determine an unused $DISPLAY
+d=0
++ d=0
+while true ; do
+    [ -e "/tmp/.X$d-lock" -o -S "/tmp/.X11-unix/X$d" ] || break
+    d=$(($d + 1))
+done
++ true
++ '[' -e /tmp/.X0-lock -o -S /tmp/.X11-unix/X0 ']'
++ break
+defaultdisplay=":$d"
++ defaultdisplay=:0
+unset d
++ unset d
+
+whoseargs="client"
++ whoseargs=client
+while [ x"$1" != x ]; do
+    case "$1" in
+    # '' required to prevent cpp from treating "/*" as a C comment.
+    /''*|\./''*)
+ if [ "$whoseargs" = "client" ]; then
+     if [ x"$client" = x ] && [ x"$clientargs" = x ]; then
+  client="$1"
+     else
+  clientargs="$clientargs $1"
+     fi
+ else
+     if [ x"$server" = x ] && [ x"$serverargs" = x ]; then
+  server="$1"
+     else
+  serverargs="$serverargs $1"
+     fi
+ fi
+ ;;
+    --)
+ whoseargs="server"
+ ;;
+    *)
+ if [ "$whoseargs" = "client" ]; then
+     clientargs="$clientargs $1"
+ else
+     # display must be the FIRST server argument
+     if [ x"$serverargs" = x ] && \
+   expr "$1" : ':[0-9][0-9]*$' > /dev/null 2>&1; then
+  display="$1"
+     else
+  serverargs="$serverargs $1"
+     fi
+ fi
+ ;;
+    esac
+    shift
+done
++ '[' x '!=' x ']'
+
+# process client arguments
+if [ x"$client" = x ]; then
+    client=$defaultclient
+
+    # For compatibility reasons, only use startxrc if there were no client command line arguments
+    if [ x"$clientargs" = x ]; then
+        if [ -f "$userclientrc" ]; then
+            client=$userclientrc
+        elif [ -f "$sysclientrc" ]; then
+            client=$sysclientrc
+        fi
+    fi
+fi
++ '[' x = x ']'
++ client=xterm
++ '[' x = x ']'
++ '[' -f /cygdrive/d/home/khasegawa/.xinitrc ']'
++ '[' -f /usr/local/etc/X11/xinit/xinitrc ']'
++ client=/usr/local/etc/X11/xinit/xinitrc
+
+# if no client arguments, use defaults
+if [ x"$clientargs" = x ]; then
+    clientargs=$defaultclientargs
+fi
++ '[' x = x ']'
++ clientargs=
+
+# process server arguments
+if [ x"$server" = x ]; then
+    server=$defaultserver
+    # For compatibility reasons, only use xserverrc if there were no server command line arguments
+    if [ x"$serverargs" = x -a x"$display" = x ]; then
+ if [ -f "$userserverrc" ]; then
+     server=$userserverrc
+ elif [ -f "$sysserverrc" ]; then
+     server=$sysserverrc
+ fi
+    fi
+fi
++ '[' x = x ']'
++ server=/usr/local/bin/X
++ '[' x = x -a x = x ']'
++ '[' -f /cygdrive/d/home/khasegawa/.xserverrc ']'
++ '[' -f /usr/local/etc/X11/xinit/xserverrc ']'
+
+# if no server arguments, use defaults
+if [ x"$serverargs" = x ]; then
+    serverargs=$defaultserverargs
+fi
++ '[' x = x ']'
++ serverargs=
+
+# if no vt is specified add vtarg (which may be empty)
+have_vtarg="no"
++ have_vtarg=no
+for i in $serverargs; do
+    if expr "$i" : 'vt[0-9][0-9]*$' > /dev/null; then
+        have_vtarg="yes"
+    fi
+done
+if [ "$have_vtarg" = "no" ]; then
+    serverargs="$serverargs $vtarg"
+fi
++ '[' no = no ']'
++ serverargs=' '
+
+# if no display, use default
+if [ x"$display" = x ]; then
+    display=$defaultdisplay
+fi
++ '[' x = x ']'
++ display=:0
+
+if [ x"$enable_xauth" = x1 ] ; then
+    if [ x"$XAUTHORITY" = x ]; then
+        XAUTHORITY=$HOME/.Xauthority
+        export XAUTHORITY
+    fi
+
+    removelist=
+
+    # set up default Xauth info for this machine
+    case `uname` in
+    Linux*)
+        if [ -z "`hostname --version 2>&1 | grep GNU`" ]; then
+            hostname=`hostname -f`
+        else
+            hostname=`hostname`
+        fi
+        ;;
+    *)
+        hostname=`hostname`
+        ;;
+    esac
+
+    authdisplay=${display:-:0}
+
+    mcookie=`/usr/bin/mcookie`
+
+
+
+
+
+
+
+    if test x"$mcookie" = x; then
+        echo "Couldn't create cookie"
+        exit 1
+    fi
+    dummy=0
+
+    # create a file with auth information for the server. ':0' is a dummy.
+    xserverauthfile=$HOME/.serverauth.$$
+    trap "rm -f '$xserverauthfile'" HUP INT QUIT ILL TRAP KILL BUS TERM
+    xauth -q -f "$xserverauthfile" << EOF
+add :$dummy . $mcookie
+EOF
+
+    xserverauthfilequoted=$(echo ${xserverauthfile} | sed "s/'/'\\\\''/g")
+    serverargs=${serverargs}" -auth '"${xserverauthfilequoted}"'"
+
+
+
+
+    # now add the same credentials to the client authority file
+    # if '$displayname' already exists do not overwrite it as another
+    # server may need it. Add them to the '$xserverauthfile' instead.
+    for displayname in $authdisplay $hostname$authdisplay; do
+        authcookie=`xauth list "$displayname" \
+        | sed -n "s/.*$displayname[[:space:]*].*[[:space:]*]//p"` 2>/dev/null;
+        if [ "z${authcookie}" = "z" ] ; then
+            xauth -q << EOF
+add $displayname . $mcookie
+EOF
+        removelist="$displayname $removelist"
+        else
+            dummy=$(($dummy+1));
+            xauth -q -f "$xserverauthfile" << EOF
+add :$dummy . $authcookie
+EOF
+        fi
+    done
+fi
++ '[' x1 = x1 ']'
++ '[' x = x ']'
++ XAUTHORITY=/cygdrive/d/home/khasegawa/.Xauthority
++ export XAUTHORITY
++ removelist=
++ case `uname` in
+++ uname
+++ hostname
++ hostname=DESKTOP-1V4KK5P
++ authdisplay=:0
+++ /usr/bin/mcookie
++ mcookie=ef526e3b4c6a8ec94ee67d012572c85c
++ test xef526e3b4c6a8ec94ee67d012572c85c = x
++ dummy=0
++ xserverauthfile=/cygdrive/d/home/khasegawa/.serverauth.32134
++ trap 'rm -f '\''/cygdrive/d/home/khasegawa/.serverauth.32134'\''' HUP INT QUIT ILL TRAP KILL BUS TERM
++ xauth -q -f /cygdrive/d/home/khasegawa/.serverauth.32134
+xauth:  file /cygdrive/d/home/khasegawa/.serverauth.32134 does not exist
+++ echo /cygdrive/d/home/khasegawa/.serverauth.32134
+++ sed 's/'\''/'\''\\'\'''\''/g'
++ xserverauthfilequoted=/cygdrive/d/home/khasegawa/.serverauth.32134
++ serverargs='  -auth '\''/cygdrive/d/home/khasegawa/.serverauth.32134'\'''
++ for displayname in $authdisplay $hostname$authdisplay
+++ xauth list :0
+++ sed -n 's/.*:0[[:space:]*].*[[:space:]*]//p'
++ authcookie=3d0a0b33eabb66d8de2d6385f0a016b5
++ '[' z3d0a0b33eabb66d8de2d6385f0a016b5 = z ']'
++ dummy=1
++ xauth -q -f /cygdrive/d/home/khasegawa/.serverauth.32134
++ for displayname in $authdisplay $hostname$authdisplay
+++ xauth list DESKTOP-1V4KK5P:0
+++ sed -n 's/.*DESKTOP-1V4KK5P:0[[:space:]*].*[[:space:]*]//p'
++ authcookie=
++ '[' z = z ']'
++ xauth -q
++ removelist='DESKTOP-1V4KK5P:0 '
+
+
+eval xinit \"$client\" $clientargs -- \"$server\" $display $serverargs
++ eval xinit '"/usr/local/etc/X11/xinit/xinitrc"' -- '"/usr/local/bin/X"' :0 -auth ''\''/cygdrive/d/home/khasegawa/.serverauth.32134'\'''
+xinit "/usr/local/etc/X11/xinit/xinitrc" -- "/usr/local/bin/X" :0 -auth '/cygdrive/d/home/khasegawa/.serverauth.32134'
+++ xinit /usr/local/etc/X11/xinit/xinitrc -- /usr/local/bin/X :0 -auth /cygdrive/d/home/khasegawa/.serverauth.32134
+
+xinit: XFree86_VT property unexpectedly has 0 items instead of 1
+twm: warning: font for charset ISO8859-5 is lacking.
+twm: warning: font for charset KOI8-R is lacking.
+twm: warning: font for charset ISO8859-7 is lacking.
+twm: warning: font for charset JISX0208.1983-0 is lacking.
+twm: warning: font for charset KSC5601.1987-0 is lacking.
+twm: warning: font for charset GB2312.1980-0 is lacking.
+twm: warning: font for charset JISX0201.1976-0 is lacking.
+twm: warning: font for charset ISO8859-5 is lacking.
+twm: warning: font for charset KOI8-R is lacking.
+twm: warning: font for charset ISO8859-7 is lacking.
+twm: warning: font for charset JISX0208.1983-0 is lacking.
+twm: warning: font for charset KSC5601.1987-0 is lacking.
+twm: warning: font for charset GB2312.1980-0 is lacking.
+twm: warning: font for charset JISX0201.1976-0 is lacking.
+twm: warning: font for charset ISO8859-5 is lacking.
+twm: warning: font for charset KOI8-R is lacking.
+twm: warning: font for charset ISO8859-7 is lacking.
+twm: warning: font for charset JISX0208.1983-0 is lacking.
+twm: warning: font for charset KSC5601.1987-0 is lacking.
+twm: warning: font for charset GB2312.1980-0 is lacking.
+twm: warning: font for charset JISX0201.1976-0 is lacking.
+twm: warning: font for charset ISO8859-5 is lacking.
+twm: warning: font for charset KOI8-R is lacking.
+twm: warning: font for charset ISO8859-7 is lacking.
+twm: warning: font for charset JISX0208.1983-0 is lacking.
+twm: warning: font for charset KSC5601.1987-0 is lacking.
+twm: warning: font for charset GB2312.1980-0 is lacking.
+twm: warning: font for charset JISX0201.1976-0 is lacking.
+twm: warning: font for charset ISO8859-5 is lacking.
+twm: warning: font for charset KOI8-R is lacking.
+twm: warning: font for charset ISO8859-7 is lacking.
+twm: warning: font for charset JISX0208.1983-0 is lacking.
+twm: warning: font for charset KSC5601.1987-0 is lacking.
+twm: warning: font for charset GB2312.1980-0 is lacking.
+twm: warning: font for charset JISX0201.1976-0 is lacking.
+twm: warning: font for charset ISO8859-2 is lacking.
+twm: warning: font for charset ISO8859-3 is lacking.
+twm: warning: font for charset ISO8859-4 is lacking.
+twm: warning: font for charset ISO8859-5 is lacking.
+twm: warning: font for charset KOI8-R is lacking.
+twm: warning: font for charset ISO8859-7 is lacking.
+twm: warning: font for charset ISO8859-9 is lacking.
+twm: warning: font for charset ISO8859-13 is lacking.
+twm: warning: font for charset ISO8859-14 is lacking.
+twm: warning: font for charset ISO8859-15 is lacking.
+twm: warning: font for charset JISX0208.1983-0 is lacking.
+twm: warning: font for charset KSC5601.1987-0 is lacking.
+twm: warning: font for charset GB2312.1980-0 is lacking.
+twm: warning: font for charset JISX0201.1976-0 is lacking.
+twm: warning: font for charset ISO10646-1 is lacking.
+xinit: connection to X server lost
+
+waiting for XIO:  fatal IO error xtermxtermX server to shut down104: :   (fatal IO error fatal IO error Connection reset by peer1111) on X server " ( (:0Resource temporarily unavailableResource temporarily unavailable"
+) or KillClient on X server ") or KillClient on X server "      after :0:01345"
+"
+ requests (1345 known processed) with 0 events remaining.
+
+
+
+
+retval=$?
++ retval=0
+
+if [ x"$enable_xauth" = x1 ] ; then
+    if [ x"$removelist" != x ]; then
+        xauth remove $removelist
+    fi
+    if [ x"$xserverauthfile" != x ]; then
+        rm -f "$xserverauthfile"
+    fi
+fi
++ '[' x1 = x1 ']'
++ '[' 'xDESKTOP-1V4KK5P:0 ' '!=' x ']'
++ xauth remove DESKTOP-1V4KK5P:0
++ '[' x/cygdrive/d/home/khasegawa/.serverauth.32134 '!=' x ']'
++ rm -f /cygdrive/d/home/khasegawa/.serverauth.32134
+exit $retval
++ exit 0
+>
+
+やはりキーボードは日本語から英語に切り替わっている. 表示された
+「login」というタイトルのあるターミナルで
+
+% xhost +
+
+としてみた. しかし残念ながら linux マシンから xeyes の画面を出すことは
+できていない.
+Windows 版の, Windows で動作している emacs の shell から
+
+% xeyes -display 192.168.100.17:0.0 &
+
+は期待通り動作している.
+
+ここで単純なエコーサーバーのプログラムが Windows で動作していなことに気付いた.
+そこで Windows を一旦再起動した.
+
+再起動後, 単純なエコーサーバーが Windows で動作することを確認した後
+
+startx として X サーバーを起動して.
+
+「login」というタイトルのターミナルから
+
+sh-4.4$ xhost +
+
+として
+
+linux % emacs -d 192.168.100.17:1.0 &
+
+として emacs を表示することができた. なるほど, おそらく度重なる
+X サーバーの起動が Windows を不安定にしていたのかも.
+
+ひとまず emacs を linux から X のプログラムとして実行できたので今回はここまで.
+
+
+
