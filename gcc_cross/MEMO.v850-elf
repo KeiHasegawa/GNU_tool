@@ -1,0 +1,37 @@
+v850-elf
+
+03_newer_batch で最後の確認のところまで進む.
+
+v850-elf-gcc -g -o hello.elf hello.c
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/v850-elf/10.2.0/../../../../v850-elf/bin/ld: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/v850-elf/10.2.0/../../../../v850-elf/lib/libc.a(lib_a-write.o):(.bss+0x0): multiple definition of `_errno'; /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/v850-elf/10.2.0/../../../../v850-elf/lib/libc.a(lib_a-_exit.o):(.bss+0x0): first defined here
+...
+
+のようにエラーする.
+
+lib_a-write.o
+lib_a-_exit.o
+
+の両方で _errno が定義されていることが問題らしい.
+
+newlib-4.1.0.v850-elf/newlib/libc/sys/sysnecv850/write.c
+newlib-4.1.0.v850-elf/libgloss/v850/write.c
+
+close.c
+lseek.c
+read.c
+fstat.c
+getpid.c
+isatty.c
+kill.c
+
+にある _errno の定義をコメントアウトした.
+
+% pushd newlib-4.1.0.v850-elf
+% make
+% make install
+% popd
+
+% v850-elf-gcc -g -o hello.elf hello.c
+% v850-elf-gdb --silent -x gdbcom hello.elf >& hello.v850-elf.log
+
+とすれば期待する結果になっている.
