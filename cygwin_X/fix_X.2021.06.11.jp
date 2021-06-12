@@ -1,6 +1,16 @@
 X サーバーの修正メモ
 
 (*1) XWin.exe を gdb から実行してみた
+(*2) Can't read lock file /tmp/.X0-lock
+(*3) Cannot open log file "/usr/local/var/log/XWin.0.log"
+(*4) Can't read lock file /tmp/.X0-lock 再調査
+(*5) _XSERVTransmkdir: Mode of /tmp/.X11-unix should be set to 1777
+     _XSERVTransmkdir: this may cause subsequent errors
+(*6) InitOutput - Couldn't add screen 0
+(*7) 改めて gdb から実行してみた
+(*8) Windows 再起動
+
+(*1) XWin.exe を gdb から実行してみた
 
 M-x gdb
 gdb --annotate=3 XWin.exe
@@ -42,7 +52,7 @@ winDeinitMultiWindowWM - Noting shutdown in progress
 Program terminated with signal SIGHUP, Hangup.
 The program no longer exists.
 
-(*2) Can't read lock file /tmp/.X0-lock の調査
+(*2) Can't read lock file /tmp/.X0-lock
 
 Fatal server error:
 Can't read lock file /tmp/.X0-lock
@@ -125,353 +135,16 @@ LockServer
                 FatalError("Can't read lock file %s\n", LockFile);
 
 問題のメッセージはここで出ている.
-LockFile = /tmp/.X0-lock
-で, これを open で失敗している.
-
-/usr/bin/startx を実行するとこのスクリプトで /tmp/.X-lock を作成している
-っぽい.
-
-違った. 実際に動作させて確かめたところ
-
-d:/cygwin64/tmp/.X11-unix/X0
-d:/cygwin64/tmp/.X11-unix/X0.lock
-
-が作成されていた. X を終了すると
-
-d:/cygwin64/tmp/.X11-unix/X0.lock
-
-だけになっている.
-一旦 gdb を終了させて.
-
-実行してみた.
-
-> sh -vx /usr/local/bin/startx
-#!/bin/sh
-
-#
-# This is just a sample implementation of a slightly less primitive
-# interface than xinit. It looks for user .xinitrc and .xserverrc
-# files, then system xinitrc and xserverrc files, else lets xinit choose
-# its default. The system xinitrc should probably do things like check
-# for .Xresources files and merge them in, start up a window manager,
-# and pop a clock and several xterms.
-#
-# Site administrators are STRONGLY urged to write nicer versions.
-#
-
-unset DBUS_SESSION_BUS_ADDRESS
-+ unset DBUS_SESSION_BUS_ADDRESS
-unset SESSION_MANAGER
-+ unset SESSION_MANAGER
-userclientrc=$HOME/.xinitrc
-+ userclientrc=/cygdrive/d/home/khasegawa/.xinitrc
-sysclientrc=/usr/local/etc/X11/xinit/xinitrc
-+ sysclientrc=/usr/local/etc/X11/xinit/xinitrc
-
-userserverrc=$HOME/.xserverrc
-+ userserverrc=/cygdrive/d/home/khasegawa/.xserverrc
-sysserverrc=/usr/local/etc/X11/xinit/xserverrc
-+ sysserverrc=/usr/local/etc/X11/xinit/xserverrc
-defaultclient=xterm
-+ defaultclient=xterm
-defaultserver=/usr/local/bin/X
-+ defaultserver=/usr/local/bin/X
-defaultclientargs=""
-+ defaultclientargs=
-defaultserverargs=""
-+ defaultserverargs=
-defaultdisplay=""
-+ defaultdisplay=
-clientargs=""
-+ clientargs=
-serverargs=""
-+ serverargs=
-vtarg=""
-+ vtarg=
-enable_xauth=1
-+ enable_xauth=1
-
-
-# Automatically determine an unused $DISPLAY
-d=0
-+ d=0
-while true ; do
-    [ -e "/tmp/.X$d-lock" -o -S "/tmp/.X11-unix/X$d" ] || break
-    d=$(($d + 1))
-done
-+ true
-+ '[' -e /tmp/.X0-lock -o -S /tmp/.X11-unix/X0 ']'
-+ break
-defaultdisplay=":$d"
-+ defaultdisplay=:0
-unset d
-+ unset d
-
-whoseargs="client"
-+ whoseargs=client
-while [ x"$1" != x ]; do
-    case "$1" in
-    # '' required to prevent cpp from treating "/*" as a C comment.
-    /''*|\./''*)
- if [ "$whoseargs" = "client" ]; then
-     if [ x"$client" = x ] && [ x"$clientargs" = x ]; then
-  client="$1"
-     else
-  clientargs="$clientargs $1"
-     fi
- else
-     if [ x"$server" = x ] && [ x"$serverargs" = x ]; then
-  server="$1"
-     else
-  serverargs="$serverargs $1"
-     fi
- fi
- ;;
-    --)
- whoseargs="server"
- ;;
-    *)
- if [ "$whoseargs" = "client" ]; then
-     clientargs="$clientargs $1"
- else
-     # display must be the FIRST server argument
-     if [ x"$serverargs" = x ] && \
-   expr "$1" : ':[0-9][0-9]*$' > /dev/null 2>&1; then
-  display="$1"
-     else
-  serverargs="$serverargs $1"
-     fi
- fi
- ;;
-    esac
-    shift
-done
-+ '[' x '!=' x ']'
-
-# process client arguments
-if [ x"$client" = x ]; then
-    client=$defaultclient
-
-    # For compatibility reasons, only use startxrc if there were no client command line arguments
-    if [ x"$clientargs" = x ]; then
-        if [ -f "$userclientrc" ]; then
-            client=$userclientrc
-        elif [ -f "$sysclientrc" ]; then
-            client=$sysclientrc
-        fi
-    fi
-fi
-+ '[' x = x ']'
-+ client=xterm
-+ '[' x = x ']'
-+ '[' -f /cygdrive/d/home/khasegawa/.xinitrc ']'
-+ '[' -f /usr/local/etc/X11/xinit/xinitrc ']'
-+ client=/usr/local/etc/X11/xinit/xinitrc
-
-# if no client arguments, use defaults
-if [ x"$clientargs" = x ]; then
-    clientargs=$defaultclientargs
-fi
-+ '[' x = x ']'
-+ clientargs=
-
-# process server arguments
-if [ x"$server" = x ]; then
-    server=$defaultserver
-    # For compatibility reasons, only use xserverrc if there were no server command line arguments
-    if [ x"$serverargs" = x -a x"$display" = x ]; then
- if [ -f "$userserverrc" ]; then
-     server=$userserverrc
- elif [ -f "$sysserverrc" ]; then
-     server=$sysserverrc
- fi
-    fi
-fi
-+ '[' x = x ']'
-+ server=/usr/local/bin/X
-+ '[' x = x -a x = x ']'
-+ '[' -f /cygdrive/d/home/khasegawa/.xserverrc ']'
-+ '[' -f /usr/local/etc/X11/xinit/xserverrc ']'
-
-# if no server arguments, use defaults
-if [ x"$serverargs" = x ]; then
-    serverargs=$defaultserverargs
-fi
-+ '[' x = x ']'
-+ serverargs=
-
-# if no vt is specified add vtarg (which may be empty)
-have_vtarg="no"
-+ have_vtarg=no
-for i in $serverargs; do
-    if expr "$i" : 'vt[0-9][0-9]*$' > /dev/null; then
-        have_vtarg="yes"
-    fi
-done
-if [ "$have_vtarg" = "no" ]; then
-    serverargs="$serverargs $vtarg"
-fi
-+ '[' no = no ']'
-+ serverargs=' '
-
-# if no display, use default
-if [ x"$display" = x ]; then
-    display=$defaultdisplay
-fi
-+ '[' x = x ']'
-+ display=:0
-
-if [ x"$enable_xauth" = x1 ] ; then
-    if [ x"$XAUTHORITY" = x ]; then
-        XAUTHORITY=$HOME/.Xauthority
-        export XAUTHORITY
-    fi
-
-    removelist=
-
-    # set up default Xauth info for this machine
-    case `uname` in
-    Linux*)
-        if [ -z "`hostname --version 2>&1 | grep GNU`" ]; then
-            hostname=`hostname -f`
-        else
-            hostname=`hostname`
-        fi
-        ;;
-    *)
-        hostname=`hostname`
-        ;;
-    esac
-
-    authdisplay=${display:-:0}
-
-    mcookie=`/usr/bin/mcookie`
-
-
-
-
-
-
-
-    if test x"$mcookie" = x; then
-        echo "Couldn't create cookie"
-        exit 1
-    fi
-    dummy=0
-
-    # create a file with auth information for the server. ':0' is a dummy.
-    xserverauthfile=$HOME/.serverauth.$$
-    trap "rm -f '$xserverauthfile'" HUP INT QUIT ILL TRAP KILL BUS TERM
-    xauth -q -f "$xserverauthfile" << EOF
-add :$dummy . $mcookie
-EOF
-
-    xserverauthfilequoted=$(echo ${xserverauthfile} | sed "s/'/'\\\\''/g")
-    serverargs=${serverargs}" -auth '"${xserverauthfilequoted}"'"
-
-
-
-
-    # now add the same credentials to the client authority file
-    # if '$displayname' already exists do not overwrite it as another
-    # server may need it. Add them to the '$xserverauthfile' instead.
-    for displayname in $authdisplay $hostname$authdisplay; do
-        authcookie=`xauth list "$displayname" \
-        | sed -n "s/.*$displayname[[:space:]*].*[[:space:]*]//p"` 2>/dev/null;
-        if [ "z${authcookie}" = "z" ] ; then
-            xauth -q << EOF
-add $displayname . $mcookie
-EOF
-        removelist="$displayname $removelist"
-        else
-            dummy=$(($dummy+1));
-            xauth -q -f "$xserverauthfile" << EOF
-add :$dummy . $authcookie
-EOF
-        fi
-    done
-fi
-+ '[' x1 = x1 ']'
-+ '[' x = x ']'
-+ XAUTHORITY=/cygdrive/d/home/khasegawa/.Xauthority
-+ export XAUTHORITY
-+ removelist=
-+ case `uname` in
-++ uname
-++ hostname
-+ hostname=DESKTOP-1V4KK5P
-+ authdisplay=:0
-++ /usr/bin/mcookie
-+ mcookie=a43bdd65d5561d3de7b44aeb3e7f5d7e
-+ test xa43bdd65d5561d3de7b44aeb3e7f5d7e = x
-+ dummy=0
-+ xserverauthfile=/cygdrive/d/home/khasegawa/.serverauth.11999
-+ trap 'rm -f '\''/cygdrive/d/home/khasegawa/.serverauth.11999'\''' HUP INT QUIT ILL TRAP KILL BUS TERM
-+ xauth -q -f /cygdrive/d/home/khasegawa/.serverauth.11999
-xauth:  file /cygdrive/d/home/khasegawa/.serverauth.11999 does not exist
-++ echo /cygdrive/d/home/khasegawa/.serverauth.11999
-++ sed 's/'\''/'\''\\'\'''\''/g'
-+ xserverauthfilequoted=/cygdrive/d/home/khasegawa/.serverauth.11999
-+ serverargs='  -auth '\''/cygdrive/d/home/khasegawa/.serverauth.11999'\'''
-+ for displayname in $authdisplay $hostname$authdisplay
-++ xauth list :0
-++ sed -n 's/.*:0[[:space:]*].*[[:space:]*]//p'
-+ authcookie=3d0a0b33eabb66d8de2d6385f0a016b5
-+ '[' z3d0a0b33eabb66d8de2d6385f0a016b5 = z ']'
-+ dummy=1
-+ xauth -q -f /cygdrive/d/home/khasegawa/.serverauth.11999
-+ for displayname in $authdisplay $hostname$authdisplay
-++ xauth list DESKTOP-1V4KK5P:0
-++ sed -n 's/.*DESKTOP-1V4KK5P:0[[:space:]*].*[[:space:]*]//p'
-+ authcookie=
-+ '[' z = z ']'
-+ xauth -q
-+ removelist='DESKTOP-1V4KK5P:0 '
-
-
-eval xinit \"$client\" $clientargs -- \"$server\" $display $serverargs
-+ eval xinit '"/usr/local/etc/X11/xinit/xinitrc"' -- '"/usr/local/bin/X"' :0 -auth ''\''/cygdrive/d/home/khasegawa/.serverauth.11999'\'''
-xinit "/usr/local/etc/X11/xinit/xinitrc" -- "/usr/local/bin/X" :0 -auth '/cygdrive/d/home/khasegawa/.serverauth.11999'
-++ xinit /usr/local/etc/X11/xinit/xinitrc -- /usr/local/bin/X :0 -auth /cygdrive/d/home/khasegawa/.serverauth.11999
-
-xinit: giving up
-xinit: unable to connect to X server: Connection refused
-xinit: server error
-
-
-
-retval=$?
-+ retval=1
-
-if [ x"$enable_xauth" = x1 ] ; then
-    if [ x"$removelist" != x ]; then
-        xauth remove $removelist
-    fi
-    if [ x"$xserverauthfile" != x ]; then
-        rm -f "$xserverauthfile"
-    fi
-fi
-+ '[' x1 = x1 ']'
-+ '[' 'xDESKTOP-1V4KK5P:0 ' '!=' x ']'
-+ xauth remove DESKTOP-1V4KK5P:0
-+ '[' x/cygdrive/d/home/khasegawa/.serverauth.11999 '!=' x ']'
-+ rm -f /cygdrive/d/home/khasegawa/.serverauth.11999
-exit $retval
-+ exit 1
->
-
-
-これを見て気付いたが /usr/bin/startx のときは xterm が client にセットされている
-が /usr/local/bin/startx の場合は xinitrc が client にセットされている.
-
+LockFile = "/tmp/.X0-lock"
+で, open の呼び出しで失敗している.
 
 ソースを見る限り /tmp/.X0-lock がなくてもそれなりに動きそうだが
 空の /tmp/.X0-lock を作成しておいた.
 
-再び gdb から XWin.exe を引数 :0 で実行.
+再び gdb から XWin.exe を実行.
 
 問題のところで FatalError とすることは一応回避したが, unlink
-して再び開こうとして FatalError のようにしている... 一体何したいんだろう?
+して再び開こうとして FatalError が呼び出されている.
 
 このエラーはよくわからないのでとりあえず保留する.
 
@@ -487,6 +160,8 @@ Cannot open log file "/usr/local/var/log/XWin.0.log"
 /usr/local/var/log
 
 のディレクトリを作成しておいた.
+
+(*4) Can't read lock file /tmp/.X0-lock 再調査
 
 再び gdb から実行.
 
@@ -561,6 +236,10 @@ XWin.exe にこれらのネットワーク上での通信を許可する:
 ここで「アクセスを許可する」を選択した.
 
 そしてもう一度 gdb から実行した:
+
+(*5) _XSERVTransmkdir: Mode of /tmp/.X11-unix should be set to 1777
+     _XSERVTransmkdir: this may cause subsequent errors
+
 (gdb) run
 Starting program: /cygdrive/d/home/khasegawa/xorg-server-1.12.2/hw/xwin/XWin.exe :0
 [New Thread 5704.0x211c]
@@ -713,7 +392,7 @@ utils.lo
 
 改めて
 
-b _XSERVTransMakeAllCOTSServerListeners
+_XSERVTransMakeAllCOTSServerListeners
 
 だがこれはビルド時のソースファイルの情報が
 
@@ -857,8 +536,10 @@ WIN32
 
 というマクロが参照されている.
 
+(*6) InitOutput - Couldn't add screen 0
+
 致命的なエラーが発生するのは
-InitOutput()
+InitOutput();
 
 の呼び出し.
 
@@ -1171,7 +852,14 @@ struct _GUID my_IID_IDirectDraw2 = {
 
 これが原因だったらしい.
 
-(*) 改めて gdb から実行してみた.
+(*7) 改めて gdb から実行してみた.
+
+どのタイミングか忘れたが XWin.exe がファイルを開いたり実行しようとしたが
+エラーになっている箇所があったので以下のように回避しておいた:
+
+% mkdir -p /usr/local/share/X11/xkb/rules
+% cp /usr/share/X11/xkb/rules/base /usr/local/share/X11/xkb/rules
+% cp /usr/bin/xkbcomp /usr/local/bin/xkbcomp
 
 (gdb) run :0
 The program being debugged has been started already.
@@ -2142,6 +1830,8 @@ Windows 版の, Windows で動作している emacs の shell から
 % xeyes -display 192.168.100.17:0.0 &
 
 は期待通り動作している.
+
+(*8) Windows 再起動
 
 ここで単純なエコーサーバーのプログラムが Windows で動作していなことに気付いた.
 そこで Windows を一旦再起動した.
