@@ -1,0 +1,45 @@
+nettle-3.4.1 のインストール
+
+% xz -d -c nettle-3.4.1-hobbled.tar.xz | tar xf -
+% cd nettle-3.4.1
+% ./configure
+% make
+
+ファイルがないらしくエラーしている.
+
+https://github.com/breadwallet/nettle/blob/master
+
+で
+
+ecc-192.c
+
+をダウンロードした.
+
+% make
+...
+./eccdata 192 7 6 32 > ecc-192.hT && mv ecc-192.hT ecc-192.h
+No known curve for size 192
+%
+
+https://github.com/breadwallet/nettle/blob/master
+
+で
+
+eccdata.c
+
+をダウンロードして, 現在あるファイルに上書きした.
+
+% make
+
+ファイルがないらしくエラーしている.
+
+https://github.com/breadwallet/nettle/blob/master
+
+で
+
+ecc-224.c
+
+をダウンロードした.
+
+% make
+% sudo make install

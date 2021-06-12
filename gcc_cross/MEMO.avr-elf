@@ -1,3 +1,5 @@
+avr-elf
+
 gcc-10.2.0 のインストールで何やら同じようなビルドを繰り返して
 かなりのディスクと時間を消費する.
 
@@ -7,7 +9,8 @@ newlib-4.1.0 ではどうも意図的に libc.a libm.a のビルドを
 通常の通りの hello world 確認プログラムはビルドできない.
 
 % avr-elf-gcc -g -c a.c -o a.o
-% /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/libexec/gcc/avr-elf/10.2.0/collect2 -plugin /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/libexec/gcc/avr-elf/10.2.0/liblto_plugin.so "-plugin-opt=/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/libexec/gcc/avr-elf/10.2.0/lto-wrapper" "-plugin-opt=-fresolution=/tmp/cc0IVNdf.res" "-plugin-opt=-pass-through=-lgcc"  -o a.elf -L/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/avr-elf/10.2.0 -L/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/avr-elf/10.2.0/../../../../avr-elf/lib a.o --start-group -lgcc --end-group
+avr-elf-gcc -g -c a.c
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/libexec/gcc/avr-elf/10.2.0/collect2 -plugin /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/libexec/gcc/avr-elf/10.2.0/liblto_plugin.so "-plugin-opt=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/libexec/gcc/avr-elf/10.2.0/lto-wrapper" "-plugin-opt=-fresolution=/tmp/ccWIzdK7.res" "-plugin-opt=-pass-through=-lgcc" -o a.elf -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/avr-elf/10.2.0 -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/avr-elf/10.2.0/../../../../avr-elf/lib a.o --start-group -lgcc --end-group
 % cat a.x
 target sim
 load
@@ -42,15 +45,3 @@ A debugging session is active.
 
 Quit anyway? (y or n) [answered Y; input not from terminal]
 %
-
-
-
-
- 
- 
-
-
-
-
-
-
