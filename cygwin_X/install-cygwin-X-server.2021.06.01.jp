@@ -1,5 +1,17 @@
 cygwin での X server のインストール
 
+(*1) X server のダウンロードと ./configure の実行
+(*2) openssl のインストール
+(*3) cygwin X server ビルド再開
+(*4) xkbfile のインストール
+(*5) xfont のインストール
+(*6) fontenc のインストール
+(*7) xfont のインストール再開
+(*8) cygwin X server ビルド再開(2)
+(*9) 動作確認
+
+(*1) X server のダウンロードと ./configure の実行
+
 % cd
 % wget -q https://www.x.org/releases/X11R7.7/src/everything/xorg-server-1.12.2.tar.gz 
 % gunzip -c xorg-server-1.12.2.tar.gz  | tar xf -
@@ -10,6 +22,8 @@ checking for SHA1 implementation... configure: error: No suitable SHA1 implement
 
 config.log を確認したところ openssl のパッケージがないというエラーで上のメッセージ
 が出ていることに気付いた.
+
+(*2) openssl のインストール
 
 % cd
 % wget -q http://cygwin.mirror.constant.com/x86_64/release/openssl/openssl-1.1.1f-1-src.tar.xz
@@ -99,7 +113,7 @@ Makefile から該当のテストプログラムをビルドしないように削除した.
 % make
 % make install
 
-再び X sever のビルドを再開
+(*3) cygwin X server ビルド再開
 
 % cd ~/xorg-server-1.12.2/
 % ./configure
@@ -112,7 +126,7 @@ Package 'xfont', required by 'virtual:world', not found
 
 一応 openssl の部分は回避できたらしい.
 
-xkbfile のインストール
+(*4) xkbfile のインストール
 
 % cd
 % wget -q https://www.x.org/releases/X11R7.7/src/everything/libxkbfile-1.0.8.tar.bz2
@@ -122,7 +136,7 @@ xkbfile のインストール
 % make
 % make install
 
-xfont のインストール
+(*5) xfont のインストール
 
 % cd
 % wget -q https://www.x.org/releases/X11R7.7/src/everything/libXfont-1.4.5.tar.bz2
@@ -136,7 +150,7 @@ Package 'fontenc', required by 'virtual:world', not found
 
 %
 
-fontenc のインストール
+(*6) fontenc のインストール
 
 % cd
 % wget -q https://www.x.org/releases/X11R7.7/src/everything/libfontenc-1.1.1.tar.bz2
@@ -146,7 +160,7 @@ fontenc のインストール
 % make
 % make install
 
-再び xfont のインストール
+(*7) xfont のインストール再開
 
 % cd ~/libXfont-1.4.5
 % ./configure
@@ -217,7 +231,7 @@ FindCachedFontPattern (FontPatternCachePtr cache,
 % make
 % maek install
 
-再び X server のビルド再開
+(*8) cygwin X server ビルド再開(2)
 
 % cd ~/xorg-server-1.12.2/
 % ./configure
@@ -378,7 +392,7 @@ $macro $def Status "/usr/include/X11/Xwindows.h" 78 ;
 
 #define Status int
 
-である. Status が　int に変換される原因は判明したの.
+である. Status が　int に変換される原因は判明したので
 
 ../../../hw/xwin/ddraw.h
 
@@ -605,7 +619,7 @@ const GUID  IID_IDirectDraw4 ;
 /usr/local/bin/cygXmuu-1.dll
 %
 
-動作確認
+(*9) 動作確認
 
 % which startx
 /usr/local/bin/startx
@@ -940,10 +954,3 @@ xinit: giving up
 xinit: unable to connect to X server: Connection refused
 xinit: server error
 %
-
-/usr/bin/xinit /usr/etc/
-
-/usr/bin/xinit xterm -- /usr/bin/X :0
-
-のようにしてみたがやはり linux マシンから xeyes でウィンドウを開くことはできなかった.
-

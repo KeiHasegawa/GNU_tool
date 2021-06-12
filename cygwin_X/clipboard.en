@@ -1,35 +1,25 @@
-クリップボード
+Clipboard
 
-cygwin の X サーバーが動作するようになって不便になったことが IME の
-問題でそれは「emacs についての覚書」の「半角全角キー」と「SKK」で
-一応解決している.
+I could paste before by Alt+V at TeraTerm. But now I don't know
+the way of pasting.
 
-その次がクリップボードの問題である.
+X server is a program of Windows, so if this supports clipboard,
+users can copy and paste. If not, must fix XWin.exe for copying and pasting.
 
-以前は TeraTerm で「Alt+V」=「貼り付け」ということができていた. 今はそれができていない.
-というよりやり方が不明なのだ.
 
-X サーバーも Windows のプログラムなのだから, これ自体がクリップボード
-をサポートしていればできるのだろう. していないのなら XWin.exe を改造する必要が
-あるということだ.
+Copy at emacs@Windows
+Paste emacs@linux which is displayed at X server
 
-Windows で動作するアプリ, 例えば emacs でコピーする
-linux で動作するアプリ, 例えば emacs にペーストする.
-       その emacs は Windows 上の X server で動作している
-
-ということやこの逆をやってみたいが, さて困った.
-
-とりあえず linux マシンで ftp サーバが動作しているから
+Anyway, ftp server works at linux machine. So two simple command
+were created:
 
 my_put
 
-としたら Windows マシンの ~/clip が linxu マシンの ~/clip にコピーできるように
-した.
+execution copies ~/clip@Windows into ~/clip@linux. Similary
 
 my_get
 
-としたら linux マシンの ~/clip が Windows マシンの ~/clip にコピーできるように
-した.
+execution copies ~/clip@linux into ~/clip@Windows
 
-これはシンプルだがとりあえず動作している.
+It's very simple but works well.
 
