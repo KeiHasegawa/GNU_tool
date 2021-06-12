@@ -43,3 +43,19 @@ ecc-224.c
 
 % make
 % sudo make install
+
+この後, 実際にこのライブラリをリンクしたときに以下の函数が定義されていなかったので
+それぞれのファイルの最後に以下を追加した:
+
+ecc-192.c:
+const struct ecc_curve* nettle_get_secp_192r1(void)
+{
+  return &nettle_secp_192r1;
+}
+
+
+ecc-224.c:
+const struct ecc_curve* nettle_get_secp_224r1(void)
+{
+  return &nettle_secp_224r1;
+}
