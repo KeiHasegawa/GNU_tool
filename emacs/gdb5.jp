@@ -1,0 +1,35 @@
+gdb のデバッグをしていて気付いたことがある.
+
+ブレークポイントにヒットしたタイミングで, emacs がソースファイルを表示しようと
+したタイミングで
+
+*Local Variables*
+
+というバッファが表示される. このバッファは以下のようになっている:
+
+---------------------------------------------------------------------
+1The local variables list in /home/khasegawa/gdb-10.2/gdb/
+contains values that may not be safe (*)
+
+Do you want to apply it? You can type
+y -- to apply the local variables list.
+n -- to ignore the local variables list.
+! -- to apply the local variables list, and parmanently maek these
+     values (*) as safe(in the future, they will be set automatically.)
+
+     bug-reference-url-format : "http://sourceware.org/bugzilla/show_bug.cgi?id=%s"
+     c-file-style : "GNU"
+     mode : c++
+     indent-tab-mode : t
+     tab-widht : 8
+     c-basic-offset : 2
+   * eval : (c-set-offset 'innamespace 0)
+---------------------------------------------------------------------
+
+しかもこのバッファに移動しても内容をコピーできないようになっている.
+しょうがないので上は別に emacs を起動して手で書きとめた.
+
+さてこれは一体どういうことなのだろう.
+とりあえず ! を押して安全だということを emacs に伝えた.
+そうすると, 何かを ~/.emacs に書き込んだように思えた.
+
