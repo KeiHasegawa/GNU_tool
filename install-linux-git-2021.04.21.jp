@@ -9,6 +9,7 @@ linux での git 2.31.1 インストールメモ
 (*7) git のビルドその 3
 (*8) 動作確認 => エラー
 (*9) エラーの箇所を追跡してみた
+(*10) stack overflow でこのエラーを扱っていた
 
 (*1) git のダウンロード
 % cd
@@ -204,3 +205,143 @@ git: 'remote-https' is not a git command. See 'git --help'.
 止めたりすると違う現象を再現しているのかもしれない.
 
 
+(*10) stack overflow でこのエラーを扱っていた
+
+libcurl をインストールすることで回避したという話がある.
+
+% wget -q https://curl.se/download/curl-7.77.0.tar.xz
+% xz -d -c curl-7.77.0.tar.xz | tar xf -
+% cd curl-7.77.0
+% ./configure
+...
+configure: error: select TLS backend(s) or disable TLS with --without-ssl.
+
+Select from these:
+
+  --with-amissl
+  --with-bearssl
+  --with-gnutls
+  --with-mbedtls
+  --with-mesalink
+  --with-nss
+  --with-openssl (also works for BoringSSL and libressl)
+  --with-rustls
+  --with-schannel
+  --with-secure-transport
+  --with-wolfssl
+% ./configure --with-gnutls
+% make
+% make install
+
+% git-2.31.1-1.src/git-v2.31.1
+
+configure を確認すると以下のコメントを発見した:
+
+#
+# Define NO_CURL if you do not have libcurl installed.  git-http-pull and
+# git-http-push are not built, and you cannot use http:// and https://
+# transports.
+
+なるほどというところなのか...つまり
+
+git pull
+
+=> git fetch ...
+
+=> コマンドがない
+
+というところらしい.
+
+% ./configure
+% make
+% sudo make install
+% ls -l /usr/local/bin/git
+
+インストールされていることを確認した.
+
+% cd ~/git_test
+% /usr/local/bin/git pull https://github.com/KeiHasegawa/GNU_tool
+fatal: unable to access 'https://github.com/KeiHasegawa/GNU_tool/': Failed sending HTTP request
+%
+
+メッセージは変ったが, まだエラーしている.
+
+
+% /usr/bin/git pull https://github.com/KeiHasegawa/GNU_tool
+
+むむ. これまで動作していた git pull も影響を受けているようだ.
+
+
+% cat y
+setenv LD_LIBRARY_PATH /usr/lib
+/usr/bin/git pull https://github.com/KeiHasegawa/GNU_tool
+% csh -vf y
+setenv LD_LIBRARY_PATH /usr/lib
+/usr/bin/git pull https://github.com/KeiHasegawa/GNU_tool
+From https://github.com/KeiHasegawa/GNU_tool
+ * branch            HEAD       -> FETCH_HEAD
+Already up-to-date.
+%
+
+なるほどこうすれば回避できている.
+
+% cat y
+setenv LD_LIBRARY_PATH /usr/lib
+/usr/local/bin/git pull https://github.com/KeiHasegawa/GNU_tool
+% csh -vf y
+setenv LD_LIBRARY_PATH /usr/lib
+/usr/local/bin/git pull https://github.com/KeiHasegawa/GNU_tool
+From https://github.com/KeiHasegawa/GNU_tool
+ * branch            HEAD       -> FETCH_HEAD
+Already up-to-date.
+%
+
+これもできている. ということは, libcurl のビルドに問題があったのだろう
+か.
+
+libcurl のビルドを見直してみた:
+
+  Host setup:       i686-pc-linux-gnu
+  Install prefix:   /usr/local
+  Compiler:         gcc
+   CFLAGS:          -Werror-implicit-function-declaration -O2 -Wno-system-headers -Wenum-conversion -pthread
+   CPPFLAGS:        -isystem /usr/local/include -isystem /usr/local/include -isystem /usr/local/include/p11-kit-1
+   LDFLAGS:         -L/usr/local/lib -L/usr/local/lib
+   LIBS:            -lpsl -lnettle -lgnutls -lzstd -lz -lrt
+
+  curl version:     7.77.0
+  SSL:              enabled (GnuTLS)
+  SSH:              no      (--with-{libssh,libssh2})
+  zlib:             enabled
+  brotli:           no      (--with-brotli)
+  zstd:             enabled (libzstd)
+  GSS-API:          no      (--with-gssapi)
+  GSASL:            no      (libgsasl not found)
+  TLS-SRP:          enabled
+  resolver:         POSIX threaded
+  IPv6:             enabled
+  Unix sockets:     enabled
+  IDN:              no      (--with-{libidn2,winidn})
+  Build libcurl:    Shared=yes, Static=yes
+  Built-in manual:  enabled
+  --libcurl option: enabled (--disable-libcurl-option)
+  Verbose errors:   enabled (--disable-verbose)
+  Code coverage:    disabled
+  SSPI:             no      (--enable-sspi)
+  ca cert bundle:   /etc/pki/tls/certs/ca-bundle.crt
+  ca cert path:     no
+  ca fallback:      no
+  LDAP:             no      (--enable-ldap / --with-ldap-lib / --with-lber-lib)
+  LDAPS:            no      (--enable-ldaps)
+  RTSP:             enabled
+  RTMP:             no      (--with-librtmp)
+  Metalink:         no      (--with-libmetalink)
+  PSL:              enabled
+  Alt-svc:          enabled (--disable-alt-svc)
+  HSTS:             enabled (--disable-hsts)
+  HTTP1:            enabled (internal)
+  HTTP2:            no      (--with-nghttp2, --with-hyper)
+  HTTP3:            no      (--with-ngtcp2, --with-quiche)
+  ECH:              no      (--enable-ech)
+  Protocols:        DICT FILE FTP FTPS GOPHER GOPHERS HTTP HTTPS IMAP IMAPS MQTT POP3 POP3S RTSP SMB SMBS SMTP SMTPS TELNET TFTP
+  Features:         AsynchDNS HSTS HTTPS-proxy IPv6 Largefile NTLM NTLM_WB PSL SSL TLS-SRP UnixSockets alt-svc libz zstd
