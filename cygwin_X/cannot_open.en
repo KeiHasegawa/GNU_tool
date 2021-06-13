@@ -1,0 +1,49 @@
+Case that linux X program cannot open display
+
+cygwin X server terminated abnormally by something operation.
+So I restarted X server, and I noticed that linux X program
+could not open display.
+
+I tried to start simple echo server, and I judged that this simple
+echo server did not work.
+
+As described at "X server fix", I restarted unstable Windows.
+But at this time, just about 1 hour after the last Windows restart.
+
+I thoght Wiindows did something so that some servers were restricted
+to TCP/IP connection.
+
+Restarting Windows is easy, but it's not convinient.
+
+2021/06/13
+
+linux % git push
+
+Above command terminated cygwin X server. Maybe displaying a dialog-box
+was direct reason.
+
+And I noticed that the simple echo server did not work.
+Then I renamed this simple echo server, and executed it.
+Immediately, the common dialog-box was displayed:
+--------------------------------------------------------------------------
+Windows Security Warning
+
+...
+--------------------------------------------------------------------------
+Then I pressed "Permit" button.
+
+I confirmed that this simple echo server worked well by executing
+client program at linux machine.
+
+Next, I also ran the simple echo server which was not renamed.
+And I confrimed that it did not work.
+
+That was:
+
+% cp ~/xorg-server-1.12.2/hw/xwin/XWin.exe ~/xorg-server-1.12.2/hw/xwin/XWin2.exe
+% xinit /usr/local/etc/X11/xinit/xinitrc -- ~/xorg-server-1.12.2/hw/xwin/XWin2.exe :0 &
+
+As above, I ran renamed X server. And confirmed that linux X program
+could open display to cygwin X server.
+
+

@@ -1,0 +1,51 @@
+nettle 3.4.1 install
+
+% xz -d -c nettle-3.4.1-hobbled.tar.xz | tar xf -
+% cd nettle-3.4.1
+% ./configure
+% make
+
+Error occured becase of `ecc-192.c' did not exist.
+
+I downloaed it form
+
+https://github.com/breadwallet/nettle/blob/master
+
+% make
+...
+./eccdata 192 7 6 32 > ecc-192.hT && mv ecc-192.hT ecc-192.h
+No known curve for size 192
+%
+
+Again I downloaded `eccdata.c' from
+
+https://github.com/breadwallet/nettle/blob/master
+
+and overwrite it.
+
+% make
+
+Error occured becase of `ecc-224.c' did not exist.
+
+I downloaed it form
+
+https://github.com/breadwallet/nettle/blob/master
+
+% make
+% sudo make install
+
+After this install, link error occured at gnutls-3.6.9-1 install.
+Then I added like below:
+
+ecc-192.c:
+const struct ecc_curve* nettle_get_secp_192r1(void)
+{
+  return &nettle_secp_192r1;
+}
+
+
+ecc-224.c:
+const struct ecc_curve* nettle_get_secp_224r1(void)
+{
+  return &nettle_secp_224r1;
+}
