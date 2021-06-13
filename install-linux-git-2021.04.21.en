@@ -8,6 +8,8 @@ linux git 2.31.1 install memo
 (*6) Download gettext, build and install
 (*7) Build git (Part 3)
 (*8) Validation => Error
+(*9) Refer to stack overflow
+
 
 (*1) Download git
 % cd
@@ -136,3 +138,151 @@ I still cannot resolve this problem.
 % /usr/bin/git push
 
 OK. Normally done.
+
+(*9) Refer to stack overflow
+
+To get rid of (*8) error, install libcurl.
+
+I installed libcurl like below:
+
+% wget -q https://curl.se/download/curl-7.77.0.tar.xz
+% xz -d -c curl-7.77.0.tar.xz | tar xf -
+% cd curl-7.77.0
+% ./configure
+...
+configure: error: select TLS backend(s) or disable TLS with --without-ssl.
+
+Select from these:
+
+  --with-amissl
+  --with-bearssl
+  --with-gnutls
+  --with-mbedtls
+  --with-mesalink
+  --with-nss
+  --with-openssl (also works for BoringSSL and libressl)
+  --with-rustls
+  --with-schannel
+  --with-secure-transport
+  --with-wolfssl
+% ./configure --with-gnutls
+% make
+% make install
+
+Again
+
+% cd ~/git-2.31.1-1.src/git-v2.31.1
+% ./configure
+% make
+% sudo make install
+% ls -l /usr/local/bin/git
+
+I confirmed that it was installed at that time.
+
+% cd ~/git_test
+% /usr/local/bin/git pull https://github.com/KeiHasegawa/GNU_tool
+fatal: unable to access 'https://github.com/KeiHasegawa/GNU_tool/': Failed sending HTTP request
+%
+
+Message was changed but still error occured.
+
+% /usr/bin/git pull https://github.com/KeiHasegawa/GNU_tool
+
+above execution did not work, where /usr/bin/git had worked well
+before libcurl install.
+
+% cat y
+setenv LD_LIBRARY_PATH /usr/lib
+/usr/bin/git pull https://github.com/KeiHasegawa/GNU_tool
+% csh -vf y
+setenv LD_LIBRARY_PATH /usr/lib
+/usr/bin/git pull https://github.com/KeiHasegawa/GNU_tool
+From https://github.com/KeiHasegawa/GNU_tool
+ * branch            HEAD       -> FETCH_HEAD
+Already up-to-date.
+%
+
+OK. I could get rid of this error.
+
+% cat y
+setenv LD_LIBRARY_PATH /usr/lib
+/usr/local/bin/git pull https://github.com/KeiHasegawa/GNU_tool
+% csh -vf y
+setenv LD_LIBRARY_PATH /usr/lib
+/usr/local/bin/git pull https://github.com/KeiHasegawa/GNU_tool
+From https://github.com/KeiHasegawa/GNU_tool
+ * branch            HEAD       -> FETCH_HEAD
+Already up-to-date.
+%
+
+And this was OK. I guessed that there was some problemn with libcurl build.
+
+libcurl configure result were:
+
+  Host setup:       i686-pc-linux-gnu
+  Install prefix:   /usr/local
+  Compiler:         gcc
+   CFLAGS:          -Werror-implicit-function-declaration -O2 -Wno-system-headers -Wenum-conversion -pthread
+   CPPFLAGS:        -isystem /usr/local/include -isystem /usr/local/include -isystem /usr/local/include/p11-kit-1
+   LDFLAGS:         -L/usr/local/lib -L/usr/local/lib
+   LIBS:            -lpsl -lnettle -lgnutls -lzstd -lz -lrt
+
+  curl version:     7.77.0
+  SSL:              enabled (GnuTLS)
+  SSH:              no      (--with-{libssh,libssh2})
+  zlib:             enabled
+  brotli:           no      (--with-brotli)
+  zstd:             enabled (libzstd)
+  GSS-API:          no      (--with-gssapi)
+  GSASL:            no      (libgsasl not found)
+  TLS-SRP:          enabled
+  resolver:         POSIX threaded
+  IPv6:             enabled
+  Unix sockets:     enabled
+  IDN:              no      (--with-{libidn2,winidn})
+  Build libcurl:    Shared=yes, Static=yes
+  Built-in manual:  enabled
+  --libcurl option: enabled (--disable-libcurl-option)
+  Verbose errors:   enabled (--disable-verbose)
+  Code coverage:    disabled
+  SSPI:             no      (--enable-sspi)
+  ca cert bundle:   /etc/pki/tls/certs/ca-bundle.crt
+  ca cert path:     no
+  ca fallback:      no
+  LDAP:             no      (--enable-ldap / --with-ldap-lib / --with-lber-lib)
+  LDAPS:            no      (--enable-ldaps)
+  RTSP:             enabled
+  RTMP:             no      (--with-librtmp)
+  Metalink:         no      (--with-libmetalink)
+  PSL:              enabled
+  Alt-svc:          enabled (--disable-alt-svc)
+  HSTS:             enabled (--disable-hsts)
+  HTTP1:            enabled (internal)
+  HTTP2:            no      (--with-nghttp2, --with-hyper)
+  HTTP3:            no      (--with-ngtcp2, --with-quiche)
+  ECH:              no      (--enable-ech)
+  Protocols:        DICT FILE FTP FTPS GOPHER GOPHERS HTTP HTTPS IMAP IMAPS MQTT POP3 POP3S RTSP SMB SMBS SMTP SMTPS TELNET TFTP
+  Features:         AsynchDNS HSTS HTTPS-proxy IPv6 Largefile NTLM NTLM_WB PSL SSL TLS-SRP UnixSockets alt-svc libz zstd
+
+I had no idea. But anyway, it was clear that libcurl installed newly
+did not work well. I did like below:
+
+% sudo rm /usr/local/lib/libcurl*
+
+There were /usr/lib/libcurl* which worked well. So it's OK.
+
+At the first place, I just wanted to know the way of omit username and
+password when I execute `git push'.
+
+And below works well:
+
+% git config --global credential.helper cache
+
+15 minute avairable by default.
+
+1 hour avairable:
+
+% git config --global credential.helper 'cache --timeout=3600'
+
+
+
