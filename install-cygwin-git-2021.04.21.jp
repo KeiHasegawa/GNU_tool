@@ -5,7 +5,7 @@ cygwin での git 2.31.1 インストールメモ
 (*3) gettext のインストール確認
 (*4) git の展開とビルド
 (*5) 動作確認 => エラー
-
+(*6) どの curl ライブラリを参照しているか
 
 (*1) autoconf インストール確認
 % ls -l /usr/bin/autoconf
@@ -89,3 +89,21 @@ To https://github.com/KeiHasegawa/GNU_tool.git
 
 「linux での git 2.31.1 インストールメモ」に上のコマンドのエラーの
 回避方法が完全な形ではないが書いている.
+
+(*6) どの curl ライブラリを参照しているか
+
+% which git
+git: 	 aliased to d:/Program\ Files/Git/bin/git.exe
+% git --version
+git version 2.19.1.windows.1
+% find d:/Program\ Files/Git/ -name '*.dll'
+...
+d:/Program Files/Git/mingw64/bin/libcurl-4.dll
+...
+d:/Program Files/Git/mingw64/libexec/git-core/libcurl-4.dll
+...
+% ls /usr/include/*curl*
+ls: No match.
+% ls /usr/local/include/*curl*
+ls: No match.
+%
