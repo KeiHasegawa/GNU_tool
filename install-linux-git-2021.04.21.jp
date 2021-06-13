@@ -10,6 +10,7 @@ linux での git 2.31.1 インストールメモ
 (*8) 動作確認 => エラー
 (*9) エラーの箇所を追跡してみた
 (*10) stack overflow でこのエラーを扱っていた
+(*11) パスワード
 
 (*1) git のダウンロード
 % cd
@@ -352,7 +353,9 @@ libcurl のビルドを見直してみた:
 
 としておいた. /usr/lib/libcurl* があるから一応大丈夫らしい.
 
-以下のようにすれば git push の度にユーザー名とパスワードを入力しなくて済むようになるらしい:
+(*11) パスワード
+以下のようにすれば git push の度にユーザー名とパスワードを入力しなくて済むようになる
+らしい:
 
 % git config --global credential.helper cache
 
@@ -362,4 +365,3 @@ libcurl のビルドを見直してみた:
 % git config --global credential.helper 'cache --timeout=3600'
 
 のようにするらしい.
-
