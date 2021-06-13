@@ -5,6 +5,8 @@ cygwin git 2.31.1 install memo
 (*3) gettext installation confirmed
 (*4) git build
 (*5) Validation => Error
+(*6) Which curl library is refered?
+
 
 (*1) autoconf installation confirmed
 % ls -l /usr/bin/autoconf
@@ -76,3 +78,24 @@ To https://github.com/KeiHasegawa/GNU_tool.git
 %
 
 OK if use orignal git.
+
+Refer to "linux git 2.31.1 install memo". The way of getting rid of
+above error is descriebed there even though it's not complete.
+
+(*6) Which curl library is refered?
+
+% which git
+git: 	 aliased to d:/Program\ Files/Git/bin/git.exe
+% git --version
+git version 2.19.1.windows.1
+% find d:/Program\ Files/Git/ -name '*.dll'
+...
+d:/Program Files/Git/mingw64/bin/libcurl-4.dll
+...
+d:/Program Files/Git/mingw64/libexec/git-core/libcurl-4.dll
+...
+% ls /usr/include/*curl*
+ls: No match.
+% ls /usr/local/include/*curl*
+ls: No match.
+%
