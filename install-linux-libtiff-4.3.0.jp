@@ -1,0 +1,37 @@
+libtiff-4.3.0 のインストール
+
+% xz -d -c tiff-4.3.0-1-src.tar.xz | tar xf -
+% cd tiff-4.3.0-1.src
+% bunzip2 -c libtiff-v4.3.0.tar.bz2 | tar xf -
+% cd libtiff-v4.3.0
+% ./autogen.sh 
+% ./configure
+
+Makefile.in がなくてエラー
+
+% touch Makefile.in
+% ./configure
+
+test/Makefile.in がなくてエラー
+
+% touch test/Makefile.in
+% ./configure
+
+tools/Makefile.in がなくてエラー
+
+% touch tools/Makefile.in
+% ./configure
+
+% cd libtiff
+% make
+...
+
+../port/libport.la を事前にビルドする必要があったらしい.
+
+% cd ../port
+% make
+
+% cd ../libtiff
+% make
+% su
+% make install
