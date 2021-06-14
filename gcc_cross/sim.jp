@@ -133,6 +133,29 @@ sim_load (SIM_DESC sd, const char *prog, bfd *abfd, int from_tty)
 
 (*3) run コマンド
 
-このへんで気付くが, gdb をデバッグしていると linux がハングアップする.
-X ウィンドウの emacs でなくても TeraTerm から実行した場合でも
-再現している.
+target sim や load コマンドと同様に解析をすると以下の函数に辿り着くだろう:
+
+gdb-10.2/sim/h8300/compile.c:5002
+
+SIM_RC
+sim_create_inferior (SIM_DESC sd, struct bfd *abfd,
+		     char * const *argv, char * const *env)
+{
+
+この函数ではプログラムカウンタをセットしているだけである.
+
+inferior
+主な意味  (位置・階級が)下位の、下級の、低い、下位で、下級で、(質・程度などが)劣った、下等の、  
+   劣等の、二流品の、劣って  
+
+実際命令を実行し始めるのは, 以下の函数となる:
+
+gdb-10.2/sim/h8300/compile.c:4523
+
+void
+sim_engine_run (SIM_DESC sd,
+		int next_cpu_nr,  /* ignore  */
+		int nr_cpus,      /* ignore  */
+		int siggnal)
+{
+
