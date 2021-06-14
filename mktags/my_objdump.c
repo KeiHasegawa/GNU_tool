@@ -5071,6 +5071,8 @@ display_any_bfd (bfd *file, int level)
   /* If the file is an archive, process all of its elements.  */
   if (bfd_check_format (file, bfd_archive))
     {
+      extern void notify_archive();
+      notify_archive();
       bfd *arfile = NULL;
       bfd *last_arfile = NULL;
 

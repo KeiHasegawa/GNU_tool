@@ -313,9 +313,24 @@ namespace debug_macro_impl {
   using namespace std;
   vector<int> filenos;
   map<unsigned int, int> import;
+  string current_file;
   int current_off;
-  map<int, vector<cont_t> > info;
+  map<string, map<int, vector<cont_t> > > info;
+  bool is_archive;
 } // end of namespace debug_macro_impl
+
+extern "C"
+void notify_archive()
+{
+  debug_macro_impl::is_archive = true;
+}
+
+extern "C"
+void set_file(const char* fn)
+{
+  if (debug_macro_impl::is_archive)
+    debug_macro_impl::current_file = fn;  
+}
 
 extern "C"
 void set_line_offset(unsigned long offset)
@@ -365,7 +380,8 @@ void macro_define(unsigned int lineno, const unsigned char* s,
   if (!filenos.empty()) {
     int fileno = filenos.back();
     cont_t tmp = { name, (enum dwarf_tag)0, fileno, (int)lineno };
-    info[current_off].push_back(tmp);
+    auto& v = info[current_file][current_off];
+    v.push_back(tmp);
     return;
   }
 
@@ -373,7 +389,8 @@ void macro_define(unsigned int lineno, const unsigned char* s,
   assert(p != end(import));
   auto fileno = p->second;
   cont_t tmp = { name, (enum dwarf_tag)0, fileno, (int)lineno };
-  info[current_off].push_back(tmp);
+  auto& v = info[current_file][current_off];
+  v.push_back(tmp);
 }
 
 namespace table {
@@ -678,64 +695,64 @@ namespace table {
     for (const auto& x : files)
       create_if(x, comp_dir, y, abs_path_form, exclude, res, extra);
   }
-  struct create_t {
-    bool abs_path_form;
-    const set<string>& exclude;
-    result_t& res;
-    map<const cont_t*, string>& extra;
-    const map<int, vector<cont_t> >& z;
-    create_t(bool a, const set<string>& s, result_t& r,
-	     map<const cont_t*, string>& m,
-	     const map<int, vector<cont_t> >& zz) : abs_path_form{a},
-      exclude{s}, res{r}, extra{m}, z{zz} {}
-    bool operator()(const debug_info_impl::info_t& x,
-		    const debug_line_impl::info_t& y)
-    {
-      create(x, y, abs_path_form, exclude, res, extra);
-      auto line_offset= y.offset;
-      auto p = z.find(line_offset);
-      if (p != end(z)) {
-	const auto& contents = p->second;
-	const auto comp_dir = x.comp_dir;
-	create(contents, comp_dir, y, abs_path_form, exclude, res, extra);
-      }
+  inline bool match2(const pair<string, map<int, vector<cont_t> > >& p,
+		     string compile_unit)
+  {
+    auto obj = p.first;
+    if (obj.empty())
       return true;
+    auto pos = obj.find_last_of('.');
+    auto x = obj.substr(0,pos);
+    auto pos2 = compile_unit.find_last_of('.');
+    auto y = compile_unit.substr(0, pos2);
+    return x == y;
+  }
+  inline void create(const debug_info_impl::info_t& x,
+		     const debug_line_impl::info_t& y,
+		     const map<string, map<int, vector<cont_t> > >& z,
+		     bool abs_path_form,
+		     const set<string>& exclude,
+		     result_t& res,
+		     map<const cont_t*, string>& extra)
+  {
+    create(x, y, abs_path_form, exclude, res, extra);
+    auto cu = x.compile_unit;
+    auto p = find_if(begin(z), end(z),
+		     [cu](const pair<string, map<int, vector<cont_t> > >& p)
+		     { return match2(p, cu); });
+    if (p == end(z))
+      return;
+    auto line_offset= y.offset;
+    const auto& m = p->second; 
+    auto q = m.find(line_offset);
+    if (q != end(m)) {
+      const auto& contents = q->second;
+      const auto comp_dir = x.comp_dir;
+      create(contents, comp_dir, y, abs_path_form, exclude, res, extra);
     }
-  };
-  struct create_if_t {
-    bool abs_path_form;
-    const set<string>& exclude;
-    result_t& res;
-    map<const cont_t*, string>& extra;
-    const map<int, vector<cont_t> >& z;
-    create_if_t(bool a, const set<string>& s, result_t& r,
-		map<const cont_t*, string>& m,
-		const map<int, vector<cont_t> >& zz) : abs_path_form{a},
-      exclude{s}, res{r}, extra{m}, z{zz} {}
-    bool operator()(const debug_info_impl::info_t& x,
-		    const debug_line_impl::info_t& y)
-    {
-      create_if(x, y, abs_path_form, exclude, res, extra);
-      return true;
-    }
-  };
+  }
   inline void create(const vector<debug_info_impl::info_t>& x,
 		     const vector<debug_line_impl::info_t>& y,
-		     const map<int, vector<cont_t> >& z,
+		     const map<string, map<int, vector<cont_t> > >& z,
 		     bool abs_path_form, const set<string>& exclude,
 		     result_t& res, map<const cont_t*, string>& extra,
 		     bool create_empty_file_entry)
   {
     assert(x.size() == y.size());
-    mismatch(begin(x), end(x), begin(y),
-	     create_t(abs_path_form, exclude, res, extra, z));
-    if (create_empty_file_entry)
-      mismatch(begin(x), end(x), begin(y),
-	       create_if_t(abs_path_form, exclude, res, extra, z));
+    auto p = begin(x);
+    auto q = begin(y);
+    for ( ; p != end(x) ; ++p, ++q)
+      create(*p, *q, z, abs_path_form, exclude, res, extra);
+    if (create_empty_file_entry) {
+      auto p = begin(x);
+      auto q = begin(y);
+      for ( ; p != end(x) ; ++p, ++q)
+	create_if(*p, *q, abs_path_form, exclude, res, extra);
+    }
   }
   typedef vector<debug_info_impl::info_t> X;
   typedef vector<debug_line_impl::info_t> Y;
-  typedef map<int, vector<cont_t> > Z;
+  typedef map<string, map<int, vector<cont_t> > > Z;
   vector<tuple<X,Y,Z> > saved;
   inline void create(bool abs_path_form, const set<string>& exclude,
 		     result_t& res, map<const cont_t*, string>& extra,
@@ -1020,7 +1037,7 @@ namespace for_emacs {
 } // end of namespace for_emacs
 
 extern "C" void
-display_file (char *filename, char *target, bfd_boolean last_file);
+display_file(char *filename, char *target, bfd_boolean last_file);
 
 extern "C"
 void notify_exec()
@@ -1109,20 +1126,38 @@ int main(int argc, char** argv)
 
 inline namespace {
 using namespace std;
+ostream* out = &cerr;
+
+void to_file(const char* fn)
+{
+  if (out != &cerr)
+    delete out;
+  out = new ofstream(fn);
+  if (!*out)
+    cerr << "Cannot open " << fn << '\n';
+}
+
+void to_cerr()
+{
+  if (out != &cerr)
+    delete out;
+  out = &cerr;
+}
+
 void debug(enum dwarf_tag dt)
 {
   switch (dt) {
-  case DW_TAG_padding: cerr << 'd'; break;
-  case DW_TAG_variable: cerr << 'v'; break;
-  case DW_TAG_subprogram: cerr << 'f'; break;
-  case DW_TAG_typedef: cerr << 't'; break;
-  case DW_TAG_structure_type: cerr << 's'; break;
-  case DW_TAG_union_type: cerr << 'u'; break;
-  case DW_TAG_member: cerr << 'm'; break;
-  case DW_TAG_namespace: cerr << 'N'; break;
-  case DW_TAG_class_type: cerr << 'c'; break; 
-  case DW_TAG_enumerator: cerr << 'e'; break;
-  case DW_TAG_enumeration_type: cerr << 'E'; break;
+  case DW_TAG_padding: *out << 'd'; break;
+  case DW_TAG_variable: *out << 'v'; break;
+  case DW_TAG_subprogram: *out << 'f'; break;
+  case DW_TAG_typedef: *out << 't'; break;
+  case DW_TAG_structure_type: *out << 's'; break;
+  case DW_TAG_union_type: *out << 'u'; break;
+  case DW_TAG_member: *out << 'm'; break;
+  case DW_TAG_namespace: *out << 'N'; break;
+  case DW_TAG_class_type: *out << 'c'; break; 
+  case DW_TAG_enumerator: *out << 'e'; break;
+  case DW_TAG_enumeration_type: *out << 'E'; break;
   default:
     break;
   }
@@ -1130,14 +1165,14 @@ void debug(enum dwarf_tag dt)
 	 
 void debug(const cont_t& x)
 {
-  cerr << '\t' << x.name << ',';
+  *out << '\t' << x.name << ',';
   debug(x.kind);
-  cerr << ',' << x.file << ',' << x.line << ',' << x.ext << endl;
+  *out << ',' << x.file << ',' << dec << x.line << ',' << x.ext << endl;
 }
 
 void debug(const debug_info_impl::info_t& x)
 {
-  cerr << x.compile_unit << ':' << x.comp_dir << endl;
+  *out << x.compile_unit << ':' << x.comp_dir << endl;
   for (const auto& y : x.contents)
     debug(y);
 }
@@ -1145,29 +1180,29 @@ void debug(const debug_info_impl::info_t& x)
 void debug(const vector<pair<string, int> >& files)
 {
   for (const auto& p : files)
-    cerr << "\t\t" << p.first << ':' << dec << p.second << endl;
+    *out << "\t\t" << p.first << ':' << dec << p.second << endl;
 }
 
 void debug(const vector<string>& dirs)
 {
-  cerr << "\t\t";
-  copy(begin(dirs), end(dirs), ostream_iterator<string>(cerr, "\n\t\t"));
+  *out << "\t\t";
+  copy(begin(dirs), end(dirs), ostream_iterator<string>(*out, "\n\t\t"));
 }
 
 void debug(const debug_line_impl::info_t& x)
 {
-  cerr << '\t' << "OFFSET :" << hex << "0x" << x.offset << endl;
+  *out << '\t' << "OFFSET :" << hex << "0x" << x.offset << endl;
   auto dirs = x.dirs;
-  cerr << '\t' << "Directory:" << endl;
+  *out << '\t' << "Directory:" << endl;
   debug(dirs);
-  cerr << '\b' << "Files:" << endl;
+  *out << '\b' << "Files:" << endl;
   debug(x.files);
 }
 
 void debug(const debug_line_impl::info_t* p)
 {
   if (!p) {
-    cerr << "(null)" << endl;
+    *out << "(null)" << endl;
     return;
   }
   debug(*p);
@@ -1181,7 +1216,7 @@ void debug(const vector<debug_line_impl::info_t>& v)
 
 void debug1()
 {
-  cerr << "debug_line_impl" << endl;
+  *out << "debug_line_impl" << endl;
   debug(debug_line_impl::info);
 }
 
@@ -1199,7 +1234,7 @@ void debug(const vector<debug_info_impl::info_t>& v)
 
 void debug2()
 {
-  cerr << "debug_info" << endl;
+  *out << "debug_info" << endl;
   debug(debug_info_impl::info);
 }
 
@@ -1213,22 +1248,24 @@ void debug(const map<int, vector<cont_t> >& m)
 {
   for (const auto& x : m) {
     auto line_offset = x.first;
-    cerr << "line offset : 0x" << hex << line_offset << endl;
+    *out << "line offset : 0x" << hex << line_offset << endl;
     for (const auto& c : x.second)
       debug(c);
   }
 }
 
-void debug3()
+void debug(const map<string, map<int, vector<cont_t> > >& m)
 {
-  cerr << "debug_macro_impl" << endl;
-  debug(debug_macro_impl::info);
+  for (const auto& x : m) {
+    *out << x.first << ':' << '\n';
+    debug(x.second);
+  }
 }
 
-void debug(const vector<map<int, vector<cont_t> > >& v)
+void debug3()
 {
-  for (const auto& x : v)
-    debug(x);
+  *out << "debug_macro_impl" << endl;
+  debug(debug_macro_impl::info);
 }
 
 void debug(const table::value_t& v)
@@ -1240,17 +1277,17 @@ void debug(const table::value_t& v)
 void debug(const table::result_t& tbl)
 {
   for (const auto& x : tbl) {
-    cerr << x.first << endl;
+    *out << x.first << endl;
     debug(x.second);
   }
 }
 
 void debug(const goal::tag_t& tag)
 {
-  cerr << tag.text << ':' << tag.name << ':';
-  cerr << dec << tag.line << ':'<<  tag.seek << ':';
+  *out << tag.text << ':' << tag.name << ':';
+  *out << dec << tag.line << ':'<<  tag.seek << ':';
   debug(tag.kind);
-  cerr << endl;
+  *out << endl;
 }
 
 void debug(const vector<goal::tag_t>& v)
@@ -1262,7 +1299,7 @@ void debug(const vector<goal::tag_t>& v)
 void debug(const map<string, vector<goal::tag_t> >& tags)
 {
   for (const auto& p : tags) {
-    cerr << p.first << endl;
+    *out << p.first << endl;
     debug(p.second);
   }
 }
@@ -1271,13 +1308,13 @@ void debug(const map<const cont_t*, string>& extra)
 {
   for (const auto& p : extra) {
     debug(*p.first);
-    cerr << p.second << endl;
+    *out << p.second << endl;
   }
 }
 
 void debug(const set<string>& s)
 {
-  copy(begin(s), end(s), ostream_iterator<string>(cerr, "\n"));
+  copy(begin(s), end(s), ostream_iterator<string>(*out, "\n"));
 }
 
 void debug(const vector<cont_t>& v)
@@ -1290,10 +1327,10 @@ void debug(const bfd_byte* ptr, size_t sz)
 {
   for (int i = 0 ; i != sz ; ++i) {
     if (i && !(i & 0xf))
-      cerr << '\n';
-    cerr << ' ' << setw(2) << setfill('0') << hex << int(ptr[i]);
+      *out << '\n';
+    *out << ' ' << setw(2) << setfill('0') << hex << int(ptr[i]);
   }
-  cerr << endl;
+  *out << endl;
 }
 
 } // end of inline namespace 

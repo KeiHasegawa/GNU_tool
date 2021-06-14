@@ -5925,6 +5925,8 @@ display_debug_macro (struct dwarf_section *section,
   load_debug_section_with_follow (str_index, file);
 
   introduce (section, FALSE);
+  extern void set_file(const char*);
+  set_file(section->filename);
 
   while (curr < end)
     {
