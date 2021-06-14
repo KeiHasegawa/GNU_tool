@@ -1,0 +1,14 @@
+#! /bin/csh -f
+
+set E_opt = '-E /cygdrive/d/home/khasegawa/gcc-10.1.0 -E /cygdrive/d/home/khasegawa/my_cygwin'
+
+gcc -g -c a.c -o a.o || exit 1
+gcc -g3 -c b.c -o b.o || exit 1
+gcc -g3 -c c.c -o c.o || exit 1
+ar r abc.a a.o b.o c.o || exit 1 
+../mktags.exe $E_opt abc.a || exit 1
+diff tags tags.exp.cygwin || exit 1
+../mktags.exe -e $E_opt abc.a || exit 1
+diff TAGS TAGS.e.cygwin || exit 1
+
+
