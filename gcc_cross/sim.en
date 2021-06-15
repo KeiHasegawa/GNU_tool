@@ -38,27 +38,22 @@ run
 quit
 
 1st command about prompt does not reflect on the log, but it enable us
-to distinguish
+to distinguish debugged gdb and debugging gdb.
 
-at 1st line
-1 つ目のプロンプトの設定はログに反映されていないが, デバッグされている gdb とデバッグ
-している gdb を区別する意味で入れている.
-
-gdb 起動時, コマンドの実行に先立って以下の函数が実行される:
+When gdb is executed, before executing command, below function is called:
 
 void
 initialize_all_files (void)
 {
-  _initialize_h8300_tdep ();   ここでターゲットシミュレータ固有の初期化をしているらしい.
+  _initialize_h8300_tdep ();   // Initialization depending on the target
 
-例えば:
+For example:
 
-      o ターゲットシミュレータがビッグエンディアンかリトルエンディアンか
-      o レジスタをいくつ持っているか
-      o PC のレジスタ番号はいくつか
-      o int, long が何バイトであるか
+      o Target is big endian or little endian
+      o How many and what registers exist.
+      o How many bytes for `int' or `long'
 
-などである.
+and so on.
 
 
 (*1) target sim コマンド
