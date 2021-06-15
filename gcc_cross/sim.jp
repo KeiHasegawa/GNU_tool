@@ -1,4 +1,4 @@
-ターゲットデバッガとしての gdb
+ターゲットシミュレータの構造
 
 M-x gdb
 (gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_h8300/
@@ -29,7 +29,8 @@ hello world
 [Inferior 1 (process 4307) exited normally]
 (gdb)
 
-期待通り動作していうる. ここで gdbcom は以下:
+期待通り動作している. ここで gdbcom は以下:
+
 set prompt (h8300-elf-gdb) 
 target sim
 load
@@ -45,6 +46,16 @@ void
 initialize_all_files (void)
 {
   _initialize_h8300_tdep ();   ここでターゲットシミュレータ固有の初期化をしているらしい.
+
+例えば:
+
+      o ターゲットシミュレータがビッグエンディアンかリトルエンディアンか
+      o レジスタをいくつ持っているか
+      o PC のレジスタ番号はいくつか
+      o int, long が何バイトであるか
+
+などである.
+
 
 (*1) target sim コマンド
 
@@ -161,4 +172,3 @@ sim_engine_run (SIM_DESC sd,
 gdb がメモリリークしているっぽいが, それを linux がエラーとしてあつかえていない
 のが問題なのだろうと思う.
 top コマンドや ps コマンドが役に立つと思う.
-
