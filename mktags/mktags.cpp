@@ -393,14 +393,46 @@ void macro_define(unsigned int lineno, const unsigned char* s,
   v.push_back(tmp);
 }
 
+inline bool abs_path(std::string dir)
+{
+  if (dir.empty())
+    return false;
+  if (dir[0] == '/')
+    return true;
+#ifdef __CYGWIN__
+  if (dir.length() < 3)
+    return false;
+  if (dir[1] != ':')
+    return false;
+  return dir[2] == '/';
+#else // __CYGWIN__
+  return false;
+#endif // __CYGWIN__
+}
+
 namespace table {
   using namespace std;
+#ifdef __CYGWIN__
+  string cygdrive_form(string dir)
+  {
+    if (dir[0] == '/')
+      return dir;
+    assert(dir.length() >= 3);
+    auto drive = dir[0];
+    assert(dir[1] == ':');
+    assert(dir[2] == '/');
+    return string("/cygdrive/") + drive + dir.substr(2);
+  }
+#endif  // __CYGWIN__
   map<string, string> cache;
   string get_rpath(string dir)
   {
     if (dir.empty())
       return dir;
-    assert(dir[0] == '/');
+    assert(abs_path(dir));
+#ifdef __CYGWIN__
+    dir = cygdrive_form(dir);
+#endif // __CYGWIN__ 
     auto p = cache.find(dir);
     if (p != end(cache))
       return p->second;
@@ -558,7 +590,7 @@ namespace table {
       }
       return;
     }
-    if (dir[0] != '/' && dir[0] != '.') {
+    if (!abs_path(dir) && dir[0] != '.') {
       auto df = not_redundant(dir + '/' + file);
       auto path = comp_dir + '/' + df;
       if (abs_path_form)
@@ -575,7 +607,7 @@ namespace table {
       }
       return;
     }
-    if (dir[0] == '/') {
+    if (abs_path(dir)) {
       string rpath = get_rpath(dir);
       if (rpath.empty()) {
 	res[file].push_back(&c);
@@ -589,7 +621,7 @@ namespace table {
     auto path = dir + '/' + file;
     path = not_redundant(path);
     res[path].push_back(&c);
-    if (path[0] != '/') {
+    if (!abs_path(path)) {
       auto apath = comp_dir + '/' + path;
       extra[&c] = apath;
     }
@@ -643,7 +675,7 @@ namespace table {
       return;
     if (dir == ".")
       return;
-    if (dir[0] == '/') {
+    if (abs_path(dir)) {
       auto rpath = get_rpath(dir);
       if (rpath.empty()) {
 	auto p = res.find(file);
@@ -660,7 +692,7 @@ namespace table {
       return;
     cont_t* tmp = new cont_t{ file, (enum dwarf_tag)0, 0, 1 };
     res[path].push_back(tmp);
-    if (path[0] != '/') {
+    if (!abs_path(path)) {
       auto apath = comp_dir + '/' + path;
       extra[tmp] = apath;
     }
@@ -784,17 +816,7 @@ namespace goal {
     char c = file[0];
     if (c == '.')
       return false;
-    if (c == '/')
-      return false;
-#ifdef __CYGWIN__
-    if (file.length() < 3)
-      return true;
-    if (file[1] != ':')
-      return true;
-    return file[2] != '/';
-#else // __CYGWIN__
-    return true;
-#endif // __CYGWIN__
+    return !abs_path(file);
   }
   inline void build(string file, const cont_t* pcont,
 		    const map<const cont_t*, string>& extra,
@@ -884,7 +906,7 @@ inline bool out_prefix(std::string prefix, std::string fn)
   using namespace std;
   if (prefix.empty())
     return false;
-  if (fn[0] != '/')
+  if (!abs_path(fn))
     return false;
   string s = "cygdrive";
   return fn.substr(1,s.length()) != s;
