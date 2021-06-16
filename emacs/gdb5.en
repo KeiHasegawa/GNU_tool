@@ -1,29 +1,28 @@
 M-x gdb(part 5)
 
-あるプログラムを gdb でデバッグしているとき, それとは別のプログラムを
-gdb でデバッグしたいことがある.
+While I am debugging some program, I want to debug another program.
+At 1 emacs process, execute gdb like below:
 
 M-x gdb
 
-のようにして 1 つの emacs で 2 つのプログラムを別々にデバッグしようとすると
-2 つ目の起動でミニバッファに以下が表示される:
+and 2nd execution causes the message into mini buffer:
 
 Multiple debugging requires restarting in text command mode
 
-このメッセージの意味はよく分からないが, おそらく自分がやりたことはできないといわ
-れているように思える.
+I'm not sure but it means that it is not possible to execute gdb as I
+expect.
 
-別々に emacs を起動してそれぞれから M-x gdb とすればよいのだが, これだと
-コピーペーストがうまくできなかったりする.
+If I execute emacs for each, and from for each emacs, I can execute gdb
+by M-x gdb. But it is not convinient to copy and paste between
+these `emacs's.
 
-しょうがないから, 例えば特定のファイルを介してコピーペーストを行なう方法が考えられる.
+There is no way to use specific file for copying and pasting between
+these `emacs's
 
-これとは異なり M-x shell として, *shell* バッファでコマンドを実行しているときに
-さらに
-
+On the other hand, execute shell by M-x shell, and then evluate
+below:
 
 (shell "*shell<2>*")
 
-のような式を評価すれば 1 つの emacs から別々の shell を起動できる. M-x gdb が
-できないのは何か理由があるのかもしれない. そもそも安定して動いていないからこれは
-高望みというところだろうか.
+Then we can execute shell apart. I guess that there are some reason
+not to multiply execute M-x gdb.
