@@ -1,30 +1,30 @@
-i386 のシミュレータ作成メモ
+i386 �̃V�~�����[�^�쐬����
 
-まずは h8300-elf で gdb をビルドする.
+�܂��� h8300-elf �� gdb ���r���h����.
 
-これで h8300-elf 用の gdb ができるが, 最後の gdb を生成するマンド
+����� h8300-elf �p�� gdb ���ł��邪, �Ō�� gdb �𐶐�����}���h
 
 g++  -g -O2     -pthread  \
 	-o gdb ... \
 	../sim/h8300/libsim.a \
 
-のようになっているのでこれを
+�̂悤�ɂȂ��Ă���̂ł����
 
 g++  -g -O2     -pthread  \
 	-o gdb ... \
 	-L../sim/i386 -lsim \
 
-のように変更する. そして ../sim/i386 ディレクトリを新規に作成して, そこに DLL
+�̂悤�ɕύX����. ������ ../sim/i386 �f�B���N�g����V�K�ɍ쐬����, ������ DLL
 
 libsim.so
 
-あるいは
+���邢��
 
 libsim.dll
 
-を作成しておく. これは最初意図的に空の DLL にしておく. そうすれば
-最後のリンクコマンドが undefined reference to `...' というエラーが出る.
-それが以下のシンボル:
+���쐬���Ă���. ����͍ŏ��Ӑ}�I�ɋ�� DLL �ɂ��Ă���. ���������
+�Ō�̃����N�R�}���h�� undefined reference to `...' �Ƃ����G���[���o��.
+���ꂪ�ȉ��̃V���{��:
 
 sim_open
 sim_close
@@ -43,43 +43,38 @@ sim_complete_command
 
 default_callback
 
-最後の default_callback 以外は函数で, default_callback は
-ある構造体の型の変数である.
+�Ō�� default_callback �ȊO�͔�����, default_callback ��
+����\���̂̌^�̕ϐ��ł���.
 
-まずはリンクを通すためにこれらのシンボルを
+�܂��̓����N��ʂ����߂ɂ����̃V���{����
 
 libsim.so
 
-あるいは
+���邢��
 
 libsim.dll
 
-に定義しておけばリンクだけは成功する.
-この新しい i386 用の gdb を起動するためには libsim.so あるいは libsim.dll を実行時
-ロードできるようにしておくようにする. これには環境変数をシステムに合わせて適切にセットする
-必要がある.
+�ɒ�`���Ă����΃����N�����͐�������.
+���̐V���� i386 �p�� gdb ���N�����邽�߂ɂ� libsim.so ���邢�� libsim.dll �����s��
+���[�h�ł���悤�ɂ��Ă����悤�ɂ���. ����ɂ͊��ϐ����V�X�e���ɍ��킹�ēK�؂ɃZ�b�g����
+�K�v������.
 
 
 linux % setenv LD_LIBRARY_PATH $LD_LIBRARY_PATH:/home/khasegawa/gdb-10.2.h8300-elf/sim/i386
 
 cygwin % setenv PATH $PATH:/home/khasegawa/gdb-10.2.h8300-elf/sim/i386
 
-実行時にロードできなければ, 「libsim.so をロードできない」というメッセージが出る.
-DLL にすればシミュレータを修正した後に gdb とリンクし直す必要がなくて便利である.
-libsim.a のように static リンクにしてもよい. この場合は libsim.a を修正した
-後は gdb とリンクし直す必要がある.
+���s���Ƀ��[�h�ł��Ȃ����, �ulibsim.so �����[�h�ł��Ȃ��v�Ƃ������b�Z�[�W���o��.
+DLL �ɂ���΃V�~�����[�^���C��������� gdb �ƃ����N�������K�v���Ȃ��ĕ֗��ł���.
+libsim.a �̂悤�� static �����N�ɂ��Ă��悢. ���̏ꍇ�� libsim.a ���C������
+��� gdb �ƃ����N�������K�v������.
 
-さてとりあえず gdb を起動できるようになったら, おそらく default_callback
-の定義のしかたにもよるが, 実行時エラーを引き起こすと思う.
+���ĂƂ肠���� gdb ���N���ł���悤�ɂȂ�����, �����炭 default_callback
+�̒�`�̂������ɂ���邪, ���s���G���[�������N�����Ǝv��.
 
-あなたが十分調査した上で default_callback を定義していればそうではないが,
-私は調査しなかったのでそうなった.
+���Ȃ����\������������� default_callback ���`���Ă���΂����ł͂Ȃ���,
+���͒������Ȃ������̂ł����Ȃ���.
 
-int default_callback;   // 出鱈目な型. リンクのみ成功させる.
+int default_callback;   // �o�L�ڂȌ^. �����N�̂ݐ���������.
 
-void sim_open(){ abort(0); }  // とりあえず呼ばれたらそれと分かるようにしておく.
-
-
-
-
-
+void sim_open(){ abort(0); }  // �Ƃ肠�����Ă΂ꂽ�炻��ƕ�����悤�ɂ��Ă���.

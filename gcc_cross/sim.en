@@ -38,41 +38,35 @@ run
 quit
 
 1st command about prompt does not reflect on the log, but it enable us
-to distinguish
+to distinguish debugged gdb and debugging gdb.
 
-at 1st line
-1 つ目のプロンプトの設定はログに反映されていないが, デバッグされている gdb とデバッグ
-している gdb を区別する意味で入れている.
-
-gdb 起動時, コマンドの実行に先立って以下の函数が実行される:
+When gdb is executed, before executing command, below function is called:
 
 void
 initialize_all_files (void)
 {
-  _initialize_h8300_tdep ();   ここでターゲットシミュレータ固有の初期化をしているらしい.
+  _initialize_h8300_tdep ();   // Initialization depending on the target
 
-例えば:
+For example:
 
-      o ターゲットシミュレータがビッグエンディアンかリトルエンディアンか
-      o レジスタをいくつ持っているか
-      o PC のレジスタ番号はいくつか
-      o int, long が何バイトであるか
+      o Target is big endian or little endian
+      o How many and what registers exist.
+      o How many bytes for `int' or `long'
 
-などである.
+and so on.
 
-
-(*1) target sim コマンド
+(*1) `target sim' command
 
 main.c:1214
--x で指定されたファイルは以下で処理されている:
+gdb command file specified with `-x' option is handled at below part:
 
 	case CMDARG_FILE:
 	  ret = catch_command_errors (source_script, cmdarg_p.string,
 				      !batch_flag);
 	  break;
 
-ここからステップ実行していけば -x で指定されたファイルに書かれているコマンドは
-以下で処理されていることが分かる:
+By step execution, you may understand that commands written at command
+file are handled at below part:
 
 top.c:449
   while (ui->instream != NULL && !feof (ui->instream))
@@ -83,11 +77,11 @@ top.c:449
       command = command_line_input (NULL, NULL);
       if (command == NULL)
 	break;
-      command_handler (command);    // ここで処理されている
+      command_handler (command);    // Here, handled
     }
 
-target sim コマンドは今回の場合 2 つ目のコマンドなのでそれを調査してみる.
-やはりステップ実行していくと以下の函数に辿り着く:
+`target sim' command is 2nd command at this time. Similary by step exectuion,
+you may reach to below:
 
 target.c:230
 /* This is used to implement the various target commands.  */
@@ -99,8 +93,7 @@ open_target (const char *args, int from_tty, struct cmd_list_element *command)
   target_open_ftype *func = target_factories[ti];
 
 
-
-さらにここからステップ実行していくと以下に辿り着く:
+And more, by step execution, you may reach to below:
 
 static void
 gdbsim_target_open (const char *args, int from_tty)
@@ -110,7 +103,8 @@ gdbsim_target_open (const char *args, int from_tty)
 remote-sim.c:741
   gdbsim_desc = sim_open (SIM_OPEN_DEBUG, &gdb_callback, exec_bfd, sim_argv);
 
-このコードは gdb のターゲットに依存しない部分のものだが, 実際呼び出されているのは以下：
+Above function is independent of target processor. On the other hand,
+called function is:
 
 gdb-10.2/sim/h8300/compile.c:4825
 
@@ -121,16 +115,14 @@ sim_open (SIM_OPEN_KIND kind,
 	  char * const *argv)
 {
 
-ここで h8300 固有の処理をしている.
-そして gdbsim_target_open から戻るところで
-以下のメッセージが出される:
+And this function deals with H8 own stuff. When returning this function,
+the message will be displayed by:
 
   printf_filtered ("Connected to the simulator.\n");
 
+(*2) `load' command
 
-(*2) load コマンド
-
-target sim コマンドと同様に解析をすれば以下の函数に辿り着くだろう:
+Similary with `target sim' command, you may reach to:
 
 gdb-10.2/sim/h8300/compile.c:4916
 
@@ -138,12 +130,14 @@ SIM_RC
 sim_load (SIM_DESC sd, const char *prog, bfd *abfd, int from_tty)
 {
 
-これはターゲットメモリにプログラムをロードするためのもの. ファイル名 hello.elf が
-直接渡されるのでこれを開いて必要なセクションをロードすることになる.
+This function loads memory contents into target memory.
+Directly, a file name is passed as a argument `prog'. So
+open the file, and inspect the section to load.
 
-(*3) run コマンド
+(*3) `run' command
 
-target sim や load コマンドと同様に解析をすると以下の函数に辿り着くだろう:
+Similary with `target sim' command or `load' command, you may reach to
+below:
 
 gdb-10.2/sim/h8300/compile.c:5002
 
@@ -152,13 +146,9 @@ sim_create_inferior (SIM_DESC sd, struct bfd *abfd,
 		     char * const *argv, char * const *env)
 {
 
-この函数ではプログラムカウンタをセットしているだけである.
+At this function, mainly set program counter.
 
-inferior
-主な意味  (位置・階級が)下位の、下級の、低い、下位で、下級で、(質・程度などが)劣った、下等の、  
-   劣等の、二流品の、劣って  
-
-実際命令を実行し始めるのは, 以下の函数となる:
+The part of simulate instruction execution is:
 
 gdb-10.2/sim/h8300/compile.c:4523
 
@@ -170,9 +160,9 @@ sim_engine_run (SIM_DESC sd,
 {
 
 
-メモ:
--g3 オプションでビルドした gdb をデバッグしていると linux がハングアップして
-再起動が必要になる.
-gdb がメモリリークしているっぽいが, それを linux がエラーとしてあつかえていない
-のが問題なのだろうと思う.
-top コマンドや ps コマンドが役に立つと思う.
+Note:
+While debugging gdb built with -g3 option, linux hang up. I had to
+restart linux. I guessed that gdb leaks memory. But I think the problem
+is that linux can not handle this process error. Is not possible?
+
+`top' or `ps' command may help us.
