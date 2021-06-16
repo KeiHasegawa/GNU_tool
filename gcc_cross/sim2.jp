@@ -40,11 +40,10 @@ sim_read
 sim_info
 sim_do_command
 sim_complete_command
-
 default_callback
 
 最後の default_callback 以外は函数で, default_callback は
-ある構造体の型の変数である.
+ある構造体の型の変数である. しかし差し当たってこれはそれほど重要ではない.
 
 まずはリンクを通すためにこれらのシンボルを
 
@@ -59,10 +58,9 @@ libsim.dll
 ロードできるようにしておくようにする. これには環境変数をシステムに合わせて適切にセットする
 必要がある.
 
+linux % setenv LD_LIBRARY_PATH $LD_LIBRARY_PATH:/home/khasegawa/gdb-10.2/sim/i386
 
-linux % setenv LD_LIBRARY_PATH $LD_LIBRARY_PATH:/home/khasegawa/gdb-10.2.h8300-elf/sim/i386
-
-cygwin % setenv PATH $PATH:/home/khasegawa/gdb-10.2.h8300-elf/sim/i386
+cygwin % setenv PATH $PATH:/home/khasegawa/gdb-10.2/sim/i386
 
 実行時にロードできなければ, 「libsim.so をロードできない」というメッセージが出る.
 DLL にすればシミュレータを修正した後に gdb とリンクし直す必要がなくて便利である.
@@ -75,6 +73,6 @@ libsim.a のように static リンクにしてもよい. この場合は libsim.a を修正した
 あなたが十分調査した上で default_callback を定義していればそうではないが,
 私は調査しなかったのでそうなった.
 
-int default_callback;   // 出鱈目な型. リンクのみ成功させる.
+void sim_open(){ abort(); }  // とりあえず呼ばれたらそれと分かるようにしておく.
 
-void sim_open(){ abort(0); }  // とりあえず呼ばれたらそれと分かるようにしておく.
+void default_callback(){ abort(); }    // 出鱈目な型. リンクのみ成功させる.
