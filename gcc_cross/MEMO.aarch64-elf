@@ -1,6 +1,6 @@
 aarch64-elf
 
-% aarch64-elf-gcc -g -o 00_batch.verify.elf 00_batch.verify.c
+% aarch64-elf-gcc -g -o hello.elf hello.c
 /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/aarch64-elf/10.2.0/../../../../aarch64-elf/bin/ld: /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/aarch64-elf/10.2.0/../../../../aarch64-elf/lib/libg.a(lib_a-exit.o): in function `exit':
 /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/newlib-4.1.0.aarch64-elf/aarch64-elf/newlib/libc/stdlib/../../../.././newlib/libc/stdlib/exit.c:64: undefined reference to `_exit'
 ...
@@ -18,9 +18,9 @@ _read
 _fstat
 _isatty
 
-% h8300-elf-gcc -g -o 00_batch.verify.elf 00_batch.verify.c
+% h8300-elf-gcc -g -o hello.elf hello.c
 これは正常終了している.
-% h8300-elf-objdump -x 00_batch.verify.elf > aaa
+% h8300-elf-objdump -x hello.elf > aaa
 
 これで aaa の中を確認すると
 
@@ -61,8 +61,8 @@ _isatty
 
 64 ビットじゃない arm はできていた.
 
-% arm-elf-gcc -g -o 00_batch.verify.elf 00_batch.verify.c
-% arm-elf-objdump -d 00_batch.verify.elf > aaa
+% arm-elf-gcc -g -o hello.elf hello.c
+% arm-elf-objdump -d hello.elf > aaa
 
 こんな感じ. _exit はどこかで定義されているらしい.
 
@@ -96,7 +96,7 @@ int _lseek;
 int _read;
 int _fstat;
 int _isatty;
-% aarch64-elf-gcc -g -o 00_batch.verify.elf 00_batch.verify.c dummy.c
+% aarch64-elf-gcc -g -o hello.elf hello.c dummy.c
 
 aarch64-elf-gdb
 
@@ -114,3 +114,139 @@ gdb-10.2.aarch64-elf/sim/aarch64/
 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.aarch64-elf/gdb/event-top.c
 
 にある
+
+target sim コンマンドを受け着けるための修正
+
+gdb-10.2/gdb/init.c
+
+に以下を追加. init.c は生成されるファイルなので, 何かのタイミングで
+この修正が無効になる可能性がある.
+
+ extern initialize_file_ftype _initialize_ser_socket;
++extern initialize_file_ftype _initialize_remote_sim;
+ extern initialize_file_ftype _initialize_mi_cmd_env;
+
+  _initialize_ser_socket ();
++ _initialize_remote_sim ();
+  _initialize_mi_cmd_env ();
+
+
+/gdb-10.2/gdb/Makefile
+
+を以下のように修正
+
+SIM = ../sim/aarch64/libsim.a
+
+SIM_OBS = remote-sim.o
+
+これでビルドした gdb で target sim コマンドを入力すると
+
+Target byte order unspecified
+unable to create simulator instance
+
+のようになる. 残念ながらまだ修正が完全ではない.
+
+とりあえずこの修正で sim_open は呼ばれるようになった.
+
+sim_open でエラーになるのは sim_config が呼ばれたとき
+そこでエラーになっているから.
+
+sim/common/sim-config.c
+
+で以下のように修正した:
+
+  /* verify the target byte order */
+#if 0 
+  if (CURRENT_TARGET_BYTE_ORDER == BFD_ENDIAN_UNKNOWN)
+    {
+      sim_io_eprintf (sd, "Target byte order unspecified\n");
+      return SIM_RC_FAIL;
+    }
+#endif  
+
+一応これでエラーを回避できている.
+
+これですぐに hello world できるかと言えばそうではなくて,
+
+% aarch64-elf-gdb hello.elf
+(gdb) load
+(gdb) run
+Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/hello.elf 
+core: 8 byte write to unmapped address 0xfffffff0 at 0x0
+
+Program received signal SIGSEGV, Segmentation fault.
+0x0000000000000000 in ?? ()
+(gdb)
+
+のようになる. 不正メモリアクセスがターゲットプログラムで発生しえいるがなぜか
+このメッセージになっている.
+
+問題はスタートアップルーチン
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.aarch64-elf/libgloss/aarch64/crt0.S
+
+にあって, これは事前にスタックポインタがセットされているかのような
+状態
+
+_mainCRTStartup
+(別名 _start)
+
+がきている. つまり組込み用のスタートアップルーチンではないということ.
+例のアドレス
+
+0xfffffff0
+
+にアクセスしているのは 
+
+
+0000000000400138 <_mainCRTStartup>:
+  400138:	58000281 	ldr	x1, 400188 <_cpu_init_hook+0x4>
+  40013c:	927cec20 	and	x0, x1, #0xfffffffffffffff0
+  400140:	9100001f 	mov	sp, x0
+  400144:	d280001d 	mov	x29, #0x0                   	// #0
+  400148:	a9bf77fd 	stp	x29, x29, [sp, #-16]!
+
+この stp 命令が問題で sp が 0 だとこのような結果になってしまう.
+gdb + aarch64 シミュレータの問題は解決したが, これはまた別の問題. 
+
+target sim コマンドが受け着けられないのは
+
+      if (c->prefixlist && **line && !c->allow_unknown)
+	undef_cmd_error (c->prefixname, *line);  ここが原因らしい
+
+cmdlist をデバッグする函数で確かめると target コマンド自体はある.
+
+
+c = lookup_cmd_1 (text, *found->prefixlist, result_list,
+			default_args, ignore_help_classes);
+
+
+ここにきたとき *found->prefixlist
+の期待値は
+
+core
+exec
+extended-remote
+record
+record-btrace
+record-core
+record-full
+remote
+sim
+tfile
+
+のように sim が入っている必要があるが, 現状は
+
+core
+exec
+extended-remote
+record
+record-btrace
+record-core
+record-full
+remote
+tfile
+
+のようになっている.
+
+
