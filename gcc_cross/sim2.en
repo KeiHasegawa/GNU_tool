@@ -1,0 +1,84 @@
+i386 simulator develop memo
+
+Once I built gdb configured --target=h8300-elf
+
+Tha last command for building gdb was:
+
+g++  -g -O2     -pthread  \
+	-o gdb ... \
+	../sim/h8300/libsim.a \
+
+So I changed like below:
+
+g++  -g -O2     -pthread  \
+	-o gdb ... \
+	-L../sim/i386 -lsim \
+
+And I made a directory `../sim/i386' newly. There I made
+DLL:
+
+libsim.so
+
+or
+
+libsim.dll
+
+Intentionally, I made empty DLL. Then the last command generated
+the error like
+
+undefined reference to `...'
+
+about below:
+
+sim_open
+sim_close
+sim_fetch_register
+sim_store_register
+sim_load
+sim_create_inferior
+sim_stop
+sim_resume
+sim_stop_reason
+sim_write
+sim_read
+sim_info
+sim_do_command
+sim_complete_command
+default_callback
+
+sim_*** are the functions and default_callback is variable
+whose type is some structure. But it's not so important at this point.
+
+So, first, to success the last command, define above symbols at
+
+libsim.so
+
+or
+
+libsim.dll
+
+To execute this new gdb for i386 , the gdb have to load the DLL when it is
+executed. For this, set environment variable according to your system:
+
+linux % setenv LD_LIBRARY_PATH $LD_LIBRARY_PATH:/home/khasegawa/gdb-10.2/sim/i386
+
+cygwin % setenv PATH $PATH:/home/khasegawa/gdb-10.2/sim/i386
+
+If the gdb can not load the DLL, the error message may be displayed like
+
+"libsim.{so,dll} cannot be loaded"
+
+Making DLL enables us to skip the re-link after modifying the simulator(DLL).
+But it's OK that making static link library if you re-link gdb after
+modifying libsim.a
+
+Well, if you can lose no time in executing `gdb'  by loading DLL, the gdb may make
+runtime error if you not take care of the `default_callback' definition.
+
+If you really take care of that, may be `sim_open' will be called. But I didn't.
+
+void sim_open(){ abort(); }  // Just to notice
+
+...
+
+void default_callback(){ abort(); }  // Type mismatch. Rntime error will occur
