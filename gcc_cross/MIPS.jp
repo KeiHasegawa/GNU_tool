@@ -599,3 +599,48 @@ ddb-kseg0.ld  ldscripts/   libidt.a  libnullmon.a  pcrt0.o
 
 hello.c のサンプルは以下のように期待通り動作している.
 
+
+% mips-elf-gcc -g -o hello.elf hello.c -Tidt.ld
+% mips-elf-gdb hello.elf
+Reading symbols from hello.elf...
+(gdb) target sim
+Connected to the simulator.
+(gdb) load
+Loading section .text, size 0x90c8 lma 0xa0020000
+Loading section .init, size 0x28 lma 0xa00290c8
+Loading section .fini, size 0x20 lma 0xa00290f0
+Loading section .eh_frame, size 0x40 lma 0xa0029110
+Loading section .jcr, size 0x4 lma 0xa0029150
+Loading section .ctors, size 0x8 lma 0xa0029154
+Loading section .dtors, size 0x8 lma 0xa002915c
+Loading section .rodata, size 0x49b lma 0xa0029168
+Loading section .MIPS.abiflags, size 0x18 lma 0xa0029608
+Loading section .data, size 0x81c lma 0xa0029620
+Loading section .sdata, size 0x80 lma 0xa0029e40
+Start address 0xa0020004
+Transfer rate: 325016 bits in <1 sec.
+(gdb) b main
+Breakpoint 1 at 0xa00202bc: file hello.c, line 5.
+(gdb) run
+Breakpoint 1, main () at hello.c:5
+5	  printf("hello world\n");
+(gdb) disassemble
+Dump of assembler code for function main:
+   0xa00202ac <+0>:	addiu	sp,sp,-24
+   0xa00202b0 <+4>:	sw	ra,20(sp)
+   0xa00202b4 <+8>:	sw	s8,16(sp)
+   0xa00202b8 <+12>:	move	s8,sp
+=> 0xa00202bc <+16>:	lui	a0,0xa003
+   0xa00202c0 <+20>:	jal	0xa00203e4 <printf>
+   0xa00202c4 <+24>:	addiu	a0,a0,-28312
+   0xa00202c8 <+28>:	move	v0,zero
+   0xa00202cc <+32>:	move	sp,s8
+   0xa00202d0 <+36>:	lw	ra,20(sp)
+   0xa00202d4 <+40>:	lw	s8,16(sp)
+   0xa00202d8 <+44>:	jr	ra
+   0xa00202dc <+48>:	addiu	sp,sp,24
+End of assembler dump.
+(gdb) c
+hello world
+(gdb) q
+[Inferior 1 (process 42000) exited normally]
