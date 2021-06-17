@@ -16,3 +16,12 @@ host-i686-pc-linux-gnu/gcc/build/genautomata: ELF 32-bit LSB executable, Intel 8
 
 ということは何らかのプログラムが不正メモリアクセス相当をおこした
 ということなのだろう.
+
+gcc-3.4.4 で以下のように試してみた:
+
+> bunzip2 -c ../gcc-3.4.4.tar.bz2 | tar xf -
+> mv gcc-3.4.4 gcc-3.4.4.mips-elf
+> cd gcc-3.4.4.mips-elf/
+> ./configure --target=mips-elf --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --with-newlib
+> make
+

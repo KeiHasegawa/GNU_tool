@@ -110,6 +110,46 @@ gdb-10.2.aarch64-elf/sim/aarch64/
 
 を見るとビルドされた形跡があるのだが不明.
 
+target sim コマンドが受け着けられないのは
+
+      if (c->prefixlist && **line && !c->allow_unknown)
+	undef_cmd_error (c->prefixname, *line);  ここが原因らしい
+
+cmdlist をデバッグする函数で確かめると target コマンド自体はある.
+
+
+c = lookup_cmd_1 (text, *found->prefixlist, result_list,
+			default_args, ignore_help_classes);
+
+
+ここにきたとき *found->prefixlist
+の期待値は
+
+core
+exec
+extended-remote
+record
+record-btrace
+record-core
+record-full
+remote
+sim
+tfile
+
+のように sim が入っている必要があるが, 現状は
+
+core
+exec
+extended-remote
+record
+record-btrace
+record-core
+record-full
+remote
+tfile
+
+のようになっている.
+
 
 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.aarch64-elf/gdb/event-top.c
 
@@ -208,45 +248,3 @@ _mainCRTStartup
 
 この stp 命令が問題で sp が 0 だとこのような結果になってしまう.
 gdb + aarch64 シミュレータの問題は解決したが, これはまた別の問題. 
-
-target sim コマンドが受け着けられないのは
-
-      if (c->prefixlist && **line && !c->allow_unknown)
-	undef_cmd_error (c->prefixname, *line);  ここが原因らしい
-
-cmdlist をデバッグする函数で確かめると target コマンド自体はある.
-
-
-c = lookup_cmd_1 (text, *found->prefixlist, result_list,
-			default_args, ignore_help_classes);
-
-
-ここにきたとき *found->prefixlist
-の期待値は
-
-core
-exec
-extended-remote
-record
-record-btrace
-record-core
-record-full
-remote
-sim
-tfile
-
-のように sim が入っている必要があるが, 現状は
-
-core
-exec
-extended-remote
-record
-record-btrace
-record-core
-record-full
-remote
-tfile
-
-のようになっている.
-
-
