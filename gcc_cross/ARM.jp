@@ -2,6 +2,7 @@ ARM のクロスコンパイル環境
 
 (*1) ARM
 (*2) スクリプトによるインストール
+(*3)
 
 (*1) ARM
 https://ja.wikipedia.org/wiki/ARM%E3%82%A2%E3%83%BC%E3%82%AD%E3%83%86%E3%82%AF%E3%83%81%E3%83%A3
@@ -13,8 +14,9 @@ set TARGET = arm-elf   # ここを変更
 
 すると gcc-10.2 の make で以下のエラーになる:
 
-% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=arm-elf --disable-libstdc++-v3 --disable-libssp --disable-libquadmath --disable-libgfortran --disable-libobjc
-% make
+./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=arm-elf --disable-libstdc++-v3 --disable-libssp --disable-libquadmath --disable-libgfortran --disable-libobjc
+...
+make
 ...
 checking for struct tms... yes
 checking for clock_t... yes
@@ -24,4 +26,55 @@ checking if mkdir takes one argument... no
 make[1]: *** [Makefile:4314: configure-gcc] エラー 1
 make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf' から出ます
 make: *** [Makefile:938: all] エラー 2
+
+これは一見, configure でエラーしたように見える. もう少し厳密に言えば
+
+make から実行された configure コマンドがエラーした
+
+ということになる. 最後の make のメッセージは
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf
+
+で
+
+configure-gcc
+
+というターゲットに対応するコマンドを実行した結果エラーしたと読むのが正しい.
+これは「MIPS」とは違うエラーになっている.
+このエラーは結局回避できなかった. 急いでいる方は (*3) に進んで下さい.
+
+いずれにしても configure でエラーしているので
+
+% ls -ltr `find . -name 'config.log'`
+
+のようにすることで最後に実行した configure のログが判明した:
+
+./host-i686-pc-linux-gnu/gcc/config.log
+
+最後の行を見てみると
+
+configure: exit 1
+
+とある. エラーしている. さてこの config.log から
+
+*** Configuration arm-unknown-elf not supported
+
+という文字を探してみたが見つからない. さてどこでエラーしたと考えるべきか.
+
+このメッセージの直前にある
+
+checking if mkdir takes one argument... no
+
+が原因かと思い, このメッセージを config.log から探してみた. すると
+
+configure:11925: checking if mkdir takes one argument
+configure:11951: g++ -c -g    conftest.cpp >&5
+configure:11951: $? = 0
+configure:11958: result: no
+
+のようになっている. $? = 0 なので正常終了なのだが, だとすれば何故エラーなのだろう.
+
+config.log の先頭には
+
+
 
