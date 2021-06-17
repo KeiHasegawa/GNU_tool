@@ -2,7 +2,10 @@ ARM のクロスコンパイル環境
 
 (*1) ARM
 (*2) スクリプトによるインストール
-(*3)
+(*3) gcc-3.4.4
+(*4) gdb
+(*5) newlib-1.13.0
+(*6) 動作確認 => OK
 
 (*1) ARM
 https://ja.wikipedia.org/wiki/ARM%E3%82%A2%E3%83%BC%E3%82%AD%E3%83%86%E3%82%AF%E3%83%81%E3%83%A3
@@ -401,5 +404,41 @@ newlib は newlib-4.1.0 だとエラーになったので, newlib-1.13.0 を使用した.
 
 (*6) 動作確認
 
-これで一応 hello.c のサンプルは期待通り動作する.
+% arm-elf-gcc -o hello.elf -g hello.c
+% arm-elf-gdb hello.elf
+Reading symbols from hello.elf...
+(gdb) target sim
+Connected to the simulator.
+(gdb) load
+Loading section .init, size 0x1c lma 0x8000
+Loading section .text, size 0x804c lma 0x801c
+Loading section .fini, size 0x18 lma 0x10068
+Loading section .rodata, size 0x224 lma 0x10080
+Loading section .eh_frame, size 0x4 lma 0x202a4
+Loading section .ctors, size 0x8 lma 0x202a8
+Loading section .dtors, size 0x8 lma 0x202b0
+Loading section .jcr, size 0x4 lma 0x202b8
+Loading section .data, size 0x940 lma 0x202bc
+Start address 0x8110
+Transfer rate: 286688 bits in <1 sec.
+(gdb) b main
+Breakpoint 1 at 0x8224: file hello.c, line 5.
+(gdb) run
+Breakpoint 1, main () at hello.c:5
+5	  printf("hello world\n");
+(gdb) disassemble
+Dump of assembler code for function main:
+   0x00008218 <+0>:	mov	r12, sp
+   0x0000821c <+4>:	push	{r11, r12, lr, pc}
+   0x00008220 <+8>:	sub	r11, r12, #4
+=> 0x00008224 <+12>:	ldr	r0, [pc, #12]	; 0x8238 <main+32>
+   0x00008228 <+16>:	bl	0x8330 <printf>
+   0x0000822c <+20>:	mov	r3, #0
+   0x00008230 <+24>:	mov	r0, r3
+   0x00008234 <+28>:	ldm	sp, {r11, sp, pc}
+   0x00008238 <+32>:	andeq	r0, r1, r0, lsl #1
+End of assembler dump.
+(gdb) c
+hello world
+[Inferior 1 (process 42000) exited normally]
 
