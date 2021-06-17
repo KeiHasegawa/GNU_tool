@@ -168,3 +168,58 @@ case ${target} in
 
 find /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf -type f -exec grep --color -nH --null -e 'Avoid special cases that are not obsolete' \{\} +
 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf/gcc/config.gcc:267: # Avoid special cases that are not obsolete
+
+ヒットしている.
+
+ | arm*-*-elf				\
+
+の行を config.gcc から削除した.
+
+% sh -vx /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf/gcc/configure --srcdir=../.././gcc --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --disable-libstdc++-v3 --disable-libssp --disable-libquadmath --disable-libgfortran --disable-libobjc --enable-languages=c,c++,fortran,lto,objc --program-transform-name='s&^&arm-elf-&' --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=arm-elf
+
+もう一度実行してみたところ, まだエラーしているようである.
+しかもこのときはログが多すぎて何を見ていいのかサッパリである.
+
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf/gcc/configure --srcdir=../.././gcc --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --disable-libstdc++-v3 --disable-libssp --disable-libquadmath --disable-libgfortran --disable-libobjc --enable-languages=c,c++,fortran,lto,objc --program-transform-name='s&^&arm-elf-&' --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=arm-elf
+
+のように実行してみたところ
+
+checking if mkdir takes one argument... no
+*** Configuration arm-unknown-elf not supported
+
+これは, エラーを回避できていなかったらしい.
+ログの中から以下を見つけた:
+
+*)
+	echo "*** Configuration ${target} not supported" 1>&2
+	exit 1
+	;;
+esac
+++ case ${target} in
+++ echo '*** Configuration arm-unknown-elf not supported'
+
+これはどれにも該当する case ラベルがなかったということなのだろう.
+おそらく先ほど config.gcc で削除した
+
+ | arm*-*-elf				\
+
+でもエラーを回避し切れなかったようである.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf/gcc/configure
+
+では
+
+# Collect target-machine-specific information.
+. ${srcdir}/config.gcc || exit 1
+
+のように config.gcc を読み込んでいるらしい. そこでこれをコメントアウト
+してみた.
+
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf/gcc/configure --srcdir=../.././gcc --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --disable-libstdc++-v3 --disable-libssp --disable-libquadmath --disable-libgfortran --disable-libobjc --enable-languages=c,c++,fortran,lto,objc --program-transform-name='s&^&arm-elf-&' --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=arm-elf
+
+改めて上を実行してみたところエラーは発生していない. この対処が正しいか
+どうかは別にしてこれでやってみることにする.
+
+% cd ../..
+% make
+...
