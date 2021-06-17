@@ -24,4 +24,569 @@ gcc-3.4.4 で以下のように試してみた:
 > cd gcc-3.4.4.mips-elf/
 > ./configure --target=mips-elf --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --with-newlib
 > make
+...
+gcc   -g -O2 -DIN_GCC -DCROSS_COMPILE  -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -pedantic -Wno-long-long    -DHAVE_CONFIG_H  -o jc1 \
+	java/parse.o java/class.o java/decl.o java/expr.o java/constants.o java/lang.o java/typeck.o java/except.o java/verify.o java/zextract.o java/jcf-io.o java/win32-host.o java/jcf-parse.o java/mangle.o java/mangle_name.o java/builtins.o java/resource.o java/jcf-write.o java/buffer.o java/check-init.o java/jcf-depend.o java/jcf-path.o java/xref.o java/boehm.o java/java-tree-inline.o mkdeps.o main.o libbackend.a -L../zlib -lz  ../libiberty/libiberty.a  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: java/parse.o: in function `do_java_lex':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.mips-elf/gcc/java/lex.c:1612: undefined reference to `java_keyword'
+collect2: エラー: ld はステータス 1 で終了しました
+make[1]: *** [java/Make-lang.in:128: jc1] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.mips-elf/gcc' から出ます
+make: *** [Makefile:23373: all-gcc] エラー 2
+>
 
+Java コンパイラのおそらく本体をリンクしようとしてエラーしている.
+必要ないので
+
+gcc-3.4.4.mips-elf/gcc/Makefile
+
+# List of language subdirectories.
+SUBDIRS = cp f java objc
+
+これを
+
+# List of language subdirectories.
+SUBDIRS = cp
+
+のように修正した
+
+これも
+
+CONFIG_LANGUAGES =  c++ f77 java objc
+
+CONFIG_LANGUAGES =  c++
+
+のように修正した.
+
+> make
+...
+regex.c:8239: error: 不完全型のポインタへの間接参照
+regex.c:8240: error: 不完全型のポインタへの間接参照
+regex.c: At top level:
+regex.c:8178: 警告: unused parameter 'preg'
+regex.c:7905: error: storage size of `re_comp_buf' isn't known
+make[1]: *** [Makefile:125: regex.o] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.mips-elf/mips-elf/libiberty' から出ます
+make: *** [Makefile:22613: all-target-libiberty] エラー 2
+>
+
+gcc-3.4.4.mips-elf/Makefile
+
+から
+
+all-target-libiberty: configure-target-libiberty
+	@r=`${PWD_COMMAND}`; export r; \
+	s=`cd $(srcdir); ${PWD_COMMAND}`; export s; \
+	$(SET_LIB_PATH) \
+	(cd $(TARGET_SUBDIR)/libiberty && \
+	  $(MAKE) $(TARGET_FLAGS_TO_PASS)  all)
+
+を削除した.
+
+> make
+...
+cc-3.4.4.mips-elf/mips-elf/libstdc++-v3' から出ます
+make[1]: *** [Makefile:304: all] エラー 2
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.mips-elf/mips-elf/libstdc++-v3' から出ます
+make: *** [Makefile:22003: all-target-libstdc++-v3] エラー 2
+>
+
+gcc-3.4.4.mips-elf/Makefile
+
+から
+
+all-target-libstdc++-v3: maybe-all-target-libiberty
+
+と
+
+all-target-libstdc++-v3: configure-target-libstdc++-v3
+	@r=`${PWD_COMMAND}`; export r; \
+	s=`cd $(srcdir); ${PWD_COMMAND}`; export s; \
+	$(SET_LIB_PATH) \
+	(cd $(TARGET_SUBDIR)/libstdc++-v3 && \
+	  $(MAKE) $(TARGET_FLAGS_TO_PASS)  'CXX=$$(RAW_CXX_FOR_TARGET)' 'CXX_FOR_TARGET=$$(RAW_CXX_FOR_TARGET)'  all)
+
+
+を削除した.
+
+> make
+...
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.mips-elf/mips-elf/libf2c' から出ます
+make: *** [Makefile:22161: all-target-libf2c] エラー 2
+>
+
+gcc-3.4.4.mips-elf/Makefile
+
+から
+
+all-target-libf2c: configure-target-libf2c
+	@r=`${PWD_COMMAND}`; export r; \
+	s=`cd $(srcdir); ${PWD_COMMAND}`; export s; \
+	$(SET_LIB_PATH) \
+	(cd $(TARGET_SUBDIR)/libf2c && \
+	  $(MAKE) $(TARGET_FLAGS_TO_PASS)  all)
+
+を削除した.
+
+> make
+...
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.mips-elf/mips-elf/libobjc' から出ます
+make: *** [Makefile:22237: all-target-libobjc] エラー 2
+> 
+
+gcc-3.4.4.mips-elf/Makefile
+
+から
+
+all-target-libobjc: configure-target-libobjc
+	@r=`${PWD_COMMAND}`; export r; \
+	s=`cd $(srcdir); ${PWD_COMMAND}`; export s; \
+	$(SET_LIB_PATH) \
+	(cd $(TARGET_SUBDIR)/libobjc && \
+	  $(MAKE) $(TARGET_FLAGS_TO_PASS)  all)
+
+を削除した.
+
+> make
+> ls /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/mips-elf-*
+
+まだインストールされていないことを確認した.
+
+> make install
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.mips-elf/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.mips-elf/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/sys-include -DHAVE_CONFIG_H -I. -I../../.././libstdc++-v3/libmath -I.. -O2 -g -O2 -O2 -g -O2 -c ../../.././libstdc++-v3/libmath/stubs.c -o stubs.o
+../../.././libstdc++-v3/libmath/stubs.c:30:18: math.h: No such file or directory
+make[2]: *** [Makefile:272: stubs.lo] エラー 1
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.mips-elf/mips-elf/libstdc++-v3/libmath' から出ます
+make[1]: *** [Makefile:362: install-recursive] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.mips-elf/mips-elf/libstdc++-v3' から出ます
+make: *** [Makefile:22018: install-target-libstdc++-v3] エラー 2
+>
+
+gcc-3.4.4.mips-elf/mips-elf/libstdc++-v3/Makefile
+
+を
+
+all:
+
+install:
+
+のように空の Makefile にした.
+
+> make install
+...
+make[1]: *** [Makefile:165: i77] エラー 2
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.mips-elf/mips-elf/libf2c' から出ます
+make: *** [Makefile:22176: install-target-libf2c] エラー 2
+> 
+
+gcc-3.4.4.mips-elf/mips-elf/libf2c/Makefile
+
+を同様に空の Makefile にした.
+
+> make install
+...
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.mips-elf/mips-elf/libobjc' から出ます
+make: *** [Makefile:22252: install-target-libobjc] エラー 2
+>
+
+
+gcc-3.4.4.mips-elf/mips-elf/libobjc/Makefile
+
+を同様に空の Makefile にした.
+
+> make install
+...
+make[1]: *** [Makefile:125: regex.o] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.mips-elf/mips-elf/libiberty' から出ます
+make: *** [Makefile:22610: install-target-libiberty] エラー 2
+>
+
+gcc-3.4.4.mips-elf/mips-elf/libiberty/Makefile
+
+を同様に空の Makefile にした.
+
+> make install
+> ls /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/mips-elf-*
+mips-elf-{gcc,g++}
+がインストールされたことを確認した.
+
+mips-elf-gdb は通常通りインストールできる.
+
+newlib は newlib-4.1.0 だとエラーになるので, ひとまず newlib-1.13.0
+を使用する.
+
+newlib-1.13.0 の make install 前後
+
+ls /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/lib/
+ldscripts/
+> make install
+/bin/sh ./mkinstalldirs /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/etc' に入ります
+for f in standards.info configure.info; do \
+  if test -f ./`echo $f | sed -e 's/.info$/.texi/'`; then \
+    if make "MAKEINFO=makeinfo --split-size=5000000" $f; then \
+      true; \
+    else \
+      exit 1; \
+    fi; \
+  fi; \
+done
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/etc' に入ります
+makeinfo --split-size=5000000 --no-split -I. -o standards.info ./standards.texi
+./standards.texi:3720: warning: node next `Copying This Manual' in menu `Index' and in sectioning `GNU Free Documentation License' differ
+./standards.texi:3729: warning: node prev `Index' in menu `Copying This Manual' and in sectioning `GNU Free Documentation License' differ
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/etc' から出ます
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/etc' に入ります
+rm -f configdev.txt configbuild.txt
+cp ./configdev.tin configdev.txt
+cp ./configbuild.tin configbuild.txt
+makeinfo --split-size=5000000 -I. -o configure.info ./configure.texi
+rm -f configdev.txt configbuild.txt
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/etc' から出ます
+/bin/sh ./../mkinstalldirs /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/info
+if test ! -f standards.info; then cd .; fi; \
+if test -f standards.info; then \
+  for i in standards.info*; do \
+    /usr/local/bin/install -c -m 644 $i /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/info/$i; \
+  done; \
+fi
+if test ! -f configure.info; then cd .; fi; \
+if test -f configure.info; then \
+  for i in configure.info*; do \
+    /usr/local/bin/install -c -m 644 $i /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/info/$i; \
+  done; \
+fi
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/etc' から出ます
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib' に入ります
+Making install in libc
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc' に入ります
+Making install in argz
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/argz' に入ります
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/argz' に入ります
+make[4]: 'install-exec-am' に対して行うべき事はありません.
+make[4]: 'install-data-am' に対して行うべき事はありません.
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/argz' から出ます
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/argz' から出ます
+Making install in stdlib
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/stdlib' に入ります
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/stdlib' に入ります
+make[4]: 'install-exec-am' に対して行うべき事はありません.
+make[4]: 'install-data-am' に対して行うべき事はありません.
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/stdlib' から出ます
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/stdlib' から出ます
+Making install in ctype
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/ctype' に入ります
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/ctype' に入ります
+make[4]: 'install-exec-am' に対して行うべき事はありません.
+make[4]: 'install-data-am' に対して行うべき事はありません.
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/ctype' から出ます
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/ctype' から出ます
+Making install in search
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/search' に入ります
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/search' に入ります
+make[4]: 'install-exec-am' に対して行うべき事はありません.
+make[4]: 'install-data-am' に対して行うべき事はありません.
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/search' から出ます
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/search' から出ます
+Making install in stdio
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/stdio' に入ります
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/stdio' に入ります
+make[4]: 'install-exec-am' に対して行うべき事はありません.
+make[4]: 'install-data-am' に対して行うべき事はありません.
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/stdio' から出ます
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/stdio' から出ます
+Making install in string
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/string' に入ります
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/string' に入ります
+make[4]: 'install-exec-am' に対して行うべき事はありません.
+make[4]: 'install-data-am' に対して行うべき事はありません.
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/string' から出ます
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/string' から出ます
+Making install in signal
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/signal' に入ります
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/signal' に入ります
+make[4]: 'install-exec-am' に対して行うべき事はありません.
+make[4]: 'install-data-am' に対して行うべき事はありません.
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/signal' から出ます
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/signal' から出ます
+Making install in time
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/time' に入ります
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/time' に入ります
+make[4]: 'install-exec-am' に対して行うべき事はありません.
+make[4]: 'install-data-am' に対して行うべき事はありません.
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/time' から出ます
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/time' から出ます
+Making install in locale
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/locale' に入ります
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/locale' に入ります
+make[4]: 'install-exec-am' に対して行うべき事はありません.
+make[4]: 'install-data-am' に対して行うべき事はありません.
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/locale' から出ます
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/locale' から出ます
+Making install in sys
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/sys' に入ります
+Making install in .
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/sys' に入ります
+make[5]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/sys' に入ります
+make[5]: 'install-exec-am' に対して行うべき事はありません.
+make[5]: 'install-data-am' に対して行うべき事はありません.
+make[5]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/sys' から出ます
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/sys' から出ます
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/sys' から出ます
+Making install in reent
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/reent' に入ります
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/reent' に入ります
+make[4]: 'install-exec-am' に対して行うべき事はありません.
+make[4]: 'install-data-am' に対して行うべき事はありません.
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/reent' から出ます
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/reent' から出ます
+Making install in errno
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/errno' に入ります
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/errno' に入ります
+make[4]: 'install-exec-am' に対して行うべき事はありません.
+make[4]: 'install-data-am' に対して行うべき事はありません.
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/errno' から出ます
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/errno' から出ます
+Making install in misc
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/misc' に入ります
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/misc' に入ります
+make[4]: 'install-exec-am' に対して行うべき事はありません.
+make[4]: 'install-data-am' に対して行うべき事はありません.
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/misc' から出ます
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/misc' から出ます
+Making install in machine
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/machine' に入ります
+Making install in mips
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/machine/mips' に入ります
+make[5]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/machine/mips' に入ります
+make[5]: 'install-exec-am' に対して行うべき事はありません.
+make[5]: 'install-data-am' に対して行うべき事はありません.
+make[5]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/machine/mips' から出ます
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/machine/mips' から出ます
+Making install in .
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/machine' に入ります
+make[5]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/machine' に入ります
+make[5]: 'install-exec-am' に対して行うべき事はありません.
+make[5]: 'install-data-am' に対して行うべき事はありません.
+make[5]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/machine' から出ます
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/machine' から出ます
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc/machine' から出ます
+Making install in .
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc' に入ります
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc' に入ります
+make[4]: 'install-exec-am' に対して行うべき事はありません.
+make[4]: 'install-data-am' に対して行うべき事はありません.
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc' から出ます
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc' から出ます
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libc' から出ます
+Making install in libm
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libm' に入ります
+Making install in math
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libm/math' に入ります
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libm/math' に入ります
+make[4]: 'install-exec-am' に対して行うべき事はありません.
+make[4]: 'install-data-am' に対して行うべき事はありません.
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libm/math' から出ます
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libm/math' から出ます
+Making install in common
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libm/common' に入ります
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libm/common' に入ります
+make[4]: 'install-exec-am' に対して行うべき事はありません.
+make[4]: 'install-data-am' に対して行うべき事はありません.
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libm/common' から出ます
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libm/common' から出ます
+Making install in machine
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libm/machine' に入ります
+Making install in .
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libm/machine' に入ります
+make[5]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libm/machine' に入ります
+make[5]: 'install-exec-am' に対して行うべき事はありません.
+make[5]: 'install-data-am' に対して行うべき事はありません.
+make[5]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libm/machine' から出ます
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libm/machine' から出ます
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libm/machine' から出ます
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libm' に入ります
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libm' に入ります
+make[4]: 'install-exec-am' に対して行うべき事はありません.
+make[4]: 'install-data-am' に対して行うべき事はありません.
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libm' から出ます
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libm' から出ます
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/libm' から出ます
+Making install in doc
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/doc' に入ります
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/doc' に入ります
+make[3]: 'install-exec-am' に対して行うべき事はありません.
+make[3]: 'install-data-am' に対して行うべき事はありません.
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/doc' から出ます
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/doc' から出ます
+Making install in .
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib' に入ります
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib' に入ります
+make[3]: 'install-exec-am' に対して行うべき事はありません.
+/bin/sh ../.././newlib/../mkinstalldirs /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/lib
+ /usr/local/bin/install -c -m 644 libm.a /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/lib/libm.a
+ /usr/local/bin/install -c -m 644 libc.a /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/lib/libc.a
+ mips-elf-ranlib /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/lib/libm.a
+ mips-elf-ranlib /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/lib/libc.a
+/bin/sh ../.././newlib/../mkinstalldirs /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/lib
+/bin/sh ../.././newlib/../mkinstalldirs /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/lib
+rm -f /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/lib/libg.a
+ln /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/lib/libc.a /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/lib/libg.a >/dev/null 2>/dev/null || cp /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/lib/libc.a /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/lib/libg.a
+make "AR_FLAGS=rc" 	"CC_FOR_BUILD=gcc" 	"CFLAGS=-O2 -g -O2" 	"CFLAGS_FOR_BUILD=" 	"CFLAGS_FOR_TARGET=-O2 -g -O2" 	"LDFLAGS=" 	"LIBCFLAGS=-O2 -g -O2" 	"LIBCFLAGS_FOR_TARGET=-O2 -g -O2" 	"MAKE=make" 	"MAKEINFO=makeinfo --split-size=5000000   " 	"PICFLAG=" 	"PICFLAG_FOR_TARGET=" 	"SHELL=/bin/sh" 	"EXPECT=expect" 	"RUNTEST=runtest" 	"RUNTESTFLAGS=" 	"exec_prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG" 	"infodir=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/info" 	"libdir=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib" 	"prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG" 	"tooldir=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf" 	"top_toollibdir=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/lib" 	"AR=mips-elf-ar" 	"AS=mips-elf-as" 	"CC=mips-elf-gcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/newlib/libc/include" 	"LD=mips-elf-ld" 	"LIBCFLAGS=-O2 -g -O2" 	"NM=mips-elf-nm" 	"PICFLAG=" 	"RANLIB=mips-elf-ranlib" 	"DESTDIR=" DO=install multi-do # make
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib' に入ります
+if [ -z "" ]; then \
+  true; \
+else \
+  rootpre=`${PWDCMD-pwd}`/; export rootpre; \
+  srcrootpre=`cd ../.././newlib; ${PWDCMD-pwd}`/; export srcrootpre; \
+  lib=`echo ${rootpre} | sed -e 's,^.*/\([^/][^/]*\)/$,\1,'`; \
+  compiler="mips-elf-gcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/newlib/libc/include"; \
+  for i in `${compiler} --print-multi-lib 2>/dev/null`; do \
+    dir=`echo $i | sed -e 's/;.*$//'`; \
+    if [ "${dir}" = "." ]; then \
+      true; \
+    else \
+      if [ -d ../${dir}/${lib} ]; then \
+	flags=`echo $i | sed -e 's/^[^;]*;//' -e 's/@/ -/g'`; \
+	if (cd ../${dir}/${lib}; make "AR_FLAGS=rc" 	"CC_FOR_BUILD=gcc" 	"CFLAGS=-O2 -g -O2" 	"CFLAGS_FOR_BUILD=" 	"CFLAGS_FOR_TARGET=-O2 -g -O2" 	"LDFLAGS=" 	"LIBCFLAGS=-O2 -g -O2" 	"LIBCFLAGS_FOR_TARGET=-O2 -g -O2" 	"MAKE=make" 	"MAKEINFO=makeinfo --split-size=5000000    " 	"PICFLAG=" 	"PICFLAG_FOR_TARGET=" 	"SHELL=/bin/sh" 	"EXPECT=expect" 	"RUNTEST=runtest" 	"RUNTESTFLAGS=" 	"exec_prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG" 	"infodir=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/info" 	"libdir=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib" 	"prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG" 	"tooldir=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf" 	"top_toollibdir=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/lib" 	"AR=mips-elf-ar" 	"AS=mips-elf-as" 	"CC=mips-elf-gcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/newlib/libc/include" 	"LD=mips-elf-ld" 	"LIBCFLAGS=-O2 -g -O2" 	"NM=mips-elf-nm" 	"PICFLAG=" 	"RANLIB=mips-elf-ranlib" 	"DESTDIR=" \
+			CFLAGS="-O2 -g -O2 ${flags}" \
+			FCFLAGS=" ${flags}" \
+			FFLAGS=" ${flags}" \
+			ADAFLAGS=" ${flags}" \
+			prefix="/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG" \
+			exec_prefix="/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG" \
+			GCJFLAGS="@GCJFLAGS@ ${flags}" \
+			CXXFLAGS="-g -O2 ${flags}" \
+			LIBCFLAGS="-O2 -g -O2 ${flags}" \
+			LIBCXXFLAGS="-g -O2 -fno-implicit-templates ${flags}" \
+			LDFLAGS=" ${flags}" \
+			MULTIFLAGS="${flags}" \
+			DESTDIR="" \
+			INSTALL="/usr/local/bin/install -c" \
+			INSTALL_DATA="/usr/local/bin/install -c -m 644" \
+			INSTALL_PROGRAM="/usr/local/bin/install -c " \
+			INSTALL_SCRIPT="/usr/local/bin/install -c " \
+			install); then \
+	  true; \
+	else \
+	  exit 1; \
+	fi; \
+      else true; \
+      fi; \
+    fi; \
+  done; \
+fi
+make[4]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib' から出ます
+if [ -z "" ]; then \
+  /bin/sh ../.././newlib/../mkinstalldirs /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/include; \
+  for i in ../.././newlib/libc/include/*.h; do \
+   /usr/local/bin/install -c -m 644 $i /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/include/`basename $i`; \
+  done; \
+  /usr/local/bin/install -c -m 644 newlib.h /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/include/newlib.h; \
+  /bin/sh ../.././newlib/../mkinstalldirs /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/include/machine; \
+  for i in ../.././newlib/libc/include/machine/*.h; do \
+   /usr/local/bin/install -c -m 644 $i /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/include/machine/`basename $i`; \
+  done; \
+  for i in ../.././newlib/libc/machine/mips/machine/*.h; do \
+    if [ -f $i ]; then \
+     /usr/local/bin/install -c -m 644 $i /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/include/machine/`basename $i`; \
+    else true; fi ; \
+  done; \
+  /bin/sh ../.././newlib/../mkinstalldirs /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/include/sys; \
+  for i in ../.././newlib/libc/include/sys/*.h; do \
+   /usr/local/bin/install -c -m 644 $i /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/include/sys/`basename $i`; \
+  done; \
+  for i in ../.././newlib/libc/machine/mips/sys/*.h; do \
+    if [ -f $i ]; then \
+     /usr/local/bin/install -c -m 644 $i /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/include/sys/`basename $i`; \
+    else true; fi ; \
+  done ; \
+  for i in ../.././newlib/libc/sys//sys/*.h; do \
+    if [ -f $i ]; then \
+     /usr/local/bin/install -c -m 644 $i /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/include/sys/`basename $i`; \
+    else true; fi ; \
+  done ; \
+  for i in ../.././newlib/libc/sys//machine/*.h; do \
+    if [ -f $i ]; then \
+     /usr/local/bin/install -c -m 644 $i /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/include/machine/`basename $i`; \
+    else true; fi ; \
+  done ; \
+  for i in ../.././newlib/libc/sys//include/*.h; do \
+    if [ -f $i ]; then \
+     /usr/local/bin/install -c -m 644 $i /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/include/`basename $i`; \
+    else true; fi ; \
+  done ; \
+  for i in ../.././newlib/libc/sys//machine/mips/include/*.h; do \
+    if [ -f $i ]; then \
+     /usr/local/bin/install -c -m 644 $i /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/include/machine/`basename $i`; \
+    else true; fi ; \
+  done ; \
+else true; fi
+mkdir -p -- /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/include
+mkdir -p -- /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/include/machine
+mkdir -p -- /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/include/sys
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib' から出ます
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib' から出ます
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib' から出ます
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/libgloss' に入ります
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/libgloss/doc' に入ります
+make[2]: 'install' に対して行うべき事はありません.
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/libgloss/doc' から出ます
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/libgloss/libnosys' に入ります
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/libgloss/libnosys' から出ます
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/libgloss/mips' に入ります
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/libgloss/mips' から出ます
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/libgloss' に入ります
+if [ -z "" ]; then \
+  true; \
+else \
+  rootpre=`${PWDCMD-pwd}`/; export rootpre; \
+  srcrootpre=`cd ../.././libgloss; ${PWDCMD-pwd}`/; export srcrootpre; \
+  lib=`echo ${rootpre} | sed -e 's,^.*/\([^/][^/]*\)/$,\1,'`; \
+  compiler="mips-elf-gcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/newlib/libc/include"; \
+  for i in `${compiler} --print-multi-lib 2>/dev/null`; do \
+    dir=`echo $i | sed -e 's/;.*$//'`; \
+    if [ "${dir}" = "." ]; then \
+      true; \
+    else \
+      if [ -d ../${dir}/${lib} ]; then \
+	flags=`echo $i | sed -e 's/^[^;]*;//' -e 's/@/ -/g'`; \
+	if (cd ../${dir}/${lib}; make "CC=mips-elf-gcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/newlib/libc/include" "CFLAGS=-O2 -g -O2" "AR=mips-elf-ar" "RANLIB=mips-elf-ranlib" "AR_FLAGS=rc" "MAKEINFO=makeinfo --split-size=5000000" "AS=mips-elf-as" "LD=mips-elf-ld" "CROSS_CFLAGS=" "TARGET_CFLAGS=" "exec_prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG" "prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG" "tooldir=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf" "INSTALL=/usr/local/bin/install -c" "INSTALL_PROGRAM=/usr/local/bin/install -c" "INSTALL_DATA=/usr/local/bin/install -c -m 644" "DESTDIR=" \
+			CFLAGS="-O2 -g -O2 ${flags}" \
+			FCFLAGS=" ${flags}" \
+			FFLAGS=" ${flags}" \
+			ADAFLAGS=" ${flags}" \
+			prefix="/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG" \
+			exec_prefix="/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG" \
+			GCJFLAGS=" ${flags}" \
+			CXXFLAGS="-g -O2 ${flags}" \
+			LIBCFLAGS="-O2 -g -O2 ${flags}" \
+			LIBCXXFLAGS="-g -O2 -fno-implicit-templates ${flags}" \
+			LDFLAGS=" ${flags}" \
+			MULTIFLAGS="${flags}" \
+			DESTDIR="" \
+			INSTALL="/usr/local/bin/install -c" \
+			INSTALL_DATA="/usr/local/bin/install -c -m 644" \
+			INSTALL_PROGRAM="/usr/local/bin/install -c" \
+			INSTALL_SCRIPT="/usr/local/bin/install -c" \
+			install); then \
+	  true; \
+	else \
+	  exit 1; \
+	fi; \
+      else true; \
+      fi; \
+    fi; \
+  done; \
+fi
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/libgloss' から出ます
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.mips-elf/mips-elf/libgloss' から出ます
+> ls /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mips-elf/lib/
+cfe.ld	      ddb.ld	   libc.a    liblsi.a	   libpmon.a   pmon.ld
+crt0.o	      idt.ld	   libcfe.a  libm.a	   lsi.ld
+crt0_cfe.o    idtecoff.ld  libg.a    libnosys.a*   nullmon.ld
+ddb-kseg0.ld  ldscripts/   libidt.a  libnullmon.a  pcrt0.o
+>
+
+hello.c のサンプルは期待通り動作している.
