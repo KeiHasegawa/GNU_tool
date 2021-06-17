@@ -223,3 +223,55 @@ esac
 % cd ../..
 % make
 ...
+
+TARGET_CPU_DEFAULT="" \
+HEADERS="tm-preds.h" DEFINES="" \
+/bin/sh ../.././gcc/mkconfig.sh tm_p.h
+make[2]: *** 's-mddeps' に必要なターゲット '../.././gcc/config//.md' を make するルールがありません.  中止.
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf/host-i686-pc-linux-gnu/gcc' から出ます
+make[1]: *** [Makefile:4372: all-gcc] エラー 2
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf' から出ます
+make: *** [Makefile:938: all] エラー 2
+%
+
+さてこのエラーだが
+
+
+../.././gcc/config//.md
+
+ではなくて
+
+../.././gcc/config/arm/arm.md
+
+を参照すれば良いはずなのだが...
+
+同じことを
+
+gcc-5.3.0
+
+でやってみたがやはり同じエラーが出た.
+
+gcc-3.4.4
+
+でもやってみたが, ここでは違うエラーになっている.
+しかし問題の箇所の configure の実行は以下のようになっていた:
+
+checking if mkdir takes one argument... no
+Using `./config/arm/arm.c' for machine-specific logic.
+Using `./config/arm/arm.md' as machine description file.
+Using the following target machine macro files:
+	./config/dbxelf.h
+	./config/elfos.h
+	./config/arm/unknown-elf.h
+	./config/arm/elf.h
+	./config/arm/aout.h
+	./config/arm/arm.h
+Using host-default.o for host machine hooks.
+
+そこで再び gcc-10.2.0.arm-elf/gcc/configure
+を以下のように修正した:
+
+#. ${srcdir}/config.gcc || exit 1
+. ../../gcc-3.4.4.arm-elf/gcc/config.gcc || exit 1
+
+もう一度トップディレクトリで configure からやり直しした
