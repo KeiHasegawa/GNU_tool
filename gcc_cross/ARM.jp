@@ -76,5 +76,17 @@ configure:11958: result: no
 
 config.log の先頭には
 
+  $ /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf/gcc/configure --srcdir=../.././gcc --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --disable-libstdc++-v3 --disable-libssp --disable-libquadmath --disable-libgfortran --disable-libobjc --enable-languages=c,c++,fortran,lto,objc --program-transform-name=s&^&arm-elf-& --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=arm-elf
+
+のようにあるのでこのように実行されたのだろうと思う.
+実際にやってみた:
+
+% cd ./host-i686-pc-linux-gnu/gcc
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf/gcc/configure --srcdir=../.././gcc --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --disable-libstdc++-v3 --disable-libssp --disable-libquadmath --disable-libgfortran --disable-libobjc --enable-languages=c,c++,fortran,lto,objc --program-transform-name='s&^&arm-elf-&' --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=arm-elf
 
 
+ここで
+
+'s&^&arm-elf-&'
+
+の部分はシングルクォーテーションで囲う必要がある.
