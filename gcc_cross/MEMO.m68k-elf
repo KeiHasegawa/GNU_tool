@@ -17,3 +17,276 @@ unable to create simulator instance
 
 のようになってしまう.
 
+target sim コマンドが受け着けられない
+
+=>
+
+MEMO.aarch64-elf と同じ対応が必要らしい
+
+gdb/init.c
+
+extern initialize_file_ftype _initialize_ser_tcp;
++extern initialize_file_ftype _initialize_remote_sim;
+extern initialize_file_ftype _initialize_ser_socket;
+
+
+  _initialize_ser_tcp ();
++ _initialize_remote_sim ();
+  _initialize_ser_socket ();
+
+
+gdb/Makefile
+
+を以下のように修正
+
+SIM = ../sim/m68hc11/libsim.a
+
+SIM_OBS = remote-sim.o
+
+% cd ../sim/m68hc11/
+% ./configure --target=m68hc11-elf
+
+version.c
+
+に
+
+const char* version = "1.0";
+
+として
+
+% make
+% cd ../../gdb
+% make
+% make install
+
+この修正により
+
+sim_open
+sim_load
+sim_create_inferior
+
+が期待通り呼ばれるようになった. しかしブレークポイントをセットすると以下のようになってしまう.
+
+Cannot insert breakpoint 1.
+Cannot access memory at address 0x8000014c
+
+Size of register pc (17/17) incorrect (2 instead of 4))(m68k-elf-gdb)
+
+とりあえずブレークポイントは諦めて単純に
+
+(m68k-elf-gdb) run
+
+とさせてみたところ
+
+Size of register pc (17/17) incorrect (2 instead of 4))
+Program received signal SIGTRAP, Trace/breakpoint trap.
+0x00000000 in ?? ()
+(m68k-elf-gdb)
+
+のようになっている. 何か間違えている.
+
+ひとまず run コマンドに対する sim_create_inferior が呼び出された後
+
+Size of register pc (17/17) incorrect (2 instead of 4))
+
+のエラーメッセージらしものを出している部分を特定するべき.
+ひとまず sim_create_inferior の後に
+
+sim_fetch_register
+
+が呼び出されることが期待されるのでここにブレークポイントをセットしてみた.
+そして呼び出されていることを確認した.
+
+rn = 17
+
+らしい. おそらく PC のレジスタ番号なのだろう. で,
+
+sim_fetch_register
+
+の戻り値が 2 で, これはバイト数らしい.
+というわけで gdb 自身は 4 が戻るはずのところで 2 が戻っているということで
+エラーメッセージらしきものを出しているわけだ.
+
+実際レジスタを読み込んでいるところは以下:
+
+static int
+m68hc11_reg_fetch (SIM_CPU *cpu, int rn, unsigned char *memory, int length)
+{
+  uint16 val;
+  int size = 2;
+
+  switch (rn)
+    {
+    case A_REGNUM:
+      val = cpu_get_a (cpu);
+      size = 1;
+      break;
+
+    case B_REGNUM:
+      val = cpu_get_b (cpu);
+      size = 1;
+      break;
+
+    case D_REGNUM:
+      val = cpu_get_d (cpu);
+      break;
+
+    case X_REGNUM:
+      val = cpu_get_x (cpu);
+      break;
+
+    case Y_REGNUM:
+      val = cpu_get_y (cpu);
+      break;
+
+    case SP_REGNUM:
+      val = cpu_get_sp (cpu);
+      break;
+
+    case PC_REGNUM:
+      val = cpu_get_pc (cpu);
+      break;
+
+    case PSW_REGNUM:
+      val = cpu_get_ccr (cpu);
+      size = 1;
+      break;
+
+    case PAGE_REGNUM:
+      val = cpu_get_page (cpu);
+      size = 1;
+      break;
+
+    default:
+      val = 0;
+      break;
+    }
+  if (size == 1)
+    {
+      memory[0] = val;
+    }
+  else
+    {
+      memory[0] = val >> 8;
+      memory[1] = val & 0x0FF;
+    }
+  return size;
+}
+
+rn = 17 だが
+
+#define PC_REGNUM 	4
+
+なので全然違うことになっている.
+おそらくこれは
+
+
+tdep
+
+に誤りがあったのだろう.
+そこで
+
+gdb/m68hc11-tdep.c
+
+に気付く. 実際ビルドされているのは勿論
+
+gdb/m68k-tdep.c
+
+
+でこれは configure の実行の仕方に誤りがあった.
+
+
+
+% ./configure --target=m68hc11-elf --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% make clean
+% make
+...
+gcc -DHAVE_CONFIG_H  -DWITH_ALIGNMENT=NONSTRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BFD_ENDIAN_BIG  -DWITH_HW=1 -DDEFAULT_INLINE=0   -Wall -Wdeclaration-after-statement -Wpointer-arith -Wpointer-sign -Wno-unused -Wunused-value -Wunused-function -Wno-switch -Wno-char-subscripts -Wmissing-prototypes -Wdeclaration-after-statement -Wempty-body -Wmissing-parameter-type -Wold-style-declaration -Wold-style-definition -Wformat-nonliteral   -DWITH_TARGET_WORD_BITSIZE=32 -DWITH_TARGET_CELL_BITSIZE=32 -DWITH_TARGET_ADDRESS_BITSIZE=32 -DWITH_TARGET_WORD_MSB=31   -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes  -g -O2  -o run \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lm -ldl -lnsl  -L../../zlib -lz
+...
+
+../../opcodes/libopcodes.a(disassemble.o):./disassemble.c:556: undefined reference to `print_insn_m68k'
+
+エラーが分かりずらいが, print_insn_m68k が未定義ということ. これは逆アセンブルで
+使用される函数.
+
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.m68k-elf/opcodes/m68k-dis.o
+
+objdump のビルドでやはりある.
+
+しかしよくよく見てみると
+
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.m68k-elf/opcodes/libopcodes.a
+
+には
+
+ar t libopcodes.a
+dis-buf.o
+disassemble.o
+dis-init.o
+m68hc11-dis.o
+m68hc11-opc.o
+
+があるので必要な
+
+print_insn_m68hc11
+
+は
+
+m68hc11-dis.o
+
+で定義されているので問題なし. run のビルドをしないように Makefile を修正する.
+
+gdb/init.c
+
+extern initialize_file_ftype _initialize_m68hc11_tdep;
+
+initialize_all_files (void)
+{
+  _initialize_m68hc11_tdep ();
+
+
+opcodes/disassemble.c
+
+#if 1
+    case bfd_arch_m68hc11:
+      disassemble = print_insn_m68hc11;
+      break;
+    case bfd_arch_m68hc12:
+      disassemble = print_insn_m68hc12;
+      break;
+    case bfd_arch_m9s12x:
+      disassemble = print_insn_m9s12x;
+      break;
+    case bfd_arch_m9s12xg:
+      disassemble = print_insn_m9s12xg;
+      break;
+#endif
+...
+#if 0 // def ARCH_m68k
+    case bfd_arch_m68k:
+      disassemble = print_insn_m68k;
+      break;
+#endif
+
+こっちのやりかたはあまりうまくいかない. むしろ
+
+% ./configure --target=m68k-elf --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+
+のほうがそれなりに動いていた
+
+--target=m68hcc1-elf
+
+でビルドしたものは
+
+target_ops *
+current_top_target ()
+{
+  return current_inferior ()->top_target ();
+}
+
+の呼び出しのところで 0 番地アクセスしている.
+
+単純に current_inferior () の戻り値が 0 になっている.

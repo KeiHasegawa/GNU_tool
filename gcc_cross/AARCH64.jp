@@ -1,4 +1,20 @@
-aarch64-elf
+AARCH64 (ARM64) のクロスコンパイル環境
+
+(*1) AARCH64
+(*2) スクリプトによるインストール
+(*3) 動作確認 => スタートアップルーチンが未完成(そのうち作成)
+
+(*1) AARCH64
+
+https://en.wikipedia.org/wiki/Aarch64
+
+(*2) スクリプトによるインストール
+
+「IQ2000」と同じスクリプトを使う
+
+set TARGET = aarch64-elf   # ここを変更
+
+(*3) 動作確認 => スタートアップルーチンが未完成(そのうち作成)
 
 % aarch64-elf-gcc -g -o hello.elf hello.c
 /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/aarch64-elf/10.2.0/../../../../aarch64-elf/bin/ld: /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/aarch64-elf/10.2.0/../../../../aarch64-elf/lib/libg.a(lib_a-exit.o): in function `exit':
@@ -19,7 +35,7 @@ _fstat
 _isatty
 
 % h8300-elf-gcc -g -o hello.elf hello.c
-これは正常終了している.
+これは正常終了していた.
 % h8300-elf-objdump -x hello.elf > aaa
 
 これで aaa の中を確認すると
@@ -59,7 +75,7 @@ _isatty
 
 にある.
 
-64 ビットじゃない arm はできていた.
+64 ビットではない arm はできていた.
 
 % arm-elf-gcc -g -o hello.elf hello.c
 % arm-elf-objdump -d hello.elf > aaa
@@ -108,7 +124,7 @@ target sim
 
 gdb-10.2.aarch64-elf/sim/aarch64/
 
-を見るとビルドされた形跡があるのだが不明.
+を見るとビルドされた形跡はある.
 
 target sim コマンドが受け着けられないのは
 

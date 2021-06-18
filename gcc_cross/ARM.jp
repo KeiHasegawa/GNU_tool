@@ -1,21 +1,21 @@
-ARM �̃N���X�R���p�C����
+ARM のクロスコンパイル環境
 
 (*1) ARM
-(*2) �X�N���v�g�ɂ��C���X�g�[��
+(*2) スクリプトによるインストール
 (*3) gcc-3.4.4
 (*4) gdb
 (*5) newlib-1.13.0
-(*6) ����m�F => OK
+(*6) 動作確認 => OK
 
 (*1) ARM
 https://ja.wikipedia.org/wiki/ARM%E3%82%A2%E3%83%BC%E3%82%AD%E3%83%86%E3%82%AF%E3%83%81%E3%83%A3
 
-(*2) �X�N���v�g�ɂ��C���X�g�[��
-�uIQ2000�v�Ɠ����X�N���v�g���g�p����:
+(*2) スクリプトによるインストール
+「IQ2000」と同じスクリプトを使用する:
 
-set TARGET = arm-elf   # ������ύX
+set TARGET = arm-elf   # ここを変更
 
-����� gcc-10.2 �� make �ňȉ��̃G���[�ɂȂ�:
+すると gcc-10.2 の make で以下のエラーになる:
 
 ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=arm-elf --disable-libstdc++-v3 --disable-libssp --disable-libquadmath --disable-libgfortran --disable-libobjc
 ...
@@ -26,84 +26,84 @@ checking for clock_t... yes
 checking for F_SETLKW... yes
 checking if mkdir takes one argument... no
 *** Configuration arm-unknown-elf not supported
-make[1]: *** [Makefile:4314: configure-gcc] �G���[ 1
-make[1]: �f�B���N�g�� '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf' ����o�܂�
-make: *** [Makefile:938: all] �G���[ 2
+make[1]: *** [Makefile:4314: configure-gcc] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf' から出ます
+make: *** [Makefile:938: all] エラー 2
 
-����͈ꌩ, configure �ŃG���[�����悤�Ɍ�����. �������������Ɍ�����
+これは一見, configure でエラーしたように見える. もう少し厳密に言えば
 
-make ������s���ꂽ configure �R�}���h���G���[����
+make から実行された configure コマンドがエラーした
 
-�Ƃ������ƂɂȂ�. �Ō�� make �̃��b�Z�[�W��
+ということになる. 最後の make のメッセージは
 
 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf
 
-��
+で
 
 configure-gcc
 
-�Ƃ����^�[�Q�b�g�ɑΉ�����R�}���h�����s�������ʃG���[�����Ɠǂނ̂�������.
-����́uMIPS�v�Ƃ͈Ⴄ�G���[�ɂȂ��Ă���.
-���̃G���[�͌��ǉ���ł��Ȃ�����. �}���ł������ (*3) �ɐi��ŉ�����.
+というターゲットに対応するコマンドを実行した結果エラーしたと読むのが正しい.
+これは「MIPS」とは違うエラーになっている.
+このエラーは結局回避できなかった. 急いでいる方は (*3) に進んで下さい.
 
-������ɂ��Ă� configure �ŃG���[���Ă���̂�
+いずれにしても configure でエラーしているので
 
 % ls -ltr `find . -name 'config.log'`
 
-�̂悤�ɂ��邱�ƂōŌ�Ɏ��s���� configure �̃��O����������:
+のようにすることで最後に実行した configure のログが判明した:
 
 ./host-i686-pc-linux-gnu/gcc/config.log
 
-�Ō�̍s�����Ă݂��
+最後の行を見てみると
 
 configure: exit 1
 
-�Ƃ���. �G���[���Ă���. ���Ă��� config.log ����
+とある. エラーしている. さてこの config.log から
 
 *** Configuration arm-unknown-elf not supported
 
-�Ƃ���������T���Ă݂���������Ȃ�. ���Ăǂ��ŃG���[�����ƍl����ׂ���.
+という文字を探してみたが見つからない. さてどこでエラーしたと考えるべきか.
 
-���̃��b�Z�[�W�̒��O�ɂ���
+このメッセージの直前にある
 
 checking if mkdir takes one argument... no
 
-���������Ǝv��, ���̃��b�Z�[�W�� config.log ����T���Ă݂�. �����
+が原因かと思い, このメッセージを config.log から探してみた. すると
 
 configure:11925: checking if mkdir takes one argument
 configure:11951: g++ -c -g    conftest.cpp >&5
 configure:11951: $? = 0
 configure:11958: result: no
 
-�̂悤�ɂȂ��Ă���. $? = 0 �Ȃ̂Ő���I���Ȃ̂���, ���Ƃ���Ή��̃G���[�Ȃ̂��낤.
+のようになっている. $? = 0 なので正常終了なのだが, だとすれば何故エラーなのだろう.
 
-config.log �̐擪�ɂ�
+config.log の先頭には
 
   $ /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf/gcc/configure --srcdir=../.././gcc --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --disable-libstdc++-v3 --disable-libssp --disable-libquadmath --disable-libgfortran --disable-libobjc --enable-languages=c,c++,fortran,lto,objc --program-transform-name=s&^&arm-elf-& --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=arm-elf
 
-�̂悤�ɂ���̂ł��̂悤�Ɏ��s���ꂽ�̂��낤�Ǝv��.
-���ۂɂ���Ă݂�:
+のようにあるのでこのように実行されたのだろうと思う.
+実際にやってみた:
 
 % cd ./host-i686-pc-linux-gnu/gcc
 % /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf/gcc/configure --srcdir=../.././gcc --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --disable-libstdc++-v3 --disable-libssp --disable-libquadmath --disable-libgfortran --disable-libobjc --enable-languages=c,c++,fortran,lto,objc --program-transform-name='s&^&arm-elf-&' --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=arm-elf
 
-������
+ここで
 
 's&^&arm-elf-&'
 
-�̕����̓V���O���N�H�[�e�[�V�����ł����ޕK�v������.
+の部分はシングルクォーテーションでかこむ必要がある.
 
 ...
 checking if mkdir takes one argument... no
 *** Configuration arm-unknown-elf not supported
 %
 
-�G���[�͍Č��ł��Ă���悤�ł���.
+エラーは再現できているようである.
 
 % sh -vx /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf/gcc/configure --srcdir=../.././gcc --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --disable-libstdc++-v3 --disable-libssp --disable-libquadmath --disable-libgfortran --disable-libobjc --enable-languages=c,c++,fortran,lto,objc --program-transform-name='s&^&arm-elf-&' --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=arm-elf
 
 
-�̂悤�Ɏ��s���Ă݂�. ��������ƃ��O�̒�����ȉ��𔭌�����
+のように実行してみた. そうするとログの中から以下を発見した
 
 # Unsupported targets list.  Do not put an entry in this list unless
 # it would otherwise be caught by a more permissive pattern.  The list
@@ -151,46 +151,46 @@ esac
 ++ echo '*** Configuration arm-unknown-elf not supported'
 *** Configuration arm-unknown-elf not supported
 
-�Ȃ�قǂ����炵��.
+なるほどここらしい.
 
 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf/gcc/configure
 
-�̒������̊Y���ӏ��͌����炸. ��̂ǂ������J���N���Ȃ̂��낤.
-��̃t�@�C������ʂ̃V�F���X�N���v�g�����s�����΂��̂悤�ȃ��O�ɂȂ�
-�\���͂���. ����ł����
+の中から上の該当箇所は見つからず. 一体どういうカラクリなのだろう.
+上のファイルから別のシェルスクリプトが実行されればこのようなログになる
+可能性はある. それであれば
 
 case ${target} in
 
-�Ƃ�����������t�@�C������T�����ق����ǂ��Ǝv�����̂�
+という文字列をファイルから探したほうが良いと思ったので
 
 % find /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf -type f -exec grep --color -nH --null -e 'case.*target.*in' \{\} +
 
-�̂悤�Ɏ��s���Ă݂�. �v���̑����v���Ă���.
-�������镶����ύX���Ĉȉ��̂悤�ɂ��Ă݂�:
+のように実行してみた. 思いの他合致している.
+検索する文字を変更して以下のようにしてみた:
 
 % find /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf -type f -exec grep --color -nH --null -e 'Avoid special cases that are not obsolete' \{\} +
 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf/gcc/config.gcc:267: # Avoid special cases that are not obsolete
 
-�q�b�g���Ă���.
+ヒットしている.
 
  | arm*-*-elf				\
 
-�̍s�� config.gcc ����폜����.
+の行を config.gcc から削除した.
 
 % sh -vx /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf/gcc/configure --srcdir=../.././gcc --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --disable-libstdc++-v3 --disable-libssp --disable-libquadmath --disable-libgfortran --disable-libobjc --enable-languages=c,c++,fortran,lto,objc --program-transform-name='s&^&arm-elf-&' --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=arm-elf
 
-������x���s���Ă݂��Ƃ���, �܂��G���[���Ă���悤�ł���.
-���������̂Ƃ��̓��O���������ĉ������Ă����̂��T�b�p���ł���.
+もう一度実行してみたところ, まだエラーしているようである.
+しかもこのときはログが多すぎて何を見ていいのかサッパリである.
 
 % /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf/gcc/configure --srcdir=../.././gcc --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --disable-libstdc++-v3 --disable-libssp --disable-libquadmath --disable-libgfortran --disable-libobjc --enable-languages=c,c++,fortran,lto,objc --program-transform-name='s&^&arm-elf-&' --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=arm-elf
 
-�̂悤�Ɏ��s���Ă݂��Ƃ���
+のように実行してみたところ
 
 checking if mkdir takes one argument... no
 *** Configuration arm-unknown-elf not supported
 
-�����, �G���[������ł��Ă��Ȃ������炵��.
-���O�̒�����ȉ���������:
+これは, エラーを回避できていなかったらしい.
+ログの中から以下を見つけた:
 
 *)
 	echo "*** Configuration ${target} not supported" 1>&2
@@ -200,27 +200,27 @@ esac
 ++ case ${target} in
 ++ echo '*** Configuration arm-unknown-elf not supported'
 
-����͂ǂ�ɂ��Y������ case ���x�����Ȃ������Ƃ������ƂȂ̂��낤.
-�����炭��ق� config.gcc �ō폜����
+これはどれにも該当する case ラベルがなかったということなのだろう.
+おそらく先ほど config.gcc で削除した
 
  | arm*-*-elf				\
 
-�ł��G���[��������؂�Ȃ������悤�ł���.
+でもエラーを回避し切れなかったようである.
 
 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf/gcc/configure
 
-�ł�
+では
 
 # Collect target-machine-specific information.
 . ${srcdir}/config.gcc || exit 1
 
-�̂悤�� config.gcc ��ǂݍ���ł���炵��. �����ł�����R�����g�A�E�g
-���Ă݂�.
+のように config.gcc を読み込んでいるらしい. そこでこれをコメントアウト
+してみた.
 
 % /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf/gcc/configure --srcdir=../.././gcc --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --disable-libstdc++-v3 --disable-libssp --disable-libquadmath --disable-libgfortran --disable-libobjc --enable-languages=c,c++,fortran,lto,objc --program-transform-name='s&^&arm-elf-&' --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=arm-elf
 
-���߂ď�����s���Ă݂��Ƃ���G���[�͔������Ă��Ȃ�. ���̑Ώ�����������
-�ǂ����͕ʂɂ��Ă���ł���Ă݂邱�Ƃɂ���.
+改めて上を実行してみたところエラーは発生していない. この対処が正しいか
+どうかは別にしてこれでやってみることにする.
 
 % cd ../..
 % make
@@ -229,34 +229,34 @@ esac
 TARGET_CPU_DEFAULT="" \
 HEADERS="tm-preds.h" DEFINES="" \
 /bin/sh ../.././gcc/mkconfig.sh tm_p.h
-make[2]: *** 's-mddeps' �ɕK�v�ȃ^�[�Q�b�g '../.././gcc/config//.md' �� make ���郋�[��������܂���.  ���~.
-make[2]: �f�B���N�g�� '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf/host-i686-pc-linux-gnu/gcc' ����o�܂�
-make[1]: *** [Makefile:4372: all-gcc] �G���[ 2
-make[1]: �f�B���N�g�� '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf' ����o�܂�
-make: *** [Makefile:938: all] �G���[ 2
+make[2]: *** 's-mddeps' に必要なターゲット '../.././gcc/config//.md' を make するルールがありません.  中止.
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf/host-i686-pc-linux-gnu/gcc' から出ます
+make[1]: *** [Makefile:4372: all-gcc] エラー 2
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf' から出ます
+make: *** [Makefile:938: all] エラー 2
 %
 
-���Ă��̃G���[����
+さてこのエラーだが
 
 
 ../.././gcc/config//.md
 
-�ł͂Ȃ���
+ではなくて
 
 ../.././gcc/config/arm/arm.md
 
-���Q�Ƃ���Ηǂ��͂��Ȃ̂���...
+を参照すれば良いはずなのだが...
 
-�������Ƃ�
+同じことを
 
 gcc-5.3.0
 
-�ł���Ă݂�����͂蓯���G���[���o��.
+でやってみたがやはり同じエラーが出た.
 
 gcc-3.4.4
 
-�ł�����Ă݂���, �����ł͈Ⴄ�G���[�ɂȂ��Ă���.
-���������̉ӏ��� configure �̎��s�͈ȉ��̂悤�ɂȂ��Ă���:
+でもやってみたが, ここでは違うエラーになっている.
+しかし問題の箇所の configure の実行は以下のようになっていた:
 
 checking if mkdir takes one argument... no
 Using `./config/arm/arm.c' for machine-specific logic.
@@ -270,13 +270,13 @@ Using the following target machine macro files:
 	./config/arm/arm.h
 Using host-default.o for host machine hooks.
 
-�����ōĂ� gcc-10.2.0.arm-elf/gcc/configure
-���ȉ��̂悤�ɏC������:
+そこで再び gcc-10.2.0.arm-elf/gcc/configure
+を以下のように修正した:
 
 #. ${srcdir}/config.gcc || exit 1
 . ../../gcc-3.4.4.arm-elf/gcc/config.gcc || exit 1
 
-������x�g�b�v�f�B���N�g���� configure �����蒼������
+もう一度トップディレクトリで configure からやり直しした
 
 % cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf
 % find . -name config.cache -exec rm -f {} \;
@@ -291,56 +291,56 @@ g++ -c   -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtt
 In file included from ../.././gcc/config/arm/arm.h:53,
                  from ./tm.h:12,
                  from ../.././gcc/genpreds.c:26:
-../.././gcc/config/arm/arm-opts.h:29:10: �v���I�G���[: arm-isa.h: ���̂悤�ȃt�@�C����f�B���N�g���͂���܂���
+../.././gcc/config/arm/arm-opts.h:29:10: 致命的エラー: arm-isa.h: そのようなファイルやディレクトリはありません
    29 | #include "arm-isa.h"
       |          ^~~~~~~~~~~
-�R���p�C�����~���܂����B
-make[2]: *** [Makefile:2722: build/genpreds.o] �G���[ 1
-make[2]: �f�B���N�g�� '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf/host-i686-pc-linux-gnu/gcc' ����o�܂�
-make[1]: *** [Makefile:4372: all-gcc] �G���[ 2
-make[1]: �f�B���N�g�� '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf' ����o�܂�
-make: *** [Makefile:938: all] �G���[ 2
+コンパイルを停止しました。
+make[2]: *** [Makefile:2722: build/genpreds.o] エラー 1
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf/host-i686-pc-linux-gnu/gcc' から出ます
+make[1]: *** [Makefile:4372: all-gcc] エラー 2
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf' から出ます
+make: *** [Makefile:938: all] エラー 2
 
-�G���[�ɂ͂Ȃ��������̉ӏ��͉���ł��Ă���.
+エラーにはなったが問題の箇所は回避できている.
 
 > ls -l gcc/config/arm
-lrwxrwxrwx 1 khasegawa khasegawa 90  6�� 17 05:59 gcc/config/arm -> /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.arm-elf/gcc/config/arm/
+lrwxrwxrwx 1 khasegawa khasegawa 90  6月 17 05:59 gcc/config/arm -> /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.arm-elf/gcc/config/arm/
 > find . -name confi.cache -exec rm -f {} \;
 > ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=arm-elf \
  --disable-libstdc++-v3 --disable-libssp --disable-libquadmath \
  --disable-libgfortran --disable-libobjc
 > make
 ...
-make[2]: �f�B���N�g�� '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf/host-i686-pc-linux-gnu/gcc' �ɓ���܂�
-Makefile:2326: �x��: �^�[�Q�b�g '.c.o' �̂��߂̃��V�s��u�������܂�
-Makefile:1116: �x��: �^�[�Q�b�g '.c.o' �̂��߂̌Â����V�s�͖�������܂�
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf/host-i686-pc-linux-gnu/gcc' に入ります
+Makefile:2326: 警告: ターゲット '.c.o' のためのレシピを置き換えます
+Makefile:1116: 警告: ターゲット '.c.o' のための古いレシピは無視されます
 Makefile:2326: warning: ignoring prerequisites on suffix rule definition
 g++ -c   -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables     -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
 	-o build/genpreds.o ../.././gcc/genpreds.c
 In file included from ./tm.h:9,
                  from ../.././gcc/genpreds.c:26:
-../.././gcc/config/arm/unknown-elf.h:27:9: �G���[: �������ꂽ 'TARGET_VERSION' �g�����Ƃ��Ă��܂�
+../.././gcc/config/arm/unknown-elf.h:27:9: エラー: 汚染された 'TARGET_VERSION' 使おうとしています
    27 | #ifndef TARGET_VERSION
       |         ^
 In file included from ./tm.h:10,
                  from ../.././gcc/genpreds.c:26:
-../.././gcc/config/arm/elf.h:104:9: �G���[: �������ꂽ 'TARGET_VERSION' �g�����Ƃ��Ă��܂�
+../.././gcc/config/arm/elf.h:104:9: エラー: 汚染された 'TARGET_VERSION' 使おうとしています
   104 | #ifndef TARGET_VERSION
       |         ^
-../.././gcc/config/arm/elf.h:135: �x��: "MAX_OFILE_ALIGNMENT" ���Ē�`����܂���
+../.././gcc/config/arm/elf.h:135: 警告: "MAX_OFILE_ALIGNMENT" が再定義されました
   135 | #define MAX_OFILE_ALIGNMENT (32768 * 8)
  ...
 
-����, ���̃G���[�͑S���o���������Ƃ̂Ȃ��G���[��������Ȃ�.
+さて, このエラーは全く経験したことのないエラーかもしれない.
 
 > cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.arm-elf/host-i686-pc-linux-gnu/gcc
 > g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables     -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  	-o build/genpreds.o ../.././gcc/genpreds.c
 
-�G���[�͍Č��ł��Ă���.
+エラーは再現できている.
 
 > g++ -E   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables     -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  	-o build/genpreds.i ../.././gcc/genpreds.c
 
-�G���[���Ă���. �v���v���Z�X�̒i�K�ŃG���[���Ă���Ƃ����킯��.
+エラーしている. プリプロセスの段階でエラーしているというわけだ.
 
 > chmod +x x
 > cat x
@@ -355,9 +355,9 @@ In file included from ./tm.h:9,
    27 | #ifndef TARGET_VERSION
 
 
-poisoned �Ƃ͈��?
+poisoned とは一体?
 
-Stack overflow �ɂ����邪
+Stack overflow にもあるが
 
 #pragma GCC poison HOGE
 
@@ -365,8 +365,8 @@ Stack overflow �ɂ����邪
 #endif
 
 
-�̂悤�ɂ���΂��̃G���[���Č�����.
-����, ���ڂ̌����͔���������, ���Ƃ��� gcc-3.4.4 �̃r���h�ł͂����͉���ł��Ă����͂�.
+のようにすればこのエラーが再現する.
+さて, 直接の原因は判明したが, もともと gcc-3.4.4 のビルドではここは回避できていたはず.
 
 > cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.arm-elf/
 > find . -name 'genpreds.*'
@@ -378,30 +378,30 @@ Stack overflow �ɂ����邪
 ...
 gcc -c   -g -O2 -DIN_GCC -DCROSS_COMPILE  -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -pedantic -Wno-long-long    -DHAVE_CONFIG_H -DGENERATOR_FILE    -I. -I. -I. -I./. -I./../include  genpreds.c -o genpreds.o
 ...
-�����ł̓G���[���Ă��Ȃ�.
-�����炭 include �̂�����������Ă���.
+ここではエラーしていない.
+おそらく include のしかたが違っている.
 
-���Ă��̃G���[���������ȒP�ȕ��@�͉���.
+さてこのエラーを回避する簡単な方法は何か.
 
 
-�ЂƂ܂���ԊȒP�����Ȃ̂� gcc-3.4.4 �Ńr���h���邱�Ƃ̂悤�Ɏv����.
+ひとまず一番簡単そうなのは gcc-3.4.4 でビルドすることのように思える.
 
 (*3) gcc-3.4.4
 
-�uMIPS�v�ŏq�ׂ����@�Ɠ����悤�ɂ���� arm-elf-gcc ���C���X�g�[�����邱�Ƃ��ł���.
-���͏��Ԃ� ARM �̕�����ŉ����ǂ��Ώ��������L�^����̂���������̂�
-�����������ƂɂȂ��Ă���.
+「MIPS」で述べた方法と同じようにすれば arm-elf-gcc をインストールすることができる.
+実は順番は ARM の方が先で何をどう対処したか記録するのが難しかったので
+こういうことになっている.
 
 (*4) gdb
 
-    �X�N���v�g�Ɠ������@�ŃC���X�g�[���ł���.
+    スクリプトと同じ方法でインストールできる.
 
 (*5) newlib-1.13.0
 
-newlib �� newlib-4.1.0 ���ƃG���[�ɂȂ����̂�, newlib-1.13.0 ���g�p����.
-���������́uMIPS�v�Ɠ��������ŏ��ɑΏ������͎̂��� ARM
+newlib は newlib-4.1.0 だとエラーになったので, newlib-1.13.0 を使用した.
+ここも実は「MIPS」と同じだが最初に対処したのは実は ARM
 
-(*6) ����m�F
+(*6) 動作確認
 
 % arm-elf-gcc -o hello.elf -g hello.c
 % arm-elf-gdb hello.elf
