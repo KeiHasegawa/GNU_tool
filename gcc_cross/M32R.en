@@ -1,0 +1,27 @@
+Reading symbols from hello.elf...
+Connected to the simulator.
+Loading section .init, size 0x24 lma 0x100
+Loading section .text, size 0x24b8 lma 0x124
+Loading section .fini, size 0x14 lma 0x25dc
+Loading section .rodata, size 0x2c lma 0x25f0
+Loading section .init_array, size 0x8 lma 0x263c
+Loading section .fini_array, size 0x8 lma 0x2644
+Loading section .data, size 0x82c lma 0x264c
+Loading section .sdata, size 0xc lma 0x2e78
+Start address 0x124
+Transfer rate: 92960 bits in <1 sec.
+Breakpoint 1 at 0x1b0: file hello.c, line 5.
+
+Breakpoint 1, main () at hello.c:5
+5	  printf("hello world\n");
+Dump of assembler code for function main:
+   0x000001a8 <+0>:	push fp -> push lr
+   0x000001ac <+4>:	mv fp,sp || nop
+=> 0x000001b0 <+8>:	ld24 r0,0x25f0
+   0x000001b4 <+12>:	bl 0x2ac <puts>
+   0x000001b8 <+16>:	ldi r4,#0 || nop
+   0x000001bc <+20>:	mv r0,r4 -> pop lr
+   0x000001c0 <+24>:	pop fp -> jmp lr
+End of assembler dump.
+hello world
+[Inferior 1 (process 42000) exited normally]
