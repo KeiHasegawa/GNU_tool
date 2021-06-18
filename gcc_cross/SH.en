@@ -1,0 +1,55 @@
+SH cross compile environment
+
+(*1) SH
+https://en.wikipedia.org/wiki/SuperH
+
+(*2) Install with script
+
+Use the same script with "IQ2000":
+
+set TARGET = sh-elf   # Change
+
+(*3) Verification => OK
+
+Reading symbols from hello.elf...
+Connected to the simulator.
+Loading section .init, size 0x36 lma 0x1000
+Loading section .text, size 0x2a98 lma 0x1038
+Loading section .fini, size 0x2a lma 0x3ad0
+Loading section .rodata, size 0x2a lma 0x3afc
+Loading section .eh_frame, size 0x4 lma 0x3b28
+Loading section .ctors, size 0x8 lma 0x3bac
+Loading section .dtors, size 0x8 lma 0x3bb4
+Loading section .data, size 0x83c lma 0x3bbc
+Loading section .got, size 0xc lma 0x43f8
+Loading section .stack, size 0x4 lma 0x3fffff00
+Start address 0x1038
+Transfer rate: 105488 bits in <1 sec.
+Breakpoint 1 at 0x11a2: file hello.c, line 5.
+
+Breakpoint 1, main () at hello.c:5
+5	  printf("hello world\n");
+Dump of assembler code for function main:
+   0x0000119c <+0>:	mov.l	r14,@-r15
+   0x0000119e <+2>:	sts.l	pr,@-r15
+   0x000011a0 <+4>:	mov	r15,r14
+=> 0x000011a2 <+6>:	mov.l	0x11bc <main+32>,r1	! 0x3afc
+   0x000011a4 <+8>:	mov	r1,r4
+   0x000011a6 <+10>:	mov.l	0x11c0 <main+36>,r1	! 0x128c <puts>
+   0x000011a8 <+12>:	jsr	@r1
+   0x000011aa <+14>:	nop	
+   0x000011ac <+16>:	mov	#0,r1
+   0x000011ae <+18>:	mov	r1,r0
+   0x000011b0 <+20>:	mov	r14,r15
+   0x000011b2 <+22>:	lds.l	@r15+,pr
+   0x000011b4 <+24>:	mov.l	@r15+,r14
+   0x000011b6 <+26>:	rts	
+   0x000011b8 <+28>:	nop	
+   0x000011ba <+30>:	nop	
+   0x000011bc <+32>:	.word 0x0000
+   0x000011be <+34>:	add	r15,r10
+   0x000011c0 <+36>:	.word 0x0000
+   0x000011c2 <+38>:	mov.l	r8,@(48,r2)
+End of assembler dump.
+hello world
+[Inferior 1 (process 42000) exited normally]
