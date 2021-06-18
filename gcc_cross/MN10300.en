@@ -1,0 +1,43 @@
+MN10300 cross compile environment
+
+(*1) MN10300
+Unfotunatelly no Wiki page about MN10300.
+MN10300 is micro computer seriese developed by Panasonic.
+
+(*2) Install with script
+
+Use the same script with "IQ2000":
+
+set TARGET = mn10300-elf   # Change
+
+(*3) Verification => OK
+
+Build like below:
+
+% mn10300-elf-gcc -g -o hello.elf hello.c -Tsim.ld
+
+mn10300-elf-gdb log is:
+
+Reading symbols from hello.elf...
+Connected to the simulator.
+Loading section .text, size 0x2a10 lma 0x4
+Loading section .rodata, size 0x2a lma 0x2a14
+Loading section .data, size 0x840 lma 0x2a40
+Start address 0x4
+Transfer rate: 103376 bits in <1 sec.
+Breakpoint 1 at 0x41: file hello.c, line 5.
+
+Breakpoint 1, main () at hello.c:5
+5	  printf("hello world\n");
+Dump of assembler code for function main:
+   0x0000003b <+0>:	movm	[a3],(sp)
+   0x0000003d <+2>:	mov	sp,a3
+   0x0000003e <+3>:	add	-12,sp
+=> 0x00000041 <+6>:	mov	10772,d0
+   0x00000047 <+12>:	call	0xf8 <puts>,[],0
+   0x0000004e <+19>:	mov	0,d0
+   0x00000050 <+21>:	mov	a3,sp
+   0x00000052 <+23>:	ret	[a3],4
+End of assembler dump.
+hello world
+[Inferior 1 (process 42000) exited normally]
