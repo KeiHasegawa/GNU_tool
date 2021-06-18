@@ -1,174 +1,80 @@
-ƒ^[ƒQƒbƒgƒVƒ~ƒ…ƒŒ[ƒ^‚Ì\‘¢
+i386 ã®ã‚·ãƒŸãƒ¥ãƒ¬ãƒ¼ã‚¿ä½œæˆãƒ¡ãƒ¢
 
-M-x gdb
-(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_h8300/
-(gdb) run -q -x gdbcom hello.elf
-Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.h8300-elf/gdb/gdb -q -x gdbcom hello.elf
-[Thread debugging using libthread_db enabled]
-Using host libthread_db library "/lib/libthread_db.so.1".
-warning: File "/usr/local/lib/libstdc++.so.6.0.28-gdb.py" auto-loading has been declined by your `auto-load safe-path' set to "$debugdir:$datadir/auto-load".
-[Detaching after vfork from child process 4372]
-[New Thread 0xb7733b70 (LWP 4373)]
-[New Thread 0xb6f32b70 (LWP 4374)]
-Reading symbols from hello.elf...
-Connected to the simulator.
-Loading section .init, size 0xa vma 0x100
-Loading section .text, size 0x30e6 vma 0x10c
-Loading section .fini, size 0x6 vma 0x31f2
-Loading section .rodata, size 0x28 vma 0x31f8
-Loading section .eh_frame, size 0x4 vma 0x3220
-Loading section .ctors, size 0x4 vma 0x3224
-Loading section .dtors, size 0x4 vma 0x3228
-Loading section .data, size 0x46c vma 0x322c
-Start address 0x10c
-Transfer rate: 109744 bits in <1 sec.
-hello world
-[Inferior 1 (process 42000) exited normally]
-[Thread 0xb6f32b70 (LWP 4374) exited]
-[Thread 0xb7733b70 (LWP 4373) exited]
-[Inferior 1 (process 4307) exited normally]
-(gdb)
+ã¾ãšã¯ h8300-elf ã§ gdb ã‚’ãƒ“ãƒ«ãƒ‰ã™ã‚‹.
 
-Šú‘Ò’Ê‚è“®ì‚µ‚Ä‚¢‚é. ‚±‚±‚Å gdbcom ‚ÍˆÈ‰º:
+ã“ã‚Œã§ h8300-elf ç”¨ã® gdb ãŒã§ãã‚‹ãŒ, æœ€å¾Œã® gdb ã‚’ç”Ÿæˆã™ã‚‹ãƒãƒ³ãƒ‰
 
-set prompt (h8300-elf-gdb) 
-target sim
-load
-run
-quit
+g++  -g -O2     -pthread  \
+	-o gdb ... \
+	../sim/h8300/libsim.a \
 
-1 ‚Â–Ú‚Ìƒvƒƒ“ƒvƒg‚Ìİ’è‚ÍƒƒO‚É”½‰f‚³‚ê‚Ä‚¢‚È‚¢‚ª, ƒfƒoƒbƒO‚³‚ê‚Ä‚¢‚é gdb ‚ÆƒfƒoƒbƒO
-‚µ‚Ä‚¢‚é gdb ‚ğ‹æ•Ê‚·‚éˆÓ–¡‚Å“ü‚ê‚Ä‚¢‚é.
+ã®ã‚ˆã†ã«ãªã£ã¦ã„ã‚‹ã®ã§ã“ã‚Œã‚’
 
-gdb ‹N“®, ƒRƒ}ƒ“ƒh‚ÌÀs‚Éæ—§‚Á‚ÄˆÈ‰º‚Ì”Ÿ”‚ªÀs‚³‚ê‚é:
+g++  -g -O2     -pthread  \
+	-o gdb ... \
+	-L../sim/i386 -lsim \
 
-void
-initialize_all_files (void)
-{
-  _initialize_h8300_tdep ();   ‚±‚±‚Åƒ^[ƒQƒbƒgƒVƒ~ƒ…ƒŒ[ƒ^ŒÅ—L‚Ì‰Šú‰»‚ğ‚µ‚Ä‚¢‚é‚ç‚µ‚¢.
+ã®ã‚ˆã†ã«å¤‰æ›´ã™ã‚‹. ãã—ã¦ ../sim/i386 ãƒ‡ã‚£ãƒ¬ã‚¯ãƒˆãƒªã‚’æ–°è¦ã«ä½œæˆã—ã¦, ãã“ã« DLL
 
-—á‚¦‚Î:
+libsim.so
 
-      o ƒ^[ƒQƒbƒgƒVƒ~ƒ…ƒŒ[ƒ^‚ªƒrƒbƒOƒGƒ“ƒfƒBƒAƒ“‚©ƒŠƒgƒ‹ƒGƒ“ƒfƒBƒAƒ“‚©
-      o ƒŒƒWƒXƒ^‚ğ‚¢‚­‚Â‚Á‚Ä‚¢‚é‚©
-      o PC ‚ÌƒŒƒWƒXƒ^”Ô†‚Í‚¢‚­‚Â‚©
-      o int, long ‚ª‰½ƒoƒCƒg‚Å‚ ‚é‚©
+ã‚ã‚‹ã„ã¯
 
-‚È‚Ç‚Å‚ ‚é.
+libsim.dll
 
+ã‚’ä½œæˆã—ã¦ãŠã. ã“ã‚Œã¯æœ€åˆæ„å›³çš„ã«ç©ºã® DLL ã«ã—ã¦ãŠã. ãã†ã™ã‚Œã°
+æœ€å¾Œã®ãƒªãƒ³ã‚¯ã‚³ãƒãƒ³ãƒ‰ãŒ undefined reference to `...' ã¨ã„ã†ã‚¨ãƒ©ãƒ¼ãŒå‡ºã‚‹.
+ãã‚ŒãŒä»¥ä¸‹ã®ã‚·ãƒ³ãƒœãƒ«:
 
-(*1) target sim ƒRƒ}ƒ“ƒh
+sim_open
+sim_close
+sim_fetch_register
+sim_store_register
+sim_load
+sim_create_inferior
+sim_stop
+sim_resume
+sim_stop_reason
+sim_write
+sim_read
+sim_info
+sim_do_command
+sim_complete_command
+default_callback
 
-main.c:1214
--x ‚Åw’è‚³‚ê‚½ƒtƒ@ƒCƒ‹‚ÍˆÈ‰º‚Åˆ—‚³‚ê‚Ä‚¢‚é:
+æœ€å¾Œã® default_callback ä»¥å¤–ã¯å‡½æ•°ã§, default_callback ã¯
+ã‚ã‚‹æ§‹é€ ä½“ã®å‹ã®å¤‰æ•°ã§ã‚ã‚‹. ã—ã‹ã—å·®ã—å½“ãŸã£ã¦ã“ã‚Œã¯ãã‚Œã»ã©é‡è¦ã§ã¯ãªã„.
 
-	case CMDARG_FILE:
-	  ret = catch_command_errors (source_script, cmdarg_p.string,
-				      !batch_flag);
-	  break;
+ã¾ãšã¯ãƒªãƒ³ã‚¯ã‚’é€šã™ãŸã‚ã«ã“ã‚Œã‚‰ã®ã‚·ãƒ³ãƒœãƒ«ã‚’
 
-‚±‚±‚©‚çƒXƒeƒbƒvÀs‚µ‚Ä‚¢‚¯‚Î -x ‚Åw’è‚³‚ê‚½ƒtƒ@ƒCƒ‹‚É‘‚©‚ê‚Ä‚¢‚éƒRƒ}ƒ“ƒh‚Í
-ˆÈ‰º‚Åˆ—‚³‚ê‚Ä‚¢‚é‚±‚Æ‚ª•ª‚©‚é:
+libsim.so
 
-top.c:449
-  while (ui->instream != NULL && !feof (ui->instream))
-    {
-      const char *command;
+ã‚ã‚‹ã„ã¯
 
-      /* Get a command-line.  This calls the readline package.  */
-      command = command_line_input (NULL, NULL);
-      if (command == NULL)
-	break;
-      command_handler (command);    // ‚±‚±‚Åˆ—‚³‚ê‚Ä‚¢‚é
-    }
+libsim.dll
 
-target sim ƒRƒ}ƒ“ƒh‚Í¡‰ñ‚Ìê‡ 2 ‚Â–Ú‚ÌƒRƒ}ƒ“ƒh‚È‚Ì‚Å‚»‚ê‚ğ’²¸‚µ‚Ä‚İ‚é.
-‚â‚Í‚èƒXƒeƒbƒvÀs‚µ‚Ä‚¢‚­‚ÆˆÈ‰º‚Ì”Ÿ”‚É’H‚è’…‚­:
+ã«å®šç¾©ã—ã¦ãŠã‘ã°ãƒªãƒ³ã‚¯ã ã‘ã¯æˆåŠŸã™ã‚‹.
+ã“ã®æ–°ã—ã„ i386 ç”¨ã® gdb ã‚’èµ·å‹•ã™ã‚‹ãŸã‚ã«ã¯ libsim.so ã‚ã‚‹ã„ã¯ libsim.dll ã‚’å®Ÿè¡Œæ™‚
+ãƒ­ãƒ¼ãƒ‰ã§ãã‚‹ã‚ˆã†ã«ã—ã¦ãŠãã‚ˆã†ã«ã™ã‚‹. ã“ã‚Œã«ã¯ç’°å¢ƒå¤‰æ•°ã‚’ã‚·ã‚¹ãƒ†ãƒ ã«åˆã‚ã›ã¦é©åˆ‡ã«ã‚»ãƒƒãƒˆã™ã‚‹
+å¿…è¦ãŒã‚ã‚‹.
 
-target.c:230
-/* This is used to implement the various target commands.  */
+linux % setenv LD_LIBRARY_PATH $LD_LIBRARY_PATH:/home/khasegawa/gdb-10.2/sim/i386
 
-static void
-open_target (const char *args, int from_tty, struct cmd_list_element *command)
-{
-  auto *ti = static_cast<target_info *> (get_cmd_context (command));
-  target_open_ftype *func = target_factories[ti];
+cygwin % setenv PATH $PATH:/home/khasegawa/gdb-10.2/sim/i386
 
+å®Ÿè¡Œæ™‚ã«ãƒ­ãƒ¼ãƒ‰ã§ããªã‘ã‚Œã°, ã€Œlibsim.{so,dll} ã‚’ãƒ­ãƒ¼ãƒ‰ã§ããªã„ã€ã¨ã„ã†ãƒ¡ãƒƒã‚»ãƒ¼
+ã‚¸ãŒå‡ºã‚‹. DLL ã«ã™ã‚Œã°ã‚·ãƒŸãƒ¥ãƒ¬ãƒ¼ã‚¿ã‚’ä¿®æ­£ã—ãŸå¾Œã« gdb ã¨ãƒªãƒ³ã‚¯ã—ç›´ã™å¿…è¦ãŒãªãã¦
+ä¾¿åˆ©ã§ã‚ã‚‹. libsim.a ã®ã‚ˆã†ã« static ãƒªãƒ³ã‚¯ã«ã—ã¦ã‚‚ã‚ˆã„. ã“ã®å ´åˆã¯ libsim.a ã‚’
+ä¿®æ­£ã—ãŸå¾Œã¯ gdb ã¨ãƒªãƒ³ã‚¯ã—ç›´ã™å¿…è¦ãŒã‚ã‚‹.
 
+ã•ã¦ã¨ã‚Šã‚ãˆãš gdb ã‚’èµ·å‹•ã§ãã‚‹ã‚ˆã†ã«ãªã£ãŸã‚‰, ãŠãã‚‰ã default_callback
+ã®å®šç¾©ã®ã—ã‹ãŸã«ã‚‚ã‚ˆã‚‹ãŒ, å®Ÿè¡Œæ™‚ã‚¨ãƒ©ãƒ¼ã‚’å¼•ãèµ·ã“ã™ã¨æ€ã†.
 
-‚³‚ç‚É‚±‚±‚©‚çƒXƒeƒbƒvÀs‚µ‚Ä‚¢‚­‚ÆˆÈ‰º‚É’H‚è’…‚­:
+ã‚ãªãŸãŒååˆ†èª¿æŸ»ã—ãŸä¸Šã§ default_callback ã‚’å®šç¾©ã—ã¦ã„ã‚Œã°ãã†ã§ã¯ãªã„ãŒ,
+ç§ã¯èª¿æŸ»ã—ãªã‹ã£ãŸã®ã§ãã†ãªã£ãŸ.
 
-static void
-gdbsim_target_open (const char *args, int from_tty)
-{
+void sim_open(){ abort(); }  // ã¨ã‚Šã‚ãˆãšå‘¼ã°ã‚ŒãŸã‚‰ãã‚Œã¨åˆ†ã‹ã‚‹ã‚ˆã†ã«ã—ã¦ãŠã.
+
 ...
 
-remote-sim.c:741
-  gdbsim_desc = sim_open (SIM_OPEN_DEBUG, &gdb_callback, exec_bfd, sim_argv);
-
-‚±‚ÌƒR[ƒh‚Í gdb ‚Ìƒ^[ƒQƒbƒg‚ÉˆË‘¶‚µ‚È‚¢•”•ª‚Ì‚à‚Ì‚¾‚ª, ÀÛŒÄ‚Ño‚³‚ê‚Ä‚¢‚é‚Ì‚ÍˆÈ‰ºF
-
-gdb-10.2/sim/h8300/compile.c:4825
-
-SIM_DESC
-sim_open (SIM_OPEN_KIND kind, 
-	  struct host_callback_struct *callback, 
-	  struct bfd *abfd, 
-	  char * const *argv)
-{
-
-‚±‚±‚Å h8300 ŒÅ—L‚Ìˆ—‚ğ‚µ‚Ä‚¢‚é.
-‚»‚µ‚Ä gdbsim_target_open ‚©‚ç–ß‚é‚Æ‚±‚ë‚Å
-ˆÈ‰º‚ÌƒƒbƒZ[ƒW‚ªo‚³‚ê‚é:
-
-  printf_filtered ("Connected to the simulator.\n");
-
-
-(*2) load ƒRƒ}ƒ“ƒh
-
-target sim ƒRƒ}ƒ“ƒh‚Æ“¯—l‚É‰ğÍ‚ğ‚·‚ê‚ÎˆÈ‰º‚Ì”Ÿ”‚É’H‚è’…‚­‚¾‚ë‚¤:
-
-gdb-10.2/sim/h8300/compile.c:4916
-
-SIM_RC
-sim_load (SIM_DESC sd, const char *prog, bfd *abfd, int from_tty)
-{
-
-‚±‚ê‚Íƒ^[ƒQƒbƒgƒƒ‚ƒŠ‚ÉƒvƒƒOƒ‰ƒ€‚ğƒ[ƒh‚·‚é‚½‚ß‚Ì‚à‚Ì. ƒtƒ@ƒCƒ‹–¼ hello.elf ‚ª
-’¼Ú“n‚³‚ê‚é‚Ì‚Å‚±‚ê‚ğŠJ‚¢‚Ä•K—v‚ÈƒZƒNƒVƒ‡ƒ“‚ğƒ[ƒh‚·‚é‚±‚Æ‚É‚È‚é.
-
-(*3) run ƒRƒ}ƒ“ƒh
-
-target sim ‚â load ƒRƒ}ƒ“ƒh‚Æ“¯—l‚É‰ğÍ‚ğ‚·‚é‚ÆˆÈ‰º‚Ì”Ÿ”‚É’H‚è’…‚­‚¾‚ë‚¤:
-
-gdb-10.2/sim/h8300/compile.c:5002
-
-SIM_RC
-sim_create_inferior (SIM_DESC sd, struct bfd *abfd,
-		     char * const *argv, char * const *env)
-{
-
-‚±‚Ì”Ÿ”‚Å‚ÍƒvƒƒOƒ‰ƒ€ƒJƒEƒ“ƒ^‚ğƒZƒbƒg‚µ‚Ä‚¢‚é‚¾‚¯‚Å‚ ‚é.
-
-inferior
-å‚ÈˆÓ–¡  (ˆÊ’uEŠK‹‰‚ª)‰ºˆÊ‚ÌA‰º‹‰‚ÌA’á‚¢A‰ºˆÊ‚ÅA‰º‹‰‚ÅA(¿E’ö“x‚È‚Ç‚ª)—ò‚Á‚½A‰º“™‚ÌA  
-   —ò“™‚ÌA“ñ—¬•i‚ÌA—ò‚Á‚Ä  
-
-ÀÛ–½—ß‚ğÀs‚µn‚ß‚é‚Ì‚Í, ˆÈ‰º‚Ì”Ÿ”‚Æ‚È‚é:
-
-gdb-10.2/sim/h8300/compile.c:4523
-
-void
-sim_engine_run (SIM_DESC sd,
-		int next_cpu_nr,  /* ignore  */
-		int nr_cpus,      /* ignore  */
-		int siggnal)
-{
-
-
-ƒƒ‚:
--g3 ƒIƒvƒVƒ‡ƒ“‚Åƒrƒ‹ƒh‚µ‚½ gdb ‚ğƒfƒoƒbƒO‚µ‚Ä‚¢‚é‚Æ linux ‚ªƒnƒ“ƒOƒAƒbƒv‚µ‚Ä
-Ä‹N“®‚ª•K—v‚É‚È‚é.
-gdb ‚ªƒƒ‚ƒŠƒŠ[ƒN‚µ‚Ä‚¢‚é‚Á‚Û‚¢‚ª, ‚»‚ê‚ğ linux ‚ªƒGƒ‰[‚Æ‚µ‚Ä‚ ‚Â‚©‚¦‚Ä‚¢‚È‚¢
-‚Ì‚ª–â‘è‚È‚Ì‚¾‚ë‚¤‚Æv‚¤.
-top ƒRƒ}ƒ“ƒh‚â ps ƒRƒ}ƒ“ƒh‚ª–ğ‚É—§‚Â‚Æv‚¤.
+void default_callback(){ abort(); }    // å‡½æ•°ã ã¨æ€ã„è¾¼ã‚“ã§ã„ãŸ. å®Ÿã¯å¤‰æ•°ã ã£ãŸ.
