@@ -36,7 +36,7 @@ _isatty
 
 % h8300-elf-gcc -g -o hello.elf hello.c
 これは正常終了していた.
-% h8300-elf-objdump -x hello.elf > aaa
+% h8300-elf-objdump -d hello.elf > aaa
 
 これで aaa の中を確認すると
 
@@ -175,8 +175,8 @@ target sim コンマンドを受け着けるための修正
 
 gdb-10.2/gdb/init.c
 
-に以下を追加. init.c は生成されるファイルなので, 何かのタイミングで
-この修正が無効になる可能性がある.
+に以下を追加. init.c は生成されるファイルなので, 例えば configure 実行のタイミングで
+この修正が無効になる可能性はある.
 
  extern initialize_file_ftype _initialize_ser_socket;
 +extern initialize_file_ftype _initialize_remote_sim;
@@ -187,7 +187,7 @@ gdb-10.2/gdb/init.c
   _initialize_mi_cmd_env ();
 
 
-/gdb-10.2/gdb/Makefile
+gdb-10.2/gdb/Makefile
 
 を以下のように修正
 
@@ -234,7 +234,7 @@ Program received signal SIGSEGV, Segmentation fault.
 0x0000000000000000 in ?? ()
 (gdb)
 
-のようになる. 不正メモリアクセスがターゲットプログラムで発生しえいるがなぜか
+のようになる. 不正メモリアクセスがターゲットプログラムで発生しているがなぜか
 このメッセージになっている.
 
 問題はスタートアップルーチン
@@ -247,7 +247,7 @@ Program received signal SIGSEGV, Segmentation fault.
 _mainCRTStartup
 (別名 _start)
 
-がきている. つまり組込み用のスタートアップルーチンではないということ.
+がきている. つまり組込み用のスタートアップルーチンではないということ. Windows 用のもの.
 例のアドレス
 
 0xfffffff0
@@ -264,3 +264,5 @@ _mainCRTStartup
 
 この stp 命令が問題で sp が 0 だとこのような結果になってしまう.
 gdb + aarch64 シミュレータの問題は解決したが, これはまた別の問題. 
+
+だからスタートアップルーチンを修正する必要があるが, とりあえず保留.
