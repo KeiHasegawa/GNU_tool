@@ -1,34 +1,43 @@
-rl78-elf
+RL78 cross compile environment
 
-03_new_batch
+(*1) RL78
+https://en.wikipedia.org/wiki/RL78
 
-を実行すると
+(*2) Install with script
 
-gdb のビルドで以下のエラーになる.
+Use the same script with "IQ2000":
+
+set TARGET = rl78-elf   # Change
+
+When building gdb, the below error occured:
 
 gcc -DHAVE_CONFIG_H       -DDEFAULT_INLINE=0      -Wall   -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes  -g -O2  -o run \
 	  main.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -ldl -lnsl  -L../../zlib -lz  
 /usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(load.o):/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gdb-10.2.rl78-elf/sim/rl78/cpu.h:42: multiple definition of `pc'; /usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: DWARF error: section .debug_str is larger than its filesize! (0x11462 vs 0x110ec)
 /usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: DWARF error: section .debug_str is larger than its filesize! (0x11462 vs 0x110ec)
 
-メッセージが分かりにくいが, pc という変数が多重定義されているための
-エラーが出ている.
+This error was occured because `pc' was defined at some places.
+even thoght the error messsage was difficult to understand.
+
+Modify
 
 cpu.h
 
-というファイルの pc の宣言を以下のように書き換える:
+like below:
 
 extern SI pc;
 
+Add into
+
 cpu.c
 
-というファイルの最後に以下を追加する:
+like below:
 
 SI pc;
 
-この対処で最後の動作確認まで期待通り動作する.
+This modification worked well.
 
-動作確認のログだが
+(*3) Verification
 
 Breakpoint 1, main () at hello.c:5
 5	  printf("hello world\n");
@@ -44,5 +53,5 @@ End of assembler dump.
 ^@hello world
 [Inferior 1 (process 42000) exited normally]
 
-のように余計な ^@ が出ている.
+extra `^@' was output.
 
