@@ -1,0 +1,82 @@
+V850 クロスコンパイル環境
+
+(*1) V850
+https://www.renesas.com/us/en/products/microcontrollers-microprocessors/other-mcus-mpus/v850-family-mcus
+
+(*2) スクリプトによるインストール
+
+「IQ2000」と同じスクリプトを使う
+
+set TARGET = v850-elf   # ここを変更
+
+しかしこれだと
+% v850-elf-gcc -g -o hello.elf hello.c
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/v850-elf/10.2.0/../../../../v850-elf/bin/ld: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/v850-elf/10.2.0/../../../../v850-elf/lib/libc.a(lib_a-write.o):(.bss+0x0): multiple definition of `_errno'; /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/v850-elf/10.2.0/../../../../v850-elf/lib/libc.a(lib_a-_exit.o):(.bss+0x0): first defined here
+...
+
+のようにエラーする.
+
+lib_a-write.o
+lib_a-_exit.o
+
+の両方で _errno が定義されていることが問題らしい.
+
+newlib-4.1.0.v850-elf/newlib/libc/sys/sysnecv850/write.c
+newlib-4.1.0.v850-elf/libgloss/v850/write.c
+
+close.c
+lseek.c
+read.c
+fstat.c
+getpid.c
+isatty.c
+kill.c
+
+にある _errno の定義をコメントアウトした.
+
+% pushd newlib-4.1.0.v850-elf
+% make
+% make install
+% popd
+
+(*3) 動作確認 => OK
+
+% v850-elf-gcc -g -o hello.elf hello.c
+% v850-elf-gdb --silent -x gdbcom hello.elf >& hello.v850-elf.log
+
+とすれば期待する結果になっている.
+
+Reading symbols from hello.elf...
+Connected to the simulator.
+Loading section .text, size 0x2de8 lma 0x100000
+Loading section .rodata, size 0x28 lma 0x102de8
+Loading section .data, size 0x83c lma 0x102e10
+Loading section .sdata, size 0x4 lma 0x10364c
+Loading section .rosdata, size 0x4 lma 0x103650
+Start address 0x100000
+Transfer rate: 111264 bits in <1 sec.
+Breakpoint 1 at 0x100062: file hello.c, line 5.
+
+Breakpoint 1, main () at hello.c:5
+5	  printf("hello world\n");
+Dump of assembler code for function main:
+   0x00100056 <+0>:	add	-8, sp
+   0x00100058 <+2>:	st.w	lp, 4[sp]
+   0x0010005c <+6>:	st.w	r29, 0[sp]
+   0x00100060 <+10>:	mov	sp, r29
+=> 0x00100062 <+12>:	movhi	16, r0, r10
+   0x00100066 <+16>:	movea	11752, r10, r6
+   0x0010006a <+20>:	movhi	16, r0, r10
+   0x0010006e <+24>:	movea	428, r10, r10
+   0x00100072 <+28>:	jarl	0x100076 <main+32>, lp
+   0x00100076 <+32>:	add	4, lp
+   0x00100078 <+34>:	jmp	[r10]
+   0x0010007a <+36>:	mov	0, r10
+   0x0010007c <+38>:	mov	r29, sp
+   0x0010007e <+40>:	ld.w	4[sp], lp
+   0x00100082 <+44>:	ld.w	0[sp], r29
+   0x00100086 <+48>:	add	8, sp
+   0x00100088 <+50>:	jmp	[lp]
+End of assembler dump.
+hello world
+[Inferior 1 (process 42000) exited normally]

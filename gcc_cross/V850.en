@@ -1,17 +1,26 @@
-v850-elf
+V850 cross compile environment
 
-03_newer_batch で最後の確認のところまで進む.
+(*1) V850
+https://www.renesas.com/us/en/products/microcontrollers-microprocessors/other-mcus-mpus/v850-family-mcus
 
-v850-elf-gcc -g -o hello.elf hello.c
+(*2) Install with script
+
+Use the same script with "IQ2000":
+
+set TARGET = v850-elf   # Change
+
+But finally, the target proguram build command failed like below:
+
+% v850-elf-gcc -g -o hello.elf hello.c
 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/v850-elf/10.2.0/../../../../v850-elf/bin/ld: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/v850-elf/10.2.0/../../../../v850-elf/lib/libc.a(lib_a-write.o):(.bss+0x0): multiple definition of `_errno'; /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/v850-elf/10.2.0/../../../../v850-elf/lib/libc.a(lib_a-_exit.o):(.bss+0x0): first defined here
 ...
 
-のようにエラーする.
+The error reason is:
 
 lib_a-write.o
 lib_a-_exit.o
 
-の両方で _errno が定義されていることが問題らしい.
+at above both file, `_errno' is defined.
 
 newlib-4.1.0.v850-elf/newlib/libc/sys/sysnecv850/write.c
 newlib-4.1.0.v850-elf/libgloss/v850/write.c
@@ -24,17 +33,18 @@ getpid.c
 isatty.c
 kill.c
 
-にある _errno の定義をコメントアウトした.
+Then I commment-outed the defition of `_errno'.
 
 % pushd newlib-4.1.0.v850-elf
 % make
 % make install
 % popd
 
+(*3) Verification => OK
+
 % v850-elf-gcc -g -o hello.elf hello.c
 % v850-elf-gdb --silent -x gdbcom hello.elf >& hello.v850-elf.log
 
-とすれば期待する結果になっている.
 
 Reading symbols from hello.elf...
 Connected to the simulator.
