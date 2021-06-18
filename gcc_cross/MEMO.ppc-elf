@@ -2,3 +2,30 @@
 
 の実行で途中不可思議なエラーで停止はしたが, 最後の検証まで
 期待通り動作する.
+
+Reading symbols from hello.elf...
+Connected to the simulator.
+Breakpoint 1 at 0x1800284: file hello.c, line 5.
+
+Breakpoint 1, main () at hello.c:5
+5	  printf("hello world\n");
+Dump of assembler code for function main:
+   0x01800270 <+0>:	stwu    r1,-16(r1)
+   0x01800274 <+4>:	mflr    r0
+   0x01800278 <+8>:	stw     r0,20(r1)
+   0x0180027c <+12>:	stw     r31,12(r1)
+   0x01800280 <+16>:	mr      r31,r1
+=> 0x01800284 <+20>:	lis     r9,384
+   0x01800288 <+24>:	addi    r3,r9,16876
+   0x0180028c <+28>:	bl      0x1800424 <puts>
+   0x01800290 <+32>:	li      r9,0
+   0x01800294 <+36>:	mr      r3,r9
+   0x01800298 <+40>:	addi    r11,r31,16
+   0x0180029c <+44>:	lwz     r0,4(r11)
+   0x018002a0 <+48>:	mtlr    r0
+   0x018002a4 <+52>:	lwz     r31,-4(r11)
+   0x018002a8 <+56>:	mr      r1,r11
+   0x018002ac <+60>:	blr
+End of assembler dump.
+hello world
+[Inferior 1 (process 42000) exited normally]
