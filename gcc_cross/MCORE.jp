@@ -1,4 +1,25 @@
-% mcore-elf-gcc -g -o 00_batch.verify.elf 00_batch.verify.c
+MCORE のクロスコンパイル環境
+
+(*1) MCORE
+(*2) スクリプトによるインストール
+(*3) 動作確認 => NG
+
+(*1) MCORE
+
+https://www.arch.cs.titech.ac.jp/mcore/index.html
+
+これは研究用の仮想アーキテクチャということなのだろう. どうやら本家では独自の
+シミュレータがあるらしい.
+
+(*2) スクリプトによるインストール
+
+「IQ2000」と同じスクリプトを使う
+
+set TARGET = mcore-elf   # ここを変更
+
+(*3) 動作確認 => NG
+
+% mcore-elf-gcc -g -o hello.elf hello.c
 /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/mcore-elf/10.2.0/../../../../mcore-elf/bin/ld: /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/mcore-elf/10.2.0/../../../../mcore-elf/lib/libc.a(lib_a-isattyr.o): in function `_isatty_r':
 /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/newlib-4.1.0.mcore-elf/mcore-elf/newlib/libc/reent/../../../.././newlib/libc/reent/isattyr.c:55: undefined reference to `_isatty'
 collect2: エラー: ld はステータス 1 で終了しました
@@ -8,13 +29,13 @@ newlib を修正
 
 _isatty_r で呼び出している _isatty を isatty に変更した.
 
-% mcore-elf-gcc -g -o 00_batch.verify.elf 00_batch.verify.c
+% mcore-elf-gcc -g -o hello.elf hello.c
 /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/mcore-elf/10.2.0/../../../../mcore-elf/bin/ld: /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/mcore-elf/10.2.0/../../../../mcore-elf/lib/libc.a(lib_a-sysisatty.o): in function `isatty':
 /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/newlib-4.1.0.mcore-elf/mcore-elf/newlib/libc/syscalls/../../../.././newlib/libc/syscalls/sysisatty.c:14: undefined reference to `_isatty'
 collect2: エラー: ld はステータス 1 で終了しました
 %
 
-newlib の修正がまずい.
+newlib の修正がまずかったらしい.
 
 newlib-4.1.0.mcore-elf/newlib/libc/syscalls/sysisatty.c
 
@@ -32,7 +53,7 @@ isatty (int fd)
 #endif
 }
 
-問題のリンクエラーは回避できた.
+問題のリンクエラーはとりあえず回避できた.
 
 今度は
 
@@ -41,7 +62,8 @@ mcore-elf-gdb
 実行時以下のようなエラーが発生.
 
 
-% /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/bin/mcore-elf-gdb
+% mcore-elf-gdb hello.elf
+...
 arch-utils.c:693: internal-error: initialize_current_architecture: Selection of initial architecture failed
 A problem internal to GDB has been detected,
 further debugging may prove unreliable.
@@ -97,7 +119,6 @@ gdbarch_update_p では gdbarch_find_by_info を呼び出していて
 これが 0 を返しているので gdbarch_update_p が 0 を返している.
 
 
-
   for (rego = gdbarch_registry;
        rego != NULL;
        rego = rego->next)
@@ -125,8 +146,7 @@ gdb-10.2.h8300-elf/gdb/h8300-tdep.c
 
 gdb-10.2.mcore-elf/gdb/mcore-tdep.c
 
-がない. h8300 に限らず *-tdep.c という名前のファイルがあるが
-mcore バージョンはない.
+がない. h8300 に限らず *-tdep.c という名前のファイルがあるが mcore バージョンがない.
 
 これは今すぐ直すのは難しい. とりあえず保留.
 
