@@ -1,14 +1,20 @@
-lm32-elf
+LatticeMico32 cross compile environment
 
-gdb のビルドで以下のようにエラーになってしまう.
+(*1) LatticeMico32
+https://ja.wikipedia.org/wiki/LatticeMico32
+
+(*2) Install with script
+
+Use the same script with "IQ2000":
+
+set TARGET = lm32-elf   # Change
+
+Unfortunately, at gdb install, error occured like below:
 
 gcc -DHAVE_CONFIG_H -DWITH_DEFAULT_MODEL='"lm32"' -DWITH_DEFAULT_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BFD_ENDIAN_BIG  -DWITH_HW=1 -DDEFAULT_INLINE=0  -DWITH_SCACHE=16384       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes  -g -O2 -c -o model.o -MT model.o -MMD -MP -MF .deps/model.Tpo model.c
 gcc -DHAVE_CONFIG_H -DWITH_DEFAULT_MODEL='"lm32"' -DWITH_DEFAULT_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BFD_ENDIAN_BIG  -DWITH_HW=1 -DDEFAULT_INLINE=0  -DWITH_SCACHE=16384       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes  -g -O2 -c -o mloop.o -MT mloop.o -MMD -MP -MF .deps/mloop.Tpo mloop.c
 In file included from mloop.c:445:
-mloop.c: 関数 ‘lm32bf_engine_run_fast’ 内:
-sem-switch.c:101:5: エラー: ラベル ‘case_sem_INSN_SCALL’ が使用されましたが、定義されていません
+mloop.c: In function 'lm32bf_engine_run_fast'
+sem-switch.c:101:5: error: label 'case_sem_INSN_SCALL' is used bug not defined.
   101 |     { LM32BF_INSN_SCALL, && case_sem_INSN_SCALL },
       |     ^
-
-
-エラーになるまでは 01_new_batch が正常に動作していた.
