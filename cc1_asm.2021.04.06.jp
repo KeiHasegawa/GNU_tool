@@ -1,12 +1,12 @@
-cc1 �A�Z���u�������̒���
+cc1 アセンブラ生成の調査
 
-(*1) ���ۃR�[�h
-(*2) �A�Z���u������
+(*1) 抽象コード
+(*2) アセンブラ生成
 (*3) print(rtx_insn*)
 (*4) debug_insn_slim(const rtx_insn*)
 (*5) debug_tree(tree)
 
-(*1) ���ۃR�[�h
+(*1) 抽象コード
 
 c-parse.c
 static void
@@ -15,61 +15,61 @@ c_parser_declaration_or_fndef (c_parser *parser, bool fndef_ok,
 {
 ...
 	fnbody = c_parser_compound_statement (parser, &endloc);
-      tree fndecl = current_function_decl;   �����Œ�~����
+      tree fndecl = current_function_decl;   ここで停止して
 
 (gdb) p print(fnbody)
 
-    �Ƃ���� tree �Ƃ��Ă̔����̒��͕\���ł��Ă���. ������ print ��
+    とすれば tree としての函数の中は表示できている. ここで print は
 
-    �ugcc �̎����̓��[�`���̉��(����3)�v
-    �ugcc �̋L���\�̒����v
+    「gcc の字句解析ルーチンの解析(その3)」
+    「gcc の記号表の調査」
 
-    �ŏq�ׂ��Ă�����̂ł���.
+    で述べられているものである.
 
-    �����ŋC�t���̂�, ���̒i�K�Ńv���O�����̐������̓`�F�b�N����Ă��邪,
-    ���ۃR�[�h�̃��x���ɂȂ��Ă��邩�Ƃ�����, �����ł͂Ȃ��悤�Ɏv����.
+    ここで気付くのは, この段階でプログラムの正当性はチェックされているが,
+    抽象コードのレベルになっているかというと, そうではないように思える.
 
-    �����Ƃ����𒊏ۃR�[�h�ƌĂԂ��ɂ��̂���, �P���ȕϊ���������
-    �s�����Ƃɂ���ă^�[�Q�b�g�R�[�h�𐶐��ł���悤�ȏ󋵂ɂ͂Ȃ��Ă��Ȃ�
-    �Ƃ������Ƃł���.
+    もっとも何を抽象コードと呼ぶかによるのだが, 単純な変換をこれらに
+    行うことによってターゲットコードを生成できるような状況にはなっていない
+    ということである.
 
-(*2) �A�Z���u������
+(*2) アセンブラ生成
 
-     �A�Z���u�������� FILE* asm_out_file �ւ̏������݂ōs����.
+     アセンブラ生成は FILE* asm_out_file への書き込みで行われる.
 
      (gdb) set asm_out_file=stdout
 
-     �̂悤�ɂ���΃t�@�C���ł͂Ȃ��ĕW���o�͂ɃA�Z���u���̏o�͂�
-     �\�������.
+     のようにすればファイルではなくて標準出力にアセンブラの出力が
+     表示される.
 
 cgraphunit.c:2820:
-  output_in_order ();   �����ň�C�ɃA�Z���u�����o�͂���Ă���.
+  output_in_order ();   ここで一気にアセンブラが出力されている.
 
 cgraphunit.c:2578
-	  nodes[i].u.f->expand ();   �����ň�C�ɃA�Z���u�����o�͂���Ă���.
+	  nodes[i].u.f->expand ();   ここで一気にアセンブラが出力されている.
 
 cgraphunit.c:2300
   execute_pass_list (cfun, g->get_passes ()->all_passes);
-  �����ň�C�ɃA�Z���u�����o�͂���Ă���.
+  ここで一気にアセンブラが出力されている.
 
 final.c:4658
   final_1 (first, asm_out_file, seen, optimize);
-  �����ň�C�ɃA�Z���u�����o�͂���Ă���.
+  ここで一気にアセンブラが出力されている.
 
 static void
 final_1 (rtx_insn *first, FILE *file, int seen, int optimize_p)
 {
 ...
-  for (insn = first; insn;)  ���̃��[�v���d�v�炵��
+  for (insn = first; insn;)  このループが重要らしい
 ...
       insn = final_scan_insn (insn, file, optimize_p, 0, &seen); 
-      ������ 1 ���߂��o��
+      ここで 1 命令ずつ出力
 
 
 (*3) print(rtx_insn*)
 
-     ��ɂ���Ă��̔����̓f�o�b�K�̃R�}���h���C������Ăяo�����.
-     �ŏ��̃o�[�W�����͒P���Ȃ��̂ɂ���:
+     例によってこの函数はデバッガのコマンドラインから呼び出される.
+     最初のバージョンは単純なものにした:
 
 int print(rtx_insn* insn)
 {
@@ -92,7 +92,7 @@ int f(int a, int b)
 }
 %
 
-���� f �ɑ΂��� final_1 �ɂ����Ƃ��Ɉȉ������s����:
+この f に対して final_1 にきたときに以下を実行した:
 (gdb) p print_l(first)
 NOTE_INSN_DELETED
 NOTE_INSN_BASIC_BLOCK
@@ -119,10 +119,10 @@ BARRIER
 NOTE_INSN_DELETED
 (gdb) 
 
-    # �ɑ����s�͑Ή����� x86 �̃A�Z���u���ł���, ���̒i�K�ł� print(rtx_insn*)
-    �ł͖ܘ_�\���ł��Ă��Ȃ�.
+    # に続く行は対応する x86 のアセンブラであり, この段階での print(rtx_insn*)
+    では勿論表示できていない.
 
-    print_l �� print(rtx_insn*) �����[�v�ŌĂяo�����̂ł���:
+    print_l は print(rtx_insn*) をループで呼び出すものである:
 
 void print_l(rtx_insn* first)
 {
@@ -130,18 +130,18 @@ void print_l(rtx_insn* first)
     print(insn);
 }
 
-    rtx_insn �͂����炭�P���ȕϊ��ɂ��A�Z���u���𐶐��ł�����̂���,
-    ���������҂������̂ł͂Ȃ�����. ����͂ނ���قڃA�Z���u���ɋ߂�����
-    �Ȃ̂�.
+    rtx_insn はおそらく単純な変換によりアセンブラを生成できるものだが,
+    自分が期待したものではなかった. これはむしろほぼアセンブラに近いもの
+    なのだ.
 
-    (*1) �ŏq�ׂ� tree fnbody ���� rtx_insn �̗�ւ̕ϊ����ǂ̂悤�ɍs
-    ���邩�����㒲��������.
+    (*1) で述べた tree fnbody から rtx_insn の列への変換がどのように行
+    われるかを今後調査したい.
 
 (*4) debug_insn_slim(const rtx_insn*)
 
-    ����ɒ������Ă����� debug_insn_slim ��������. ����� (*3) ��
-    print(rtx_insn*) �̊��S�łŖܘ_�g�킹�Ă��炨��. final_1 �ɂ����Ƃ��ɓ�
-    �l�� print_l ���Ăяo����:
+    さらに調査していたら debug_insn_slim を見つけた. これは (*3) の
+    print(rtx_insn*) の完全版で勿論使わせてもらおう. final_1 にきたときに同
+    様に print_l を呼び出した:
 
 (gdb) p print_l(first)
     1: NOTE_INSN_DELETED
@@ -173,13 +173,13 @@ void print_l(rtx_insn* first)
 $156 = void
 (gdb) 
 
-     ��͂肱��̓A�Z���u���ɂ������߂�.
+     やはりこれはアセンブラにすごく近い.
 
 (*5) debug_tree(tree)
 
-     (*4) ���炷��� tree �ɂ������悤�Ȕ���������̂ł͂Ǝv���T���Ă݂�.
-     (*1) �Ɠ����Ƃ���Œ�~����. gdb ����ȉ��̂悤�ɂ��Ă݂�.
+     (*4) からすると tree にも似たような函数があるのではと思い探してみた.
+     (*1) と同じところで停止して. gdb から以下のようにしてみた.
 
 (gdb) p debug_tree(fnbody)
 ...
-     �����, �����ō쐬�������̂��������x�����R����.
+     これは, 自分で作成したものよりも完成度が当然高い.

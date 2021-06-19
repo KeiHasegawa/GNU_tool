@@ -1,5 +1,5 @@
-gcc �ɒǉ����� -foutput-doc-info �̃I�v�V�����Ńo�O���������̂�
-���߂� make ���邱�Ƃɂ���.
+gcc に追加した -foutput-doc-info のオプションでバグがあったので
+改めて make することにした.
 
 % cat /tmp/z
 #! /bin/csh -f
@@ -16,15 +16,15 @@ chmod +x $argv[1]
 % make
 % make install 'DESTDIR=/home/khasegawa/gcc-10.2.0'
 
-���̂Ƃ��̃��O�� make.log.2021.03.26
-�ɕۑ�����.
-�� 12 ���Ԓ���������. ������Ƃ��͎������L�^������.
-�Ƃ���ł��̂Ƃ���, �{���� -O2 �r���h����Ă��邩�C�ɂȂ����̂ŗ�̒ʂ�
+このときのログを make.log.2021.03.26
+に保存した.
+約 12 時間程かかった. 次回やるときは時刻も記録したい.
+ところでこのときは, 本当に -O2 ビルドされているか気になったので例の通り
 
 ~/gcc-10.2.0/host-i686-pc-linux-gnu/gcc
 
-�� gdb ���N������, �Ⴆ�΂��̂Ƃ����ڂ��Ă��� c_parser_peek_token ��
-�u���[�N�|�C���g���Z�b�g���Ď��s���Ă݂�.
-����܂łƗl�q�͈���Ă��Ă����ɂ� -O2 �I�v�V�����������Ă���悤��
-�f�o�b�K�̓���ɂȂ��Ă���.
+で gdb を起動して, 例えばこのとき注目していた c_parser_peek_token に
+ブレークポイントをセットして実行してみた.
+これまでと様子は違っていていかにも -O2 オプションが効いているような
+デバッガの動作になっていた.
 

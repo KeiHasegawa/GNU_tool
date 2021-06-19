@@ -1,11 +1,11 @@
-linux �ł� groff 1.22.4 �C������
+linux での groff 1.22.4 修正メモ
 
-(*1) �_�E�����[�h�ƃr���h
-(*2) groff �̃f�o�b�O�r���h
-(*3) �o�O�̍Č��ƏC��
-(*4) �p�b�`�̓��ĕ�
+(*1) ダウンロードとビルド
+(*2) groff のデバッグビルド
+(*3) バグの再現と修正
+(*4) パッチの当て方
 
-(*1) �_�E�����[�h�ƃr���h
+(*1) ダウンロードとビルド
 % wget -q http://cygwin.mirror.constant.com/x86_64/release/groff/groff-1.22.4-1-src.tar.xz
 % xz -d -c groff-1.22.4-1-src.tar.xz | tar xf -
 % cd groff-1.22.4-1.src
@@ -15,15 +15,15 @@ linux �ł� groff 1.22.4 �C������
 % make
 % sudo make install
 % ls -l /usr/local/bin/groff
-# �C���X�g�[������Ă��邱�Ƃ��m�F����
+# インストールされていることを確認した
 
-     ���̂Ƃ��̃��O��
+     このときのログを
 
 ~/groff-1.22.4-1.src/make-install.log.2021.05.02
 
-     �ɕۑ����Ă�����.
+     に保存しておいた.
 
-(*2) groff �̃f�o�b�O�r���h
+(*2) groff のデバッグビルド
 
 % cat /tmp/xx
 #! /bin/csh -f
@@ -38,10 +38,10 @@ chmod +x $argv[1]
 % make clean
 % ./configure
 % make -n groff
-# -O0 �r���h����邱�Ƃ��m�F����
+# -O0 ビルドされることを確認した
 % make groff
 
-(*3) �o�O�̍Č�
+(*3) バグの再現
 
 % cat sample
 int\ main()
@@ -63,43 +63,43 @@ return&nbsp;f(0,&nbsp;1,&nbsp;2); <br>
 ...
 (gdb)
 
-     ��̊��Ғl��
+     上の期待値が
 
 {<br>
 &nbsp;&nbsp; return&nbsp;f(0,&nbsp;1,&nbsp;2); <br>
 
-     �ł��菇�Ԃ������ԈႦ�Ă���. ���ׂĂ݂�Ƃǂ����
+     であり順番が少し間違えている. 調べてみるとどうやら
 
 soelim, pre-grohtml, post-grohtml
 
-     �� fork, exec ���Ă���炵��.
+     を fork, exec しているらしい.
 
 
 % ./groff -T html sample -V
 soelim sample | pre-grohtml troff -Thtml | post-grohtml
 %
 
-     �킩�肸�炢�� troff �̑O�̕����͏������� L �ł����� | �ł͂Ȃ�.
-     ���ǑS�r���h����. groff �͐e�v���Z�X�̃v���O��������, ���̑���
-     �R�}���h���r���h����K�v������.
+     わかりずらいが troff の前の文字は小文字の L であって | ではない.
+     結局全ビルドした. groff は親プロセスのプログラムだが, その他の
+     コマンドもビルドする必要がある.
 
 % ./soelim sample | ./pre-grohtml troff -Thtml | ./post-grohtml
-����ōČ����Ă���.
+これで再現している.
 
 % ./soelim sample > sample.soe
 % ./pre-grohtml troff -Thtml sample.soe > sample.pre
 % ./post-grohtml sample.pre 
-����ōČ��ł��Ă���.
+これで再現できている.
 
-     �Ƃ����킯��, �܂��� post-grohtml ��
+     というわけで, まずは post-grohtml が
 
 { &nbsp;&nbsp; <br>
 return
 
-     �̂悤�ɏo�͂��Ă��錴���𒲍�������.
-     �����炭 sample.pre �̈ȉ��̕������֌W���Ă���.
+     のように出力している原因を調査したい.
+     おそらく sample.pre の以下の部分が関係している.
 
-t{        # �����炭 text �� { �Ƃ�������
+t{        # おそらく text の { ということ
 n40 0
 V160
 H0
@@ -110,9 +110,9 @@ h24
 x X devtag:.br
 V160
 H48
-treturn        # �����炭 text �� return �Ƃ�������
+treturn        # おそらく text の return ということ
 
-     sample.pre ���ȉ��̂悤�ɏC������:
+     sample.pre を以下のように修正した:
 
 t{
 n40 0
@@ -121,16 +121,16 @@ H0
 x X devtag:.br
 V160
 H48
-N-24   # ����
-H24    # ����
-N-24   # ����
-h24    # ����
+N-24   # ここ
+H24    # ここ
+N-24   # ここ
+h24    # ここ
 treturn
 
 % ./post-grohtml sample.pre
-�c�O. &nbsp; �� 1 ����Ȃ�
+残念. &nbsp; が 1 つ足りない
 
-     sample.pre �����߂Ĉȉ��̂悤�ɏC������
+     sample.pre を改めて以下のように修正した
 
 t{
 n40 0
@@ -138,58 +138,58 @@ V160
 H0
 x X devtag:.br
 V160
-H0     # �������C��
+H0     # ここを修正
 N-24
 H24
 N-24
 h24
 treturn
 
-     ���x�͊��Ғʂ蓮�삵�Ă���. �󋵂���l����� post-grohtml
-     �͐��������삵�Ă�����ۂ�.
+     今度は期待通り動作している. 状況から考えるに post-grohtml
+     は正しく動作しているっぽい.
 
 % gdb -q pre-grohtml
 (gdb) run troff -Thtml sample.soe
 ...
-�Č��ł��Ă���
+再現できている
 
-     ���̃v���O�����ł� groff �� fork, exec ���Ă���
+     このプログラムでは groff を fork, exec している
 
 % ./pre-grohtml troff -Thtml sample.soe -V
 soelim sample.soe | troff -dwww-image-template=grohtml-23014 -Thtml
 % troff -dwww-image-template=grohtml-23014 -Thtml sample.soe
-�Č��ł���
+再現できた
 % ./troff -dwww-image-template=grohtml-23014 -Thtml sample.soe
-����ł��Č��ł��Ă���.
+これでも再現できている.
 
 % gdb -q troff
 (gdb) run -dwww-image-template=grohtml-23014 -Thtml sample.soe
 ...
-�Č��ł��Ă���
+再現できている
 
 
-void process_input_stack()  ���̔����ō\����͂��ۂ����Ƃ����Ă���炵��
+void process_input_stack()  この函数で構文解析っぽいことをしているらしい
 
-    case token::TOKEN_NEWLINE:  �����͉��s��ǂݍ��񂾂Ƃ��ɂ��Ă���
+    case token::TOKEN_NEWLINE:  ここは改行を読み込んだときにきている
 
 
-	    interpolate_macro(nm);  ������ .br ��ǂݍ��񂾂Ƃ��ɂ��Ă���
+	    interpolate_macro(nm);  ここは .br を読み込んだときにきている
 
-     ���� \ �ɑ����X�y�[�X��ǂݍ��񂾂Ƃ���
+     問題の \ に続くスペースを読み込んだときに
 
 token::TOKEN_UNSTRETCHABLE_SPACE
 
-     �ɂȂ���
+     になって
 
-	tok.process();  �����ɂ��Ă���
+	tok.process();  ここにきている
 
 
-     ���̉ӏ���
+     問題の箇所は
 
 	    interpolate_macro(nm);
 
-     �����s�����Ƃ��ɐ��������. �����͓��̓t�@�C����ǂݍ��ޑO�ɂ�
-     ���Ă��邪,
+     を実行したときに生成される. ここは入力ファイルを読み込む前にも
+     きているが,
 
 command
 if (nm.s[0] != 'b')
@@ -197,23 +197,23 @@ c
 end
 end
 
-     �̂悤�ɂ���� br �̂Ƃ���Ŏ~�߂邱�Ƃ��ł���.
-     3 �ڂ� br �����������Ƃ��ɖ��̉ӏ������������:
+     のようにすれば br のところで止めることができる.
+     3 つ目の br を処理したときに問題の箇所が生成される:
 
 .lf 1 ./sample
 int\ main()
-.br   <<<<<<<<<<<<<<<<<<<<<<<<< 1 �ڂ� br
+.br   <<<<<<<<<<<<<<<<<<<<<<<<< 1 つ目の br
 {
-.br   <<<<<<<<<<<<<<<<<<<<<<<<< 2 �ڂ� br
+.br   <<<<<<<<<<<<<<<<<<<<<<<<< 2 つ目の br
 \ \ return\ f(0,\ 1,\ 2);
-.br   <<<<<<<<<<<<<<<<<<<<<<<<< 3 �ڂ� br
+.br   <<<<<<<<<<<<<<<<<<<<<<<<< 3 つ目の br
 }
 .br
 
-     �ǂ���� br �����������Ƃ��ɒ��O�̍s�܂ł��o�͂��Ă���.
-     1 �ڂ� br �����������Ƃ��� "main()" �����o�͂���.
-     2 �ڂ� br �����������Ƃ��� "{" �����o�͂���.
-     3 �ڂ� br �����������Ƃ��� "return" �����o�͂���.
+     どうやら br を処理したときに直前の行までを出力している.
+     1 つ目の br を処理したときに "main()" 等を出力する.
+     2 つ目の br を処理したときに "{" 等を出力する.
+     3 つ目の br を処理したときに "return" 等を出力する.
 
 % cat sample2
 {
@@ -221,20 +221,20 @@ int\ main()
 \ \ return
 % ./troff  -dwww-image-template=grohtml-23014 -Thtml sample2
 ...
-t{           �e�L�X�g�� {
+t{           テキストの {
 n40 0
 V120
 H0
-N-24          ����
-H24           ����
-N-24          ����
-h24           ����
+N-24          ここ
+H24           ここ
+N-24          ここ
+h24           ここ
 x X devtag:.br
 V120
 H48
-treturn       �e�L�X�g�� return
+treturn       テキストの return
 
-     ����ł��Č����Ă���.
+     これでも再現している.
 
 % cat sample3
 {
@@ -242,7 +242,7 @@ treturn       �e�L�X�g�� return
 \ X
 % ./troff  -dwww-image-template=grohtml-23014 -Thtml sample3
 ...
-t{                �e�L�X�g�� {
+t{                テキストの {
 n40 0
 V120
 H0
@@ -251,21 +251,21 @@ H24
 x X devtag:.br
 V120
 H24
-tX                 �e�L�X�g�� X
+tX                 テキストの X
 ...
 
-     �󔒂� br ��ǂ��z���Ă���(?)�̂����.
+     空白が br を追い越している(?)のが問題.
 
 
 troff_output_file::really_print_line
 
-     �����ۏo�͂��Ă���Ƃ��낾�� node* n ��
+     が実際出力しているところだが node* n が
 
 line_start_node            (*1)
 space_char_hmotion_node    (*2)
 glyph_node                 (*3)
 
-     �̏��ɂȂ��Ă��邪, (*2) �� (*3) ���t
+     の順になっているが, (*2) と (*3) が逆
 
 env.cpp
   node *nn = 0;
@@ -276,37 +276,37 @@ env.cpp
     n = tem;
   }
 
-     �ǂ���炱���œ���ւ��Ă���. ����� n ���� nn �����o���Ă���.
-     �Ⴆ��:
+     どうやらここで入れ替えている. これは n から nn を作り出している.
+     例えば:
 
 n = glyph_node
 n->next = line_start_node
 n->next->next = 0
 
-     �Ȃ��
+     ならば
 
 nn = line_start_node
 nn->next = glyph_node
 nn->next->next = 0
 
-     �����o��. ����͂��܂������Ă���. ����ɑ΂���
+     を作り出す. これはうまくいっている. これに対して
 
 n = glyph_node
 n->next = space_char_hmotion_node
 n->next->next = line_start_node
 n->next->next->next = 0
 
-     �Ȃ��
+     ならば
 
 nn = line_start_node
 nn->next = space_char_hmotion_node
 nn->next->next = glyph_node
 nn->next->next->next = 0
 
-     �ƂȂ邪, ���ꂪ space_char_hmotion_node �� glyph_node �Ƃ�
-     ����ւ���Ă��錴��.
+     となるが, これが space_char_hmotion_node と glyph_node とが
+     入れ替わっている原因.
 
-     �ȉ��̏C�������Ă݂�:
+     以下の修正を入れてみた:
 
 inline node* change(node* n)
 {
@@ -331,19 +331,19 @@ inline node* change(node* n)
   node* nn = change(n);
 #endif
 
-      �Ӑ}�����ʂ���וԂ�ꂽ��, �o�͌��ʂ�
+      意図した通り並べ返られたが, 出力結果は
 
 V120
 H0
 x X devtag:.br
 V120
 H0
-tX               # ���ꂪ��ɂ��Ă���
-N-24             # ������
-h24              # ��������ɗ��Ăق���
+tX               # これが先にきている
+N-24             # ここと
+h24              # ここが先に来てほしい
 n40 0
 
-      �����ňȉ��̂悤�ɏC������:
+      そこで以下のように修正した:
 
 node.cpp
 void space_char_hmotion_node::tprint(troff_output_file *out)
@@ -376,10 +376,10 @@ void space_char_hmotion_node::tprint(troff_output_file *out)
 #endif
 }
 
-    ����ňꉞ���Ғʂ�̏o�͌��ʂɂȂ��Ă���.
-    �����Ŏ��ۂ� bbprof �̏o�͌��ʂɎ����Ă݂��猃����
-    �����񂪓���ւ���Ă���... �C���͐������Ȃ������炵��.
-    ��U env.cppp �� node.cpp �̏C�������Ƃɖ߂�.
+    これで一応期待通りの出力結果になっている.
+    ここで実際に bbprof の出力結果に試してみたら激しく
+    文字列が入れ替わっていた... 修正は正しくなかったらしい.
+    一旦 env.cppp と node.cpp の修正をもとに戻す.
 
 % cat sample5
 {
@@ -391,25 +391,25 @@ t{
 n40 0
 V120
 H0
-tCB              # CB ����ɂ������ɂ��Ă���! ������ BC ����Ȃ� CB
+tCB              # CB が先にこっちにきている! しかも BC じゃなく CB
 x X devtag:.br
 V120
 H48
 N-24
 h24
-tA               # A �������ɂ��Ă���!
+tA               # A がここにきている!
 ...
 
-change ��������Ƃ��̂悤�ɒ��ׂĂ݂��
+change を作ったときのように調べてみると
 n = glyph_node                                <- C
 n->next = glyph_node                          <- B
 n->next->next = glyph_node                    <- br A
 n->next->next->next = space_char_hmotion_node <- \ 
 n->next->next->next->next = line_start_node
 
-      �̂悤�ɂȂ��Ă���̂�, ���������삵�Ă��Ȃ�.
-      br �� A �����т��Ă���̂��ǂ��Ȃ�.
-      �����炭
+      のようになっているので, 正しく動作していない.
+      br と A が結びついているのが良くない.
+      おそらく
 
 n = glyph_node                                <- C
 n->next = glyph_node                          <- B
@@ -417,15 +417,15 @@ n->next->next = glyph_node                    <- A
 n->next->next->next = space_char_hmotion_node <- br \ 
 n->next->next->next->next = line_start_node
 
-      �̂悤�ɂȂ��Ă���ΐ����������Ǝv����.
+      のようになっていれば正しく動くと思われる.
 
-      A �� br ���\�������͈̂ȉ��̂悤�ɂ��Ă��邩��
+      A で br が表示されるのは以下のようにしているから
 
 environment::add_char()
 ...
   if ((!suppress_push) && gc_np) {
     if (gc_np && (gc_np->state == 0)) {
-      gc_np->state = construct_state(0);    ������ state �ɒl���Z�b�g
+      gc_np->state = construct_state(0);    ここで state に値をセット
       gc_np->push_state = get_diversion_state();
     }
     else if (line && (line->state == 0)) {
@@ -435,7 +435,7 @@ environment::add_char()
   }
 
 
-      �����ňȉ��̏C�����s����:
+      そこで以下の修正を行った:
 
   case TOKEN_UNSTRETCHABLE_SPACE:
 #if 0
@@ -455,14 +455,14 @@ environment::add_char()
 #endif
     break;
 
-    �ꉞ���҂����ʂ蓮�삵�Ă���.
-    �Ƃ��� troff �� -dwww-image-template=grohtml-23014 �I�v�V�����ł��邪
-    �P���ɖ�������Ă���. �e���v���[�g���w��ł���̂��Ǝv�������ł��Ă�
-    �Ȃ�.
+    一応期待した通り動作している.
+    とこで troff の -dwww-image-template=grohtml-23014 オプションであるが
+    単純に無視されている. テンプレートを指定できるのかと思ったができてい
+    ない.
 
-(*4) �p�b�`�̓��ĕ�
+(*4) パッチの当て方
 
-    ���̃y�[�W�ɂ��� groff.diff ��Ⴆ�� /tmp/groff.diff �Ƃ��ĕۑ�����.
+    このページにある groff.diff を例えば /tmp/groff.diff として保存する.
 
 % xz -d -c groff-1.22.4-1-src.tar.xz | tar xf -
 % cd groff-1.22.4-1.src
@@ -471,4 +471,4 @@ environment::add_char()
 % patch -p1 < /tmp/groff.diff
 patching file src/roff/troff/input.cpp
 
-     ���̃��b�Z�[�W���o��Ί��Ғʂ� input.cpp ���C������Ă���.
+     このメッセージが出れば期待通り input.cpp が修正されている.

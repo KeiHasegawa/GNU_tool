@@ -1,79 +1,79 @@
-gcc �̎����̓��[�`���̒���(����1)
+gcc の字句解析ルーチンの調査(その1)
 
-�ڎ�
-(*1) vine linux �Ŋ��� -g �Ńr���h������Ԃ����肵�Ă���
-(*2) -g �r���h���� xgcc �Ŏ��ۂɃR���p�C������
-(*3) xgcc ���� cc1 ���ǂ̂悤�ɋN�����邩�m�F����.
-(*4) gdb ���� cc1 ���N������
-(*5) �\����̓��[�`���̓�������m�F����
-(*6) c_parser_peek_token �̌Ăяo��
+目次
+(*1) vine linux で既に -g でビルドした状態を仮定している
+(*2) -g ビルドした xgcc で実際にコンパイルする
+(*3) xgcc から cc1 をどのように起動するか確認する.
+(*4) gdb から cc1 を起動する
+(*5) 構文解析ルーチンの入り口を確認する
+(*6) c_parser_peek_token の呼び出し
 (*7) _cpp_lex_direct 
 (*8) _cpp_clean_line
-(*9) C++ �X�^�C���R�����g�̃o�O�����
-(*10) C �X�^�C���̃R�����g�̃o�O���Ƃ�
-(*11) patch �̓��ĕ�
+(*9) C++ スタイルコメントのバグを取る
+(*10) C スタイルのコメントのバグをとる
+(*11) patch の当て方
 
-(*1) vine linux �Ŋ��� -g �Ńr���h������Ԃ����肵�Ă���
-   => linux �ł� gcc 10.2.0 �C���X�g�[���������Q��
+(*1) vine linux で既に -g でビルドした状態を仮定している
+   => linux での gcc 10.2.0 インストールメモを参照
 
-(*2) -g �r���h���� xgcc �Ŏ��ۂɃR���p�C������
+(*2) -g ビルドした xgcc で実際にコンパイルする
 % cd ~/gcc-10.2.0/host-i686-pc-linux-gnu/gcc
 % cat /tmp/a.c
 int a = 1;
 % set path = ($path `pwd`) 
 % ./xgcc -S /tmp/a.c
 
-a.s ���m�F����. �R���p�C������Ă���ƕ�����.
+a.s を確認する. コンパイルされていると分かる.
 
-(*3) xgcc ���� cc1 ���ǂ̂悤�ɋN�����邩�m�F����.
+(*3) xgcc から cc1 をどのように起動するか確認する.
 % ./xgcc -S /tmp/a.c -###
 ...
  cc1 -quiet -iprefix /home/khasegawa/gcc-10.2.0/host-i686-pc-linux-gnu/gcc/../lib/gcc/i686-pc-linux-gnu/10.2.0/ /tmp/a.c -quiet -dumpbase a.c "-mtune=generic" "-march=pentiumpro" -auxbase a -o a.s
 ...
 
-(*4) gdb ���� cc1 ���N������
+(*4) gdb から cc1 を起動する
 (gdb) b main
-(gdb) run --quiet ...       # �����͏�Ŋm�F�������̂Ɠ������̂��w�肷��
+(gdb) run --quiet ...       # ここは上で確認したものと同じものを指定する
 
-����Ń\�[�X���x���f�o�b�O���ł��Ă��邱�Ƃ��m�F����.
+これでソースレベルデバッグができていることを確認する.
 
-(*5) �\����̓��[�`���̓�������m�F����
-�����͂�������Ȃ���, ����܂ł̒����ňȉ��ō\����̓��[�`���̓����
-�Ƀu���[�N�|�C���g���Z�b�g���邱�Ƃ��ł���.
+(*5) 構文解析ルーチンの入り口を確認する
+説明はざっくり省くが, これまでの調査で以下で構文解析ルーチンの入り口
+にブレークポイントをセットすることができる.
 (gdb) b c_parser_translation_unit
 
 static void
 c_parser_translation_unit (c_parser *parser)
 {
-  if (c_parser_next_token_is (parser, CPP_EOF)) ����� 0 ���Ԃ�
+  if (c_parser_next_token_is (parser, CPP_EOF)) これで 0 が返る
     {
 
-�܂肱�̒i�K�Ŋ��Ɏ����̓��[�`�������삷��Ƃ�������.
-�ŏ��̎���� /tmp/a.c �̏ꍇ int
+つまりこの段階で既に字句解析ルーチンが動作するということ.
+最初の字句は /tmp/a.c の場合 int
 
-(*6) c_parser_peek_token �̌Ăяo��
+(*6) c_parser_peek_token の呼び出し
 
-(*5) �� c_parser_next_token_is �� c_parser_peek_token ���Ăяo����
-�����̓t�@�C�����當����ǂ݂������ƂȂ� c_token �ւ̃|�C���^��Ԃ��Ă���.
-������
+(*5) の c_parser_next_token_is は c_parser_peek_token を呼び出すが
+ここはファイルから文字を読みだすことなく c_token へのポインタを返している.
+そして
 
-(gdb) p ((c_token *) �߂�l)->type
+(gdb) p ((c_token *) 戻り値)->type
 $2 = CPP_KEYWORD
 
-�Ɗm�F�ł���. ���ꂩ�琄�������, ���� (*5) �̍\����͂�
-�����ɗ����i�K��, ���ɍŏ��̎���̓t�@�C������ǂ݂�����,
-���ꂪ�L�[���[�h��(�����炭 int )���Ƃ������Ƃł���.
+と確認できた. これから推測するに, 実は (*5) の構文解析の
+入口に来た段階で, 既に最初の字句はファイルから読みだされ,
+それがキーワードで(おそらく int )だということである.
 
-c_parser_peek_token �Ƀu���[�N�|�C���g���Z�b�g���čĂэŏ�������s�����
-c_parser_translation_unit �ɓ��B����O�� c_parser_peek_token
-���Ăяo����Ă��邱�Ƃ��m�F�ł���. �����Ă��̏ꍇ��
+c_parser_peek_token にブレークポイントをセットして再び最初から実行すると
+c_parser_translation_unit に到達する前に c_parser_peek_token
+が呼び出されていることを確認できる. そしてこの場合は
 
 c_token *
 c_parser_peek_token (c_parser *parser)
 {
   if (parser->tokens_avail == 0)
     {
-      c_lex_one_token (parser, &parser->tokens[0]);  �����������s�����
+      c_lex_one_token (parser, &parser->tokens[0]);  こっちが実行される
       parser->tokens_avail = 1;
     }
   return &parser->tokens[0];
@@ -81,69 +81,69 @@ c_parser_peek_token (c_parser *parser)
 
 
 (*7) _cpp_lex_direct
-(*6) �Ŕ����ɃX�e�b�v�C����������Ƃ��̔����܂œ͂�. 
+(*6) で函数にステップインし続けるとこの函数まで届く. 
 
 cpp_token *
 _cpp_lex_direct (cpp_reader *pfile)
 {
 ...
 
-(*6) ���炱�̔����ɂ����Ƃ�����
+(*6) からこの函数にきたとき既に
 
 pfile->buffer->next_line
 
-�ɂ̓t�@�C�������s�����o����Ă��邱�ƂɋC�t�����낤.
-���̔����Ƀu���[�N�|�C���g���Z�b�g���čŏ�������s���Ă݂��,
-���x���Ăяo���ꂽ����, (*6) �� c_parser_peek_token ���Ăяo����
-�����ł悤�₭�ŏ��̎����Ԃ��Ƃ����\���ɂȂ��Ă���炵��.
+にはファイルから一行が取り出されていることに気付くだろう.
+この函数にブレークポイントをセットして最初から実行してみると,
+何度も呼び出されたあと, (*6) の c_parser_peek_token が呼び出され
+そこでようやく最初の字句を返すという構造になっているらしい.
 
-����̓t�@�C������ǂݍ��ނƂ���͖��֐S��, �Ⴆ��
-�ǂ̂悤�ɂ��ăR�����g����苎���Ă��邩�Ƃ��𒲂ׂĂ݂���.
+今回はファイルから読み込むところは無関心で, 例えば
+どのようにしてコメントを取り去っているかとかを調べてみたい.
 
-/tmp/a.c ���ȉ��̂悤�ɂ���:
+/tmp/a.c を以下のようにした:
 
 // comment
 int a = 1;
 
-(*6) ���� _cpp_lex_direct �ɗ������_�ňȉ��̂悤�ɂȂ��Ă���.
+(*6) から _cpp_lex_direct に来た時点で以下のようになっていた.
 (gdb) p pfile->buffer->next_line
 $14 = (const unsigned char *) 0xa7558d0 "// comment\nint a = 1;\n\n"
 
-����͂Ȃ�ƂȂ��ł��邪, ���҂������ʂ�. �����炭���ꂩ��R�����g��
-��菜�����̂��낤.
+これはなんとなくであるが, 期待した結果だ. おそらくこれからコメントが
+取り除かれるのだろう.
 
 (*8) _cpp_clean_line
 
-�R�����g�̓ǂݔ�΂��ɒ��ڂ���΂��̔����ɍs������.
+コメントの読み飛ばしに注目すればこの函数に行き着く.
 
 void
 _cpp_clean_line (cpp_reader *pfile)
 {
 ...
 	  /* Perform an optimized search for \n, \r, \\, ?.  */
-	  s = search_line_fast (s, buffer->rlimit);  �����œǂݔ�΂����Ă���
+	  s = search_line_fast (s, buffer->rlimit);  ここで読み飛ばししている
 
-'\n' = 10, '\r' = 13, '\\' = 92, '?' = 63 �������Ɍ�����, �����܂Ń|�C���^
-s ��i�߂�Ƃ������Ƃ�.
+'\n' = 10, '\r' = 13, '\\' = 92, '?' = 63 を高速に見つけて, そこまでポインタ
+s を進めるということだ.
 
-����ɃX�e�b�v�C������Ƃ���� search_line_sse2 �Ƃ��������ɂ�����.
-�|�C���^�o�R�̔����Ăяo���������Ƃ����킯��. �]�k���� SSE2 �� Web
-�Ō������Ă݂��, �Ȃ񂾂��������e�N�m���W�[�炵��. ���������ǂ�����
-�󂯎��l�ɂ����̂���.
+さらにステップインするとこれは search_line_sse2 という函数にいきつく.
+ポインタ経由の函数呼び出しだったというわけだ. 余談だが SSE2 を Web
+で検索してみると, なんだかすごいテクノロジーらしい. すごいかどうかは
+受け取る人にもよるのだが.
 
-���� search_line_sse2 �� gcc-10.2.0/libcpp/lex.c �ɒ�`�����邪,
-����Ɠ����@�\���������������t�@�C���ɂ���������悤��.
+この search_line_sse2 は gcc-10.2.0/libcpp/lex.c に定義があるが,
+これと同じ機能をもつ函数が同じファイルにいくつかあるようだ.
 
-(*9) C++ �X�^�C���̃R�����g�̃o�O�����
-/tmp/a.c ���ȉ��̂悤�ɕύX����:
-// �@�\
+(*9) C++ スタイルのコメントのバグを取る
+/tmp/a.c を以下のように変更する:
+// 機能
 int a = 1;
 
-����� Shift-JIS �ŃR�[�f�B���O����K�v������. '�\' �� 2 �o�C�g�ڂ�
-��� '\\' = 92 �Ȃ킯�ł���Ŏ��̍s�܂ŃR�����g�������Ă����
-cc1 �ŉ��߂���Ă��܂�.
+これは Shift-JIS でコーディングする必要がある. '能' の 2 バイト目は
+例の '\\' = 92 なわけでこれで次の行までコメントが続いていると
+cc1 で解釈されてしまう.
 
-���Ă�����C�����������߂Ɉȉ��̏C����������.
+さてこれを修正したいために以下の修正を加えた.
 
 inline bool sjis_1st(int c)
 {
@@ -176,8 +176,8 @@ search_line_consider_sjis(const unsigned char* s, const unsigned char* end)
 	  s = search_line_consider_sjis(s, buffer->rlimit);
 #endif
 
-      => (*A) ��̃R�[�h�� SJIS �� 2 �o�C�g�ڂ��`�F�b�N���Ă��Ȃ��̂Ő�����
-          �Ȃ�. �ȉ���������:
+      => (*A) 上のコードは SJIS の 2 バイト目をチェックしていないので正しく
+          ない. 以下が正しい:
 
 inline bool sjis(const unsigned char* s)
 {
@@ -205,40 +205,40 @@ search_line_consider_sjis(const unsigned char* s, const unsigned char* end)
 }
 
 
-gcc �̃g�b�v�̃f�B���N�g���� make �����s����Ίm������, �ȉ��̂悤�ɂ���
-�ȈՃr���h���邱�Ƃ͂ł���
+gcc のトップのディレクトリで make を実行すれば確実だが, 以下のようにして
+簡易ビルドすることはできる
 % cd ../libcpp
 % make libcpp.a
 % cd ~/gcc-10.2.0/host-i686-pc-linux-gnu/gcc
 % rm cc1
 % make -n cc1
 xg++ ... -o cc1 ...
-�̍s���R�s�[�y�[�X�g���Ă��̂܂܎��s����
+の行をコピーペーストしてそのまま実行する
 
-����ōĂ� gdb ����̂��Ƃ� cc1 �𓮂��� /tmp/a.c ���R���p�C�����Ă݂�.
-���x�̓R�����g���Ӑ}���Ȃ��`�ō���邱�Ƃ͂Ȃ��Ȃ���.
+これで再び gdb 制御のもとで cc1 を動かし /tmp/a.c をコンパイルしてみる.
+今度はコメントが意図しない形で削られることはなくなった.
 
-(*10) C �X�^�C���̃R�����g�̃o�O���Ƃ�
+(*10) C スタイルのコメントのバグをとる
 
-���������Ȃ̂� JIS (ISO-2022-JP)�ɂ��Ή����Ă���. �o�O���Č������邽�߂�
-/tmp/a.c ���ȉ��̂��̂ɂ���.
+せっかくなので JIS (ISO-2022-JP)にも対応しておく. バグを再現させるために
+/tmp/a.c を以下のものにする.
 % cat /tmp/a.c
 /*
- * ��������������
+ * 条件を����Üࠄする
  */
 %
-�����Œ��ӂ��K�v��, /tmp/a.c �� JIS �ŃR�[�f�B���O����K�v������.
-�Ƃ肠���������̏�Ԃłǂ̂悤�ɏ�������邩�m�F����.
+ここで注意が必要で, /tmp/a.c は JIS でコーディングする必要がある.
+とりあえず既存の状態でどのように処理されるか確認する.
 
 (gdb) run cc1 ...
 
-���̌��ʃR�����g�̏I����F���ł��Ă��Ȃ����Ƃ��m�F�ł���.
+この結果コメントの終わりを認識できていないことが確認できる.
 
-��������Ɛ����͏Ȃ��� C �X�^�C���̃R�����g��ǂݔ�΂����Ƃ�
+ざっくりと説明は省くが C スタイルのコメントを読み飛ばすことを
 _cpp_skip_block_comment
 
-�ōs���Ă���. ���̔����Ƀu���[�N�|�C���g���Z�b�g���Ă����܂�
-���s���Ă݂�.
+で行っている. この函数にブレークポイントをセットしてそこまで
+実行してみる.
 
 bool
 _cpp_skip_block_comment (cpp_reader *pfile)
@@ -249,9 +249,9 @@ _cpp_skip_block_comment (cpp_reader *pfile)
       if (c == '/')
 	{
 	  if (cur[-2] == '*')
-	    break;                 �������R�����g�̏I���Ƃ��Ă���.
+	    break;                 ここをコメントの終わりとしている.
 
-�ȉ��̏C��������
+以下の修正を入れる
 
 inline bool jis_kanji_start(const uchar* s)
 {
@@ -270,7 +270,7 @@ _cpp_skip_block_comment (cpp_reader *pfile)
   for (;;)
     {
 
-������ǉ�
+ここを追加
       if (!jis_state && jis_kanji_start(cur)) {
 	cur += 3;
 	jis_state = true;
@@ -284,17 +284,17 @@ _cpp_skip_block_comment (cpp_reader *pfile)
 	++cur;
 	continue;
       }
-�����܂�
+ここまで
 
-�Ă� libcpp.a ���r���h������, cc1 �������N�������Ί��҂��铮��ɂȂ�.
-���ꂾ������ JIS �̔��p�J�i�ɑΉ����Ă��Ȃ�.
+再び libcpp.a をビルドし直し, cc1 をリンクし直せば期待する動作になる.
+これだけだと JIS の半角カナに対応していない.
 
 % cat /tmp/a.c
 /*
- * ����
+ * ����Üࠄ
  */
 
-����ɑΉ�����ɂ͈ȉ��̏C��������ɉ�����:
+これに対応するには以下の修正をさらに加える:
 
 inline bool jis_hankakukana_start(const uchar* s)
 {
@@ -313,18 +313,18 @@ _cpp_skip_block_comment (cpp_reader *pfile)
   for (;;)
     {
 
-jis_kanji_start �ł͂Ȃ� jis_start �ɂ���
+jis_kanji_start ではなく jis_start にする
       if (!jis_state && jis_start(cur)) {  
 
-(*11) �p�b�`�̓��ĕ�
+(*11) パッチの当て方
 
-���̃y�[�W�� comment_bug_fix.diff ���_�E�����[�h���ėႦ��
+このページの comment_bug_fix.diff をダウンロードして例えば
 /tmp/comment_bug_fix.diff
-�Ƃ��ĕۑ�����
+として保存する
 
 % xz -d -c gcc-10.2.0.tar.xz | tar xf -
 % cd gcc-10.2.0
 % patch -p0 < /tmp/comment_bug_fix.diff
 patching file libcpp/lex.c
 
-�Ƃ���� (*9) �� (*10) �̏C�������f�����.
+とすれば (*9) と (*10) の修正が反映される.

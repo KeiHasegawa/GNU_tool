@@ -1,52 +1,52 @@
-��{�u���b�N�v���t�@�C���̂��߂� gcc �̏C��
+基本ブロックプロファイルのための gcc の修正
 
-     gcc �Ɋ�{�u���b�N�̐擪�Ńv���t�@�C���̂��߂̔����Ăяo��
-     �R�[�h�𐶐�������.
+     gcc に基本ブロックの先頭でプロファイルのための函数呼び出す
+     コードを生成させる.
 
-(*1) �I�v�V�����ǉ�
-(*2) �v���t�@�C���̂��߂̔����Ăяo���R�[�h�𐶐�����
-(*3) �p�b�`�t�@�C��
+(*1) オプション追加
+(*2) プロファイルのための函数呼び出しコードを生成する
+(*3) パッチファイル
 
-(*1) �I�v�V�����ǉ�
+(*1) オプション追加
 
-     �ugcc �ɃI�v�V������ǉ����郁���v���Q�l�ɂȂ�.
-      --profile-basic-block ��ǉ����Ă݂�. �C�������t�@�C���͈ȉ�:
+     「gcc にオプションを追加するメモ」が参考になる.
+      --profile-basic-block を追加してみる. 修正したファイルは以下:
 
 ~/gcc-10.2.0/gcc/common.opt:
-fprofile-basic-block     �����
-Driver                   �ǉ�
+fprofile-basic-block     これを
+Driver                   追加
 
 ~/gcc-10.2.0/gcc/c-family/c.opt:
-fprofile-basic-block                                 �����
-C ObjC C++ ObjC++ Var(flag_profile_basic_block)      �ǉ�
+fprofile-basic-block                                 これを
+C ObjC C++ ObjC++ Var(flag_profile_basic_block)      追加
 
-      �܂��͌���r���h����Ă��� xgcc ���ǉ����悤�Ƃ��Ă���I�v�V������
-      �G���[�ɂ��Ă��邱�Ƃ��m�F����:
+      まずは現状ビルドされている xgcc が追加しようとしているオプションを
+      エラーにしていることを確認する:
 
 % ./xgcc --profile-basic-block /tmp/b.c -S
-xgcc: �G���[: unrecognized command-line option �e--profile-basic-block�f
+xgcc: エラー: unrecognized command-line option ‘--profile-basic-block’
 
-      �c�O�Ȃ��炱�̏ꍇ��, �ȉ��̂悤�ɂ���K�v��������:
+      残念ながらこの場合は, 以下のようにする必要があった:
 
 % cd ~/gcc-10.2.0/host-i686-pc-linux-gnu/gcc
 % make clean
 % make
 ...
 
-      �K�v�Ǝv��ꂽ�t�@�C���̂݃r���h����, �ă����N������@�͎g
-      ���Ȃ�����. �l���Ă݂��, �I�v�V�����̎w���\���O���[�o���ϐ�
-      �̒�`���ς��̂œ��R�Ȃ̂�������Ȃ�.
-      �܂��P���� make �݂̂̎��s�������N�G���[�������N�����Ă���.
+      必要と思われたファイルのみビルドして, 再リンクする方法は使
+      えなかった. 考えてみると, オプションの指定を表すグローバル変数
+      の定義が変わるので当然なのかもしれない.
+      また単純な make のみの実行もリンクエラーを引き起こしていた.
 
 % ls -l xgcc xg++ cc1 cc1plus
-�r���h����Ă��邱�Ƃ��m�F����.
+ビルドされていることを確認した.
 
 % ./xgcc /tmp/b.c -S --profile-basic-block -###
 ...
 
 % ./xg++ /tmp/b.c -S --profile-basic-block -###
 ...
-      ���҂������ʂ� cc1, cc1plus �� -fprofile-basic-block ���n���Ă���.
+      期待した結果で cc1, cc1plus に -fprofile-basic-block が渡っている.
 
 % gdb cc1
 (gdb) b decode_options 
@@ -56,43 +56,43 @@ xgcc: �G���[: unrecognized command-line option �e--profile-basic-block�f
 $1 = 1
 (gdb)
 
-      ���Ғʂ蓮�삵�Ă���. �����̘b�͂�͂�
-     �ugcc �ɃI�v�V������ǉ����郁���v���Q�l�ɂȂ�.
+      期待通り動作している. ここの話はやはり
+     「gcc にオプションを追加するメモ」が参考になる.
 
-(*2) �v���t�@�C���̂��߂̔����Ăяo���R�[�h�𐶐�
+(*2) プロファイルのための函数呼び出しコードを生成
 
-     �ȉ��̂悤�ɏC������.
+     以下のように修正した.
 
 final.c:
 
-inline void profile_basic_block(FILE *file)  ����̔�����ǉ�
+inline void profile_basic_block(FILE *file)  これの函数を追加
 {
   FUNCTION_BB_PROFILER(file);
 }
 
 	case NOTE_INSN_BASIC_BLOCK:
-	  if (global_options.x_flag_profile_basic_block)  ������
-	    profile_basic_block(file);                    �ǉ�
+	  if (global_options.x_flag_profile_basic_block)  ここを
+	    profile_basic_block(file);                    追加
 
 i386.h:
-#define FUNCTION_BB_PROFILER(FILE) x86_bb_profiler ((FILE)) �����ǉ�
+#define FUNCTION_BB_PROFILER(FILE) x86_bb_profiler ((FILE)) これを追加
 
 i386-protos.h:
-extern void x86_bb_profiler(FILE*);  �����ǉ�
+extern void x86_bb_profiler(FILE*);  これを追加
 
 i386.c:
-void x86_bb_profiler (FILE *file)  ���̔�����ǉ�
+void x86_bb_profiler (FILE *file)  この函数を追加
 {
   x86_print_call_or_nop(file, "_profile_basic_block_");
 }
 
-     i386.o, final.o, i386.o �� final.o ���܂� libbackend.a ���r���h���Ȃ�
-     ���K�v������. �����čŌ�� cc1 ���ă����N����K�v������. �����̓r���h
-     �̃��O���Q�l�ɂȂ�.
+     i386.o, final.o, i386.o と final.o を含む libbackend.a をビルドしなお
+     す必要がある. そして最後に cc1 を再リンクする必要がある. ここはビルド
+     のログが参考になる.
 
-(*3) �p�b�`�t�@�C��
+(*3) パッチファイル
 
-     ���̃y�[�W�� profile_basic_block.diff �͈ȉ��̂悤�ɐ�������:
+     このページの profile_basic_block.diff は以下のように生成した:
 
 % diff -rc gcc-10.2.0{.org,}/gcc/common.opt > profile_basic_block.diff
 % diff -rc gcc-10.2.0{.org,}/gcc/c-family/c.opt >> profile_basic_block.diff
@@ -101,12 +101,12 @@ void x86_bb_profiler (FILE *file)  ���̔�����ǉ�
 % diff -rc gcc-10.2.0{.org,}/gcc/config/i386/i386-protos.h >> profile_basic_block.diff
 % diff -rc gcc-10.2.0{.org,}/gcc/config/i386/i386.c >> profile_basic_block.diff
 
-     �p�b�`�̓K�p���@�͈ȉ��̂悤�ɂȂ�:
-     ���̃y�[�W�� profile_basic_block.diff ���_�E�����[�h���ėႦ��
+     パッチの適用方法は以下のようになる:
+     このページの profile_basic_block.diff をダウンロードして例えば
 
 /tmp/profile_basic_block.diff
 
-     �Ƃ��ĕۑ�����.
+     として保存する.
 
 % xz -d -c gcc-10.2.0.tar.xz | tar xf -
 % cd gcc-10.2.0

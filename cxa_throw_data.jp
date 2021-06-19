@@ -19,27 +19,25 @@ int main()
 % g++ -S a.cp
 % g++ -g a.s
 
-ここで gdb を起動してみる. throw "Help!"; に該当するコードは __cxa_throw を
-呼び出している. __cxa_throw にステップインしてみた:
+縺薙％縺Ä gdb 繧定��褀蜍輔＠縺��縺��繧器 throw "Help!"; 縺Î隧��蠖薙☆繧九さ繝ࠄ繝峨�� __cxa_throw 繧昼蜻ࠄ縺蒴蜃��縺励※縺��ｋ. __cxa_throw 縺Î繧��繝��ャ繝励う繝蒴縺励※縺��縺檠
 
 __cxxabiv1::__cxa_throw (obj=0x804ea70, tinfo=0x8049a80 <typeinfo for char const*@@CXXABI_1.3>, dest=0x0) at ../../.././libstdc++-v3/libsupc++/eh_throw.cc:62
 
-さらにこの函数から _Unwind_RaiseException が呼び出されている. そこに
-ステップインしてみた:
+縺輔ｉ縺Î縺薙��蜃��謨��縺九ｉ _Unwind_RaiseException 縺悟他縺蒴蜃��縺輔ｌ縺��縺��ｋ. 縺昴％縺Î
+繧��繝��ャ繝励う繝蒴縺励※縺��縺檠
 
 _Unwind_RaiseException (exc=0x804ea50) at ../.././libgcc/unwind.inc:88
 
-このコメントを見る限り, スタックをさかのぼるようなことをやっている.
+縺薙��繧蒴繝��繝蒴繝医ｒ隕九ｋ髯舌ｊ, 繧��繧��繝��け繧偵＆縺九��縺ࠄ繧九ｈ縺��↑縺薙→繧偵ｄ縺��縺��縺��ｋ.
 
 uw_init_context (&this_context);
 
-この呼び出しにより this_context は次のようになった
-
+縺薙��蜻ࠄ縺蒴蜃��縺励↓繧医ｊ this_context 縺Ü谺��縺��繧医≧縺Î縺��縺��縺沂
 p this_context
 $1 = {reg = {0xbffff754, 0x0, 0xbffff758, 0xbffff75c, 0x0, 0xbffff768, 0xbffff760, 0xbffff764, 0xbffff76c, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}, cfa = 0xbffff770, ra = 0xb7ead724 <__cxxabiv1::__cxa_throw(void*, std::type_info*, void (*)(void*))+100>, lsda = 0x0, bases = {tbase = 0x0, dbase = 0xb7e068b8, func = 0xb7dfd5f0 <_Unwind_RaiseException>}, flags = 1073741824, version = 0, args_size = 0, by_value = '\000' <repeats 17 times>}
 
-なるほどということか. 特に ra は呼び出し元を示している.
-おそらくこれから
+縺��繧九⊇縺��縺��縺��≧縺薙→縺器 迚��縺Î ra 縺Ü蜻ࠄ縺蒴蜃��縺怜❼繧堤����縺励※縺��ｋ.
+縺翫◎繧峨¥縺薙ｌ縺九ｉ
 
 (gdb) where
 #0  _Unwind_RaiseException (exc=0x804ea50) at ../.././libgcc/unwind.inc:89
@@ -47,25 +45,22 @@ $1 = {reg = {0xbffff754, 0x0, 0xbffff758, 0xbffff75c, 0x0, 0xbffff768, 0xbffff76
 #2  0x080486a5 in f() () at a.s:24
 #3  0x080486bc in main () at a.s:43
 
-のようにスタックをさかのぼるのだろう.
-
+縺��繧医≧縺Î繧��繧��繝��け繧偵＆縺九��縺ࠄ繧九��縺`紕辣甄ࠄ
 while (1) {
   ...
   uw_update_context (&cur_context, &fs);
 }
 
-up_update_context の 1 回目の実行後
-
+up_update_context 縺�� 1 蝗樒岼縺��螳溯��悟��結
 (gdb) p cur_context
 $2 = {reg = {0xbffff754, 0x0, 0xbffff758, 0xbffff784, 0x0, 0xbffff768, 0xbffff788, 0xbffff764, 0xbffff78c, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}, cfa = 0xbffff790, ra = 0x80486a5 <main>, lsda = 0x0, bases = {tbase = 0x0, dbase = 0xb7fdbff4, func = 0xb7ead6c0 <__cxxabiv1::__cxa_throw(void*, std::type_info*, void (*)(void*))>}, flags = 1073741824, version = 0, args_size = 0, by_value = '\000' <repeats 17 times>}
 
 
-up_update_context の 2 回目の実行後
-
+up_update_context 縺�� 2 蝗樒岼縺��螳溯��悟��結
 (gdb) p cur_context
 $3 = {reg = {0xbffff754, 0x0, 0xbffff758, 0xbffff784, 0x0, 0xbffff7a8, 0xbffff788, 0xbffff764, 0xbffff7ac, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}, cfa = 0xbffff7b0, ra = 0x80486bc <main+23>, lsda = 0x0, bases = {tbase = 0x0, dbase = 0x8049a34, func = 0x804867c <f()>}, flags = 1073741824, version = 0, args_size = 0, by_value = '\000' <repeats 17 times>}
 
-のようになった. この while のループは
+縺��繧医≧縺Î縺��縺��縺橲 縺薙�� while 縺��繝Î繝ࠄ繝励��
 
   while (1) {
     if (fs.personality) {
@@ -73,112 +68,5 @@ $3 = {reg = {0xbffff754, 0x0, 0xbffff758, 0xbffff784, 0x0, 0xbffff7a8, 0xbffff78
       if (code == _URC_HANDLER_FOUND)
         break;
 
-この break で抜けた. 何かが見つかったらしい.
-この函数 _Unwind_RaiseException の最後で
-
-   uw_install_context (&this_context, &cur_context);
-
-を実行することになる.
-p cur_context
-$2 = {reg = {0xbffff754, 0x0, 0xbffff758, 0xbffff784, 0x0, 0xbffff7a8, 0xbffff788, 0xbffff764, 0xbffff7ac, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}, cfa = 0xbffff7b0, ra = 0x80486c3 <main+30>, lsda = 0x8048908, bases = {tbase = 0x0, dbase = 0x8049a34, func = 0x80486a5 <main>}, flags = 1073741824, version = 0, args_size = 0, by_value = '\000' <repeats 17 times>}
-
-main+30 は throw の実行によりプログラムの制御が移る先
-
-(gdb) up 4
-#3  0x080486bc in main () at a.s:43
-(gdb) disassemble
-Dump of assembler code for function main:
-   0x080486a5 <+0>:	lea    0x4(%esp),%ecx
-   0x080486a9 <+4>:	and    $0xfffffff0,%esp
-   0x080486ac <+7>:	pushl  -0x4(%ecx)
-   0x080486af <+10>:	push   %ebp
-   0x080486b0 <+11>:	mov    %esp,%ebp
-   0x080486b2 <+13>:	push   %ebx
-   0x080486b3 <+14>:	push   %ecx
-   0x080486b4 <+15>:	sub    $0x10,%esp
-   0x080486b7 <+18>:	call   0x804867c <_Z1fv>
-=> 0x080486bc <+23>:	mov    $0x0,%eax
-   0x080486c1 <+28>:	jmp    0x8048707 <main+98>
-   0x080486c3 <+30>:	cmp    $0x1,%edx             <--- (*) ここが main+30
-   0x080486c6 <+33>:	je     0x80486d1 <main+44>
-   0x080486c8 <+35>:	sub    $0xc,%esp
-   0x080486cb <+38>:	push   %eax
-   0x080486cc <+39>:	call   0x8048580 <_Unwind_Resume@plt>
-   0x080486d1 <+44>:	sub    $0xc,%esp
-   0x080486d4 <+47>:	push   %eax
-   0x080486d5 <+48>:	call   0x8048560 <__cxa_begin_catch@plt>
-   0x080486da <+53>:	add    $0x10,%esp
-   0x080486dd <+56>:	mov    %eax,-0xc(%ebp)
-   0x080486e0 <+59>:	sub    $0xc,%esp
-   0x080486e3 <+62>:	pushl  -0xc(%ebp)
-   0x080486e6 <+65>:	call   0x8048540 <puts@plt>
-   0x080486eb <+70>:	add    $0x10,%esp
-   0x080486ee <+73>:	call   0x8048550 <__cxa_end_catch@plt>
-   0x080486f3 <+78>:	jmp    0x80486bc <main+23>
-   0x080486f5 <+80>:	mov    %eax,%ebx
-   0x080486f7 <+82>:	call   0x8048550 <__cxa_end_catch@plt>
-   0x080486fc <+87>:	mov    %ebx,%eax
-   0x080486fe <+89>:	sub    $0xc,%esp
-   0x08048701 <+92>:	push   %eax
-   0x08048702 <+93>:	call   0x8048580 <_Unwind_Resume@plt>
-   0x08048707 <+98>:	lea    -0x8(%ebp),%esp
-   0x0804870a <+101>:	pop    %ecx
-   0x0804870b <+102>:	pop    %ebx
-   0x0804870c <+103>:	pop    %ebp
-   0x0804870d <+104>:	lea    -0x4(%ecx),%esp
-   0x08048710 <+107>:	ret    
-End of assembler dump.
-
-uw_install_context の呼び出しが結果的に main+30 へプログラムの制御を
-移すことになることを確認した.
-
-この一連の動作には a.s にある .gcc_except_table と .eh_frame が深く
-関係しているようである.
-
-	.section	.gcc_except_table,"a",@progbits
-        .align 4
-.LLSDA1:
-        ...
-	.uleb128 .L9-.LFB1   <= これ !
-        ... 
-
-	.section	.eh_frame,"a",@progbits
-        ...
-	.long	__gxx_personality_v0
-	...
-	.long	.LLSDA1  <= さらにこれ !
-
-
-.L9 は throw によりプログラムの制御が移る先で .LFB1 は main の先頭アドレス
-
-.eh_frame セクションにあるデータをたどって _Unwind_RaiseException が動作して
-いることが推察できる.
-
-そこで a.s から 2 つのセクションをコメントアウトし, 再び実行してみた.
-
-_Unwind_RaiseException で uw_init_context (&this_context); を実行した結果
-
-
-(gdb) p this_context
-$1 = {reg = {0xbffff754, 0x0, 0xbffff758, 0xbffff75c, 0x0, 0xbffff768, 0xbffff760, 0xbffff764, 0xbffff76c, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}, cfa = 0xbffff770, ra = 0xb7ead724 <__cxxabiv1::__cxa_throw(void*, std::type_info*, void (*)(void*))+100>, lsda = 0x0, bases = {tbase = 0x0, dbase = 0xb7e068b8, func = 0xb7dfd5f0 <_Unwind_RaiseException>}, flags = 1073741824, version = 0, args_size = 0, by_value = '\000' <repeats 17 times>}
-
-これは 2 つのセクションとは無関係らしい.
-
-up_update_context の 1 回目の実行後
-(gdb) p cur_context
-$2 = {reg = {0xbffff754, 0x0, 0xbffff758, 0xbffff784, 0x0, 0xbffff768, 0xbffff788, 0xbffff764, 0xbffff78c, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}, cfa = 0xbffff790, ra = 0x8048685 <main>, lsda = 0x0, bases = {tbase = 0x0, dbase = 0xb7fdbff4, func = 0xb7ead6c0 <__cxxabiv1::__cxa_throw(void*, std::type_info*, void (*)(void*))>}, flags = 1073741824, version = 0, args_size = 0, by_value = '\000' <repeats 17 times>}
-
-これも 2 つのセクションとは無関係.
-
-while ループの以下の条件が成立し, この函数 _Unwind_RaiseException から
-復帰することになる.
-
-      if (code == _URC_END_OF_STACK)
-	/* Hit end of stack with no handler found.  */
-	return _URC_END_OF_STACK;
-
-
-dl_iterate_phdr(..., &data) で data.ret = 0 で返るのが直接の原因
-
-.gcc_exception_table や .eh_frame にどのようなデータを張り付けておけばよいかは
-調査が困難.
+縺薙�� break 縺Ä謚懊¢縺橲 菴輔°縺瑚��九▽縺九▲縺溘ｉ縺励＞.
+縺薙��蜃��謨�� _Unwind_RaiseException 縺��譛

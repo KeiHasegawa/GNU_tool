@@ -1,15 +1,15 @@
-gcc docgen �o��(����2)
+gcc docgen 出力(その2)
 
-(*1) ��{�u���b�N�̐���
-(*2) �p�b�`�t�@�C��
+(*1) 基本ブロックの生成
+(*2) パッチファイル
 
-(*1) ��{�u���b�N�̐���
+(*1) 基本ブロックの生成
 
-     �ugcc docgen �o�́v�ł͔����̃{�f�B�� tree �Ƃ��ĕ\���ł����Ƃ����
-     docgen �o�͂��s���Ă�����, ����ł͊�{�u���b�N�̏�񂪏o���Ă��Ȃ�����.
+     「gcc docgen 出力」では函数のボディを tree として表現できたところで
+     docgen 出力を行っていたが, これでは基本ブロックの情報が出せていなかった.
 
-     �������ucc1 �̒��ۃR�[�h�̒����v�ł͔����ɑ΂��Ċ�{�u���b�N������Ă�
-     ��Ƃ��낪�������Ă���̂�, ���̌�� docgen �o�͂��s���΂悢:
+     しかし「cc1 の抽象コードの調査」では函数に対して基本ブロックを作ってい
+     るところが判明しているので, その後に docgen 出力を行えばよい:
 
 tree-cfg.c:487
 static unsigned int
@@ -17,30 +17,30 @@ execute_build_cfg (void)
 {
   gimple_seq body = gimple_body (current_function_decl);
 
-  build_gimple_cfg (body);  // �����Ŋ�{�u���b�N���쐬���Ă���̂�
-  out_doc_info_if();        // ������ docgen �o�͂���
+  build_gimple_cfg (body);  // ここで基本ブロックを作成しているので
+  out_doc_info_if();        // ここで docgen 出力する
 
-     �|�C���g��,
+     ポイントは,
 
-     (1) �����̑S�Ă̊�{�u���b�N�ɑ΂��Ĉȉ����s��:
+     (1) 函数の全ての基本ブロックに対して以下を行う:
 
-           ���̊�{�u���b�N�ɑ����钊�ۃR�[�h�̃I�y�����h�ɑ΂���, �ϐ�,
-           ����, �^�O���̎Q�Ƃ𐶐�����
+           その基本ブロックに属する抽象コードのオペランドに対して, 変数,
+           函数, タグ名の参照を生成する
 
-     (2) �����̑S�Ă̊�{�u���b�N�ɑ΂���, ���̊�{�u���b�N����o�Ă���
-         �ӂ𐶐�����
+     (2) 函数の全ての基本ブロックに対して, その基本ブロックから出ていく
+         辺を生成する
 
-     �Ƃ������̂ł���. (1) �̃|�C���g�́ugcc docgen �o�́v�Ə����������
-     �����قȂ�. tree ���ċA�I�ɂ��ǂ�̂ł͂Ȃ��Ē��ۃR�[�h�̃I�y�����h
-     ������Ƃ������Ƃł���. ���������̃I�y�����h�� tree �ŕ\������Ă���
-     �킯������, ����܂ł̒������Ă������Ƃ�, �쐬�����R�[�h���ܘ_������
-     ���.
+     というものである. (1) のポイントは「gcc docgen 出力」と少しだけやり
+     方が異なる. tree を再帰的にたどるのではなくて抽象コードのオペランド
+     を見るということである. しかしそのオペランドも tree で表現されている
+     わけだから, これまでの調査してきたことや, 作成したコードが勿論生かさ
+     れる.
 
-     cc1 �����ł͂Ȃ� cc1plus �̑Ή������������Ȃ̂ł��Ă�����.
+     cc1 だけではなく cc1plus の対応もせっかくなのでしておいた.
 
-(*2) �p�b�`�t�@�C��
+(*2) パッチファイル
 
-     ���̃y�[�W�� docgen2.diff �͈ȉ��̂悤�ɐ�������:
+     このページの docgen2.diff は以下のように生成した:
 
 % diff -rc gcc-10.2.0{.org,}/gcc/c-family/c-opts.c > docgen2.diff
 % diff -rc gcc-10.2.0{.org,}/gcc/c-family/c.opt >> docgen2.diff
@@ -53,16 +53,16 @@ execute_build_cfg (void)
 % diff -rc gcc-10.2.0{.org,}/gcc/cp/tree.c >> docgen2.diff
 % diff -rc gcc-10.2.0{.org,}/gcc/cp/parser.c >> docgen2.diff
 
-     �p�b�`�̓K�p���@�͈ȉ��̂悤�ɂȂ�:
-     ���̃y�[�W�� docgen2.diff ���_�E�����[�h���ėႦ��
+     パッチの適用方法は以下のようになる:
+     このページの docgen2.diff をダウンロードして例えば
 
 /tmp/docgen2.diff
 
-     �Ƃ��ĕۑ�����.
+     として保存する.
 
 % xz -d -c gcc-10.2.0.tar.xz | tar xf -
 % cd gcc-10.2.0
 % patch -p1 < /tmp/docgen2.diff
 
-     �������ł�, docgen.diff �̃p�b�`�����ĂĂ���̂Ȃ�΂��̕��@�ł�
-     �p�b�`��K�p���邱�Ƃ͂ł��Ȃ�.
+     もしすでに, docgen.diff のパッチをあてているのならばこの方法では
+     パッチを適用することはできない.

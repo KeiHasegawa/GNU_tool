@@ -1,9 +1,9 @@
-cygwin �� gdb �� -O0 �r���h
+cygwin で gdb の -O0 ビルド
 
-cygwin �� gdb 10.1 ���\�[�X����r���h���ăC���X�g�[��������̏��
-�ucygwin �ւ� gdb 10.1 �̃C���X�g�[�������v�Q��
+cygwin で gdb 10.1 をソースからビルドしてインストールした後の状態
+「cygwin への gdb 10.1 のインストールメモ」参照
 
-���̂Ƃ��̃r���h�̃��O���ȉ��ɕۑ����Ă�����.
+このときのビルドのログを以下に保存しておいた.
 
 ~/gdb-10.1/make.log.2021.03.29
 
@@ -20,15 +20,15 @@ chmod +x $argv[1]
 % find . -name 'Makefile.tpl' -exec d:/tmp/yy {} \;
 % make distclean
 
-!! �Ȃɂ�� configure �����삵�Ă���... �]�v�Ȃ��̂��폜�����������Ȃ̂�...
+!! なにやら configure が動作している... 余計なものを削除したいだけなのに...
 ...
 config.status: creating Makefile
 make: *** No rule to make target 'distclean'.  Stop.
 % mv MAKEFILE d:/tmp/Makefile
 % mv d:/tmp/Makefile .
-% make distclean             # ���������肸�ɂ܂�����Ă݂�.
+% make distclean             # しかし懲りずにまたやってみた.
 ...
-�����... �T�u�f�B���N�g���� configure �����s�������...
+これは... サブディレクトリで configure が実行されつつある...
 ...
 rm -f texinfo/po/Makefile texinfo/po/Makefile.in texinfo/info/Makefile
 rm -f texinfo/doc/Makefile texinfo/po/POTFILES
@@ -48,15 +48,15 @@ make: [Makefile:2134: local-distclean] Error 1 (ignored)
 % mv d:/tmp/Makefile .
 % make
 ...
-config.cache �������Ă��ꂪ�R���t���N�g���Ă���炵��. make distclean ��
-�@�\���Ă��Ȃ��炵��
+config.cache があってそれがコンフリクトしているらしい. make distclean が
+機能していないらしい
 % ls gdbserver/config.cache 
 gdbserver/config.cache
 % rm -f gdbserver/config.cache 
 % make
-���x�̓r���h�����s����Ă���.
-config.cache �݂̂��폜����� make distclean �Ɠ������ʂ�����킯�ł͂Ȃ��̂��낤��,
-���Ȃ��Ƃ� config.cache �͍폜����Ă���K�v������Ƃ������Ƃ�.
+今度はビルドが実行されている.
+config.cache のみを削除すれば make distclean と同じ効果があるわけではないのだろうが,
+少なくとも config.cache は削除されている必要があるということだ.
 
-��������.
-�c�O�Ȃ���܂��������̌v����Y��Ă��܂���.
+成功した.
+残念ながらまたも時刻の計測を忘れてしまった.

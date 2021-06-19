@@ -1,25 +1,25 @@
-cygwin �łł� gdb �ŃE�H�b�`�|�C���g���ǂ��������@�Ŏ������Ă��邩�̒���
+cygwin 版での gdb でウォッチポイントをどういう方法で実現しているかの調査
 
-(*1) -O0 �r���h
-(*2) �E�H�b�`�|�C���g�� gdb �ŃZ�b�g���Č��o����
-(*3) (*2) �� gdb �̐���̂��Ƃōs��
+(*1) -O0 ビルド
+(*2) ウォッチポイントを gdb でセットして検出する
+(*3) (*2) を gdb の制御のもとで行う
 (*4) SetThreadContext
-(*5) CreateProcessW �ŕԂ��Ă����n���h���ɑ΂��� SetThreadContext �𔭍s���Ă���
-(*6) �����̃R�[�h�����ăr���h
-(*7) CreateProcessA �� gdb �̃R�[�h���璼�ڌĂяo��.
-(*8) �E�H�b�`�|�C���g���Z�b�g���Ă��� wait_sync_command_done, 
-     watchpoint_check, ReadProcessMemory ���Ă΂��܂�.
-(*9) WaitForDebugEvent �� EXCEPTION_DEBUG_EVENT
-     (ExceptionCode = EXCEPTION_SINGLE_STEP)�����Ă���
-(*10) �E�H�b�`�|�C���g�̌��o
+(*5) CreateProcessW で返ってきたハンドルに対して SetThreadContext を発行している
+(*6) 自分のコードを入れてビルド
+(*7) CreateProcessA を gdb のコードから直接呼び出す.
+(*8) ウォッチポイントをセットしてから wait_sync_command_done, 
+     watchpoint_check, ReadProcessMemory が呼ばれるまで.
+(*9) WaitForDebugEvent で EXCEPTION_DEBUG_EVENT
+     (ExceptionCode = EXCEPTION_SINGLE_STEP)がきている
+(*10) ウォッチポイントの検出
 
 
 
-(*1) -O0 �r���h
+(*1) -O0 ビルド
 
-     ���̃y�[�W�́ucygwin gdb 10.1 �̃f�o�b�O�r���h�̃����v���Q��.
+     このページの「cygwin gdb 10.1 のデバッグビルドのメモ」を参照.
 
-(*2) �E�H�b�`�|�C���g�� gdb �ŃZ�b�g���Č��o����
+(*2) ウォッチポイントを gdb でセットして検出する
 
 % cd ~/gdb-10.1/gdb
 % cat a.c
@@ -70,29 +70,29 @@ end
 [Thread 16408.0x20fc exited with code 0]
 [Inferior 1 (process 16408) exited normally]
 %
-    ����͊��Ғʂ蓮�삵�Ă���.
-    ���ӂ������_������.
+    これは期待通り動作している.
+    注意したい点がある.
 
-    (1) �E�H�b�`�|�C���g�R�}���h�� run �R�}���h�̑O�Ɏ��s���Ă����Ғʂ蓮�삵�Ȃ�.
+    (1) ウォッチポイントコマンドを run コマンドの前に実行しても期待通り動作しない.
 
-        Visual Studio �̃f�o�b�K�ł̓f�[�^�u���[�N�|�C���g�̃��j���[�����s���Ȃ�
-	�ƗL���ɂȂ�Ȃ��̂Ɠ������R�Ȃ̂�������Ȃ����ڂ������Ƃ͕s��.
+        Visual Studio のデバッガではデータブレークポイントのメニューが実行しない
+	と有効にならないのと同じ理由なのかもしれないが詳しいことは不明.
 
-    (2) ���̃v���O������ objdump �Œ��𒲂ׂ�� my_array �ɂ��Ă�
+    (2) このプログラムを objdump で中を調べると my_array については
 
 [631](sec  7)(fl 0x00)(ty   0)(scl   2) (nx 0) 0x00000000000001a0 my_array
 
-        �ȊO�̏�񂪏o�Ă��Ȃ�.
+        以外の情報が出てこない.
 
-    (3) ���������s����ƕK��
+    (3) しかし実行すると必ず
 
 &my_array[1000] = 0x100408140
 
-        �̂悤�ɕ\������. �܂�A�h���X�͌Œ肾����.
+        のように表示する. つまりアドレスは固定だった.
 
-(*3) (*2) �� gdb �̐���̂��Ƃōs��
+(*3) (*2) を gdb の制御のもとで行う
 
-    ���x�͏�̂��Ƃ� gdb �̐���̂��Ƃōs���Ă݂�.
+    今度は上のことを gdb の制御のもとで行ってみる.
 
 % /usr/local/bin/gdb gdb.exe -q
 Reading symbols from gdb.exe...
@@ -144,32 +144,32 @@ end
 [Inferior 1 (process 9748) exited normally]
 (gdb) 
 
-    ���b�Z�[�W�����藐��ĕ�����ɂ�����, ���Ғʂ蓮�삵�Ă���.
-    ���� ptrace �̑���ɉ������Ă��邩�Ƃ�������.
+    メッセージが入り乱れて分かりにくいが, 期待通り動作している.
+    問題は ptrace の代わりに何をしているかということ.
 
 (*4) SetThreadContext
 
-    �F�X���ׂĂ����� target_fetch_registers �Ȃǂ� ptrace �ɑ��鉽��
-    ���Ăяo�������炵��.
+    色々調べていたら target_fetch_registers などが ptrace に代わる何か
+    を呼び出す入口らしい.
 
     target_resume
     target_read_memory
     target_write_memory
     target_insert_breakpoint
 
-    �Ȃǂ�����.
+    などがある.
 
     target_insert_mask_watchpoint
 
-    ���������邩�Ǝv���������Ă��Ȃ�. ����ɒ��������Ƃ���
+    ここもくるかと思ったがきていない. さらに調査したところ
 
-    cygwin_set_dr �Ƃ��������͈��� addr = 0x100408140 �ł���E�H�b�`�|�C���g��
-    �d�|�����A�h���X�ł���.
+    cygwin_set_dr という函数は引数 addr = 0x100408140 でありウォッチポイントを
+    仕掛けたアドレスである.
 
-    cygwin_set_dr7 �Ƃ�����������΂�Ă���. ����͂����ɂ��uptrace �̒����v
-    �ōs���Ă���悤�Ȃ��Ƃ�����Ă���Ɨ\���ł���.
+    cygwin_set_dr7 という函数もよばれている. これはいかにも「ptrace の調査」
+    で行われているようなことがされていると予測できる.
 
-    ���ǈȉ��ɂ��ǂ蒅����:
+    結局以下にたどり着けた:
 
 void
 windows_nat_target::resume (ptid_t ptid, int step, enum gdb_signal sig)
@@ -177,7 +177,7 @@ windows_nat_target::resume (ptid_t ptid, int step, enum gdb_signal sig)
 ...
 	      if (debug_registers_changed)
 		{
-		  th->context.Dr0 = dr[0];   �����Ƀu���[�N�|�C���g���Z�b�g����
+		  th->context.Dr0 = dr[0];   ここにブレークポイントをセットした
 		  th->context.Dr1 = dr[1];
 		  th->context.Dr2 = dr[2];
 		  th->context.Dr3 = dr[3];
@@ -186,19 +186,19 @@ windows_nat_target::resume (ptid_t ptid, int step, enum gdb_signal sig)
 		}
 	      CHECK (SetThreadContext (th->h, &th->context));
 
-    �Ă� gdb �œ�����������ď�̊Y���ӏ��ɂ��Ă��邱�Ƃ��m�F����. ���̂Ƃ�
+    再び gdb で同じ操作をして上の該当箇所にきていることを確認した. このとき
 
     dr[0] = 0x100408140
     dr[7] = 0xd0101
 
-    �ł��邱�Ƃ��m�F����. �܂�f�o�b�O���W�X�^��ύX����ɂ� Win32API
+    であることも確認した. つまりデバッグレジスタを変更するには Win32API
 
     SetThreadContext
 
-    ���g���΂悢�Ƃ���������. �����Ă���ŃE�H�b�`�|�C���g�������ł���悤��.
+    を使えばよいといいうこと. そしてこれでウォッチポイントを実現できるようだ.
 
-(*5) CreateProcessW �ŕԂ��Ă����n���h���ɑ΂��� SetThreadContext �𔭍s���Ă���
-     �ȉ������̃��O. �� ����������ƕ�����
+(*5) CreateProcessW で返ってきたハンドルに対して SetThreadContext を発行している
+     以下がそのログ. ★ を検索すると分かる
 
 > /usr/local/bin/gdb gdb.exe -q
 Reading symbols from gdb.exe...
@@ -212,7 +212,7 @@ line to your configuration file "/cygdrive/d/home/khasegawa/.gdbinit".
 For more information about this security protection see the
 "Auto-loading safe path" section in the GDB manual.  E.g., run from the shell:
 	info "(gdb)Auto-loading safe path"
-(gdb) b CreateProcessW                �� CreateProcessW �Ƀu���[�N�|�C���g���Z�b�g
+(gdb) b CreateProcessW                ★ CreateProcessW にブレークポイントをセット
 Breakpoint 1 at 0x100950f50
 (gdb) run a.exe -x debugged-gdbcom -q
 Starting program: /cygdrive/d/home/khasegawa/gdb-10.1/gdb/gdb.exe a.exe -x debugged-gdbcom -q
@@ -269,8 +269,8 @@ Run till exit from #0  0x00007ffbcd5fb9e3 in KERNEL32!CreateProcessW ()
 2862	  if (w32_env)
 (gdb) p/x pi
 $1 = {hProcess = 0x2c8, hThread = 0x2c4, dwProcessId = 0x39b4, 
-  dwThreadId = 0x2fa0}   �� CreateProcessW �̌��ʃv���Z�X�̃n���h���� 0x2c8
-(gdb) b windows-nat.c:1487   �� ���̉ӏ��Ƀu���[�N�|�C���g���Z�b�g
+  dwThreadId = 0x2fa0}   ★ CreateProcessW の結果プロセスのハンドルは 0x2c8
+(gdb) b windows-nat.c:1487   ★ 問題の箇所にブレークポイントをセット
 Breakpoint 3 at 0x1007746d7: file windows-nat.c, line 1487.
 (gdb) c
 Continuing.
@@ -301,39 +301,39 @@ Thread 1 "gdb" hit Breakpoint 3, windows_nat_target::resume (
 1490		      th->context.ContextFlags = 0;
 1491		    }
 (gdb) p/x dr[0]
-$2 = 0x100408140  �� �E�H�b�`�|�C���g���Z�b�g�����A�h���X
+$2 = 0x100408140  ★ ウォッチポイントをセットしたアドレス
 (gdb) p/x dr[7]
-$3 = 0xd0101      �� DR_CONTROL (DR7) �ɃZ�b�g����ׂ��l
+$3 = 0xd0101      ★ DR_CONTROL (DR7) にセットするべき値
 (gdb) p th->h
-$4 = (HANDLE) 0x2c8  �� CreateProcessW �Ŏ擾�����n���h��
+$4 = (HANDLE) 0x2c8  ★ CreateProcessW で取得したハンドル
 (gdb)
 
-(*6) �����̃R�[�h�����ăr���h
+(*6) 自分のコードを入れてビルド
 
-     windows-nat.c �Ɏ����̃R�[�h����ꂽ. �P���� GetThreadContext ���Ăяo����
-     �擾�������e��\������Ƃ��������̂���.
+     windows-nat.c に自分のコードを入れた. 単純に GetThreadContext を呼び出して
+     取得した内容を表示するというだけのもの.
 
-     (*5) �Ŏw�肵���u���[�N�|�C���g windows-nat.c:1487 �ɒ�~�����Ƃ�
+     (*5) で指定したブレークポイント windows-nat.c:1487 に停止したとき
 
      (gdb) debug_thread(th->h)
 
-     �Ƃ���Ί��҂�������ɂȂ��Ă���. ���
+     とすれば期待した動作になっている. 一方
 
-     CreateProcessW �����
+     CreateProcessW 直後に
 
      (gdb) debug_thread(pi.hProcess)
 
-     �� GetThread �̌Ăяo���ŃG���[�ɂȂ��Ă���. ���̈����
+     は GetThread の呼び出しでエラーになっている. その一方で
 
      (gdb) debug_thread(pi.hThread)
 
-     �͂�����ۂ�.
+     はそれっぽい.
 
-(*7) CreateProcessA �� gdb �̃R�[�h���璼�ڌĂяo��.
+(*7) CreateProcessA を gdb のコードから直接呼び出す.
 
 windows_nat_target::create_inferior
 
-�̐擪�����ňȉ��̃R�[�h��}��
+の先頭部分で以下のコードを挿入
 
   {
     char path[] = ".\\a.exe";
@@ -346,11 +346,11 @@ windows_nat_target::create_inferior
     ret = ret;
   }
 
-����� CreateProcessA �̌Ăяo�������
+これで CreateProcessA の呼び出し直後に
 
 (gdb) p debug_thread(pi.hThread)
 
-�Ƃ��Ă݂�. ���ʂ�
+としてみた. 結果は
 Dr0 = 0x0
 Dr1 = 0x0
 Dr2 = 0x0
@@ -366,22 +366,22 @@ Rbp = 0x0
 Rip = 0x7ffbcedf3670
 $97 = void
 
-�ł���. �܂�, �����܂� gdb �͉��������Ă���. �P���� CreateProcessA ���Ăяo��
-�̃v���O������, ���̉��������Ă��Ȃ��̂� GetThreadContext �̌��ʂ��قȂ��Ă���
-�Ƃ����킯��.
+である. つまり, ここまで gdb は何かをしている. 単純に CreateProcessA を呼び出す
+のプログラムは, その何かをしていないので GetThreadContext の結果が異なっている
+というわけだ.
 
-����, ���́u�����v�𒲍�����K�v������.
+さて, その「何か」を調査する必要がある.
 
-������ flags = 2 �Ŋ��Ғʂ蓮�삷�邩? gdb �ŕϐ������������Ă��߂��Ă݂�.
-��͂肱��ł��������ʂł���.
+ここで flags = 2 で期待通り動作するか? gdb で変数を書き換えてためしてみた.
+やはりこれでも同じ結果である.
 
-����ɒ��������Ƃ��� ~/lang/53_GNU_tool/test002/test002.c
-�� gcc �ŃR���p�C���������̂͊��Ғʂ蓮�삵 GetThreadContext �ł�����
-Context ���擾�ł��Ă��邪, Visual Studio �ŃR���p�C���������̂�
-Context ����ɂȂ��Ă���. �Ƃ������Ƃ�... cygwin.dll �̒��Ƀ|�C���g������
+さらに調査したところ ~/lang/53_GNU_tool/test002/test002.c
+は gcc でコンパイルしたものは期待通り動作し GetThreadContext でちゃんと
+Context を取得できているが, Visual Studio でコンパイルしたものは
+Context が空になっている. ということは... cygwin.dll の中にポイントがある
 
-���Ȃ݂ɂ��̃R�[�h, ��ŋC�t�����̂���, ���̂܂܂ɂ��Ă����ƈȉ��̂悤��
-0 �Ԓn�A�N�Z�X���Ă��܂�.
+ちなみにこのコード, 後で気付いたのだが, そのままにしておくと以下のように
+0 番地アクセスしてしまう.
 
 Thread 1 "gdb" received signal SIGSEGV, Segmentation fault.
 0x0000000100977090 in inferior::non_exited_threads (this=0x0)
@@ -442,10 +442,10 @@ Thread 1 "gdb" received signal SIGSEGV, Segmentation fault.
 #23 0x00000001004010d0 in main (argc=5, argv=0xffffcc20) at gdb.c:32
 (gdb)
 
-(*8) �E�H�b�`�|�C���g���Z�b�g���Ă��� wait_sync_command_done, 
-     watchpoint_check, ReadProcessMemory ���Ă΂��܂�.
+(*8) ウォッチポイントをセットしてから wait_sync_command_done, 
+     watchpoint_check, ReadProcessMemory が呼ばれるまで.
 
-     ���O�̃|�C���g�ƂȂ镔���� �� ����ꂽ
+     ログのポイントとなる部分に ★ を入れた
 
 /usr/local/bin/gdb gdb.exe -q
 Reading symbols from gdb.exe...
@@ -495,8 +495,8 @@ end
 [Thread 11976.0x41c4 exited with code 0]
 [Thread 11976.0x1b40 exited with code 0]
 [Thread 11976.0x42a8 exited with code 0]
-[Inferior 1 (process 11976) exited normally]    �� �܂��͂���܂ł̓�����m�F
-(gdb) b windows-nat.c:1487               �� ��̏ꏊ�Ƀu���[�N�|�C���g���Z�b�g
+[Inferior 1 (process 11976) exited normally]    ★ まずはこれまでの動作を確認
+(gdb) b windows-nat.c:1487               ★ 例の場所にブレークポイントをセット
 Breakpoint 1 at 0x1007746d7: file windows-nat.c, line 1487.
 (gdb) so x
 [New Thread 18604.0x3c98]
@@ -519,15 +519,15 @@ Thread 1 "gdb" hit Breakpoint 1, windows_nat_target::resume (
     sig=GDB_SIGNAL_0) at windows-nat.c:1487
 1487			  th->context.Dr7 = dr[7];
 (gdb) b wait_sync_command_done
-�� wtachpoint_check ���Ă΂��O�ɂ�����������
+★ wtachpoint_check が呼ばれる前にこっちがくる
 Breakpoint 2 at 0x10072e2da: file top.c, line 523.
 (gdb) Note: breakpoint 2 also set at pc 0x10072e2da.
 Breakpoint 3 at 0x10072e2da: file top.c, line 523.
 (gdb) delete 3
 (gdb) b watchpoint_check
-�� �����ŃE�H�b�`�|�C���g�����o����
+★ ここでウォッチポイントを検出する
 Breakpoint 4 at 0x100460342: file breakpoint.c, line 4783.
-(gdb) so y  �� �����ŉ\���̂��� Win32API �Ƀu���[�N�|�C���g���Z�b�g
+(gdb) so y  ★ そこで可能性のある Win32API にブレークポイントをセット
 Breakpoint 5 at 0x7ffbcb2a4fb4 (2 locations)
 Breakpoint 6 at 0x7ffbcb3547dc (2 locations)
 Breakpoint 7 at 0x7ffbcb2a478f (2 locations)
@@ -602,7 +602,7 @@ Continuing.
 
 Thread 1 "gdb" hit Breakpoint 2, wait_sync_command_done () at top.c:523
 523	  scoped_restore save_ui = make_scoped_restore (&current_ui);
-                                                           �� �����ɂ��Ă���
+                                                           ★ ここにきている
 (gdb) 
 Continuing.
 
@@ -798,7 +798,7 @@ Continuing.
 Thread 1 "gdb" hit Breakpoint 4, watchpoint_check (bs=0x800419500)
     at breakpoint.c:4783
 4783	  gdb_assert (bs->breakpoint_at != NULL);
-                                         �� �����ɂ��Ă���
+                                         ★ ここにきている
 (gdb) 
 Continuing.
 							   
@@ -810,16 +810,16 @@ Thread 1 "gdb" hit Breakpoint 26, 0x00007ffbcd5f9680 in ReadProcessMemory ()
     at windows-nat.c:3080
 3080	      success = ReadProcessMemory (current_process_handle,
 (gdb) p/x memaddr
-$1 = 0x100408140                 �� ����̓E�H�b�`�|�C���g�Ɏw�肵���A�h���X
+$1 = 0x100408140                 ★ これはウォッチポイントに指定したアドレス
 (gdb) 
 
-(*9) WaitForDebugEvent �� EXCEPTION_DEBUG_EVENT
-     (ExceptionCode = EXCEPTION_SINGLE_STEP)�����Ă���
+(*9) WaitForDebugEvent で EXCEPTION_DEBUG_EVENT
+     (ExceptionCode = EXCEPTION_SINGLE_STEP)がきている
 
-     (*8) �̃��O�ł� WaitForDebugEvent �����v 4 ��, ���ۂɂ� 2 ��Ă΂��
-     ���邱�ƂɋC�t��.
+     (*8) のログでは WaitForDebugEvent が合計 4 回, 実際には 2 回呼ばれて
+     いることに気付く.
 
-1 ��� : ����� CREATE_THREAD_DEBUG_EVENT
+1 回目 : これは CREATE_THREAD_DEBUG_EVENT
 dwDebugEventCode = 2(CREATE_THREAD_DEBUG_EVENT)
 
 (gdb) p/x *event
@@ -841,7 +841,7 @@ $10 = {dwDebugEventCode = 0x2, dwProcessId = 0x394c, dwThreadId = 0x3e74,
     DebugString = {lpDebugStringData = 0x368, fUnicode = 0xe000, 
       nDebugStringLength = 0x30}, RipInfo = {dwError = 0x368, dwType = 0x0}}}
 
-2 ���: ����̓V���O���X�e�b�v (0x80000004)
+2 回目: これはシングルステップ (0x80000004)
 dwDebugEventCode = 1 (EXCEPTION_DEBUG_EVENT)
 (gdb) p/x *event
 $11 = {dwDebugEventCode = 0x1, dwProcessId = 0x394c, dwThreadId = 0x233c, 
@@ -864,30 +864,30 @@ $11 = {dwDebugEventCode = 0x1, dwProcessId = 0x394c, dwThreadId = 0x233c,
       nDebugStringLength = 0x0}, RipInfo = {dwError = 0x80000004, 
       dwType = 0x0}}}
 
-      �Ȃ̂ł���ł͂Ȃ��Ǝv����. �Ƃ���łȂ��V���O���X�e�b�v�̃C�x���g
-      ������̂��낤.
+      なのでこれではないと思われる. ところでなぜシングルステップのイベント
+      がくるのだろう.
 
-(*10) �E�H�b�`�|�C���g�̌��o
+(*10) ウォッチポイントの検出
 
-      Win32API �̊ϓ_����U�߂�̂�������߂Ă݂�.
-      watchpoint_check ���Ă΂��̂̓E�H�b�`�|�C���g���d�|���Ă��ꂪ�q�b�g����
-      �Ƃ��Ȃ̂�, ���̔������Ă΂�錴�����l���Ă݂Ă͂ǂ���.
+      Win32API の観点から攻めるのを少しやめてみる.
+      watchpoint_check が呼ばれるのはウォッチポイントを仕掛けてそれがヒットした
+      ときなので, この函数が呼ばれる原因を考えてみてはどうか.
 
-      watchpoint_check �� handle_signal_stop ����Ăяo�����.
+      watchpoint_check は handle_signal_stop から呼び出される.
 
-      handle_signal_stop �� 2 ��Ăяo����Ă���.
+      handle_signal_stop は 2 回呼び出されている.
 
-      1 ��ڂ̓v���O�����Ɏd���܂ꂽ�u���[�N�|�C���g�Ƀq�b�g�����Ƃ�.
-      (*2) �Q��.
+      1 回目はプログラムに仕込まれたブレークポイントにヒットしたとき.
+      (*2) 参照.
 
-      2 ��ڂ̓E�H�b�`�|�C���g�����o�����Ƃ��ł���.
+      2 回目はウォッチポイントを検出したときである.
 
-      1 ��ڂ����o�����̂� Win32API ���x���̊K�w�Ō����� WaitForDebugEvent
-      �Ȃ̂���, 2 ��ڂɂ��Ă� WaitForDebugEvent �ł���ׂ�. ��͂�
+      1 回目が検出されるのは Win32API レベルの階層で言えば WaitForDebugEvent
+      なのだが, 2 回目についても WaitForDebugEvent であるべき. やはり
 
       EXCEPTION_SINGLE_STEP
 
-      �����Ă���̂���͂�d�v��
+      が来ているのがやはり重要で
 
 infrun.c:5935
       stopped_by_watchpoint = watchpoints_triggered (&ecs->ws);
@@ -896,12 +896,12 @@ infrun.c:5935
 infrun.c:6067
 	    = bpstat_stop_status (get_current_regcache ()->aspace (),
 
-      �܂�, �E�H�b�`�|�C���g�ɏ������݂��������Ƃ��Ƀf�o�b�K�ڐ��ł�
-      EXCEPTION_SINGLE_STEP �����Ă���Ƃ�������. ���̂Ƃ� Dr6 ��
-      �ǂݍ���ŃE�H�b�`�|�C���g�Ƀq�b�g�������ǂ����𔻒肵�Ă���.
-      ���ꂪ 5935 �s�ڂōs���Ă��邱��.
+      つまり, ウォッチポイントに書き込みがあったときにデバッガ目線では
+      EXCEPTION_SINGLE_STEP がきているということ. このとき Dr6 を
+      読み込んでウォッチポイントにヒットしたかどうかを判定している.
+      それが 5935 行目で行われていること.
 
-      6067 �s�ڂ̔����Ăяo����, ���ʓI�� watchpoint_check ���Ăяo���Ă���.
+      6067 行目の函数呼び出しが, 結果的に watchpoint_check を呼び出している.
 
-      �����ŋ^��Ȃ͎̂�����������ȒP�ȃv���O������ Visual Studio �ł͂Ȃ���
-      gcc �Ńr���h������ EXCEPTION_SINGLE_STEP �����Ȃ��Ƃ�������.
+      そこで疑問なのは自分が作った簡単なプログラムを Visual Studio ではなくて
+      gcc でビルドしたが EXCEPTION_SINGLE_STEP が来ないということ.

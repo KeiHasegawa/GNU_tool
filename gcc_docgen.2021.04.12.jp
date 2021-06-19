@@ -1,23 +1,23 @@
-gcc docgen �o��
+gcc docgen 出力
 
-(*1) doclink.exe �ւ̓��̓t�@�C���� cc1 �Ő�������.
-(*2) �p�b�`�t�@�C��
+(*1) doclink.exe への入力ファイルを cc1 で生成する.
+(*2) パッチファイル
 
-(*1) doclink.exe �ւ̓��̓t�@�C���� cc1 �Ő�������.
+(*1) doclink.exe への入力ファイルを cc1 で生成する.
 
-     ����͖{�� hcc1.exe �� docgen.dll �ł���Ă�������.
-     docgen.dll doclink.exe �ɂ��Ắu�g�b�v�v->�u�h�L�������g�W�F�l���[�^�v
-     ���Q��.
+     これは本来 hcc1.exe と docgen.dll でやっていたこと.
+     docgen.dll doclink.exe については「トップ」->「ドキュメントジェネレータ」
+     を参照.
 
-     ������ cc1 �̎�����, �����̒���,
+     当初は cc1 の実装で, 函数の中で,
 
-     o �O���[�o���ϐ��̎Q��
-     o �����Ăяo��
-     o �\���̂̎Q�Ƃ�
+     o グローバル変数の参照
+     o 函数呼び出し
+     o 構造体の参照を
 
-     �ǂ̂悤�ɂ��Ă��邩�����͕�����Ȃ������̂Œ��f���Ă���.
+     どのようにしているか当初は分からなかったので中断していた.
 
-     ����ł́ucc1 �A�Z���u�������̒����v�ł��q�ׂ��悤��,
+     現状では「cc1 アセンブラ生成の調査」でも述べたように,
 
 c-parse.c
 static void
@@ -26,15 +26,15 @@ c_parser_declaration_or_fndef (c_parser *parser, bool fndef_ok,
 {
 ...
 	fnbody = c_parser_compound_statement (parser, &endloc);
-      tree fndecl = current_function_decl;   �����Œ�~����
+      tree fndecl = current_function_decl;   ここで停止して
 
 (gdb) p print(fnbody)
 
-     �Ƃ���� tree �Ƃ��Ă̔����̒��͕\���ł��Ă���.
-     ����Ƌ߂����Ƃ��s���� doclink.exe �ւ̓��̓t�@�C���𐶐����邱�Ƃ�
-     �ł���.
+     とすれば tree としての函数の中は表示できている.
+     これと近いことを行えば doclink.exe への入力ファイルを生成することが
+     できる.
 
-     �Ⴆ��
+     例えば
 
 % cat /tmp/a.c
 struct S {
@@ -50,7 +50,7 @@ int g(struct S* ps)
   return a + f(ps->m);
 }
 %
-     �̂悤�ȃ\�[�X�ɑ΂���
+     のようなソースに対して
 
 $func $def g "/tmp/a.c" 9
 {
@@ -59,37 +59,37 @@ $func $def g "/tmp/a.c" 9
     $ref $var a "/tmp/a.c" 11;
 }
 
-     ���o�͂ł���΂悢�킯��. ���ꂼ��̈Ӗ��� 11 �s�ڂŔ��� f ��,
-     �^�O S ��, �ϐ� a ���Q�Ƃ���Ă���Ƃ������e��.
+     を出力できればよいわけだ. それぞれの意味は 11 行目で函数 f が,
+     タグ S が, 変数 a が参照されているという内容だ.
 
-     ����͖��炩�� print(tree) �����P���ł���. �Ƃ͂���, �ϐ���
-     �O���[�o���ϐ����ǂ����̔����, �\���̂������̊O���Ő錾����Ă���
-     ���ǂ����̔���Ȃǂ͕ʓr�K�v�ɂ͂Ȃ�:
+     これは明らかに print(tree) よりも単純である. とはいえ, 変数が
+     グローバル変数かどうかの判定や, 構造体が函数の外側で宣言されている
+     かどうかの判定などは別途必要にはなる:
 
   void traverse_decl(tree p)
   {
-    if (DECL_FILE_SCOPE_P(p))  �t�@�C���X�R�[�v���ǂ�������
+    if (DECL_FILE_SCOPE_P(p))  ファイルスコープかどうか判定
       ...
 
-     ���������Ȃ̂� cc1plus �ɂ����l�̏C�������Ă�����. ������
-     �ȉ��̂��ƂɋC�t����:
+     せっかくなので cc1plus にも同様の修正をしておいた. ここで
+     以下のことに気付いた:
 
 cp/parser.c:17716
       type_spec = cp_parser_class_specifier (parser);
       invoke_plugin_callbacks (PLUGIN_FINISH_TYPE, type_spec);
 
-     �̂悤�� invoke_plugin_callbacks ���Ăяo����Ă���. ���̂悤��
-     ����΃p�b�`�ł͂Ȃ��ă_�C�i�~�b�N�����N���C�u�����Ŏ������̂�
-     ������Ȃ�������͐[���肵�Ȃ�.
+     のように invoke_plugin_callbacks が呼び出されていた. このように
+     すればパッチではなくてダイナミックリンクライブラリで事足りるのか
+     もしれないが今回は深入りしない.
 
-(*2) �p�b�`�t�@�C��
+(*2) パッチファイル
 
 % ls -d gcc-10.2.0.org gcc-10.2.0
 gcc-10.2.0  gcc-10.2.0.org
 % diff -Naur gcc-10.2.0.org gcc-10.2.0 > docgen.diff
-���ꂾ�ƂȂ��Ȃ��I�����Ȃ�.
+これだとなかなか終了しない.
 
-�C�����Ă���t�@�C���͂��������o���Ă����̂ňȉ��̂悤�ɂ���.
+修正しているファイルはだいたい覚えていたので以下のようにした.
 
 % diff -rc gcc-10.2.0{.org,}/gcc/c-family/c-opts.c > docgen.diff
 % diff -rc gcc-10.2.0{.org,}/gcc/c-family/c.opt >> docgen.diff
@@ -101,12 +101,12 @@ gcc-10.2.0  gcc-10.2.0.org
 % diff -rc gcc-10.2.0{.org,}/gcc/cp/tree.c >> docgen.diff
 % diff -rc gcc-10.2.0{.org,}/gcc/cp/parser.c >> docgen.diff
 
-�p�b�`�̓K�p���@�͈ȉ��̂悤�ɂȂ�:
-���̃y�[�W�� docgen.diff ���_�E�����[�h���ėႦ��
+パッチの適用方法は以下のようになる:
+このページの docgen.diff をダウンロードして例えば
 
 /tmp/docgen.diff
 
-�Ƃ��ĕۑ�����.
+として保存する.
 
 % xz -d -c gcc-10.2.0.tar.xz | tar xf -
 % cd gcc-10.2.0
@@ -134,5 +134,5 @@ Hunk #9 succeeded at 20919 (offset -10 lines).
 Hunk #10 succeeded at 24286 (offset -16 lines).
 %
 
-�Ȃɂ�� patch �����b�Z�[�W���o���Ă��邪, ����͐������K�p�ł���
-�悤�ł���.
+なにやら patch がメッセージを出しているが, これは正しく適用できた
+ようである.

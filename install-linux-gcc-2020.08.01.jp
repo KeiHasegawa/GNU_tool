@@ -1,12 +1,12 @@
-Vine linux (Let's note) ‚É gcc 10.2.0 ‚ğƒCƒ“ƒXƒg[ƒ‹‚µ‚½‚Æ‚«‚Ìƒƒ‚
-ucygwin ‚Å‚Ì gcc 10.1.0 ƒCƒ“ƒXƒg[ƒ‹ƒƒ‚v‚àQÆ
+Vine linux (Let's note) ã« gcc 10.2.0 ã‚’ã‚¤ãƒ³ã‚¹ãƒˆãƒ¼ãƒ«ã—ãŸã¨ãã®ãƒ¡ãƒ¢
+ã€Œcygwin ã§ã® gcc 10.1.0 ã‚¤ãƒ³ã‚¹ãƒˆãƒ¼ãƒ«ãƒ¡ãƒ¢ã€ã‚‚å‚ç…§
 
 % cd /home/khasegawa
 % wget http://ftp.tsukuba.wide.ad.jp/software/gcc/releases/gcc-10.2.0/gcc-10.2.0.tar.xz
 % xz -d -c gcc-10.2.0.tar.xz | tar xf -
 % cd gcc-10.2.0
 
-# -O2 ƒrƒ‹ƒh‚µ‚½‚­‚È‚©‚Á‚½‚Ì‚ÅˆÈ‰º‚ğÀs‚µ‚½.
+# -O2 ãƒ“ãƒ«ãƒ‰ã—ãŸããªã‹ã£ãŸã®ã§ä»¥ä¸‹ã‚’å®Ÿè¡Œã—ãŸ.
 
 % cat /tmp/xx
 #! /bin/csh -f
@@ -19,20 +19,20 @@ chmod +x $argv[1]
 % find . -name 'Makefile.in' -exec /tmp/xx {} \;
 % find . -name 'Makefile.tpl' -exec /tmp/xx {} \;
 
-# libgmp, libmpfr, libmpc ‚ÍŠù‚ÉƒCƒ“ƒXƒg[ƒ‹‚µ‚Ä‚¢‚½‚Ì‚Å¡‰ñ‚Í‚±‚ê‚ç‚ğ‰ü‚ß
-# ‚ÄƒCƒ“ƒXƒg[ƒ‹‚µ‚È‚©‚Á‚½.
+# libgmp, libmpfr, libmpc ã¯æ—¢ã«ã‚¤ãƒ³ã‚¹ãƒˆãƒ¼ãƒ«ã—ã¦ã„ãŸã®ã§ä»Šå›ã¯ã“ã‚Œã‚‰ã‚’æ”¹ã‚
+# ã¦ã‚¤ãƒ³ã‚¹ãƒˆãƒ¼ãƒ«ã—ãªã‹ã£ãŸ.
 
 % ./configure
 % make
 % make install 'DESTDIR=/home/khasegawa/gcc-10.2.0'
 
-ŠÂ‹«•Ï” LD_LIBRARY_PATH ‚É /home/khasegawa/gcc-10.2.0/usr/local/lib
-‚ğˆÈ‰º‚Ì‚æ‚¤‚É•ÏX‚·‚é. ˆÈ‰º‚Í ~/.tcshrc ‚Ì—á
+ç’°å¢ƒå¤‰æ•° LD_LIBRARY_PATH ã« /home/khasegawa/gcc-10.2.0/usr/local/lib
+ã‚’ä»¥ä¸‹ã®ã‚ˆã†ã«å¤‰æ›´ã™ã‚‹. ä»¥ä¸‹ã¯ ~/.tcshrc ã®ä¾‹
 
 % tail ~/.tcshrc
 # ...
 setenv LD_LIBRARY_PATH /usr/local/lib
 setenv LD_LIBRARY_PATH /home/khasegawa/gcc-10.2.0/usr/local/lib:$LD_LIBRARY_PATH
 
-‚±‚ê‚ª‚È‚¢‚Æ libstdc++.so.6 ‚â libgcc_s.so.1 ‚ª /usr/local/lib ‚Ì‚à‚Ì‚ğ
-QÆ‚µ‚Ä‚µ‚Ü‚¢“s‡‚ªˆ«‚¢.
+ã“ã‚ŒãŒãªã„ã¨ libstdc++.so.6 ã‚„ libgcc_s.so.1 ãŒ /usr/local/lib ã®ã‚‚ã®ã‚’
+å‚ç…§ã—ã¦ã—ã¾ã„éƒ½åˆãŒæ‚ªã„.

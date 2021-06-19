@@ -1,27 +1,27 @@
-gcc �̋L���\�̒���
+gcc の記号表の調査
 
-(*1) �L���\�̓o�^�ƌ���
+(*1) 記号表の登録と検索
 
-     �������v���O������
+     小さいプログラム片
 
      typedef int T;
      T a;
 
-     �ɂ��čl���Ă݂�.
-     1 �s�ڂ� T �͋L���\�� typedef ���Ō^�� int �ł���Ɠo�^�����.
+     について考えてみる.
+     1 行目で T は記号表に typedef 名で型は int であると登録される.
 
-     2 �s�ڂł��� T ���������� a �̌^�� T �̌^, ���Ȃ킿 int ���ƕ�����,
-     ���ꂪ�܂��L���\�ɒǉ������Ƃ���������ɂȂ�.
+     2 行目でその T が検索され a の型は T の型, すなわち int だと分かり,
+     それがまた記号表に追加されるといった動作になる.
 
-     gcc �ł͋L���\�̓o�^�� c_parser_declaration_or_fndef �Ƃ�������
-     ����s����:
+     gcc では記号表の登録は c_parser_declaration_or_fndef という函数
+     から行われる:
 
 static void
 c_parser_declaration_or_fndef (c_parser *parser, bool fndef_ok,
 ...
 {
 ...
-              ����!
+              ここ!
 	      tree d = start_decl (declarator, specs, false,
 				   chainon (postfix_attrs,
 					    all_prefix_attrs));
@@ -31,30 +31,30 @@ start_decl (struct c_declarator *declarator, struct c_declspecs *declspecs,
 ...
   /* Add this decl to the current scope.
      TEM may equal DECL or it may be a previous decl of the same name.  */
-  tem = pushdecl (decl);   ����!
+  tem = pushdecl (decl);   ここ!
 
-     ��ɂ���� d �� decl �� tree �^�Ługcc �̎����̓��[�`���̉��(����3)�v
-     �ō�����f�o�b�O�����������ŌĂяo���Ƃ悢.
+     例によって d や decl は tree 型で「gcc の字句解析ルーチンの解析(その3)」
+     で作ったデバッグ函数をここで呼び出すとよい.
 
      (gdb) p print(d)
      typedef signed 32 bit integer T
      $1 = void
 
-     ���̃v���O�����R�[�h�ЂȂ�΋L���\�̌����� c_parser_declspecs �Ƃ���
-     �����ōs���Ă���:
+     このプログラムコード片ならば記号表の検索は c_parser_declspecs という
+     函数で行われていた:
 
 void
 c_parser_declspecs (c_parser *parser, struct c_declspecs *specs,
 ...
 {
 ...
-	      t.spec = lookup_name (value);  ����
+	      t.spec = lookup_name (value);  ここ
 
-      �ܘ_�L���\�̎Q�Ƃ͑��̂Ƃ��납����s����.
+      勿論記号表の参照は他のところからも行われる.
 
-     �ugcc �̎����̓��[�`���̉��(����3)�v�ł����̔��� lookup_name
-     �̌Ăяo���ɂ��ď��������G�ꂽ. ��͂肱���ł��f�o�b�O�������Ăяo��
-     �Ƃ悢:
+     「gcc の字句解析ルーチンの解析(その3)」でもこの函数 lookup_name
+     の呼び出しについて少しだけ触れた. やはりここでもデバッグ函数を呼び出す
+     とよい:
 
      (gdb) p print(value)
      T
@@ -63,10 +63,10 @@ c_parser_declspecs (c_parser *parser, struct c_declspecs *specs,
      typedef signed 32 bit integer T
      $3 = void
 
-     �L���\���������Ė߂��Ă����̂�, �ǉ����� typedef �ł��邱�Ƃ�
-     ������.
-     ������, �����ł̘b�͂����܂ł��\����͊�ڐ��̘b�ł���. �����{��
-     �ɒ����������������Ƃ͋L���\�̃f�[�^�\��������. �Ⴆ�΂����
+     記号表を検索して戻ってきたのは, 追加した typedef であることが
+     分かる.
+     しかし, ここでの話はあくまでも構文解析器目線の話である. 私が本当
+     に調査したかったことは記号表のデータ構造だった. 例えばそれは
 
      struct X {
         X* parent;
@@ -75,17 +75,17 @@ c_parser_declspecs (c_parser *parser, struct c_declspecs *specs,
         ...
      };
 
-     �̂悤�Ȃ��̂�����.
+     のようなものだった.
 
-(*2) �L���\�̃f�[�^�\���Ǝ����̓��[�`�����Ԃ�����
+(*2) 記号表のデータ構造と字句解析ルーチンが返すもの
 
-     lookup_name �Ŏ��ۍs���Ă��邱�Ƃ𒲍�����:
+     lookup_name で実際行われていることを調査した:
 
 tree
 lookup_name (tree name)
 {
   struct c_binding *b = I_SYMBOL_BINDING (name);
-  // �}�N���������̔��� i_symbol_binding �̌Ăяo��
+  // マクロだが次の函数 i_symbol_binding の呼び出し
 ...
 
 static inline struct c_binding* *
@@ -93,23 +93,23 @@ i_symbol_binding (tree node)
 {
   struct lang_identifier *lid
     = (struct lang_identifier *) IDENTIFIER_NODE_CHECK (node);
-   // �����͒P�Ȃ�L���X�g
+   // ここは単なるキャスト
 
-   lid->symbol_binding ���Q�Ƃ���.
+   lid->symbol_binding を参照する.
 
 struct lang_identifier {
-    c_common_identifier common_id;   // node �Ɠ����^
+    c_common_identifier common_id;   // node と同じ型
     c_binding *symbol_binding;
     c_binding *tag_binding;
     c_binding *label_binding;
 };
 
-     �܂�, �����ł͂Ȃ��ă����o�[�Q�Ƃ��Ă��邾���Ȃ̂ł���.
+     つまり, 検索ではなくてメンバー参照しているだけなのである.
 
 	      t.spec = lookup_name (value);
 
-     �ɂ����� value ���쐬���ꂽ�Ƃ��� t.spec �̓����o�Q�Ƃł��ǂ邱�Ƃ�
-     �ł��Ă����Ƃ�������. �����ă����o�̃Z�b�g�͎��̔����ōs���Ă���:
+     において value が作成されたときに t.spec はメンバ参照でたどることが
+     できていたということ. そしてメンバのセットは次の函数で行われていた:
 
 static void
 bind (tree name, tree decl, struct c_scope *scope, bool invisible,
@@ -117,42 +117,42 @@ bind (tree name, tree decl, struct c_scope *scope, bool invisible,
 {
 ...
 
-     ���̔����� (*1) �ŏq�ׂ� pushdecl ����Ăяo����Ă����̂�.
+     この函数が (*1) で述べた pushdecl から呼び出されていたのだ.
 
-     �������v���O�����Ђ� 1 �s�ڂ� T ��(���͌�ŏq�ׂ邪����� 2 �s�ڂ� T
-     �ł������������) name �̈����Ƃ��Ă��̔�������
-     �΂ꂽ�Ƃ�, decl �� 1 �s�ڂœo�^���� typedef �̃G���g����
+     小さいプログラム片の 1 行目の T が(実は後で述べるがそれは 2 行目の T
+     であったりもする) name の引数としてこの函数が呼
+     ばれたとき, decl は 1 行目で登録した typedef のエントリで
 
      ((lang_identifier*)name)->symbol_binding = decl;
 
-     �����̂��Ƃ��s���Ă���.
+     相当のことが行われている.
 
      typedef int T;
 
-     �ɑ΂��čs���Ă��邱�Ƃ�:
+     に対して行われていることは:
 
-     (1) �����̓��[�`�������炩�̃f�[�^�\���������� T ��Ԃ�
-     (2) �\����̓��[�`���� (1) �� T �ɑ΂��� tree �����ł�
-         c_common_identifier �����
-     (3) �����Đ錾�� bind �����
+     (1) 字句解析ルーチンが何らかのデータ構造をもった T を返す
+     (2) 構文解析ルーチンが (1) の T に対して tree ここでは
+         c_common_identifier を作る
+     (3) 続いて宣言が bind される
 
-     ������������̃��C�A�E�g�Ŏ�����
+     これをメモリのレイアウトで示すと
 
-0xb7982630  +---------------------+  <-- tree �� T
+0xb7982630  +---------------------+  <-- tree の T
             |                     |
-0xb7982640  +---------------------+  <-- �����̓��[�`�����Ԃ� T
+0xb7982640  +---------------------+  <-- 字句解析ルーチンが返す T
             |                     |
             |                     |
 0xb7982654  +---------------------+  
-            |                   <-+-- �����ɐ錾�� bind
+            |                   <-+-- ここに宣言を bind
             +---------------------+
 
-     �ƂȂ�. ������ 2 �s�ڂ�
+     となる. そして 2 行目の
 
      T a;
 
-     �ɂ����� T �ɑ΂��Ď����̓��[�`���͏�̐}�Ɠ��� 0xb7982640
-     ��Ԃ��̂�.
+     における T に対して字句解析ルーチンは上の図と同じ 0xb7982640
+     を返すのだ.
 
       result = CPP_HASHNODE (ht_lookup_with_hash (pfile->hash_table,
 						  base, len, hash, HT_ALLOC));
@@ -170,93 +170,93 @@ ht_lookup_with_hash (cpp_hash_table *table, const unsigned char *str,
       if (node == DELETED)
 	deleted_index = index;
       else if (node->hash_value == hash
-	       && HT_LEN (node) == (unsigned int) len      ������̔�r
+	       && HT_LEN (node) == (unsigned int) len      文字列の比較
 	       && !memcmp (HT_STR (node), str, len))
-	return node;                                  <<<< �����ŕԂ��Ă���
+	return node;                                  <<<< ここで返っている
 
-     ���� cpp_hash_table ���L���\�̎��Ԃł�����. ����͎�������ɑz�����Ă�
-     �����̂Ƃ͂����ԗl�q������Ă���.
-     �����Ă����ɂ͂���Ƃ����镶����,  �Ⴆ�΃v���v���Z�b�T�̃f�B��
-     �N�e�B�u define ��L�[���[�h�� int, �r���g�C������ log �Ȃǂ�����
-     ���Ă���.
+     この cpp_hash_table が記号表の実態であった. これは私が勝手に想像してい
+     たものとはだいぶ様子が違っていた.
+     そしてそこにはありとあらゆる文字列,  例えばプリプロセッサのディレ
+     クティブ define やキーワードの int, ビルトイン函数 log などが入れ
+     られている.
 
-     �ȉ��̑���Ńv���O�����e�L�X�g�ɑ΂��� ht_lookup_with_hash ���ǂ̂悤��
-     �Ă΂ꂽ���m���߂邱�Ƃ��ł���.
+     以下の操作でプログラムテキストに対して ht_lookup_with_hash がどのように
+     呼ばれたか確かめることができる.
 
      (gdb) b c_lex_one_token
-     �u���[�N�|�C���g�ԍ������� 1 �Ƃ���
+     ブレークポイント番号を仮に 1 とする
      (gdb) b ht_lookup_with_hash
-     �u���[�N�|�C���g�ԍ������� 2 �Ƃ���
+     ブレークポイント番号を仮に 2 とする
      (gdb) disa 2
      (gdb) run ...
-     �����Ńu���[�N�|�C���g 1 �Ƀq�b�g����
+     ここでブレークポイント 1 にヒットする
      (gdb) disa 1
      (gdb) enab 2
      (gdb) c
 
-     (1) 1 �s�ڂ� T �ɂ͐V�����G���g���������
-     (2) 2 �s�ڂ� T �ɂ� (1) �ō��ꂽ�G���g�����Ԃ����
-     (3) 2 �s�ڂ� a �ɂ͐V�����G���g���������
+     (1) 1 行目の T には新しいエントリが作られる
+     (2) 2 行目の T には (1) で作られたエントリが返される
+     (3) 2 行目の a には新しいエントリが作られる
 
-     ����ł�,
+     それでは,
 
      int define;
      #define X
 
-     �ɑ΂��Ă͂ǂ���. ����͖ܘ_�������R�[�h�Ђł���. �|�C���g�� 1 �s��
-     �� define ���L���\���猟������O��, define �����ɋL���\�ɓ�
-     ���Ă���Ƃ����_��.
+     に対してはどうか. これは勿論正しいコード片である. ポイントは 1 行目
+     の define を記号表から検索する前に, define が既に記号表に入
+     っているという点だ.
 
-     ht_lookup_with_hash �ł͊��ɂ���G���g����Ԃ��Ă���. �����Ă���܂�
-     �ʂ肱�� define �ɑ΂��� bind ���s����. 
+     ht_lookup_with_hash では既にあるエントリを返している. そしてこれまで
+     通りこの define に対して bind が行われる. 
 
-0xb78e6000  +---------------------+  <-- tree �� define
+0xb78e6000  +---------------------+  <-- tree の define
             |                     |
-0xb78e6010  +---------------------+  <-- �����̓��[�`�����Ԃ� define
+0xb78e6010  +---------------------+  <-- 字句解析ルーチンが返す define
             |                     |
             ~                     ~
             ~                     ~
             |                     |
 0xb797978c  +---------------------+  
-            |                   <-+-- �����ɐ錾�� bind
+            |                   <-+-- ここに宣言を bind
             +---------------------+
 
-     2 �s�ڂ� define �ɑ΂��Ă�͂���ɂ���G���g��(0xb78e6010)���Ԃ����.
-     ������, ���ꂪ�v���v���Z�b�T�̃f�B���N�e�B�u���K�v�ƂȂ镶��
-     ���ƃR���p�C�������f�ł���̂�, ���Ғʂ�̓���ɂȂ�Ƃ������Ƃ�:
+     2 行目の define に対してやはり既にあるエントリ(0xb78e6010)が返される.
+     しかし, これがプリプロセッサのディレクティブが必要となる文脈
+     だとコンパイラが判断できるので, 期待通りの動作になるということだ:
 
 directives.c:441
       if (dname->val.node.node->is_directive)
-	dir = &dtable[dname->val.node.node->directive_index]; �����ɂ���
+	dir = &dtable[dname->val.node.node->directive_index]; ここにくる
 
-     �������, ���͂ǂ����낤��.
+     もう一つ, 次はどうだろうか.
 
      typedef int T;
      void f(){ T T; }
 
-     2 �s�ڂ̍ŏ��� T �ɑ΂��Ď����̓��[�`�� ht_lookup_with_hash �͂��
-     �� 1 �s�ڂŕԂ������̂Ɠ������̂�Ԃ�. ������ 2 �ڂ� T �ɑ΂��Ă�
-     �͂�蓯�����̂�Ԃ��̂�.
+     2 行目の最初の T に対して字句解析ルーチン ht_lookup_with_hash はやは
+     り 1 行目で返したものと同じものを返す. そして 2 つ目の T に対しても
+     はやり同じものを返すのだ.
 
-0xb7982630  +---------------------+  <-- tree �� T
+0xb7982630  +---------------------+  <-- tree の T
             |                     |
-0xb7982640  +---------------------+  <-- �����̓��[�`�����Ԃ� T
-            |                     |      1, 2, 3 ��ڂ��ׂē���
+0xb7982640  +---------------------+  <-- 字句解析ルーチンが返す T
+            |                     |      1, 2, 3 回目すべて同じ
             |                     |
 0xb7982654  +---------------------+  
-            |                   <-+-- ������ typedef �錾�� bind
+            |                   <-+-- ここに typedef 宣言を bind
             +---------------------+
             |                     |
             ~                     ~
             ~                     ~
             |                     |
 0xb797978c  +---------------------+  
-            |                   <-+-- �����Ƀ��[�J���ϐ��̐錾�� bind
+            |                   <-+-- ここにローカル変数の宣言を bind
             +---------------------+
 
-     ���[�J���ϐ���錾����O���
+     ローカル変数を宣言する前後で
 
      ((lang_identifier*)0xb7982630)->symbol_binding
 
-     �� 0xb7982654 ���� 0xb797978c �ɕύX�����. ����Ŋ��Ғʂ�̓���
-     ���ł���Ƃ����킯��.
+     は 0xb7982654 から 0xb797978c に変更される. これで期待通りの動き
+     ができるというわけだ.

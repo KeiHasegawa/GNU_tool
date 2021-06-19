@@ -1,34 +1,34 @@
-gcc �̎����̓��[�`���̉��(����3)
+gcc の字句解析ルーチンの解析(その3)
 
-�ڎ�
-(*1) ����̑����l
+目次
+(*1) 字句の属性値
 (*2) c_token::type
 (*3) c_token::id_kind
 (*4) c_token::location
 (*5) c_token::value
-(*6) tree �̃f�o�b�O
+(*6) tree のデバッグ
 
-(*1) ����̑���
+(*1) 字句の属性
 
-���� 1, ���� 2 �̃o�O�̏C���Œ����ŉ����ɂ��ꂽ���������邪,
-���ǂ͈ȉ��̔����₻������Ă΂�锟��������ŏd�v�ȂƂ���炵��.
+その 1, その 2 のバグの修正で調査で横道にそれた感じもあるが,
+結局は以下の函数やそこから呼ばれる函数が字句で重要なところらしい.
 
 c_token *
 c_parser_peek_token (c_parser *parser)
 {
   if (parser->tokens_avail == 0)
     {
-      c_lex_one_token (parser, &parser->tokens[0]);   �������d�v
+      c_lex_one_token (parser, &parser->tokens[0]);   ここが重要
       parser->tokens_avail = 1;
     }
   return &parser->tokens[0];
 }
 
-�Ⴆ��
+例えば
 
 int a = 1;
 
-�̂悤�ȃv���O�����ЂŎ������ы������,
+のようなプログラム片で字句を並び挙げれば,
 
 int
 a
@@ -36,61 +36,61 @@ a
 1
 ;
 
-�� 5 �Ƃ������ƂɂȂ�. ���̂�������ɑ����l����������K�v������̂�
-2 �ڂ� a �� 4 �ڂ� 1 �ł���. �Ƃ͂��� gcc �̎����ł�
-�S�Ă̎���ɑ������������Ă͂���(�Ⴆ�΃t�@�C���ɂ�����ʒu�Ȃ�).
+の 5 つということになる. このうち字句に属性値を持たせる必要があるのが
+2 つ目の a と 4 つ目の 1 である. とはいえ gcc の実装では
+全ての字句に属性を持たせてはいる(例えばファイルにおける位置など).
 
-c_lex_one_token �ō쐬����� c_token �I�u�W�F�N�g�͈ȉ��̂悤�ɂȂ��Ă���:
+c_lex_one_token で作成される c_token オブジェクトは以下のようになっていた:
 
-int �ɑ΂���
+int に対して
 {type = CPP_KEYWORD, id_kind = C_ID_NONE, keyword = RID_INT, pragma_kind = PRAGMA_NONE, location = 162, value = 0xb78f4630, flags = 64 '@'}
 
-a �ɑ΂���
+a に対して
 {type = CPP_NAME, id_kind = C_ID_ID, keyword = RID_MAX, pragma_kind = PRAGMA_NONE, location = 288, value = 0xb7982630, flags = 1 '\001'}
 
-= �ɑ΂���
+= に対して
 {type = CPP_EQ, id_kind = C_ID_NONE, keyword = RID_MAX, pragma_kind = PRAGMA_NONE, location = 352, value = 0x0, flags = 1 '\001'}
 
-1 �ɑ΂���
+1 に対して
 {type = CPP_NUMBER, id_kind = C_ID_NONE, keyword = RID_MAX, pragma_kind = PRAGMA_NONE, location = 416, value = 0xb78e0c94, flags = 1 '\001'}
 
-; �ɑ΂���
+; に対して
 {type = CPP_SEMICOLON, id_kind = C_ID_NONE, keyword = RID_MAX, pragma_kind = PRAGMA_NONE, location = 448, value = 0x0, flags = 0 '\000'}
 
-�̂悤�� c_token ������Ă��邱�Ƃ�������.
+のように c_token が作られていることが分かる.
 
 (*2) c_token::type
 
-���傻�̂��̂̒l.
+字句そのものの値.
 
-	�ォ�琄�@����ɐ����� 1 �ɂ�, ���������_���� 0.5 �ɂ� CPP_NUMBER ��
-	����U���Ă���Ƃ������Ƃ�. ��������� gcc �̎����������Ȃ��Ă���
-	�Ƃ������Ƃł�����, �ʂ̎����ł͕����Ă��邩������Ȃ�.
-	�������Ƃ̓L�[���[�h�ɂ��Ă�������. int �� double �ɕʂ̒l��
-	����U�邱�Ƃ����邩�炾.
+	上から推察するに整数の 1 にも, 浮動小数点数の 0.5 にも CPP_NUMBER が
+	割り振られているということだ. ここいらは gcc の実装がそうなっている
+	ということであって, 別の実装では分けてあるかもしれない.
+	同じことはキーワードについてもいえる. int と double に別の値を
+	割り振ることもあるからだ.
 
 (*3) c_token::id_kind
 
-c_token:type �� CPP_NAME �̏ꍇ�Ɍ��� C_ID_NONE �ȊO�̒l�ɂȂ�
+c_token:type が CPP_NAME の場合に限り C_ID_NONE 以外の値になる
 
-	     C_ID_ID          ������ identifier
-	     C_ID_TYPENAME    ������ typedef ��
-	     C_ID_CLASSNAME   ������ �^�O��
+	     C_ID_ID          いわゆる identifier
+	     C_ID_TYPENAME    いわゆる typedef 名
+	     C_ID_CLASSNAME   いわゆる タグ名
 	     C_ID_ADDRSPACE   ????
 
 (*4) c_token::location
 
-����̓t�@�C���ɂ�����ʒu���L�^������̂�, �^�� unsigned int �������x��
-�n�b�V��������Ă���.
+これはファイルにおける位置を記録するもので, 型は unsigned int だが高度に
+ハッシュ化されている.
 
-gcc �̎����ł�
+gcc の実装では
 
-	o �t�@�C���p�X��
-	o �s�ԍ�
-	o �J������
-	o �V�X�e���w�b�_�[���ǂ���
+	o ファイルパス名
+	o 行番号
+	o カラム数
+	o システムヘッダーかどうか
 
-��ێ����Ă��邪, ������ɗႦ��
+を保持しているが, 字句一つ一つに例えば
 
 struct info {
   string name;
@@ -99,21 +99,21 @@ struct info {
   bool sys;
 };
 
-�̂悤�ȏ��͕ێ����Ă͂��Ȃ��Ƃ�������.
+のような情報は保持してはいないということ.
 
-c_token::location �����̏����擾������@�Ƃ���, �Ⴆ�΂��̃y�[�W�ɂ���
-output_macro_info.diff ��
+c_token::location から上の情報を取得する方法として, 例えばこのページにある
+output_macro_info.diff の
 
 + 		       rich_location richloc(pfile->line_table, pfile->directive_line);
 + 		       expanded_location exloc = richloc.get_expanded_location(0);
 + 		       const char* file = exloc.file;
 + 		       int line = exloc.line;
 
-���Q�l�ɂȂ�.
+が参考になる.
 
 (*5) c_token::value
 
-���̃����o�̌^�� tree �^��, ���Ȃ킿����͈ȉ��̋��p�̂������肷��.
+このメンバの型は tree 型で, すなわちそれは以下の共用体だったりする.
 
 union tree_node {
     tree_base base;
@@ -125,17 +125,17 @@ union tree_node {
 ...
 }* tree;
 
-���Ă̒ʂ肾��, ����͐F�X�ȂƂ���ŏo������悤�Ȃ������ςȂ킯��.
+見ての通りだが, これは色々なところで出現するようなごった煮なわけだ.
 
 int a = 1;
 
-�� a �ɑ΂���, �����炭 a �Ƃ���������� a �̌^�͂܂�, ���̎��_�ł�
-���܂��Ă��Ȃ��Ƃ������������Ă���ƍl������. �Ȃ̂ł����ł͂���
-���m�F����.
+の a に対して, おそらく a という文字列と a の型はまだ, この時点では
+決まっていないという情報を持っていると考えられる. なのでここではそれ
+を確認する.
 
 c-lex.c:469
 
-      *value = HT_IDENT_TO_GCC_IDENT (HT_NODE (tok->val.node.node));  ����
+      *value = HT_IDENT_TO_GCC_IDENT (HT_NODE (tok->val.node.node));  ここ
 
 gcc-10.2.0/libcpp/include/cpplib.h
 #define HT_NODE(NODE)		(&(NODE)->ident)
@@ -144,82 +144,82 @@ gcc-10.2.0/gcc/tree.h
 #define HT_IDENT_TO_GCC_IDENT(NODE) \
   ((tree) ((char *) (NODE) - sizeof (struct tree_common)))
 
-�Q�Ƃ��Ă���̂� ident �ł�������A�h���X�̒��������Ă���Ƃ������Ƃ���.
+参照しているのは ident でそこからアドレスの調整をしているといったところ.
 
 (gdb) p tok.val.node.node.ident
 $33 = {str = 0xb7974170 "a", len = 1, hash_value = 4294967281}
 
-�Ƃ������Ƃ�
+ということで
 
 (gdb) p parser->tokens[0].value.identifier.id
 $37 = {str = 0xb7974170 "a", len = 1, hash_value = 4294967281}
 
-���ꂪ�Z�b�g����Ă���Ƃ������Ƃ�.
-�܂Ƃ߂��, 
+これがセットされているということだ.
+まとめると, 
 
-c_token::type �� CPP_NAME ��
-c_token::id_kind �� C_ID_ID �Ȃ��
-c_token::value �� identifier.id �ɕ����񂪓����Ă���Ƃ����Ƃł���.
+c_token::type が CPP_NAME で
+c_token::id_kind が C_ID_ID ならば
+c_token::value の identifier.id に文字列が入っているとうことである.
 
-�c�O�Ȃ���u�^���܂����܂��Ă��Ȃ��v�Ƃ�����񂪂ǂ��ɓ����Ă���̂���
-�s��������.
+残念ながら「型がまだ決まっていない」という情報がどこに入っているのかは
+不明だった.
 
-            => �����y�[�W�ɂ���ugcc �L���\�̒����v�ŉ������Ă���.
-	    �@ �Z�������� tree �ŕ\�������O�ɐ錾�����т��Ă��邩
-	       �ǂ����Ƃ�������.
+            => 同じページにある「gcc 記号表の調査」で解決している.
+	    　 短く言えば tree で表した名前に宣言が結びついているか
+	       どうかということ.
 
-�Ƃ����,
+ところで,
 
 gcc-10.2.0/gcc/c/c-parser.c:396
 	decl = lookup_name (token->value);
 
-������ a �ɑ΂��Ď��s���ꂽ. ���ʂɍl����΋L���\���Q�Ƃ��ꂽ�Ƃ���
-�Ƃ���Ȃ̂��낤��, �������z�����Ă������̂ł͂Ȃ�. ���̏ꍇ�� a
-�ɑ΂��Ắu�L���\���Q�Ƃ����ׂ��ł͂Ȃ�, �V�������O�����v
-�Ƃ����̂��R���p�C���Ƃ��Ă̓��삾�ƍl���Ă��邩�炾.
+がこの a に対して実行された. 普通に考えれば記号表が参照されたという
+ところなのだろうが, 自分が想像していたものではない. この場合の a
+に対しては「記号表が参照されるべきではなく, 新しく名前を作る」
+というのがコンパイラとしての動作だと考えているからだ.
 
-            => ��͂肱��ɂ��Ă��ugcc �L���\�̒����v�ŉ����ς�.
+            => やはりこれについても「gcc 記号表の調査」で解決済み.
 
-�Ƃ͂���, ����� a �̒����ł͂���Ȃ��̂Ŗ������Ă���.
+とはいえ, 今回の a の調査ではこんなもので満足しておく.
 
-int a = 1; �� 1 �ɂ��Ă͂ǂ��Ȃ��Ă���ׂ����낤��.
+int a = 1; の 1 についてはどうなっているべきだろうか.
 
 c-lex.c:488
-	    *value = interpret_integer (tok, flags, &overflow);  ����
+	    *value = interpret_integer (tok, flags, &overflow);  ここ
 
-����Ɉȉ��ō����.
+さらに以下で作られる.
 
 static tree
 wide_int_to_tree_1 (tree type, const wide_int_ref &pcst)
 {
 ...
 
-�ŏ��� type �̈����ɂ� 1 �̌^�ł��� int ���w�肳��Ă���Ɛ��������.
-2 �ڂ� pcst �̈����ɂ͒l���ێ�����Ă��� *pcst.val �� 1 �������Ă���.
+最初の type の引数には 1 の型である int が指定されていると推測される.
+2 つ目の pcst の引数には値が保持されていて *pcst.val に 1 が入っていた.
 
-���̔����ł��o�����邪, tree �^�ɂ̓}�N������g�����:
+この函数でも出現するが, tree 型にはマクロが駆使される:
 
   TREE_CODE (type) : INTEGER_TYPE
   TYPE_PRECISION (type) : 32
   TYPE_SIGN (type) : SIGNED
 
-(*6) tree �̃f�o�b�O
+(*6) tree のデバッグ
 
-tree �^�̕ϐ��� gcc �̂�������̂Ƃ���Ŏg�p�����. �ł���΂�����ȒP��
-�f�o�b�O������.
+tree 型の変数が gcc のたくさんのところで使用される. できればこれを簡単に
+デバッグしたい.
 
-�ȉ��̔����� gcc-10.2.0/gcc/tree.c �̖����ɒǉ�����:
+以下の函数を gcc-10.2.0/gcc/tree.c の末尾に追加した:
 
 void print(tree p)
 {
   // ...
 }
 
-�����Ă��̔������f�o�b�K�̃R�}���h���C������Ăяo���΂悢. �܂���
-int a = 1; �� a �� 1 �ɂ͏��Ȃ��Ƃ��Ή�������. ���̔����͉�͂��i�߂�
-�ǂ�ǂ�c��ɂȂ��Ă���. ����������ł͂��傤���Ȃ����Ƃ�.
+そしてこの函数をデバッガのコマンドラインから呼び出せばよい. まずは
+int a = 1; の a や 1 には少なくとも対応したい. この函数は解析が進めば
+どんどん膨大になっていく. しかし現状ではしょうがないことだ.
 
-�ŏ��̃o�[�W�����͈ȉ��̂悤�ɂ���:
+最初のバージョンは以下のようにした:
 
 void print(tree p)
 {
@@ -240,15 +240,15 @@ void print(tree p)
   }
 }
 
-���Ă���� cc1 �Ɏ�荞�ނɂ�, �r���h�̃��O���Q�Ƃ���Ƃ悢.
+さてこれを cc1 に取り込むには, ビルドのログを参照するとよい.
 
 % g++ -c ... -o tree.o ... ../.././gcc/tree.c
 % ar rcT libbackend.a ... tree.o
 % g++ ... -o cc1 ... libbackend.a
 
-�̂悤�ɂȂ�. ����͎������s�����r���h�̃��O������K�v������.
-�X�N���v�g�ł�������, Makefile �������Ă��悢�������͊ȒP�ł��邱�Ƃ��d�v.
-�Q�l�܂łɎ��̃��O�t�@�C���͈ȉ��̂悤�ɂȂ��Ă���:
+のようになる. これは自分が行ったビルドのログを見る必要がある.
+スクリプトでもいいし, Makefile を書いてもよいがここは簡単であることが重要.
+参考までに私のログファイルは以下のようになっていた:
 
 g++ -std=gnu++98 -fno-PIE -c   -g -DIN_GCC     -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wno-format -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings -fno-common  -DHAVE_CONFIG_H -I. -I. -I../.././gcc -I../.././gcc/. -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/bid -I../libdecnumber -I../.././gcc/../libbacktrace   -o tree.o -MT tree.o -MMD -MP -MF ./.deps/tree.TPo ../.././gcc/tree.c
 
@@ -257,7 +257,7 @@ ar rcT libbackend.a gimple-match.o generic-match.o insn-attrtab.o insn-automata.
 g++ -std=gnu++98 -no-pie   -g -DIN_GCC     -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wno-format -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings -fno-common  -DHAVE_CONFIG_H -static-libstdc++ -static-libgcc  -o cc1 c/c-lang.o c-family/stub-objc.o attribs.o c/c-errors.o c/c-decl.o c/c-typeck.o c/c-convert.o c/c-aux-info.o c/c-objc-common.o c/c-parser.o c/c-fold.o c/gimple-parser.o c-family/c-common.o c-family/c-cppbuiltin.o c-family/c-dump.o c-family/c-format.o c-family/c-gimplify.o c-family/c-indentation.o c-family/c-lex.o c-family/c-omp.o c-family/c-opts.o c-family/c-pch.o c-family/c-ppoutput.o c-family/c-pragma.o c-family/c-pretty-print.o c-family/c-semantics.o c-family/c-ada-spec.o c-family/c-ubsan.o c-family/known-headers.o c-family/c-attribs.o c-family/c-warn.o c-family/c-spellcheck.o i386-c.o glibc-c.o \
 	  cc1-checksum.o libbackend.a main.o libcommon-target.a libcommon.a ../libcpp/libcpp.a ../libdecnumber/libdecnumber.a libcommon.a ../libcpp/libcpp.a   ../libbacktrace/.libs/libbacktrace.a ../libiberty/libiberty.a ../libdecnumber/libdecnumber.a   -lmpc -lmpfr -lgmp -rdynamic -ldl  -L./../zlib -lz 
 
-�Ƃ肠���� cc1 ���ēx gdb �œ��삳��
+とりあえず cc1 を再度 gdb で動作させ
 
 c_token *
 c_parser_peek_token (c_parser *parser)
@@ -265,19 +265,19 @@ c_parser_peek_token (c_parser *parser)
   if (parser->tokens_avail == 0)
     {
       c_lex_one_token (parser, &parser->tokens[0]);
-      parser->tokens_avail = 1;  �����Ƀu���[�N�|�C���g���Z�b�g
+      parser->tokens_avail = 1;  ここにブレークポイントをセット
 
-�����Œ�~�����Ƃ���
+ここで停止したときに
 
 (gdb) p print(parser->tokens[0]->value)
 
-�̂悤�ɂ��Ă݂�킯��. a �ɑ΂��Ă�
+のようにしてみるわけだ. a に対しては
 
 IDENTIFIER_NODE
 
-1 �ɑ΂��Ă�
+1 に対しては
 
 INTEGER_CST
 
-�ƕ\���������낤. ���̕\�����ʂ͊m���ɖ����ł�����̂ł͂Ȃ���,
-�����i�������Ă����΂悢.
+と表示しただろう. この表示結果は確かに満足できるものではないが,
+これを進化させていけばよい.
