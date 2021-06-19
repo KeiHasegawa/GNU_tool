@@ -1,6 +1,6 @@
-mcount ‚Ì’²¸
+mcount ã®èª¿æŸ»
 
-     ŠÈ’P‚ÈƒvƒƒOƒ‰ƒ€‚ğ -pg ƒIƒvƒVƒ‡ƒ“‚ğ•t‚¯‚ÄƒRƒ“ƒpƒCƒ‹‚µ‚½:
+     ç°¡å˜ãªãƒ—ãƒ­ã‚°ãƒ©ãƒ ã‚’ -pg ã‚ªãƒ—ã‚·ãƒ§ãƒ³ã‚’ä»˜ã‘ã¦ã‚³ãƒ³ãƒ‘ã‚¤ãƒ«ã—ãŸ:
 
 % cat test001.c
 void f(int n)
@@ -21,27 +21,27 @@ int main()
 gmon.out
 % gprof test001 gmon.out > test001.gprof
 
-     ‚±‚ê‚ÍuŠÈ’P‚Èg‚¢•ûv‚Å‚·‚Å‚É‚â‚Á‚½. ‚±‚ÌƒTƒ“ƒvƒ‹‚Í‘S‚­–Ê”’‚³‚É
-     Œ‡‚¯‚é‚ª’Pƒ‚È‚à‚Ì‚É‚µ‚½.
+     ã“ã‚Œã¯ã€Œç°¡å˜ãªä½¿ã„æ–¹ã€ã§ã™ã§ã«ã‚„ã£ãŸ. ã“ã®ã‚µãƒ³ãƒ—ãƒ«ã¯å…¨ãé¢ç™½ã•ã«
+     æ¬ ã‘ã‚‹ãŒå˜ç´”ãªã‚‚ã®ã«ã—ãŸ.
 
 % objdump -x test001 > test001.objdump
 ...
 080484c4 g     F .text	00000016              f
 00000000       F *UND*	00000000              __monstartup@@GLIBC_2.0
-00000000       F *UND*	00000000              mcount@@GLIBC_2.0       š ‚±‚ê
+00000000       F *UND*	00000000              mcount@@GLIBC_2.0       â˜… ã“ã‚Œ
 00000000       F *UND*	00000000              __cxa_atexit@@GLIBC_2.1.3
 0804981c g       .data	00000000              __data_start
 080483c0 g     F .text	00000044              __gmon_start__
 ...
 
-     ‚¨‚»‚ç‚­ mcount ‚Í libc ‚É‚ ‚é‚Æ‚¢‚¤‚±‚Æ‚È‚Ì‚¾‚ë‚¤:
+     ãŠãã‚‰ã mcount ã¯ libc ã«ã‚ã‚‹ã¨ã„ã†ã“ã¨ãªã®ã ã‚ã†:
 % ldd test001
 	linux-gate.so.1 =>  (0xffffe000)
-	libc.so.6 => /lib/libc.so.6 (0xb757f000)       š ‚±‚ê
+	libc.so.6 => /lib/libc.so.6 (0xb757f000)       â˜… ã“ã‚Œ
 	/lib/ld-linux.so.2 (0xb7701000)
 %
 
-     gdb ‚©‚ç test001 ‚ğÀs‚µ‚Ä‚İ‚½. ‚»‚µ‚ÄˆÈ‰º‚Ì‚æ‚¤‚É‚È‚Á‚½.
+     gdb ã‹ã‚‰ test001 ã‚’å®Ÿè¡Œã—ã¦ã¿ãŸ. ãã—ã¦ä»¥ä¸‹ã®ã‚ˆã†ã«ãªã£ãŸ.
 (gdb) b main
 Breakpoint 1 at 0x80484dd
 (gdb) b f
@@ -55,7 +55,7 @@ Breakpoint 1, 0x080484dd in main ()
 (gdb) c
 Continuing.
 
-Breakpoint 3, mcount () at ../sysdeps/i386/i386-mcount.S:35       š ‚±‚ê
+Breakpoint 3, mcount () at ../sysdeps/i386/i386-mcount.S:35       â˜… ã“ã‚Œ
 35	in ../sysdeps/i386/i386-mcount.S
 (gdb) c
 Continuing.
@@ -64,16 +64,16 @@ Breakpoint 2, 0x080484c7 in f ()
 (gdb) c
 Continuing.
 
-Breakpoint 3, mcount () at ../sysdeps/i386/i386-mcount.S:35       š ‚±‚ê
+Breakpoint 3, mcount () at ../sysdeps/i386/i386-mcount.S:35       â˜… ã“ã‚Œ
 35	in ../sysdeps/i386/i386-mcount.S
 (gdb) c
 Continuing.
 [Inferior 1 (process 4984) exited normally]
 (gdb) 
 
-       ˆê‰ i386-mcount.S ‚ª ~/gcc-10.2.0 ‚É‚È‚¢‚±‚Æ‚ğŠm”F‚µ‚½.
+       ä¸€å¿œ i386-mcount.S ãŒ ~/gcc-10.2.0 ã«ãªã„ã“ã¨ã‚’ç¢ºèªã—ãŸ.
 
-       ‚Æ‚±‚ë‚Å mcount ‚ğ©‘O‚Ì‚à‚Ì‚É‚·‚é‚É‚ÍˆÈ‰º‚Ì‚æ‚¤‚É‚·‚é:
+       ã¨ã“ã‚ã§ mcount ã‚’è‡ªå‰ã®ã‚‚ã®ã«ã™ã‚‹ã«ã¯ä»¥ä¸‹ã®ã‚ˆã†ã«ã™ã‚‹:
 
 % cat test001_0.c
 #include <stdio.h>
@@ -83,16 +83,16 @@ void mcount()
   printf("My `mcount' called\n");
 }
 % gcc -pg test001.c -c
-% gcc test001_0.c -c       # ‚±‚ê‚Í -pg ƒIƒvƒVƒ‡ƒ“‚È‚µ
+% gcc test001_0.c -c       # ã“ã‚Œã¯ -pg ã‚ªãƒ—ã‚·ãƒ§ãƒ³ãªã—
 % gcc test001.o test001_0.o -o test001
 % rm -f gmon.out
 % ./test001
-My `mcount' called        # main ‚©‚ç
-My `mcount' called        # f ‚©‚ç
+My `mcount' called        # main ã‹ã‚‰
+My `mcount' called        # f ã‹ã‚‰
 % ls gmon.out
-gmon.out ‚Í‚È‚¢. ¶¬‚³‚ê‚Ä‚¢‚È‚¢.
+gmon.out ã¯ãªã„. ç”Ÿæˆã•ã‚Œã¦ã„ãªã„.
 %
 
-   Œë‚Á‚Ä test001_0.c ‚ÌƒRƒ“ƒpƒCƒ‹‚É -pg ƒIƒvƒVƒ‡ƒ“‚ğw’è‚·‚é‚Æ
-   Ä‹A“I‚É mcount ‚ªŒÄ‚Î‚ê‚Ä‚µ‚Ü‚¤.
+   èª¤ã£ã¦ test001_0.c ã®ã‚³ãƒ³ãƒ‘ã‚¤ãƒ«ã« -pg ã‚ªãƒ—ã‚·ãƒ§ãƒ³ã‚’æŒ‡å®šã™ã‚‹ã¨
+   å†å¸°çš„ã« mcount ãŒå‘¼ã°ã‚Œã¦ã—ã¾ã†.
 

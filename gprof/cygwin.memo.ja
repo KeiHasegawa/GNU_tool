@@ -1,12 +1,12 @@
-cygwin ”Å mcount ‚Ì’²¸
+cygwin ç‰ˆ mcount ã®èª¿æŸ»
 
-     cygwin ”Å‚Å‚à mcount ‘Š“–‚ªs‚í‚ê‚Ä‚¢‚é‚Æl‚¦‚Ä test001.c ‚ğ
-     -pg ƒIƒvƒVƒ‡ƒ“‚ ‚è‚È‚µ‚Å”äŠr‚µ‚Ä‚İ‚½:
+     cygwin ç‰ˆã§ã‚‚ mcount ç›¸å½“ãŒè¡Œã‚ã‚Œã¦ã„ã‚‹ã¨è€ƒãˆã¦ test001.c ã‚’
+     -pg ã‚ªãƒ—ã‚·ãƒ§ãƒ³ã‚ã‚Šãªã—ã§æ¯”è¼ƒã—ã¦ã¿ãŸ:
 
 % gcc -S test001.c -o test001.s.nopg
 % gcc -S test001.c -o test001.s -pg
 
-     -pg ‚ ‚è‚Ìê‡‚ÍˆÈ‰º‚Ì‚æ‚¤‚È·•ª‚ª‚ ‚é:
+     -pg ã‚ã‚Šã®å ´åˆã¯ä»¥ä¸‹ã®ã‚ˆã†ãªå·®åˆ†ãŒã‚ã‚‹:
 
 f:
 1:	call	__fentry__
@@ -17,12 +17,12 @@ main:
 	call	_monstartup
 ...
 
-     ‚±‚ê‚©‚ç@‚·‚é‚Éƒvƒƒtƒ@ƒCƒ‹‚ğs‚¤‚É‚Í
+     ã“ã‚Œã‹ã‚‰å¯Ÿã™ã‚‹ã«ãƒ—ãƒ­ãƒ•ã‚¡ã‚¤ãƒ«ã‚’è¡Œã†ã«ã¯
 
-     o main ”Ÿ”‚Å _monstartup ‚ğŒÄ‚Ño‚·
-     o Še”Ÿ”‚Å __fentry__ ‚ğŒÄ‚Ño‚·
+     o main å‡½æ•°ã§ _monstartup ã‚’å‘¼ã³å‡ºã™
+     o å„å‡½æ•°ã§ __fentry__ ã‚’å‘¼ã³å‡ºã™
 
-     ‚Æ‚¢‚¤‚±‚Æ‚É‚È‚é. ‚³‚Ä—á‚É‚æ‚Á‚Ä‚±‚Ì test001.c ‚ğ gdb ‚©‚çÀs‚µ‚Ä‚İ‚½.
+     ã¨ã„ã†ã“ã¨ã«ãªã‚‹. ã•ã¦ä¾‹ã«ã‚ˆã£ã¦ã“ã® test001.c ã‚’ gdb ã‹ã‚‰å®Ÿè¡Œã—ã¦ã¿ãŸ.
 
 % gcc -pg test001.c -o test001.exe
 % gdb test001.exe
@@ -32,42 +32,42 @@ main:
 (gdb) b _monstartup
 (gdb) b __fentry__
 (gdb) run
-__fentry__ ‚ÌƒuƒŒ[ƒNƒ|ƒCƒ“ƒg‚Éƒqƒbƒg
+__fentry__ ã®ãƒ–ãƒ¬ãƒ¼ã‚¯ãƒã‚¤ãƒ³ãƒˆã«ãƒ’ãƒƒãƒˆ
 (gdb) c
-main ‚ÌƒuƒŒ[ƒNƒ|ƒCƒ“ƒg‚Éƒqƒbƒg
+main ã®ãƒ–ãƒ¬ãƒ¼ã‚¯ãƒã‚¤ãƒ³ãƒˆã«ãƒ’ãƒƒãƒˆ
 (gdb) c
-_monstartup ‚ÌƒuƒŒ[ƒNƒ|ƒCƒ“ƒg‚Éƒqƒbƒg
+_monstartup ã®ãƒ–ãƒ¬ãƒ¼ã‚¯ãƒã‚¤ãƒ³ãƒˆã«ãƒ’ãƒƒãƒˆ
 (gdb) c
-‚à‚¤ˆê“x _monstartup ‚ÌƒuƒŒ[ƒNƒ|ƒCƒ“ƒg‚Éƒqƒbƒg
+ã‚‚ã†ä¸€åº¦ _monstartup ã®ãƒ–ãƒ¬ãƒ¼ã‚¯ãƒã‚¤ãƒ³ãƒˆã«ãƒ’ãƒƒãƒˆ
 (gdb) c
-__fentry__ ‚ÌƒuƒŒ[ƒNƒ|ƒCƒ“ƒg‚Éƒqƒbƒg
+__fentry__ ã®ãƒ–ãƒ¬ãƒ¼ã‚¯ãƒã‚¤ãƒ³ãƒˆã«ãƒ’ãƒƒãƒˆ
 (gdb) c
-f ‚ÌƒuƒŒ[ƒNƒ|ƒCƒ“ƒg‚Éƒqƒbƒg
+f ã®ãƒ–ãƒ¬ãƒ¼ã‚¯ãƒã‚¤ãƒ³ãƒˆã«ãƒ’ãƒƒãƒˆ
 (gdb) c
 ...
 [Inferior 1 (process 11664) exited normally]
 (gdb)
 
-      _monstartup ‚Í©•ª‚Åƒrƒ‹ƒh‚µ‚½ cygwin ‚Ìƒ\[ƒX‚ª•\¦‚³‚ê‚½‚ª, ŠÌS‚Ì
-      __fentry__ ‚ÍƒfƒoƒbƒOî•ñ‚ª‚È‚©‚Á‚½.
+      _monstartup ã¯è‡ªåˆ†ã§ãƒ“ãƒ«ãƒ‰ã—ãŸ cygwin ã®ã‚½ãƒ¼ã‚¹ãŒè¡¨ç¤ºã•ã‚ŒãŸãŒ, è‚å¿ƒã®
+      __fentry__ ã¯ãƒ‡ãƒãƒƒã‚°æƒ…å ±ãŒãªã‹ã£ãŸ.
 
-      __fentry__ ‚Í cygwin1.dll ‚É‚ ‚é‚Ì‚©‚Æ—\‘ª‚µ,
-      uWindows 10 ‚Å cygwin1.dll ‚ğƒrƒ‹ƒh‚µ‚½‚Æ‚«‚Ìƒƒ‚v‚Å‚â‚Á‚½‚æ‚¤‚É
-      test001.exe ‚É©•ª‚Åƒrƒ‹ƒh‚µ‚½ cygwin1.dll ‚ğ“Ç‚İ‚Ü‚¹‚Ä‚İ‚½.
+      __fentry__ ã¯ cygwin1.dll ã«ã‚ã‚‹ã®ã‹ã¨äºˆæ¸¬ã—,
+      ã€ŒWindows 10 ã§ cygwin1.dll ã‚’ãƒ“ãƒ«ãƒ‰ã—ãŸã¨ãã®ãƒ¡ãƒ¢ã€ã§ã‚„ã£ãŸã‚ˆã†ã«
+      test001.exe ã«è‡ªåˆ†ã§ãƒ“ãƒ«ãƒ‰ã—ãŸ cygwin1.dll ã‚’èª­ã¿è¾¼ã¾ã›ã¦ã¿ãŸ.
 
 (gdb) set environ PATH /cygdrive/d/home/khasegawa/my_cygwin/cygwin-3.1.6-1.src/newlib-cygwin/x86_64-pc-cygwin/winsup/cygwin:$PATH
 (gdb) b dll_entry
 (gdb) run
-dll_entry ‚Å’â~. ©•ª‚Åƒrƒ‹ƒh‚µ‚½ cygwin1.dll ‚ªÀs‚³‚ê‚Ä‚¢‚é‚±‚Æ‚ğŠm”F.
+dll_entry ã§åœæ­¢. è‡ªåˆ†ã§ãƒ“ãƒ«ãƒ‰ã—ãŸ cygwin1.dll ãŒå®Ÿè¡Œã•ã‚Œã¦ã„ã‚‹ã“ã¨ã‚’ç¢ºèª.
 (gdb) c
-‚à‚¤ˆê“x dll_entry ‚Å’â~. ‚â‚Í‚è©•ª‚Åƒrƒ‹ƒh‚µ‚½ cygwin1.dll ‚ªÀs‚³‚ê‚Ä‚¢
-‚é‚±‚Æ‚ğŠm”F.
+ã‚‚ã†ä¸€åº¦ dll_entry ã§åœæ­¢. ã‚„ã¯ã‚Šè‡ªåˆ†ã§ãƒ“ãƒ«ãƒ‰ã—ãŸ cygwin1.dll ãŒå®Ÿè¡Œã•ã‚Œã¦ã„
+ã‚‹ã“ã¨ã‚’ç¢ºèª.
 (gdb) c
-__fentry__ ‚Å’â~
+__fentry__ ã§åœæ­¢
 
-   => c”O. ƒfƒoƒbƒOî•ñ‚È‚µ.
+   => æ®‹å¿µ. ãƒ‡ãƒãƒƒã‚°æƒ…å ±ãªã—.
 
-      ‚Â‚Ü‚è __fentry__ ‚ª’è‹`‚³‚ê‚Ä‚¢‚é‚Ì‚Í cygwin1.dll ‚Å‚Í‚È‚¢‚Æ‚¢‚¤‚±‚Æ.
+      ã¤ã¾ã‚Š __fentry__ ãŒå®šç¾©ã•ã‚Œã¦ã„ã‚‹ã®ã¯ cygwin1.dll ã§ã¯ãªã„ã¨ã„ã†ã“ã¨.
 
 
 % objdump -x test001.exe > test001.objdump
@@ -76,11 +76,11 @@ __fentry__ ‚Å’â~
 	vma:  Hint/Ord Member-Name Bound-To
 	83b0	   15  __cxa_atexit
 	83c0	   22  __errno
-        ...                      ‚±‚±‚É‚Í __fentry__ ‚Í‚È‚¢
+        ...                      ã“ã“ã«ã¯ __fentry__ ã¯ãªã„
 
 [939](sec  7)(fl 0x00)(ty   0)(scl   2) (nx 0) 0x000000000000023c __imp_free
 [940](sec  1)(fl 0x00)(ty   0)(scl   2) (nx 0) 0x0000000000000ae5 __fentry__
 [941](sec  1)(fl 0x00)(ty   0)(scl   2) (nx 0) 0x0000000000001380 SignalObjectAndWait
 ...
 
-         î•ñ‚ª‚ ‚é‚Ì‚Í‚±‚ê‚¾‚¯‚¾‚Á‚½.
+         æƒ…å ±ãŒã‚ã‚‹ã®ã¯ã“ã‚Œã ã‘ã ã£ãŸ.

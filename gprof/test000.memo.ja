@@ -1,63 +1,63 @@
-gprof �̊ȒP�Ȏg����
+gprof の簡単な使い方
 
-      gcc �� -pg �I�v�V�������g�p���ăR���p�C������:
+      gcc の -pg オプションを使用してコンパイルする:
 
 % gcc -pg -o test000 test000.c test000_0.c test000_1.c test000_2.c
 
-      ���낢��Ɠ˂����݂ǂ��낪���邪, �ŏ��Ȃ̂ł��ꂭ�炢��G�c��
-      ����.
-      �c�O�Ȃ���, �ȉ��̂��Ƃ� cygwin �ōs���Ă݂��� gprof ���� cygwin
-      �̊��ɂ͑Ή����Ă��Ȃ��炵��.
+      いろいろと突っ込みどころがあるが, 最初なのでこれくらい大雑把で
+      いい.
+      残念ながら, 以下のことを cygwin で行ってみたが gprof 自体 cygwin
+      の環境には対応していないらしい.
 
 % ./test000 1 2000 300000
 f called with 1000
 g called with 2000000
 h called with 300000000
 % ls gmon.out
-gmon.out   # gmon.out ����������Ă���
+gmon.out   # gmon.out が生成されている
 % gprof test000 gmon.out > test000.gprof
 
-      ����� test000.gprof ���m�F���Ă݂�. �e�L�X�g�t�@�C���ł���.
+      これで test000.gprof を確認してみる. テキストファイルである.
 
-      Flat profile �͈ȉ��� (*1), ..., (*6) ��������炵��.
+      Flat profile は以下の (*1), ..., (*6) が分かるらしい.
 
-      (*1) ���� f, g, h �łǂ̂��炢�̎��Ԃ��₵������ % �Ŏ����Ă���.
-           ���v�� 100 �łȂ��͉̂������R������̂��낤.
+      (*1) 函数 f, g, h でどのくらいの時間を費やしたかを % で示してある.
+           合計が 100 でないのは何か理由があるのだろう.
 
            h : 99.98 %
            g :  0.50 %
            f :  0.00 %
 
-      (*2) cumulative seconds (�ݐώ���)��������Ă���悤����, ����͂ق�
-           f = g = h �̂悤�ɂȂ��Ă���. �����v�����Ă��邩�͕s��.
+      (*2) cumulative seconds (累積時間)が示されているようだが, これはほぼ
+           f = g = h のようになっている. 何を計測しているかは不明.
 
-      (*3) self seconds �ł����炭���̔����Ŕ�₵�����Ԃ������Ă���.
+      (*3) self seconds でおそらくその函数で費やした時間を示している.
 
-           h : 2.01 �b
-           g : 0.01 �b
-           f : 0.00 �b
+           h : 2.01 秒
+           g : 0.01 秒
+           f : 0.00 秒
 
-      (*4) �Ăяo���񐔂�������Ă���. ����� f, g, h �Ƃ��� 1 ��Ȃ̂�
-           �����͂Ƃ��Ɍ��y����Ƃ���͂Ȃ�.
+      (*4) 呼び出し回数も示されている. 今回は f, g, h ともに 1 回なので
+           ここはとくに言及するところはなし.
 
-      (*5) self s/call �ŕ��ϒl�������Ă���.
+      (*5) self s/call で平均値も示している.
 
-      (*6) total s/call ����� (*5) �Ƃǂ������Ⴂ������̂����̒i�K�ł�
-           �s��.
+      (*6) total s/call これは (*5) とどういう違いがあるのか今の段階では
+           不明.
 
-      �����ɂ� main ���͂����Ă��Ȃ��������������̂Ȃ̂��낤.
+      ここには main がはいっていないがそういうものなのだろう.
 
 
-      ������ Call graph (explanation follows)
+      続いて Call graph (explanation follows)
 
-      granularity (���x�Ƃ����Ӗ��炵��) �̂Ƃ���ɂ� main �Ŕ�₵��
-      ����, f, g, h �̌Ăяo���Ŕ�₵�����Ԃ� % �ƕb�Ŏ����Ă���.
+      granularity (粒度という意味らしい) のところには main で費やした
+      時間, f, g, h の呼び出しで費やした時間が % と秒で示してある.
 
       main : 100 %
                      h : 99.5 %
 		     g :  0.5 %
 		     f :  0.0 %
 
-      ����͊��҂������ʂɋ߂�.
-      �܂� main ���g�Ŕ�₵�����ԂƌĂяo���� f, g, h �Ŕ�₵�����Ԃ�
-      �o�͂���Ă���, ��������҂������ʂɂȂ��Ă���.
+      これは期待した結果に近い.
+      また main 自身で費やした時間と呼び出した f, g, h で費やした時間も
+      出力されていて, これも期待した結果になっている.

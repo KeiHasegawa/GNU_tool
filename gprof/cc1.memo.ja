@@ -1,4 +1,4 @@
--pg �I�v�V������ cc1 ���s���Ă��邱��
+-pg オプションで cc1 が行っていること
 
 % cat a.c
 void g();
@@ -9,20 +9,20 @@ void f()
 }
 % gcc -pg -S a.c
 
-     ����� a.s ���m�F����Ɣ��� f �̐擪�� mcount �Ƃ����������Ăяo����
-     ���邱�Ƃ�������. �����Ă��ꂾ���ł���.
+     これで a.s を確認すると函数 f の先頭で mcount という函数を呼び出して
+     いることが分かる. そしてそれだけである.
 
-     test000.c �� test000_1.c �� a.c �����������G������͂蔟���̓����
-     �� mcount �Ƃ����������Ăяo���Ă��邾���ł���.
+     test000.c や test000_1.c は a.c よりも少し複雑だがやはり函数の入り口
+     で mcount という函数を呼び出しているだけである.
 
-     ����͎������z�����Ă������ʂƂ͈����, �����Ԃ�ƃR���p�C��������Ă�
-     �邱�Ƃ͏��Ȃ��炵��.
+     これは自分が想像していた結果とは違って, ずいぶんとコンパイラがやってい
+     ることは少ないらしい.
 
 % gcc -pg -S a.c -###
 
-     �Ƃ���ƕ����邪 cc1 �ɓn����Ă���̂� -p �I�v�V����������.
-     �ucc1 �A�Z���u�������̒����v�ŏq�ׂ��ʂ�, final_1 �Ŏ~�߂�
-     print_l ���Ăяo���Ă݂�:
+     とすると分かるが cc1 に渡されているのは -p オプションだった.
+     「cc1 アセンブラ生成の調査」で述べた通り, final_1 で止めて
+     print_l を呼び出してみた:
 
 (gdb) b final_1
 ...
@@ -37,9 +37,9 @@ Breakpoint 1, final_1 (first=0xb7981d60, file=0xa719cc8, seen=0, optimize_p=0) a
    11: bp:SI=sp:SI
    25: NOTE_INSN_CFI_LABEL
    21: NOTE_INSN_CFI
-   12: use bp:SI                    *** ����
+   12: use bp:SI                    *** ここ
    13: NOTE_INSN_PROLOGUE_END
-   14: unspec/v[0] 1                *** ����
+   14: unspec/v[0] 1                *** ここ
     2: NOTE_INSN_FUNCTION_BEG
     8: 0
    15: NOTE_INSN_EPILOGUE_BEG
@@ -55,18 +55,18 @@ Breakpoint 1, final_1 (first=0xb7981d60, file=0xa719cc8, seen=0, optimize_p=0) a
 $1 = void
 (gdb) 
 
-     -p �I�v�V��������ƂȂ��Ƃ� rtx_insn �̖��ߗ�ɈႢ���łĂ���
-     ���ƂɋC�t����. �ӊO�������� mcount ���Ăяo�����߂��o�͂��Ă�����
-     �͏�́u*** �����v�ł͂Ȃ����̊Ԃ�
+     -p オプションありとなしとで rtx_insn の命令列に違いがでている
+     ことに気付いた. 意外だったが mcount を呼び出す命令を出力していたの
+     は上の「*** ここ」ではなくその間の
 
      NOTE_INSN_PROLOGUE_END
 
-     �ɑΉ����镔��������. �܂�����Ȏv�����݂��I�����邱�Ƃ͂܂�Ƃ���
-     ���Ƃ�.
+     に対応する部分だった. まぁ勝手な思い込みが的中することはまれという
+     ことだ.
 
 static void
 profile_function (FILE *file ATTRIBUTE_UNUSED)
 {
 ...
   FUNCTION_PROFILER (file, current_function_funcdef_no);
-  ������ call mcount ���o��
+  ここで call mcount を出力
