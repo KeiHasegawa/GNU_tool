@@ -1,27 +1,27 @@
-MicroBlaze のクロスコンパイル環境
+MicroBlaze cross compile environment
 
 (*1) MicroBlaze
-(*2) スクリプトによるインストール
-(*3) 動作確認 => スタートアップルーチンの bss 領域の初期化で無限ループしている.
+(*2) Install with script
+(*3) Verification => Not terminated for bss initialization at start-up routine
 
 
 (*1) MicroBlaze
 https://ja.wikipedia.org/wiki/MicroBlaze
 
-(*2) スクリプトによるインストール
+(*2) Install with script
 
-「IQ2000」と同じスクリプトを使う
+Use the same script with "IQ2000":
 
-set TARGET = microblaze-elf   # ここを変更
+set TARGET = microblaze-elf   # Change
 
-(*3) 動作確認 => スタートアップルーチンの bss 領域の初期化で無限ループしている.
+(*3) Verification => Not terminated for bss initialization at start-up routine
 
 % microblaze-elf-gcc -g -o hello.elf hello.c
-/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/microblaze-elf/10.2.0/../../../../microblaze-elf/bin/ld: -lxil が見つかりません
-collect2: エラー: ld はステータス 1 で終了しました
+/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/microblaze-elf/10.2.0/../../../../microblaze-elf/bin/ld: -lxil not found
+collect2: error: ld exit status 1
 % 
 
-% microblaze-elf-gcc -g -c a.c || exit 1
+% microblaze-elf-gcc -g -c a.c
 
 % /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/libexec/gcc/microblaze-elf/10.2.0/collect2 \
 -N -relax -G 0 \
@@ -39,7 +39,7 @@ a.o -lgcc -start-group -lgloss \
 
 hello.elf がこれで作成される.
 
-% microblaze-elf hello.elf
+% microblaze-elf a.out
 
 Current directory is /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/
 GNU gdb (GDB) 10.2
@@ -91,4 +91,4 @@ Quit anyway? (y or n) y
 
 Debugger finished
 
-bss の初期化で無限ループしていて main に到達していない.
+bss initialization did not finish. 
