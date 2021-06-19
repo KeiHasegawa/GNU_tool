@@ -1,80 +1,174 @@
-i386 のシミュレータ作成メモ
+ターゲットシミュレータの構造
 
-まずは h8300-elf で gdb をビルドする.
+M-x gdb
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_h8300/
+(gdb) run -q -x gdbcom hello.elf
+Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.h8300-elf/gdb/gdb -q -x gdbcom hello.elf
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib/libthread_db.so.1".
+warning: File "/usr/local/lib/libstdc++.so.6.0.28-gdb.py" auto-loading has been declined by your `auto-load safe-path' set to "$debugdir:$datadir/auto-load".
+[Detaching after vfork from child process 4372]
+[New Thread 0xb7733b70 (LWP 4373)]
+[New Thread 0xb6f32b70 (LWP 4374)]
+Reading symbols from hello.elf...
+Connected to the simulator.
+Loading section .init, size 0xa vma 0x100
+Loading section .text, size 0x30e6 vma 0x10c
+Loading section .fini, size 0x6 vma 0x31f2
+Loading section .rodata, size 0x28 vma 0x31f8
+Loading section .eh_frame, size 0x4 vma 0x3220
+Loading section .ctors, size 0x4 vma 0x3224
+Loading section .dtors, size 0x4 vma 0x3228
+Loading section .data, size 0x46c vma 0x322c
+Start address 0x10c
+Transfer rate: 109744 bits in <1 sec.
+hello world
+[Inferior 1 (process 42000) exited normally]
+[Thread 0xb6f32b70 (LWP 4374) exited]
+[Thread 0xb7733b70 (LWP 4373) exited]
+[Inferior 1 (process 4307) exited normally]
+(gdb)
 
-これで h8300-elf 用の gdb ができるが, 最後の gdb を生成するマンド
+期待通り動作している. ここで gdbcom は以下:
 
-g++  -g -O2     -pthread  \
-	-o gdb ... \
-	../sim/h8300/libsim.a \
+set prompt (h8300-elf-gdb) 
+target sim
+load
+run
+quit
 
-のようになっているのでこれを
+1 つ目のプロンプトの設定はログに反映されていないが, デバッグされている gdb とデバッグ
+している gdb を区別する意味で入れている.
 
-g++  -g -O2     -pthread  \
-	-o gdb ... \
-	-L../sim/i386 -lsim \
+gdb 起動時, コマンドの実行に先立って以下の函数が実行される:
 
-のように変更する. そして ../sim/i386 ディレクトリを新規に作成して, そこに DLL
+void
+initialize_all_files (void)
+{
+  _initialize_h8300_tdep ();   ここでターゲットシミュレータ固有の初期化をしているらしい.
 
-libsim.so
+例えば:
 
-あるいは
+      o ターゲットシミュレータがビッグエンディアンかリトルエンディアンか
+      o レジスタをいくつ持っているか
+      o PC のレジスタ番号はいくつか
+      o int, long が何バイトであるか
 
-libsim.dll
+などである.
 
-を作成しておく. これは最初意図的に空の DLL にしておく. そうすれば
-最後のリンクコマンドが undefined reference to `...' というエラーが出る.
-それが以下のシンボル:
 
-sim_open
-sim_close
-sim_fetch_register
-sim_store_register
-sim_load
-sim_create_inferior
-sim_stop
-sim_resume
-sim_stop_reason
-sim_write
-sim_read
-sim_info
-sim_do_command
-sim_complete_command
-default_callback
+(*1) target sim コマンド
 
-最後の default_callback 以外は函数で, default_callback は
-ある構造体の型の変数である. しかし差し当たってこれはそれほど重要ではない.
+main.c:1214
+-x で指定されたファイルは以下で処理されている:
 
-まずはリンクを通すためにこれらのシンボルを
+	case CMDARG_FILE:
+	  ret = catch_command_errors (source_script, cmdarg_p.string,
+				      !batch_flag);
+	  break;
 
-libsim.so
+ここからステップ実行していけば -x で指定されたファイルに書かれているコマンドは
+以下で処理されていることが分かる:
 
-あるいは
+top.c:449
+  while (ui->instream != NULL && !feof (ui->instream))
+    {
+      const char *command;
 
-libsim.dll
+      /* Get a command-line.  This calls the readline package.  */
+      command = command_line_input (NULL, NULL);
+      if (command == NULL)
+	break;
+      command_handler (command);    // ここで処理されている
+    }
 
-に定義しておけばリンクだけは成功する.
-この新しい i386 用の gdb を起動するためには libsim.so あるいは libsim.dll を実行時
-ロードできるようにしておくようにする. これには環境変数をシステムに合わせて適切にセットする
-必要がある.
+target sim コマンドは今回の場合 2 つ目のコマンドなのでそれを調査してみる.
+やはりステップ実行していくと以下の函数に辿り着く:
 
-linux % setenv LD_LIBRARY_PATH $LD_LIBRARY_PATH:/home/khasegawa/gdb-10.2/sim/i386
+target.c:230
+/* This is used to implement the various target commands.  */
 
-cygwin % setenv PATH $PATH:/home/khasegawa/gdb-10.2/sim/i386
+static void
+open_target (const char *args, int from_tty, struct cmd_list_element *command)
+{
+  auto *ti = static_cast<target_info *> (get_cmd_context (command));
+  target_open_ftype *func = target_factories[ti];
 
-実行時にロードできなければ, 「libsim.{so,dll} をロードできない」というメッセー
-ジが出る. DLL にすればシミュレータを修正した後に gdb とリンクし直す必要がなくて
-便利である. libsim.a のように static リンクにしてもよい. この場合は libsim.a を
-修正した後は gdb とリンクし直す必要がある.
 
-さてとりあえず gdb を起動できるようになったら, おそらく default_callback
-の定義のしかたにもよるが, 実行時エラーを引き起こすと思う.
 
-あなたが十分調査した上で default_callback を定義していればそうではないが,
-私は調査しなかったのでそうなった.
+さらにここからステップ実行していくと以下に辿り着く:
 
-void sim_open(){ abort(); }  // とりあえず呼ばれたらそれと分かるようにしておく.
-
+static void
+gdbsim_target_open (const char *args, int from_tty)
+{
 ...
 
-void default_callback(){ abort(); }    // 函数だと思い込んでいた. 実は変数だった.
+remote-sim.c:741
+  gdbsim_desc = sim_open (SIM_OPEN_DEBUG, &gdb_callback, exec_bfd, sim_argv);
+
+このコードは gdb のターゲットに依存しない部分のものだが, 実際呼び出されているのは以下：
+
+gdb-10.2/sim/h8300/compile.c:4825
+
+SIM_DESC
+sim_open (SIM_OPEN_KIND kind, 
+	  struct host_callback_struct *callback, 
+	  struct bfd *abfd, 
+	  char * const *argv)
+{
+
+ここで h8300 固有の処理をしている.
+そして gdbsim_target_open から戻るところで
+以下のメッセージが出される:
+
+  printf_filtered ("Connected to the simulator.\n");
+
+
+(*2) load コマンド
+
+target sim コマンドと同様に解析をすれば以下の函数に辿り着くだろう:
+
+gdb-10.2/sim/h8300/compile.c:4916
+
+SIM_RC
+sim_load (SIM_DESC sd, const char *prog, bfd *abfd, int from_tty)
+{
+
+これはターゲットメモリにプログラムをロードするためのもの. ファイル名 hello.elf が
+直接渡されるのでこれを開いて必要なセクションをロードすることになる.
+
+(*3) run コマンド
+
+target sim や load コマンドと同様に解析をすると以下の函数に辿り着くだろう:
+
+gdb-10.2/sim/h8300/compile.c:5002
+
+SIM_RC
+sim_create_inferior (SIM_DESC sd, struct bfd *abfd,
+		     char * const *argv, char * const *env)
+{
+
+この函数ではプログラムカウンタをセットしているだけである.
+
+inferior
+主な意味  (位置・階級が)下位の、下級の、低い、下位で、下級で、(質・程度などが)劣った、下等の、  
+   劣等の、二流品の、劣って  
+
+実際命令を実行し始めるのは, 以下の函数となる:
+
+gdb-10.2/sim/h8300/compile.c:4523
+
+void
+sim_engine_run (SIM_DESC sd,
+		int next_cpu_nr,  /* ignore  */
+		int nr_cpus,      /* ignore  */
+		int siggnal)
+{
+
+
+メモ:
+-g3 オプションでビルドした gdb をデバッグしていると linux がハングアップして
+再起動が必要になる.
+gdb がメモリリークしているっぽいが, それを linux がエラーとしてあつかえていない
+のが問題なのだろうと思う.
+top コマンドや ps コマンドが役に立つと思う.
