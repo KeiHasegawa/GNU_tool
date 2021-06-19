@@ -1,0 +1,20 @@
+(*1) PRU
+https://beagleboard.org/pru
+
+(*2) スクリプトによるインストール
+
+「IQ2000」と同じスクリプトを使う
+
+set TARGET = pru-elf   # ここを変更
+
+(*3) 動作確認 => NG
+
+% pru-elf-gcc -g -o hello.elf hello.c -Tpruelf-sim.x
+% pru-elf-gdb 00_batch.verify.elf
+arch-utils.c:693: internal-error: initialize_current_architecture: Selection of initial architecture failed
+A problem internal to GDB has been detected,
+further debugging may prove unreliable.
+Quit this debugging session? (y or n) Segmentation fault
+%
+
+
