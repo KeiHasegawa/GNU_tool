@@ -150,19 +150,50 @@ sim_create_inferior (SIM_DESC sd, struct bfd *abfd,
 
 この函数ではプログラムカウンタをセットしているだけである.
 
-inferior
-主な意味  (位置・階級が)下位の、下級の、低い、下位で、下級で、(質・程度などが)劣った、下等の、  
-   劣等の、二流品の、劣って  
+そして次の函数が呼び出される:
 
-実際命令を実行し始めるのは, 以下の函数となる:
+int
+sim_fetch_register (SIM_DESC sd, int rn, unsigned char *buf, int length)
+{
 
-gdb-10.2/sim/h8300/compile.c:4523
+
+このとき rn = 9 でこれは, 詳しい説明を省くが, プログラムカウンタレジスタに
+付けられた番号である. gdb があるレジスタの値を問い合わせるときにシミュレータにはこのように
+番号を指定する.
+
+おそらく gdb はシミュレータが適切に PC をセットしているかどうか確認しているのかもしれない
+し, もしくはリスタートのときにエントリポイントにセットされているか確認しているのかも
+しれない. しかし, シミュレータは単に聞かれたことに答えるだけである.
+
+そして次の函数が呼び出された:
 
 void
-sim_engine_run (SIM_DESC sd,
-		int next_cpu_nr,  /* ignore  */
-		int nr_cpus,      /* ignore  */
-		int siggnal)
+sim_resume (SIM_DESC sd,
+	    int step,
+	    int siggnal)
+{
+
+シミュレータは今のプログラムカウンタから命令を実行し続ければよい.
+ターゲットプログラムによってはこの函数が戻ることはないかもしれないが, そこは
+仕組みがあるのだろう.
+
+今回実行しているプログラムは
+
+
+00000574 <__exit>:
+     574:	79 01 de ad 	mov.w	#0xdead,r1
+     578:	79 02 be ef 	mov.w	#0xbeef,r2
+     57c:	0c 80       	mov.b	r0l,r0h
+     57e:	18 88       	sub.b	r0l,r0l
+     580:	01 80       	sleep	
+
+この命令が実行されて止まるのが期待値である. 
+
+run コマンドに対してシミュレータが停止すると gdb は以下の函数を呼び出して
+停止した理由をシミュレータに問い合わせる:
+
+void
+sim_stop_reason (SIM_DESC sd, enum sim_stop *reason, int *sigrc)
 {
 
 
@@ -170,5 +201,5 @@ sim_engine_run (SIM_DESC sd,
 -g3 オプションでビルドした gdb をデバッグしていると linux がハングアップして
 再起動が必要になる.
 gdb がメモリリークしているっぽいが, それを linux がエラーとしてあつかえていない
-のが問題なのだろうと思う.
+のが問題なのか. それともこれは不可避なのか.
 top コマンドや ps コマンドが役に立つと思う.
