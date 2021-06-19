@@ -23,7 +23,7 @@ libsim.so
 libsim.dll
 
 を作成しておく. これは最初意図的に空の DLL にしておく. そうすれば
-最後のリンクコマンドが undefined reference to `...' というエラーが出る.
+最後のリンクコマンドで undefined reference to `...' というエラーが出る.
 それが以下のシンボル:
 
 sim_open
@@ -32,8 +32,8 @@ sim_fetch_register
 sim_store_register
 sim_load
 sim_create_inferior
-sim_stop
 sim_resume
+sim_stop
 sim_stop_reason
 sim_write
 sim_read
@@ -64,11 +64,11 @@ cygwin % setenv PATH $PATH:/home/khasegawa/gdb-10.2/sim/i386
 
 実行時にロードできなければ, 「libsim.{so,dll} をロードできない」というメッセー
 ジが出る. DLL にすればシミュレータを修正した後に gdb とリンクし直す必要がなくて
-便利である. libsim.a のように static リンクにしてもよい. この場合は libsim.a を
-修正した後は gdb とリンクし直す必要がある.
+便利である. libsim.a のように static リンクライブラリにしてもよい. この場合は
+libsim.a 更新した後は gdb とリンクし直す必要がある.
 
 さてとりあえず gdb を起動できるようになったら, おそらく default_callback
-の定義のしかたにもよるが, 実行時エラーを引き起こすと思う.
+の定義の仕方にもよるが, 実行時エラーを引き起こすと思う.
 
 あなたが十分調査した上で default_callback を定義していればそうではないが,
 私は調査しなかったのでそうなった.
@@ -78,3 +78,5 @@ void sim_open(){ abort(); }  // とりあえず呼ばれたらそれと分かる
 ...
 
 void default_callback(){ abort(); }    // 函数だと思い込んでいた. 実は変数だった.
+
+予定では abort が呼ばれるはずだったが, そうはならないわけだ.
