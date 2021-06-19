@@ -1,49 +1,49 @@
-��{�u���b�N�v���t�@�C��
+基本ブロックプロファイル
 
-(*1) ��肽������
-(*2) �ŏ��̃T���v��
+(*1) やりたいこと
+(*2) 最初のサンプル
 (*3) profile_basic_block.cpp
 (*4) bbprof1.cpp
 (*5) bbprof2.cpp
 (*6) bbprof3.cpp
-(*7) �J�������̈���
+(*7) カラム数の扱い
 (*8) bbprof4.cpp
-(*9) �����`��
+(*9) 生成形式
 (*10) bbprof5.cpp
-(*11) return �̃J������
+(*11) return のカラム数
 (*12) exit, longjmp, throw
-(*13) if �̌�̖��
-(*14) ������ hcc1.exe �� --profile-basic-block �t���ŃR���p�C�����Ă݂�.
-(*15) xlsoft �̃y�[�W
-(*16) gcov �������Ă݂�
+(*13) if の後の問題
+(*14) 試しに hcc1.exe を --profile-basic-block 付きでコンパイルしてみた.
+(*15) xlsoft のページ
+(*16) gcov を試してみた
 
-(*1) ��肽������
+(*1) やりたいこと
 
-     �v���O���������s������, ���s�����s���n�C���C�g�������`�ŕ\������.
-     �Ⴆ��, �e�X�g���s�����Ƃ��ɒʂ��Ă���Ƃ���, ���Ȃ��Ƃ���𖾔�
-     �ɂł���.
+     プログラムを実行した後, 実行した行をハイライトさせた形で表示する.
+     例えば, テストを行ったときに通っているところ, いないところを明白
+     にできる.
 
-     ������ gcov �̑��݂�m��Ȃ������̂�, ����ɒ��肵����, �m���Ă�����
-     ���Ȃ������낤�Ǝv����.
+     当初は gcov の存在を知らなかったので, これに着手したが, 知っていたら
+     やらなかったろうと思われる.
 
-(*2) �ŏ��̃T���v��
+(*2) 最初のサンプル
 
-     test000.c ���ŏ��̃T���v���ɑI��. ����̊��Ғl�� test000.html
-     �ł���.
-     test000.c �͒ʏ펟�̂悤�Ƀr���h�����.
+     test000.c を最初のサンプルに選んだ. これの期待値が test000.html
+     である.
+     test000.c は通常次のようにビルドされる.
      
 % gcc test000.c -o test000.exe
 
-     ����Ƃ��܂�ς��Ȃ��`�Ńr���h����Ȃ��Ă͂Ȃ�Ȃ���, ���[�U�[��
-     �v���t�@�C���̂��߂ɓ��ʂȃr���h�����Ȃ��Ă͂Ȃ�Ȃ�. �Ⴆ�Βʏ��
-     gprof ���g�p���邽�߂ɂ�
+     これとあまり変わらない形でビルドされなくてはならないが, ユーザーは
+     プロファイルのために特別なビルドをしなくてはならない. 例えば通常の
+     gprof を使用するためには
 
 % gcc -pg test000.c -o test000.exe
 % ./test000.exe
 % gprof test000.exe gmon.out
 
-     �̂悤�Ȃ��Ƃ�����K�v������. ��{�u���b�N�̃v���t�@�C���ł͈ȉ���
-     �悤�ɂ���K�v������:
+     のようなことをする必要がある. 基本ブロックのプロファイルでは以下の
+     ようにする必要がある:
 
 % gcc -g -c test000.c --profile-basic-block
 % gcc -g -c profile_basic_block.cpp
@@ -51,46 +51,46 @@
 % ./test000.exe
 % ./bbprof.exe test000.exe bb.out
 
-     --profile-basic-block �I�v�V�������g�p���邽�߂ɂ�
-     �u��{�u���b�N�v���t�@�C���̂��߂� gcc �̏C���v���s���K�v������,
-     �����Ńr���h���� gcc ���g�p���Ȃ��Ă͂Ȃ�Ȃ�. ����͂��̂�����
-     �n�[�h����������, �c�[�����������Ă��Ȃ��̂ł��傤���Ȃ�.
+     --profile-basic-block オプションを使用するためには
+     「基本ブロックプロファイルのための gcc の修正」を行う必要があり,
+     自分でビルドした gcc を使用しなくてはならない. これはものすごく
+     ハードルが高いが, ツールが完成していないのでしょうがない.
 
-     �܂� 2 �ڂ� gcc �̎��s���� --profile-basic-block ���g�p���Ă͂����Ȃ�.
+     また 2 つ目の gcc の実行時に --profile-basic-block を使用してはいけない.
 
-     profile_basic_block.cpp �́ugprof �̒����v�ŏq�ׂ� mcount �ɑ���
-     ������̂�, ������\�[�X�Ƃ��Ă��Ȃ��̃v���O�����ɑg�ݍ��ނ��Ƃ�
-     �v�����Ă���. ��������[�U�[�̃r���h����ύX����Ƃ����Ȃ�Ƃ�
-     �X���Ȍ`�ɂȂ��Ă��܂��Ă���.
+     profile_basic_block.cpp は「gprof の調査」で述べた mcount に相当
+     するもので, これをソースとしてあなたのプログラムに組み込むことを
+     要求している. これもユーザーのビルド環境を変更するというなんとも
+     醜悪な形になってしまっている.
 
-     �����čŌ�� bbprof.exe �͎��O�̃R�}���h��, binutils ���g���K�v��
-     ����. �r���h����ɂ͒P���� binutils �̃C���X�g�[���ł͕s�\����
-     �\�[�X����r���h����K�v������(��������Ȃ�).
+     そして最後の bbprof.exe は自前のコマンドで, binutils を使う必要が
+     ある. ビルドするには単純な binutils のインストールでは不十分で
+     ソースからビルドする必要がある(かもしれない).
 
-     �����܂ŕ�����, ��߂Ƃ����Ƃ������ƂɂȂ邾�낤��, ���ꂪ
-     �W���ɂȂ�Ζʓ|�L�����Ƃ������Ԃ��Ȃ��Ă悭�Ȃ邩������Ȃ�.
+     ここまで聞くと, やめとこうということになるだろうが, これが
+     標準になれば面倒臭いことがだいぶやらなくてよくなるかもしれない.
 
 (*3) profile_basic_block.cpp
 
-     ���̔����ł�, �Ăяo�����̃A�h���X���t�@�C���ɏ������ނ��Ƃ����Ă���.
-     ���_�͐F�X���邪�����_�ł͂���ŏ\���ł���. ���_�������Ă݂�:
+     この函数では, 呼び出し元のアドレスをファイルに書き込むことをしている.
+     問題点は色々あるが現時点ではこれで十分である. 問題点を挙げてみた:
 
-     o profile_basic_block.cpp �ł͓K�؂ɃC�����C���A�Z���u�����g�p����
-       �ׂ��ł���.
+     o profile_basic_block.cpp では適切にインラインアセンブラを使用する
+       べきである.
 
-     o �����X���b�h���g���v���O�����ɂ͑Ή����Ă��Ȃ�.
+     o 複数スレッドを使うプログラムには対応していない.
 
-     o intel 32 bit, intel 64 bit �����ɑΉ����Ă���.
+     o intel 32 bit, intel 64 bit だけに対応している.
 
-     o �^�p�̖��ł͂��邪, �A�h���X���t�@�C���ɏ������ݑ������ꍇ��
-       ���炩�̖�肪�������邩������Ȃ�.
+     o 運用の問題ではあるが, アドレスをファイルに書き込み続けた場合に
+       何らかの問題が発生するかもしれない.
 
 (*4) bbprof1.cpp
 
-     �ŏ��̃o�[�W������, �v���O�������̔����̃A�h���X�� (*3) �̋@�\�ŋL�^��
-     ���A�h���X����, �ǂ̔�������Ăяo����Ă��邩��\�����邾���̂��̂ɂ���.
-     �{���́u�\�[�X�s�̂ǂ�����v�Ƃ�����񂪕K�v����, ����������_�ł͏\����
-     ����. �r���h�̕��@�͈ȉ�:
+     最初のバージョンは, プログラム内の函数のアドレスと (*3) の機能で記録し
+     たアドレスから, どの函数から呼び出されているかを表示するだけのものにした.
+     本当は「ソース行のどこから」という情報が必要だが, これも現時点では十分で
+     ある. ビルドの方法は以下:
 
  linux % g++ -o bbprof.exe -DPACKAGE bbprof1.cpp -lbfd -liberty -L/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/libiberty -ldl -lz
 
@@ -98,15 +98,15 @@ cygwin % g++ -o bbprof.exe -DPACKAGE bbprof1.cpp -lbfd -liberty -ldl -lz -lintl
 
 (*5) bbprof2.cpp
 
-     2 �ڂ̃o�[�W������, �t�@�C�����Ɣ������ƍs�ԍ���\���ł���悤�ɂȂ���
-     ����. addr2line �Ƃ����v���O������ binutils �ɂ��邪�Q�l�ɂ���. �r���h
-     �̕��@�� bbprof1.cpp �Ɠ����ł���.
+     2 つ目のバージョンは, ファイル名と函数名と行番号を表示できるようになって
+     いる. addr2line というプログラムが binutils にあるが参考にした. ビルド
+     の方法は bbprof1.cpp と同じである.
 
 (*6) bbprof3.cpp
 
-     3 �ڂ̃o�[�W������, ����ɃJ�����������o����悤�ɂ������̂ł���.
-     �c�O�Ȃ��� libbfd.a �ł��̋@�\���Ȃ��̂ł��̕��������쐬����. �r���h��
-     ���@��:
+     3 つ目のバージョンは, さらにカラム数を取り出せるようにしたものである.
+     残念ながら libbfd.a でこの機能がないのでその部分だけ作成した. ビルドの
+     方法は:
 
 linux
 g++ -g -DPACKAGE bbprof3.cpp -c -o bbprof3.o
@@ -121,15 +121,15 @@ gcc -g -Id:/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/bfd -Id:/home/k
 gcc -g -Id:/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/bfd -Id:/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/include my_coffgen.c -c -o my_coffgen.o
 g++ -o bbprof.exe bbprof3.o bbprof3_0.o my_dwarf2.o my_coffgen.o -lbfd -liberty -ldl -lz -lintl
 
-     �t�@�C���ɂ���ăI�v�V�����������قȂ��Ă��邱�Ƃɒ��ӂ�����.
-     my_dwarf2.c �� ~/binutils-2.36.1-2.src/binutils-2.36.1/bfd/dwarf2.c
-     �̂قƂ�ǃR�s�[�ł���. ���l��
-     my_coffgen.c �� ~/binutils-2.36.1-2.src/binutils-2.36.1/bfd/coffgen.c
-     �̂قƂ�ǃR�s�[�ł���.
+     ファイルによってオプションが少し異なっていることに注意したい.
+     my_dwarf2.c は ~/binutils-2.36.1-2.src/binutils-2.36.1/bfd/dwarf2.c
+     のほとんどコピーである. 同様に
+     my_coffgen.c も ~/binutils-2.36.1-2.src/binutils-2.36.1/bfd/coffgen.c
+     のほとんどコピーである.
 
-     bb.out ����U test000.out �Ƀ��l�[����, test001.c �� test000.c �Ɠ��l��
-     �r���h���� test001.exe �����s�� bb.out �𐶐���, bb.out �� test001.out
-     �Ƀ��l�[������. �����Ĉȉ��̌��ʂ��r���Ă݂�:
+     bb.out を一旦 test000.out にリネームし, test001.c を test000.c と同様に
+     ビルドして test001.exe を実行し bb.out を生成し, bb.out を test001.out
+     にリネームする. そして以下の結果を比較してみる:
 
 % ./bbprof.exe test000.exe test000.out
 test000.c:main:7.1
@@ -143,32 +143,32 @@ test001.c:f:3.16.1        # discriminator = 1
 test001.c:f:4.1.5
 %
 
-     �J�������͓������� discriminator (���ʎq) �̕������قȂ��Ă���.
-     discriminator �̂悤�ȕs���Ȃ��̂ł͂Ȃ��ăJ�������ŋ��
-     ����������.
+     カラム数は同じだが discriminator (識別子) の部分が異なっている.
+     discriminator のような不明なものではなくてカラム数で区別
+     したかった.
 
-(*7) �J�������̈���
+(*7) カラム数の扱い
 
-     (*6) �ł͎c�O�Ȃ���J�������ŋ�ʂ��邱�Ƃ��ł��Ȃ�������, ���ꂪ
-     �ǂ̒i�K�ŏ���(?)���Ă���̂����ׂĂ݂�.
+     (*6) では残念ながらカラム数で区別することができなかったが, これが
+     どの段階で消失(?)しているのか調べてみた.
 
-     �ucc1 �̒��ۃR�[�h�̒����v�ŏq�ׂ���{�u���b�N���쐬���ꂽ�i�K��
-     �J�������� 16 �ɂȂ��Ă��܂��Ă���. ���Ȃ킿
+     「cc1 の抽象コードの調査」で述べた基本ブロックが作成された段階で
+     カラム数は 16 になってしまっていた. すなわち
 
 int f(int a, int b, int c)
 {
   return a ? b : c;
 }
 
-     �ɑ΂��� gcc �� 4 �����{�u���b�N�̂��ׂĂ� 3 �s�ڂ� 16
-     �J�����ڂƂ��Ă���.
+     に対して gcc は 4 つある基本ブロックのすべてが 3 行目の 16
+     カラム目としている.
 
-     �ugcc docgen �o�́v�ŏq�ׂ������̃{�f�B�� tree �Ƃ��ĕ\������
-     �i�K�ł͂ǂ���. ���͂��̒i�K�ŃJ�������̏��Ƃ��� 12 �� 16 ��
-     �����Ă���.
+     「gcc docgen 出力」で述べた函数のボディを tree として表現した
+     段階ではどうか. 実はこの段階でカラム数の情報として 12 と 16 を
+     持っている.
      
-     12 �J������ '?' �̈ʒu�� 16 �J������ ':' �̈ʒu�ł���.
-     ���̎���
+     12 カラムは '?' の位置で 16 カラムは ':' の位置である.
+     この式は
 
      COND_EXPR
          |
@@ -182,117 +182,117 @@ int f(int a, int b, int c)
          |
          +---- PARAM_DECL (c) 
 
-     �̂悤�ɂȂ��Ă��邩�� NE_EXPR �̕����ɂ͍s�ԍ����͂��邪,
-     b �� c �̕����ɂ͂��͂�s�ԍ����͂Ȃ�. ������ COND_EXPR
-     ���̂��̂ɂ͍s�ԍ������������Ă���.
+     のようになっているから NE_EXPR の部分には行番号情報はあるが,
+     b や c の部分にはもはや行番号情報はない. そして COND_EXPR
+     そのものには行番号情報を持たせている.
 
-     test002.c �� test003.c ���r���h�� test002.exe �� test003.exe
-     �����s��, test002.out �� test003.out �𐶐������Ƃ���ňȉ���
-     �����Ă݂�:
+     test002.c と test003.c をビルドし test002.exe と test003.exe
+     を実行し, test002.out と test003.out を生成したところで以下を
+     試してみた:
 
 % ./bbprof.exe test002.exe test002.out
 ./bbprof.exe test002.exe test002.out 
 test002.c:main:17.1
 test002.c:h:12.1
-test002.c:h:13.20.2   # 20 �J������
+test002.c:h:13.20.2   # 20 カラム目
 test002.c:g:7.1
 test002.c:h:14.1.5
 % ./bbprof.exe test003.exe test003.out
 test003.c:main:17.1
 test003.c:h:12.1
-test003.c:h:13.14.1    # 14 �J������
+test003.c:h:13.14.1    # 14 カラム目
 test003.c:f:2.1
 test003.c:h:14.1.5
 %
 
-     ����͊��҂������ʂɂȂ��Ă���. 14 �J������, 20 �J�����ڂ�
-     ���傤�� f �� g �̌Ăяo���ɂ��ꂼ�ꑊ������.
+     これは期待した結果になっている. 14 カラム目, 20 カラム目は
+     ちょうど f と g の呼び出しにそれぞれ相当する.
 
-     test004.c �� test005.c �ɂ��Ă����l�̂��Ƃ������Ă݂�. �����O��,
-     ���Ғʂ�J�������Ŕ��ʂł���Ɨ\�����Ă�����, ���ۂ̓J�������ł�
-     ���ʂ͂ł��Ȃ�����:
+     test004.c と test005.c についても同様のことを試してみた. 試す前に,
+     期待通りカラム数で判別できると予測していたが, 実際はカラム数での
+     判別はできなかった:
 
 % ./bbprof.exe test004.exe test004.out
 test004.c:main:7.1
 test004.c:f:2.1
-test004.c:f:3.20.2     # �J�������� 20 �� discriminator = 2
+test004.c:f:3.20.2     # カラム数は 20 で discriminator = 2
 test004.c:f:4.1.5
 % ./bbprof.exe test005.exe test005.out
 test005.c:main:7.1
 test005.c:f:2.1
-test005.c:f:3.20.1     # �J�������� 20 �� discriminator = 1
+test005.c:f:3.20.1     # カラム数は 20 で discriminator = 1
 test005.c:f:4.1.5
 %
 
-      �����ł��̏󋵂��������邽�߂Ƀp�b�`���쐬����.
-      �p�b�`�̓��ĕ��͂��̃y�[�W�ɂ��� profile_basic_block2.diff ��
-      �Ⴆ�� /tmp/profile_basic_block2.diff �Ƃ��ĕۑ�����
+      そこでこの状況を解消するためにパッチを作成した.
+      パッチの当て方はこのページにある profile_basic_block2.diff を
+      例えば /tmp/profile_basic_block2.diff として保存して
 
 % cd gcc-10.2.0
 % patch -p1 < /tmp/profile_basic_block2.diff
 
-      �Ƃ���. ����� cc1 ���r���h��������, �C���X�g�[������Ă��� cc1
-      �ɏ㏑�����čĂ� test00[0-5].exe �����r���h, �Ď��s����Έȉ���
-      ���ʂ�������:
+      とする. これで cc1 をビルドし直して, インストールされている cc1
+      に上書きして再び test00[0-5].exe をリビルド, 再実行すれば以下の
+      結果が得られる:
 
 % ./bbprof.exe test000.exe test000.out
 test000.c:main:7.1
 test000.c:f:2.1
-test000.c:f:3.16.2    # 16 �J����
+test000.c:f:3.16.2    # 16 カラム
 test000.c:f:4.1.5
 % ./bbprof.exe test001.exe test001.out
 test001.c:main:7.1
 test001.c:f:2.1
-test001.c:f:3.12.1    # 12 �J����
+test001.c:f:3.12.1    # 12 カラム
 test001.c:f:4.1.5
 % ./bbprof.exe test002.exe test002.out
 test002.c:main:17.1
 test002.c:h:12.1
-test002.c:h:13.18.2   # 18 �J����
+test002.c:h:13.18.2   # 18 カラム
 test002.c:g:7.1
 test002.c:h:14.1.5
 % ./bbprof.exe test003.exe test003.out
 test003.c:main:17.1
 test003.c:h:12.1
-test003.c:h:13.12.1   # 12 �J����
+test003.c:h:13.12.1   # 12 カラム
 test003.c:f:2.1
 test003.c:h:14.1.5
 % ./bbprof.exe test004.exe test004.out
 test004.c:main:7.1
 test004.c:f:2.1
-test004.c:f:3.20.2    # 20 �J����
+test004.c:f:3.20.2    # 20 カラム
 test004.c:f:4.1.5
 % ./bbprof.exe test005.exe test005.out
 test005.c:main:7.1
 test005.c:f:2.1
-test005.c:f:3.12.1    # 12 �J����
+test005.c:f:3.12.1    # 12 カラム
 test005.c:f:4.1.5
 %
 
-     ����͊��҂������ʂɂȂ��Ă���.
+     これは期待した結果になっている.
 
 (*8) bbprof4.cpp
 
-     bbprof3.cpp �͔��� _profile_basic_block_ ���ǂ�����Ăяo���ꂽ
-     ������肷�邱�Ƃ͂ł�����, �������\�������{�u���b�N��F���ł���
-     ���Ȃ�.
+     bbprof3.cpp は函数 _profile_basic_block_ がどこから呼び出された
+     かを特定することはできたが, 函数を構成する基本ブロックを認識できて
+     いない.
      
-     ��{�u���b�N�̐擪��
+     基本ブロックの先頭は
 
      call	_profile_basic_block_
 
-     �Ƃ������߂ł���. �����Ă��̊�{�u���b�N�̏I���͎��̊�{�u���b�N��
-     �擪��, �����̏I���ł���.
+     という命令である. そしてこの基本ブロックの終わりは次の基本ブロックの
+     先頭か, 函数の終わりである.
 
-     �܂� _profile_basic_block_ ���ǂ��ɔz�u����Ă��邩�𒲂ׂ�.
-     ���Ɋe�����ɑ΂��Ă��̃A�h���X�� call �𔭍s���Ă��镔����
-     ���ׂ�.
+     まず _profile_basic_block_ がどこに配置されているかを調べる.
+     次に各函数に対してそのアドレスに call を発行している部分を
+     調べる.
 
-     ���̔����� _profile_basic_block_ ���Ăяo���Ă��Ȃ��̂Ȃ��,
-     �v���t�@�C���ΏۊO�̔����Ƃ������ƂɂȂ�.
+     その函数が _profile_basic_block_ を呼び出していないのならば,
+     プロファイル対象外の函数ということになる.
      
-     �����͂��낢�날�邪, �t�A�Z���u������̂���Ԋm�����Ǝv������
-     �悤�ɂ���. �r���h�̕��@�͈ȉ��̂悤�ɂ���:
+     やり方はいろいろあるが, 逆アセンブルするのが一番確実かと思いその
+     ようにした. ビルドの方法は以下のようにする:
 
 linux
 g++ -o bbprof.exe -DPACKAGE  bbprof4.cpp -lbfd -liberty -L/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/libiberty -ldl -lz /home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/opcodes/libopcodes.a
@@ -300,26 +300,26 @@ g++ -o bbprof.exe -DPACKAGE  bbprof4.cpp -lbfd -liberty -L/home/khasegawa/binuti
 cygwin
 g++ -o bbprof.exe -DPACKAGE bbprof4.cpp -lbfd -liberty -Ld:/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/libiberty -ldl -lz -lintl d:/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/opcodes/libopcodes.a
 
-     ���� 4 �Ԗڂ̃o�[�W������ bb.out �ɑ���������̂�ǂݍ��܂Ȃ���,
-     �P�Ƀv���O�����t�@�C�������{�u���b�N�͈̔͂𔲐����邾���ɂ���.
-     �ȉ��̂悤�Ɏ��s����.
+     この 4 番目のバージョンは bb.out に相当するものを読み込まないで,
+     単にプログラムファイルから基本ブロックの範囲を抜粋するだけにした.
+     以下のように実行する.
 
 % ./bbprof.exe test000.exe
 
-     f �̊�{�u���b�N 4 �� main �̊�{�u���b�N 1 �ɑ΂���,
-     �擪�A�h���X�ƍŌ�̃A�h���X��\������.
+     f の基本ブロック 4 つと main の基本ブロック 1 つに対して,
+     先頭アドレスと最後のアドレスを表示する.
 
-(*9) �����`��
+(*9) 生成形式
 
-     nroff �`���Ō��ʂ𐶐�����̂�����y���ƍl����. �������Ă�����
-     html �`���ւ̕ϊ����\����, man �� groffer ���� nroff �̃r���[�A�[
-     �Ō��邱�Ƃ��ł���.  emacs ���� man ���N���ł���̂ł���� emacs ��
-     ���邱�Ƃ��ł���.
+     nroff 形式で結果を生成するのがお手軽かと考えた. こうしておけば
+     html 形式への変換も可能だし, man や groffer 等の nroff のビューアー
+     で見ることもできる.  emacs から man を起動できるのであれば emacs で
+     見ることもできる.
 
 (*10) bbprof5.cpp
 
-     bbprof3.cpp �� bbprof4.cpp �̋@�\���� nroff �`���Ō��ʂ𐶐�����.
-     �r���h�͈ȉ��̂悤�ɂ���:
+     bbprof3.cpp と bbprof4.cpp の機能から nroff 形式で結果を生成する.
+     ビルドは以下のようにする:
      
 linux
 g++ -o bbprof.exe -DPACKAGE bbprof5.cpp bbprof3_0.o my_dwarf2.o -lbfd -liberty -L/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/libiberty -ldl -lz /home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/opcodes/libopcodes.a
@@ -327,95 +327,95 @@ g++ -o bbprof.exe -DPACKAGE bbprof5.cpp bbprof3_0.o my_dwarf2.o -lbfd -liberty -
 cygwin
 g++ -o bbprof.exe -DPACKAGE bbprof5.cpp bbprof3_0.o my_dwarf2.o my_coffgen.o -lbfd -liberty -ldl -lz -lintl -lopcodes
 
-      ���̃o�[�W������ bbprof.exe �͈ȉ��̂悤�Ɏg�p����:
+      このバージョンの bbprof.exe は以下のように使用する:
 
 % ./bbprof.exe test000.exe test000.out > test000.res
 % man ./test000.res
 
-      groffer ���ł��悢:
+      groffer 等でもよい:
 
 % groffer test000.res
 
-      groff ���g�p����� html �`���ɕϊ��ł���:
+      groff を使用すれば html 形式に変換できる:
 
 % groff -T html test000.res > test000.html
 
-      html �`���ɕϊ����ċC�t������, �s���̋󔒂������������Ă��Ȃ�.
-      ����͂��̂������P����K�v������.
+      html 形式に変換して気付いたが, 行頭の空白が正しく扱えていない.
+      これはそのうち改善する必要がある.
 
-      ��ɂ���� Shift-JIS, JIS �̑Ή����K�v�ɂȂ�.
-      test006.c �� Shift-JIS �ŃR�[�f�B���O����Ă���. ���̉ӏ���
-
-.br
-//\ �@�\\
-.br
-
-      �͊ԈႢ��, ��������
+      例によって Shift-JIS, JIS の対応が必要になる.
+      test006.c は Shift-JIS でコーディングされている. 問題の箇所は
 
 .br
-//\ �@�\
+//\ 機能\
 .br
 
-      �̂悤�ɂȂ�. �������c�O�Ȃ��炱�̂悤�ɏC�����Ă� man �� nroff 
-      �̃r���[�A�[�� Shift-JIS �ɑΉ����Ă��Ȃ����ߌ��Ǌ��Ғʂ�ɂ͕\
-      ���ł��Ȃ�.
-      groff �� html �`���ɕϊ����Ă݂���, ��������Ғʂ�ɕϊ������
-      �͂��Ȃ�.
-      test007.c �� JIS �ŃR�[�f�B���O����Ă���. ���̉ӏ���
+      は間違いで, 正しくは
 
 .br
-//\ �{\
-.br
-      �͊ԈႢ��, ��������
-
-.br
-//\ �{
+//\ 機能
 .br
 
-      �̂悤�ɂȂ�. ��͂肱�̏C�����s���Ă� man �� JIS �ɑΉ����Ă��Ȃ�
-      ���ߌ��Ǌ��Ғʂ�ɂ͕\���ł��Ȃ�. groff �ɂ��Ă������ł���.
-      �������� html �ɂ��� charset �� JIS �ɑΉ����Ă��邩��, �u���E�U
-      ���܂߂ĕs���ł͂���.
+      のようになる. しかし残念ながらこのように修正しても man や nroff 
+      のビューアーが Shift-JIS に対応していないため結局期待通りには表
+      示できない.
+      groff で html 形式に変換してみたが, これも期待通りに変換されて
+      はいない.
+      test007.c は JIS でコーディングされている. 問題の箇所は
 
-(*11) return �̃J������
+.br
+//\ 怒\
+.br
+      は間違いで, 正しくは
 
-      ���͂������e�X�g�������Ƃ��� if �� return �̑g�ݍ��킹�ɂ��
-      ���҂��Ȃ����ʂɂȂ��Ă��邱�ƂɋC�t����. �Ⴆ�� test017.c, test018.c
-      ���������� return �̕������n�C���C�g����Ă��܂��̂ł���.
-      ����͍s�ԍ����
+.br
+//\ 怒
+.br
+
+      のようになる. やはりこの修正を行っても man が JIS に対応していない
+      ため結局期待通りには表示できない. groff についても同じである.
+      そもそも html にある charset が JIS に対応しているかは, ブラウザ
+      も含めて不明ではある.
+
+(*11) return のカラム数
+
+      私はいくつかテストをしたところ if と return の組み合わせにより
+      期待しない結果になっていることに気付いた. 例えば test017.c, test018.c
+      だが両方の return の部分がハイライトされてしまうのである.
+      これは行番号情報が
 
       return expression ;
 
-      �� expression �̍s�ԍ������w�肵�Ă��邽�߂ł�����. �����
-      �u(*7) �J�������̈����v�Ɠ��l�ɍs�ԍ������C������K�v��������.
-      ���̂��߂̃p�b�`�� profile_basic_block3.diff �ł���. �p�b�`��
-      �K�p���@�� profile_basic_block2.diff �Ɠ��l�ł���.
+      の expression の行番号情報を指定しているためであった. よって
+      「(*7) カラム数の扱い」と同様に行番号情報を修正する必要があった.
+      このためのパッチが profile_basic_block3.diff である. パッチの
+      適用方法は profile_basic_block2.diff と同様である.
 
 (*12) exit, longjmp, throw
 
-      test019.c �ł� exit ���Ăяo������ f ���Ăяo���Ă���. ���̏ꍇ
-      f �̌Ăяo���ɑ��� g �̌Ăяo���͓��R���s����Ȃ��̂���,
-      g �̌Ăяo���������������s���ꂽ���̂悤�Ƀn�C���C�g�����
-      �\������Ă��܂�.
+      test019.c では exit を呼び出す函数 f を呼び出している. この場合
+      f の呼び出しに続く g の呼び出しは当然実行されないのだが,
+      g の呼び出しがあたかも実行されたかのようにハイライトされて
+      表示されてしまう.
 
-      �ȉ��ł������悤�Ȗ�肪�N����.
+      以下でも似たような問題が起こる.
 
       longjmp => test020.c
-      C++ �� throw => test021.cpp
+      C++ の throw => test021.cpp
 
 extern void exit (int __status) __THROW __attribute__ ((__noreturn__));
 extern void longjmp (struct __jmp_buf_tag __env[1], int __val)
      __THROW __attribute__ ((__noreturn__));
 
-      �̂悤�ɐ錾����Ă��邩��, ���̑������t������Ă��锟������ʈ�����
-      ��Ƃ������@���l������. ������, �����̔����̓|�C���^�o�R�ŌĂяo
-      ����邱�Ƃ��z�肳���̂�, �ŏ����� 
+      のように宣言されているから, この属性が付加されている函数を特別扱いす
+      るという方法が考えられる. しかし, これらの函数はポインタ経由で呼び出
+      されることも想定されるので, 最小限に 
 
       call _profile_basic_block_
 
-      �𖄂ߍ��ފ��S�ȕ��@�͂Ȃ�.
+      を埋め込む完全な方法はない.
 
-(*13) if �̌�̖��
+(*13) if の後の問題
 
     test101.cpp 
 
@@ -425,43 +425,43 @@ extern void longjmp (struct __jmp_buf_tag __env[1], int __val)
       error::cmdline::open(cmdline::input);
       exit(1);
     }
-    parse::position = file_t(cmdline::input,1);  << ���̍s�̓n�C���C�g�����
-  }�@�@�@�@�@�@�@�@�@�@�@�@�@�@�@�@�@�@�@�@�@�@�@�@�̂����Ғl���� ); �݂̂�
-  return 0;�@�@�@�@�@�@�@�@�@�@�@�@�@�@�@�@�@�@�@�@�n�C���C�g����Ă���.
+    parse::position = file_t(cmdline::input,1);  << この行はハイライトされる
+  }　　　　　　　　　　　　　　　　　　　　　　　　のが期待値だが ); のみが
+  return 0;　　　　　　　　　　　　　　　　　　　　ハイライトされている.
 
 
-    test039.cpp �̑Ή��� modify_loc_if5 �� cp/parser.c �ɒǉ������Ƃ���
-    test021.cpp �ŗ\�����Ȃ�����������.
+    test039.cpp の対応で modify_loc_if5 を cp/parser.c に追加したところ
+    test021.cpp で予期しない差分がある.
 
-(*14) ������ hcc1.exe �� --profile-basic-block �t���ŃR���p�C�����Ă݂�.
+(*14) 試しに hcc1.exe を --profile-basic-block 付きでコンパイルしてみた.
 
-      �����
+      これで
 
 int main()
 {
   return 0;
 }
 
-      ���R���p�C�����Ă݂����c�O�Ȃ����~����.
-      expr0.cpp main.cpp optimize.cpp �������̃I�v�V�����ŃR���p�C��
-      ���Ă݂���, �s���������A�N�Z�X������.
+      をコンパイルしてみたが残念ながら停止せず.
+      expr0.cpp main.cpp optimize.cpp だけこのオプションでコンパイル
+      してみたが, 不正メモリアクセスが発生.
 
-      �܂��܂��^�p�܂ł͉�����.
-      optimize.cpp ��ʏ�R���p�C�����čă����N����Εs���������A�N�Z�X
-      �͉���ł��Ă���.
+      まだまだ運用までは遠そう.
+      optimize.cpp を通常コンパイルして再リンクすれば不正メモリアクセス
+      は回避できている.
 
-(*15) xlsoft �̃y�[�W
+(*15) xlsoft のページ
 
-      �����炭���������悤�Ȃ��Ƃ����Ă���
+      おそらくだが似たようなことをしている
       
 https://www.xlsoft.com/jp/products/intel/compilers/ccl/12/ug/optaps/common/optaps_pgo_covr.htm
 
 
-(*16) gcov �������Ă݂�
+(*16) gcov を試してみた
 
 % gcc --coverage test000.c
 % ./a.out
 % gcov test000.c -m
 
-      �Ƃ��邱�Ƃ� test000.c.gcov �ɃJ�o���b�W���ʂ��������܂�Ă���.
-      3 �����Z�q�͋�ʂ���Ă��Ȃ����̂�, �T�ˊ��҂������̂�����.
+      とすることで test000.c.gcov にカバレッジ結果が書き込まれている.
+      3 項演算子は区別されていないものの, 概ね期待したものだった.
