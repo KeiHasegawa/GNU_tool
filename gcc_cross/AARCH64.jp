@@ -2,7 +2,9 @@ AARCH64 (ARM64) のクロスコンパイル環境
 
 (*1) AARCH64
 (*2) スクリプトによるインストール
-(*3) 動作確認 => スタートアップルーチンが未完成(そのうち作成)
+(*3) 動作確認 => target sim コマンドでエラー
+(*4) target sim コマンドを受け付ける修正
+(*5) 動作確認 => スタートアップルーチンが未完成(そのうち作成)
 
 (*1) AARCH64
 
@@ -40,7 +42,7 @@ _isatty
 
 これで aaa の中を確認すると
 
-00000214 <_exit>:
+00000214 <_exit>:  # _exit  は C での exit
      214:	0d 04       	mov.w	r0,r4
 
 00000216 <.LM2>:
@@ -59,10 +61,10 @@ _isatty
 
 00000228 <.L2>:
      228:	0d 40       	mov.w	r4,r0
-     22a:	5e 00 05 74 	jsr	@0x574:24   これが _exit の呼び出し
+     22a:	5e 00 05 74 	jsr	@0x574:24   # これが _exit の呼び出し
 
 
-00000574 <__exit>:
+00000574 <__exit>:  # C でいう _exit
      574:	79 01 de ad 	mov.w	#0xdead,r1
      578:	79 02 be ef 	mov.w	#0xbeef,r2
      57c:	0c 80       	mov.b	r0l,r0h
@@ -75,7 +77,7 @@ _isatty
 
 にある.
 
-64 ビットではない arm はできていた.
+64 ビットではない ARM はできていた.
 
 % arm-elf-gcc -g -o hello.elf hello.c
 % arm-elf-objdump -d hello.elf > aaa
@@ -131,15 +133,12 @@ target sim コマンドが受け着けられないのは
       if (c->prefixlist && **line && !c->allow_unknown)
 	undef_cmd_error (c->prefixname, *line);  ここが原因らしい
 
-cmdlist をデバッグする函数で確かめると target コマンド自体はある.
-
+cmdlist 構造体をデバッグする函数で確かめると target コマンド自体はある.
 
 c = lookup_cmd_1 (text, *found->prefixlist, result_list,
 			default_args, ignore_help_classes);
 
-
-ここにきたとき *found->prefixlist
-の期待値は
+ここにきたとき *found->prefixlist の期待値は
 
 core
 exec
@@ -166,12 +165,7 @@ tfile
 
 のようになっている.
 
-
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.aarch64-elf/gdb/event-top.c
-
-にある
-
-target sim コンマンドを受け着けるための修正
+(*4) target sim コンマンドを受け着けるための修正
 
 gdb-10.2/gdb/init.c
 
@@ -185,7 +179,6 @@ gdb-10.2/gdb/init.c
   _initialize_ser_socket ();
 + _initialize_remote_sim ();
   _initialize_mi_cmd_env ();
-
 
 gdb-10.2/gdb/Makefile
 
@@ -222,9 +215,12 @@ sim/common/sim-config.c
 
 一応これでエラーを回避できている.
 
+(*5) 動作確認 => スタートアップルーチンが未完成(そのうち作成)
+
 これですぐに hello world できるかと言えばそうではなくて,
 
 % aarch64-elf-gdb hello.elf
+(gdb) target sim
 (gdb) load
 (gdb) run
 Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/hello.elf 
@@ -241,8 +237,7 @@ Program received signal SIGSEGV, Segmentation fault.
 
 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.aarch64-elf/libgloss/aarch64/crt0.S
 
-にあって, これは事前にスタックポインタがセットされているかのような
-状態
+にあって, これは事前にスタックポインタがセットされているかのような状態で
 
 _mainCRTStartup
 (別名 _start)

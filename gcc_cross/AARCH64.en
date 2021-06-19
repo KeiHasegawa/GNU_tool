@@ -1,20 +1,22 @@
-AARCH64 (ARM64) のクロスコンパイル環境
+AARCH64 (ARM64) cross compile environment
 
 (*1) AARCH64
-(*2) スクリプトによるインストール
-(*3) 動作確認 => スタートアップルーチンが未完成(そのうち作成)
+(*2) Install with script
+(*3) Verification => target sim command is rejected
+(*4) Fix for target sim command 
+(*5) Verification => start-up routine is not suitable
 
 (*1) AARCH64
 
 https://en.wikipedia.org/wiki/Aarch64
 
-(*2) スクリプトによるインストール
+(*2) Install with script
 
-「IQ2000」と同じスクリプトを使う
+Use the same script with "IQ2000":
 
-set TARGET = aarch64-elf   # ここを変更
+set TARGET = aarch64-elf   # Change
 
-(*3) 動作確認 => スタートアップルーチンが未完成(そのうち作成)
+(*3) Verification => target sim command is rejected
 
 % aarch64-elf-gcc -g -o hello.elf hello.c
 /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/aarch64-elf/10.2.0/../../../../aarch64-elf/bin/ld: /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/aarch64-elf/10.2.0/../../../../aarch64-elf/lib/libg.a(lib_a-exit.o): in function `exit':
@@ -22,8 +24,8 @@ set TARGET = aarch64-elf   # ここを変更
 ...
 %
 
-これは exit で _exit を参照しているが _exit が定義されていないというエラー.
-以下についてエラーが出ている:
+This error means that `exit' refers to `_exit' but it's not defined.
+The same error is reported about:
 
 _exit
 _sbrk
@@ -35,12 +37,12 @@ _fstat
 _isatty
 
 % h8300-elf-gcc -g -o hello.elf hello.c
-これは正常終了していた.
+# Above command successed
 % h8300-elf-objdump -d hello.elf > aaa
 
-これで aaa の中を確認すると
+Looking at `aaa' then:
 
-00000214 <_exit>:
+00000214 <_exit>:   # `exit' of `C' level name
      214:	0d 04       	mov.w	r0,r4
 
 00000216 <.LM2>:
@@ -59,10 +61,10 @@ _isatty
 
 00000228 <.L2>:
      228:	0d 40       	mov.w	r4,r0
-     22a:	5e 00 05 74 	jsr	@0x574:24   これが _exit の呼び出し
+     22a:	5e 00 05 74 	jsr	@0x574:24   // call `_exit'
 
 
-00000574 <__exit>:
+00000574 <__exit>: # `_exit' of `C' level
      574:	79 01 de ad 	mov.w	#0xdead,r1
      578:	79 02 be ef 	mov.w	#0xbeef,r2
      57c:	0c 80       	mov.b	r0l,r0h
@@ -70,17 +72,15 @@ _isatty
      580:	01 80       	sleep
 
 
-で, この _exit (アセンブラ名 __exit) の定義が
+`_exit' (i.e. __exit at assembler level) is defined at:
 /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/newlib-4.1.0.h8300-elf/newlib/libc/sys/h8300hms/_exit.S
 
-にある.
-
-64 ビットではない arm はできていた.
+At none-64-bit ARM environment, this test program could be built:
 
 % arm-elf-gcc -g -o hello.elf hello.c
 % arm-elf-objdump -d hello.elf > aaa
 
-こんな感じ. _exit はどこかで定義されているらしい.
+Looking at `aaa' then,
 
 00008250 <exit>:
     8250:	e1a0c00d 	mov	ip, sp
@@ -101,7 +101,8 @@ _isatty
     828c:	eafffffa 	b	827c <exit+0x2c>
     8290:	00010090 	.word	0x00010090
 
-いろいろ回避策があるが, 以下のようにした
+Well, there are some options to get rid of this error. I chosed
+a very simple way like below:
 
 % cat dummy.c
 int _exit;
@@ -114,32 +115,28 @@ int _fstat;
 int _isatty;
 % aarch64-elf-gcc -g -o hello.elf hello.c dummy.c
 
-aarch64-elf-gdb
-
-を動かしてみたが
+Then I tried to run `aarch64-elf-gdb', but
 
 target sim
 
-がエラーになる.
+command failed. 
 
 gdb-10.2.aarch64-elf/sim/aarch64/
 
-を見るとビルドされた形跡はある.
+I confirmed that libsim.a existed at above directory.
 
-target sim コマンドが受け着けられないのは
+`target sim' command failed at below part:
 
       if (c->prefixlist && **line && !c->allow_unknown)
-	undef_cmd_error (c->prefixname, *line);  ここが原因らしい
+	undef_cmd_error (c->prefixname, *line);  // This made it error.
 
-cmdlist をデバッグする函数で確かめると target コマンド自体はある.
-
+I confirmed that `target' command existed by debugging function
+for `cmdlist' structure:
 
 c = lookup_cmd_1 (text, *found->prefixlist, result_list,
 			default_args, ignore_help_classes);
 
-
-ここにきたとき *found->prefixlist
-の期待値は
+At above point, the expeced `*found->prefixlist' are:
 
 core
 exec
@@ -152,7 +149,7 @@ remote
 sim
 tfile
 
-のように sim が入っている必要があるが, 現状は
+including `sim'. But at this time,
 
 core
 exec
@@ -164,19 +161,12 @@ record-full
 remote
 tfile
 
-のようになっている.
-
-
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.aarch64-elf/gdb/event-top.c
-
-にある
-
-target sim コンマンドを受け着けるための修正
+(*4) Fix for target sim command
 
 gdb-10.2/gdb/init.c
 
-に以下を追加. init.c は生成されるファイルなので, 例えば configure 実行のタイミングで
-この修正が無効になる可能性はある.
+Add below into above file. Acutally `init.c' is a genereated file.
+So, for example, executing `configure' may over-write `init.c'
 
  extern initialize_file_ftype _initialize_ser_socket;
 +extern initialize_file_ftype _initialize_remote_sim;
@@ -186,30 +176,27 @@ gdb-10.2/gdb/init.c
 + _initialize_remote_sim ();
   _initialize_mi_cmd_env ();
 
-
 gdb-10.2/gdb/Makefile
 
-を以下のように修正
+Modify above file like below:
 
 SIM = ../sim/aarch64/libsim.a
 
 SIM_OBS = remote-sim.o
 
-これでビルドした gdb で target sim コマンドを入力すると
+Then, build gdb. This gdb displayed the below message for target sim command:
 
 Target byte order unspecified
 unable to create simulator instance
 
-のようになる. 残念ながらまだ修正が完全ではない.
+Unfortunately, this was not complete.
 
-とりあえずこの修正で sim_open は呼ばれるようになった.
-
-sim_open でエラーになるのは sim_config が呼ばれたとき
-そこでエラーになっているから.
+But anyway, by this modification, `sim_open' was executed as I expected.
+A errror at `sim_open' when calling `sim_config':
 
 sim/common/sim-config.c
 
-で以下のように修正した:
+I fixed above like below:
 
   /* verify the target byte order */
 #if 0 
@@ -220,11 +207,14 @@ sim/common/sim-config.c
     }
 #endif  
 
-一応これでエラーを回避できている.
+OK. This worked well.
 
-これですぐに hello world できるかと言えばそうではなくて,
+(*5) Verification => start-up routine is not suitable
+
+Unfortunately, the problem still remained.
 
 % aarch64-elf-gdb hello.elf
+(gdb) target sim
 (gdb) load
 (gdb) run
 Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/hello.elf 
@@ -234,26 +224,23 @@ Program received signal SIGSEGV, Segmentation fault.
 0x0000000000000000 in ?? ()
 (gdb)
 
-のようになる. 不正メモリアクセスがターゲットプログラムで発生しているがなぜか
-このメッセージになっている.
+The target program "hello world" made a error which acesssed to `0xfffffff0'
+and gdb displayed the message as if the target program received `SIGSEGV'.
 
-問題はスタートアップルーチン
+But the first problem existed at start-up routine:
 
 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.aarch64-elf/libgloss/aarch64/crt0.S
 
-にあって, これは事前にスタックポインタがセットされているかのような
-状態
+This code expects that `sp' is stack pointer register before calling
 
 _mainCRTStartup
-(別名 _start)
+(alias _start)
 
-がきている. つまり組込み用のスタートアップルーチンではないということ. Windows 用のもの.
-例のアドレス
+i.e. this start-up routine is the verion for Windows. The address
 
 0xfffffff0
 
-にアクセスしているのは 
-
+is accessed by below code:
 
 0000000000400138 <_mainCRTStartup>:
   400138:	58000281 	ldr	x1, 400188 <_cpu_init_hook+0x4>
@@ -262,7 +249,10 @@ _mainCRTStartup
   400144:	d280001d 	mov	x29, #0x0                   	// #0
   400148:	a9bf77fd 	stp	x29, x29, [sp, #-16]!
 
-この stp 命令が問題で sp が 0 だとこのような結果になってしまう.
-gdb + aarch64 シミュレータの問題は解決したが, これはまた別の問題. 
+The last `stp' instruction accesses 0xfffffff0 if sp is 0.
 
-だからスタートアップルーチンを修正する必要があるが, とりあえず保留.
+
+gdb + aarch64 simulator problem was resolved, but this is
+another problem.
+
+So we have to create start-up routine for aarch64 simulator.
