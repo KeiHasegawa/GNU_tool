@@ -1,19 +1,20 @@
-pru-elf
+PRU cross compile environment
 
-01_new_batch を実行した結果, 最後の確認
-でエラーになっている.
+(*1) PRU
+https://beagleboard.org/pru
 
-% pru-elf-gcc -g -o 00_batch.verify.elf 00_batch.verify.c -Tpruelf-sim.x
+(*2) Install with script
 
-のようにすればいいらしい. しかし,
+Use the same script with "IQ2000":
 
+set TARGET = pru-elf   # Change
+
+(*3) Verification => NG
+
+% pru-elf-gcc -g -o hello.elf hello.c -Tpruelf-sim.x
 % pru-elf-gdb 00_batch.verify.elf
 arch-utils.c:693: internal-error: initialize_current_architecture: Selection of initial architecture failed
 A problem internal to GDB has been detected,
 further debugging may prove unreliable.
-Quit this debugging session? (y or n) セグメントエラー
+Quit this debugging session? (y or n) Segmentation fault
 %
-
-のようになってしまう.
-
-
