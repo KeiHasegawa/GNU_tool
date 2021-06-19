@@ -93,7 +93,6 @@ Size of register pc (17/17) incorrect (2 instead of 4))
 ひとまず sim_create_inferior の後に
 
 sim_fetch_register
-
 が呼び出されることが期待されるのでここにブレークポイントをセットしてみた.
 そして呼び出されていることを確認した.
 
@@ -183,7 +182,7 @@ rn = 17 だが
 
 tdep
 
-に誤りがあったのだろう.
+に誤りがあったのかと思った.
 そこで
 
 gdb/m68hc11-tdep.c
@@ -193,8 +192,7 @@ gdb/m68hc11-tdep.c
 gdb/m68k-tdep.c
 
 
-でこれは configure の実行の仕方に誤りがあった.
-
+でこれは configure の実行の仕方に誤りがあったのかと思った.
 
 
 % ./configure --target=m68hc11-elf --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
@@ -290,3 +288,79 @@ current_top_target ()
 の呼び出しのところで 0 番地アクセスしている.
 
 単純に current_inferior () の戻り値が 0 になっている.
+
+これはエラーが発生したのだが, そのエラーを出そうとしてさらにエラーしているという状況
+だった.
+
+最初のエラーは
+
+
+  bfd_arch_info = bfd_lookup_arch (bfd_architecture, 0);
+  if (bfd_arch_info == NULL)
+    {
+      internal_error (__FILE__, __LINE__,
+
+bfd_lookup_arch で NULL が返っているということ. そして internal_error
+を呼び出そうとして 0 番地アクセスしたというわけだ.
+
+
+
+gdb-10.2/bfd/archures.c
+
+で
+
+static const bfd_arch_info_type * const bfd_archures_list[] =
+  {
+#ifdef SELECT_ARCHITECTURES
+    SELECT_ARCHITECTURES,
+#else
+    &bfd_aarch64_arch,
+    &bfd_alpha_arch,
+...
+#endif
+  0
+};
+
+のようにしているが, SELECT_ARCHITECTURES はコマンドラインで define されていたこと
+だけは判明している.
+
+なので, 以下のように修正した:
+
+static const bfd_arch_info_type * const bfd_archures_list[] =
+  {
+    &bfd_m68hc11_arch,
+    &bfd_m68hc12_arch,
+#if 0
+    &bfd_aarch64_arch,
+    ...
+#endif
+0
+};
+
+実はこれだけだとうまくいかない.
+
+
+initialize_all_files (void)
+{
+  _initialize_m68k_tdep ();          // これがないと sim_open が呼ばれる前に read
+                                     // でエラーする
+				     // mcore-elf で見た現象
+  _initialize_m68hc11_tdep ();
+
+
+static const bfd_arch_info_type * const bfd_archures_list[] =
+  {
+    &bfd_m68k_arch,
+    &bfd_m68hc11_arch,
+    &bfd_m68hc12_arch,
+
+
+というわけで, 上のようにする必要があった.
+
+結局この修正を入れても
+
+PC
+
+の 17 番と 4 番の問題は回避できていない.
+
+
