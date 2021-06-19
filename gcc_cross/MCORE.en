@@ -1,47 +1,32 @@
-MCORE のクロスコンパイル環境
+MCORE cross compile environment
 
 (*1) MCORE
-(*2) スクリプトによるインストール
-(*3) 動作確認 => NG
+(*2) Install with script
+(*3) Verification => NG
 
 (*1) MCORE
 
 https://www.arch.cs.titech.ac.jp/mcore/index.html
 
-これは研究用の仮想アーキテクチャということなのだろう. どうやら本家では独自の
-シミュレータがあるらしい.
+(*2) Install with script
 
-(*2) スクリプトによるインストール
+Use the same script with "IQ2000":
 
-「IQ2000」と同じスクリプトを使う
+set TARGET = mcore-elf   # Change
 
-set TARGET = mcore-elf   # ここを変更
-
-(*3) 動作確認 => NG
+(*3) Verification => NG
 
 % mcore-elf-gcc -g -o hello.elf hello.c
 /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/mcore-elf/10.2.0/../../../../mcore-elf/bin/ld: /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/mcore-elf/10.2.0/../../../../mcore-elf/lib/libc.a(lib_a-isattyr.o): in function `_isatty_r':
 /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/newlib-4.1.0.mcore-elf/mcore-elf/newlib/libc/reent/../../../.././newlib/libc/reent/isattyr.c:55: undefined reference to `_isatty'
-collect2: エラー: ld はステータス 1 で終了しました
+collect2: error: ld terminated status 1
 %
-
-newlib を修正
-
-_isatty_r で呼び出している _isatty を isatty に変更した.
-
-% mcore-elf-gcc -g -o hello.elf hello.c
-/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/mcore-elf/10.2.0/../../../../mcore-elf/bin/ld: /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/mcore-elf/10.2.0/../../../../mcore-elf/lib/libc.a(lib_a-sysisatty.o): in function `isatty':
-/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/newlib-4.1.0.mcore-elf/mcore-elf/newlib/libc/syscalls/../../../.././newlib/libc/syscalls/sysisatty.c:14: undefined reference to `_isatty'
-collect2: エラー: ld はステータス 1 で終了しました
-%
-
-newlib の修正がまずかったらしい.
 
 newlib-4.1.0.mcore-elf/newlib/libc/syscalls/sysisatty.c
 
-を以下のように変更
+was fixed like below
 
-#define REENTRANT_SYSCALLS_PROVIDED    これを追加
+#define REENTRANT_SYSCALLS_PROVIDED    // Add this
 
 int
 isatty (int fd)
@@ -53,13 +38,9 @@ isatty (int fd)
 #endif
 }
 
-問題のリンクエラーはとりあえず回避できた.
+% mcore-elf-gcc -g -o hello.elf hello.c
 
-今度は
-
-mcore-elf-gdb
-
-実行時以下のようなエラーが発生.
+OK. hello.elf was generated.
 
 
 % mcore-elf-gdb hello.elf
@@ -67,12 +48,11 @@ mcore-elf-gdb
 arch-utils.c:693: internal-error: initialize_current_architecture: Selection of initial architecture failed
 A problem internal to GDB has been detected,
 further debugging may prove unreliable.
-Quit this debugging session? (y or n) セグメントエラー
+Quit this debugging session? (y or n) Segmentation fault
 %
 
-gdb で mcore-elf-gdb の動作を確認したところ, 以下の函数が
-event = 0 の引数で呼び出されているのが不正メモリアクセスの
-直接の原因.
+By using gdb, I confirmed that mcore-elf-gdb accessed address 0
+at below function:
 
 void
 serial_event_clear (struct serial_event *event)
@@ -89,13 +69,15 @@ serial_event_clear (struct serial_event *event)
     }
   while (r > 0 || (r < 0 && errno == EINTR));
 
-しかしその前に
+Above is the direct reason for segmentation fault.
+But before this error, the below  message was displayed:
 
 arch-utils.c:693: internal-error: initialize_current_architecture: Selection of initial architecture failed
 A problem internal to GDB has been detected,
 further debugging may prove unreliable.
 Quit this debugging session? (y or n) 
 
+Maybe 
 のメッセージが出ている. おそらく mcore のシミュレータとの通信が
 正常でないのだろう.
 

@@ -25,18 +25,6 @@ set TARGET = mcore-elf   # ここを変更
 collect2: エラー: ld はステータス 1 で終了しました
 %
 
-newlib を修正
-
-_isatty_r で呼び出している _isatty を isatty に変更した.
-
-% mcore-elf-gcc -g -o hello.elf hello.c
-/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/mcore-elf/10.2.0/../../../../mcore-elf/bin/ld: /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/mcore-elf/10.2.0/../../../../mcore-elf/lib/libc.a(lib_a-sysisatty.o): in function `isatty':
-/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/newlib-4.1.0.mcore-elf/mcore-elf/newlib/libc/syscalls/../../../.././newlib/libc/syscalls/sysisatty.c:14: undefined reference to `_isatty'
-collect2: エラー: ld はステータス 1 で終了しました
-%
-
-newlib の修正がまずかったらしい.
-
 newlib-4.1.0.mcore-elf/newlib/libc/syscalls/sysisatty.c
 
 を以下のように変更
@@ -96,8 +84,7 @@ A problem internal to GDB has been detected,
 further debugging may prove unreliable.
 Quit this debugging session? (y or n) 
 
-のメッセージが出ている. おそらく mcore のシミュレータとの通信が
-正常でないのだろう.
+のメッセージが出ている. おそらく mcore のシミュレータとのやりとりが正常でないのだろう.
 
 問題の箇所
 
