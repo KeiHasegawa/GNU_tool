@@ -1,45 +1,45 @@
-groff �̒���
+groff の調査
 
-     ��{�I�ɂ�
+     基本的には
 
 % man -s:1 groff
 % man -s:7 groff
 
-     ���Q�Ƃ���ׂ�.
+     を参照するべき.
 
-     groff(7) �́uRequest Short Reference�v�̂Ƃ���Ƀ^�O�̐���������.
+     groff(7) の「Request Short Reference」のところにタグの説明がある.
 
-     �܂��ʏ� man �Ŏg�p�����}�N����
+     また通常 man で使用されるマクロは
 
 /usr/local/share/groff/1.22.4/tmac/
 
-     �ɂ���. �Ⴆ�΃}�j���A���̃^�C�g���̂��߂� .TH �}�N����
+     にある. 例えばマニュアルのタイトルのための .TH マクロは
 
 an-old.tmac
 
-     �ɒ�`�������Ă���.
+     に定義が書いてある.
 
-sample000.txt : UTF-8 �̓��{��. man ./sample000.txt �̂悤�ɂ��ĕ\����
-	        ������ groffer sample000.txt �ł͕����������Ă���.
-		sample000.txt �̓^�O�͈�؎g�p���Ă��Ȃ�.
+sample000.txt : UTF-8 の日本語. man ./sample000.txt のようにして表示で
+	        きたが groffer sample000.txt では文字化けしている.
+		sample000.txt はタグは一切使用していない.
 
-sample001.txt : .br �ɂ����s������T���v��
+sample001.txt : .br により改行を入れるサンプル
 
-sample002.txt : �󔒂̈����������Ă���T���v�� man ./sample002.txt �ł�
-	        ���܂�Ⴂ��������Ȃ��� groffer sample002.txt �ňႢ��
-		�悭������.
+sample002.txt : 空白の扱いを試しているサンプル man ./sample002.txt では
+	        あまり違いが分からないが groffer sample002.txt で違いが
+		よく分かる.
 
-sample003.txt : �n�C�t��(-) ���������T���v��. ���҂�������͑S�p�� -
-	        ���\������Ă���. �܂� - �� - �Ƃ̊Ԃɋ󔒂������Ă���
-		�悤�Ɍ�����.
+sample003.txt : ハイフン(-) を書いたサンプル. 期待せずこれは全角の -
+	        が表示されている. また - と - との間に空白が入っている
+		ように見える.
 
-sample004.txt : sample003.txt �̖������������.
+sample004.txt : sample003.txt の問題を解消する例.
 
-sample005.txt : �v���O�����e�L�X�g�̈ꕔ���n�C���C�g�������.
+sample005.txt : プログラムテキストの一部をハイライトさせる例.
 
-sample006.txt : �A���_�[���C���̗�. ���� \fI ���C�^���b�N�̂� \fR ��
-	        ���[�}���̂ł���. sample005.txt �� \fB �� Bold Font
-		�Ƃ������ƂȂ̂��낤.
+sample006.txt : アンダーラインの例. 実は \fI がイタリック体で \fR が
+	        ローマン体である. sample005.txt の \fB は Bold Font
+		ということなのだろう.
 
 
 
