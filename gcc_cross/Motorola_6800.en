@@ -1,8 +1,21 @@
-m68k-elf-gcc -o hello.elf -g hello.c -Tsim.ld -lsim
+Motorola 6800 のクロスコンパイル環境
+
+(*1) Motorola 6800
+https://en.wikipedia.org/wiki/Motorola_6800
+
+(*2) スクリプトによるインストール
+
+「IQ2000」と同じスクリプトを使う
+
+set TARGET = m68k-elf   # ここを変更
+
+(*3) 動作確認 => NG
+
+ターゲットプログラムのビルド:
+
+% m68k-elf-gcc -o hello.elf -g hello.c -Tsim.ld -lsim
 
 のようにビルドすればうまくいく. 
-
-./configure --target=m68k-elf
 
 のようにしてビルドしたが, m68k-elf-gdb は target sim コマンドが
 ないものになっている.
@@ -21,19 +34,17 @@ target sim コマンドが受け着けられない
 
 =>
 
-MEMO.aarch64-elf と同じ対応が必要らしい
+AARCH64(ARM64) と同じ対応が必要らしい
 
 gdb/init.c
 
-extern initialize_file_ftype _initialize_ser_tcp;
+ extern initialize_file_ftype _initialize_ser_tcp;
+ extern initialize_file_ftype _initialize_ser_socket;
 +extern initialize_file_ftype _initialize_remote_sim;
-extern initialize_file_ftype _initialize_ser_socket;
-
 
   _initialize_ser_tcp ();
-+ _initialize_remote_sim ();
   _initialize_ser_socket ();
-
++ _initialize_remote_sim ();
 
 gdb/Makefile
 
@@ -90,9 +101,10 @@ Program received signal SIGTRAP, Trace/breakpoint trap.
 Size of register pc (17/17) incorrect (2 instead of 4))
 
 のエラーメッセージらしものを出している部分を特定するべき.
-ひとまず sim_create_inferior の後に
+sim_create_inferior の後に
 
 sim_fetch_register
+
 が呼び出されることが期待されるのでここにブレークポイントをセットしてみた.
 そして呼び出されていることを確認した.
 
@@ -179,7 +191,6 @@ rn = 17 だが
 なので全然違うことになっている.
 おそらくこれは
 
-
 tdep
 
 に誤りがあったのかと思った.
@@ -235,7 +246,7 @@ print_insn_m68hc11
 
 m68hc11-dis.o
 
-で定義されているので問題なし. run のビルドをしないように Makefile を修正する.
+で定義されているので問題なし. とりあえず run のビルドをしないように Makefile を修正した.
 
 gdb/init.c
 
@@ -269,7 +280,7 @@ opcodes/disassemble.c
       break;
 #endif
 
-こっちのやりかたはあまりうまくいかない. むしろ
+こっちのやり方はあまりうまくいかった. むしろ
 
 % ./configure --target=m68k-elf --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
 
@@ -302,7 +313,6 @@ current_top_target ()
 
 bfd_lookup_arch で NULL が返っているということ. そして internal_error
 を呼び出そうとして 0 番地アクセスしたというわけだ.
-
 
 
 gdb-10.2/bfd/archures.c
@@ -344,7 +354,7 @@ initialize_all_files (void)
 {
   _initialize_m68k_tdep ();          // これがないと sim_open が呼ばれる前に read
                                      // でエラーする
-				     // mcore-elf で見た現象
+				     // MCORE で見た現象
   _initialize_m68hc11_tdep ();
 
 
@@ -362,5 +372,3 @@ static const bfd_arch_info_type * const bfd_archures_list[] =
 PC
 
 の 17 番と 4 番の問題は回避できていない.
-
-
