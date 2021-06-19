@@ -48,6 +48,27 @@ sh-4.4$ xeyes -display 192.168.100.17:0.0
 
     Above did not work.
 
+Actually if you search "cygwin" "X server" "cannot" at internet,
+you may reach to the right answer. The answer is that you should specify
+
+-listen tcp
+
+option to `X'. See "(*5) Try `sh -vf /usr/bin/startx'" log. You can found
+below log:
+
+xinit "xterm" -- "/usr/bin/X" :0 -auth '/cygdrive/d/home/khasegawa/.serverauth.63900'
+
+so, execute like below:
+
+xinit "xterm" -- "/usr/bin/X" :0 -auth '/cygdrive/d/home/khasegawa/.serverauth.63900' -listen tcp
+
+More simply, you can run
+
+startxwin -- -listen tcp
+
+I reached to my answer in a different way. Maybe right.
+
+
 (*4) Emacs failed at cgywin, but it's not matter of X server
 
 sh-4.4$ emacs                        

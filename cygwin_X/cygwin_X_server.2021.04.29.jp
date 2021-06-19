@@ -42,6 +42,22 @@ Display 192.168.100.16:0.0 can't be opened
 
      これは, X server に拒否されているということだろうか.
 
+実は "cygwin" "X server" "できない" とかで検索すると正解に辿り着けたかもしれない.
+どうやら X の起動時に -listen tcp を指定する必要があったらしい.
+「(*5) sh -vf /usr/bin/startx を実行してみた」に startx 実行時のログがある.
+
+xinit "xterm" -- "/usr/bin/X" :0 -auth '/cygdrive/d/home/khasegawa/.serverauth.63900'
+
+これを
+
+xinit "xterm" -- "/usr/bin/X" :0 -auth '/cygdrive/d/home/khasegawa/.serverauth.63900' -listen tcp
+
+とするということらしい.
+
+startxwin -- -listen tcp
+
+としてもできるらしい. しかし私は全く違う方法で正解らしきものに辿り着いた.
+
 (*3) cygwin で xeyes を X server 指定で起動してみたが起動できず.
 
 sh-4.4$ xeyes -display 192.168.100.17:0.0
