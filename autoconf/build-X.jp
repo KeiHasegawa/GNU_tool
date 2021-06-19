@@ -1,4 +1,4 @@
-(*1) cygwin �� X �T�[�o�[�̃r���h
+(*1) cygwin の X サーバーのビルド
 
 % cd
 % wget -q http://cygwin.mirror.constant.com/x86_64/release/xorg-server/xorg-server-1.20.9-1-src.tar.xz
@@ -52,21 +52,21 @@ xkb
 xorg-server.m4
 xorg-server.pc.in
 xserver.ent.in
-                         # configure ���Ȃ�
+                         # configure がない
 % autoconf
 configure.ac:38: error: must install xorg-macros 1.14 or later before running autoconf/autogen
 configure.ac:38: the top level
 autom4te-2.69: /usr/bin/m4 failed with exit status: 1
 %
-                         # autoconf �� fail ���Ă���
+                         # autoconf が fail している
 
-�Ȃ񂾂��ǂ�������Ȃ���, ���܂ł� configure ���s���ɉ������`�F�b�N���Ă����̂�,
-����� configure �������ɃG���[���Ă���.
+なんだか良く分からないが, 今までは configure 実行時に何かをチェックしていたのに,
+今回は configure 生成時にエラーしている.
 
-�Ƃ������̃��b�Z�[�W�� xorg-macros �Ȃ郉�C�u�������p�b�P�[�W���Ȃ��̂ŃG���[���Ă���
-�Ɨ\������.
+ともあれ上のメッセージは xorg-macros なるライブラリかパッケージがないのでエラーしている
+と予測した.
 
-(*2) xorg-macros �̃C���X�g�[��
+(*2) xorg-macros のインストール
 
 % cd
 % wget -q https://www.x.org/releases/X11R7.7/src/everything/util-macros-1.17.tar.bz2
@@ -78,9 +78,9 @@ autom4te-2.69: /usr/bin/m4 failed with exit status: 1
 
 /usr/local/share/pkgconfig/xorg-macros.pc
 
-���쐬����Ă���.
+が作成されている.
 
-(*3) X �T�[�o�[�̃r���h�ĊJ
+(*3) X サーバーのビルド再開
 
 % cd ~/xorg-server-1.20.9-1.src/xserver-xserver-cygwin-1.20.9-1
 % autoconf
@@ -88,19 +88,19 @@ configure.ac:38: error: must install xorg-macros 1.14 or later before running au
 configure.ac:38: the top level
 autom4te-2.69: /usr/bin/m4 failed with exit status: 1
 %
-           # �G���[������ł��Ă��Ȃ�
+           # エラーを回避できていない
 
 % ls -ltr
-           # autom4te.cache �Ƃ����f�B���N�g��������. �����������ꂽ�炵��.
+           # autom4te.cache というディレクトリがある. ついさっき作られたらしい.
 % rm -r -f autom4te.cache
 % autoconf
 configure.ac:38: error: must install xorg-macros 1.14 or later before running autoconf/autogen
 configure.ac:38: the top level
 autom4te-2.69: /usr/bin/m4 failed with exit status: 1
 %
-          # ��͂�G���[������ł��Ă��Ȃ�
+          # やはりエラーを回避できていない
 
-autoconf �͂��łɃC���X�g�[������Ă��邪, ���������Ȃ̂Ń\�[�X����
-�C���X�g�[�����邱�Ƃɂ���.
+autoconf はすでにインストールされているが, せっかくなのでソースから
+インストールすることにした.
 
-  => �uautoconf �̃C���X�g�[���v�Q��
+  => 「autoconf のインストール」参照
