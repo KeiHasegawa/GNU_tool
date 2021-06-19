@@ -1,30 +1,30 @@
-�^�O����
+タグ生成
 
-(*1) vi �ł� ctags �̊ȒP�Ȏg����
-(*2) emacs �ł� ctags �̊ȒP�Ȏg����
-(*3) �v���O�����t�@�C������^�O�t�@�C���𐶐�����
-(*4) mktags.exe �̃r���h���@
-(*5) tags �̃t�H�[�}�b�g
-(*6) TAGS �̃t�H�[�}�b�g
-(*7) C++ �� STL �� emacs �Ń^�O�W�����v����.
-(*8) �R���e�L�X�g
-(*9) gcc �� -g3 �I�v�V����
-(*10) ����ȃv���O�����ɑ΂��铮��
-(*11) emacs �̃^�O�W�����v�̂�邳
-(*12) �s���S�^�\���̂̈���
-(*13) C++ �e���v���[�g�̃C���X�^���V�G�[�V����
-(*14) C++ �e���v���[�g�̃C���X�^���V�G�[�V����(����2)
-(*15) enum �̃����o
-(*16) �����̐錾
-(*17) �^�O�W�����v�����Ғʂ蓮�삵�Ȃ��ꍇ
+(*1) vi での ctags の簡単な使い方
+(*2) emacs での ctags の簡単な使い方
+(*3) プログラムファイルからタグファイルを生成する
+(*4) mktags.exe のビルド方法
+(*5) tags のフォーマット
+(*6) TAGS のフォーマット
+(*7) C++ の STL に emacs でタグジャンプする.
+(*8) コンテキスト
+(*9) gcc の -g3 オプション
+(*10) 巨大なプログラムに対する動作
+(*11) emacs のタグジャンプのゆるさ
+(*12) 不完全型構造体の扱い
+(*13) C++ テンプレートのインスタンシエーション
+(*14) C++ テンプレートのインスタンシエーション(その2)
+(*15) enum のメンバ
+(*16) 函数の宣言
+(*17) タグジャンプが期待通り動作しない場合
 
-(*1) vi �ł� ctags �̊ȒP�Ȏg����
+(*1) vi での ctags の簡単な使い方
 
-�N�����Ƀ^�O�W�����v	vi -t <�^�O��>
-�^�O�W�����v		:ta <�^�O��>
-�^�O�W�����v		Ctrl-]
-���ɖ߂�			Ctrl-T
-�������			:ts <�^�O��>
+起動時にタグジャンプ	vi -t <タグ名>
+タグジャンプ		:ta <タグ名>
+タグジャンプ		Ctrl-]
+元に戻る			Ctrl-T
+複数候補			:ts <タグ名>
 
 % cat a.c
 #include <stdio.h>
@@ -86,171 +86,171 @@ typedef unsigned int location;
 
 #endif /* D_H */
 % ctags a.c b.c c.c d.h
-# tags �Ƃ����t�@�C�������������
+# tags というファイルが生成される
 % vi -t location
-# vi ���N������ d.h �� location �̒�`�ʒu���\�������
-vi �̃R�}���h��
+# vi が起動して d.h の location の定義位置が表示される
+vi のコマンドで
 :ta main
-�̂悤�ɂ���ƃ^�O main �փW�����v�ł���.
-�T���������O�̂Ƃ���ɃJ�[�\���������Ă�����
+のようにするとタグ main へジャンプできる.
+探したい名前のところにカーソルをもっていって
 
 Ctrl-] 
 
-�Ƃ���΃^�O�W�����v�ł���. �^�O�W�����v������
+とすればタグジャンプできる. タグジャンプした後
 
 Ctrl-T
 
-�Ƃ���΂��Ƃɖ߂邱�Ƃ��ł���.
+とすればもとに戻ることができる.
 
 :ts X
 
-�Ƃ���Ε���������̂ǂꂩ��I�����ăW�����v���邱�Ƃ��ł���.
-�C���^�[�l�b�g����������� vi �� ctags �̂��ڂ����g�����𔭌��ł���.
+とすれば複数ある候補のどれかを選択してジャンプすることができる.
+インターネットを検索すれば vi と ctags のより詳しい使い方を発見できる.
 
-(*2) emacs �ł� ctags �̊ȒP�Ȏg����
+(*2) emacs での ctags の簡単な使い方
 
-�^�O�t�@�C����ǂݍ���	M-x visit-tags-table
-�^�O�W�����v		M-.
-���ɖ߂�			M-*          (*A)
-���̌��			C-u M-.      (*B)
+タグファイルを読み込む	M-x visit-tags-table
+タグジャンプ		M-.
+元に戻る			M-*          (*A)
+次の候補			C-u M-.      (*B)
 
-(*A) emacs 27.2 �ł̓L�[�o�C���h����Ă��Ȃ�
-     ~/.emacs �Ɉȉ��������� M-* ���g�����Ƃ͂ł���
+(*A) emacs 27.2 ではキーバインドされていない
+     ~/.emacs に以下を書けば M-* を使うことはできる
 
 (global-set-key "\M-*" 'pop-tag-mark)
 
-(*B) emacs 23.3.1 �̂�
-     emacs 27.2 �ł͈Ⴄ�@�\�ɃL�[�o�C���h����Ă���炵��
+(*B) emacs 23.3.1 のみ
+     emacs 27.2 では違う機能にキーバインドされているらしい
 
 % ctags -e a.c b.c c.c d.h
-# TAGS �Ƃ����t�@�C�����쐬�����
+# TAGS というファイルが作成される
 
-emacs ���N������
+emacs を起動して
 
 M-x visit-tags-table
 
-�Ő������� TAGS ���w�肷��. �ʏ�̓J�����g�f�B���N�g���� TAGS �t�@�C����
-�J�����Ƃ��Ă��邩��, ���̏ꍇ�̓��^�[���L�[�������΂悢.
-����͖����I�ɂ��Ȃ��Ă��^�O�W�����v���悤�Ƃ���Ƃǂ� TAGS ��
-�g���������Ă���̂ł���ɓ�����΂悢.
+で生成した TAGS を指定する. 通常はカレントディレクトリの TAGS ファイルを
+開こうとしているから, その場合はリターンキーを押せばよい.
+これは明示的にやらなくてもタグジャンプしようとするとどの TAGS を
+使うか聞いてくるのでそれに答えればよい.
 
-�t�@�C�����J������ԂŒT���������O�̂Ƃ���ɃJ�[�\���������Ă�����
+ファイルを開いた状態で探したい名前のところにカーソルをもっていって
 
 M-.
 
-�Ƃ���΃^�O�W�����v�ł���. �^�O�W�����v������
+とすればタグジャンプできる. タグジャンプした後
 
 M-*
 
-�Ƃ���΂��Ƃɖ߂邱�Ƃ��ł���.
+とすればもとに戻ることができる.
 
 C-u M-.
 
-�Ƃ���Ε������̎��ɃW�����v����. a.c �� d.h �Ƀ}�N�� X ��
-��`�����ꂼ�ꂠ��̂� X �Ƀ^�O�W�����v�����
-a.c �� X �̒�`�ɃW�����v����. ���̌�
+とすれば複数候補の次にジャンプする. a.c と d.h にマクロ X の
+定義がそれぞれあるので X にタグジャンプすると
+a.c の X の定義にジャンプする. その後
 
 C-u M-.
 
-�Ƃ���� d.h �� X �̒�`�ɃW�����v����.
+とすると d.h の X の定義にジャンプする.
 
-emacs 27.2 �ł͏����l�q������Ă��� X �ɑ΂���
+emacs 27.2 では少し様子が違っていて X に対して
 
 M-.
 
-�Ƃ���ƈꗗ���\�������. ���̈ꗗ�̂Ƃ���ɃJ�[�\���������Ԃ�
+とすると一覧が表示される. その一覧のところにカーソルがある状態で
 
 p
 
-��
+や
 
 n
 
-�������ƖړI�̏ꏊ�ɃW�����v�ł���悤�ɂȂ��Ă���. �ꗗ�ɂ�����J�[�\��
-�̈ʒu�� 1 �s����Ă���(?)�̂��C�ɂ͂Ȃ�.
+を押すと目的の場所にジャンプできるようになっている. 一覧におけるカーソル
+の位置が 1 行ずれている(?)のが気にはなる.
 
-(*3) �v���O�����t�@�C������^�O�t�@�C���𐶐�����
+(*3) プログラムファイルからタグファイルを生成する
 
 % ./mktags.exe a.out
-# tags �����������. vi �p
+# tags が生成される. vi 用
 % ./mktags.exe -e a.out
-# TAGS �����������. emacs �p.
+# TAGS が生成される. emacs 用.
 
-�I�v�V����:
+オプション:
 
--a : ��΃p�X�Ő�������. �f�t�H���g�ł͑��΃p�X�Ő���.
--e : TAGS �𐶐�����. emacs �p. �f�t�H���g�ł� tags �𐶐�����. vi �p.
--v : objdump -g ���o�͂��錋�ʂ�W���o�͂ɏ����o��.
--E <�f�B���N�g��> : -E /usr �̂悤�Ɏg�p����. /usr ����n�܂�t�@�C���𖳎�����.
--w : �\�[�X�t�@�C�����I�[�v���ł��Ȃ������ꍇ�Ƀ��b�Z�[�W���o���Ȃ�.
--n : ��̃t�@�C���ɑ΂���, �t�@�C�����̃^�O���쐬���Ȃ�. �f�t�H���g�ł͍쐬����.
--o <�t�@�C��> : �o�̓t�@�C�����w�肷��. �f�t�H���g�ł� tags. -e �I�v�V�������w��
-               ����Ă���ꍇ�̓f�t�H���g�� TAGS.
--p <�f�B���N�g��> : -p d:/cygwin64 �� -p /cygdrive/d �̂悤�Ɏg�p����. Windows
-                  �Ń^�O���������Ƃ���
+-a : 絶対パスで生成する. デフォルトでは相対パスで生成.
+-e : TAGS を生成する. emacs 用. デフォルトでは tags を生成する. vi 用.
+-v : objdump -g が出力する結果を標準出力に書き出す.
+-E <ディレクトリ> : -E /usr のように使用する. /usr から始まるファイルを無視する.
+-w : ソースファイルをオープンできなかった場合にメッセージを出さない.
+-n : 空のファイルに対して, ファイル名のタグを作成しない. デフォルトでは作成する.
+-o <ファイル> : 出力ファイルを指定する. デフォルトでは tags. -e オプションが指定
+               されている場合はデフォルトが TAGS.
+-p <ディレクトリ> : -p d:/cygwin64 や -p /cygdrive/d のように使用する. Windows
+                  でタグ生成したときに
 		  /usr/local/include/c++/10.2.0/bits/stl_vector.h
-		  �̂悤�ȃt�@�C������
+		  のようなファイル名を
 		  d:/cygwin64/usr/local/include/c++/10.2.0/bits/stl_vector.h
-		  ��
+		  や
 		  /cygdrive/d/usr/local/include/c++/10.2.0/bits/stl_vector.h
-		  �̂悤�ɕύX����.	       
+		  のように変更する.	       
 
-(*4) mktags.exe �̃r���h���@
+(*4) mktags.exe のビルド方法
 
-1. binutils ���\�[�X�t�@�C������r���h����.
+1. binutils をソースファイルからビルドする.
 
-    �g�b�v -> �uGNU �̃c�[���v->
-    �ulinux �ł� binutils 2.36.1 �C���X�g�[�������v
+    トップ -> 「GNU のツール」->
+    「linux での binutils 2.36.1 インストールメモ」
 
-    ���Q�l�ɂȂ�. cygwin �ł��g���u�������������r���h�ƃC���X�g�[����
-    �ł��Ă���.
+    が参考になる. cygwin でもトラブルが発生せずビルドとインストールが
+    できている.
 
-2. ���̃y�[�W�ɂ��� mktags.cpp my_dwarf.c my_objdump.c Makefile
-   ���_�E�����[�h���Ĉȉ��̂悤�Ɏ��s����:
+2. このページにある mktags.cpp my_dwarf.c my_objdump.c Makefile
+   をダウンロードして以下のように実行する:
 
 % make -n
-# g++, gcc �̋N�����@���m�F����. Makefile �� BINUTILS_DIR �������̊���
-# ���킹�ďC������.
+# g++, gcc の起動方法を確認する. Makefile の BINUTILS_DIR を自分の環境に
+# 合わせて修正する.
 % make
-# �����������Γ����f�B���N�g���� mktags.exe ���r���h�ł���.
+# 正しく動けば同じディレクトリに mktags.exe をビルドできる.
 
-(*5) tags �̃t�H�[�}�b�g
+(*5) tags のフォーマット
 
-(�^�O��)	(�t�@�C����)	(vi �R�}���h)"	[fvdsm]	[file:]
+(タグ名)	(ファイル名)	(vi コマンド)"	[fvdsm]	[file:]
 
-�Ⴆ��
+例えば
 HOGE	./a.c	1;"	d	file:
 main	./a.c	/^int main()$/;"	f
 
-��
+は
 
-    o �^�O HOGE �ɑ΂��� ./a.c ���J���� 1 �s�ڂɃW�����v����Ƃ������Ƃ�
-      �Ӗ����Ă���悤�ł���.
-    o �^�O main �ɑ΂��� ./a.c ���J���Đ��K�\�� ^int main()$
-      ���������邱�Ƃ��Ӗ����Ă���悤�ł���.
+    o タグ HOGE に対して ./a.c を開いて 1 行目にジャンプするということを
+      意味しているようである.
+    o タグ main に対して ./a.c を開いて正規表現 ^int main()$
+      を検索することを意味しているようである.
 
-(*6) TAGS �̃t�H�[�}�b�g
+(*6) TAGS のフォーマット
 
-    (*5) �� TAGS �ŕ\������ƈȉ��̂悤�ɂȂ�:
+    (*5) を TAGS で表現すると以下のようになる:
 
 ^L
 ./a.c,45
 #define HOGE 1^?HOGE^A1,0
 int main()^?main^A3,16
 
-     ^L : �G�X�P�[�v���� '\f'
-     45 : #define ... 16 �܂ł̃o�C�g��
-     ^? : 0177 �� putc ��������
-     ^A : 1 �� putc ��������
+     ^L : エスケープ文字 '\f'
+     45 : #define ... 16 までのバイト数
+     ^? : 0177 を putc したもの
+     ^A : 1 を putc したもの
 
 ^L
-�t�@�C����,�o�C�g��
-�e�L�X�g1^L�^�O��1^A�s�ԍ�1,�t�@�C�����I�t�Z�b�g1
+ファイル名,バイト数
+テキスト1^Lタグ名1^A行番号1,ファイル内オフセット1
 ...
 
-     �̂悤�ɂȂ�.
+     のようになる.
 
-(*7) C++ �� STL �� emacs �Ń^�O�W�����v����.
+(*7) C++ の STL に emacs でタグジャンプする.
 
 % cat a.cpp
 #include <vector>
@@ -264,119 +264,119 @@ int main()
 % g++ -g3 a.cpp -o a.out
 % ./mktags.exe -e a.out
 
-     �Ƃ��� TAGS �𐶐�����. emacs �� vector �փ^�O�W�����v���Ă݂�.
-     �W�����v�������
+     として TAGS を生成する. emacs で vector へタグジャンプしてみる.
+     ジャンプした先は
 
 /usr/local/include/c++/10.2.0/vector
 
-     �� 1 �s�ڂł�����. ����͂ǂ��������Ƃ��Ƃ�����, find-tag �̎d�l��,
-     �t�@�C������ vector �Ƃ������̂�����΂����ɃW�����v����Ƃ�������
-     �炵��. �����Ł@find-tag �� M-. �Ɋ��蓖�Ă�ꂽ Lisp �̔����̂��Ƃł���.
-     ����������� emacs 23.3.1 �Ɍ������b�ł���. emacs 27.2 �ł̓W�����v
-     ��̌��Ƃ͂Ȃ�Ȃ�.
+     の 1 行目であった. これはどういうことかというと, find-tag の仕様で,
+     ファイル名に vector というものがあればそこにジャンプするということ
+     らしい. ここで　find-tag は M-. に割り当てられた Lisp の函数のことである.
+     ただしこれは emacs 23.3.1 に限った話である. emacs 27.2 ではジャンプ
+     先の候補とはならない.
 
-     �t�@�C�����ł͂Ȃ��� vector �̐錾�ɃW�����v����ɂ� find-tag �̈�����
-     �ȉ����w�肷��:
+     ファイル名ではなくて vector の宣言にジャンプするには find-tag の引数に
+     以下を指定する:
 
 vector<int, std::allocator<int> >
 
-     ����͖ʓ|�����@�\���Ă͂���. std::vector �ł͂Ȃ��ĒP�� vector
-     �ɂȂ��Ă���̂� a.cpp �̏������Ɉˑ����Ă���悤�ł���.
+     これは面倒だが機能してはいる. std::vector ではなくて単に vector
+     になっているのは a.cpp の書き方に依存しているようである.
 
-     �t�@�C�����ɂ��W�����v����Ƃ��� find-tag �̎d�l�͊��������ėL�p��
-     ���̂ł͂���. �Ⴆ�� mktags.exe ���g�� TAGS �𐶐����� dwarf2.h ��
-     �^�O�W�����v�����
+     ファイル名にもジャンプするという find-tag の仕様は期せずして有用な
+     ものではある. 例えば mktags.exe 自身の TAGS を生成して dwarf2.h に
+     タグジャンプすれば
 
-#include "dwarf2.h"  �����Ń^�O�W�����v
+#include "dwarf2.h"  ここでタグジャンプ
 
-     �S���g�Ɋo���̂Ȃ�, �������r���h���ɎQ�Ƃ��Ă���w�b�_�[�t�@�C�����ȒP
-     �ɊJ�����Ƃ��ł���. �W�����v��� dwarf2 �ł͂Ȃ� dwarf2.h �ł���. ����
-     ���Ȃ��ƈӐ}�����Ƃ���ɃW�����v�ł��Ȃ�.
+     全く身に覚えのない, しかしビルド時に参照しているヘッダーファイルを簡単
+     に開くことができる. ジャンプ先は dwarf2 ではなく dwarf2.h である. そう
+     しないと意図したところにジャンプできない.
 
-     �����ĕs�v�c����, emacs 27.2 �ł� dwarf2.h ���J���Ă���.
+     そして不思議だが, emacs 27.2 でも dwarf2.h を開けている.
 
-(*8) �R���e�L�X�g
+(*8) コンテキスト
 
-     ���R�Ȃ��� emacs �̃^�O�W�����v�ł͑Ώۂ������𔻒f���Ă��Ȃ�.
-     ���������d�l������ł��邵, ����͑Ó��Ɏv����. ���]�݂���΃^�O
-     �W�����v�����͍ŏ����ł����Ăق���. find-tag ���R���e�L�X�g��
-     ���������
+     当然ながら emacs のタグジャンプでは対象が何かを判断していない.
+     そういう仕様だからであるし, これは妥当に思える. 高望みすればタグ
+     ジャンプする先は最小限であってほしい. find-tag がコンテキストを
+     理解すれば
 
-#include <vector> �����Ń^�O�W�����v������t�@�C�� vector ���J��
+#include <vector> ここでタグジャンプしたらファイル vector を開く
 
 int main()
 {
   using namespace std;
-  vector<int> vi; �����Ń^�O�W�����v������ vector �̃N���X�錾�ɃW�����v
-  return 0;       ���̌��� vector �̃f�t�H���g�R���X�g���N�^
+  vector<int> vi; ここでタグジャンプしたら vector のクラス宣言にジャンプ
+  return 0;       次の候補は vector のデフォルトコンストラクタ
 }
 
-     �R���p�C���͂��̏��𐶐����Ă͂���. �������^�O�W�����v��
-     ��̂悤�ȓ�����������邱�Ƃ͓��. mktags.exe �̐�������
-     �^�O�t�@�C���� vector �Ƀ^�O�W�����v�����
+     コンパイラはその情報を生成してはいる. しかしタグジャンプで
+     上のような動作を実現することは難しい. mktags.exe の生成した
+     タグファイルで vector にタグジャンプすると
 
-     ����� : �t�@�C�� vector
-     ����� : �����o���� const bfd_target *vector
-     ��O��� : vector �̃f�t�H���g�R���X�g���N�^
+     第一候補 : ファイル vector
+     第二候補 : メンバ名の const bfd_target *vector
+     第三候補 : vector のデフォルトコンストラクタ
 
-     �ɂȂ��Ă���. ����₪�o��͎̂d�l�Ƃ͂���, ���Ɏc�O�ł���.
-     �J��Ԃ��Đ\����Ȃ��������ł̘b�� emacs 23.3.1 �Ɍ��������Ƃ�
-     emacs 27.2 ���ƃ��X�g���\�������.
+     になっていた. 第二候補が出るのは仕様とはいえ, 非常に残念である.
+     繰り返して申し訳ないがここでの話は emacs 23.3.1 に限ったことで
+     emacs 27.2 だとリストが表示される.
 
-     �����     : �����o���� const bfd_target *vector
-     �����ȍ~ : vector �̃R���X�g���N�^
+     第一候補     : メンバ名の const bfd_target *vector
+     第二候補以降 : vector のコンストラクタ
 
-     ����͂���Ō��₷��.
+     これはこれで見やすい.
 
-(*9) gcc �� -g3 �I�v�V����
+(*9) gcc の -g3 オプション
 
-     -g �I�v�V�����Ƃ̈Ⴂ�̓}�N���̏�񂪐�������邱�Ƃł���.
-     gdb �� mktags.exe �͂����̏����g�p���ăv���O���}�ɗL�p��
-     ����񋟂���. ������ -g �I�v�V���������ł��ʏ�̃f�o�b�O
-     ��񂪐��������̂�, �}�N���ւ̃^�O�W�����v�����Ȃ��̂ł����
-     -g �ŏ\���ł���.
+     -g オプションとの違いはマクロの情報が生成されることである.
+     gdb や mktags.exe はこれらの情報を使用してプログラマに有用な
+     情報を提供する. しかし -g オプションだけでも通常のデバッグ
+     情報が生成されるので, マクロへのタグジャンプをしないのであれば
+     -g で十分である.
 
-(*10) ����ȃv���O�����ɑ΂��铮��
+(*10) 巨大なプログラムに対する動作
 
-     �f�o�b�O�r���h���� cc1 �� mktags.exe �����s��������:
+     デバッグビルドした cc1 に mktags.exe を実行した結果:
 
 linux % ls -l cc1
 -rwxrwxr-x 1 khasegawa khasegawa 140158720  Mon 11 08:44 cc1
 linux % date ; mktags.exe cc1 -e  ; date
 
-     mktag.exe �� -O0 �r���h�������̂ł� 3 ���ŏI�����Ă���. -O3
-     �r���h�Ŏ����Ă݂��Ƃ��� 2 �� 20 �b���炢������.
+     mktag.exe を -O0 ビルドしたものでは 3 分で終了している. -O3
+     ビルドで試してみたところ 2 分 20 秒くらいだった.
 
-     mktags.exe �̓���� objdump -g �����������G�ȓ�������Ă���
-     ���炻��������Ԃ������邱�ƂɂȂ�Ǝv����. �C���X�g�[�������
-     ����  objdump �� -O2 �r���h����Ă��邪, cc1 �ɑ΂�����s���ʂ�
-     3 �� 30 �b���炢������. �\�z�Ƃ͈Ⴂ objdump -g �̂ق������s����
-     ������������, ����� I/O �A�N�Z�X�̃R�X�g�������Ƃ�������
-     ���ƍl������.
+     mktags.exe の動作は objdump -g よりも少し複雑な動作をしている
+     からそれよりも時間がかかることになると思った. インストールされて
+     いる  objdump は -O2 ビルドされているが, cc1 に対する実行結果は
+     3 分 30 秒くらいだった. 予想とは違い objdump -g のほうが実行時間
+     が長かったが, これは I/O アクセスのコストが高いということ
+     だと考えられる.
 
-     �傫���v���O�����̈ꕔ�ɑ΂��ă^�O�𐶐��������ꍇ
+     大きいプログラムの一部に対してタグを生成したい場合
 
 % ./mktags.exe a.o
 % ./mktags.exe a.o b.o c.o
 % ./mktags.exe libxxx.a
 
-     �̂悤�ɃI�u�W�F�N�g�t�@�C����A�[�J�C�u���w�肷�邱�Ƃ��ł���.
+     のようにオブジェクトファイルやアーカイブを指定することもできる.
 
-(*11) emacs �̃^�O�W�����v�̂�邳
+(*11) emacs のタグジャンプのゆるさ
 
-     mktags.exe ���g�� TAGS �𐶐������ create �ɑ΂���^�O�� 4 ��
-     ��������Ă���. ������ 5 �ڂ̌�������. ���ꂪ�ȉ�.
+     mktags.exe 自身の TAGS を生成すると create に対するタグが 4 つ
+     生成されている. しかし 5 個目の候補もある. それが以下.
 
 static struct data_struct *
 find_chunk (bfd *abfd, bfd_vma vma, bfd_boolean create)
 
-     ����ɃW�����v���Ă��܂�. �����炭 find-tag �����������d�l�Ȃ�
-     ���낤. ��͖ܘ_ find_chunk �Ƃ����^�O�ɑΉ������ӏ��ł���. 
+     これにジャンプしてしまう. おそらく find-tag がそういう仕様なの
+     だろう. 上は勿論 find_chunk というタグに対応した箇所である. 
 
-     ���̌��ʂ� emacs 23.3.1 �ł̌��ʂł�����. ���� emacs 27.2 �ł� 4
-     �̌�₵���ꗗ�ɏo�Ă��Ȃ�. ���X�i�����Ă���Ƃ������ƂȂ̂��낤.
+     この結果は emacs 23.3.1 での結果であった. 実は emacs 27.2 では 4
+     つの候補しか一覧に出てこない. 日々進化しているということなのだろう.
 
-(*12) �s���S�^�\���̂̈���
+(*12) 不完全型構造体の扱い
 
 % cat a.c
 struct S;
@@ -388,12 +388,12 @@ int main()
 }
 % gcc -g3 a.c -o a.out
 % ./mktags.exe a.out
-# tags �ɂ͍\���� S �̃^�O����������Ă��Ȃ�
+# tags には構造体 S のタグが生成されていない
 
-      ����͎c�O�Ȃ��� gcc �������������������Ă���̂Ń^�O����������Ȃ�
-      �Ƃ������ƂɂȂ�.
+      これは残念ながら gcc がそういう扱いをしているのでタグが生成されない
+      ということになる.
 
-(*13) C++ �e���v���[�g�̃C���X�^���V�G�[�V����
+(*13) C++ テンプレートのインスタンシエーション
 
 % cat a.cpp
 template<class C1> struct S1 {};
@@ -408,13 +408,13 @@ int main()
 }
 % g++ -g a.cpp -o a.out
 % ./mktags.exe a.out
-# tags �ɂ� S1<int> �̃^�O�͐�������Ă��Ȃ�. S2<int> �ɑ΂��Ă̓^�O������
-# ����Ă���.
+# tags には S1<int> のタグは生成されていない. S2<int> に対してはタグが生成
+# されている.
 
-     ����� g++ �� S1<int> �ɑ΂��čs�ԍ����𐶐����Ă��Ȃ��̂ł�������
-     ���ʂɂȂ��Ă���.
+     これも g++ が S1<int> に対して行番号情報を生成していないのでこういう
+     結果になっている.
 
-(*14) C++ �e���v���[�g�̃C���X�^���V�G�[�V����(����2)
+(*14) C++ テンプレートのインスタンシエーション(その2)
 
 % cat a.cpp
 template<class C> struct S {};
@@ -427,13 +427,13 @@ int main()
 }
 % g++ -g a.cpp -o a.out
 % ./mktags.exe a.out
-# S<int> �̃^�O�͐�������Ȃ�
+# S<int> のタグは生成されない
 
-     ����� g++ �� S<int> �ɑ΂���, �s�ԍ��͂��납, ���O������������Ă�
-     �Ȃ����炱�̂悤�Ȍ��ʂɂȂ��Ă��܂��Ă���. ���ꂪ�d�l���Ƃ���Ȃ��,
-     ���ꎩ�̂ɖ�肪����.
+     これも g++ が S<int> に対して, 行番号はおろか, 名前すらも生成してい
+     ないからこのような結果になってしまっている. これが仕様だとするならば,
+     それ自体に問題がある.
 
-     C++ �ł� hello world ����
+     C++ 版の hello world だが
 
 % cat a.cpp
 #include <iostream>
@@ -445,35 +445,35 @@ int main()
   return 0;
 }
 
-     ����ɑ΂��� operator<< �� endl �ɑ΂��ă^�O����������Ȃ��̂�
-     �������R�ł���. cout �͕ϐ��Ȃ̂Ŋ��҂���^�O�͐�������Ă���.
+     これに対して operator<< や endl に対してタグが生成されないのも
+     同じ理由である. cout は変数なので期待するタグは生成されている.
 
-(*15) enum �̃����o
+(*15) enum のメンバ
 
-     ���� enum �̃����o�ɑ΂��ă^�O�𐶐����Ă��邪, ����� enum ��
-     �^�O���ɑ΂���s�ԍ��� mktags.exe �ŕt�����Ă���:
+     現状 enum のメンバに対してタグを生成しているが, これは enum の
+     タグ名に対する行番号を mktags.exe で付加している:
 
-enum E {  // �^�O���� E
-  a,      // enum �̃����o
-  b,      // enum �̃����o
-  c       // enum �̃����o
+enum E {  // タグ名が E
+  a,      // enum のメンバ
+  b,      // enum のメンバ
+  c       // enum のメンバ
 };
 
-     ��̗�Ȃ�, gcc �� a, b, c �ɑ΂��čs�ԍ����𐶐����Ȃ��̂� E ��
-     �s�ԍ�����t�����Ă���Ƃ������Ƃł���. ������ a �ɑ΂��ă^�O
-     �W�����v����� E �̍s�ɃJ�[�\�����ړ�����.
+     上の例なら, gcc が a, b, c に対して行番号情報を生成しないので E の
+     行番号情報を付加しているということである. だから a に対してタグ
+     ジャンプすると E の行にカーソルが移動する.
 
-(*16) �����̐錾
+(*16) 函数の宣言
 
-     �ʏ�͔����錾�ɑ΂��Ă̓^�O����������Ȃ�. ����� gcc ���^�O�𐶐�����
-     ���߂̃f�o�b�O�����o���Ă��Ȃ�����ł���. ������
+     通常は函数宣言に対してはタグが生成されない. これは gcc がタグを生成する
+     ためのデバッグ情報を出していないからである. しかし
 
-     o -g �� -g3 �ƂƂ��� -O2 �I�v�V�������w�肷��
-     o �錾���ꂽ�������Ăяo���Ă���
-     o �錾���ꂽ�����͕ʂ̖|��P��(�t�@�C��)�Œ�`����Ă���
+     o -g や -g3 とともに -O2 オプションを指定する
+     o 宣言された函数を呼び出している
+     o 宣言された函数は別の翻訳単位(ファイル)で定義されている
 
-     �Ƃ������������������ꍇ, �����̐錾�ɑ΂��� gcc ���f�o�b�O���𐶐�����.
-     ���̌��ʃ^�O�����������:
+     という条件が成立した場合, 函数の宣言に対して gcc がデバッグ情報を生成する.
+     この結果タグが生成される:
 
 % cat a.c
 void f();
@@ -485,48 +485,48 @@ void g()
 % gcc -g -O2 a.c -c
 % ./mktags.exe a.o
 % cat tags
-f	a.c	/^void f();$/;"	f         ���ꂪ�o�Ă���
+f	a.c	/^void f();$/;"	f         これが出ている
 g	a.c	/^void g()$/;"	f
 %
 
-     �����Ɩ����� -c �I�v�V�����ł͂Ȃ��� -S �� gcc �Ɏw�肵�� a.s
-     �̌��ʂ�����Ό������͂����肷��.
+     もっと明白に -c オプションではなくて -S を gcc に指定して a.s
+     の結果を見れば原因がはっきりする.
 
-     �Ȃ񂾂������ gcc �̃o�O���ۂ�. ���̃f�o�b�O��񂪂������Ƃ���Ńv
-     ���O�����̓���͕ς��Ȃ���, �f�o�b�K��, �����炭, ����ɓ��삷��.
-     ���҂���d�l��:
+     なんだかこれは gcc のバグっぽい. このデバッグ情報があったところでプ
+     ログラムの動作は変わらないし, デバッガも, おそらく, 正常に動作する.
+     期待する仕様は:
 
-     o -g �� -g3 ���w�肳�ꂽ�ꍇ
-     o �œK���I�v�V�����Ɋ֌W�Ȃ�
-     o �ʂ̖|��P�ʂ��ǂ����ɂ�����炸
+     o -g や -g3 が指定された場合
+     o 最適化オプションに関係なく
+     o 別の翻訳単位かどうかにかかわらず
 
-     �����̐錾�ɑ΂���, �f�o�b�O�����o���Ă��炢����.
-     �Ăяo������A�h���X�Q�Ƃ��Ă��Ȃ����, ���Ƃ̓���(�Ⴆ�΍\���̂�
-     typedef �Ȃ�)�̂��ߏo���Ȃ�.
+     函数の宣言に対して, デバッグ情報を出してもらいたい.
+     呼び出したりアドレス参照していなければ, 他との統一(例えば構造体や
+     typedef など)のため出さない.
 
-     �Ƃ����Ƃ��낾�낤.
+     というところだろう.
 
-     ���������Ȃ̂� gcc �Ƀp�b�`��p�ӂ���. ���̃y�[�W�ɂ���
-     fundecl.diff �ł���. �p�b�`�̓K�p���@�� fundecl.diff ��Ⴆ��
-     /tmp/fundecl.diff �Ƃ��ĕۑ�����
+     せっかくなので gcc にパッチを用意した. このページにある
+     fundecl.diff である. パッチの適用方法は fundecl.diff を例えば
+     /tmp/fundecl.diff として保存して
 
 % cd gcc-10.2.0
 % patch -p1< /tmp/fundecl.diff 
 patching file gcc/dwarf2out.c
 
-     �̂悤�ɓK�p����. ���̃p�b�`�͔����Ăяo��������΂��̐錾�ɑ΂���
-     �f�o�b�O���� gcc ���o�͂��邩��, ���ʓI�ɐ錾�ɑ΂���^�O�����������
-     �Ƃ������̂ł���. �c�O�Ȃ���, �A�h���X���Q�Ƃ��������ł͔����̐錾
-     �ɑ΂��ăf�o�b�O���͐�������Ȃ�.
+     のように適用する. このパッチは函数呼び出しがあればその宣言に対して
+     デバッグ情報を gcc が出力するから, 結果的に宣言に対するタグが生成される
+     というものである. 残念ながら, アドレスを参照しただけでは函数の宣言
+     に対してデバッグ情報は生成されない.
 
-(*17) �^�O�W�����v�����Ғʂ蓮�삵�Ȃ��ꍇ
+(*17) タグジャンプが期待通り動作しない場合
 
-     �l�����錴��
+     考えられる原因
 
-     o �������ꂽ�^�O�t�@�C���Ɍ�肪����
-     o find-tag �����҂�������łȂ�
+     o 生成されたタグファイルに誤りがある
+     o find-tag が期待した動作でない
      
-     �������߂Ȃ̂͐��������^�O�t�@�C�����G�f�B�^�ŊJ���ĖړI�̃p�^�[��������
-     ���Ă݂邱�Ƃł���. (*5) �� (*6) ���Q�l�ɂȂ邾�낤.
-     ����������ƃ��[�U�[���Ӑ}���Ȃ��`�Ő������^�O����������Ă���ꍇ����
-     ��. (*7) ���Q��.
+     おすすめなのは生成したタグファイルをエディタで開いて目的のパターンを検索
+     してみることである. (*5) や (*6) が参考になるだろう.
+     もしかするとユーザーが意図しない形で正しくタグが生成されている場合もあ
+     る. (*7) も参照.
