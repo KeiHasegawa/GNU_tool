@@ -1,12 +1,24 @@
-rx-elf
+RX のクロスコンパイル環境
 
-01_new_batch を実行した結果, 最後の確認まで期待通り動作しているっぽい.
-しかし以下の結果になる.
+(*1) RX
+(*2) スクリプトによるインストール
+(*3) 動作確認 => NG
 
-% rx-elf-gcc -g -o 00_batch.verify.elf 00_batch.verify.c
+(*1) RX
+https://www.renesas.com/us/en/products/microcontrollers-microprocessors/rx-32-bit-performance-efficiency-mcus#main-content
+
+(*2) スクリプトによるインストール
+
+「IQ2000」と同じスクリプトを使う
+
+set TARGET = rx-elf   # ここを変更
+
+(*3) 動作確認 => NG
+
+% rx-elf-gcc -g -o hello.elf hello.c
 during RTL pass: dwarf2
-00_batch.verify.c: 関数 ‘main’ 内:
-00_batch.verify.c:7:1: コンパイラ内部エラー: dwarf2out_frame_debug_adjust_cfa 内、位置 dwarf2cfi.c:1189
+hello.c: 関数 ‘main’ 内:
+hello.c:7:1: コンパイラ内部エラー: dwarf2out_frame_debug_adjust_cfa 内、位置 dwarf2cfi.c:1189
     7 | }
       | ^
 0x816697a dwarf2out_frame_debug_adjust_cfa
@@ -27,5 +39,4 @@ Please submit a full bug report,
 with preprocessed source if appropriate.
 Please include the complete backtrace with any bug report.
 See <https://gcc.gnu.org/bugs/> for instructions.
-> rx-elf-gcc -g -o 00_batch.verify.elf 00_batch.verify.c
 %
