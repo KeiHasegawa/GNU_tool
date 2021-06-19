@@ -1,8 +1,22 @@
-microblaze-elf
+MicroBlaze のクロスコンパイル環境
 
-最後の確認までは 01_new_batach で期待通り動作する.
+(*1) MicroBlaze
+(*2) スクリプトによるインストール
+(*3) 動作確認 => スタートアップルーチンの bss 領域の初期化で無限ループしている.
 
-% microblaze-elf-gcc -g -o 00_batch.verify.elf 00_batch.verify.c
+
+(*1) MicroBlaze
+https://ja.wikipedia.org/wiki/MicroBlaze
+
+(*2) スクリプトによるインストール
+
+「IQ2000」と同じスクリプトを使う
+
+set TARGET = microblaze-elf   # ここを変更
+
+(*3) 動作確認 => スタートアップルーチンの bss 領域の初期化で無限ループしている.
+
+% microblaze-elf-gcc -g -o hello.elf hello.c
 /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/microblaze-elf/10.2.0/../../../../microblaze-elf/bin/ld: -lxil が見つかりません
 collect2: エラー: ld はステータス 1 で終了しました
 % 
@@ -12,7 +26,7 @@ collect2: エラー: ld はステータス 1 で終了しました
 % /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/libexec/gcc/microblaze-elf/10.2.0/collect2 \
 -N -relax -G 0 \
 -dT /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/microblaze-elf/10.2.0/../../../../microblaze-elf/lib/xilinx.ld \
--o 00_batch.verify.elf \
+-o hello.elf \
 /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/microblaze-elf/10.2.0/../../../../microblaze-elf/lib/crt0.o /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/microblaze-elf/10.2.0/crti.o \
 /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/microblaze-elf/10.2.0/crtbegin.o /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/microblaze-elf/10.2.0/../../../../microblaze-elf/lib/crtinit.o \
 -L/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/microblaze-elf/10.2.0 \
@@ -23,7 +37,9 @@ a.o -lgcc -start-group -lgloss \
 
 %
 
-00_batch.verify.elf がこれで作成される.
+hello.elf がこれで作成される.
+
+% microblaze-elf hello.elf
 
 Current directory is /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/
 GNU gdb (GDB) 10.2
@@ -41,7 +57,7 @@ Find the GDB manual and other documentation resources online at:
 
 For help, type "help".
 Type "apropos word" to search for commands related to "word"...
-Reading symbols from 00_batch.verify.elf...
+Reading symbols from hello.elf...
 (gdb) target sim
 Connected to the simulator.
 (gdb) load
@@ -62,7 +78,7 @@ Transfer rate: 13312 bits in <1 sec.
 (gdb) b main
 Breakpoint 1 at 0x314: file a.c, line 3.
 (gdb) run
-Starting program: /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/00_batch.verify.elf 
+Starting program: /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/hello.elf 
   C-c C-c
 Program received signal SIGINT, Interrupt.
 _crtinit () at ../../.././libgloss/microblaze/crtinit.S:53
@@ -76,5 +92,3 @@ Quit anyway? (y or n) y
 Debugger finished
 
 bss の初期化で無限ループしていて main に到達していない.
-
-

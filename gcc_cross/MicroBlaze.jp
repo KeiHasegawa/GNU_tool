@@ -1,0 +1,94 @@
+MicroBlaze のクロスコンパイル環境
+
+(*1) MicroBlaze
+(*2) スクリプトによるインストール
+(*3) 動作確認 => スタートアップルーチンの bss 領域の初期化で無限ループしている.
+
+
+(*1) MicroBlaze
+https://ja.wikipedia.org/wiki/MicroBlaze
+
+(*2) スクリプトによるインストール
+
+「IQ2000」と同じスクリプトを使う
+
+set TARGET = microblaze-elf   # ここを変更
+
+(*3) 動作確認 => スタートアップルーチンの bss 領域の初期化で無限ループしている.
+
+% microblaze-elf-gcc -g -o hello.elf hello.c
+/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/microblaze-elf/10.2.0/../../../../microblaze-elf/bin/ld: -lxil が見つかりません
+collect2: エラー: ld はステータス 1 で終了しました
+% 
+
+% microblaze-elf-gcc -g -c a.c || exit 1
+
+% /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/libexec/gcc/microblaze-elf/10.2.0/collect2 \
+-N -relax -G 0 \
+-dT /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/microblaze-elf/10.2.0/../../../../microblaze-elf/lib/xilinx.ld \
+-o hello.elf \
+/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/microblaze-elf/10.2.0/../../../../microblaze-elf/lib/crt0.o /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/microblaze-elf/10.2.0/crti.o \
+/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/microblaze-elf/10.2.0/crtbegin.o /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/microblaze-elf/10.2.0/../../../../microblaze-elf/lib/crtinit.o \
+-L/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/microblaze-elf/10.2.0 \
+-L/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/microblaze-elf/10.2.0/../../../../microblaze-elf/lib \
+a.o -lgcc -start-group -lgloss \
+-lc -lm -end-group -lgcc \
+/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/microblaze-elf/10.2.0/crtend.o /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/microblaze-elf/10.2.0/crtn.o
+
+%
+
+hello.elf がこれで作成される.
+
+% microblaze-elf hello.elf
+
+Current directory is /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/
+GNU gdb (GDB) 10.2
+Copyright (C) 2021 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+Type "show copying" and "show warranty" for details.
+This GDB was configured as "--host=i686-pc-linux-gnu --target=microblaze-elf".
+Type "show configuration" for configuration details.
+For bug reporting instructions, please see:
+<https://www.gnu.org/software/gdb/bugs/>.
+Find the GDB manual and other documentation resources online at:
+    <http://www.gnu.org/software/gdb/documentation/>.
+
+For help, type "help".
+Type "apropos word" to search for commands related to "word"...
+Reading symbols from hello.elf...
+(gdb) target sim
+Connected to the simulator.
+(gdb) load
+Loading section .vectors.reset, size 0x4 lma 0x0
+Loading section .vectors.sw_exception, size 0x4 lma 0x8
+Loading section .vectors.interrupt, size 0x4 lma 0x10
+Loading section .vectors.hw_exception, size 0x4 lma 0x20
+Loading section .text, size 0x508 lma 0x50
+Loading section .init, size 0x34 lma 0x558
+Loading section .fini, size 0x1c lma 0x58c
+Loading section .ctors, size 0x8 lma 0x5a8
+Loading section .dtors, size 0x8 lma 0x5b0
+Loading section .rodata, size 0x4 lma 0x5b8
+Loading section .data, size 0x100 lma 0x5c0
+Loading section .eh_frame, size 0x4 lma 0x6c0
+Start address 0x0
+Transfer rate: 13312 bits in <1 sec.
+(gdb) b main
+Breakpoint 1 at 0x314: file a.c, line 3.
+(gdb) run
+Starting program: /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/hello.elf 
+  C-c C-c
+Program received signal SIGINT, Interrupt.
+_crtinit () at ../../.././libgloss/microblaze/crtinit.S:53
+(gdb) quit
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) y
+
+Debugger finished
+
+bss の初期化で無限ループしていて main に到達していない.
