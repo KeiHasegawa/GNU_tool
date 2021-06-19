@@ -1,0 +1,58 @@
+Blackfin のクロスコンパイル環境
+
+(*1) Blackfin
+(*2) スクリプトによるインストール
+(*3) 動作確認 => NG
+
+(*1) Blackfin
+https://www.analog.com/en/products/processors-microcontrollers/processors-dsp/blackfin-embedded-processors.html
+
+(*2) スクリプトによるインストール
+
+「IQ2000」と同じスクリプトを使う
+
+set TARGET = bfin-elf   # ここを変更
+
+(*3) 動作確認 => NG
+
+% bfin-elf-gcc -g -o hello.elf hello.c -mcpu=bf522
+
+のようにプロセッサのタイプを指定する必要があるらしい. このコマンドの実
+行で warning が多数出るが一応 hello.elf
+が作成される.
+
+しかし
+
+% bfin-elf-gdb hello.elf
+...
+(gdb) target sim
+Connected to the simulator.
+(gdb) load
+Loading section .text, size 0x2558 lma 0xffa00000
+Loading section .init, size 0x12 lma 0xffa02558
+Loading section .fini, size 0xe lma 0xffa0256a
+Loading section .rodata, size 0x14 lma 0xff800000
+Loading section .eh_frame, size 0x4 lma 0xff800014
+Loading section .ctors, size 0x8 lma 0xff800018
+Loading section .dtors, size 0x8 lma 0xff800020
+Loading section .data, size 0x83c lma 0xff800028
+Start address 0xffa00000
+Transfer rate: 93920 bits in <1 sec.
+(gdb) b main
+Cannot access memory at address 0xffa00298    エラーしている
+(gdb) run
+Starting program: /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/hello.elf 
+
+Program received signal SIGSEGV, Segmentation fault.
+_start () at ../../.././libgloss/bfin/basiccrt.S:90
+90	   R1 = 0x400;
+(gdb)
+
+これと似た現象だと思うが「AARCH64(ARM64)」を参照. gdb はターゲットプロ
+グラムが不正なメモリアクセスをしていることを伝えようとしているが, おそ
+らくメッセージが間違えている.
+
+ブレークポイントをセットできていないのも, おそらく同じ原因なのかも.
+
+
+
