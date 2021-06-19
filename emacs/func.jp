@@ -1,4 +1,4 @@
-Lisp �̔������`����
+Lisp の函数を定義する
 
 (*) hello world
 
@@ -6,8 +6,8 @@ Lisp �̔������`����
        "This part is explanation of function."
        (message "hello world"))
 
-��� Lisp �̎��� C-x C-e �ŕ]�����Ă݂��Ƃ���ȉ��� *Backtrace* �o�b�t�@
-�ɕ\�����ꂽ:
+上の Lisp の式を C-x C-e で評価してみたところ以下が *Backtrace* バッファ
+に表示された:
 
 Debugger entered--Lisp error: (error "Malformed arglist: This part is explanation of fun...")
   signal(error ("Malformed arglist: This part is explanation of fun..."))
@@ -23,64 +23,64 @@ Debugger entered--Lisp error: (error "Malformed arglist: This part is explanatio
   call-interactively(eval-last-sexp nil nil)
   command-execute(eval-last-sexp)
 
-�������Ԉ���Ă���Ƃ������Ƃ͉��ƂȂ��킩��.
-�Ƃ����, �L�[�o�C���h�������
+何かが間違っているということは何となくわかる.
+ところで, キーバインドを見ると
 
 C-x C-e		eval-last-sexp
 
-�܂� Lisp �̎���]������Ƃ����Ă������Ƃ̐��̂͂��ꂾ�����̂�.
-������, ��͂��̂����������͂��邪, �����L�p�ȏ��炵��.
-�Ƃ肠����
+つまり Lisp の式を評価するといっていたことの正体はこれだったのだ.
+そして, 上はものすごく混乱はするが, 何やら有用な情報らしい.
+とりあえず
 
 (message "hello world")
 
-���̎��� C-x C-e �ŕ]�����Ă݂�. ��������ƃ~�j�o�b�t�@��
+この式を C-x C-e で評価してみた. そうするとミニバッファに
 
 "hello world"
 
-�ƕ\�����ꂽ. �������������v���Ă����̂Ƃ͏����Ⴄ. �_�u���N�H�[�e�[�V����
-�͕K�v�Ȃ��̂�.
+と表示された. しかし自分が思っていたのとは少し違う. ダブルクォーテーション
+は必要ないのだ.
 
 (message hello world)
 
-����������Ă݂�. ����ƌx�����ƂƂ��Ɉȉ��̃��b�Z�[�W���\�����ꂽ.
+これを試してみた. すると警告音とともに以下のメッセージが表示された.
 
-eval: Symbol�fs value as variable is void: hello
+eval: Symbol’s value as variable is void: hello
 
-����͉����ԈႦ�Ă���炵��. �ЂƂ܂��_�u���N�H�[�e�[�V�����̖���
-�u���Ă�����.
+これは何か間違えているらしい. ひとまずダブルクォーテーションの問題は
+置いておこう.
 
-�ŏ��̎��͂ǂ����܂��������̂��Ǝv���Ă� C-x C-e �ŕ]�����Ă݂��Ƃ���
-���x�� *Backtrace* �o�b�t�@�͕\�����ꂸ��, �~�j�o�b�t�@��
+最初の式はどこがまずかったのかと思い再び C-x C-e で評価してみたところ
+今度は *Backtrace* バッファは表示されずに, ミニバッファに
 
 Malformed arglist: This part is explanation of function.
 
-�ƕ\������邾���ɂȂ���. �����... �悭�킩��Ȃ����f�o�b�K���猩�����ꂽ
-�̂��낤.
-"This part is explanation of function." �̕������폜�����ȉ���]�����Ă݂�:
+と表示されるだけになった. これは... よくわからないがデバッガから見放された
+のだろう.
+"This part is explanation of function." の部分を削除した以下を評価してみた:
 
 
 (defun hello-world2
        (message "hello world"))
 
-����ɑ΂��Ă͈ȉ��̃��b�Z�[�W���o�Ă���.
+これに対しては以下のメッセージが出ている.
 
 Malformed arglist: (message hello world)
 
-�G���[�͏C������Ă��Ȃ��炵��.
-���s����̌��ʈȉ��̂ɂ��ǂ蒅����.
+エラーは修正されていないらしい.
+試行錯誤の結果以下のにたどり着いた.
 
 (defun hello-world
        "This part is explanation of function."
        ('message "hello world"))
 
-���̎��� message �̑O�� ' ���t������Ă���. C-x C-e �ŕ]�����Ă݂��Ƃ���
-�G���[���b�Z�[�W�͏o�Ȃ�. �~�j�o�b�t�@�� hello-world �Əo�Ă���.
-���Ă��̔������Ăяo���Ă݂�
+この式は message の前に ' が付加されている. C-x C-e で評価してみたところ
+エラーメッセージは出ない. ミニバッファに hello-world と出ている.
+さてこの函数を呼び出してみる
 
 hello-world
 
-�Ƃ��Ă��� Lisp �̎���]�����Ă݂�. *Backtrace* �o�b�t�@�͈ȉ��̂悤�ɂȂ���.
+としてこの Lisp の式を評価してみた. *Backtrace* バッファは以下のようになった.
 
 Debugger entered--Lisp error: (void-variable hello-world)
   eval(hello-world)
@@ -103,11 +103,11 @@ Debugger entered--Lisp error: (void-variable hello-world)
   eval-last-sexp(nil)
   call-interactively(eval-last-sexp nil nil)
 
-�������}�Y���炵��. ���ʂ��K�v�Ȃ̂��낤���Ǝv��
+何かがマズいらしい. 括弧が必要なのだろうかと思い
 
 (hello-world)
 
-��̎���]�����Ă݂�.
+上の式を評価してみた.
 
 Debugger entered--Lisp error: (invalid-function (lambda "This part is explanation of function." ((quote message) "hello world")))
   hello-world()
@@ -123,12 +123,12 @@ Debugger entered--Lisp error: (invalid-function (lambda "This part is explanatio
   eval-last-sexp(nil)
   call-interactively(eval-last-sexp nil nil)
 
-*Backtrace* �o�b�t�@�̓��e�͈Ⴄ����͂�G���[�ɂ͕ς��Ȃ������ł���.
+*Backtrace* バッファの内容は違うがやはりエラーには変わりなさそうである.
 
 M-x describe-function
 hello-world
 
-�Ƃ��Ă݂�. *Help* �o�b�t�@�ɂ͈ȉ��̂悤�ɕ\������Ă���.
+としてみた. *Help* バッファには以下のように表示されている.
 
 hello-world is a Lisp function.
 
@@ -138,7 +138,7 @@ Not documented.
 
 [back]
 
-�Ȃ�ƂȂ��ł͂��邪���҂������̂ɂ͂Ȃ��Ă���.
+なんとなくではあるが期待したものにはなっている.
 
-�uLisp �̔������`����(����2)�v��uinteractive�v�� hello-world �̏C���ł��L��
-����Ă���.
+「Lisp の函数を定義する(その2)」や「interactive」に hello-world の修正版が記載
+されている.

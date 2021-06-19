@@ -1,25 +1,25 @@
 eww
 
-emacs 27.2 �ɂ� M-x eww �� web ���u���E�Y����@�\�������ĂƂĂ��֗��ł���.
+emacs 27.2 には M-x eww で web をブラウズする機能があってとても便利である.
 
-���󎄂͖󂠂��Ă��̃e�L�X�g�t�@�C���� Shift-JIS �ɂ��Ă���. UTF-8 ����
-�u���E�U�ɂ���ĕ����������Ă��܂����炾.
+現状私は訳あってこのテキストファイルを Shift-JIS にしている. UTF-8 だと
+ブラウザによって文字化けしてしまうからだ.
 
-eww �Ńy�[�W���{������ƃf�t�H���g�� UTF-8 �ɂȂ�. �Ȃ̂ł��̃y�[�W��
-�{������Ǝc�O�Ȃ��當���������Ă��܂��̂�.
+eww でページを閲覧するとデフォルトで UTF-8 になる. なのでこのページを
+閲覧すると残念ながら文字化けしてしまうのだ.
 
-�����͖ܘ_������
+回避策は勿論あって
 
 M-x eww-set-character-encoding
 sjis
 
-�Ƃ���� Shift-JIS �ŕ\�����邱�Ƃ��ł���.
+とすれば Shift-JIS で表示することができる.
 
-���̋@�\�� F2 �L�[�Ɋ��蓖�ĂĂ݂�:
+この機能を F2 キーに割り当ててみた:
 
 (global-set-key (kbd "<f2>") 'eww-set-character-encoding)
 
-����͋@�\����. ������ sjis �Ɠ��͂���K�v�͂Ȃ��̂�. �ȉ��̂悤�ɂ��Ă݂�.
+これは機能する. しかし sjis と入力する必要はないのだ. 以下のようにしてみた.
 
 (defun eww-set-character-encoding-sjis ()
   "eww set sjis"
@@ -28,31 +28,31 @@ sjis
 
 (global-set-key (kbd "<f2>") 'eww-set-character-encoding-sjis)
 
-����� Shift-JIS �̃e�L�X�g�t�@�C���� web �y�[�W���J�����Ƃ��� F2 �������Ă݂�
-�Ƃ���~�j�o�b�t�@�Ɉȉ��̂悤�Ɍx�����ƂƂ��ɕ\�����ꂽ:
+これで Shift-JIS のテキストファイルの web ページを開いたときに F2 を押してみた
+ところミニバッファに以下のように警告音とともに表示された:
 
-Symbol�fs value as variable is void: sjis
+Symbol’s value as variable is void: sjis
 
-�Ȃ�ق�, ���̃��b�Z�[�W�͂����炭 sjis �Ȃ�ĕϐ��͒�`����Ă��Ȃ��Ƃ���
-���ƂȂ̂�. �����ňȉ��̂悤�Ƀ_�u���N�H�[�e�[�V�����ň͂��Ă݂�:
+なるほど, このメッセージはおそらく sjis なんて変数は定義されていないという
+ことなのだ. そこで以下のようにダブルクォーテーションで囲ってみた:
 
 (defun eww-set-character-encoding-sjis ()
   "eww set sjis"
   (interactive)
  (eww-set-character-encoding "sjis"))
 
-�����čĂ� Shift-JIS �̃e�L�X�g�t�@�C���� web �y�[�W���J�����Ƃ��� F2 �������Ă݂�.
-���x���x�����ƂƂ���, �~�j�o�b�t�@�ňȉ��̂悤�ɕ\�����ꂽ:
+そして再び Shift-JIS のテキストファイルの web ページを開いたときに F2 を押してみた.
+今度も警告音とともに, ミニバッファで以下のように表示された:
 
 Wrong type argument: symbolp, "sjis"
 
-�����̎w��̎d�����Ԉ���Ă���̂��낤.
+引数の指定の仕方が間違っているのだろう.
 
 M-x describe-function
 eww-set-character-encoding
 
-�Ƃ��Ă݂�. �����Ă��̔�������`����Ă���炵�� eww.el ���J���Ă݂�.
-����Ȋ����ł���.
+としてみた. そしてその函数が定義されているらしい eww.el を開いてみた.
+こんな感じである.
 
 (defun eww-set-character-encoding (charset)
   "Set character encoding to CHARSET.
@@ -62,24 +62,24 @@ If CHARSET is nil then use UTF-8."
       (eww-reload nil 'utf-8)
     (eww-reload nil charset)))
 
-�����Ń_�u���N�H�[�e�[�V�����ł͂Ȃ�, �V���O���N�I�[�e�[�V�����ɂ��Ă݂�.
+そこでダブルクォーテーションではなく, シングルクオーテーションにしてみた.
 
 (defun eww-set-character-encoding-sjis ()
   "eww set sjis"
   (interactive)
  (eww-set-character-encoding 'sjis))
 
-���x�� F2 �L�[�Ŋ��Ғʂ蓮�삵�Ă���.
+今度は F2 キーで期待通り動作している.
 
-�ۑ�͂܂�����. ���̃y�[�W�� Shift-JIS ���ƕ������Ă���̂� UTF-8 �ŊJ���̂�
-���ʂł���. Shift-JIS �̃y�[�W�� UTF-8 �ŊJ�����Ƃ���Ɖ����Ɏ��Ԃ��������Ă��܂�
-�̂�.
+課題はまだある. そのページが Shift-JIS だと分かっているのに UTF-8 で開くのは
+無駄である. Shift-JIS のページを UTF-8 で開こうとすると何かに時間がかかってしまう
+のだ.
 
-������, �Ⴆ�� F2 �L�[���������炻�̃y�[�W�� Shift-JIS �ŉ{������Ƃ������Ƃ�
-�ł���Ή��K�ɂ͂Ȃ�.
+だから, 例えば F2 キーを押したらそのページを Shift-JIS で閲覧するということが
+できれば快適にはなる.
 
-�����Ƃ�����, web �y�[�W�̕����R�[�h�� HTML �ɋL�ڂ���Ă��Ȃ��Ȃ��,
-Shift-JIS �� UTF-8 �����ׂ�, �K�؂ȕ����R�[�h�ŊJ���Ƃ������Ƃ��ł���ƂȂ��悢.
+もっというと, web ページの文字コードが HTML に記載されていないならば,
+Shift-JIS か UTF-8 か調べて, 適切な文字コードで開くということができるとなおよい.
 
-����������͂����܂�.
+しかし今回はここまで.
 

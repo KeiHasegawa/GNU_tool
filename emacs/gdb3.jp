@@ -1,8 +1,8 @@
-M-x gdb(����3)
+M-x gdb(その3)
 
-�uM-x gdb(����2)�v�ł� emacs 27.2 �ł��܂����܂� emacs ���� gdb ��
-�g�p������@���q�ׂ���, �������� emacs �� gdb �Ƃ̊Ԃłǂ̂悤�ȃC���^�[�t�F�[�X
-�ɂȂ��Ă���̂����ׂĂ݂�.
+「M-x gdb(その2)」では emacs 27.2 でだましだまし emacs から gdb を
+使用する方法を述べたが, そもそも emacs と gdb との間でどのようなインターフェース
+になっているのか調べてみた.
 
 % cat a.c
 int main()
@@ -11,83 +11,83 @@ int main()
 }
 % gcc -g3 a.c -o a.out
 
-���߂Ăł͂��邪, emacs 27.2 ��
+改めてではあるが, emacs 27.2 と
 
 /usr/share/emacs/23.3/lisp/progmodes/gdb-ui.el.gz
 
-�Ƃ̑g�ݍ��킹�� emacs ���� M-x gdb �ł�����x���Ғʂ�f�o�b�O�ł��邱�Ƃ�
-�m�F�ł���.
-�����ňȉ��̂悤�� dummy-gdb.exe ���r���h����.
+との組み合わせで emacs から M-x gdb である程度期待通りデバッグできることが
+確認できる.
+そこで以下のように dummy-gdb.exe をビルドする.
 % g++ -g3 dummy-gdb.cpp -o dummy-gdb.exe
 
-dumy-gdb.cpp �͂��̃y�[�W����_�E�����[�h�ł���.
-�A���u���[�N�|�C���g�Ƀq�b�g�����Ƃ��ɊJ�����Ƃ��Ă���t�@�C�������̊���
-���̂Ȃ̂�, ���Ȃ������ۂɊm���߂邽�߂ɂ͎����̊��ɍ��킹���p�X�ɏ��������Ăق���.
+dumy-gdb.cpp はこのページからダウンロードできる.
+但しブレークポイントにヒットしたときに開こうとしているファイルが私の環境の
+ものなので, あなたが実際に確かめるためには自分の環境に合わせたパスに書き換えてほしい.
 
-���� dummy-gdb.exe �� M-x gdb �ňȉ��̂悤�ɋN������:
+この dummy-gdb.exe を M-x gdb で以下のように起動する:
 
 Run gdb (like this): ./dummy-gdb.exe --annotate=3 a.out
 
-������O���� a.out �͕K�v�Ȃ�. �{�������
+当たり前だが a.out は必要ない. 本来これは
 
 Run gdb (like this): gdb --annotate=3 a.out
 
-�̂悤�ɋN������ׂ����̂���������, ����ƒP���Ɉ��������킹�Ă��邾���Ȃ̂�.
+のように起動するべきものだったから, それと単純に引数を合わせているだけなのだ.
 
-�o�b�t�@�� *gud-a.out* �ɐ؂�ւ���Ĉȉ��̂悤�ɂȂ�:
+バッファは *gud-a.out* に切り替わって以下のようになる:
 Current directory is d:/home/khasegawa/lang/53_GNU_tool/emacs/
 (dummy-gdb)
 
-���� dummy-gdb.exe ����
+この dummy-gdb.exe だが
 
 b main
 run
 quit
-(��̃R�}���h)
+(空のコマンド)
 
-�̂ݎ󂯕t����悤�ɂȂ��Ă���. ����ȊO�̃R�}���h����͂��Ă��G�R�[����
-�����ł���.
+のみ受け付けるようになっている. それ以外のコマンドを入力してもエコーする
+だけである.
 
-����ł� main �Ƀu���[�N�|�C���g���Z�b�g���Ă����܂Ŏ��s���Ă݂悤:
+それでは main にブレークポイントをセットしてそこまで実行してみよう:
 
 (dummy-gdb) b main
 Breakpoint 1 at 0x8049145: file a.c, line 3.
 (dummy-gdb) run
 
-�u���[�N�|�C���g�Ƀq�b�g���ĉ�ʂ� 2 ��������, �\�[�X���\������Ă���.
-���҂�����������Ă���. �Ƃ������s���ł��Ă���. dummy-gdb.cpp �����ĕ�����ʂ�
-�|�C���g�ƂȂ�̂�
+ブレークポイントにヒットして画面が 2 分割され, ソースが表示されている.
+期待した動作をしている. というか捏造できている. dummy-gdb.cpp を見て分かる通り
+ポイントとなるのは
 
   032
 
-�� 2 �W���o�͂� putc ������, ����Ȗ��߂̂悤�Ȃ��̂�����ɏo�͂��Ă��邱�Ƃ�
-����. ����� gdb ���[�U�[�̖ڂɂ͌����Ȃ�.
+を 2 つ標準出力に putc した後, 特殊な命令のようなものをさらに出力していることで
+ある. これは gdb ユーザーの目には見えない.
 
-���Ė��� Windows �ł� emacs 26.2 �� gdb �Ƃ̖�肾���p�X���̖���
-�\�[�X���\���ł��Ă��Ȃ����Ƃ���������.
+さて問題は Windows 版の emacs 26.2 と gdb との問題だがパス名の問題で
+ソースが表示できていないことが判明した.
 
 /cygdrive/d/home/...
 
-�̂悤�ȃp�X����
+のようなパス名は
 
 d:/home/...
 
-�̂悤�ɂ��Ȃ��ƌ���̓\�[�X�̕\�����ł��Ȃ�.
+のようにしないと現状はソースの表示ができない.
 
-�{���Ȃ�� Lisp �̔�������Ăяo�����t�@�C�����I�[�v������@�\�� CYGWIN �Ή��ɂ���
-�̂��������悤�Ɏv����. ������ emacs ���C������K�v�������炭����. ���������
-����܂œ��삵�Ă��� Lisp ���C�u�����͏C���Ȃ��œ��삷��.
+本来ならば Lisp の函数から呼び出されるファイルをオープンする機能を CYGWIN 対応にする
+のが正しいように思える. だから emacs を修正する必要がおそらくある. そうすれば
+これまで動作していた Lisp ライブラリは修正なしで動作する.
 
-������ gdb ���C�����Ă����Ғʂ蓮�삷��̂ō���� gdb ���C�����邱�Ƃɂ���.
-�{���͗ǂ��Ȃ�. ����������� M-x perldb �͊��҂�������ɂȂ��Ă���. ��������
-��� Lisp �̔��� perldb �� CYGWIN �̃p�X���̖����������Ă���̂�������Ȃ�.
-���邢�͑��΃p�X�ň����Ă������炱�̂悤�Ȗ�肪�������Ȃ������̂�������Ȃ�.
+しかし gdb を修正しても期待通り動作するので今回は gdb を修正することにした.
+本当は良くない. しかし一方で M-x perldb は期待した動作になっている. もしかす
+ると Lisp の函数 perldb で CYGWIN のパス名の問題を解決しているのかもしれない.
+あるいは相対パスで扱っていたからこのような問題が発生しなかったのかもしれない.
 
-gdb-10.2 �Ȃ��
+gdb-10.2 ならば
 
 gdb-10.2/gdb/annotate.c
 
-�̈ȉ��̔������C������Ί��Ғʂ蓮�삷�邱�ƂɂȂ�:
+の以下の函数を修正すれば期待通り動作することになる:
 
 static void
 annotate_source (const char *filename, int line, int character, int mid,

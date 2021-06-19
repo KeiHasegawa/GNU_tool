@@ -1,6 +1,6 @@
-emacs ���f�o�b�O
+emacs をデバッグ
 
-(*1) emacs �̃f�o�b�O�r���h
+(*1) emacs のデバッグビルド
 
 % cd emacs-27.2
 % cat /tmp/y
@@ -13,25 +13,25 @@ mv $argv[1].$$ $argv[1]
 % find . -name 'Makefile' -exec /tmp/y {} \;
 % make
 
-Makefile �������Ƃ�����Ғʂ� -O0 �ɂȂ��Ă���. -O2 �r���h��
-����ł����悤�ł���.
+Makefile を見たところ期待通り -O0 になっていた. -O2 ビルドを
+回避できたようである.
 
-% ./emacs -nw              # �f�o�b�O�r���h���� emacs ���N��
+% ./emacs -nw              # デバッグビルドした emacs を起動
 
 ...
 
-����Ƃ͕ʂ̃^�[�~�i������ emacs �����s��, ps -ef | grep emacs
-�̂悤�ɂ���� ./emacs �̌`�Ŏ��s����Ă��� emacs �𔭌��ł���.
-���̃v���Z�X ID ���w�肵��
+これとは別のターミナルから emacs を実行し, ps -ef | grep emacs
+のようにすれば ./emacs の形で実行されている emacs を発見できる.
+そのプロセス ID を指定して
 
 M-x gdb
 gdb --annotate=3 -p 11654
 
-�̂悤�Ɏ��s����. 11654 �͂��̂Ƃ��� ./emacs �̃v���Z�X ID ������.
-gdb ���A�^�b�`����ƃf�o�b�O����Ă��� emacs �̓����͈�U�~�܂�
-���Ƃ��m�F�ł���.
+のように実行する. 11654 はこのときの ./emacs のプロセス ID だった.
+gdb がアタッチするとデバッグされている emacs の動きは一旦止まる
+ことが確認できる.
 
-�Ƃ肠����
+とりあえず
 
 (defun other-window-backward ()
   "Select the previous window."
@@ -40,13 +40,13 @@ gdb ���A�^�b�`����ƃf�o�b�O����Ă��� emacs �̓����͈�U�~�܂�
 
 (global-set-key "\C-x\C-p" 'other-window-backward)
 
-�ł���� interactive �Ƀu���[�N�|�C���g�������Ă݂�.
-��̃}�N���ɂ���܂�Ă��Ĕ������͕s���Ȃ̂ōs�ԍ��w�肵��.
+でやった interactive にブレークポイントをかけてみる.
+例のマクロにくるまれていて函数名は不明なので行番号指定した.
 
 (gdb) b callint.c:112
 
-�����ď�� other-window �� C-x C-p �œ��삳���Ă݂�.
-�ȉ��̓u���[�N�|�C���g�Ƀq�b�g���ăX�^�b�N�t���[����\����������:
+そして上の other-window を C-x C-p で動作させてみた.
+以下はブレークポイントにヒットしてスタックフレームを表示したもの:
 
 Breakpoint 1, Finteractive (args=0x0) at callint.c:112
 (gdb) where
@@ -76,28 +76,28 @@ Breakpoint 1, Finteractive (args=0x0) at callint.c:112
 #23 0x081b9e1f in main (argc=1, argv=0xbffb68e4) at emacs.c:2067
 (gdb) 
 
-��������ċC�t������ interactive �Ƃ��� Lisp �̔����� Finteracitve
-�̂悤�� F ���t���� C �̔����Ƃ��Ē�`����Ă���. F ����n�܂锟���S��
-�������Ȃ̂��͕s�������Ⴆ�Ώ��
+これを見て気付いたが interactive という Lisp の函数は Finteracitve
+のように F が付いた C の函数として定義されている. F から始まる函数全て
+がそうなのかは不明だが例えば上の
 
 Fcall_interactively
 
-�� interactive �� Help �ŏq�ׂ��Ă��� call-interactively �Ǝv����.
+は interactive の Help で述べられている call-interactively と思われる.
 
-�{���̓f�o�b�O����� emacs �Ɠ����\�[�X����r���h���ꂽ emacs �Ńf�o�b�O�����
+本当はデバッグされる emacs と同じソースからビルドされた emacs でデバッグすれば
 
-�eC source code�f
+‘C source code’
 
-�̂Ƃ���ɂ����ɂ��ǂ蒅���ĕ֗��Ȃ̂���, 27.2 �� emacs �� M-x gdb ���v�����ʂ�
-���삵�Ȃ��̂� 23.2.1 �� emacs �� M-x gdb �̂悤�ɂ��Ă���.
+のところにすぐにたどり着けて便利なのだが, 27.2 の emacs で M-x gdb が思った通り
+動作しないので 23.2.1 の emacs で M-x gdb のようにしている.
 
-�Ƃ����, ���� Finteractive ����, ����͈����Ɉˑ������P�� 0 ��Ԃ��Ă��邾����
-����. ����Ɋւ��Ă�
+ところで, この Finteractive だが, それは引数に依存せず単に 0 を返しているだけで
+ある. これに関しては
 
 M-x describe-function
 interactive
 
-�ŕ\���������e�ƍ��v���Ă���. �����Ă���� C �̃\�[�X�ł���
+で表示される内容と合致している. そしてそれは C のソースである
 
 emacs-27.2/src/callint.c:
 
@@ -120,15 +120,15 @@ usage: (interactive &optional ARG-DESCRIPTOR)  */
   return Qnil;
 }
 
-���̂��̂炵��.
+そのものらしい.
 
-���ꂩ�琄���ł��邱�Ƃ�
+これから推測できることは
 
 (interactive)
 
-��
+や
 
 (interactive "p")
 
-�� Lisp �̎���]������Ƃ��ɓ��ʂȌ��ʂ������̂ł�����, ���s�ɂ͉���e��
-��^���Ȃ��Ƃ������Ƃł���.
+は Lisp の式を評価するときに特別な効果を持つものであって, 実行には何ら影響
+を与えないということである.

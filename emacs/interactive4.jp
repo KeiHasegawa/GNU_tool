@@ -1,49 +1,49 @@
-interactive(����4)
+interactive(その4)
 
-���������ł����ɂ��� interactive �����ŏ��́uC-x o�v�ŏo�Ă���, �O�̃E�B���h�E
-�Ɉړ�������̂������ȉ��ł���:
+未だ理解できずにいる interactive だが最初は「C-x o」で出てきた, 前のウィンドウ
+に移動するものだった以下である:
 
 (defun other-window-backward ()
   "Select the previous window."
   (interactive)
   (other-window -1))
 
-�����āuC-x o�v�ł� (interactive) ���Ȃ���Ί��Ғʂ蓮�삵�Ȃ��Ƃ������Ƃ�
-��������, ���͂Ȃ��Ă����삷��. ���Ȃ킿
+そして「C-x o」では (interactive) がなければ期待通り動作しないということを
+書いたが, 実はなくても動作する. すなわち
 
 (other-window-backward)
 
-��]������΂悢�̂�. �܂��� (interactive) ����o�[�W������
-other-window-backward �ɑ΂��ď�̎���]�����Ă݂�. ���Ғʂ�
-�O�̃E�B���h�E�Ɉړ��ł���. ���� (interactive) �Ȃ��o�[�W������
-�ȉ�
+を評価すればよいのだ. まずは (interactive) ありバージョンの
+other-window-backward に対して上の式を評価してみる. 期待通り
+前のウィンドウに移動できる. 次に (interactive) なしバージョンの
+以下
 
 (defun other-window-backward ()
   "Select the previous window."
   (other-window -1))
 
-��]��������
+を評価した後
 
 (other-window-backward)
 
-��]�����Ă݂�. ��������������삷��.
+を評価してみる. これも正しく動作する.
 
-������ M-x other-window-backward �������Ă݂�. (interactive) �Ȃ��o�[�W�����ł�
-�^�u�ɂ��⊮������Ȃ���, ���̂܂܃^�C�v���ă��^�[���L�[�������Ă�
+そこで M-x other-window-backward を試してみる. (interactive) なしバージョンでは
+タブによる補完がされないし, そのままタイプしてリターンキーを押しても
 
 M-x other-window-backward[No match]
 
-�ƂȂ邾���ł���. ���� (interactive) ����o�[�W�����͂ǂ���.
-���x�̓^�u�ɂ��⊮�������. �����Ċ��Ғʂ蓮�삷��.
+となるだけである. さて (interactive) ありバージョンはどうか.
+今度はタブによる補完がされる. そして期待通り動作する.
 
-�����ł̌��_��
+ここでの結論は
 
-(interactive) �Ȃ��ł������Ƃ��Ă͓��삷�邪, M-x ������ �̂悤�ɂ��Ă͓��삵�Ȃ�
+(interactive) なしでも函数としては動作するが, M-x 函数名 のようにしては動作しない
 
-�Ƃ����ł���. �����ƌ�����
+というである. もっと言えば
 
-(global-set-key "\C-x\C-p" '������)
+(global-set-key "\C-x\C-p" '函数名)
 
-�� C-x C-p ���L���ɓ��삷�邽�߂ɂ͂��̔����� (interactive) �t���łȂ��Ă͂Ȃ�Ȃ�
-�Ƃ������Ƃł���.
+で C-x C-p が有効に動作するためにはこの函数が (interactive) 付きでなくてはならない
+ということである.
 

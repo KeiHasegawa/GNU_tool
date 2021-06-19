@@ -1,19 +1,19 @@
 interactive
 
-�uC-x o�v�ł� 1 �O�̃E�B���h�E�Ɉړ����锟�����`����. �����ł͕s���Ȕ���
-interactive ���Ăяo���Ă���:
+「C-x o」では 1 つ前のウィンドウに移動する函数を定義した. そこでは不明な函数
+interactive を呼び出していた:
 
 (defun other-window-backward ()
   "Select the previous window."
   (interactive)
   (other-window -1))
 
-�Ƃ����, �uBackSpace �L�[�v�̂Ƃ���ł� BackSpace �L�[�� delete-backward-char
-�����蓖�Ă�������̒�`���ɂ����
+ところで, 「BackSpace キー」のところでは BackSpace キーに delete-backward-char
+を割り当てたがこれの定義を例によって
 
 M-x describe-function
 
-�Ō��Ă݂悤. ��`����Ă���t�@�C�� simple.el �����Ă݂��:
+で見てみよう. 定義されているファイル simple.el を見てみると:
 
 (defun delete-backward-char (n &optional killflag)
   "...."
@@ -21,51 +21,51 @@ M-x describe-function
   (interactive "p\nP")
 ...
 
-�̂悤�ɂȂ��Ă���. ����������͎v���̂ق��F�X�Ȃ��Ƃ�����Ă���炵��.
-�����Ă����ł� interactive ������� "p\nP" �Ƃ��������𔺂��Ďg���Ă���.
+のようになっている. しかもこれは思いのほか色々なことをやっているらしい.
+そしてここでも interactive が何やら "p\nP" という引数を伴って使われている.
 
-�܂��� interactive �̒�`�����Ă݂悤. ��͂� M-x describe-function ��
-�g��.
+まずは interactive の定義を見てみよう. やはり M-x describe-function を
+使う.
 
-��������� *Help* �o�b�t�@�Ɏ��̂悤�ɕ\�����ꂽ:
+そうすると *Help* バッファに次のように表示された:
 
 interactive is a special form in `C source code'.
 
-����́uC-x o�v�ŐG�ꂽ next-window �Ǝ��Ă��邪�����Ⴄ:
+これは「C-x o」で触れた next-window と似ているが少し違う:
 
 next-window is a built-in function in `C source code'.
 
-������������� C �̔��������̂ł���. next-window �� built-in �Ƃ���
-�P�ꂪ�g���Ă�����, interactive �͂����ł͂Ȃ�. �����������������
-built-in �� Lisp �̔����ł͂Ȃ��� C �ŏ�����Ă�����̂Ǝv���Ă�����
-������Ⴄ�̂���.
+しかしいずれも C の函数が実体である. next-window は built-in という
+単語が使われていたが, interactive はそうではない. そもそも私が勝手に
+built-in は Lisp の函数ではなくて C で書かれているものと思っていたが
+それも違うのかも.
 
-����� *Help* ��ǂݐi�߂��
+さらに *Help* を読み進めると
 
 (interactive)
 
-�͈�����n�����ɃR�}���h���ĂԂƂ���.
-�����ňȉ��������Ă݂�.
+は引数を渡さずにコマンドを呼ぶとある.
+そこで以下を試してみた.
 
 (defun hello-world () "test func" (interactive)(message "hello world"))
 
 (global-set-key "\C-x\C-p" 'hello-world)
 
-��� 2 �̎���]������ C-x C-p �Ƃ��Ă݂�ƃ~�j�o�b�t�@��
-�_�u���N�H�[�e�[�V�����Ȃ���
+上の 2 つの式を評価して C-x C-p としてみるとミニバッファに
+ダブルクォーテーションなしで
 
 hello world
 
-�ƕ\�����ꂽ. (interacitve) ���폜�����ȉ�
+と表示された. (interacitve) を削除した以下
 
 (defun hello-world () "test func" (message "hello world"))
 
-�� C-x C-p �������ƃ~�j�o�b�t�@�ɂ͌x�����ƂƂ��Ɉȉ����\�������:
+で C-x C-p を試すとミニバッファには警告音とともに以下が表示される:
 
 command-execute: Wrong type argument: commandp, hello-world
 
-�Ԉ���Ă���炵��. ������x���Ғʂ蓮�� (interactive) �t����
-�ق���]������ C-x C-p �������Ă݂�.
-�Ȃ�ق�, (global-set-key "\C-x\C-p" 'hello-world) �̂ق��͕]��������
-�K�v���Ȃ��킯��. ���ƂȂ��ł͂��邪 foo �̑O�ɂ���V���O���N�H�[�e�[�V����
-�̈Ӗ�����Ƃ��낪�����ł���.
+間違っているらしい. もう一度期待通り動く (interactive) 付きの
+ほうを評価して C-x C-p を試してみた.
+なるほど, (global-set-key "\C-x\C-p" 'hello-world) のほうは評価し直す
+必要がないわけだ. 何となくではあるが foo の前にあるシングルクォーテーション
+の意味するところが推測できる.

@@ -1,38 +1,38 @@
-M-x gdb(����4)
+M-x gdb(その4)
 
 (global-set-key "\C-x " 'gud-break)
 
-��ɂ���� emacs 27.2 �ł� C-x SPC ���v�����悤�ɋ@�\���Ă��Ȃ�.
+例によって emacs 27.2 では C-x SPC が思ったように機能していない.
 
 M-x describe-function
 gud-break
 
-�Ȃ񂾂������Ɨl�q���Ⴄ. ���ʂȂ� gud-break ����`����Ă���
-�t�@�C���ɃW�����v�ł���悤�ɂȂ��Ă���̂�, ����͂����͂Ȃ��Ă��Ȃ�.
-����͈�̂ǂ��������ƂȂ̂��낤.
+なんだかいつもと様子が違う. 普通なら gud-break が定義されている
+ファイルにジャンプできるようになっているのに, 今回はそうはなっていない.
+これは一体どういうことなのだろう.
 
-�������Ƃ� emacs 23.3.1 �Ŏ����Ă݂�. ������
+同じことを emacs 23.3.1 で試してみた. しかし
 
 M-x describe-function
 gud-break
 
-�̌��ʂ͓����ł���.
+の結果は同じである.
 
 M-x describe-function
 gdb
 
-�Ƃ��Ă݂�. �����Ă���͎��������҂����悤�ɂȂ��Ă���. gdb ����`����Ă���
-�t�@�C�����J���Ă݂�.
-�����Ă��̃t�@�C������ gud-break ���������Ă݂�.
+としてみた. そしてこれは自分が期待したようになっていた. gdb が定義されている
+ファイルを開いてみた.
+そしてそのファイルから gud-break を検索してみた.
 
   (gud-def gud-break  "break %f:%l"  "\C-b" "Set breakpoint at current line.")
 
-������. ����͂悭������Ȃ���, �������m���Ă��镁�ʂ̔�����
-��`�Ƃ͈قȂ�. ������ "\C-b" �͂����炭�L�[�o�C���h��\���Ă���
-�̂�������Ȃ����S���g�Ɋo���͂Ȃ�. C-x SPC ���������m���Ă���L�[�o�C���h
-�Ȃ̂�.
+あった. これはよく分からないが, 自分が知っている普通の函数の
+定義とは異なる. しかも "\C-b" はおそらくキーバインドを表している
+のかもしれないが全く身に覚えはない. C-x SPC が自分が知っているキーバインド
+なのだ.
 
-�{���� C-x SPC �� emacs 27.2 �Ŋ��Ғʂ蓮�삵�Ȃ�������m�肽�������̂���
-�b���E�����Ă��܂���.
+本当は C-x SPC が emacs 27.2 で期待通り動作しない原因を知りたかったのだが
+話が脱線してしまった.
 
-����������͂����܂�.
+しかし今回はここまで.

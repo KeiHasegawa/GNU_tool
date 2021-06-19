@@ -1,28 +1,28 @@
-cygwin �� X �T�[�o�[��  linux �}�V������ X �̃v���O�����Ƃ��ĕ\�������Ƃ��̖��
+cygwin の X サーバーに  linux マシンから X のプログラムとして表示したときの問題
 
-�ŏ��̓��́u���p�S�p�v�L�[������.
+最初の難題は「半角全角」キーだった.
 
-Windows �ł� emacs ���g�p���Ă���Ƃ��́u���p�S�p�v�L�[�������ē��{���
-ascii �����̐؂�ւ����s���Ă����̂���, �~�j�o�b�t�@�Ɉȉ��̂悤�ɕ\��
-����Ă��܂�.
+Windows 版の emacs を使用しているときは「半角全角」キーを押して日本語と
+ascii 文字の切り替えを行っていたのだが, ミニバッファに以下のように表示
+されてしまう.
 
 <zenkaku-hankaku> is undefined
 
-������ C-\ �������Ă݂�Ɠ��{�ꂪ���͂ł������ȏ�ԂɂȂ��Ă���.
-�����ŗ�ɂ���� F1 b �Ƃ��ăL�[�o�C���h���m�F���Ă݂�.
+試しに C-\ を押してみると日本語が入力できそうな状態になっている.
+そこで例によって F1 b としてキーバインドを確認してみた.
 
 C-\		toggle-input-method
 
 M-x describe-function
 toggle-input-method
 
-�Ƃ��Đ�����ǂ�ł݂�. ���̋@�\�� Windows �ł� emacs �ł��g�p�ł���
-�炵��.
+として説明を読んでみた. この機能は Windows 版の emacs でも使用できる
+らしい.
 
-���� default-input-method �ɕϊ����@���w�肷��炵��. ��ɂ���Ă����ɃJ�[�\����
-�ړ����ă��^�[���L�[���������Ƃ���
+さて default-input-method に変換方法を指定するらしい. 例によってそこにカーソルを
+移動してリターンキーを押したところ
 
-default-input-method is a variable defined in �emule-cmds.el�f.
+default-input-method is a variable defined in ‘mule-cmds.el’.
 Its value is "japanese"
 Original value was nil
 
@@ -32,35 +32,35 @@ Original value was nil
 Documentation:
 Default input method for multilingual text (a string).
 This is the input method activated automatically by the command
-�etoggle-input-method�f (C-\).
+‘toggle-input-method’ (C-\).
 
 
-�̂悤�ɕ\�����ꂽ. �ϐ��̒l�炵��. �����Ă��̒l�� "japanese" �炵��.
+のように表示された. 変数の値らしい. そしてその値は "japanese" らしい.
 
 M-x set-input-method
 
-�Ƃ���΂��̕ϐ���ύX�ł���炵��.
+とすればこの変数を変更できるらしい.
 
 japanese 	japanese-ascii 	japanese-hankaku-kana
 japanese-hiragana 	japanese-katakana 	japanese-zenkaku
 
-���⊮�̌��Ƃ��ĕ\��Ă���. ������ japanese-katakana ���Z�b�g���Ă݂��
-�S�p�J�^�J�i����͂ł��Ă���.
+が補完の候補として表れている. 試しに japanese-katakana をセットしてみると
+全角カタカナを入力できている.
 
-���{����͂��Ă��ċC�t�����̂���, �ϊ����ʂ��K�؂łȂ����Ƃ�����. �����ɓo�^�������̂���
-���������܂̂Ƃ��땪��Ȃ�.
+日本語入力していて気付いたのだが, 変換結果が適切でないことが多い. 辞書に登録したいのだが
+やり方がいまのところ分らない.
 
-����͊w������Ɏg�p���Ă��� SKK ���g���ׂ����Ǝv����.
+これは学生時代に使用していた SKK を使うべきだと思った.
 
-�Ƃ���, �u���p�S�p�v�L�[����
+とこで, 「半角全角」キーだが
 
-���܂ł�,
+今までは,
 
-TeraTerm �A�v���P�[�V�������L�[���͂𔻕ʂ�
-IME ���N����������ϊ�����
-�ϊ����ꂽ������ emacs �ɑ��荞�܂��
+TeraTerm アプリケーションがキー入力を判別し
+IME が起動し文字を変換して
+変換された文字が emacs に送り込まれる
 
-�Ƃ�����Ԃ�
+という状態が
 
-X �T�[�o�[���N�������ꍇ�̓_�C���N�g�Ɂu���p�S�p�v�L�[�������Ă���Ƃ�������
-�Ȃ̂��낤.
+X サーバーを起動した場合はダイレクトに「半角全角」キーが送られているということ
+なのだろう.

@@ -1,25 +1,25 @@
-Lisp �̃f�o�b�K
+Lisp のデバッガ
 
-�uLisp �̔������`����(����2)�v�Œ�`���� my-sum ���f�o�b�K
-�̐���̂��Ƃœ��삳���Ă݂�.
+「Lisp の函数を定義する(その2)」で定義した my-sum をデバッガ
+の制御のもとで動作させてみる.
 
-�J�[�\���� my-sum �������ɂ����Ԃ�
+カーソルを my-sum 函数内にある状態で
 
-M-x edebug-defun <- �����Ń��^�[��
+M-x edebug-defun <- ここでリターン
 
-�Ƃ���. �����Ĉȉ��̎��� C-x C-e �ŕ]������.
+とする. そして以下の式を C-x C-e で評価する.
 
 (my-sum 5)
 
-��������ƃ\�[�X���x���f�o�b�O���ł���. �I������ɂ� q ������.
-C-x C-e �Ńf�o�b�K�����삵�Ȃ��悤�ɂ��邽�߂ɂ�
-my-sum �����̒�`�̍Ō�� ')' �� C-x C-e �ŕ]���������΂悢. 
+そうするとソースレベルデバッグができる. 終了するには q を押す.
+C-x C-e でデバッガが動作しないようにするためには
+my-sum 函数の定義の最後の ')' で C-x C-e で評価し直せばよい. 
 
-n : gdb �ł����Ƃ���� next �炵��.
+n : gdb でいうところの next らしい.
 
-����͎��� edebug-next-mode �Ƃ��������ɃL�[�o�C���h����Ă���.
-�f�o�b�K�����s������Ԃ� M-x help �Ƃ������ b �������ăL�[�o�C���h
-���m���߂Ă݂�:
+これは実は edebug-next-mode という函数にキーバインドされている.
+デバッガを実行した状態で M-x help としさらに b を押してキーバインド
+を確かめてみる:
 
 ...
 Major Mode Bindings:
@@ -36,25 +36,25 @@ i		edebug-step-in
 n		edebug-next-mode
 ...
 
-����Ŋm�F�ł���. i �� gdb �ł����Ƃ���� step �� n �� gdb �ł����Ƃ���� next ��
-�������ƂȂ̂��낤. ����ł̓X�y�[�X�� i �Ƃ̈Ⴂ��? �܂�����͂�������.
+これで確認できる. i が gdb でいうところの step で n が gdb でいうところの next と
+いうことなのだろう. それではスペースと i との違いは? まぁそれはおいおい.
 
-�Ƃ���ŁuLisp �̔������`����v�ŏq�ׂ��Ԉ���Ă��� hello-world
-�ɑ΂��ē������Ƃ����Ă݂��Ƃ���:
+ところで「Lisp の函数を定義する」で述べた間違っている hello-world
+に対して同じことをしてみたところ:
 
 edebug-syntax-error: Invalid read syntax: "Expected", ([&rest arg] [&optional ["&optional" arg &rest arg]] &optional ["&rest" arg])
 
-�ƕ\�����ꂽ. ����͂Ȃ�ƂȂ�����, ���҂������ʂł͂���.
+と表示された. これはなんとなくだが, 期待した結果ではある.
 
-�ʂ̕��@
-M-x debug-on-entry <- �����Ń��^�[��
-my-sum <- ����ɂ����Ń��^�[��
+別の方法
+M-x debug-on-entry <- ここでリターン
+my-sum <- さらにここでリターン
 
-�Ƃ���. �����Ĉȉ��̎��� C-x C-e �ŕ]������. 
+とする. そして以下の式を C-x C-e で評価する. 
 
 (my-sum 5)
 
-��������� *Backtrace* �o�b�t�@���ȉ��̂悤�ɕ\�������:
+そうすると *Backtrace* バッファが以下のように表示される:
 
 Debugger entered--entering a function:
 * my-sum(5)
@@ -63,17 +63,17 @@ Debugger entered--entering a function:
   eval-last-sexp(nil)
   call-interactively(eval-last-sexp nil nil)
 
-�����\������Ȃ��悤�Ȃ��x
+もし表示されないようなら一度
 
-M-x cancel-debug-on-entry <- �����Ń��^�[��
+M-x cancel-debug-on-entry <- ここでリターン
 
-�Ƃ��Ă��������x�����Ƃł��邩������Ȃ�.
+としてからもう一度試すとできるかもしれない.
 
-�f�o�b�K���I������ɂ� q ����͂���.
-C-x C-e �Ńf�o�b�K�����삵�Ȃ��悤�ɂ��邽�߂ɂ�
+デバッガを終了するには q を入力する.
+C-x C-e でデバッガが動作しないようにするためには
 
-M-x cancel-debug-on-entry <- �����Ń��^�[��
+M-x cancel-debug-on-entry <- ここでリターン
 
-�Ƃ���.
-*Backtrace* �o�b�t�@�� d ����͂���� Lisp �̎��� 1 ���]�����Ȃ���
-���s�ł���炵��. ����������͔��ɕ�����ɂ���.
+とする.
+*Backtrace* バッファで d を入力すれば Lisp の式を 1 つずつ評価しながら
+実行できるらしい. しかしこれは非常に分かりにくい.

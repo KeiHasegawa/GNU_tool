@@ -1,29 +1,29 @@
 C-x o
 
-emacs ���g���Ă���Ƃ�, ��ʂ� 2 �̃E�B���h�E��\��������ƕ֗��Ȃ��Ƃ�����.
-�����ĂقƂ�ǂ� C-x 2 �Ƃ��ď�Ɖ��Ƃŕ�����.
+emacs を使っているとき, 画面に 2 つのウィンドウを表示させると便利なことがある.
+そしてほとんどが C-x 2 として上と下とで分ける.
 
-����̃E�B���h�E�����������̃E�B���h�E�Ɉړ�����̂� C-x o ���g�p����.
-<f1> b �ɂ��L�[�o�C���h���m���߂Ă݂�:
+一方のウィンドウからもう一方のウィンドウに移動するのに C-x o を使用する.
+<f1> b によりキーバインドを確かめてみる:
 
 C-x o		other-window
 
-other-window �Ƃ����̂��Ή����� Lisp �̔���������.
+other-window というのが対応する Lisp の函数だった.
 
 M-x describe-function
 other-window
 
-�Ƃ��Ă݂�.
+としてみる.
 
-��������� other-window �� window.el �Œ�`����Ă��邱�Ƃ�����Ƃ���
-��������邱��, �I�v�V���i���Ȉ����Ƃ��ăt���[������邱�ƂȂǂ���
-����Ă���.
+そうすると other-window が window.el で定義されていることや引数として
+数字を取ること, オプショナルな引数としてフレームを取ることなどが書
+かれている.
 
-C-x 2 �ŉ�ʂ� 2 �̃E�B���h�E��\��������Ԃ��� C-x 3 �ł���Ɍ��݂̃E
-�B���h�E�� 2 �ɕ�����, ����ɕ�������Ă��Ȃ���������̃E�B���h�E�Ɉ�
-���� C-x 3 �Ƃ���Ή�ʂ� 4 �̃E�B���h�E�ɕ��������.
+C-x 2 で画面に 2 つのウィンドウを表示した状態から C-x 3 でさらに現在のウ
+ィンドウを 2 つに分割し, さらに分割されていないもう一方のウィンドウに移
+って C-x 3 とすれば画面が 4 つのウィンドウに分割される.
 
-C-x o �Ŋe�E�B���h�E�Ɉړ����Ă݂�.
+C-x o で各ウィンドウに移動してみる.
 
 +-----+-----+
 |  1  |  2  |
@@ -31,45 +31,45 @@ C-x o �Ŋe�E�B���h�E�Ɉړ����Ă݂�.
 |  3  |  4  |
 +-----+-----+
 
-�̂悤�ȏ��ŃE�B���h�E���z���Ĉړ����邾�낤. ������ 1 �̃E�B���h�E�ɂ���
-��Ԃ� C-u 2 C-x o �Ƃ��Ă݂�. ��������� 3 �̃E�B���h�E�ɃW�����v���邱�Ƃ�
-�m�F�ł���.
+のような順でウィンドウを循環して移動するだろう. ここで 1 のウィンドウにいる
+状態で C-u 2 C-x o としてみる. そうすると 3 のウィンドウにジャンプすることが
+確認できる.
 
-C-u 2 �� C-x o ���Ȃ킿 other-window �ւ̈����� 2 ��^���邱�Ƃ��Ӗ������
-����.
+C-u 2 は C-x o すなわち other-window への引数に 2 を与えることを意味するら
+しい.
 
-C-u 2 ���^�C�v����̂��ʓ|�Ȃ��
+C-u 2 をタイプするのが面倒ならば
 
 (other-window 2)
 
-�� C-x C-e �ŕ]�����Ă��悢. ���邢�͉����ɃL�[�o�C���h���Ă�������
-���ꂪ����قǕ֗��Ȃ킯�ł͂Ȃ�����L�[�o�C���h����Ӗ��͔���.
+を C-x C-e で評価してもよい. あるいは何かにキーバインドしてもいいが
+これがそれほど便利なわけではないからキーバインドする意味は薄い.
 
-C-u -1 C-x o �� 1 �O�̃E�B���h�E�ɃW�����v����. �������� 2 ��
-������ʂ𕪊����Ȃ��̂����� 1 �O�̃E�B���h�E�ɃW�����v����̂�
-���̃E�B���h�E�ɃW�����v����̂����ʂ͓����ł���. ������
-�����̓L�[�o�C���h�̗��K�Ƃ������Ƃ�
+C-u -1 C-x o は 1 つ前のウィンドウにジャンプする. そもそも 2 つに
+しか画面を分割しないのだから 1 つ前のウィンドウにジャンプするのも
+次のウィンドウにジャンプするのも結果は同じである. しかし
+ここはキーバインドの練習ということで
 
 (global-set-key "\C-x\C-p" (other-window -1))
 
-�Ƃ��� Lisp �̎��������Ă݂�. ����� C-x C-p �� 1 �O�̃E�B���h�E
-�Ɉړ��������ŏ�����.
-�ЂƂ܂�����y�ɏ�� C-x C-e �ŕ]������ 4 �̃E�B���h�E����
-3 �̃E�B���h�E�� 1 ��̑���ňړ��ł��邱�Ƃ��m�F���Ă݂�.
+という Lisp の式を書いてみた. これは C-x C-p に 1 つ前のウィンドウ
+に移動するつもりで書いた.
+ひとまずお手軽に上を C-x C-e で評価して 4 のウィンドウから
+3 のウィンドウへ 1 回の操作で移動できることを確認してみた.
 
-�c�O. �ԈႦ�Ă���悤��. C-x C-p �ɂ͉����o�C���h����Ă��Ȃ��Ƃ���
-���b�Z�[�W���\������Ă���.
-���������Ă݂�.
+残念. 間違えているようだ. C-x C-p には何もバインドされていないという
+メッセージが表示されている.
+次を試してみた.
 
 (global-set-key "\C-x\C-p" (message "hello world"))
 
-����� C-x C-p �� hello world �ƃJ�����g�̃o�b�t�@�ɕ������o�͂����.
-�v���o���Ă݂�΁uLisp �̔������`����v��uLisp �̔������`����(����2)�v
-�ł���� hello-world �̓���̓~�j�o�b�t�@��, �������_�u���N�H�[�e�[�V������
-�t�����`�ł�������, ������̓��삪���������҂������̂�����. ����, �b������Ă�
-�܂���.
+これは C-x C-p で hello world とカレントのバッファに文字が出力される.
+思い出してみれば「Lisp の函数を定義する」や「Lisp の函数を定義する(その2)」
+でやった hello-world の動作はミニバッファに, しかもダブルクォーテーションが
+付いた形であったが, こちらの動作が自分が期待したものだった. いや, 話がそれてし
+まった.
 
-�����͈ȉ��̂悤�ɂȂ�炵��:
+正解は以下のようになるらしい:
 
 (global-set-key "\C-x\C-n" 'other-window)
 
@@ -80,45 +80,45 @@ C-u -1 C-x o �� 1 �O�̃E�B���h�E�ɃW�����v����. �������� 2 ��
 
 (global-set-key "\C-x\C-p" 'other-window-backward)
 
-�Ȃ�ق�, global-set-key �̑������� ' �t���� Lisp �̔������Ƃ���̂�
-�������悤��. ������, ����� C-x C-p �� hello world ���L�[�o�C���h
-�ł��Ă���̂ŕK���������̂悤�ɂ��Ȃ��Ƃ����Ȃ��킯�ł͂Ȃ��炵��.
-��̐�������
+なるほど, global-set-key の第二引数は ' 付きの Lisp の函数名とするのが
+正しいようだ. しかし, 一方で C-x C-p に hello world をキーバインド
+できているので必ずしもそのようにしないといけないわけではないらしい.
+上の正解から
 
   (interactive)
 
-�̕������폜���Ă݂�. C-x C-p �ňړ����悤�Ƃ���ƃ~�j�o�b�t�@��
+の部分を削除してみた. C-x C-p で移動しようとするとミニバッファに
 
 command-execute: Wrong type argument: commandp, other-window-backward
 
-�̂悤�ȃ��b�Z�[�W���o�Ă���. �����ԈႦ�Ă���.
-������, ����͂����܂�. 
+のようなメッセージが出ている. 何か間違えている.
+しかし, 今回はここまで. 
 
-�Ƃ����, 
+ところで, 
 
 M-x describe-function
 other-window
 
-�ŕ\������������ next-window ���g���Ă���Ƃ������Ƃ��L�q����Ă���.
-next-window �̂Ƃ���ɃJ�[�\����u������ԂŃ��^�[���L�[��������
-*Help* �o�b�t�@�� next-window �̂��̂ɐ؂�ւ��:
+で表示される説明に next-window が使われているということが記述されている.
+next-window のところにカーソルを置いた状態でリターンキーを押すと
+*Help* バッファは next-window のものに切り替わる:
 
-next-window is a built-in function in �eC source code�f.
+next-window is a built-in function in ‘C source code’.
 
 ...
-�Ȃ�قǃr���g�C���Ƃ����킯��. �Ȃ̂ł���� Lisp �ł͂Ȃ� C ��
-�L�q�����Ƃ������Ƃł���. �����ł���͂� C source code
-�̂Ƃ���ɃJ�[�\����u���ă��^�[���L�[��������...
+なるほどビルトインというわけだ. なのでこれは Lisp ではなく C で
+記述されるということである. ここでもやはり C source code
+のところにカーソルを置いてリターンキーを押すと...
 
-���̓\�[�X����r���h���Ă����̂Ńo�b�t�@��
+私はソースからビルドしていたのでバッファが
 
 
 DEFUN ("next-window", Fnext_window, Snext_window, 0, 3, 0,
        doc: /* Return live window after WINDOW in the cyclic ordering of window
 
-�̂悤�ɐ؂�ւ����. �t�@�C��
+のように切り替わった. ファイル
 
 emacs-27.2-1.src/emacs-27.2/src/window.c
 
-���J���Ă���. ���� DEFUN �Ƃ����}�N���͓˂����݂ǂ��낪���ڂ���,
-�����͍���͗�������Ȃ��ł�����.
+を開いている. この DEFUN というマクロは突っ込みどころが満載だが,
+そこは今回は立ち入らないでおこう.

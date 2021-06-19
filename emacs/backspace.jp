@@ -1,68 +1,68 @@
-BackSpace �L�[
+BackSpace キー
 
-�J�[�\���̌��̕��������������� BackSpace �L�[�����������~�j�o�b�t�@��
+カーソルの後ろの文字を消したくて BackSpace キーを押したがミニバッファに
 
 C-h (Type ? for further options)-
 
-�Ƃ������b�Z�[�W���\�����ꂽ. ����͎������Ӑ}��������ł͂Ȃ�����.
+というメッセージが表示された. これは自分が意図した動作ではなかった.
 
 ~/.emacs
 
-�Ɉȉ���ǉ�����Ɗ��Ғʂ蓮�삷��炵��.
+に以下を追加すると期待通り動作するらしい.
 
 (global-set-key "\C-h" 'delete-backward-char)
 
-�Ƃ͂���, ����ɂ͓˂����݂ǂ��낪�������񂠂�.
-����͂����炭 Ctrl-H �� delete-backward-char �Ƃ��� Lisp ��
-���������蓖�Ă�Ƃ������ƂȂ̂��낤. �J�[�\���̌��̕���������������
-�Ȃ��
+とはいえ, これには突っ込みどころがたくさんある.
+これはおそらく Ctrl-H に delete-backward-char という Lisp の
+函数を割り当てるということなのだろう. カーソルの後ろの文字を消したいの
+ならば
 
 M-x delete-backward-char
 
-�Ƃ���΂����Ƃ������ƂȂ̂�. M-x �� Esc �L�[���������� x ������
-���Ƃ��Ӗ����Ă���.
-��� ~/.emacs ��ǉ�����O�̏�Ԃ� Ctrl-H �ɂ͉������蓖�Ă��Ă�����.
-����𒲂ׂ�ɂ�
+とすればいいということなのだ. M-x は Esc キーを押した後 x を押す
+ことを意味している.
+上の ~/.emacs を追加する前の状態で Ctrl-H には何が割り当てられていたか.
+これを調べるには
 
 M-x help
 
-�Ƃ��Ă�����w���v�������邱�Ƃ��ł���. �����ɂ͂����
+としていわゆるヘルプをを見ることができる. そこにはさらに
 
 b
 
-���^�C�v����ƃL�[�o�C���h�������炵�����Ƃ�������. b �������Ă݂�.
+をタイプするとキーバインドを見れるらしいことが分かる. b を押してみた.
 
 ...
 C-h		help-command
 ...
 
-������ ~/.emacs ���ȉ��̂悤�ɂ���.
+そこで ~/.emacs を以下のようにした.
 
 (global-set-key "\C-h" 'delete-backward-char)
 
 (global-set-key "\M-?" 'help-command)
 
-1 �ڂ� Ctrl-H �� delete-backward-char ��
-2 �ڂ� M-? �� help-command �����ꂼ��L�[�o�C���h����Ă���Ƃ�������
-�ł���. M-? �� Esc �L�[���������� ? ���������Ƃ��Ӗ����Ă���炵��.
+1 つ目は Ctrl-H に delete-backward-char が
+2 つ目は M-? に help-command がそれぞれキーバインドされているということ
+である. M-? は Esc キーを押した後 ? を押すことを意味しているらしい.
 
-����� emacs �ɓǂݍ��܂��邽�߂Ɉ�U emacs ���I�����Ă��������x
-�N�����Ă��悢�̂���
+これを emacs に読み込ませるために一旦 emacs を終了してからもう一度
+起動してもよいのだが
 
 M-x load-file
 
-�Ƃ���
+として
 
 ~/.emacs
 
-�Ɠ��͂���΂悢. BackSpace �L�[�Ńw���v���\������邱�Ƃ͂Ȃ��Ȃ�.
+と入力すればよい. BackSpace キーでヘルプが表示されることはなくなる.
 
-������x help ��\�����ăL�[�o�C���h���m���߂Ă݂�.
+もう一度 help を表示してキーバインドを確かめてみる.
 
 M-? b
 
-�Ɠ��͂���. ~/.emacs ��ҏW����O�Ƃ͉����l�q�������قȂ邪
-�L�[�o�C���h�����邱�Ƃ͂ł��Ă���.
+と入力する. ~/.emacs を編集する前とは何やら様子が少し異なるが
+キーバインドを見ることはできている.
 
 ...
 C-h		delete-backward-char
@@ -72,12 +72,12 @@ M-?		help-command
 <f1>		help-command
 ...
 
-C-h �ɂ� delete-backward-char ��
-M-? �ɂ� help-command �����ꂼ�ꊄ�蓖�Ă��Ă��邱�Ƃ��m���߂��邾�낤.
-F1 �� help-command �Ɋ��蓖�Ă��Ă���.
+C-h には delete-backward-char が
+M-? には help-command がそれぞれ割り当てられていることを確かめられるだろう.
+F1 も help-command に割り当てられている.
 
-F1 �������Ă݂�. ����� ~/.emacs ��ҏW����O�̏󋵂Ǝ��Ă���:
+F1 を押してみた. これは ~/.emacs を編集する前の状況と似ている:
 
 f1 (Type ? for further options)-
 
-��̂悤�Ƀ~�j�o�b�t�@�ɕ\������Ă���.
+上のようにミニバッファに表示されている.

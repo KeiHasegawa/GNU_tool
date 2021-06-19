@@ -1,64 +1,64 @@
 M-x gdb
 
-emacs 27.2 �� M-x gdb �Ƃ����
+emacs 27.2 で M-x gdb とすると
 
 Run gdb (like this): gdb -i=mi a.out
 
-�̂悤�� gdb �� -i=mi �I�v�V�����ŋN�����悤�Ƃ��Ă���悤�ł���.
+のように gdb を -i=mi オプションで起動しようとしているようである.
 
-��� emacs 23.3.1 �ł�
+一方 emacs 23.3.1 では
 
 Run gdb (like this): gdb --annotate=3 a.out
 
-�̂悤�� --annotate=3 �I�v�V�����Ȃ��Ă���. ���̕��͂ł͓`���Ȃ���
+のように --annotate=3 オプションなっている. この文章では伝わらないが
 
 Run gdb (like this):
 
-�̕����̐F�����������قȂ��Ă���.
-�Ƃ���� man gdb �Ƃ��Ă� --annotate �ɂ��Ă͋L�q����Ă��Ȃ�.
-emacs �ł͂Ȃ�, ���ʂɃR���\�[��(�^�[�~�i��)���� gdb �����s���Ă݂�
+の部分の色合いも少し異なっている.
+ところで man gdb としても --annotate については記述されていない.
+emacs ではなく, 普通にコンソール(ターミナル)から gdb を実行してみる
 
 % gdb --annotate=3
 
-����͖��炩�ɒʏ�Ɠ��삪�قȂ��Ă���. �}�j���A���ɂ͋L�ڂ���Ă��Ȃ���
-���������I�v�V����������̂�.
+これは明らかに通常と動作が異なっている. マニュアルには記載されていないが
+そういうオプションがあるのだ.
 
 % gdb -i=mi
 
-��������炩�Ɉ���Ă���.
+これも明らかに違っている.
 
-�Ƃ���� emacs 23.3.1 �ł͉��K�� M-x gdb �����삵�Ă����̂� emacs 27.2
-�ł͉�����������. �Ⴆ��
+ところで emacs 23.3.1 では快適に M-x gdb が動作していたのに emacs 27.2
+では何かおかしい. 例えば
 
-   o gdb �̃v�����v�g (gdb) ���\�������ׂ��Ƃ���ŕ\������Ă��Ȃ�
-   o �X�e�b�v���s���邽�тɊY������\�[�X���R�}���h�o�b�t�@�ɕ\�������
-     �\�[�X�̃o�b�t�@�����邩�炱��͏璷�ł���.
-   o C-x SPC �Ńu���[�N�|�C���g���Z�b�g����Ȃ�. ����͎����ŃL�[�o�C���h
-     ��ݒ肷��΂悢��, ���ۂ�
+   o gdb のプロンプト (gdb) が表示されるべきところで表示されていない
+   o ステップ実行するたびに該当するソースがコマンドバッファに表示される
+     ソースのバッファがあるからこれは冗長である.
+   o C-x SPC でブレークポイントがセットされない. これは自分でキーバインド
+     を設定すればよいが, 実際に
 
 (global-set-key "\C-x " 'gud-break)
 
-     �̂悤�ɂ���Ǝ��̂悤�Ȍ��ۂ��N����:
+     のようにすると次のような現象が起こる:
 
-     C-x SPC �Ƃ����, gdb �̃R�}���h�v�����v�g��, �܂�ŉ����R�}���h��
-     ���s���Ă��邩�̂悤�ȏ�ԂɂȂ�. �����ăR�}���h����͂��Ă����Ғʂ�
-     �ɂ͓��삵�Ȃ�.
+     C-x SPC とすると, gdb のコマンドプロンプトが, まるで何かコマンドを
+     実行しているかのような状態になる. そしてコマンドを入力しても期待通り
+     には動作しない.
 
-   o �o�b�t�@�� 3 �����ɂȂ�.
+   o バッファが 3 分割になる.
 
-     (1) gdb �̃v�����v�g�̃o�b�t�@
-     (2) �v���O�����̃\�[�X�t�@�C���̃o�b�t�@
-     (3) �����炭�f�o�b�O�����v���O�����̕W���o��, �W���G���[�o��
+     (1) gdb のプロンプトのバッファ
+     (2) プログラムのソースファイルのバッファ
+     (3) おそらくデバッグされるプログラムの標準出力, 標準エラー出力
 
-     ����͈Ӑ}���Ă������Ă���̂��낤��, ���܂łƈقȂ��Ă��ĉ���
-     �s�ւł���.
+     これは意図してこうしているのだろうが, 今までと異なっていて何か
+     不便である.
 
-������ emacs 27.2 ��
+試しに emacs 27.2 で
 
 M-x gdb
 Run gdb (like this): gdb --annotate=3 a.out
 
-�Ƃ��Ă݂��Ƃ���...
+としてみたところ...
 
 
 Error: you did not specify -i=mi on GDB's command line!
@@ -95,5 +95,5 @@ Reading symbols from a.out...
 Undefined command: "-interpreter-exec".  Try "help".
 (gdb) 
 
-���߂炵��. ���傤���Ȃ��̂� gdb ���g�p����Ƃ��� emacs 23.3.1 ��
-�g���ׂ��ł���. �Ƃ�����葁�� Lisp ���}�X�^�[���Č�������������ׂ����낤.
+だめらしい. しょうがないので gdb を使用するときは emacs 23.3.1 を
+使うべきである. というより早く Lisp をマスターして原因を究明するべきだろう.

@@ -1,27 +1,27 @@
 (*1) if
 (*2) while
-(*3) ���̑�
+(*3) その他
 
-�uinteractive(����5)�v�ł� (if ��1 ��2 ��3) �Ƃ�������,
-�uLisp �̔������`����(����2)�v�ł� (while ��1 ��2... ��n)
+「interactive(その5)」では (if 式1 式2 式3) という式が,
+「Lisp の函数を定義する(その2)」では (while 式1 式2... 式n)
 
-�̂悤�� if �� while ���o�ꂵ��. �����𒲂ׂĂ݂���.
+のように if や while が登場した. これらを調べてみたい.
 
 (*1) if
 
 (defun if-test (n m) "if test"
    (if (> n m) (n) (m)))
 
-����͂悭���� max(n,m) �̂���ŏ�����. �������ȉ��̎���]�������Ƃ���
+これはよくある max(n,m) のつもりで書いた. しかし以下の式を評価したところ
 
 (if-test 1 2)
 
-�~�j�o�b�t�@�ɂ͈ȉ����x�����ƂƂ��ɕ\�����ꂽ.
+ミニバッファには以下が警告音とともに表示された.
 
-if: Symbol�fs function definition is void: m
+if: Symbol’s function definition is void: m
 
-*Backtrace* �o�b�t�@����U�폜����, ������x��̎���]�������Ƃ���
-*Backtrace* �o�b�t�@�͈ȉ��̂悤�ɂȂ���:
+*Backtrace* バッファを一旦削除して, もう一度上の式を評価したところ
+*Backtrace* バッファは以下のようになった:
 
 Debugger entered--Lisp error: (void-function m)
   apply(debug error (void-function m))
@@ -32,36 +32,36 @@ Debugger entered--Lisp error: (void-function m)
   eval((if-test 1 2) nil)
   elisp--eval-last-sexp(nil)
 
-�����, �����炭�����������������̂�. �ȉ��Ŏ����Ă݂�:
+これは, おそらくかっこが多すぎたのだ. 以下で試してみた:
 
 (defun if-test (n m) "if test"
    (if (> n m) n m))
 
 (if-test 3 2)
 
-���x�͊��Ғʂ蓮�삵�Ă���.
+今度は期待通り動作している.
 
 M-x describe-function
 if
 
-�Ƃ��Ă݂�. �Ȃ�ق�,
+としてみた. なるほど,
 
 if is a special form in `C source code'.
 
-built-in �ł͂Ȃ� sepcial form �Ƃ�������. ���܂��ɈႢ�͕�����Ȃ���.
+built-in ではなく sepcial form ということ. いまだに違いは分からないが.
 
 (if COND THEN ELSE...)
 
-�Ƃ����\���炵��. ELSE... �͎��������Ȃ��Ă��悢��, ���������Ă������炵��.
+という構文らしい. ELSE... は式を書かなくてもよいし, 複数書いてもいいらしい.
 
-�悭����ċA�I�Ȕ������`���Ă݂�.
+よくある再帰的な函数を定義してみた.
 
 (defun my-fact (n) "factorial of N"
        (if (> n 1) (* n my-fact (- n 1)) 1))
 
 (my-fact 5)
 
-���߂炵��. *Backtrace* �o�b�t�@�͈ȉ�:
+だめらしい. *Backtrace* バッファは以下:
 
 Debugger entered--Lisp error: (void-variable my-fact)
   apply(debug error (void-variable my-fact))
@@ -71,7 +71,7 @@ Debugger entered--Lisp error: (void-variable my-fact)
   my-fact(5)
   eval((my-fact 5) nil)
 
-������Ǝv���Ăяo�� my-fact �ɃV���O���N�I�[�e�[�V������t���Ă݂�.
+もしやと思い呼び出す my-fact にシングルクオーテーションを付けてみた.
 
 (defun my-fact (n) "factorial of N"
        (if (> n 1) (* n 'my-fact (- n 1)) 1))
@@ -86,60 +86,60 @@ Debugger entered--Lisp error: (wrong-type-argument number-or-marker-p my-fact)
   my-fact(5)
   eval((my-fact 5) nil)
 
-�ނ�. ����͂�������������������Ă��Ȃ��̂�... �ȉ��̂悤�ɂ��Ă݂�:
+むむ. これはそもそもかっこが足りていないのか... 以下のようにしてみた:
 
 (defun my-fact (n) "factorial of N"
        (if (> n 1) (* n (my-fact (- n 1))) 1))
 
-�V���O���N�I�[�e�[�V�����͕K�v�Ȃ�����. �P���ɂ��������Ȃ������̂�����.
+シングルクオーテーションは必要なかった. 単純にかっこがなかったのだった.
 
 (*2) while
 
 M-x describe-function
 while
 
-�Ƃ��Ă݂��Ƃ���
+としてみたところ
 
 if is a special form in `C source code'.
 
 (while TEST BODY...)
 
-�Ƃ����̂��\���炵��.
+というのが構文らしい.
 
 (defun test-while (n) "test while"
        (while (- n 1) (message "%d" n)))
 
 (test-while 5)
 
-�Ƃ��Ă݂�. �\��ł� 5 4 3 2 1 �ƃJ�E���g�_�E��������肾������
-�ǂ���疳�����[�v�ɓ����Ă���悤�ł���. �ЂƂ܂� C-g ����������
-����]������̂��~�߂Ă��ꂽ�悤�ł���.
+としてみた. 予定では 5 4 3 2 1 とカウントダウンするつもりだったが
+どうやら無限ループに入っているようである. ひとまず C-g を押したら
+式を評価するのを止めてくれたようである.
 
-test-while �̂Ƃ���ɃJ�[�\�����ړ�����
+test-while のところにカーソルを移動して
 
 M-x edebug-defun
 
-�Ƃ��Ă���
+としてから
 
 (test-while 5)
 
-��]�����Ă݂��Ƃ���f�o�b�O�ł��Ă���. n �̓f�N�������g����Ă��Ȃ������̂�.
+を評価してみたところデバッグできている. n はデクリメントされていなかったのだ.
 
 (setq n (1- n))
 
-����ł���. �����悤�Ȃ��Ƃ��uLisp �̔������`����(����2)�v�ł���Ă���.
-1- �� setq ��
+これである. 似たようなことを「Lisp の函数を定義する(その2)」でやっていた.
+1- や setq を
 
 M-x describe-function
 
-�ňꉞ *Help* �����đ�̗�������. ���߂�
+で一応 *Help* を見て大体理解した. 改めて
 
 (defun test-while (n) "test while"
        (while n (message "%d" n)
               (setq n (1- n))))
 
-����������Ă݂�. ���������҂����ʂ�͓��삹��, 5 4 3 2 1 0 -1 ....
-�̂悤�ɂȂ��Ă��܂���. ���߂�:
+これを試してみた. しかし期待した通りは動作せず, 5 4 3 2 1 0 -1 ....
+のようになってしまった. 改めて:
 
 (defun test-while (n) "test while"
        (while (> n 0) (message "%d" n)
@@ -147,29 +147,29 @@ M-x describe-function
 
 (test-while 5)
 
-�]�������Ƃ���~�j�o�b�t�@�ɂ�
+評価したところミニバッファには
 
 nil
 
-�ƕ\�����ꂽ. ������x edebug-defun �� test-while �ɑ΂��ēK�p��
-�f�o�b�O���Ă݂�. ���Ғʂ蓮�삵�Ă��邪, �~�j�o�b�t�@�ɘA�����ă��b�Z�[�W��
-�������܂��ƍŌ�� nil �ȊO�͐l�Ԃ̖ڂł͊m�F�ł��Ȃ��̂�.
-�����ňȉ��̂悤�ɂ��Ă݂�:
+と表示された. もう一度 edebug-defun を test-while に対して適用し
+デバッグしてみた. 期待通り動作しているが, ミニバッファに連続してメッセージが
+書き込まれると最後の nil 以外は人間の目では確認できないのだ.
+そこで以下のようにしてみた:
 
 (defun test-while (n) "test while"
        (while (> n 0) (message "%d" n)
               (setq n (1- n))
 	      (sleep-for 1)))
 
-�����, �ꉞ���҂����ʂ�ɂ͓����Ă���.
+これは, 一応期待した通りには動いている.
 
-(*3) ���̑�
+(*3) その他
 
-if �� while �̑Ή����� emacs �� C �̃\�[�X��
+if や while の対応する emacs の C のソースは
 
 emacs-27.2/src/eval.c
 
-�ł�����. �����Ă����Œ�`����Ă��锟���͈ȉ�:
+であった. そしてここで定義されている函数は以下:
 
 or
 and
@@ -218,4 +218,4 @@ backtrace--frames-from-thread
 backtrace-eval
 backtrace--locals
 
-�܂����͂���ȂƂ���Ŗ������Ă���.
+まぁ今はこんなところで満足しておく.
