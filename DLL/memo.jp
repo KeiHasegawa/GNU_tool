@@ -1,37 +1,37 @@
-DLL �̒���
+DLL の調査
 
 (*1) getopt
-(*2) DLL �� static �����N���C�u����
+(*2) DLL と static リンクライブラリ
 
 (*1) getopt
 
-    man -s:3 getopt �Ŏg�p�Ⴊ�L�ڂ���Ă���̂ł��̂܂܃R�s�[���ăR���p�C�����Ă݂�.
+    man -s:3 getopt で使用例が記載されているのでそのままコピーしてコンパイルしてみた.
 
 cygwin % gcc -g test000.c -o test000.exe
 cygwin % ./test000.exe -n -t 123 hoge
 flags=1; tfnd=1; optind=4
 name argument = hoge
 
-    ���Ғʂ蓮�삵�Ă���.
+    期待通り動作している.
 cygwin % gdb -q test000.exe    
 (gdb) b test000.c:20
 (gdb) run -n -t 123 hoge
 (gdb) p optarg
-# OK "123" ���w���Ă���
+# OK "123" を指している
 (gdb) b test000.c:32
 (gdb) c
-# 32 �s�ڂŒ�~����
+# 32 行目で停止した
 (gdb) p optind
-# OK 4 �ɂȂ��Ă���.
+# OK 4 になっている.
 
-    �����������̒����������̂� cygwin �� getopt �����Ғʂ蓮�삵�Ă��Ȃ�����
-    �̂���, ���̂悤�ɒP���Ȋ��ł͊��Ғʂ蓮�삷��.
-    ��{�u���b�N�v���t�@�C���� bbprof.exe �� getopt ���g�p���Ă����̂���, ���ꂪ��
-    �Ғʂ蓮�삵�Ă��Ȃ�����. �����ňȉ��������Ă݂�:
+    そもそもこの調査をしたのは cygwin で getopt が期待通り動作していなかった
+    のだが, このように単純な環境では期待通り動作する.
+    基本ブロックプロファイルの bbprof.exe で getopt を使用していたのだが, これが期
+    待通り動作していなかった. そこで以下を試してみた:
 
 cygwin % gcc -g test000.c -o test000_2.exe d:/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1/libiberty/libiberty.a
 cygwin % ./test000_2.exe -n -t 123 hoge
-Segmentation fault(core dumped)         # �s���������A�N�Z�X
+Segmentation fault(core dumped)         # 不正メモリアクセス
 cygwin % gdb -q test000_2.exe
 (gdb) b test000.c:20
 (gdb) run -n -t 123 hoge
@@ -46,38 +46,38 @@ $1 = 0xffffcc8b "123"
    0x7ff734f510ca <main+90>:	mov    %eax,-0x5c(%rbp)
 (gdb) stepi 3
 (gdb) p/x $rax
-$2 = 0x0      ���Ғl�� argv[3] �� "123" �̃A�h���X
+$2 = 0x0      期待値は argv[3] で "123" のアドレス
 (gdb) nexti
 nexti
       0 [main] test000 60 cygwin_exception::open_stackdumpfile: Dumping stack trace to test000.exe.stackdump
 
-     ���� bbprof.exe ���J�������Ƃ�, ����͂�������Ȍ��ۂɎv��ꂽ�������܂�
-     ����؂蕪������΂����ԃo�O�����邾�낤.
+     当時 bbprof.exe を開発したとき, これはすごく奇妙な現象に思われたがここまで
+     問題を切り分けられればだいぶバグが搾れるだろう.
 
-     �Ƃ���œ������Ƃ� linux �Ŏ����Ă݂�.
+     ところで同じことを linux で試してみた.
 
 linux % gcc -g test000.c -o test000.exe
 linxu % ./test000.exe -n -t 123 hoge
 flags=1; tfnd=1; optind=4
 name argument = hoge
 
-    ���Ғʂ蓮�삵�Ă���. ����� gdb ������s���Ă݂�:
+    期待通り動作している. これを gdb から実行してみた:
 
 linux % gdb -q test000.exe
 (gdb) b test000.c:20
 (gdb) run -n -t 123 hoge
 (gdb) p optarg
-# 0x0 �ɂȂ��Ă���. ���Ғl�� argv[3]
+# 0x0 になっている. 期待値は argv[3]
 (gdb) b test000.c:32
 (gdb) c
-# 32 �s�ڂŒ�~����
+# 32 行目で停止した
 (gdb) p optind
-# 1 �ɂȂ��Ă���. ���Ғl�� 4
+# 1 になっている. 期待値は 4
 
-    ����͖��炩�� gdb ��������炩���Ă���. ����Ƃ� gcc ���������Ă���f�o
-    �b�O���ɖ�肪����̂�. �v���O�����̓����͊��҂������̂��� gdb �̓�����
-    ��������.
-    20 �s�ڂŒ�~������Ԃňȉ��������Ă݂�:
+    これは明らかに gdb が何かやらかしている. それとも gcc が生成しているデバ
+    ッグ情報に問題があるのか. プログラムの動きは期待したものだが gdb の動きが
+    おかしい.
+    20 行目で停止した状態で以下を試してみた:
 
 (gdb) x/4i $eip
 => 0x80491e4 <main+66>:	mov    0x804c064,%eax
@@ -87,8 +87,8 @@ linux % gdb -q test000.exe
 (gdb) p *(char**)0x804c064
 $4 = 0xbffff9c2 "123"
 
-    �Ƃ����킯��. �Ȃ̂ŏ��Ȃ��Ƃ� optarg �ɐ������l�̓Z�b�g����Ă���.
-    ���l�� 32 �s�ڂŒ�~������Ԃňȉ��������Ă݂�:
+    というわけだ. なので少なくとも optarg に正しい値はセットされている.
+    同様に 32 行目で停止した状態で以下を試してみた:
 
 (gdb) x/5i $eip
 => 0x804925e <main+188>:	mov    0x804c060,%eax
@@ -99,19 +99,19 @@ $4 = 0xbffff9c2 "123"
 (gdb) p *(int*)0x804c060
 $6 = 4
 
-    ��͂� optind �ɂ��������l�͓����Ă���. ���R�Ƃ����Γ��R����,
-    ���������Ȃ� gdb �����Ғʂ�̒l��\���ł��Ȃ��̂��͓�.
-    optarg �� optind �� GLIBC ���Œ�`����Ă��邱�ƂƊ֘A�������
-    ��������Ȃ�.
+    やはり optind にも正しい値は入っている. 当然といえば当然だが,
+    そもそもなぜ gdb が期待通りの値を表示できないのかは謎.
+    optarg や optind が GLIBC 内で定義されていることと関連があるの
+    かもしれない.
 
 081c4224 g     O .bss	00000004              optarg@GLIBC_2.0
 ...
 081c4220 g     O .bss	00000004              optind@GLIBC_2.0
 
 
-(*2) DLL �� static �����N���C�u����
+(*2) DLL と static リンクライブラリ
 
-    �ȉ��͒P���� DLL �Œ�`����Ă���ϐ��Ɣ������Q�Ƃ��Ă���v���O����:
+    以下は単純に DLL で定義されている変数と函数を参照しているプログラム:
 
 cygwin % gcc -g -shared -o test001_dll.dll test001_dll.c
 cygwin % gcc -g test001.c -o test001.exe test001_dll.dll
@@ -124,32 +124,32 @@ cygwin % ar r test001_static.a test001_static.o
 cygwin % gcc -g test001.c -o test001_s.exe test001_static.a
 /usr/local/lib/gcc/x86_64-pc-cygwin/10.1.0/../../../../x86_64-pc-cygwin/bin/ld: /cygdrive/d/tmp/ccmdw7Xd.o: in function `main':
 /cygdrive/d/home/khasegawa/lang/53_GNU_tool/DLL/test001.c:7: undefined reference to `__imp_var'
-���Ғʂ�G���[�ɂȂ��Ă���.
+期待通りエラーになっている.
 
 cygwin % gcc -g test001.c -o test001_sd.exe test001_static.a test001_dll.dll
 cygwin % ./test001_sd.exe
 test001_static.c::func called
 var = 12345678
 
-�Ăяo�����̂� static �����N���C�u�������� DLL �� var ���Q�Ƃ��Ă���.
+呼び出したのは static リンクライブラリだが DLL の var を参照している.
 
 cygwin % gcc -g test001.c -o test001_ds.exe test001_dll.dll test001_static.a
 cygwin % ./test001_ds.exe
 test001_static.c::func called
 var = 12345678
 
-���Ԃ͊֌W�Ȃ��炵��.
+順番は関係ないらしい.
 
-       ����̕�����ɂ����o�[�W������ cygwin �� bbprof.exe �ŌĂяo����
-       getopt �ŋN�����Ă������Ƃ�����. optarg �� optind �����҂��Ȃ��l�ɂȂ��Ă�
-       �܂�����������ł�����.
+       これの分かりにくいバージョンが cygwin の bbprof.exe で呼び出した
+       getopt で起こっていたことだった. optarg や optind が期待しない値になってし
+       まう原因がこれであった.
 
-       gdb �͉������Ă������Ƃ�����, �{���� DLL �� optarg ���Q�Ƃ���̂�������
-       ��, ���ۂ� static �����N���C�u�����̕ϐ���\�����Ă����Ƃ�������.
+       gdb は何をしていたかというと, 本来は DLL の optarg を参照するのが正しい
+       が, 実際は static リンクライブラリの変数を表示していたということ.
 
 % gdb -q test001_sd.exe
 (gdb) b main
 (gdb) run
 (gdb) p var
-$1 = 87654321       # static �����N���C�u�����̕ϐ���\�����Ă���
+$1 = 87654321       # static リンクライブラリの変数を表示している
 (gdb)
