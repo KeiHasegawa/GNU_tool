@@ -1,0 +1,43 @@
+FR-V cross compile environment
+
+(*1) FR-V
+
+https://ja.wikipedia.org/wiki/FR-V
+
+(*2) Install with script
+
+Use the same script with "IQ2000":
+
+set TARGET = frv-elf   # Change
+
+(*3) Verification => startup routine is not enough
+
+% frv-elf-gcc -g hello.c -o hello.elf
+/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/frv-elf/10.2.0/../../../../frv-elf/bin/ld: error: /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/frv-elf/10.2.0/frvbegin.o: size of section .ctors is not multiple of address size
+/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/frv-elf/10.2.0/../../../../frv-elf/bin/ld: falied: bad value
+collect2: error: ld exit status 1
+%
+
+But, I tried like below:
+
+% cat my_start.S
+	.text
+	.global	_start
+_start:
+	nop
+
+	.global	__main
+__main:
+	nop
+% frv-elf-gcc -g -c hello.c
+% frv-elf-gcc -g -c my_start.S -o my_start.o
+% /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/libexec/gcc/frv-elf/10.2.0/collect2 -o hello.elf my_start.o hello.o frv-elf/lib/libc.a frv-elf/lib/libsim.a
+
+Above command sucessed.
+
+% frv-elf-gdb hello.elf
+(gdb) target sim
+(gdb) load
+(gdb) b main
+
+Above worked well. So, all I have to do is to complete `my_start.S'
