@@ -1,1 +1,61 @@
 H8 のサンプル
+
+アドレス 0x100 番地に nop 命令をいくつか置いた状態で, 数命令実行したら
+シミュレーションを停止するということをやってみたい.
+
+まずはターゲットプログラムのビルドだが, このウェブページにある
+
+start.S
+
+がソースコードである. これは最初のサンプルなのでつまらないが, 最初はこんなものである.
+そして問題はこのプログラムを 0x100 番地に配置するということなのだが
+これはリンカに明示的に何かを伝える必要がある.
+
+start.x
+
+がそれである. これは突っこみどころが意外にたくさんあるが, 雰囲気は伝わると思う.
+ツールの使い方であるが
+
+% h8300-elf-as -g start.S -c -o start.o
+% h8300-elf-ld -o start.elf start.o -T start.x -Map start.map
+
+のようにすれば start.elf が目的のプログラムということになる.
+これを
+
+% h8300-elf-gdb -q -x gdbcom start.elf
+
+のように実行するわけだ. gdbcom の中には実行するべきコマンドが全て書かれているので
+インターラクティブに何かをするわけではなく h8300-elf-gdb が終了する.
+実行した結果は以下のようになった:
+
+% h8300-elf-gdb -q -x gdbcom start.elf
+Reading symbols from start.elf...
+Connected to the simulator.
+Loading section .text, size 0xc vma 0x100
+Start address 0x100
+Transfer rate: 96 bits in <1 sec.
+Breakpoint 1 at 0x100: file start.S, line 3.
+Breakpoint 2 at 0x10a: file start.S, line 9.
+
+Breakpoint 1, start () at start.S:3
+3		nop
+Dump of assembler code for function start:
+=> 0x00000100 <+0>:	nop	
+   0x00000102 <+2>:	nop	
+   0x00000104 <+4>:	nop	
+   0x00000106 <+6>:	nop	
+   0x00000108 <+8>:	nop	
+End of assembler dump.
+
+Breakpoint 2, end () at start.S:9
+9		nop
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
+%
+
+この要領でシミュレータの試験をすることができる. 例えば命令を
+実行したらレジスタの値を表示するとか, アクセスしたメモリの中を
+表示するとかという具合にである.
