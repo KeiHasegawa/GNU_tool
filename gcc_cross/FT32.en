@@ -1,17 +1,27 @@
-ft32-elf
+FT32 cross compile environment
 
-./01_new_batch で最後の動作確認まで成功
+(*1) FT32
+Search internet with keyword "FTDI" and "MCU".
+CPU Core FT32 is loaded.
 
-% ft32-elf-gcc -g -o 00_batch.verify.elf 00_batch.verify.c
+(*2) Install with script
 
-ではリンクエラーになるが,
+Use the same script with "IQ2000":
 
-% ft32-elf-gcc -g -c 00_batch.verify.c
-% /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/libexec/gcc/ft32-elf/10.2.0/collect2 -o 00_batch.verify.elf /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/ft32-elf/lib/crt0.o /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/ft32-elf/10.2.0/crtbegin.o -L/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/ft32-elf/10.2.0 -L/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/ft32-elf/lib 00_batch.verify.o -lgcc -lc -lsim /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/ft32-elf/10.2.0/crtend.o /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/ft32-elf/10.2.0/crtn.o -T sim.ld
+set TARGET = ft32-elf   # Change
 
-とすれば一応 00_batch.verify.elf ができる.
+(*3) Verification => Almost OK
 
-% ft32-elf-gdb 00_batch.verify.elf
+% ft32-elf-gcc -g -o hello.elf hello.c
+
+caused link error. But
+
+% ft32-elf-gcc -g -c hello.c
+% /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/libexec/gcc/ft32-elf/10.2.0/collect2 -o hello.elf /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/ft32-elf/lib/crt0.o /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/ft32-elf/10.2.0/crtbegin.o -L/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/ft32-elf/10.2.0 -L/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/ft32-elf/lib hello.o -lgcc -lc -lsim /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/ft32-elf/10.2.0/crtend.o /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/ft32-elf/10.2.0/crtn.o -T sim.ld
+
+works well.
+
+% ft32-elf-gdb hello.elf
 ...
 (gdb) target sim
 Connected to the simulator.
@@ -23,11 +33,11 @@ Loading section .eh_frame, size 0x4 lma 0x3f04
 Start address 0x0
 Transfer rate: 128496 bits in <1 sec.
 (gdb) b main
-Breakpoint 1 at 0x1b4: file 00_batch.verify.c, line 5.
+Breakpoint 1 at 0x1b4: file hello.c, line 5.
 (gdb) run
-Starting program: /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/00_batch.verify.elf 
+Starting program: /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/hello.elf 
 
-Breakpoint 1, main () at 00_batch.verify.c:5
+Breakpoint 1, main () at hello.c:5
 5	  printf("hello world\n");
 (gdb) disassemble
 Dump of assembler code for function main:
@@ -65,5 +75,4 @@ Unknown IO write 00002380 to to 00010035
 [Inferior 1 (process 42000) exited normally]
 (gdb)
 
-のようになる. 最後は期待する動作ではないが, 一応これで満足しておく.
-
+This was not exactly what I expected. But I'm satisfied with this result.
