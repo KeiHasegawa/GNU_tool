@@ -1,0 +1,115 @@
+Memory access
+
+(*1) Execution
+
+A program sometimes jumps to unexpected address. For example,
+
+test000.S
+
+This program intentionally jumps out of range. As usual, build it
+and tried to simulate:
+
+% h8300-elf-as -g test000.S -o test000.o
+% h8300-elf-ld -o test000.elf test000.o -T test000.x -Map test000.map
+% h8300-elf-gdb test000.elf
+
+...
+(gdb) target sim
+Connected to the simulator.
+(gdb) load
+Loading section .text, size 0xa vma 0x100
+Start address 0x100
+Transfer rate: 80 bits in <1 sec.
+(gdb) b start
+Breakpoint 1 at 0x100: file test000.S, line 3.
+(gdb) run
+Starting program: /home/khasegawa/lang/53_GNU_tool/gcc_cross/mem_acc/test000.elf 
+
+Breakpoint 1, start () at test000.S:3
+(gdb) n
+(gdb) 
+0x00002108 in ?? ()
+(gdb) stepi
+0x0000210a in ?? ()
+(gdb) c
+Continuing.
+
+Program received signal SIGILL, Illegal instruction.
+0x00000002 in ?? ()
+(gdb)
+
+The result was above. Load data was 0xa bytes at 0x100, so
+H8 simulator must have recongized that the target program
+executed out of range. When the program execution reached to
+address 0x2108, H8 simulator might be able to report the error.
+
+H8 `nop' instruction opecode is 0x0000. So, if the initialize value of
+memory is 0, simulator continue to execute `nop' instruction.
+
+At above execution, I don't know the reason why simulator stopped
+at address 0x0. But H8 simulator stopped by its some judgement.
+Then gdb asked H8 simulator the stop reason. At last, 
+
+Program received signal SIGILL, Illegal instruction.
+
+Above mysteryous message is displayed.
+
+Of cause, there are some programs which execute out of range, i.e.
+the section not loaded. But in that case, prgoram placed area can be
+restricted.
+
+At real world, there are memories at accessed address. So someone
+think that H8 simulator works well. Acutally such simulation is
+better at special envrionment.
+
+(*2) Load/Store
+
+test001.S
+
+At above program, unnaturally do like below:
+
+int a = 0x1234;
+int b = 0x5678;
+int tmp;
+
+void swap_ab()
+{
+  tmp = a;
+  a = b;
+  b = tmp;
+}
+
+This program load sections are .text and .data section. .bss section
+is not load.
+
+This program accesses to address 0x300, and it's what the programer expected.
+
+How should simulator handle above memory access?
+
+On the other hand,, if the program access to address 0x1000, it's a error.
+But at real world, there are memories at address 0x1000. Is this relly
+what programer expects.
+
+(*3) Memmory assign
+
+The problem described at (*1) and (*2) can be resolved by the concept
+named "Memory assign", or it's should be gdb command.
+
+How to use is:
+
+After load the target program, the comand is executed for notify simulator
+that which addresses are used. If the addresses are already loaded,
+it's not necessary.
+
+For (*1), not assign memory for detecting the out of range execution.
+
+For (*2), assign memory 2 bytes at adress 0x300.
+
+By above, simulator can stop execution if out-of-range memory access is
+occured.
+
+
+
+
+
+
