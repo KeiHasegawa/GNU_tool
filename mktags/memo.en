@@ -514,4 +514,16 @@ patching file gcc/dwarf2out.c
       Perhaps, tag is generated correctly with the form which you don't
       expected. Refrer to (*7).
 
+
+      For the below "hello world" program, if gcc generates the code
+      which call `puts' or `puts@plt' not `printf', then unfortunately
+      `printf' tag is not generated.
+
+      #include <stdio.h>
+
+      int main()
+      {
+        printf("hello world\n");
+        return 0;
+      }
       

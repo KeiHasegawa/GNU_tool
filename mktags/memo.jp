@@ -530,3 +530,15 @@ patching file gcc/dwarf2out.c
      してみることである. (*5) や (*6) が参考になるだろう.
      もしかするとユーザーが意図しない形で正しくタグが生成されている場合もあ
      る. (*7) も参照.
+
+     以下の hello world だが gcc が puts や puts@plt への呼び出しに
+     変換した場合は残念ながら printf のタグは生成されない. これは分かりにくい.
+
+
+     #include <stdio.h>
+
+     int main()
+     {
+       printf("hello world\n");
+       return 0;
+     }
