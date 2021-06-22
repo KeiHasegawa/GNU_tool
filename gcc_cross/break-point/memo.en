@@ -1,29 +1,34 @@
-ブレークポイント
+Break-point
 
-ARM の nop 命令は mov r0, r0 で命令長は 4 バイト 0e1a00000 である.
+ARM `nop' instruction is the same with
 
-このテストプログラム start.elf の場合 0x100 番地に nop が 4 命令並べてある.
+mov r0, r0
 
-ブレークポイントを start = 0x100 にセットすると nop 命令が 0xe7ffdefe に書き替えられる.
+and its length is 4 byte and its value is 0xe1a00000.
 
-0xe7ffdefe は偽の命令である. ARM には break ポイント専用の命令がないのか調べていないが
-i386 の int3 命令のようなものかもしれない.
+At address 0x100 of this test program `start.elf', 4 `nop' instructions
+are located.
 
-そして実際にこの偽の命令を実行してそれがブレークポイントのために埋め込まれた偽の命令だと
-ARM のシミュレータは認識する:
+If you set break-point at `start' = 0x100, nop instruction is changed
+to 0xe7ffdefe.
+
+0xe7ffdefe is a not instruction. I don't investigate break instruction
+such a `int3' of i386.
+
+And actually, ARM simulator executes this 0xe7ffdefe and reconizes
+that it's a break-point like below:
 
 
 		  if (BITS (0, 19) == 0xfdefe)
 		    {
-		    ここが成立する
+		    // This condition satisfys.
 		      if (!ARMul_OSHandleSWI (state, SWI_Breakpoint))
 			ARMul_Abort (state, ARMul_SWIV);
 		    }
 
-この後 gdb 側から以下のように実行されブレークポイントにヒットしたことが
-判明する.
+After above, gdb will ask ARM simulator the stop reason like below: 
 
-  // 停止した理由を gdb 側からシミュレータ側に問い合わせている
+  // gdb says "Why are you stop?" to ARM simulator
   sim_stop_reason (sim_data->gdbsim_desc, &reason, &sigrc);
              
   switch (reason)
@@ -39,13 +44,13 @@ ARM のシミュレータは認識する:
 	  quit ();
 	  break;
 	case GDB_SIGNAL_INT:
-	case GDB_SIGNAL_TRAP:         このとき GDB_SIGNAL_TRAP は 5 だった
+	case GDB_SIGNAL_TRAP:  // At this time GDB_SIGNAL_TRAP is euqal to 5 
 	default:
-	ここにくる
+	  // comes here
 	  status->kind = TARGET_WAITKIND_STOPPED;
 	  status->value.sig = (enum gdb_signal) sigrc;
 	  break;
 	}
       break;
 
-勿論, 偽の命令はもとの 0e1a00000 すなわち nop 命令に適切に書き替えられる.
+Of cause, 0xe7ffdefe is change to 0e1a00000, i.e. nop instruction.
