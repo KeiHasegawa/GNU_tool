@@ -1,0 +1,51 @@
+ブレークポイント
+
+ARM の nop 命令は mov r0, r0 で命令長は 4 バイト 0e1a00000 である.
+
+このテストプログラム start.elf の場合 0x100 番地に nop が 4 命令並べてある.
+
+ブレークポイントを start = 0x100 にセットすると nop 命令が 0xe7ffdefe に書き替えられる.
+
+0xe7ffdefe は偽の命令である. ARM には break ポイント専用の命令がないのか調べていないが
+i386 の int3 命令のようなものかもしれない.
+
+そして実際にこの偽の命令を実行してそれがブレークポイントのために埋め込まれた偽の命令だと
+ARM のシミュレータは認識する:
+
+
+		  if (BITS (0, 19) == 0xfdefe)
+		    {
+		    ここが成立する
+		      if (!ARMul_OSHandleSWI (state, SWI_Breakpoint))
+			ARMul_Abort (state, ARMul_SWIV);
+		    }
+
+この後 gdb 側から以下のように実行されブレークポイントにヒットしたことが
+判明する.
+
+  // 停止した理由を gdb 側からシミュレータ側に問い合わせている
+  sim_stop_reason (sim_data->gdbsim_desc, &reason, &sigrc);
+             
+  switch (reason)
+    {
+    case sim_exited:
+      status->kind = TARGET_WAITKIND_EXITED;
+      status->value.integer = sigrc;
+      break;
+    case sim_stopped:
+      switch (sigrc)
+	{
+	case GDB_SIGNAL_ABRT:
+	  quit ();
+	  break;
+	case GDB_SIGNAL_INT:
+	case GDB_SIGNAL_TRAP:         このとき GDB_SIGNAL_TRAP は 5 だった
+	default:
+	ここにくる
+	  status->kind = TARGET_WAITKIND_STOPPED;
+	  status->value.sig = (enum gdb_signal) sigrc;
+	  break;
+	}
+      break;
+
+勿論, 偽の命令はもとの 0e1a00000 すなわち nop 命令に適切に書き替えられる.
