@@ -1,0 +1,155 @@
+FR-V のスタートアップルーチン
+
+差し当たって hello world さえ動けばいいというようなレベルを目指す.
+
+(*1) マニュアルを見つけられない
+
+富士通のホームページから FR300, FR400, FRV のマニュアルをダウンロードできるかと
+思っていたが発見できず.
+
+(*2) sp, fp, lr, gr8, gr9, gr0 レジスタ
+
+例えば
+
+int f(int a, int b){ retrun a + b; }
+
+のような函数に対するコードは
+
+f:
+	addi sp,#-24,sp
+	sti fp, @(sp,8)
+	addi sp,#8,fp
+	movsg lr, gr5
+	sti gr5, @(fp,8)
+	sti gr8, @(fp,-4)
+	sti gr9, @(fp,-8)
+	ldi @(fp,-4), gr5
+	ldi @(fp,-8), gr4
+	add gr5,gr4,gr4
+	mov gr4, gr8
+	ldi @(fp,8), gr5
+	ld @(fp,gr0), fp
+	addi sp,#24,sp
+	jmpl @(gr5,gr0)
+
+のようになっている. 函数の引数 a, b は gr8, gr9 にセットされている.
+戻り値を gr8 にセットしている.
+復帰アドレスは call 命令直後に lr にセットされている.
+gr0 は常に 0 を読み出せるレジスタ.
+スタックのレイアウトは以下のようになっている:
+
+
+	+----------+ <- sp_{new}
+	| gr9_{old}| 第二引数
+	+----------+
+	| gr8_{old}| 第一引数
+	+----------+ <- fp_{new}
+	| fp_{old} |
+	+----------+
+	|          |
+	+----------+
+	| lr_{old} | 戻りアドレス
+	+----------+
+	|          |
+	+----------+ <- sp_{old}
+
+
+test000_start.S で test000.c のプログラムを動かして期待する
+動作になっていることを確認した.
+
+(*3) gr16
+
+int x;
+
+int f(int a, int b)
+{
+  return x = a + b;
+}
+
+に対して frv-elf-gcc は以下のようなコードを生成した:
+
+	.text
+	.globl x
+	.section	.sbss,"aw",@nobits
+	.p2align 2
+	.type	x, @object
+	.size	x, 4
+x:
+	.zero	4
+	.text
+	.p2align 4
+	.globl f
+	.type	f, @function
+f:
+	addi sp,#-24,sp
+	sti fp, @(sp,8)
+	addi sp,#8,fp
+	movsg lr, gr5
+	sti gr5, @(fp,8)
+	sti gr8, @(fp,-4)
+	sti gr9, @(fp,-8)
+	ldi @(fp,-4), gr5
+	ldi @(fp,-8), gr4
+	add gr5,gr4,gr5
+	addi gr16,#gprel12(x),gr4
+	st gr5, @(gr4,gr0)
+	addi gr16,#gprel12(x),gr4
+	ld @(gr4,gr0), gr4
+	mov gr4, gr8
+	ldi @(fp,8), gr5
+	ld @(fp,gr0), fp
+	addi sp,#24,sp
+	jmpl @(gr5,gr0)
+	.size	f, .-f
+	.ident	"GCC: (GNU) 10.2.0"
+
+初期値のないグローバルな x は .sbss というセクションに置かれている.
+そして x に値をセットするのに
+
+	addi gr16,#gprel12(x),gr4
+	st gr5, @(gr4,gr0)
+
+のようなコードを生成している. つまり gr16 が .sbss のセクションが
+配置された, おそらく, 先頭アドレスを指している必要があるということだ.
+
+そこで test001_start.S では main を呼び出す前に gr16 に
+値をセットしている. これで期待する動作になっている.
+
+(*4) これまでのことを踏まえて
+
+test002.c
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.frv-elf/newlib/libc/stdio/makebuf.c
+
+  *couldbetty = S_ISCHR(st.st_mode);
+
+ここで illegal instruction
+のようにシミュレータが喚いている, あるいは gdb がか. 対象となる命令は以下:
+
+cor gr0,gr0,gr4,cc4,0x0
+
+これを実行してこの結果になっている.
+このおそらくシミュレータのバグ test005.elf で単純に再現している.
+test004.elf は単項の & をテストしてみたが, これは大丈夫.
+
+さてこの cor 命令の仕様が判明すれば修正することもできそうだが...
+
+cor は逆アセンブル表記で frv-elf-gcc が生成している命令は
+
+cmov gr0, gr4, cc4, 0
+
+である. なるほど, 条件によって gr4 = gr0 を行なうということらしい.
+cor で言えば
+
+cor gr0, gr0 gr4, cc4, 0x0
+
+は条件によって
+
+gr4 = gr0 | gr0
+
+を行なうということ.
+
+
+他で調べたことから総合すると PSR レジスタの CM ビットフィールドが 0 で
+このような結果になっていた.
+
