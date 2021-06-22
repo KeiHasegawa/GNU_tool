@@ -2,6 +2,14 @@ FR-V のスタートアップルーチン
 
 差し当たって hello world さえ動けばいいというようなレベルを目指す.
 
+
+(*1) マニュアルを見つけられない
+(*2) sp, fp, lr, gr8, gr9, gr0 レジスタ
+(*3) gr16
+(*4) illegal instruction
+(*5) frv のシミュレータを調べてみた
+
+
 (*1) マニュアルを見つけられない
 
 富士通のホームページから FR300, FR400, FRV のマニュアルをダウンロードできるかと
@@ -115,22 +123,34 @@ f:
 そこで test001_start.S では main を呼び出す前に gr16 に
 値をセットしている. これで期待する動作になっている.
 
-(*4) これまでのことを踏まえて
+(*4) illegal instruction
 
-test002.c
+これまえのことを踏まえて test002.c で hello world を出力するプログラムを
+動かしてみた:
 
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.frv-elf/newlib/libc/stdio/makebuf.c
+% frv-elf-ld -o test002.elf test001_start.o test002.o -Map test002.map -lc -lsim
+% frv-elf-gdb test002.elf
+(gdb) target sim
+(gdb) load
+(gdb) b main
+(gdb) run
+
+そしてステップ実行していくと puts の呼び出しで
+
+interrupt: illegal_instruction
+
+Quit
+
+のようになることに気付く. 調べてみると以下のコードで問題の現象が起っていた:
+
+newlib-4.1.0.frv-elf/newlib/libc/stdio/makebuf.c
 
   *couldbetty = S_ISCHR(st.st_mode);
 
-ここで illegal instruction
-のようにシミュレータが喚いている, あるいは gdb がか. 対象となる命令は以下:
+ここで illegal instruction のようにシミュレータが喚いている, あるいは gdb が.
+対象となる命令は以下:
 
 cor gr0,gr0,gr4,cc4,0x0
-
-これを実行してこの結果になっている.
-このおそらくシミュレータのバグ test005.elf で単純に再現している.
-test004.elf は単項の & をテストしてみたが, これは大丈夫.
 
 さてこの cor 命令の仕様が判明すれば修正することもできそうだが...
 
@@ -143,13 +163,109 @@ cor で言えば
 
 cor gr0, gr0 gr4, cc4, 0x0
 
-は条件によって
+である. 条件によって
 
 gr4 = gr0 | gr0
 
 を行なうということ.
 
+(*5) frv のシミュレータを調べてみた
 
-他で調べたことから総合すると PSR レジスタの CM ビットフィールドが 0 で
-このような結果になっていた.
+cor gr1, gr2, gr3, cc4, 0
+
+で illegal instruction になってしまうエラーの調査
+
+この命令自体は
+
+sem.c
+
+SEM_FN_NAME (frvbf,cor) (SIM_CPU *current_cpu, SEM_ARG sem_arg)
+
+のように実装はされているらしい.
+
+ちなみに
+
+nop
+
+命令の対応する函数は
+
+SEM_FN_NAME (frvbf,ori) (SIM_CPU *current_cpu, SEM_ARG sem_arg)
+
+で
+
+      vpc = (*sc->argbuf.semantic.sem_full) (current_cpu, sc);
+
+のようにして呼び出されている.
+
+問題の
+
+	cor	gr1, gr2, gr3, cc4, 0
+
+であるが, 上で述べた函数を呼び出している. ということは命令をシミュレーションできていないと
+いうことを確かめるよりも, まずは, illegal instruction が発生している直接の原因を調べ
+るべきで, その結果おそらく frvbf_cor に問題があると判明する可能性はある.
+
+
+  /* If there is an interrupt pending, then process it.  */
+  if (frv_interrupt_state.queue_index > 0)
+    handle_interrupt (current_cpu, pc);
+
+この条件が成立しているのがおそらく期待値ではない. 実際に nop を実行したときはこの条件は成立
+していない.
+
+この条件を成立させているのは以下の函数
+
+frv_queue_interrupt (current_cpu=0x8dbe0c0, kind=FRV_ILLEGAL_INSTRUCTION) at interrupts.c:164
+
+雰囲気からすると本当に不正な命令を見つけているらしい.
+この函数は以下から呼ばれいていた:
+
+  else if (CGEN_INSN_ATTR_VALUE (insn, CGEN_INSN_CONDITIONAL)
+      && ! GET_H_PSR_CM ())
+    frv_queue_non_implemented_instruction_interrupt (current_cpu, insn);
+
+
+#define GET_H_PSR_CM() CPU (h_psr_cm)
+
+なので, おそらく PSR というレジスタがあってその CM ビットがセットされていないから
+illegal instruction ということなのだろう.
+
+さてこの PSR だがマニュアルがあればすぐに分かると思うのだが, しょうがないので
+シミュレータのソースを見ることにする. 本当は良くない.
+
+ターゲットプログラムが開始した直後の psr は以下のようになっていた.
+
+(frv-elf-gdb) p/x $psr
+$1 = 0x1000107e
+
+ここで gdb 本体から psr レジスタの値を問い合わせたときに
+これらのフィールドから計算されることに気付いた. そしてソースから
+以下を発見した:
+
+  int psr = ((GET_H_PSR_IMPLE () & 0xf) << 28) |
+            ((GET_H_PSR_VER   () & 0xf) << 24) |
+            ((GET_H_PSR_ICE   () & 0x1) << 16) |
+            ((GET_H_PSR_NEM   () & 0x1) << 14) |
+            ((GET_H_PSR_CM    () & 0x1) << 13) |
+            ((GET_H_PSR_BE    () & 0x1) << 12) |
+            ((GET_H_PSR_ESR   () & 0x1) << 11) |
+            ((GET_H_PSR_EF    () & 0x1) <<  8) |
+            ((GET_H_PSR_EM    () & 0x1) <<  7) |
+            ((GET_H_PSR_PIL   () & 0xf) <<  3) |
+            ((GET_H_PSR_S     () & 0x1) <<  2) |
+            ((GET_H_PSR_PS    () & 0x1) <<  1) |
+            ((GET_H_PSR_ET    () & 0x1)      );
+
+  return psr;
+
+
+こんなのを見つけた. なるほど, ビット 13 がそれらしい.
+これが意味するところは不明だが, たぶん Conditional Move が有効とか
+そういうことなのだろう.
+
+psr レジスタのシミュレータの初期値とコンパイラの出力が合っていないということらしい.
+
+(frv-elf-gdb) set $psr = $psr |(1<<13)
+
+のようにすれば問題の命令が期待通り実行できることを確認した.
 
