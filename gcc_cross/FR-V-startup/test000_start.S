@@ -2,7 +2,6 @@
 _start:
 	sethi	#hi(_stack), sp
 	setlo	#lo(_stack), sp
-	mov	sp, fp
 	call	main
 	nop
 end:

@@ -1,8 +1,129 @@
 FR-V start-up routine
 
+My goal is to make start-up routien for "hello world".
+
+(*1) No manual
+(*2) sp, fp, lr, gr8, gr9, gr0 registers
+(*3) gr16
+(*4) illegal instruction
+(*5) Investigation frv simulator
+
+
+
 (*1) No manual
 
 I could not found FRV300, FRV400 or FRV mannual at Fujitsu corporation
 web page.
 
-(*2) 
+(*2) sp, fp, lr, gr8, gr9, gr0 registers
+
+For a piece of code:
+
+int f(int a, int b){ retrun a + b; }
+
+frv-elf-gcc generates like below:
+
+f:
+	addi sp,#-24,sp
+	sti fp, @(sp,8)
+	addi sp,#8,fp
+	movsg lr, gr5
+	sti gr5, @(fp,8)
+	sti gr8, @(fp,-4)
+	sti gr9, @(fp,-8)
+	ldi @(fp,-4), gr5
+	ldi @(fp,-8), gr4
+	add gr5,gr4,gr4
+	mov gr4, gr8
+	ldi @(fp,8), gr5
+	ld @(fp,gr0), fp
+	addi sp,#24,sp
+	jmpl @(gr5,gr0)
+
+Here, we notice that
+
+    o function arguments are passed by using gr8, gr9, ...
+    o function return value is set to gr8
+    o function return address is set to lr by processor after call instruction
+    o gr0 is zero register
+
+And above function stack layout is illustrated like below:
+
+
+
+	+----------+ <- sp_{new}
+	| gr9_{old}| 2nd argument
+	+----------+
+	| gr8_{old}| 1st argument
+	+----------+ <- fp_{new}
+	| fp_{old} |
+	+----------+
+	|          |
+	+----------+
+	| lr_{old} | return address
+	+----------+
+	|          |
+	+----------+ <- sp_{old}
+
+
+For call `main', start-up routine have to set sp suitably.
+`test000_start.S' can call `main' defined at `test000.c' as I expected.
+
+(*3) gr16
+
+int x;
+
+int f(int a, int b)
+{
+  return x = a + b;
+}
+
+For above code, frv-elf-gcc generates like below:
+
+	.text
+	.globl x
+	.section	.sbss,"aw",@nobits
+	.p2align 2
+	.type	x, @object
+	.size	x, 4
+x:
+	.zero	4
+	.text
+	.p2align 4
+	.globl f
+	.type	f, @function
+f:
+	addi sp,#-24,sp
+	sti fp, @(sp,8)
+	addi sp,#8,fp
+	movsg lr, gr5
+	sti gr5, @(fp,8)
+	sti gr8, @(fp,-4)
+	sti gr9, @(fp,-8)
+	ldi @(fp,-4), gr5
+	ldi @(fp,-8), gr4
+	add gr5,gr4,gr5
+	addi gr16,#gprel12(x),gr4
+	st gr5, @(gr4,gr0)
+	addi gr16,#gprel12(x),gr4
+	ld @(gr4,gr0), gr4
+	mov gr4, gr8
+	ldi @(fp,8), gr5
+	ld @(fp,gr0), fp
+	addi sp,#24,sp
+	jmpl @(gr5,gr0)
+	.size	f, .-f
+	.ident	"GCC: (GNU) 10.2.0"
+
+This variable `x' is located at .sbss section. And for setting the value
+into `x', frv-elf-gcc genrates like:
+
+	addi gr16,#gprel12(x),gr4
+	st gr5, @(gr4,gr0)
+
+i.e. gr16 have to be set to the .sbss section address, maybe.
+
+Now, `test001_start.S' can call `main' defined at `test001.c'
+and this program works well.
+
+(*4) illegal instruction
