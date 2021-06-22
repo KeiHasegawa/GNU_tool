@@ -1,0 +1,63 @@
+Program message
+
+Assume that a program displays message like below:
+
+% ./a.out
+hello world
+%
+
+Now, also assume that this `a.out' is a very complicated program.
+How to catch the part of program which displays this message is, what?
+
+(*1) Answer in a minuite
+
+This program may call `write' system call, or envoke another process
+by calling `fork' and `exec'. So set break-point `write' and `fork'.
+
+Actually, while debugging `b.out', break-point to `fork' was not hit
+as I expected. I took it for granted that b.out call
+
+fork, exec and wait
+
+(*2) Install glibc
+
+I installed glibc-2.33
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/glibc-2.33
+% mkdir build
+% cd build
+% ../configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/glibc-2.33/install
+
+I had to make directory for building and installing. As usual, when I executed
+`configure', `configure' messaged that it did not recommend I installed into
+/usr/local.
+
+(*3) Debugging a.out and b.out linked with installed glibc
+
+(gdb) b _start
+
+By setting break-point like above, you can debug from program entry point.
+Becase at this point libc.so is loaded, you can set break-point into
+`write' or `fork' normally. If you set them before the program reachs
+to its entry point, it becomes like below:
+
+(gdb) b write
+Function "write" not defined.
+Make breakpoint pending on future shared library load? (y or [n]) y
+Breakpoint 1 (write) pending.
+(gdb)
+
+This is also as I expects.
+
+Here, I confirmed that `b.out' did like below:
+
+	int	$0x80
+
+to realize
+
+sh -c echo hello world
+
+By the way, there exists `system' tag at `TAGS' but does not exist
+`printf' at `TAGS'. gcc generates the code which call `puts@plt'.
+
+
