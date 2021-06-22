@@ -2,7 +2,7 @@ FR-V cross compile environment
 
 (*1) FR-V
 (*2) Install with script
-(*3) Verification => start-up routine is not enough
+(*3) Verification => OK
 
 
 (*1) FR-V
@@ -15,7 +15,7 @@ Use the same script with "IQ2000":
 
 set TARGET = frv-elf   # Change
 
-(*3) Verification => start-up routine is not enough
+(*3) Verification => OK
 
 % frv-elf-gcc -g hello.c -o hello.elf
 /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/frv-elf/10.2.0/../../../../frv-elf/bin/ld: error: /media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/lib/gcc/frv-elf/10.2.0/frvbegin.o: size of section .ctors is not multiple of address size
@@ -25,24 +25,80 @@ collect2: error: ld exit status 1
 
 But, I tried like below:
 
-% cat my_start.S
-	.text
-	.global	_start
+% cat frv_start.S
+	.global _start
 _start:
+	sethi	#hi(_stack), sp
+	setlo	#lo(_stack), sp
+	mov	sp, fp
+	sethi	#hi(gp), gr16
+	setlo	#lo(gp), gr16
+	call	main
+end:
 	nop
 
-	.global	__main
+	.global __main
 __main:
-	nop
+	ret
 % frv-elf-gcc -g -c hello.c
-% frv-elf-gcc -g -c my_start.S -o my_start.o
-% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/libexec/gcc/frv-elf/10.2.0/collect2 -o hello.elf my_start.o hello.o frv-elf/lib/libc.a  frv-elf/lib/libsim.a
+% frv-elf-as -g frv_start.S -o frv_start.o
+% frv-elf-ld -o hello.elf frv_start.o hello.o -lc -lsim
 
 Above command sucessed.
 
-% frv-elf-gdb hello.elf
-(gdb) target sim
-(gdb) load
-(gdb) b main
+% cat frv.gdbcom
+set prompt (frv-elf-gdb) 
+target sim
+load
+b main
+b end
+run
+disassemble
+set $psr = $psr | (1<<13)
+c
+quit
+% frv-elf-gdb -q -x frv.gdbcom hello.elf
+Reading symbols from hello.elf...
+Connected to the simulator.
+Loading section .text, size 0x51d0 lma 0x10000
+Loading section .rodata, size 0x10 lma 0x151d0
+Loading section .data, size 0x830 lma 0x152e0
+Loading section .sdata, size 0x14 lma 0x15b10
+Start address 0x10000
+Transfer rate: 184608 bits in <1 sec.
+Breakpoint 1 at 0x10038: file hello.c, line 5.
+Breakpoint 2 at 0x10018: file frv_start.S, line 10.
+warning: shared library handler failed to enable breakpoint
+warning: Unable to find dynamic linker breakpoint function.
+GDB will be unable to debug shared library initializers
+and track explicitly loaded dynamic code.
 
-Above worked well. So, all I have to do is to complete `my_start.S'
+Breakpoint 1, main () at hello.c:5
+5	  printf("hello world\n");
+Dump of assembler code for function main:
+   0x00010020 <+0>:	addi sp,-16,sp
+   0x00010024 <+4>:	sti fp,@(sp,0)
+   0x00010028 <+8>:	ori sp,0,fp
+   0x0001002c <+12>:	movsg lr,gr5
+   0x00010030 <+16>:	sti gr5,@(fp,8)
+   0x00010034 <+20>:	call 0x1001c <__main>
+=> 0x00010038 <+24>:	sethi 0x1,gr8
+   0x0001003c <+28>:	setlo 0x51d0,gr8
+   0x00010040 <+32>:	call 0x101a0 <puts>
+   0x00010044 <+36>:	setlos lo(0x0),gr4
+   0x00010048 <+40>:	ori gr4,0,gr8
+   0x0001004c <+44>:	ldi @(fp,8),gr5
+   0x00010050 <+48>:	ld @(fp,gr0),fp
+   0x00010054 <+52>:	addi sp,16,sp
+   0x00010058 <+56>:	jmpl @(gr5,gr0)
+End of assembler dump.
+hello world
+
+Breakpoint 2, end () at frv_start.S:10
+10		nop
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
+%
