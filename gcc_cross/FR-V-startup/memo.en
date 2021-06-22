@@ -127,3 +127,51 @@ Now, `test001_start.S' can call `main' defined at `test001.c'
 and this program works well.
 
 (*4) illegal instruction
+
+Now, I tried to execute hello world program.
+
+% frv-elf-ld -o test002.elf test001_start.o test002.o -Map test002.map -lc -lsim
+% frv-elf-gdb test002.elf
+(gdb) target sim
+(gdb) load
+(gdb) b main
+(gdb) run
+
+And I noticed that calling `puts' displayed below message:
+
+interrupt: illegal_instruction
+
+Quit
+
+I investigated which part of the program cuased above more precicely. Then,
+
+newlib-4.1.0.frv-elf/newlib/libc/stdio/makebuf.c
+
+  *couldbetty = S_ISCHR(st.st_mode);
+
+Aove code execution was the part which caused this phenomenon. And I also
+noticed that the instruction
+
+cor gr0,gr0,gr4,cc4,0x0
+
+was the reason why this phenomenon occured.
+
+(*5) Investigation frv simulator
+
+I investigated why `illegal instruction' was occured by executing `cor'
+instruction.
+
+I found that becuase PSR.CM was 0, frv simulator regarded `cor' instruction
+as `illegal instruction'.
+
+Then I tried like below:
+
+(frv-elf-gdb) set $psr = $psr |(1<<13)
+
+before simulator execute `cor' instruction. This worke well.
+And hello world program worked as I expected.
+
+
+
+
+
