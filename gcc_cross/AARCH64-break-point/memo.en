@@ -2,3 +2,224 @@ AARCH64 simulator break-point
 
 (*1) Fix the stop reason
 (*2) Fix register number
+
+
+(*1) Fix the stop reason
+
+I noticed that break-point did not work as I expected at AARCH64 simulator
+environment.
+
+On the other hand, as described at "Break-point", I investigated how ARM
+simulator handled break-points simply.
+
+Similary, I created a very simple program and built it:
+
+% aarch64-elf-as -g start.S -o start.o
+% aarch64-elf-ld -o start.elf start.o -T start.x -Map start.map
+
+Then executed like below:
+
+% aarch64-elf-gdb -q -x gdbcom start.elf
+
+Above did not work. I invesitgated and found that AARCH64 simulator
+did not answer the stop reason:
+
+gdb                  simulator
+
+target sim
+load
+b main
+        -> `nop'(d503201f) instruction is changed to 0xd4200000
+run
+
+                     Execute 0xd4200000 not `nop'
+<--------------------		     
+        stop
+
+--------------------->
+  query the stop reason
+
+<--------------------
+  answer
+
+And I tried below code:
+
+gdb-10.2.aarch64-elf/sim/aarch64/simulator.c
+
+#if 0
+      sim_engine_halt (CPU_STATE (cpu), cpu, NULL, aarch64_get_PC (cpu),
+		       sim_exited, aarch64_get_reg_s32 (cpu, R0, SP_OK));
+#else
+      sim_engine_halt (CPU_STATE (cpu), cpu, NULL, aarch64_get_PC (cpu),
+		       sim_stopped, SIM_SIGTRAP);
+#endif
+
+Then I executed `aarch64-elf-gdb' similarly:
+
+Reading symbols from start.elf...
+Connected to the simulator.
+Loading section .text, size 0x10 lma 0x100
+Start address 0x100
+Transfer rate: 128 bits in <1 sec.
+Breakpoint 1 at 0x100: file start.S, line 3.
+
+Program received signal SIGTRAP, Trace/breakpoint trap.
+0x0000000000000000 in ?? ()
+(aarch64-elf-gdb)
+
+This was not what I expected. I thoguht above fix was not complete.
+
+(*2) Fix register number
+
+Program received signal SIGTRAP, Trace/breakpoint trap.
+0x0000000000000000 in ?? ()
+
+Above message was the phenomenon I did not expected. So I decided to
+the reason why this messages was displayed.
+
+My expected result was:
+
+
+Breakpoint 1, start () at start.S:3
+3		nop
+
+
+The messsage
+
+Program received signal SIGTRAP, Trace/breakpoint trap.
+
+was displayed at the part of
+
+infrun.c:8023
+
+uiout->text ("\nProgram");
+
+At the first place, it's not expected that the program execution reached here.
+
+
+  if (last.kind == TARGET_WAITKIND_STOPPED && stopped_by_random_signal)
+    gdb::observers::signal_received.notify (inferior_thread ()->suspend.stop_sig
+
+Becase this if-statement condition was stasfied,
+
+    gdb::sbseverse::...
+
+was executed. On the other hand at arm-elf-gdb environment, this condition
+was not satisfied, so that it worked as I expected.
+
+The condition
+
+last.kind == TARGET_WAITKIND_STOPPED
+
+was satisfied, and it was expected result. But
+
+stopped_by_random_signal
+
+was equal to 1, and that was not expected result. This variable was set at
+like below:
+
+  if (random_signal)
+...
+      stopped_by_random_signal = 1;
+
+So I investigated the reason why `random_signal' was set to non-zero:
+
+
+  random_signal
+    = !bpstat_explains_signal (ecs->event_thread->control.stop_bpstat,
+			       ecs->event_thread->suspend.stop_signal);
+
+This variable was set at above. And more, at below point:
+
+  ecs->event_thread->control.stop_bpstat
+    = bpstat_stop_status (get_current_regcache ()->aspace (),
+			  ecs->event_thread->suspend.stop_pc,
+			  ecs->event_thread, &ecs->ws, stop_chain);
+
+ecs->event_thread->suspend.stop_pc
+
+was 0. The expected value was 0x100.
+
+`aarch64_reg_get'
+
+returned 0. So I fixed like below:
+
+static size_t
+reg_size (int regno)
+{
+#if 0  
+  if (regno == AARCH64_CPSR_REGNO || regno == AARCH64_FPSR_REGNO)
+    return 32;
+  return 64;
+#else
+  if (regno == AARCH64_CPSR_REGNO || regno == AARCH64_FPSR_REGNO)
+    return 4;
+  return 8;
+#endif
+}
+
+But after above fix, `aarch64_reg_get' returned 0.
+
+I noticed that gdb recongnized PC register number was 32. But
+
+typedef enum
+{
+  AARCH64_MIN_GR = 0,
+  AARCH64_MAX_GR = 31,
+  AARCH64_MIN_FR = 32,
+  AARCH64_MAX_FR = 63,
+  AARCH64_PC_REGNO = 64,
+  AARCH64_CPSR_REGNO = 65,
+  AARCH64_FPSR_REGNO = 66,
+  AARCH64_MAX_REGNO = 67
+} aarch64_regno;
+
+According to above, PC register number was 64.
+
+gdb reconginzed register numbers like below:
+
+enum aarch64_regnum
+{
+  AARCH64_X0_REGNUM,		/* First integer register.  */
+  AARCH64_FP_REGNUM = AARCH64_X0_REGNUM + 29,	/* Frame register, if used.  */
+  AARCH64_LR_REGNUM = AARCH64_X0_REGNUM + 30,	/* Return address.  */
+  AARCH64_SP_REGNUM,		/* Stack pointer.  */
+  AARCH64_PC_REGNUM,		/* Program counter.  */
+  AARCH64_CPSR_REGNUM,		/* Current Program Status Register.  */
+  AARCH64_V0_REGNUM,		/* First fp/vec register.  */
+  AARCH64_V31_REGNUM = AARCH64_V0_REGNUM + 31,	/* Last fp/vec register.  */
+  AARCH64_SVE_Z0_REGNUM = AARCH64_V0_REGNUM,	/* First SVE Z register.  */
+  AARCH64_SVE_Z31_REGNUM = AARCH64_V31_REGNUM,  /* Last SVE Z register.  */
+  AARCH64_FPSR_REGNUM,		/* Floating Point Status Register.  */
+  AARCH64_FPCR_REGNUM,		/* Floating Point Control Register.  */
+  AARCH64_SVE_P0_REGNUM,	/* First SVE predicate register.  */
+  AARCH64_SVE_P15_REGNUM = AARCH64_SVE_P0_REGNUM + 15,	/* Last SVE predicate
+							   register.  */
+  AARCH64_SVE_FFR_REGNUM,	/* SVE First Fault Register.  */
+  AARCH64_SVE_VG_REGNUM,	/* SVE Vector Granule.  */
+
+  /* Other useful registers.  */
+  AARCH64_LAST_X_ARG_REGNUM = AARCH64_X0_REGNUM + 7,
+  AARCH64_STRUCT_RETURN_REGNUM = AARCH64_X0_REGNUM + 8,
+  AARCH64_LAST_V_ARG_REGNUM = AARCH64_V0_REGNUM + 7
+};
+
+So I fixed like below:
+
+typedef enum
+{
+  AARCH64_MIN_GR = 0,
+  AARCH64_MAX_GR = 31,
+  AARCH64_PC_REGNO = 32,
+  AARCH64_CPSR_REGNO,
+  AARCH64_MIN_FR,
+  AARCH64_MAX_FR = AARCH64_MIN_FR+31,
+  AARCH64_FPSR_REGNO = 66,
+  AARCH64_MAX_REGNO = 67  
+} aarch64_regno;
+
+By these fix, this sample program worked well.
+
+
+
+
