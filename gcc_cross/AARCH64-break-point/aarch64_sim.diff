@@ -1,0 +1,82 @@
+*** /home/khasegawa/gdb-10.2.i386-elf/sim/aarch64/simulator.c	2021-06-14 10:54:57.796401453 +0900
+--- simulator.c	2021-06-22 16:34:15.000000000 +0900
+***************
+*** 13958,13966 ****
+    /* We only implement HLT and BRK for now.  */
+    if (opc == 1 && LL == 0)
+      {
+!       TRACE_EVENTS (cpu, " BRK [0x%x]", imm16);
+        sim_engine_halt (CPU_STATE (cpu), cpu, NULL, aarch64_get_PC (cpu),
+  		       sim_exited, aarch64_get_reg_s32 (cpu, R0, SP_OK));
+      }
+  
+    if (opc == 2 && LL == 0)
+--- 13958,13971 ----
+    /* We only implement HLT and BRK for now.  */
+    if (opc == 1 && LL == 0)
+      {
+!       TRACE_EVENTS (cpu, " BRK [0x%x]", imm16);      
+! #if 0
+        sim_engine_halt (CPU_STATE (cpu), cpu, NULL, aarch64_get_PC (cpu),
+  		       sim_exited, aarch64_get_reg_s32 (cpu, R0, SP_OK));
++ #else
++       sim_engine_halt (CPU_STATE (cpu), cpu, NULL, aarch64_get_PC (cpu),
++ 		       sim_stopped, SIM_SIGTRAP);
++ #endif
+      }
+  
+    if (opc == 2 && LL == 0)
+*** /home/khasegawa/gdb-10.2.i386-elf/sim/aarch64/interp.c	2021-06-14 10:54:57.779401667 +0900
+--- interp.c	2021-06-23 10:24:25.000000000 +0900
+***************
+*** 192,200 ****
+--- 192,206 ----
+  static size_t
+  reg_size (int regno)
+  {
++ #if 0  
+    if (regno == AARCH64_CPSR_REGNO || regno == AARCH64_FPSR_REGNO)
+      return 32;
+    return 64;
++ #else
++   if (regno == AARCH64_CPSR_REGNO || regno == AARCH64_FPSR_REGNO)
++     return 4;
++   return 8;
++ #endif
+  }
+  
+  static int
+*** /home/khasegawa/gdb-10.2.i386-elf/sim/aarch64/sim-main.h	2021-06-14 10:54:57.776401704 +0900
+--- sim-main.h	2021-06-23 11:03:02.000000000 +0900
+***************
+*** 48,53 ****
+--- 48,54 ----
+    sim_cpu_base base;
+  };
+  
++ #if 0
+  typedef enum
+  {
+    AARCH64_MIN_GR     = 0,
+***************
+*** 59,64 ****
+--- 60,78 ----
+    AARCH64_FPSR_REGNO = 66,
+    AARCH64_MAX_REGNO  = 67
+  } aarch64_regno;
++ #else
++ typedef enum
++ {
++   AARCH64_MIN_GR = 0,
++   AARCH64_MAX_GR = 31,
++   AARCH64_PC_REGNO = 32,
++   AARCH64_CPSR_REGNO,
++   AARCH64_MIN_FR,
++   AARCH64_MAX_FR = AARCH64_MIN_FR+31,
++   AARCH64_FPSR_REGNO = 66,
++   AARCH64_MAX_REGNO = 67  
++ } aarch64_regno;
++ #endif
+  
+  /* The simulator state structure used to hold all global variables.  */
+  struct sim_state

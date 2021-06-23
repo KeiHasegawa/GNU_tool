@@ -1,0 +1,227 @@
+AARCH64 シミュレータのブレークポイント
+
+(*1) 停止した理由を修正する
+(*2) レジスタ番号を修正する
+
+
+(*1) 停止した理由を修正する
+AARCH64 のシミュレータでブレークポイントが期待通り動作していないことに気付いた.
+
+一方で「ブレークポイント」では ARM のシミュレータがどのようにブレークポイントを
+実装しているか簡単に調査した.
+
+同じように簡単なプログラムを作成してビルドした.
+
+% aarch64-elf-as -g start.S -o start.o
+% aarch64-elf-ld -o start.elf start.o -T start.x -Map start.map
+
+そして実行してみた.
+
+% aarch64-elf-gdb -q -x gdbcom start.elf
+
+で適切に動作しないのは, 
+
+b start
+
+でブレークポイントをセットしたとき, ブレークポイント用の命令に書き替えていて
+そしてブレークポイントで停止したときにシミュレータが正しく停止した理由を答えていないから.
+
+
+gdb                  simulator
+
+target sim
+load
+b main
+        -> nop 命令 d503201f を 0xd4200000 で書き替える
+run
+
+                     書き替えられた命令を実行する
+<--------------------		     
+           停止
+
+--------------------->
+  停止した理由の問い合わせ
+
+<--------------------
+  回答
+
+
+そこでこの回答を「シミュレーションが停止した」と答えたとすれば, このような現象になってしまう.
+そこで試しに
+
+
+gdb-10.2.aarch64-elf/sim/aarch64/simulator.c
+
+に以下のように修正を入れてみた.
+
+#if 0
+      sim_engine_halt (CPU_STATE (cpu), cpu, NULL, aarch64_get_PC (cpu),
+		       sim_exited, aarch64_get_reg_s32 (cpu, R0, SP_OK));
+#else
+      sim_engine_halt (CPU_STATE (cpu), cpu, NULL, aarch64_get_PC (cpu),
+		       sim_stopped, SIM_SIGTRAP);
+#endif
+
+そして実行すると
+
+Reading symbols from start.elf...
+Connected to the simulator.
+Loading section .text, size 0x10 lma 0x100
+Start address 0x100
+Transfer rate: 128 bits in <1 sec.
+Breakpoint 1 at 0x100: file start.S, line 3.
+
+Program received signal SIGTRAP, Trace/breakpoint trap.
+0x0000000000000000 in ?? ()
+(aarch64-elf-gdb)
+
+こんな感じになった. いまひとつ直しきれていない.
+
+
+(*2) レジスタ番号を修正する
+
+Program received signal SIGTRAP, Trace/breakpoint trap.
+0x0000000000000000 in ?? ()
+
+が最初に期待していない動作なのでここを調べる. 期待する動作は
+
+Breakpoint 1, start () at start.S:3
+3		nop
+
+のようにブレークポイント番号 1 で停止し, それは start.S の 3 行目だと
+表示すること.
+
+
+Program received signal SIGTRAP, Trace/breakpoint trap.
+
+のメッセージを出しているのは
+
+infrun.c:8023
+
+uiout->text ("\nProgram");
+
+の部分. ここにくるのがそもそも期待しない動作.
+
+
+  if (last.kind == TARGET_WAITKIND_STOPPED && stopped_by_random_signal)
+    gdb::observers::signal_received.notify (inferior_thread ()->suspend.stop_sig
+
+この if の条件が成立した結果そうなっている.
+一方, arm-elf-gdb はこの条件が成立しないで, 期待する動作になっている.
+
+last.kind == TARGET_WAITKIND_STOPPED が成立しているのは期待値通りだが
+
+stopped_by_random_signal
+
+が 1 にセットされているのがおかしい.
+
+      stopped_by_random_signal = 1;
+
+でセットされている.
+
+  if (random_signal)
+...
+      stopped_by_random_signal = 1;
+
+なので random_signal がセットされる理由を調べる.
+
+
+  random_signal
+    = !bpstat_explains_signal (ecs->event_thread->control.stop_bpstat,
+			       ecs->event_thread->suspend.stop_signal);
+
+この戻り値の問題
+
+ここに
+  ecs->event_thread->control.stop_bpstat
+    = bpstat_stop_status (get_current_regcache ()->aspace (),
+			  ecs->event_thread->suspend.stop_pc,
+			  ecs->event_thread, &ecs->ws, stop_chain);
+きた時点で
+
+ecs->event_thread->suspend.stop_pc
+
+の期待値が 0x100 だが 0 のまま.
+
+aarch64_reg_get
+
+で 0 が返っている.
+
+以下のように修正した:
+
+static size_t
+reg_size (int regno)
+{
+#if 0  
+  if (regno == AARCH64_CPSR_REGNO || regno == AARCH64_FPSR_REGNO)
+    return 32;
+  return 64;
+#else
+  if (regno == AARCH64_CPSR_REGNO || regno == AARCH64_FPSR_REGNO)
+    return 4;
+  return 8;
+#endif
+}
+
+しかしこれでもまだ 0 が返っている.
+
+gdb 側は 32 番を PC の番号だとしているが.
+
+typedef enum
+{
+  AARCH64_MIN_GR = 0,
+  AARCH64_MAX_GR = 31,
+  AARCH64_MIN_FR = 32,
+  AARCH64_MAX_FR = 63,
+  AARCH64_PC_REGNO = 64,
+  AARCH64_CPSR_REGNO = 65,
+  AARCH64_FPSR_REGNO = 66,
+  AARCH64_MAX_REGNO = 67
+} aarch64_regno;
+
+なので 64 番が正しい.
+
+gdb 側の解釈はこれだった:
+
+enum aarch64_regnum
+{
+  AARCH64_X0_REGNUM,		/* First integer register.  */
+  AARCH64_FP_REGNUM = AARCH64_X0_REGNUM + 29,	/* Frame register, if used.  */
+  AARCH64_LR_REGNUM = AARCH64_X0_REGNUM + 30,	/* Return address.  */
+  AARCH64_SP_REGNUM,		/* Stack pointer.  */
+  AARCH64_PC_REGNUM,		/* Program counter.  */
+  AARCH64_CPSR_REGNUM,		/* Current Program Status Register.  */
+  AARCH64_V0_REGNUM,		/* First fp/vec register.  */
+  AARCH64_V31_REGNUM = AARCH64_V0_REGNUM + 31,	/* Last fp/vec register.  */
+  AARCH64_SVE_Z0_REGNUM = AARCH64_V0_REGNUM,	/* First SVE Z register.  */
+  AARCH64_SVE_Z31_REGNUM = AARCH64_V31_REGNUM,  /* Last SVE Z register.  */
+  AARCH64_FPSR_REGNUM,		/* Floating Point Status Register.  */
+  AARCH64_FPCR_REGNUM,		/* Floating Point Control Register.  */
+  AARCH64_SVE_P0_REGNUM,	/* First SVE predicate register.  */
+  AARCH64_SVE_P15_REGNUM = AARCH64_SVE_P0_REGNUM + 15,	/* Last SVE predicate
+							   register.  */
+  AARCH64_SVE_FFR_REGNUM,	/* SVE First Fault Register.  */
+  AARCH64_SVE_VG_REGNUM,	/* SVE Vector Granule.  */
+
+  /* Other useful registers.  */
+  AARCH64_LAST_X_ARG_REGNUM = AARCH64_X0_REGNUM + 7,
+  AARCH64_STRUCT_RETURN_REGNUM = AARCH64_X0_REGNUM + 8,
+  AARCH64_LAST_V_ARG_REGNUM = AARCH64_V0_REGNUM + 7
+};
+
+とりあえず以下のように修正する:
+
+typedef enum
+{
+  AARCH64_MIN_GR = 0,
+  AARCH64_MAX_GR = 31,
+  AARCH64_PC_REGNO = 32,
+  AARCH64_CPSR_REGNO,
+  AARCH64_MIN_FR,
+  AARCH64_MAX_FR = AARCH64_MIN_FR+31,
+  AARCH64_FPSR_REGNO = 66,
+  AARCH64_MAX_REGNO = 67  
+} aarch64_regno;
+
+一応これでこのサンプルが期待した通り動作する.
+
