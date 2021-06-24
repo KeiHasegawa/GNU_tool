@@ -1,10 +1,9 @@
-AARCH64 スタートアップルーチン
+AARCH64 start-up routine
 
-スタートアップルーチンを開発するにあたって「AARCH64 シミュレータのブレークポイント」で述
-べている修正がまず必要になる.
+Before we develop AARCH64 start-up routine, it's necessary to fix
+AARCH64 simulator described at "AARCH64 simulator break-point".
 
-またこの修正とは別に sp レジスタの値を正しく表示できていない問題があった.
-そこで以下の修正を入れた：
+And more, it's also necessary to fix AARCH64 simulator like below:
 
 gdb-10.2.aarch64-elf/sim/aarch64/interp.c:223
 
@@ -15,38 +14,39 @@ gdb-10.2.aarch64-elf/sim/aarch64/interp.c:223
 #endif      
       break;
 
-また, 動作確認の段階で単純に strlen ができていないことも判明した.
-とりあえず
+By above fix, we can display sp register correctly.
+
+
+And more, I noticed that `strlen' did not work. Simply,
+I compile-outed below:
 
 newlib-4.1.0.aarch64-elf/newlib/libc/machine/aarch64/strlen.S
 
-これを単純にコンパイルアウトして newlib をリビルドした.
+and re-build newlib.
 
-この条件のもとで hello world ができるだけのレベルのスタートアップッルーチン
-は 
+On this condition, I aimed start-up routine which could call main function
+of hello world program. The start-up routine becomes:
 
 start.S
 
-のようになる. 単純にスタック領域に sp レジスタをセットするというものである.
+This is just setting sp register to the stack area.
+
+At this simulation, _fstat, _sbrk, _isatty, _write and strlen are called.
+They are defined at:
 
 dummy.c
 
-には _fstat, _sbrk, _isatty, _write, strlen が定義されている. これらは
-シミュレーションで実際に呼び出される函数である. このシミュレーションでは呼び出されない
-がリンクを通すためだけに
+And also defined below for link:
 
 _exit, _close, _lseek, _read
 
-も定義されている.
-
-_write
-
-のブレークポイントがヒットしたときに
+Now when `_write' break-point is hit, 
 
 (aarch64-elf-gdb) p buf
 
-とすれば "hello world\n" が入っていることを確認できるだろう.
-以下は aarch64-elf-gdb の実行結果である:
+then you can confirm that it's points  "hello world\n"
+
+The results are:
 
 % aarch64-elf-gdb -q -x gdbcom hello.elf
 
@@ -86,13 +86,3 @@ A debugging session is active.
 	Inferior 1 [process 42000] will be killed.
 
 Quit anyway? (y or n) [answered Y; input not from terminal]
-
-
-
-
-
-
-
-
-
-
