@@ -1,33 +1,33 @@
-H8 のシミュレータの hello world
+hello world of H8 simulator
 
-(*1) ポイントとなる函数
-(*2) シミュレータが面倒を見ている部分
+(*1) Functions to be annotated
+(*2) Part of simulator fabrication
 
 
-(*1) ポイントとなる函数
-puts の呼び出し
+(*1) Functions to be annotated
+puts call
 
 ->
-        (1) _fstat(1, &st) の呼び出し
+        (1) _fstat(1, &st) call
 
 __fstat:
-	jsr @@0xcb        ここをシミュレータで面倒を見ている
+	jsr @@0xcb        ; simulator fabrication
 	rts
 	
-	(2) _sbrk の呼び出し. ここは extern char end を参照してそれっぽいことをしている.
+	(2) _sbrk call. Here, refer to `extern char end' and work suitably.
 
-	(3) _isatty の呼び出し. ここは 1 を必ず返している.
+	(3) _isatty call. Just return 1
 
-	(4) _write(1, ptr, len) の呼び出し
+	(4) _write(1, ptr, len) call
 	
 __write:
-	jsr @@0xc7       ここをシミュレータで面倒を見ている.
+	jsr @@0xc7       ; simulator fabrication
 	rts
 
 
-(*2) シミュレータが面倒を見ている部分
+(*2) Part of simulator fabrication
 
-jsr @@0xcb をシミュレーションしているのは以下:
+jsr @@0xcb is simulated at:
 
 gdb-10.2.h8300-elf/sim/h8300/compile.c:2989
 	case O (O_SYS_FSTAT, SB):
@@ -52,7 +52,7 @@ gdb-10.2.h8300-elf/sim/h8300/compile.c:2989
 
 
 
-jsr @@0xc7 をシミュレーションしているのは以下:
+jsr @@0xc7 is simulated at:
 
 gdb-10.2.h8300-elf/sim/h8300/compile.c:2918
 
