@@ -1,6 +1,10 @@
-(aarch64-elf-gdb) p/x $sp
+AARCH64 スタートアップルーチン
 
-で期待した結果が得られない. 以下の修正を入れた：
+スタートアップルーチンを開発するにあたって「AARCH64 シミュレータのブレークポイント」で述
+べている修正がまず必要になる.
+
+またこの修正とは別に sp レジスタの値を正しく表示できていない問題があった.
+そこで以下の修正を入れた：
 
 gdb-10.2.aarch64-elf/sim/aarch64/interp.c:223
 
@@ -11,11 +15,84 @@ gdb-10.2.aarch64-elf/sim/aarch64/interp.c:223
 #endif      
       break;
 
-
-write が hello wo\n", len=9 で呼び出されていた.
-
-単純に strlen ができていない.
+また, 動作確認の段階で単純に strlen ができていないことも判明した.
+とりあえず
 
 newlib-4.1.0.aarch64-elf/newlib/libc/machine/aarch64/strlen.S
 
 これを単純にコンパイルアウトして newlib をリビルドした.
+
+この条件のもとで hello world ができるだけのレベルのスタートアップッルーチン
+は 
+
+start.S
+
+のようになる. 単純にスタック領域に sp レジスタをセットするというものである.
+
+dummy.c
+
+には _fstat, _sbrk, _isatty, _write, strlen が定義されている. これらは
+シミュレーションで実際に呼び出される函数である. このシミュレーションでは呼び出されない
+がリンクを通すためだけに
+
+_exit, _close, _lseek, _read
+
+も定義されている.
+
+_write
+
+のブレークポイントがヒットしたときに
+
+(aarch64-elf-gdb) p buf
+
+とすれば "hello world\n" が入っていることを確認できるだろう.
+以下は aarch64-elf-gdb の実行結果である:
+
+% aarch64-elf-gdb -q -x gdbcom hello.elf
+
+Reading symbols from hello.elf...
+Connected to the simulator.
+Loading section .text, size 0x4870 lma 0x400000
+Loading section .rodata, size 0x20 lma 0x404870
+Loading section .data, size 0xf70 lma 0x414890
+Start address 0x400000
+Transfer rate: 180224 bits in <1 sec.
+Breakpoint 1 at 0x400018: file hello.c, line 5.
+Breakpoint 2 at 0x400170: file dummy.c, line 46.
+Breakpoint 3 at 0x40000c: file start.S, line 8.
+
+Breakpoint 1, main () at hello.c:5
+5	  printf("hello world\n");
+Dump of assembler code for function main:
+   0x0000000000400010 <+0>:	stp	x29, x30, [sp, #-16]!
+   0x0000000000400014 <+4>:	mov	x29, sp
+=> 0x0000000000400018 <+8>:	adrp	x0, 0x404000 <_free_r+1252>
+   0x000000000040001c <+12>:	add	x0, x0, #0x870
+   0x0000000000400020 <+16>:	bl	0x4002cc <puts>
+   0x0000000000400024 <+20>:	mov	w0, #0x0                   	// #0
+   0x0000000000400028 <+24>:	ldp	x29, x30, [sp], #16
+   0x000000000040002c <+28>:	ret
+End of assembler dump.
+
+Breakpoint 2, _write (fd=1, buf=0x415870 "hello world\n", len=12)
+    at dummy.c:46
+46	  return len;
+$1 = 0x415870 "hello world\n"
+
+Breakpoint 3, end () at start.S:8
+8		nop
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
+
+
+
+
+
+
+
+
+
+

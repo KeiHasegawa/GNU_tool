@@ -4,7 +4,5 @@ _start:
 	adrp	x0, _stack
 	add	sp, x0, :lo12:_stack
 	bl	main
-	nop
-	nop
 end:
 	nop
