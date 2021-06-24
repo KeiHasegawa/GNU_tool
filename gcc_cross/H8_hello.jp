@@ -1,0 +1,90 @@
+h8300 のシミュレータの hello world
+
+(*1) ポイントとなる函数
+(*2) シミュレータが面倒を見ている部分
+
+puts の呼び出し
+
+->
+        (1) _fstat(1, &st) の呼び出し
+
+__fstat:
+	jsr @@0xcb        ここをシミュレータで面倒を見ている
+	rts
+	
+	(2) _sbrk の呼び出し. ここは extern char end を参照してそれっぽいことをしている.
+
+	(3) _isatty の呼び出し. ここは 1 を必ず返している.
+
+	(4) _write(1, ptr, len) の呼び出し
+	
+__write:
+	jsr @@0xc7       ここをシミュレータで面倒を見ている.
+	rts
+
+
+(*2) シミュレータが面倒を見ている部分
+
+jsr @@0xcb をシミュレーションしているのは以下:
+
+gdb-10.2.h8300-elf/sim/h8300/compile.c:2989
+	case O (O_SYS_FSTAT, SB):
+	  {
+	    int fd;		/* File descriptor */
+	    struct stat stat_rec;	/* Stat record */
+	    int fstat_return;	/* Return value from callback to stat.  */
+	    int stat_ptr;	/* Pointer to stat record.  */
+	    char *temp_stat_ptr;	/* Temporary stat_rec pointer.  */
+
+	    fd = (h8300hmode && !h8300_normal_mode) ? GET_L_REG (0) : GET_W_REG (0);
+
+	    /* Setting stat_ptr to second argument of stat.  */
+	    stat_ptr = (h8300hmode && !h8300_normal_mode) ? GET_L_REG (1) : GET_W_REG (1);
+
+	    /* Callback stat and return.  */
+	    fstat_return = sim_callback->to_fstat (sim_callback, fd,
+						   &stat_rec);
+
+	    /* Have stat_ptr point to starting of stat_rec.  */
+	    temp_stat_ptr = (char *) (&stat_rec);
+
+
+
+jsr @@0xc7 をシミュレーションしているのは以下:
+
+gdb-10.2.h8300-elf/sim/h8300/compile.c:2918
+
+	case O (O_SYS_WRITE, SB):
+	  {
+	    int fd;		/* File descriptor */
+	    char temp_char;	/* Temporary character */
+	    int len;		/* Length of write, Parameter II to write.  */
+	    int char_ptr;	/* Character Pointer, Parameter I of write.  */
+	    char *ptr;		/* Where characters to be written are stored. 
+				 */
+	    int write_return;	/* Return value from callback to write.  */
+	    int i = 0;		/* Loop counter */
+
+	    fd = (h8300hmode && !h8300_normal_mode) ? GET_L_REG (0) : GET_W_REG (0);
+	    char_ptr = (h8300hmode && !h8300_normal_mode) ? GET_L_REG (1) : GET_W_REG (1);
+	    len = (h8300hmode && !h8300_normal_mode) ? GET_L_REG (2) : GET_W_REG (2);
+
+	    /* Allocating space for the characters to be written.  */
+	    ptr = (char *) malloc (sizeof (char) * len);
+
+	    /* Fetching the characters from cpu memory.  */
+	    for (i = 0; i < len; i++)
+	      {
+		temp_char = GET_MEMORY_B (char_ptr + i);
+		ptr[i] = temp_char;
+	      }
+
+	    /* Callback write and return the no. of characters written.  */
+	    write_return = sim_callback->write (sim_callback, fd, ptr, len);
+
+	    /* Return value in Register 0.  */
+	    h8_set_reg (sd, 0, write_return);
+
+	    /* Freeing memory used as buffer.  */
+	    free (ptr);
+	  }
