@@ -1,0 +1,29 @@
+AVR の newlib
+
+「AVR」でも述べたように newlib では何もビルドされなかった. だから自分で
+ビルドしてみた.
+
+newlib-Makefile.tar.gz を newlib-4.1.0 のディレクトリで展開すると
+
+newlib/Makefile.mine
+
+というファイルやそのサブディレクトリに Makefile.mine が作成される.
+
+% cd newlib
+% make -f Makefile.mine
+
+とすれば
+
+libc/libc.a
+libm/libm.a
+
+が作成される.
+
+% make -f Makefile.mine install
+
+とすると私の環境に限り期待する場所に libc.a, libm.a やその他のヘッダーファイルが
+コピーされる.
+
+DEST_DIR = ...
+
+の部分をあなたの環境に合わせて書き替えるとよい.
