@@ -1,0 +1,104 @@
+AVR 
+
+Instruction memory 128 KB
+Data memory SRAM 64 KB - 0x60
+Instruction length 16 bit
+8 bit 32 General Purpose Registers
+
+Instruction memory
++--------------+ 0x00000
+|              |
+|              |
+|              |
+|              |
+|              |
+|              |
+|              |
+|              | 
+|              | 
+|              |
+|              |
++--------------+ 0x20000
+
+AVR architecture is diffrent from others in the view point that
+address spaces are distinguished between instruction memory and data
+memory.
+
+A software can not issue store for instruction memory.
+(If do, AVR simulator just ignores it)
+But by issuing `LPM' instruction, a software can load from instruction memory.
+`.data' or `.rodata' sections initial values are located here.
+
+
+Data memory
++--------------+ 0x00000
+|     r0       |
+|     .        |
+|     .        |
+|     .        |
+|     r31      |
++--------------+ 0x00020
+|              |
+|              |
+| I/O register |
+|              |
+| Stack pointer| 0x0005d
+|              |
++--------------+ 0x00060
+|              |
+|              |
+|    SRAM      |
+|              |
+|              |
++--------------+ 0x10000
+
+First 32 bytes are mapped into General Purpose Registers.
+And the following 0x40 bytes are mapped into I/O registers.
+Especially, I/O register area offset 0x3d is mapped to stack pointer,
+which is refered or upudated by `rcall', `ret', `push' and so on.
+The last 0x10000 - 0x60 bytes are used by a software freely.
+`SRAM' may means the whole of above.
+
+(*1) Simple sample
+
+test000_start.S calls `main' and `main' calls `f' which calcurates
+integer addition.
+
+AT test000_start.S, set the stack pointer like below:
+
+	ldi r16, 0xff
+	out 0x3d, r16
+	ldi r16, 0xfe
+	out 0x3e, r16
+
+As a result, stack pointer becomes `0xfffe'. AVR simulator recognizes
+address `0x00800000' is the start address of SRAM.
+
+(avr-elf-gdb) x/2bx 0x0080005d
+
+By this command, you can confirm that the memory is updated by above code.
+And more, above code uses `r16',
+
+(arv-elf-gdb) x/1xb 0x00800010
+
+This command shows that this address is mapped into `r16'.
+
+(*2) String literal
+
+At test001.c, `main' calls `f' which is count string length.
+arv-elf-gcc outputs the string literal contents into .rodata section.
+And this section becomes like below:
+
+    LOAD off    0x000000fc vaddr 0x00800060 paddr 0x00000088 align 2**0
+         filesz 0x0000000e memsz 0x0000000e flags rw-
+
+
+This means load address `0xfc' is differenct from effective address
+
+0x00800060
+
+So before calling `main', start-up routine at test001_start.S
+has to copy:
+
+Instruction memroy     => Data memory
+0xfc                      0x60
