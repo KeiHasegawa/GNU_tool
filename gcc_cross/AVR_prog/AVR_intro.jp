@@ -97,29 +97,15 @@ arv-elf-gcc は文字を通常のコンパイラと同じように .rodata セ�
 
 (*3) hello world
 
-wbuf.c で
+「newlib」に libc.a のコンパイルとインストールの方法を書いておいた.
 
-  *fp->_p++ = c;
+test002.c は "hello world" を出力しようとして試してみたが, このやり方では
 
-のようにしているが, fp->_p の値は 0. つまりアドレスの 0 に対してストアしている.
+_write
 
+も呼び出されない. しかし main で printf (本当は puts だが)を呼び出した後に
 
-(avr-elf-gdb) x/i $pc
-=> 0x3b6 <__swbuf_r+254>:	st	Z, r18
-(avr-elf-gdb) p/c $r18
-$8 = 104 'h'
-(avr-elf-gdb) p $r30
-$9 = 0
-(avr-elf-gdb) p $r31
-$10 = 0
-(avr-elf-gdb)
+(avr-elf-gdb) p my_buffer
 
-write が呼び出される以前の問題. さてこれは何がまずいのか.
-
-st Z, r18
-
-は SRAM のアドレス 0 に書いているから
-
-(avr-elf-gdb) x/c 0x00800000
-
-とすれば確認できる.
+とすれば, そこに "hello world\n" の文字が格納されていることを確認できる.
+今回はこれで満足しておく.
