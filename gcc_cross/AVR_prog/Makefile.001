@@ -1,0 +1,23 @@
+all:test001.elf test001.objdump
+
+test001_start.o:test001_start.S
+	avr-elf-as -g -o $@ $<
+
+#test001.o:test001.s
+#	avr-elf-as -g -o $@ $<
+
+#test001.s:test001.c
+#	avr-elf-gcc -S -o test001.s test001.c
+
+test001.o:test001.c
+	avr-elf-gcc -g -c -o test001.o test001.c
+
+test001.elf:test001_start.o test001.o
+	avr-elf-ld -o test001.elf test001_start.o test001.o -Map test001.map
+
+test001.objdump:test001.elf
+	avr-elf-objdump -x -d -t test001.elf > test001.objdump
+
+clean:
+	rm -f test001_start.o test001.o test001.s test001.elf test001.map
+	rm -f test001.objdump *~

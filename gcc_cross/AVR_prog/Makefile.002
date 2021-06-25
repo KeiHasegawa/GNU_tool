@@ -1,0 +1,29 @@
+all:test002.elf test002.objdump
+
+test001_start.o:test001_start.S
+	avr-elf-as -g -o $@ $<
+
+#test002.o:test002.s
+#	avr-elf-as -g -o $@ $<
+
+#test002.s:test002.c
+#	avr-elf-gcc -S -o test002.s test002.c
+
+test002.o:test002.c
+	avr-elf-gcc -g -c -o test002.o test002.c
+
+dummy.o:dummy.c
+	avr-elf-gcc -g -c -o dummy.o dummy.c
+
+LIBDIR = /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/avr-elf/lib
+
+test002.elf:test001_start.o test002.o dummy.o
+	avr-elf-ld -o test002.elf test001_start.o test002.o dummy.o \
+	-Map test002.map -L$(LIBDIR) -lc
+
+test002.objdump:test002.elf
+	avr-elf-objdump -x -d -t test002.elf > test002.objdump
+
+clean:
+	rm -f test001_start.o test002.o test002.s test002.elf test002.map
+	rm -f test002.objdump dummy.o *~
