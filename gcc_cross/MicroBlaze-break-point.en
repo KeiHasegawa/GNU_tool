@@ -1,0 +1,18 @@
+MicroBlaze simulator break-point
+
+`brki' of MicroBlaze instruction set is used for break-pont implementation.
+
+If MicroBlaze simulator executes `brki', it should stop and should answer the
+stop reason suitably. But it does not.
+
+So I fixed like below:
+gdb-10.2/sim/microblaze/interp.c:164
+
+      if (op == microblaze_brk)
+	sim_engine_halt (sd, NULL, NULL, NULL_CIA, sim_stopped, SIM_SIGTRAP);
++     else if (op == brki)
++	sim_engine_halt(CPU_STATE(cpu), cpu, NULL,PC,sim_stopped,SIM_SIGTRAP);
+      else if (inst == MICROBLAZE_HALT_INST)
+
+By above, simple break-point sample works well. This fix is very similar
+to that of "AARCH64(ARM64) simulator break-point".
