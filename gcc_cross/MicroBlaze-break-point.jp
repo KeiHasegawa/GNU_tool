@@ -1,0 +1,22 @@
+MicroBlaze シミュレータのブレークポイント
+
+MicroBlaze には brki 命令というのがある. ブレークポイントの実装では
+ブレークポイントをセットするアドレスにある命令をこの命令に書き替えることをしている.
+
+シミュレータがこの命令を実行したとき, 停止して, gdb から sim_stop_reason が
+呼び出されたとき, その理由を適切に回答すればよいのだが, 実際はそうはなっていなかった.
+
+よって以下のように修正:
+
+gdb-10.2/sim/microblaze/interp.c:164
+
+      if (op == microblaze_brk)
+	sim_engine_halt (sd, NULL, NULL, NULL_CIA, sim_stopped, SIM_SIGTRAP);
++     else if (op == brki)
++	sim_engine_halt(CPU_STATE(cpu), cpu, NULL,PC,sim_stopped,SIM_SIGTRAP);
+      else if (inst == MICROBLAZE_HALT_INST)
+
+この修正で簡単なブレークポイントのサンプルが動作するようになった.
+同様の修正は「AARCH64(ARM64) シミュレータのブレークポイント」でも行なった.
+
+
