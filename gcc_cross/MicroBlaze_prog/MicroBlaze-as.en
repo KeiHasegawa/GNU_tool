@@ -1,0 +1,83 @@
+MicroBlaze assembler
+
+brai label
+
+For above code, MicroBlaze assembler generated the code:
+
+imm 0
+brai label
+
+About `IMM' instruction of MicroBlaze architecture:
+
+If MMU miss occures, the exception address is set to R17 register
+when returning from MMU miss exception. If `IMM' instruction is
+located at the address - 4, R17 is set to the `IMM' address.
+
+I cannot understand the specification of `IMM' from above. But
+I guessed that MicroBlaze assembler intentionally generates extra `IMM'
+instruction code.
+
+	.text
+	brai label
+	
+Actually I tried to assemble above code. And the below was executed:
+
+		      assemble_one (s); /* Assemble 1 instruction.  */
+
+And this function call reached to the MicroBlaze specail function:
+
+binutils-2.36.1.microblaze-elf/gas/config/tc-microblaze.c:904
+
+void
+md_assemble (char * str)
+
+Now I confirmed that:
+
+name = "brai label"
+
+  opcode = (struct op_code_struct *) str_hash_find (opcode_hash_control, name);
+...
+
+  switch (opcode->inst_type)
+    {
+...  
+    case INST_TYPE_IMM:
+      if (streq (name, "imm"))
+        as_fatal (_("An IMM instruction should not be present in the .s file"));
+
+      op_end = parse_imm (op_end + 1, & exp, MIN_IMM, MAX_IMM);
+
+it came above.
+
+For `nop' instruction, it reached to below:
+
+    case INST_TYPE_NONE:
+      output = frag_more (isize);
+      break;
+
+To be omitted, the array named
+
+opcodes
+
+defines the whole instructions. For example, opcode[0] is:
+
+(gdb) p opcodes[0]
+$59 = {name = 0x80f9c40 "add", inst_type = 0, inst_offset_type = 0, 
+  delay_slots = 0, immval_mask = 0, bit_sequence = 0, 
+  opcode_mask = 4227860479, instr = add, instr_type = arithmetic_inst}
+
+If the `inst_type' member of these element is `INST_TYPE_NONE',
+a programer's assembler program is generated as it is written.
+
+Now I fixed like below:
+
++ if (getenv("MICROBLAZE_AS_SPECIAL"))
++   opcode->inst_type = INST_TYPE_NONE;
+
+  switch (opcode->inst_type)
+    {
+...
+
+This may be wrong. But I don't understand the reason why
+MicroBlaze assembler generates extra `IMM' code, so I' ll use
+fixed MicroBlaze assembler until I undestand the reason.
