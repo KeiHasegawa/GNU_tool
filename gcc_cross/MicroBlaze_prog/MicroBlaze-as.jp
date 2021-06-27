@@ -91,38 +91,3 @@ $59 = {name = 0x80f9c40 "add", inst_type = 0, inst_offset_type = 0,
 
 のようになっていた. この inst_type メンバが nop のように INST_TYPE_NONE
 ならばプログラマが書いたようにしかコードが生成されない.
-
-そこで以下のように修正を入れた:
-
-+ if (getenv("MICROBLAZE_AS_SPECIAL"))
-+   opcode->inst_type = INST_TYPE_NONE;
-
-  switch (opcode->inst_type)
-    {
-...
-
-残念ながらこれだと,
-
-
-	.text
-	brai label
-	nop
-	nop
-	nop
-lablel:
-	nop
-
-
-のようなコードに対して
-
-	brai 0
-	nop
-	nop
-	nop
-lablel:
-	nop
-
-のようなコードを出してしまうことになる.
-
-
-
