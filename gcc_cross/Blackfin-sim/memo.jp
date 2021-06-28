@@ -74,7 +74,6 @@ gdb-10.2.bfin-elf/gdb/exceptions.c:89
 
 ここはターゲットのメモリを読み込んでいるところ. ブレークポイントのセットに先立って sim_read で
 ターゲッットメモリの 0xffa00000 を読み込んでいるがこれでエラーしていた.
-なので buf[0], buf[1] に期待した値が入っていない.
 
 sim_read がエラーしている原因を調査した. この 0xffa00000 は正しいアドレスなのだが,
 
@@ -105,7 +104,7 @@ Loading section .data, size 0x83c lma 0xff800028
 0xffb00000
 
 この 2 つだけ. なるほどだが, 細かいメモリの断片は 1 つにまとめられているらしい.
-で問題は 
+問題は 
 
 0xffa00000
 
@@ -120,7 +119,7 @@ base = 0x0, bound = 0x7ffffff  1 つ目
 
 base = 0xffb00000, bound = 0xffb00fff  2 つ目
 
-となっている. 1 つ目が大きいのは気にはなるが, 今回のバグとは無関係なのだろうか不明.
+となっている. 1 つ目が大きいのは気にはなるが, 今回のバグとは無関係なのだろうか.
 この 1 つ目のマップが作成されるのは sim_write なのでそこを調べる.
 
 sim_write(mem=0x0, length=2)
@@ -144,7 +143,7 @@ $46 = {level = 0x0, space = 0x0, base = 0x0, bound = 0x7ffffff,
       sim_write (sd, 0, (void *)&emuexcpt, 2);
     }
 
-なのでコンパイルアウトした. この状態でブレークポイントが期待通り動作していた test000.elf
+上をコンパイルアウトしてみた. この状態でブレークポイントが期待通り動作していた test000.elf
 でエラーが再現している.
 
 なるほど, この作りからすると
@@ -154,14 +153,15 @@ $46 = {level = 0x0, space = 0x0, base = 0x0, bound = 0x7ffffff,
 
 のアドレス空間を仮定しているらしい. もう一度上のコンパイルアウトをもとに戻した.
 
-そもそもの間違いは load コマンドを実行したとき, それがエラーにならないこと.
+そもそもの間違いは load コマンドを実行したとき, それがエラーにならないことなのかと思ったが
+そうではないらしい. しかしアドレスが化けている.
 
 現状では, シミュレータの場合ターゲットプログラムは上のアドレス範囲内で動かす必要がある.
 
 しかも 128 MB ものメモリを必ず確保するっていうのはいかがなものかと.
 
 本当はシミュレータを修正するのが正しいが, 今回はターゲットプログラムのアドレスを
-シミュレーションできるところにくるように修正する:
+シミュレーションできるところに配置されるように修正する:
 
 % bfin-elf-as -o start.o -g start.S
 % bfin-elf-gcc -o hello.o -g -c hello.c -mcpu=bf522
@@ -174,3 +174,41 @@ $46 = {level = 0x0, space = 0x0, base = 0x0, bound = 0x7ffffff,
 こうすることでターゲットプログラムがシミュレーションできるところに配置される.
 
 % bfin-elf-gdb -q -x gdbcom.001 hello.elf
+Reading symbols from hello.elf...
+Connected to the simulator.
+Loading section .text, size 0x2130 lma 0x100
+Loading section .rodata, size 0x10 lma 0x2230
+Loading section .rodata.str1.4, size 0x4 lma 0x2240
+Loading section .data, size 0x838 lma 0x2244
+Start address 0x100
+Transfer rate: 84960 bits in <1 sec.
+Breakpoint 1 at 0x108: file start.S, line 7.
+Breakpoint 2 at 0x118: file hello.c, line 5.
+Breakpoint 3 at 0x1aa: file dummy.c, line 28.
+
+Breakpoint 2, main () at hello.c:5
+5	  printf("hello world\n");
+Dump of assembler code for function main:
+   0x00000114 <+0>:	LINK 0xc;		/* (12) */
+=> 0x00000118 <+4>:	R0.H = 0x0;		/* (  0)	R0=0x0x0(  0) */
+   0x0000011c <+8>:	R0.L = 0x2230;		/* (8752)	R0=0x0x2230(8752) */
+   0x00000120 <+12>:	CALL 0x0x2f4 <puts>;
+   0x00000124 <+16>:	R0 = 0x0 (X);		/*		R0=0x0(  0) */
+   0x00000126 <+18>:	UNLINK;
+   0x0000012a <+22>:	RTS;
+End of assembler dump.
+
+Breakpoint 3, _write (fd=1, buf=0x3008 "hello world\n", len=12) at dummy.c:28
+28	  return len;
+$1 = 0x3008 "hello world\n"
+
+Breakpoint 1, end () at start.S:7
+7		nop
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
+%
+
+_write が期待した形で呼び出されている. 一応, これで満足しておく.
