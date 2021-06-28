@@ -1,0 +1,176 @@
+Blackfin のスタートアップルーチン
+
+「Blackfin」での動作確認では
+
+    o ブレークポイントをセットできていない
+    o 実行できていない
+
+という問題があった. そこで簡単なサンプルでブレークポイントと実行ができることを確認した:
+
+% bfin-elf-as -g -o test000.o test000.S -mcpu=bf522
+% bfin-elf-ld -o test000.elf test000.o -T test000.x -Map test000.map
+% bfin-elf-gdb -x gdbcom.000 test000.elf
+
+ブレークポイントをセットできているし, 実行もできている.
+そこで問題の hello world を以下のようにビルドした:
+
+% bfin-elf-gcc -g -o hello.elf hello.c dummy.c -mcpu=bf522
+% bfin-elf-gdb -q hello.elf
+(gdb) target sim
+Connected to the simulator.
+(gdb) load
+Loading section .text, size 0x2564 lma 0xffa00000
+Loading section .init, size 0x12 lma 0xffa02564
+Loading section .fini, size 0xe lma 0xffa02576
+Loading section .rodata, size 0x14 lma 0xff800000
+Loading section .eh_frame, size 0x4 lma 0xff800014
+Loading section .ctors, size 0x8 lma 0xff800018
+Loading section .dtors, size 0x8 lma 0xff800020
+Loading section .data, size 0x83c lma 0xff800028
+Start address 0xffa00000
+Transfer rate: 94016 bits in <1 sec.
+(gdb) b main
+Cannot access memory at address 0xffa00298
+(gdb)
+
+やはりブレークポイントをセットできていない.
+
+Cannot access memory at address 0xffa00000
+
+のようになってしまう. このとき sim_write は呼び出されていない.
+
+期待通り動作している test000.elf で sim_write が 0x100 にどのように書き込んでいるか
+調べてみた. その結果分かったことは break コマンド実行時, 即座に 0x100 に何かを書き込ん
+でいるわけではないということだった. sim_write が呼ばれるタイミングは
+
+run コマンドを実行したとき,
+
+0x2500
+
+が 0x100 に書き込まれた. これがおそらくブレークポイントのための命令ということらしい.
+
+hello.elf
+
+だと break コマンドで例のメッセージが出てしまうのは sim_write がエラーしているわけで
+はなくてその前のチェックでエラーしているということなのだが, そのチェックが正しくないという
+こと. まずは
+
+Cannot access memory at address 0xffa00000
+
+このメッセージを出しているところを調べてみた.
+
+gdb-10.2.bfin-elf/gdb/exceptions.c:89
+	  file->write (start, end - start);
+
+ここだった. このメッセージを出す原因となっているところを調べていくと以下で
+エラーしているのが原因だった.
+
+      status = target_xfer_partial (current_top_target (), object, NULL,
+				    myaddr + xfered, NULL,
+				    memaddr + xfered, len - xfered,
+				    &xfered_len);
+
+      if (status != TARGET_XFER_OK)
+
+ここはターゲットのメモリを読み込んでいるところ. ブレークポイントのセットに先立って sim_read で
+ターゲッットメモリの 0xffa00000 を読み込んでいるがこれでエラーしていた.
+なので buf[0], buf[1] に期待した値が入っていない.
+
+sim_read がエラーしている原因を調査した. この 0xffa00000 は正しいアドレスなのだが,
+
+
+    sim_core_mapping *mapping =
+      sim_core_find_mapping (core, map,
+			    raddr, /*nr-bytes*/1,
+			    read_transfer,
+			    0 /*dont-abort*/, NULL, NULL_CIA);
+    if (mapping == NULL)
+      break;      ここで mapping が見つからず 0 が返っている.
+
+
+load に対するメッセージは
+
+Loading section .text, size 0x2528 lma 0xffa00000
+Loading section .init, size 0x12 lma 0xffa02528
+Loading section .fini, size 0xe lma 0xffa0253a
+Loading section .rodata, size 0x14 lma 0xff800000
+Loading section .eh_frame, size 0x4 lma 0xff800014
+Loading section .ctors, size 0x8 lma 0xff800018
+Loading section .dtors, size 0x8 lma 0xff800020
+Loading section .data, size 0x83c lma 0xff800028
+
+なので少なくともこの 8 つの領域はメモリマップにあるはず.
+
+0x0
+0xffb00000
+
+この 2 つだけ. なるほどだが, 細かいメモリの断片は 1 つにまとめられているらしい.
+で問題は 
+
+0xffa00000
+
+が
+
+0xffb00000
+
+に化けていること. 1 つ目の 0x0 は sim_write で 0 に何かを書き込んでいたので,
+これがあることは問題ないかと思った.
+
+base = 0x0, bound = 0x7ffffff  1 つ目
+
+base = 0xffb00000, bound = 0xffb00fff  2 つ目
+
+となっている. 1 つ目が大きいのは気にはなるが, 今回のバグとは無関係なのだろうか不明.
+この 1 つ目のマップが作成されるのは sim_write なのでそこを調べる.
+
+sim_write(mem=0x0, length=2)
+
+に対して
+
+p/x *mapping
+$46 = {level = 0x0, space = 0x0, base = 0x0, bound = 0x7ffffff, 
+  nr_bytes = 0x8000000, mask = 0xffffffff, free_buffer = 0x0, 
+  buffer = 0xae3dc008, device = 0x0, trace = 0x0, next = 0x0}
+
+のようなものが作成されていた.
+アドレス 0 に 2 バイトを書き込んでいたのは以下:
+
+  /* Allocate external memory if none specified by user.
+     Use address 4 here in case the user wanted address 0 unmapped.  */
+  if (sim_core_read_buffer (sd, NULL, read_map, &c, 4, 1) == 0)
+    {
+      bu16 emuexcpt = 0x25;
+      sim_do_commandf (sd, "memory-size 0x%lx", BFIN_DEFAULT_MEM_SIZE);
+      sim_write (sd, 0, (void *)&emuexcpt, 2);
+    }
+
+なのでコンパイルアウトした. この状態でブレークポイントが期待通り動作していた test000.elf
+でエラーが再現している.
+
+なるほど, この作りからすると
+
+0x00000000
+0x07ffffff
+
+のアドレス空間を仮定しているらしい. もう一度上のコンパイルアウトをもとに戻した.
+
+そもそもの間違いは load コマンドを実行したとき, それがエラーにならないこと.
+
+現状では, シミュレータの場合ターゲットプログラムは上のアドレス範囲内で動かす必要がある.
+
+しかも 128 MB ものメモリを必ず確保するっていうのはいかがなものかと.
+
+本当はシミュレータを修正するのが正しいが, 今回はターゲットプログラムのアドレスを
+シミュレーションできるところにくるように修正する:
+
+% bfin-elf-as -o start.o -g start.S
+% bfin-elf-gcc -o hello.o -g -c hello.c -mcpu=bf522
+% bfin-elf-gcc -o dummy.o -g -c dummy.c -mcpu=bf522
+% bfin-elf-ld -o hello.elf start.o hello.o dummy.o \
+-L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bfin-elf/lib -lc \
+-L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/bfin-elf/10.2.0 -lgcc \
+-T hello.x -Map hello.map
+
+こうすることでターゲットプログラムがシミュレーションできるところに配置される.
+
+% bfin-elf-gdb -q -x gdbcom.001 hello.elf
