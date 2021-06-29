@@ -1,0 +1,30 @@
+C の函数のブレークポイント
+
+C の函数にブレークポイントをセットすると
+
+static CORE_ADDR
+mcore_skip_prologue(struct gdbarch *gdbarch, CORE_ADDR pc)
+{
+...
+  set_gdbarch_skip_prologue (gdbarch, mcore_skip_prologue);
+
+登録しておいたこの函数が呼び出される. これは函数にブレークポイントをセットしたとき
+プロローグの部分をスキップするためのものである. そのまま pc を返すと,
+函数の先頭で停止することになる.
+
+普通はフレームポインタ, 戻りアドレスの復元, スタックポインタの更新が終った数命令
+先のアドレスを返す. コンパイラはどの部分がプロローグなのかをデバッグ情報として
+伝えている. MCORE 固有の特別なことをする必要がないのであれば共通の処理を行なっ
+ておけばよい.
+
+C の函数のブレークポイントにヒットすると
+
+static int
+mcore_dbg_reg_to_regnum(struct gdbarch *gdbarch, int regnum)
+{
+
+...
+  set_gdbarch_dwarf2_reg_to_regnum(gdbarch, mcore_dbg_reg_to_regnum);
+
+ここでも登録しておいた函数が呼び出される. やはり特別なことをする必要がないのであれば
+そのまま regnum を返しておく.
