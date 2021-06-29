@@ -43,7 +43,7 @@ SIM = ../sim/mcore/libsim.a
 
 とりあえずこれでビルドが成功することのみ確認した.
 
-MCORE のレジスタは
+(*1) MCORE のレジスタ
 
 struct mcore_regset
 {
@@ -53,6 +53,20 @@ struct mcore_regset
   word pc;
 };
 
+#define sr	cr[0]
+#define vbr	cr[1]
+#define esr	cr[2]
+#define fsr	cr[3]
+#define epc	cr[4]
+#define fpc	cr[5]
+#define ss0	cr[6]
+#define ss1	cr[7]
+#define ss2	cr[8]
+#define ss3	cr[9]
+#define ss4	cr[10]
+#define gcr	cr[11]
+#define gsr	cr[12]
+
 のように定義されていることから
 
 GR0, ..., GR15, ALT0, ..., ALT31
@@ -60,7 +74,8 @@ control registers
 SR, VBR, ESR, FSR, EPC, FPC, SS00, SS1, SS2, SS3, SS4, GCR, GSR
 PC
 
-があるらしい.
+があるらしい. /* alt register file */ というのは, いわゆるバンクレジスタとい
+うものかもしれないが, 今はそれが不明なので保留しておく.
 
 ひとまず mcore-tdep.c をそれなりのものにして sim_open, sim_load が呼び出される
 状態になった.
@@ -79,29 +94,23 @@ mcore_register_name (struct gdbarch *gdbarch, int regno)
   set_gdbarch_register_name(gdbarch, mcore_register_name);  // 設定の登録
 
 
-しかしプログラムのロードをされるまでこれらの函数は呼び出されることはない.
-おそらくそのうち, 必要になったときに呼び出される.
+しかしプログラムのロードをしてもこれらの函数は呼び出されることはない.
+おそらくそのうち, 必要になったときに呼び出されるだろう.
 
-MCORE の nop は
+(*2) ブレークポイントの実装
 
-0x1200 : mov r0, r0
-
-らしい.
-
-(*1) ブレークポイントの実装
-
-0x100 番地にブレークポイントをセットしてみたところ, 設定の函数が呼び出された.
+0x100 番地にブレークポイントをセットしてみたところ, 登録していた函数が呼び出された.
 
 static
-int mcore_kind_from_pc(gdbarch* handle, CORE_ADDR* addr)
+int mcore_kind_from_pc(struct gdbarch* gdbarch, CORE_ADDR* addr)
 {
   asm("int3");
   return 0;
 }
 
 このとき *addr = 0x100 であった. これは名前から察するに, 何か適当な値を返しておけば
-よい. アドレスによってブレークポイントの仕組みを区別したいのであれば *addr に
-依存した値を返せばよい.
+よい. アドレスによってブレークポイントの仕組みを区別したいのであれば gdbarch や addr
+に依存した値を返せばよい.
 
 この函数は以下から呼び出されていた:
 
@@ -180,6 +189,15 @@ c.o:     ファイル形式 elf32-mcore-little
 ときにブレークポイントで停止するということである.
 
 また今さらながらここで MCORE がリトルエンディアンであることに気付く.
+以上の結果から mcore_from_kind は以下のようになる:
+
+static
+const unsigned char* mcore_from_kind(gdbarch* handle, int kind, int* size)
+{
+  static unsigned char bkpt[] = { 0, 0 };
+  *size = sizeof bkpt;
+  return &bkpt[0];
+}
 
 この後, アドレス 0x100 に対して gdb からメモリの読み出しがある. しかしこれには単純に
 答えるだけである. この場合は nop を置いていたので 0x00, 0x12 を返すことになった.
@@ -241,10 +259,10 @@ static struct frame_unwind mcore_frame_unwind = {
 まだ不完全ながらインストールして改めて使用してみたところ
 
 M-x gdb
-Run gdb (like this): mcore-elf-gdb --annotate=3 start.elf -x gdbcom
+Run gdb (like this): mcore-elf-gdb --annotate=3 test000.elf -x gdbcom.000
 ...
 (mcore-elf-gdb) run
-Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_mcore/start.elf 
+Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_mcore/test000.elf 
 
 Breakpoint 1, start () at start.S:3
 (mcore-elf-gdb) 
@@ -314,5 +332,3 @@ mcore_register_name (struct gdbarch *gdbarch, int regno)
 この時点での mcore-tdep.c をこのページに mcore-tdpe.c.000 として
 挙げておく. 勿論これはこれから修正されていくが, test000.elf が動作する
 くらいには十分ということである.
-
-
