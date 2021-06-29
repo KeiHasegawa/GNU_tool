@@ -264,11 +264,10 @@ Breakpoint 1, start () at start.S:3
 (mcore-elf-gdb) 
 Debugger trace/breakpoint trap
 
-のようになってしまう. しかし gdb から ./gdb を実行している限りは asm("int3");
-に引っかかってはいない.
+Unexpected trap occured. But if I executed ./gdb from gdb,
+no `int3' instrcution stop ./gdb.
 
-M-x gdb
-ではなく単にコマンドラインから実行してみた:
+I just exectued installed gdb from command line:
 
 % mcore-elf-gdb -q -x gdbcom start.elf
 Reading symbols from start.elf...
@@ -296,26 +295,22 @@ A debugging session is active.
 Quit anyway? (y or n) y
 %
 
-期待通り動作している. さてこれは一体どういうことなんだろう. 試しにコマンドラインからも
---annotate=3 オプションを指定して実行してみたが, 期待通り動作している.
+OK, it worked well. I wondered why mcore-elf-gdb stoped by `int3' instruction
+if I executed from `emacs' M-x gdb. I also tried with 
 
-そこでこれまで
+--annotate=3
 
-M-x gdb
-gdb --annotate=3 ./gdb
+option and confirmed that it worked well.
 
-のようにしていたのを一旦やめて
+Then I tried like below:
 
 M-x gdb
 gdb --annotate=3 mcore-elf-gdb
 
-のようにしてみた.
-そして
-
 (gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_mcore/
 (gdb) run -q -x gdbcom start.elf
 
-としたところ
+Now the below function was called:
 
 static const char*
 mcore_register_name (struct gdbarch *gdbarch, int regno)
@@ -324,9 +319,11 @@ mcore_register_name (struct gdbarch *gdbarch, int regno)
   return 0;
 }
 
-この int3 にひっかかっていた. 理由は不明だが, 確かにきている.
-この時点での mcore-tdep.c をこのページに mcore-tdpe.c.000 として
-挙げておく. 勿論これはこれから修正されていくが, test000.elf が動作する
-くらいには十分ということである.
+This reason was not clear, but acutally it was called. Anyway
+I just implemented this function.
+
+`mcore-tdep.c' at this point is uploaded at this web page. Of cause,
+this is not complete ersion but it works for `test000.elf'.
+
 
 
