@@ -1,6 +1,9 @@
-C の函数のブレークポイント
+Break-point of C function
 
-C の函数にブレークポイントをセットすると
+`test001.elf' starts from start-up routine and it calls `main'
+and `main' calls `f' which calculates addition.
+
+If we set break-point to `main' or `f', then below function is called:
 
 static CORE_ADDR
 mcore_skip_prologue(struct gdbarch *gdbarch, CORE_ADDR pc)
@@ -8,16 +11,17 @@ mcore_skip_prologue(struct gdbarch *gdbarch, CORE_ADDR pc)
 ...
   set_gdbarch_skip_prologue (gdbarch, mcore_skip_prologue);
 
-登録しておいたこの函数が呼び出される. これは函数にブレークポイントをセットしたとき
-プロローグの部分をスキップするためのものである. そのまま pc を返すと,
-函数の先頭で停止することになる.
+which is registered like above. This function works for
+skipping prologue as its name. If this function return `pc' value,
+break-point will be set to the value itself.
 
-普通はフレームポインタ, 戻りアドレスの復元, スタックポインタの更新が終った数命令
-先のアドレスを返す. コンパイラはどの部分がプロローグなのかをデバッグ情報として
-伝えている. MCORE 固有の特別なことをする必要がないのであれば共通の処理を行なっ
-ておけばよい.
+Normally, frame-pointer and return address are saved and stack-pointer
+is updated at the entrance of a function. So the adress where these
+instructions are finised should be returned. A compiler might generates
+the prologue information. So if there is not a special reason,
+the common routine works well.
 
-C の函数のブレークポイントにヒットすると
+When the break-point of C function is hit, the below function is called:
 
 static int
 mcore_dbg_reg_to_regnum(struct gdbarch *gdbarch, int regnum)
@@ -26,5 +30,59 @@ mcore_dbg_reg_to_regnum(struct gdbarch *gdbarch, int regnum)
 ...
   set_gdbarch_dwarf2_reg_to_regnum(gdbarch, mcore_dbg_reg_to_regnum);
 
-ここでも登録しておいた函数が呼び出される. やはり特別なことをする必要がないのであれば
+which is registerd like above. As usual, if you don't have to do special
+operation, just return `regnum'.
 そのまま regnum を返しておく.
+
+For `test001.elf', mcore-elf-gdb works for `main' break-point. But,
+
+Breakpoint 3, main () at test001.c:8
+(mcore-elf-gdb) s
+f (a=3, b=5) at test001.c:3
+(mcore-elf-gdb) where
+#0  f (a=3, b=5) at test001.c:3
+#1  0x0000013c in main () at test001.c:8
+Backtrace stopped: frame did not save the PC
+(mcore-elf-gdb) fin
+Run till exit from #0  f (a=3, b=5) at test001.c:3
+
+Breakpoint 2, end () at test001_start.S:9
+(mcore-elf-gdb)
+
+Like above, `finish' command doesn't work well. At the first,
+I thought `where' command would not  work because I did not do anything.
+But even though the message
+
+Backtrace stopped: frame did not save the PC
+
+was displayed, `where' command works well at some level.
+`mcore-tdep.c' at this point is up-loaed at this web page as
+`mcore-tdep.c.001'.
+
+Appendix:
+
+0000012e <main>:
+ 12e:	2470      	subi	r0, 8
+ 130:	9f00      	st	r15, (r0, 0)
+ 132:	9810      	st	r8, (r0, 4)
+ 134:	1208      	mov	r8, r0
+
+`main' function prologue is consist of above 4 instructions.
+So the expect value of `mcore_skip_prologue' return value is 0x136
+
+MCORE stack frame
+
+sp = r0
+fp = r8
+lr = r15
+
++------------+<- sp_{new}
+|            |
+|            |
+|            |
+|            |
++------------+<- fp_{new}
+|  lr_{old}  |
++------------+
+|  fp_{old}  |
++------------+<- sp_{old}
