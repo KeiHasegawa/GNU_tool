@@ -1,6 +1,9 @@
 C の函数のブレークポイント
 
-C の函数にブレークポイントをセットすると
+test001.elf ではスタートアップルーチンから main 函数を呼び出し, さらに加算を
+する函数 f を呼び出している.
+
+main や f にブレークポイントをセットすると
 
 static CORE_ADDR
 mcore_skip_prologue(struct gdbarch *gdbarch, CORE_ADDR pc)
@@ -12,7 +15,7 @@ mcore_skip_prologue(struct gdbarch *gdbarch, CORE_ADDR pc)
 プロローグの部分をスキップするためのものである. そのまま pc を返すと,
 函数の先頭で停止することになる.
 
-普通はフレームポインタ, 戻りアドレスの復元, スタックポインタの更新が終った数命令
+普通はフレームポインタ, 戻りアドレスの保存, スタックポインタの更新が終った数命令
 先のアドレスを返す. コンパイラはどの部分がプロローグなのかをデバッグ情報として
 伝えている. MCORE 固有の特別なことをする必要がないのであれば共通の処理を行なっ
 ておけばよい.
@@ -28,3 +31,55 @@ mcore_dbg_reg_to_regnum(struct gdbarch *gdbarch, int regnum)
 
 ここでも登録しておいた函数が呼び出される. やはり特別なことをする必要がないのであれば
 そのまま regnum を返しておく.
+
+test001.elf では main 函数で期待した通りブレークポイントにヒットする. ところが:
+
+Breakpoint 3, main () at test001.c:8
+(mcore-elf-gdb) s
+f (a=3, b=5) at test001.c:3
+(mcore-elf-gdb) where
+#0  f (a=3, b=5) at test001.c:3
+#1  0x0000013c in main () at test001.c:8
+Backtrace stopped: frame did not save the PC
+(mcore-elf-gdb) fin
+Run till exit from #0  f (a=3, b=5) at test001.c:3
+
+Breakpoint 2, end () at test001_start.S:9
+(mcore-elf-gdb)
+
+このように finish コマンドが機能していない. 当初は where コマンドを実装している
+つもりが全くないので動作しないものだと思っていたが,
+
+Backtrace stopped: frame did not save the PC
+
+のメッセージが出ているもののこれはそこそこ動いている.
+この機能ができている時点での mcore-tdep.c をこのページに mcore-tdep.c.001 として
+アップロードしておいた.
+
+付録:
+
+0000012e <main>:
+ 12e:	2470      	subi	r0, 8
+ 130:	9f00      	st	r15, (r0, 0)
+ 132:	9810      	st	r8, (r0, 4)
+ 134:	1208      	mov	r8, r0
+
+main 函数のプロローグはこの 4 命令. なので mcore_skip_prologue では 0x136
+を返すのが期待値.
+
+MCORE のスタックフレーム
+
+sp = r0
+fp = r8
+lr = r15
+
++------------+<- sp_{new}
+|            |
+|            |
+|            |
+|            |
++------------+<- fp_{new}
+|  lr_{old}  |
++------------+
+|  fp_{old}  |
++------------+<- sp_{old}
