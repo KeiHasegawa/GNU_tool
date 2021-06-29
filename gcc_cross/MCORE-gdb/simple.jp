@@ -1,0 +1,318 @@
+mcore の gdb
+
+「MCORE」でも述べたようにプロセッサ固有の設定がされていないので mcore-elf-gdb は
+通常通りでは機能しない.
+
+最初の目標は簡単なアセンブラのプログラムが動作することである.
+
+gdb-10.2.mcore-elf/gdb/init.c
+
+void
+initialize_all_files (void)
+{
+
+ここで mcore 固有の初期化が必要になる
+
+  _initialize_mcore_tdep ();
+
+がないので追加する. この init.c は Makefile で実行されるコマンドから
+生成されるファイルなので make clean などで消されてしまうことがある.
+
+gdb-10.2.mcore-elf/gdb/mcore-tdep.c
+
+にこの函数を空の函数として定義しておく.
+
+void
+_initialize_mcore_tdep()
+{
+}
+
+init.c の生成で参照されるから, 上のように行頭に函数名がくる必要がある.
+
+gdb-10.2.mcore-elf/gdb/Makefile
+
+に
+
+TARGET_OBS =  mcore-tdep.o
+
+を追加する. ついでに以下も追加する.
+
+SIM_OBS = remote-sim.o
+
+SIM = ../sim/mcore/libsim.a
+
+とりあえずこれでビルドが成功することのみ確認した.
+
+MCORE のレジスタは
+
+struct mcore_regset
+{
+  word gregs[16];	/* primary registers */
+  word alt_gregs[16];	/* alt register file */
+  word cregs[32];	/* control registers */
+  word pc;
+};
+
+のように定義されていることから
+
+GR0, ..., GR15, ALT0, ..., ALT31
+control registers
+SR, VBR, ESR, FSR, EPC, FPC, SS00, SS1, SS2, SS3, SS4, GCR, GSR
+PC
+
+があるらしい.
+
+ひとまず mcore-tdep.c をそれなりのものにして sim_open, sim_load が呼び出される
+状態になった.
+
+ターゲット固有の設定をする種々の函数にはブレークポイントを仕込んでおいた:
+
+// レジスタ番号に対する名前を返す函数
+static const char*
+mcore_register_name (struct gdbarch *gdbarch, int regno)
+{
+  asm("int3");
+  return 0;
+}
+
+...
+  set_gdbarch_register_name(gdbarch, mcore_register_name);  // 設定の登録
+
+
+しかしプログラムのロードをされるまでこれらの函数は呼び出されることはない.
+おそらくそのうち, 必要になったときに呼び出される.
+
+MCORE の nop は
+
+0x1200 : mov r0, r0
+
+らしい.
+
+(*1) ブレークポイントの実装
+
+0x100 番地にブレークポイントをセットしてみたところ, 設定の函数が呼び出された.
+
+static
+int mcore_kind_from_pc(gdbarch* handle, CORE_ADDR* addr)
+{
+  asm("int3");
+  return 0;
+}
+
+このとき *addr = 0x100 であった. これは名前から察するに, 何か適当な値を返しておけば
+よい. アドレスによってブレークポイントの仕組みを区別したいのであれば *addr に
+依存した値を返せばよい.
+
+この函数は以下から呼び出されていた:
+
+gdb-10.2.mcore-elf/gdb/gdbarch.c:2875
+
+int
+gdbarch_breakpoint_kind_from_pc (struct gdbarch *gdbarch, CORE_ADDR *pcptr)
+{
+  gdb_assert (gdbarch != NULL);
+  gdb_assert (gdbarch->breakpoint_kind_from_pc != NULL);
+  if (gdbarch_debug >= 2)
+    fprintf_unfiltered (gdb_stdlog, "gdbarch_breakpoint_kind_from_pc called\n");
+  return gdbarch->breakpoint_kind_from_pc (gdbarch, pcptr);
+}
+
+つまり, 意図せず物事が勝手に進められるということはなさそうである. MCORE 特有の設定の
+函数でやり残したことがあれば gdb_assert が適切にチェックしてくれるからである.
+
+続いて呼び出されたのは
+
+static
+const unsigned char* mcore_from_kind(gdbarch* handle, int kind, int* size)
+{
+  asm("int3");
+  return 0;
+}
+
+であった. kind には mcore_kind_from_pc で返した値がセットされる. これはおそらく
+ブレークポイント用の命令を返すということを言っている.
+
+MCORE にブレークポイント用の命令があるか調べてみた. これは
+
+      sim_engine_halt (CPU_STATE (cpu), cpu, NULL, PC,
+		       sim_stopped, SIM_SIGTRAP);
+
+のようなところがあるかを調べてみれば良さそうである. もし無ければ, オペコードにない
+命令を返してもよい. そこで illegal instruction のエラーになるだろうから.
+
+gdb-10.2.mcore-elf/sim/mcore/interp.c:414
+
+		case 0x0:				/* bkpt */
+		  pc -= 2;
+		  sim_engine_halt (sd, cpu, NULL, pc - 2,
+				   sim_stopped, SIM_SIGTRAP);
+
+
+あるらしい. 少し気にはなるのだが
+
+pc
+
+の値を 2 引いて, さらに 2 引いた値を指定している.
+ひとまず
+
+	.text
+	nop
+	bkpt
+	nop
+	nop
+
+のようなソースをアセンブルして, さらに結果を逆アセンブルしてみたところ
+
+
+c.o:     ファイル形式 elf32-mcore-little
+
+
+セクション .text の逆アセンブル:
+
+00000000 <.text>:
+   0:	1200      	mov	r0, r0
+   2:	0000      	bkpt
+   4:	1200      	mov	r0, r0
+   6:	1200      	mov	r0, r0
+
+のような結果であった. これは  0x0000 がブレークポイントに相当する命令ということらしい.
+仮にメモリが 0 で初期化されているとして, 誤ってプログラムが置かれていないところを実行してしまった
+ときにブレークポイントで停止するということである.
+
+また今さらながらここで MCORE がリトルエンディアンであることに気付く.
+
+この後, アドレス 0x100 に対して gdb からメモリの読み出しがある. しかしこれには単純に
+答えるだけである. この場合は nop を置いていたので 0x00, 0x12 を返すことになった.
+
+break コマンドに続く run コマンドでメモリの 0x100 が 0x0000 に書き替えられることになる.
+
+さて run コマンドを実行してみたところ以下のようになった:
+
+gdbarch.c:2331: internal-error: type* gdbarch_register_type(gdbarch*, int): Assertion `gdbarch->register_type != NULL' failed.
+A problem internal to GDB has been detected,
+further debugging may prove unreliable.
+Quit this debugging session? (y or n)
+
+これは例の gdb_assert でチェックに引っかかり, 設定の函数が十分ではなかったことを表している.
+
+static struct type*
+mcore_register_type(gdbarch* handle, int regno)
+{
+...
+
+  set_gdbarch_register_type(gdbarch, mcore_register_type);  // これが抜けていた.
+  
+
+さて, 実行してブレークポイントにヒットしたとき 0x100 で停止するのが
+正しい.
+#if 0		  
+		  pc -= 2;
+#endif		  
+		  sim_engine_halt (sd, cpu, NULL, pc - 2,
+				   sim_stopped, SIM_SIGTRAP);
+
+やはりこの pc -= 2 は必要なさそうである.
+ブレークポイントにヒットしたタイミングで命令がもとの nop に書き替えられた.
+そしてその後
+
+この函数が呼び出された:
+
+static void
+mcore_frame_this_id (struct frame_info *this_frame, void **this_cache,
+		     struct frame_id *this_id)
+{
+...
+
+static struct frame_unwind mcore_frame_unwind = {
+  NORMAL_FRAME,
+  default_frame_unwind_stop_reason,
+  mcore_frame_this_id,                      // これ
+  mcore_frame_prev_register,
+  nullptr,
+  default_frame_sniffer
+};
+...
+
+  frame_unwind_append_unwinder(gdbarch, &mcore_frame_unwind);  // 登録していた
+
+この函数の中で何をするべきか不明だったのでとりあえず何もしなかった.
+
+この作業で簡単なプログラムが実行できて, ブレークポイントが機能するようになった.
+まだ不完全ながらインストールして改めて使用してみたところ
+
+M-x gdb
+Run gdb (like this): mcore-elf-gdb --annotate=3 start.elf -x gdbcom
+...
+(mcore-elf-gdb) run
+Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_mcore/start.elf 
+
+Breakpoint 1, start () at start.S:3
+(mcore-elf-gdb) 
+Debugger trace/breakpoint trap
+
+のようになってしまう. しかし gdb から ./gdb を実行している限りは asm("int3");
+に引っかかってはいない.
+
+M-x gdb
+ではなく単にコマンドラインから実行してみた:
+
+% mcore-elf-gdb -q -x gdbcom start.elf
+Reading symbols from start.elf...
+Connected to the simulator.
+Loading section .text, size 0x8 lma 0x100
+Start address 0x100
+Transfer rate: 64 bits in <1 sec.
+Breakpoint 1 at 0x100: file start.S, line 3.
+Breakpoint 2 at 0x106: file start.S, line 7.
+(mcore-elf-gdb) run
+Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_mcore/start.elf 
+
+Breakpoint 1, start () at start.S:3
+3		nop
+(mcore-elf-gdb) c
+Continuing.
+
+Breakpoint 2, end () at start.S:7
+7		nop
+(mcore-elf-gdb) quit
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) y
+%
+
+期待通り動作している. さてこれは一体どういうことなんだろう. 試しにコマンドラインからも
+--annotate=3 オプションを指定して実行してみたが, 期待通り動作している.
+
+そこでこれまで
+
+M-x gdb
+gdb --annotate=3 ./gdb
+
+のようにしていたのを一旦やめて
+
+M-x gdb
+gdb --annotate=3 mcore-elf-gdb
+
+のようにしてみた.
+そして
+
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_mcore/
+(gdb) run -q -x gdbcom start.elf
+
+としたところ
+
+static const char*
+mcore_register_name (struct gdbarch *gdbarch, int regno)
+{
+  asm("int3");
+  return 0;
+}
+
+この int3 にひっかかっていた. 理由は不明だが, 確かにきている.
+この時点での mcore-tdep.c をこのページに mcore-tdpe.c.000 として
+挙げておく. 勿論これはこれから修正されていくが, test000.elf が動作する
+くらいには十分ということである.
+
+
