@@ -1,0 +1,21 @@
+set prompt (mcore-elf-gdb) 
+target sim
+load
+#b start
+b end
+b main
+#b _sbrk
+b _write
+command
+print buf
+c
+end
+#b _close
+#b _lseek
+#b _read
+#b _fstat
+#b _isatty
+run
+disassemble
+c
+quit
