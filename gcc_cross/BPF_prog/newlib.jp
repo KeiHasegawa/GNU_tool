@@ -1,0 +1,15 @@
+newlib のインストール
+
+「BPF」でも述べた通り, newlib のビルドでは configure の時点でエラーになった.
+なので「AVR プログラミング」のようにとりあえずビルドしてみた.
+
+% cd newlib-4.1.0.bpf
+% gunzip -c newlib-Makefile.tar.gz
+% make -f Makefile.mine
+% make -f Makefile.mine install
+
+ここで気付いたことは, 本来 C 言語で well-formed なものがエラーになっているということ
+であった. なので Makefile.mine ではコンパイルエラーになるものを外しておいた.
+
+エラーにしているのはおそらくだが, コンパイラを作成した人が意図してエラーにしている
+のだろうけども, 真相は不明である.
