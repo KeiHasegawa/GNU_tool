@@ -1,0 +1,36 @@
+簡単なプログラム
+
+例によっていきなり hello world をするのはやめてまずはアセンブラの簡単なプログラム
+が期待通り動作することを確認したい.
+
+test000.elf がそれだがこれを通常通りの方法で実行しようとしても動作しない.
+このシミュレータの場合, メモリ割り付けをユーザーが行なう方針らしい.
+load コマンドの前に以下を実行する必要がある:
+
+(bpf-gdb) sim memory-region 0x100,0x20
+
+このコマンドの他にもシミュレータへのコマンドがある.
+
+(bfp-gdb) sim help
+
+とすることで結構いろいろなコマンドがあることが分かる. このシミュレータの
+残念なところは, メモリがない状態で load コマンドをユーザが実行しても
+エラーを報告しないことである.
+
+しかし一方で「メモリアクセス」で述べたような状況は解消できているのかもしれない.
+
+以下のように test000.elf が期待通り動作していることを確認できる.
+
+% bpf-as -o test000.o -g test000.S
+% bpf-ld -o test000.elf test000.o -T test000.x -Map test000.map
+% cat gdbcom.000
+set prompt (bpf-gdb) 
+target sim
+sim memory-region 0x100,0x20
+load
+b start
+b end
+run
+% bfp-gdb -x gdbcom.000 test000.elf
+
+
