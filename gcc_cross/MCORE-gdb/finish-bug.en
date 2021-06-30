@@ -1,0 +1,80 @@
+`finish' command bug
+
+I built test program like below:
+
+0000010a <end>:
+ 10a:	1200      	mov	r0, r0
+ 10c:	1000      	mfcr	r0, psr
+ 10e:	0000      	bkpt
+ 110:	012e      	xtrb1	r1, r14
+	...
+
+00000114 <f>:
+ 114:	24f0      	subi	r0, 16
+ 116:	9820      	st	r8, (r0, 8)
+ 118:	1208      	mov	r8, r0
+ 11a:	9208      	st	r2, (r8, 0)
+ 11c:	9318      	st	r3, (r8, 4)
+ 11e:	8608      	ld	r6, (r8, 0)
+ 120:	8718      	ld	r7, (r8, 4)
+ 122:	1c67      	addu	r7, r6
+ 124:	1272      	mov	r2, r7
+ 126:	1280      	mov	r0, r8
+ 128:	8820      	ld	r8, (r0, 8)
+ 12a:	20f0      	addi	r0, 16
+ 12c:	00cf      	jmp	r15
+
+0000012e <main>:
+ 12e:	2470      	subi	r0, 8
+ 130:	9f00      	st	r15, (r0, 0)
+ 132:	9810      	st	r8, (r0, 4)
+ 134:	1208      	mov	r8, r0
+ 136:	6053      	movi	r3, 5
+ 138:	6032      	movi	r2, 3
+ 13a:	7f04      	jsri	0x114	// 114 <f>
+ 13c:	1227      	mov	r7, r2
+
+When program stops at `f', by `finish' command, the expected result is
+program starts and stop at address 0x13c.
+
+By `finish' command execution, the addresses
+
+0x10a
+0x13c
+
+were changed to `bkpt' instruction, here address 0x10a was
+`end'. I already set break-point to `end', so that these was
+expected result.
+
+And then `sim_resume' was called with argumetn `step = 1'.
+This was not expected result. It was different from H8 gdb.
+
+One instruction was executed and stopped.
+
+And address 0x11e instruction which was just now executed
+was changed `bkpt'. This was unexpected result.
+
+And then `sim_resume' was called with argument `step = 0'.
+
+Then the program stopped at address 0x13c.
+
+Then addres 0x13c was change to orignal instruction.
+And again `sim_resum' was called with argument `step = 1'.
+
+One instruction was executed and stopped.
+
+And again, address 0x13c was changed to `bkpt' instruction.
+
+After above, `sim_resume' was called with argument `step = 0'.
+
+Then the program stopped at 0x10a.
+The addresses 
+
+0x13c
+0x10a
+0x11e
+
+were chaged to its original instructions.
+
+And gdb stopped.
+
