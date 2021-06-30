@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta http-equiv="Content-Style-Type" content="text/css">
+<meta http-equiv="Content-Script-Type" content="text/javascript">
+<title>MCORE の gdb</title>
+
+
+<style type="text/css"> 
+<!--
+
+body {
+background:#f5f5f5;
+margin: 0;
+padding: 0;
+}
+
+dl,dt,dd,ul,ol,li,h1,h2,h3,h4,h5,h6,pre,form,input,p,blockquote,fieldset,div {
+margin: 0;
+padding: 0;
+}
+
+h1,h2,h3,h4,h5,h6 {
+font-size: 100%;
+font-weight: normal;
+}
+
+ul li, ol li {
+list-style: none;
+}
+
+table {
+margin: 0;
+padding: 0;
+border-collapse: collapse;
+border-spacing: 0;
+font-size: 100%;
+}
+
+caption {
+text-align: left;
+}
+
+table,pre,code,select,input,textarea,kbd,var,ins,del,samp {
+font-size: 100%;
+}
+
+address,cite,dfn,em,strong,var,th,ins,del,samp {
+font-weight: normal;
+font-style: normal;
+}
+
+a img {
+border: 0;
+}
+
+fieldset {
+border: none;
+}
+
+.userDefaultWrapper .userDefaultContents{
+width:850px;
+padding:20px;
+margin:20px auto;
+color:#262626;
+background:#fff;
+border-radius:3px;
+-webkit-border-radius:3px;
+-moz-border-radius:3px;
+-webkit-box-shadow: 0 0 3px 0 rgba(0,0,0,0.15);
+box-shadow: 0 0 3px 0 rgba(0,0,0,0.15);
+}
+
+.userDefaultWrapper .userDefaultContents .userDefaultMainVisual{
+margin-bottom:20px;
+line-height:0;
+}
+
+.userDefaultWrapper .userDefaultContents h1.userDefaultHdrTxt{
+margin-bottom:20px;
+text-align:center;
+font-size:200%;
+font-weight:bold;
+}
+
+.userDefaultWrapper .userDefaultContents p.userDefaultLeadTxt{
+margin-bottom:20px;
+}
+
+.userDefaultWrapper .userDefaultContents .userDefaultLinkTxt{
+padding-top:20px;
+border-top:1px solid #ccc;
+text-decoration:none;
+text-align:center;
+}
+
+.userDefaultWrapper .userDefaultContents .userDefaultLinkTxt a{
+text-decoration:none;
+padding:0 10px;
+border-left:1px solid #ccc;
+}
+
+.userDefaultWrapper .userDefaultContents .userDefaultLinkTxt a:first-child{
+border-left:none;
+}
+
+-->
+</style> 
+</head>
+
+<body>
+
+<div class="userDefaultWrapper">
+<div class="userDefaultContents">
+<h1 class="userDefaultHdrTxt">MCORE の gdb</h1>
+<p class="userDefaultLeadTxt">だれしもいいアイディアを持ち得るものだが, そのアイディアで何をするか, それこそが重要だ. ― <a href="https://ja.wikipedia.org/wiki/テリー・プラチェット">テリー・プラチェット</p>
+<div class="userDefaultLinkTxt">
+  <a href="https://raw.githubusercontent.com/KeiHasegawa/GNU_tool/master/gcc_cross/MCORE-gdb/simple.jp">簡単なプログラムを動かすまで</a>
+  <a href="https://raw.githubusercontent.com/KeiHasegawa/GNU_tool/master/gcc_cross/MCORE-gdb/test000.S">test000.S</a>
+  <a href="https://raw.githubusercontent.com/KeiHasegawa/GNU_tool/master/gcc_cross/MCORE-gdb/test000.x">test000.x</a>
+  <a href="https://raw.githubusercontent.com/KeiHasegawa/GNU_tool/master/gcc_cross/MCORE-gdb/Makefile.000">Makefile.000</a>
+  <a href="https://raw.githubusercontent.com/KeiHasegawa/GNU_tool/master/gcc_cross/MCORE-gdb/gdbcom.000">gdbcom.000</a>
+  <a href="https://raw.githubusercontent.com/KeiHasegawa/GNU_tool/master/gcc_cross/MCORE-gdb/mcore-tdep.c.000">mcore-tdep.c.000</a>
+  <a href="https://raw.githubusercontent.com/KeiHasegawa/GNU_tool/master/gcc_cross/MCORE-gdb/bp-cfun.jp">C の函数のブレークポイン</a>
+  <a href="https://raw.githubusercontent.com/KeiHasegawa/GNU_tool/master/gcc_cross/MCORE-gdb/test001_start.S">test001_start.S</a>
+  <a href="https://raw.githubusercontent.com/KeiHasegawa/GNU_tool/master/gcc_cross/MCORE-gdb/test001.c">test001.c</a>
+  <a href="https://raw.githubusercontent.com/KeiHasegawa/GNU_tool/master/gcc_cross/MCORE-gdb/test001.x">test001.x</a>
+  <a href="https://raw.githubusercontent.com/KeiHasegawa/GNU_tool/master/gcc_cross/MCORE-gdb/Makefile.001">Makefile.001</a>
+  <a href="https://raw.githubusercontent.com/KeiHasegawa/GNU_tool/master/gcc_cross/MCORE-gdb/gdbcom.001">gdbcom.001</a>
+  <a href="https://raw.githubusercontent.com/KeiHasegawa/GNU_tool/master/gcc_cross/MCORE-gdb/mcore-tdep.c.001">mcore-tdep.c.001</a>
+  <a href="https://raw.githubusercontent.com/KeiHasegawa/GNU_tool/master/gcc_cross/MCORE-gdb/start.S">start.S</a>
+  <a href="https://raw.githubusercontent.com/KeiHasegawa/GNU_tool/master/gcc_cross/MCORE-gdb/hello.c">hello.c</a>
+  <a href="https://raw.githubusercontent.com/KeiHasegawa/GNU_tool/master/gcc_cross/MCORE-gdb/dummy.c">dummy.c</a>
+  <a href="https://raw.githubusercontent.com/KeiHasegawa/GNU_tool/master/gcc_cross/MCORE-gdb/hello.x">hello.x</a>
+  <a href="https://raw.githubusercontent.com/KeiHasegawa/GNU_tool/master/gcc_cross/MCORE-gdb/Makefile.002">Makefile.002</a>
+  <a href="https://raw.githubusercontent.com/KeiHasegawa/GNU_tool/master/gcc_cross/MCORE-gdb/gdbcom.002">gdbcom.002</a>
+  <a href="https://raw.githubusercontent.com/KeiHasegawa/GNU_tool/master/gcc_cross/MCORE-gdb/where-msg.jp">where コマンドのエラーメッセージ</a>  
+  <a href="https://raw.githubusercontent.com/KeiHasegawa/GNU_tool/master/gcc_cross/MCORE-gdb/finish-bug.jp">finish コマンドのバグ</a> 
+  <a href="index_e.html">English</a>
+  <a href="http://khasegawa.html.xdomain.jp/index.html">トップ</a>
+  <a href="../index.html">上へ</a>
+</div>
+</div>
+</div>
+</body>
+</html>
+

@@ -1,0 +1,23 @@
+all:test001.elf test001.objdump
+
+test001_start.o:test001_start.S
+	mcore-elf-as -o test001_start.o -g test001_start.S
+
+#test001.o:test001.s
+#	mcore-elf-as -o test001.o -g test001.s
+#
+#test001.s:test001.c
+#	mcore-elf-gcc -o test001.s -S test001.c
+
+test001.o:test001.c
+	mcore-elf-gcc -o test001.o -g -c test001.c
+
+test001.elf:test001_start.o test001.o test001.x
+	mcore-elf-ld -o test001.elf test001_start.o test001.o -T test001.x \
+	-Map test001.map
+
+test001.objdump:test001.elf
+	mcore-elf-objdump -x -t -d test001.elf > test001.objdump
+
+clean:
+	rm -f *.o *.s *.elf *.map *.objdump *~

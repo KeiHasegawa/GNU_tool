@@ -1,0 +1,50 @@
+finish コマンド
+
+h8300-elf-gdb で finish コマンドがどのように実現されているか調べてみた.
+hello world のプログラムで main 函数と puts は以下のようになっている.
+
+000001f0 <_main>:
+     1f0:	6d f6       	mov.w	r6,@-r7
+     1f2:	0d 76       	mov.w	r7,r6
+     1f4:	79 00 51 84 	mov.w	#0x5184,r0
+     1f8:	5e 00 03 62 	jsr	@0x362:24
+     1fc:	19 22       	sub.w	r2,r2
+     1fe:	0d 20       	mov.w	r2,r0
+     200:	6d 76       	mov.w	@r7+,r6
+     202:	54 70       	rts	
+
+00000362 <_puts>:
+     362:	6d f6       	mov.w	r6,@-r7
+     364:	0d 76       	mov.w	r7,r6
+     366:	1b 87       	subs	#2,r7
+     368:	6f e0 ff fe 	mov.w	r0,@(0xfffe:16,r6)
+     36c:	6b 02 54 1c 	mov.w	@0x541c:16,r2
+     370:	6f 63 ff fe 	mov.w	@(0xfffe:16,r6),r3
+     374:	0d 31       	mov.w	r3,r1
+     376:	0d 20       	mov.w	r2,r0
+     378:	5e 00 02 62 	jsr	@0x262:24
+     37c:	0d 02       	mov.w	r0,r2
+     37e:	0d 20       	mov.w	r2,r0
+     380:	0b 87       	adds	#2,r7
+     382:	6d 76       	mov.w	@r7+,r6
+     384:	54 70       	rts	
+
+puts から main 函数への戻りアドレスは 0x1fc なので puts にステップインした状態で finish
+コンマンドを実行したら,
+
+1. 通常の方法でアドレス 0x1fc にブレークポイントをセットする
+            gdb が 0x1fc を読み出して保存
+	    gdb が 0x1fc にブレークポイント用の命令 0x01 0x80 に書き込む
+
+2. シミュレーションを再開する.
+3. シミュレータが停止したら 1 でセットしたブレークポイントをもとに戻す.
+
+ということをやっていた. これはシミュレータ目線の話.
+
+gdb 側の話をすると以下の函数で処理していた.
+
+static void
+finish_command (const char *arg, int from_tty)
+{
+
+ここで上の話でいう 0x1fc というアドレスを割り出しているらしい.

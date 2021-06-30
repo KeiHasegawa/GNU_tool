@@ -1,0 +1,15 @@
+all:test000.elf test000.objdump
+
+test000.o:test000.S
+	bfin-elf-as -g -o test000.o test000.S -mcpu=bf522
+
+test000.elf:test000.o test000.x
+	bfin-elf-ld -o test000.elf test000.o -T test000.x -Map test000.map
+
+test000.objdump:test000.elf
+	bfin-elf-objdump -x -d test000.elf >  test000.objdump
+
+clean:
+	rm -f *.o *.elf *.objdump *.map *~
+
+

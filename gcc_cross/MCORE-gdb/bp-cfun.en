@@ -1,0 +1,141 @@
+Break-point of C function
+
+`test001.elf' starts from start-up routine and it calls `main'
+and `main' calls `f' which calculates addition.
+
+If we set break-point to `main' or `f', then below function is called:
+
+static CORE_ADDR
+mcore_skip_prologue(struct gdbarch *gdbarch, CORE_ADDR pc)
+{
+...
+  set_gdbarch_skip_prologue (gdbarch, mcore_skip_prologue);
+
+which is registered like above. This function works for
+skipping prologue as its name. If this function return `pc' value,
+break-point will be set to the value itself.
+
+Normally, frame-pointer and return address are saved and stack-pointer
+is updated at the entrance of a function. So the adress where these
+instructions are finised should be returned. A compiler might generates
+the prologue information. So if there is not a special reason,
+the common routine works well.
+
+When the break-point of C function is hit, the below function is called:
+
+static int
+mcore_dbg_reg_to_regnum(struct gdbarch *gdbarch, int regnum)
+{
+
+...
+  set_gdbarch_dwarf2_reg_to_regnum(gdbarch, mcore_dbg_reg_to_regnum);
+
+which is registerd like above. As usual, if you don't have to do special
+operation, just return `regnum'.
+そのまま regnum を返しておく.
+
+For `test001.elf', mcore-elf-gdb works for `main' break-point. But,
+
+Breakpoint 3, main () at test001.c:8
+(mcore-elf-gdb) s
+f (a=3, b=5) at test001.c:3
+(mcore-elf-gdb) where
+#0  f (a=3, b=5) at test001.c:3
+#1  0x0000013c in main () at test001.c:8
+Backtrace stopped: frame did not save the PC
+(mcore-elf-gdb) fin
+Run till exit from #0  f (a=3, b=5) at test001.c:3
+
+Breakpoint 2, end () at test001_start.S:9
+(mcore-elf-gdb)
+
+Like above, `finish' command doesn't work well. At the first,
+I thought `where' command would not  work because I did not do anything.
+But even though the message
+
+Backtrace stopped: frame did not save the PC
+
+was displayed, `where' command works well at some level.
+`mcore-tdep.c' at this point is up-loaed at this web page as
+`mcore-tdep.c.001'.
+
+Event thoght `mcore-tdep.c' is not complete, but I tried to make "hello world"
+program at this mcore-elf-gdb:
+
+% mcore-elf-as -o start.o -g start.S
+% mcore-elf-gcc -o hello.o -g -c hello.c
+% mcore-elf-gcc -o dummy.o -g -c dummy.c
+% mcore-elf-ld -o hello.elf start.o hello.o dummy.o \
+-T hello.x -Map hello.map -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mcore-elf/lib -lc
+% mcore-elf-gdb -q -x gdbcom.002 hello.elf 
+Reading symbols from hello.elf...
+Connected to the simulator.
+Loading section .text, size 0x1d68 lma 0x100
+Loading section .rodata, size 0x10 lma 0x1e68
+Loading section .rodata.str1.4, size 0x2 lma 0x1e78
+Loading section .data, size 0x840 lma 0x1e80
+Start address 0x100
+Transfer rate: 77264 bits in <1 sec.
+Breakpoint 1 at 0x10a: file start.S, line 9.
+Breakpoint 2 at 0x11c: file hello.c, line 5.
+Breakpoint 3 at 0x1ae: file dummy.c, line 27.
+
+Breakpoint 2, main () at hello.c:5
+5	  printf("hello world\n");
+Dump of assembler code for function main:
+   0x00000114 <+0>:	subi	r0, 8
+   0x00000116 <+2>:	st	r15, (r0, 0)
+   0x00000118 <+4>:	st	r8, (r0, 4)
+   0x0000011a <+6>:	mov	r8, r0
+=> 0x0000011c <+8>:	lrw	r7, 0x1E68
+   0x0000011e <+10>:	mov	r2, r7
+   0x00000120 <+12>:	jsri	0x32A	// 0x32a <puts>
+   0x00000122 <+14>:	movi	r7, 0
+   0x00000124 <+16>:	mov	r2, r7
+   0x00000126 <+18>:	mov	r0, r8
+   0x00000128 <+20>:	ld	r15, (r0, 0)
+   0x0000012a <+22>:	ld	r8, (r0, 4)
+   0x0000012c <+24>:	addi	r0, 8
+   0x0000012e <+26>:	jmp	r15
+End of assembler dump.
+
+Breakpoint 3, _write (fd=1, buf=0x3008 "hello world\n", len=12) at dummy.c:27
+27	  return len;
+$1 = 0x3008 "hello world\n"
+
+Breakpoint 1, end () at start.S:9
+9		nop
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
+% 
+
+Appendix:
+
+0000012e <main>:
+ 12e:	2470      	subi	r0, 8
+ 130:	9f00      	st	r15, (r0, 0)
+ 132:	9810      	st	r8, (r0, 4)
+ 134:	1208      	mov	r8, r0
+
+`main' function prologue is consist of above 4 instructions.
+So the expect value of `mcore_skip_prologue' return value is 0x136
+
+MCORE stack frame
+
+sp = r0
+fp = r8
+lr = r15
+
++------------+<- sp_{new}
+|            |
+|            |
+|            |
+|            |
++------------+<- fp_{new}
+|  lr_{old}  |
++------------+
+|  fp_{old}  |
++------------+<- sp_{old}

@@ -1,0 +1,138 @@
+C の函数のブレークポイント
+
+test001.elf ではスタートアップルーチンから main 函数を呼び出し, さらに加算を
+する函数 f を呼び出している.
+
+main や f にブレークポイントをセットすると
+
+static CORE_ADDR
+mcore_skip_prologue(struct gdbarch *gdbarch, CORE_ADDR pc)
+{
+...
+  set_gdbarch_skip_prologue (gdbarch, mcore_skip_prologue);
+
+登録しておいたこの函数が呼び出される. これは函数にブレークポイントをセットしたとき
+プロローグの部分をスキップするためのものである. そのまま pc を返すと,
+函数の先頭で停止することになる.
+
+普通はフレームポインタ, 戻りアドレスの保存, スタックポインタの更新が終った数命令
+先のアドレスを返す. コンパイラはどの部分がプロローグなのかをデバッグ情報として
+伝えている. MCORE 固有の特別なことをする必要がないのであれば共通の処理を行なっ
+ておけばよい.
+
+C の函数のブレークポイントにヒットすると
+
+static int
+mcore_dbg_reg_to_regnum(struct gdbarch *gdbarch, int regnum)
+{
+
+...
+  set_gdbarch_dwarf2_reg_to_regnum(gdbarch, mcore_dbg_reg_to_regnum);
+
+ここでも登録しておいた函数が呼び出される. やはり特別なことをする必要がないのであれば
+そのまま regnum を返しておく.
+
+test001.elf では main 函数で期待した通りブレークポイントにヒットする. ところが:
+
+Breakpoint 3, main () at test001.c:8
+(mcore-elf-gdb) s
+f (a=3, b=5) at test001.c:3
+(mcore-elf-gdb) where
+#0  f (a=3, b=5) at test001.c:3
+#1  0x0000013c in main () at test001.c:8
+Backtrace stopped: frame did not save the PC
+(mcore-elf-gdb) fin
+Run till exit from #0  f (a=3, b=5) at test001.c:3
+
+Breakpoint 2, end () at test001_start.S:9
+(mcore-elf-gdb)
+
+このように finish コマンドが機能していない. 当初は where コマンドを実装している
+つもりが全くないので動作しないものだと思っていたが,
+
+Backtrace stopped: frame did not save the PC
+
+のメッセージが出ているもののこれはそこそこ動いている.
+この機能ができている時点での mcore-tdep.c をこのページに mcore-tdep.c.001 として
+アップロードしておいた.
+
+またこのレベルの完成度で hello world プログラムを試してみた. where や finish に
+問題はあるが, 一応期待した結果になっている.
+
+% mcore-elf-as -o start.o -g start.S
+% mcore-elf-gcc -o hello.o -g -c hello.c
+% mcore-elf-gcc -o dummy.o -g -c dummy.c
+% mcore-elf-ld -o hello.elf start.o hello.o dummy.o \
+-T hello.x -Map hello.map -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mcore-elf/lib -lc
+% mcore-elf-gdb -q -x gdbcom.002 hello.elf 
+Reading symbols from hello.elf...
+Connected to the simulator.
+Loading section .text, size 0x1d68 lma 0x100
+Loading section .rodata, size 0x10 lma 0x1e68
+Loading section .rodata.str1.4, size 0x2 lma 0x1e78
+Loading section .data, size 0x840 lma 0x1e80
+Start address 0x100
+Transfer rate: 77264 bits in <1 sec.
+Breakpoint 1 at 0x10a: file start.S, line 9.
+Breakpoint 2 at 0x11c: file hello.c, line 5.
+Breakpoint 3 at 0x1ae: file dummy.c, line 27.
+
+Breakpoint 2, main () at hello.c:5
+5	  printf("hello world\n");
+Dump of assembler code for function main:
+   0x00000114 <+0>:	subi	r0, 8
+   0x00000116 <+2>:	st	r15, (r0, 0)
+   0x00000118 <+4>:	st	r8, (r0, 4)
+   0x0000011a <+6>:	mov	r8, r0
+=> 0x0000011c <+8>:	lrw	r7, 0x1E68
+   0x0000011e <+10>:	mov	r2, r7
+   0x00000120 <+12>:	jsri	0x32A	// 0x32a <puts>
+   0x00000122 <+14>:	movi	r7, 0
+   0x00000124 <+16>:	mov	r2, r7
+   0x00000126 <+18>:	mov	r0, r8
+   0x00000128 <+20>:	ld	r15, (r0, 0)
+   0x0000012a <+22>:	ld	r8, (r0, 4)
+   0x0000012c <+24>:	addi	r0, 8
+   0x0000012e <+26>:	jmp	r15
+End of assembler dump.
+
+Breakpoint 3, _write (fd=1, buf=0x3008 "hello world\n", len=12) at dummy.c:27
+27	  return len;
+$1 = 0x3008 "hello world\n"
+
+Breakpoint 1, end () at start.S:9
+9		nop
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
+% 
+
+付録:
+
+0000012e <main>:
+ 12e:	2470      	subi	r0, 8
+ 130:	9f00      	st	r15, (r0, 0)
+ 132:	9810      	st	r8, (r0, 4)
+ 134:	1208      	mov	r8, r0
+
+main 函数のプロローグはこの 4 命令. なので mcore_skip_prologue では 0x136
+を返すのが期待値.
+
+MCORE のスタックフレーム
+
+sp = r0
+fp = r8
+lr = r15
+
++------------+<- sp_{new}
+|            |
+|            |
+|            |
+|            |
++------------+<- fp_{new}
+|  lr_{old}  |
++------------+
+|  fp_{old}  |
++------------+<- sp_{old}

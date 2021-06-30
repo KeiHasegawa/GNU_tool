@@ -1,119 +1,27 @@
 BPF cross compile environment
 
 (*1) BPF
-(*2) --target=bpf
-(*3) Install with script => Error at newlib install
+(*2) Install with script => Error at newlib install
 
 (*1) BPF
 I could not found BPF from internet.
 
-(*2) --target=bpf
+(*2) Install with script => Error at newlib install
 
-As usual, we specified configure option like 
+Use the same script with "IQ2000":
 
+set TARGET = bpf   # Change
 
---target=h8300-elf
+If you execute this script, it stopped as error. At gcc install,
+this scirpt assumes taht `make' stops with error, but in case of `bpf'
+`make' stop successful. So this script treats it as a error.
 
+% cd gcc-10.2.0.bpf
+% make install
 
-But in case of `bpf', If specified binutils configure option
+You can do like above.
 
---target=bpf-elf
+gdb install can be done by this script.
 
-caused error like below:
+But at install newlib, configure execution makes an error. Maybe not supported.
 
-checking for cos in -lm... yes
-*** Configuration bpf-unknown-elf is not fully supported.
-*** Use bpf or bpf-*-none as the target instead.
-make[1]: *** [configure-bfd] Error 1
-make[1]: Leaving directory `/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/binutils-2.36.1.bpf-elf'
-make: *** [all] Error 2
-exit 1
-
-So just specified --target=bpf
-
-(*3) Install with script => Error at newlib install
-
-At this time, I used the newer script than that of described at "IP2000".
-
-> cat ./04_newer_batch
-#! /bin/csh -vxf
-
-set PREFIX = `pwd`
-set TARGET = bpf
-             
-if (-d binutils-2.36.1.$TARGET) then
-  echo "binutils-2.36.1.$TARGET exists"
-  exit 1
-endif
-xz -d -c ~/binutils-2.36.1-2.src/binutils-2.36.1.tar.xz | tar xf - || exit 1
-mv binutils-2.36.1 binutils-2.36.1.$TARGET || exit 1
-cd binutils-2.36.1.$TARGET || exit 1
-./configure --prefix=$PREFIX --target=$TARGET || exit 1
-make || exit 1
-make install || exit 1
-cd .. || exit 1
-
-if (-d gcc-10.2.0.$TARGET) then
-  echo "gcc-10.2.0.$TARGET exists"
-  exit 1
-endif
-xz -d -c ../gcc-10.2.0.tar.xz | tar xf - || exit 1
-mv gcc-10.2.0 gcc-10.2.0.$TARGET || exit 1
-cd gcc-10.2.0.$TARGET || exit 1
-./configure --prefix=$PREFIX --target=$TARGET --with-newlib
-make -w all-gcc LANGUAGES="c c++" || exit 1
-make -w install-gcc LANGUAGES="c c++" || exit 1
-cd .. || exit 1
-
-if (-d gdb-10.2.$TARGET) then
-  echo "gdb-10.2.$TARGET exists"
-  exit 1
-endif
-xz -d -c ~/gdb-10.2-1.src/gdb-10.2.tar.xz | tar xf - || exit 1
-mv gdb-10.2 gdb-10.2.$TARGET || exit 1
-cd gdb-10.2.$TARGET || exit 1
-./configure --prefix=$PREFIX --target=$TARGET || exit 1
-make all || exit 1
-make install || exit 1
-cd ..
-
-if (-d newlib-4.1.0.$TARGET) then
-  echo "newlib-4.1.0.$TARGET exists"
-  exit 1
-endif
-gunzip -c ../newlib-4.1.0.tar.gz | tar xf - || exit 1
-mv newlib-4.1.0 newlib-4.1.0.$TARGET || exit 1
-cd newlib-4.1.0.$TARGET || exit 1
-./configure --prefix=$PREFIX --target=$TARGET || exit 1
-make || exit 1
-make install || exit 1
-cd ..
-
-if ( $TARGET == "mips-elf" ) then
-  set LD_FLAG=-Tidt.ld
-else if ( $TARGET == "mn10300-elf" ) then
-  set LD_FLAG=-Tsim.ld
-else if ( $TARGET == "ppc-elf" ) then
-  set LD_FLAG="$PREFIX/$TARGET/lib/sim-crt0.o -lc -lsim"
-else if ( $TARGET == "msp430-elf" ) then
-  set LD_FLAG="-lsim -Tmsp430-sim.ld"
-else if ( $TARGET == "pru-elf") then
-  set LD_FLAG="-Tpruelf-sim.x"
-else if ( $TARGET == "m68hc11-elf") then
-  set LD_FLAG="-Tsim.ld -lsim"
-else
-  set LD_FLAG=
-endif
-
-$TARGET-gcc -g -o hello.elf hello.c $LD_FLAG || exit 1
-
-$TARGET-gdb --silent -x gdbcom hello.elf >& hello.$TARGET.log || exit 1
->
-
-Unfortunatelly, this script caused error at newlib install:
-
-checking target system type... Invalid configuration `bpf': machine `bpf-unknown' not recognized
-
-But, gcc install worked well.
-
-=> At FT32 installtion, libgcc.a was not created and not installed.

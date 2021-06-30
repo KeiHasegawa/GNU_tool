@@ -1,0 +1,76 @@
+where コマンドのエラーメッセージ
+
+where コマンドで
+
+#0  f (a=3, b=5) at test001.c:3
+#1  0x0000013c in main () at test001.c:8
+Backtrace stopped: frame did not save the PC
+
+のように
+
+Backtrace stopped: frame did not save the PC
+
+のメッセージが出る原因を調査する.
+そもそも where コマンドがどのように実現されているかも調査するべき.
+
+where コマンドが処理される部分を確認する.
+
+以下のブレークポイントで確認できる:
+Thread 1 "gdb" hit Breakpoint 2, execute_command (p=0x8dbcd50 "where", from_tty=0) at top.c:562
+
+
+さらに以下の函数に辿り付いた:
+backtrace_command (arg=0x0, from_tty=0) at stack.c:2181
+
+この函数を実行することで where コマンドの結果が表示される.
+  backtrace_command_1 (fp_opts, bt_cmd_opts, arg, from_tty);
+
+そして問題のメッセージも表示される.
+
+	  print_frame_info (fp_opts, fi, 1, LOCATION, 1, 0);
+
+を実行すると
+
+#0  f (a=3, b=5) at test001.c:3
+
+が表示された. これはループの中でもう一度実行すると
+
+#1  0x0000013c in main () at test001.c:8
+
+が表示された. 3 回目はループを抜けている
+そしてメッセージが出力されているところは以下.
+
+	  reason = get_frame_unwind_stop_reason (trailing);
+	  if (reason >= UNWIND_FIRST_ERROR)
+	    printf_filtered (_("Backtrace stopped: %s\n"),
+			     frame_stop_reason_string (trailing));
+
+get_frame_unwind_stop_reason でエラーが返っているということ.
+
+#0  get_prev_frame_always_1 (this_frame=0x8d2829c) at frame.c:2162
+
+	  this_frame->stop_reason = UNWIND_NO_SAVED_PC;
+
+ここでセットされていた.
+エラーメッセージの出ない H8 で同じことを調査してみた:
+
+
+      if ((lval == lval_memory && lval == nlval && addr == naddr)
+	  || (lval == lval_register && lval == nlval && realnum == nrealnum))
+
+
+この条件が成立していないから H8 はエラーしていない.
+
+MCORE では lval の値が lval_register (enum のメンバ)でこの条件が成立しているが
+H8 では lval の値が lval_memory (enum のメンバ)でこの条件が成立していない.
+
+しかし lval の値が違うからといって, この場合はエラーの原因とはならない.
+val = lval_register であったとしても
+
+lval == nlval && realnum == nrealnum
+
+の条件が成立しなければこのエラーメッセージは出ないはずだから. しかし MCORE の場合の
+lval の期待値が理解不足で不明だから今回はここで中断.
+
+
+

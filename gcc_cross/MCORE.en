@@ -77,15 +77,11 @@ A problem internal to GDB has been detected,
 further debugging may prove unreliable.
 Quit this debugging session? (y or n) 
 
-Maybe 
-のメッセージが出ている. おそらく mcore のシミュレータとの通信が
-正常でないのだろう.
+Maybe, the interface between gdb and mcore simulator was not good.
 
-問題の箇所
+I executed like below:
 
 (gdb) b arch-utils.c:693
-
-として実行.
 
   if (! gdbarch_update_p (info))
     internal_error (__FILE__, __LINE__,
@@ -95,11 +91,10 @@ Maybe
 (gdb) ptype gdbarch_update_p
 type = int (gdbarch_info)
 
-ここから判断すると gdbarch_update_p が 0 を返したということ.
+According to above, `gdbarch_update_p' returned 0.
 
-gdbarch_update_p では gdbarch_find_by_info を呼び出していて
-これが 0 を返しているので gdbarch_update_p が 0 を返している.
-
+At `gdbarch_update_p', `gdbarch_find_by_info' is called and
+it returned 0. As a result, `gdbarch_update_p' returned 0.
 
   for (rego = gdbarch_registry;
        rego != NULL;
@@ -108,13 +103,13 @@ gdbarch_update_p では gdbarch_find_by_info を呼び出していて
       break;
   if (rego == NULL)
 
-gdbarch_registry が 0 これがセットされるのは
+`gdbarch_registry' is 0. And this is set at
 
 gdbarch_register
 
-という函数だが, そもそもこれが呼び出されていない.
+But, this function was not called.
 
-h8300 なら以下の函数からよびだされていた.
+In case of `h8300', `gdbarch_register' was called like below:
 
 void
 _initialize_h8300_tdep ()
@@ -122,14 +117,13 @@ _initialize_h8300_tdep ()
   register_gdbarch_init (bfd_arch_h8300, h8300_gdbarch_init);
 }
 
+which is defined at
+
 gdb-10.2.h8300-elf/gdb/h8300-tdep.c
 
-というファイルで定義されているのだが, これに相当する
+But the corresponding file
 
 gdb-10.2.mcore-elf/gdb/mcore-tdep.c
 
-がない. h8300 に限らず *-tdep.c という名前のファイルがあるが mcore バージョンがない.
-
-これは今すぐ直すのは難しい. とりあえず保留.
-
+does not exsit. I thoght it was difficult to fix this immediately.
 

@@ -1,0 +1,75 @@
+`where' command error message
+
+(gdb) where
+
+#0  f (a=3, b=5) at test001.c:3
+#1  0x0000013c in main () at test001.c:8
+Backtrace stopped: frame did not save the PC
+(gdb)
+
+`where' command displays error message like above.
+
+`where' command was handled below:
+
+Thread 1 "gdb" hit Breakpoint 2, execute_command (p=0x8dbcd50 "where", from_tty=0) at top.c:562
+
+
+And more investigation, I reached to:
+
+backtrace_command (arg=0x0, from_tty=0) at stack.c:2181
+
+And more, I reached to:
+  backtrace_command_1 (fp_opts, bt_cmd_opts, arg, from_tty);
+
+And more,
+
+	  print_frame_info (fp_opts, fi, 1, LOCATION, 1, 0);
+
+above function was executed, below message was displayed:
+
+#0  f (a=3, b=5) at test001.c:3
+
+`print_frame_info' was at a loop. Again it was executed, then the below
+message was displayed:
+
+#1  0x0000013c in main () at test001.c:8
+
+And 3rd times, program execution went out the loop.
+I found the below part. The error message was displyaed at:
+
+	  reason = get_frame_unwind_stop_reason (trailing);
+	  if (reason >= UNWIND_FIRST_ERROR)
+	    printf_filtered (_("Backtrace stopped: %s\n"),
+			     frame_stop_reason_string (trailing));
+
+This meant that `get_frame_unwind_stop_reason' returned some error.
+
+I found that the direct error reason was:
+
+#0  get_prev_frame_always_1 (this_frame=0x8d2829c) at frame.c:2162
+
+	  this_frame->stop_reason = UNWIND_NO_SAVED_PC;
+
+Now I tried to do the same thing at H8 envorionment:
+
+      if ((lval == lval_memory && lval == nlval && addr == naddr)
+	  || (lval == lval_register && lval == nlval && realnum == nrealnum))
+
+
+Above condition was not satisfied, so that no error message was displayed
+at H8 environment.
+
+At MCORE enviroment, `lval' was `lval_register' and above condition was
+satisfied. On the other hand, at H8 environment
+`lval' was `lval_memory' and above condtion was not satisfied.
+
+But that is not absolutely the reason of error. If the condition:
+
+lval == nlval && realnum == nrealnum
+
+was not satisfied, the error messsage is not displayed. But at this
+point, I don't understantd the expect value of `lval'. Once I decided to
+stop this investigation.
+
+
+
