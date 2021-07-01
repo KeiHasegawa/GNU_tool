@@ -1,11 +1,11 @@
-C の函数のブレークポイント
+Break-point of C function
 
-hello world を試してみた.
+I tried to execute "hello world" program:
 
 (pru-elf-gdb) b main
 (pru-elf-gdb) run
 
-main のブレークポイントにヒットしたときに gdb_assert で失敗する.
+When the break-point was hit, `gdb_assert' failed like below:
 
 Breakpoint 3, main (
 findvar.c:289: internal-error: value* value_of_register_lazy(frame_info*, int): Assertion `regnum < gdbarch_num_cooked_regs (gdbarch)' failed.
@@ -13,7 +13,7 @@ A problem internal to GDB has been detected,
 further debugging may prove unreliable.
 Quit this debugging session? (y or n) [answered Y; input not from terminal]
 
-このようになる. このとき regnum = 132 なので明らかにおかしい.
+where, `regnum' was 132. It was obviously error.
 
 gdb-10.2.pru-elf/gdb/dwarf2/frame.c
 
@@ -21,10 +21,10 @@ gdb-10.2.pru-elf/gdb/dwarf2/frame.c
 	(gdbarch, cache->reg[regnum].loc.reg);
       return frame_unwind_got_register (this_frame, regnum, realnum);
 
-ここで realnum = 132 になっている.
-regnum = 32 から realnum = 132 が計算されること自体が間違い.
-
-realnum を gdb から 32 に書き替えれば期待通り動作していそうなので以下のように修正した:
+At above, `realnum' was set 132.
+Caluculation `realnum = 132' from `regnum = 32' is not correct.
+I set 32 to `realnum' by `gdb' facility and it worked. So that I fixed
+like below:
 
     case DWARF2_FRAME_REG_SAVED_REG:
 #if 0      
@@ -35,26 +35,26 @@ realnum を gdb から 32 に書き替えれば期待通り動作していそう
 #endif      
       return frame_unwind_got_register (this_frame, regnum, realnum);
 
-さて次は
+And next,
 
 b puts
 run
 
-で似たような状況になる.
+This caused the similar phenomenon:
 
 gdb-10.2.pru-elf/gdb/dwarf2/loc.c
 
 	    int gdb_regnum = dwarf_reg_to_regnum_or_error (arch, p->v.regno);
 	    ULONGEST reg_bits = 8 * register_size (arch, gdb_regnum);
 
-ここで
+where,
 
 gdb_regnum = 56
 
-になっている.
+and
 
 p->v.regno = 56
 
-でこれは全く身に覚えのない数である. デバッグ情報のことを良く理解していないのでこれ以上は
-修正できそうにない. おそらく puts の引数 s を表示しようとしてエラーしているのだろう.
+These were beyond my idea. I did not understantd debug information
+so I could not fix any more. 
 
