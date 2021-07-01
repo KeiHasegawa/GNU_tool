@@ -1,17 +1,21 @@
-簡単なプログラムを動かすまで
+Fix for simple target program
 
-pru-elf-gdb はビルドしたものをそのまま動かすと SIGSEGV を受ける. これはプロセッサ固有の
-設定をしていないからで「MCORE の gdb」と同じ対処をする必要がある.
+`pru-elf-gdb' receives SIGSEGV if it is built without fix.
+As described at "MCORE gdb", we have to do processor specialized 
+configuration:
 
-ひとまず
+At first
 
 pru-tdep.c
 
-を追加しビルドが成功することのみ確認した.
+add this file. Refer to "MCORE gdb". I confirmed that I could just
+build as I expected.
 
-(*1) PRU のレジスタ
+(*1) PRU register
 
-以下は sim/pru のソースから
+gdb-10.2.pru-elf/sim/pru
+
+From above directory I, found below declarations:
 
 struct pru_regset
 {
@@ -76,18 +80,21 @@ const struct pru_reg pru_regs[] = {
   DECLARE_REG (r4, 4)
 };
 
-こんな感じになっている. PC のレジスタ番号は 32 にして
-0 から 31 は /* Primary registers */ にする. その他は不明なのでとりあえず
-レジスタの本数は 33 ということにしておく.
-スタックポインタは 2 番らしい.
+Then, I decided that
 
-(*2) ブレーク命令
-PRU にはブレーク命令がないらしい. なのでオペコードにない
+PC register number is 32
+SP register number is 2
+The total number of register
+
+(*2) Break instruction
+
+No break instruction at PRU instruction set. So I choesed like below:
 
   static unsigned char break_inst[] = { 0xee, 0xdb, 0xba, 0x26 };
 
-をブレーク命令としておく. このとき気付いたが PRU はリトルエンディアンらしい.
-この偽の命令を実行したとき通常通りブレークポイントにヒットした動作をしておく: 
+This is a false instruction. At this time, I noticed that
+PRU endian was little endian.
+Now, let PRU simulator to stop when PRU simulator execute this instruction.:
 
 gdb-10.2.pru-elf/sim/pru/interp.c
 
@@ -104,8 +111,8 @@ gdb-10.2.pru-elf/sim/pru/interp.c
     }
   else
 
-(*3) 簡単なプログラム
+(*2) Simple target program
 
-test000.elf は nop を 4 命令 0x100 番地に置いたプログラムで, これをロードし
-ステップ実行ができている. このときの pru-tdep.c を pru-tdep.c.000 として
-このページにアップロードしておいた.
+`test000.elf' is a simple target program which locates 4 `nop' instructions
+at address 0x100. I confirmed that pru-elf-gdb worked as I expected.
+I uploaded `pru-tdep.c' at this point as `pru-tdep.c.000' on this web page. 
