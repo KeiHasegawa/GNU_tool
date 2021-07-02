@@ -1,0 +1,250 @@
+Motorola 6800 の gdb
+
+症状 : 2 回目の s コマンドが停止しない.
+
+M-x gdb
+cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_m68hc11.000
+run -q -x x test000.elf
+
+のようにすると s コマンドが 2 回実行される. この 2 回目の実行が停止しない.
+
+b execute_command
+
+で各コマンドが実行される. "s" が引数のときを追跡する.
+
+gdb 側                                    シミュレータ
+
+step_1()
+
+maybe_wait_sync_command_done()
+                                  --------> sim_resume 開始
+				  
+                                                  sim_engine_halt
+						  
+                                  <-------  sim_resuem 終了
+
+                                  --------> sim_stop_reason
+				  <--------
+
+execute_cmd_post_hook()
+
+
+上は期待通り動作する 1 回目の s コマンドの動作. sim_stop_reason では
+
+reason : sim_stopped
+sigrc : 5
+
+のように返っている. しかし 2 回目は
+
+gdb 側                                    シミュレータ
+
+step_1()
+
+maybe_wait_sync_command_done()
+                                  --------> sim_resume 開始
+				  
+                                                  sim_engine_halt
+						  
+                                  <-------  sim_resuem 終了
+
+                                  --------> sim_stop_reason
+				  <--------
+				  
+                                  --------> sim_resume 開始 (*A)
+				  
+                                                  sim_engine_halt
+						  
+                                  <-------  sim_resuem 終了
+
+                                  --------> sim_stop_reason
+				  <--------
+
+これを延々繰り返している. sim_stop_reason では 1 回目の step と同じように
+
+reason : sim_stopped
+sigrc : 5
+
+を返していることを確認した. だから何故 (*A) の sim_resume の呼び出しが発生している
+かを調査する.
+
+2 回目のステップは
+
+void
+wait_sync_command_done (void)
+{
+  /* Processing events may change the current UI.  */
+  scoped_restore save_ui = make_scoped_restore (&current_ui);
+  struct ui *ui = current_ui;
+
+  while (gdb_do_one_event () >= 0)              ここでループしている
+    if (ui->prompt_state != PROMPT_BLOCKED)
+      break;
+}
+
+1 回目が上のループをどのようにして抜けるかだが
+
+ui->prompt_state != PROMPT_BLOCKED
+
+が成立するからなのだが, それがどのように起きるのか確認する.
+
+1 回目のステップでは gdb_do_one_event() から戻ったところですぐに
+
+ui->prompt_state != PROMPT_BLOCKED
+
+の条件が成立している. 1 回目の s に対して sim_resume が呼び出された時点では
+
+ui->prompt_state = PROMPT_BLOCKED
+
+なのだが
+
+async_enable_stdin (void)
+{
+  struct ui *ui = current_ui;
+
+  if (ui->prompt_state == PROMPT_BLOCKED)
+    {
+      target_terminal::ours ();
+      ui_register_input_event_handler (ui);
+      ui->prompt_state = PROMPT_NEEDED;           // ここ
+    }
+}
+
+これが呼び出されて
+
+ui->prompt_state = PROMPT_NEEDED
+
+になるから結果として例のループを抜ける.
+
+fetch_inferior_event ()
+
+が注目するべき函数で,
+
+where
+#0  async_enable_stdin () at event-top.c:553
+#1  0x08278348 in normal_stop () at infrun.c:8345
+#2  0x0826e8ac in fetch_inferior_event () at infrun.c:3967
+
+のような呼び出し履歴になっている.
+
+2 回目の s で何故 fetch_inferior_event から normal_stop が呼び出されていないのか
+を調べる.
+
+if (!ecs->wait_some_more) {
+...
+}
+
+この条件が成立していないのが期待値と異なる. 試しに gdb で 0 をセットすると
+
+(m68hc11-elf-gdb)
+
+のようにコマンドプロンプトは表示された. しかしまた意味不明の sim_resume が
+gdb 側から呼び出されている.
+
+1 回目の s の実行で sim_resume が呼び出されたとき 
+
+ecs->wait_some_more
+
+はどのような値になっているか. 確認すると
+
+0
+
+であった. ということはこの値が非 0 に書き替えているところを調べるべき.
+
+実行に先立って ecs->wait_some_more はちゃんとクリアしている.
+
+fetch_inferior_event ()
+{
+  struct execution_control_state ecss;
+  struct execution_control_state *ecs = &ecss;
+  int cmd_done = 0;
+
+  memset (ecs, 0, sizeof (*ecs));           // ここでクリア
+
+ということは, その後でどこかで書き替えているはず.
+2 回目のステップのときはここで書き替えていた:
+
+prepare_to_wait (struct execution_control_state *ecs)
+{
+  infrun_debug_printf ("prepare_to_wait");
+
+  ecs->wait_some_more = 1;     // ここで書き替えている
+
+なので 2 回目の s コマンドで何故ここが実行されるか調べる.
+
+      if (stop_pc == ecs->event_thread->control.step_range_start  (*B)
+	  && stop_pc != ecs->stop_func_start
+	  && execution_direction == EXEC_REVERSE)
+	end_stepping_range (ecs);
+      else
+	keep_going (ecs);
+
+こんな感じ. keep_going(ecs); を実行してしまっているのが問題.
+停止した pc に問題があったのだろうか?
+
+最初の run コマンドに対しては 0x100 が期待値
+1 つ目の s コマンドに対しては 0x101 が期待値
+2 つ目の s コマンドに対しては 0x102 が期待値
+
+なのだが.
+
+test000.objdump
+
+00000100 <L0^A>:
+ 100:	01          	nop
+ 101:	01          	nop
+ 102:	01          	nop
+
+00000103 <end>:
+ 103:	01          	nop
+
+しかし run に対しても 1 つ目の s コマンドに対しても (*B) にプログラムの
+制御が移ることはない. 2 つ目の s コマンドに対して初めて (*B) にきている.
+
+ということは...
+
+最初の run コマンドに対して process_event_stop_test は呼び出されていて
+
+    case BPSTAT_WHAT_STOP_NOISY:
+      infrun_debug_printf ("BPSTAT_WHAT_STOP_NOISY");
+      stop_print_frame = 1;
+
+      /* Assume the thread stopped for a breakpoint.  We'll still check
+	 whether a/the breakpoint is there when the thread is next
+	 resumed.  */
+      ecs->event_thread->stepping_over_breakpoint = 1;
+
+      stop_waiting (ecs);
+      return;   // ここにきている.
+
+1 つ目の s コマンドに対して process_event_stop_test は呼び出されて
+
+    case BPSTAT_WHAT_KEEP_CHECKING:
+      break;   // ここにきている
+
+
+そしてこの結果
+
+	  infrun_debug_printf ("stepped to a different line");
+	  end_stepping_range (ecs);
+	  return;  // ここで戻っている.
+
+2 つ目の s コマンドに対して process_event_stop_test は勿論呼び出されて
+
+    case BPSTAT_WHAT_KEEP_CHECKING:
+      break;   // ここにきている. これは 1 回目と同じだから OK.
+
+1 つ目の s コマンドと違うのは以下の条件が成立していること：
+
+  if (pc_in_thread_step_range (ecs->event_thread->suspend.stop_pc,
+			       ecs->event_thread)
+      && (execution_direction != EXEC_REVERSE
+	  || frame_id_eq (get_frame_id (frame),
+			  ecs->event_thread->control.step_frame_id)))
+    {
+            ここの処理が 2 回目の s コマンドで行なわれている.
+	    return; 
+    }
+
+
+...
+  1 回目の s コマンドはこの辺で処理されている.
