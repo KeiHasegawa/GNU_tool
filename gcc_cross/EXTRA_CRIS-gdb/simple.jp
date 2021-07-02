@@ -1,0 +1,233 @@
+簡単なプログラムを動かすまで
+
+通常通り cris-elf-gdb をビルドすると target sim コマンドが受け付けられないので
+
+gdb-10.2.cris-elf/gdb/Makefile
+
+を修正する:
+
+SIM = ../sim/cris/libsim.a
+
+SIM_OBS = remote-sim.o
+
+これで target sim コマンドが受け付けられるようになった.
+さらに実行が進むと不正メモリアクセスが発生したので以下のように修正した:
+
+gdb-10.2.cris-elf/sim/cris/sim-if.c
+
++     if (prog_argv) {
+	for (i = 0; prog_argv[i] != NULL; my_argc++, i++)
+	  len += strlen (prog_argv[i]) + 1;
++     }
+
+これで
+
+(cris-elf-gdb) target sim
+(cris-elf-gdb) load
+
+までできている.
+
+(cris-elf-gdb) b start
+(cris-elf-gdb) b end
+
+で
+
+(cris-elf-gdb) run
+
+としたところ
+
+sim_halt - bad long jumpg
+
+General register read of PC is not implemented.
+
+のようになった. 調べてみると
+
+sim_fetch_register
+
+でエラーしているらしい.
+
+(*1) EXTRA CRIS のレジスタ.
+
+定義は
+
+gdb-10.2.cris-elf/sim/cris/cpuv10.h
+
+にあるが
+
+    struct {
+        USI h_pc;
+        SI h_gr_real_pc[16];
+        SI h_sr_v10[16];
+        BI h_cbit;
+        BI h_vbit;
+        BI h_zbit;
+        BI h_nbit;
+        BI h_xbit;
+        BI h_ibit_pre_v32;
+        BI h_pbit;
+        BI h_ubit_pre_v32;
+        BI h_insn_prefixed_p_pre_v32;
+        SI h_prefixreg_pre_v32;
+    } hardware;
+
+こういうことらしい. 一方
+
+gdb-10.2.cris-elf/gdb/cris-tdep.c
+
+からすると
+
+SP : 14 番
+PC : 15 番
+本数 : 32
+
+ということらしい.
+
+
+  { "r0",  "r1",  "r2",  "r3", \
+    "r4",  "r5",  "r6",  "r7", \
+    "r8",  "r9",  "r10", "r11", \
+    "r12", "r13", "sp",  "pc" };
+
+h_pc が PC らしい. そこで以下のように修正した:
+
+gdb-10.2.cris-elf/sim/cris/cris-tmpl.c
+
+#if 0  
+int
+MY (f_fetch_register) (SIM_CPU *current_cpu, int rn,
+		      unsigned char *buf, int len ATTRIBUTE_UNUSED)
+{
+  SETTSI (buf, XCONCAT3(crisv,BASENUM,f_h_gr_get) (current_cpu, rn));
+  return -1;
+}
+#endif
+
+gdb-10.2.cris-elf/sim/cris/crisv10f.c
+
+static int set_value(unsigned char *buf, int len, uint32_t v)
+{
+  if (!len)
+    return len;
+  buf[0] = v & 0xff;
+  if (len == 1)
+    return len;
+  buf[1] = (v >> 8) & 0xff;
+  if (len == 2)
+    return len;
+  buf[2] = (v >> 16) & 0xff;
+  buf[3] = (v >> 24) & 0xff;
+  return len;
+}
+
+int crisv10f_fetch_register(SIM_CPU *current_cpu, int rn,
+		      unsigned char *buf, int len ATTRIBUTE_UNUSED)
+{
+  if (rn == 15)
+    return set_value(buf, len, current_cpu->cpu_data.hardware.h_pc);
+
+  if (rn < 16)
+    return set_value(buf, len, current_cpu->cpu_data.hardware.h_gr_real_pc[rn]);
+  
+  int n = rn - 16;
+  if (n < 16)
+    return set_value(buf, len, current_cpu->cpu_data.hardware.h_sr_v10[n]);
+
+  return -1;
+}
+
+gdb-10.2.cris-elf/sim/cris/crisv32f.c
+
+
+int crisv32f_fetch_register(SIM_CPU *current_cpu, int rn,
+		      unsigned char *buf, int len ATTRIBUTE_UNUSED)
+{
+  SETTSI (buf, XCONCAT3(crisv,BASENUM,f_h_gr_get) (current_cpu, rn));
+  return -1;
+}
+
+これで実行したところ break 命令のシミュレーションで abort() が呼び出されている.
+そこでさらに以下のように修正した.
+
+gdb-10.2.cris-elf/sim/cris/semcrisv10f-switch.c
+
+#if 0    
+    USI opval = crisv10f_break_handler (current_cpu, FLD (f_u4), pc);
+    SEM_BRANCH_VIA_ADDR (current_cpu, sem_arg, opval, vpc);
+    CGEN_TRACE_RESULT (current_cpu, abuf, "pc", 'x', opval);
+#else
+    sim_engine_halt (CPU_STATE (current_cpu), current_cpu,
+		     NULL, pc, sim_stopped, SIM_SIGTRAP);
+#endif
+
+これで一応ブレークポイントが機能するようになった.
+
+start
+
+で停止して
+
+(cris-elf-gdb) s
+
+としてみたところ
+
+gdbcom:7: Error in sourced command file:
+Register 18 is not available
+
+のようになってしまう. 何かがまずいらしい.
+
+gdb-10.2.cris-elf/gdbsupport/common-regcache.cc
+
+  status = regcache_raw_read_unsigned (regcache, regnum, &value);
+  if (status == REG_UNAVAILABLE)
+    throw_error (NOT_AVAILABLE_ERROR,
+		 _("Register %d is not available"), regnum);
+
+ここらしい.
+
+  switch (gdbarch_register_sim_regno (gdbarch, regno))
+    {
+    case LEGACY_SIM_REGNO_IGNORE:
+      break;    ここにきている (*A)
+
+
+static const char *
+cris_special_register_name (struct gdbarch *gdbarch, int regno)
+
+18 番のレジスタの名前が nullptr を返していているのが (*A) にきている原因のようだったので
+以下のように修正した:
+
+gdb-10.2.cris-elf/gdb/cris-tdep.c
+
+#if 0 
+  /* Assume nothing about the layout of the cris_spec_regs struct
+     when searching.  */
+  for (i = 0; cris_spec_regs[i].name != NULL; i++)
+    {
+      if (cris_spec_regs[i].number == spec_regno 
+	  && cris_spec_reg_applicable (gdbarch, cris_spec_regs[i]))
+	/* Go with the first applicable register.  */
+	return cris_spec_regs[i].name;
+    }
+  /* Special register not applicable to this CRIS version.  */
+#else
+  if (spec_regno < 16) {
+    static const char* name[] = {
+      "p0", "p1", "p2", "p3", "p4", "p5", "p6", "p7",
+      "p8", "p9", "p10", "p11", "p12", "p13", "p14", "p15",
+    };
+    return name[spec_regno];
+  }
+#endif  
+
+しかしこれでもまだ同じメッセージが出る. サイズ 0 のレジスタが問題を起こしているらしい.
+以下のように修正した:
+
+gdb-10.2.cris-elf/gdb/cris-tdep.c
+
+#if 0    
+      /* Invalid (unimplemented) register.  */
+      return builtin_type (gdbarch)->builtin_int0;
+#else
+      return builtin_type (gdbarch)->builtin_uint32;;
+#endif
+
+これで test000.elf が動作するようになった.
