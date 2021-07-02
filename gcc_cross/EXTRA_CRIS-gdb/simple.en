@@ -1,0 +1,228 @@
+Fix for simple target program
+
+If we build `cris-elf-gdb' nomarlly, `cris-elf-gdb' doesn't accept
+`taget sim' comand. So
+
+gdb-10.2.cris-elf/gdb/Makefile
+
+should be fixed like below:
+
+SIM = ../sim/cris/libsim.a
+
+SIM_OBS = remote-sim.o
+
+Now `cris-elf-gdb' becomes to accept `taget sim' command.
+And the `cris-elf-gdb' execution goes ahead and accesss
+address 0. Again I fixed like below:
+
+gdb-10.2.cris-elf/sim/cris/sim-if.c
+
++     if (prog_argv) {
+	for (i = 0; prog_argv[i] != NULL; my_argc++, i++)
+	  len += strlen (prog_argv[i]) + 1;
++     }
+
+Then
+
+(cris-elf-gdb) target sim
+(cris-elf-gdb) load
+
+works well.
+
+(cris-elf-gdb) b start
+(cris-elf-gdb) b end
+
+and executed like below:
+
+(cris-elf-gdb) run
+
+Then `cris-elf-gdb' displayed the messages like below:
+
+sim_halt - bad long jumpg
+
+General register read of PC is not implemented.
+
+I investigated the reason and found that
+
+sim_fetch_register
+
+failed.
+
+(*1) EXTRA CRIS register
+
+`hardware' typedef exists at
+
+gdb-10.2.cris-elf/sim/cris/cpuv10.h
+
+like below:
+
+    struct {
+        USI h_pc;
+        SI h_gr_real_pc[16];
+        SI h_sr_v10[16];
+        BI h_cbit;
+        BI h_vbit;
+        BI h_zbit;
+        BI h_nbit;
+        BI h_xbit;
+        BI h_ibit_pre_v32;
+        BI h_pbit;
+        BI h_ubit_pre_v32;
+        BI h_insn_prefixed_p_pre_v32;
+        SI h_prefixreg_pre_v32;
+    } hardware;
+
+On the other hand,
+
+gdb-10.2.cris-elf/gdb/cris-tdep.c
+
+says
+
+SP register number : 14
+PC register number : 15
+the total number of registers : 32
+
+So now I fixed like below:
+
+gdb-10.2.cris-elf/sim/cris/cris-tmpl.c
+
+#if 0  
+int
+MY (f_fetch_register) (SIM_CPU *current_cpu, int rn,
+		      unsigned char *buf, int len ATTRIBUTE_UNUSED)
+{
+  SETTSI (buf, XCONCAT3(crisv,BASENUM,f_h_gr_get) (current_cpu, rn));
+  return -1;
+}
+#endif
+
+gdb-10.2.cris-elf/sim/cris/crisv10f.c
+
+static int set_value(unsigned char *buf, int len, uint32_t v)
+{
+  if (!len)
+    return len;
+  buf[0] = v & 0xff;
+  if (len == 1)
+    return len;
+  buf[1] = (v >> 8) & 0xff;
+  if (len == 2)
+    return len;
+  buf[2] = (v >> 16) & 0xff;
+  buf[3] = (v >> 24) & 0xff;
+  return len;
+}
+
+int crisv10f_fetch_register(SIM_CPU *current_cpu, int rn,
+		      unsigned char *buf, int len ATTRIBUTE_UNUSED)
+{
+  if (rn == 15)
+    return set_value(buf, len, current_cpu->cpu_data.hardware.h_pc);
+
+  if (rn < 16)
+    return set_value(buf, len, current_cpu->cpu_data.hardware.h_gr_real_pc[rn]);
+  
+  int n = rn - 16;
+  if (n < 16)
+    return set_value(buf, len, current_cpu->cpu_data.hardware.h_sr_v10[n]);
+
+  return -1;
+}
+
+gdb-10.2.cris-elf/sim/cris/crisv32f.c
+
+
+int crisv32f_fetch_register(SIM_CPU *current_cpu, int rn,
+		      unsigned char *buf, int len ATTRIBUTE_UNUSED)
+{
+  SETTSI (buf, XCONCAT3(crisv,BASENUM,f_h_gr_get) (current_cpu, rn));
+  return -1;
+}
+
+And I again executed `test000.elf', EXTRA CRIS simulator call `abort'
+at break-point instruction. So I fixed like below:
+
+gdb-10.2.cris-elf/sim/cris/semcrisv10f-switch.c
+
+#if 0    
+    USI opval = crisv10f_break_handler (current_cpu, FLD (f_u4), pc);
+    SEM_BRANCH_VIA_ADDR (current_cpu, sem_arg, opval, vpc);
+    CGEN_TRACE_RESULT (current_cpu, abuf, "pc", 'x', opval);
+#else
+    sim_engine_halt (CPU_STATE (current_cpu), current_cpu,
+		     NULL, pc, sim_stopped, SIM_SIGTRAP);
+#endif
+
+I confirmed that break-point worked well. I executed `test000.elf'
+and stop at
+
+start
+
+Then executed like below:
+
+(cris-elf-gdb) s
+
+The result was:
+
+gdbcom:7: Error in sourced command file:
+Register 18 is not available
+
+Somthing wrong.
+
+gdb-10.2.cris-elf/gdbsupport/common-regcache.cc
+
+  status = regcache_raw_read_unsigned (regcache, regnum, &value);
+  if (status == REG_UNAVAILABLE)
+    throw_error (NOT_AVAILABLE_ERROR,
+		 _("Register %d is not available"), regnum);
+
+Above message was dispalyed.
+
+  switch (gdbarch_register_sim_regno (gdbarch, regno))
+    {
+    case LEGACY_SIM_REGNO_IGNORE:
+      break;    // Here (*A)
+
+
+static const char *
+cris_special_register_name (struct gdbarch *gdbarch, int regno)
+
+For 18th register, above function returns nullptr so that (*A) was
+executed. I fixed like below:
+
+gdb-10.2.cris-elf/gdb/cris-tdep.c
+
+#if 0 
+  /* Assume nothing about the layout of the cris_spec_regs struct
+     when searching.  */
+  for (i = 0; cris_spec_regs[i].name != NULL; i++)
+    {
+      if (cris_spec_regs[i].number == spec_regno 
+	  && cris_spec_reg_applicable (gdbarch, cris_spec_regs[i]))
+	/* Go with the first applicable register.  */
+	return cris_spec_regs[i].name;
+    }
+  /* Special register not applicable to this CRIS version.  */
+#else
+  if (spec_regno < 16) {
+    static const char* name[] = {
+      "p0", "p1", "p2", "p3", "p4", "p5", "p6", "p7",
+      "p8", "p9", "p10", "p11", "p12", "p13", "p14", "p15",
+    };
+    return name[spec_regno];
+  }
+#endif  
+
+But after above fix, the same message were displayed. I noticed that
+size 0 register did not work well. So I fixed like below:
+
+gdb-10.2.cris-elf/gdb/cris-tdep.c
+
+#if 0    
+      /* Invalid (unimplemented) register.  */
+      return builtin_type (gdbarch)->builtin_int0;
+#else
+      return builtin_type (gdbarch)->builtin_uint32;;
+#endif
+
+Now `test000.elf' could be executed as I expected.
