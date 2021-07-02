@@ -5,7 +5,7 @@ Motorola 6800 のクロスコンパイル環境
 (*3) gcc-3.4.4 のインストール
 (*4) gdb のインストール
 (*5) newlib-1.13.0 のインストール
-(*6) 動作確認 => NG
+(*6) 動作確認 => NG. ステップ実行で無限ループする
 
 (*1) Motorola 6800
 https://en.wikipedia.org/wiki/Motorola_6800
@@ -48,6 +48,9 @@ make: *** [Makefile:23373: all-gcc] エラー 2
 make: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.m68hc11-elf' から出ます
 % cd gcc
 % cp ./config/m68hc11/larith.asm ./config/m68hc11/larith.asm.org
+
+エラー回避のために .softregs というセクションを .data セクションにした: 
+
 % diff -c ./config/m68hc11/larith.asm.org ./config/m68hc11/larith.asm
 *** ./config/m68hc11/larith.asm.org	2021-07-01 11:26:24.000000000 +0900
 --- ./config/m68hc11/larith.asm	2021-07-01 11:26:53.000000000 +0900
@@ -199,7 +202,7 @@ newlib-4.1.0 だとエラーするので newlib-1.13.0 にした.
 % make
 % make install
 
-(*6) 動作確認 =>
+(*6) 動作確認 => NG. ステップ実行で無限ループする
 
 ブレークポイントに停止した後, 1 回目のステップ実行は期待通り動作するが続く 2 回目の
 ステップ実行で無限ループしている.
