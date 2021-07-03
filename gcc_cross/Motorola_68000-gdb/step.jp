@@ -1,0 +1,507 @@
+Motorola 6800 の gdb
+
+症状 : 2 回目の s コマンドが停止しない.
+
+M-x gdb
+cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_m68hc11.000
+run -q -x x test000.elf
+
+のようにすると s コマンドが 2 回実行される. この 2 回目の実行が停止しない.
+
+b execute_command
+
+で各コマンドが実行される. "s" が引数のときを追跡する.
+
+gdb 側                                    シミュレータ
+
+step_1()
+
+maybe_wait_sync_command_done()
+                                  --------> sim_resume 開始
+				  
+                                                  sim_engine_halt
+						  
+                                  <-------  sim_resuem 終了
+
+                                  --------> sim_stop_reason
+				  <--------
+
+execute_cmd_post_hook()
+
+
+上は期待通り動作する 1 回目の s コマンドの動作. sim_stop_reason では
+
+reason : sim_stopped
+sigrc : 5
+
+のように返っている. しかし 2 回目は
+
+gdb 側                                    シミュレータ
+
+step_1()
+
+maybe_wait_sync_command_done()
+                                  --------> sim_resume 開始
+				  
+                                                  sim_engine_halt
+						  
+                                  <-------  sim_resuem 終了
+
+                                  --------> sim_stop_reason
+				  <--------
+				  
+                                  --------> sim_resume 開始 (*A)
+				  
+                                                  sim_engine_halt
+						  
+                                  <-------  sim_resuem 終了
+
+                                  --------> sim_stop_reason
+				  <--------
+
+これを延々繰り返している. sim_stop_reason では 1 回目の step と同じように
+
+reason : sim_stopped
+sigrc : 5
+
+を返していることを確認した. だから何故 (*A) の sim_resume の呼び出しが発生している
+かを調査する.
+
+2 回目のステップは
+
+void
+wait_sync_command_done (void)
+{
+  /* Processing events may change the current UI.  */
+  scoped_restore save_ui = make_scoped_restore (&current_ui);
+  struct ui *ui = current_ui;
+
+  while (gdb_do_one_event () >= 0)              ここでループしている
+    if (ui->prompt_state != PROMPT_BLOCKED)
+      break;
+}
+
+1 回目が上のループをどのようにして抜けるかだが
+
+ui->prompt_state != PROMPT_BLOCKED
+
+が成立するからなのだが, それがどのように起きるのか確認する.
+
+1 回目のステップでは gdb_do_one_event() から戻ったところですぐに
+
+ui->prompt_state != PROMPT_BLOCKED
+
+の条件が成立している. 1 回目の s に対して sim_resume が呼び出された時点では
+
+ui->prompt_state = PROMPT_BLOCKED
+
+なのだが
+
+async_enable_stdin (void)
+{
+  struct ui *ui = current_ui;
+
+  if (ui->prompt_state == PROMPT_BLOCKED)
+    {
+      target_terminal::ours ();
+      ui_register_input_event_handler (ui);
+      ui->prompt_state = PROMPT_NEEDED;           // ここ
+    }
+}
+
+これが呼び出されて
+
+ui->prompt_state = PROMPT_NEEDED
+
+になるから結果として例のループを抜ける.
+
+fetch_inferior_event ()
+
+が注目するべき函数で,
+
+where
+#0  async_enable_stdin () at event-top.c:553
+#1  0x08278348 in normal_stop () at infrun.c:8345
+#2  0x0826e8ac in fetch_inferior_event () at infrun.c:3967
+
+のような呼び出し履歴になっている.
+
+2 回目の s で何故 fetch_inferior_event から normal_stop が呼び出されていないのか
+を調べる.
+
+if (!ecs->wait_some_more) {
+...
+}
+
+この条件が成立していないのが期待値と異なる. 試しに gdb で 0 をセットすると
+
+(m68hc11-elf-gdb)
+
+のようにコマンドプロンプトは表示された. しかしまた意味不明の sim_resume が
+gdb 側から呼び出されている.
+
+1 回目の s の実行で sim_resume が呼び出されたとき 
+
+ecs->wait_some_more
+
+はどのような値になっているか. 確認すると
+
+0
+
+であった. ということはこの値が非 0 に書き替えているところを調べるべき.
+
+実行に先立って ecs->wait_some_more はちゃんとクリアしている.
+
+fetch_inferior_event ()
+{
+  struct execution_control_state ecss;
+  struct execution_control_state *ecs = &ecss;
+  int cmd_done = 0;
+
+  memset (ecs, 0, sizeof (*ecs));           // ここでクリア
+
+ということは, その後でどこかで書き替えているはず.
+2 回目のステップのときはここで書き替えていた:
+
+prepare_to_wait (struct execution_control_state *ecs)
+{
+  infrun_debug_printf ("prepare_to_wait");
+
+  ecs->wait_some_more = 1;     // ここで書き替えている
+
+なので 2 回目の s コマンドで何故ここが実行されるか調べる.
+
+      if (stop_pc == ecs->event_thread->control.step_range_start  (*B)
+	  && stop_pc != ecs->stop_func_start
+	  && execution_direction == EXEC_REVERSE)
+	end_stepping_range (ecs);
+      else
+	keep_going (ecs);
+
+こんな感じ. keep_going(ecs); を実行してしまっているのが問題.
+停止した pc に問題があったのだろうか?
+
+最初の run コマンドに対しては 0x100 が期待値
+1 つ目の s コマンドに対しては 0x101 が期待値
+2 つ目の s コマンドに対しては 0x102 が期待値
+
+なのだが.
+
+test000.objdump
+
+00000100 <L0^A>:
+ 100:	01          	nop
+ 101:	01          	nop
+ 102:	01          	nop
+
+00000103 <end>:
+ 103:	01          	nop
+
+しかし run に対しても 1 つ目の s コマンドに対しても (*B) にプログラムの
+制御が移ることはない. 2 つ目の s コマンドに対して初めて (*B) にきている.
+
+ということは...
+
+最初の run コマンドに対して process_event_stop_test は呼び出されていて
+
+    case BPSTAT_WHAT_STOP_NOISY:
+      infrun_debug_printf ("BPSTAT_WHAT_STOP_NOISY");
+      stop_print_frame = 1;
+
+      /* Assume the thread stopped for a breakpoint.  We'll still check
+	 whether a/the breakpoint is there when the thread is next
+	 resumed.  */
+      ecs->event_thread->stepping_over_breakpoint = 1;
+
+      stop_waiting (ecs);
+      return;   // ここにきている.
+
+1 つ目の s コマンドに対して process_event_stop_test は呼び出されて
+
+    case BPSTAT_WHAT_KEEP_CHECKING:
+      break;   // ここにきている
+
+
+そしてこの結果
+
+	  infrun_debug_printf ("stepped to a different line");
+	  end_stepping_range (ecs);
+	  return;  // ここで戻っている.
+
+2 つ目の s コマンドに対して process_event_stop_test は勿論呼び出されて
+
+    case BPSTAT_WHAT_KEEP_CHECKING:
+      break;   // ここにきている. これは 1 回目と同じだから OK.
+
+1 つ目の s コマンドと違うのは以下の条件が成立していること：
+
+  if (pc_in_thread_step_range (ecs->event_thread->suspend.stop_pc,
+			       ecs->event_thread)
+      && (execution_direction != EXEC_REVERSE
+	  || frame_id_eq (get_frame_id (frame),
+			  ecs->event_thread->control.step_frame_id)))
+    {
+            ここの処理が 2 回目の s コマンドで行なわれている.
+	    return; 
+    }
+
+
+...
+  1 回目の s コマンドはこの辺で処理されている.
+
+2 回目の s コマンドが無限ループになる件(続き)
+
+1 回目の s コマンドに対して
+
+pc_in_thread_step_range
+
+は 0 を返すので
+
+
+  if (pc_in_thread_step_range (ecs->event_thread->suspend.stop_pc,
+			       ecs->event_thread)
+      && (execution_direction != EXEC_REVERSE
+	  || frame_id_eq (get_frame_id (frame),
+			  ecs->event_thread->control.step_frame_id)))
+    {
+      ここは実行されない.
+
+一方, 2 回目の s コマンドに対して 1 を返している. しかもこのときの gdb による動き
+が期待しないものになっている.
+
+1 回目の s コマンドに対して 0 が返るのは
+
+pc < thread->control.step_range_end
+
+が成立していないからで,
+
+pc = 0x101
+thread->control.step_range_end = 0x101
+
+になっている. pc は期待値と合致している.
+
+2 回目の s コマンドに対して 1 が返るのは
+
+pc = 0x101
+thread->control.step_range_end = 0x102
+
+になっている. pc = 0x102 が正しい.
+
+pc の値を問い合わせたときにシミュレータが正しく値を返していない可能性がある.
+
+2 回目の s コマンドに対して 1 が返るのはまだ sim_resume が呼び出される前なので
+これは正しい.
+
+しかし, sim_engine_halt が呼び出され, その後 sim_fetch_register が呼び出されたとき
+
+pc = 0x101
+
+として返している. ここが間違い.
+
+このシミュレータの場合 PC を
+
+cpu->cpu_regs.pc
+
+のような形で保持している. このアドレスは
+
+p &cpu->cpu_regs.pc
+$24 = (unsigned short *) 0x8d6c2e8
+
+であった. 1 回目の s コマンドに対して nop 命令が実行されるがこの値が書き替えられる
+場所を確認する. 1 回目の s コマンド実行前は
+
+p/x *(unsigned short *) 0x8d6c2e8
+$25 = 0x100
+
+であることを確認し.
+
+watch *(unsigned short *) 0x8d6c2e8
+Hardware watchpoint 5: *(unsigned short *) 0x8d6c2e8
+
+のようにした. すると以下で停止した
+
+STATIC_INLINE uint8
+cpu_fetch8 (sim_cpu *cpu)
+{
+  uint16 addr = cpu->cpu_regs.pc;
+  uint8 val;
+  
+  val = memory_read8 (cpu, addr);
+  cpu->cpu_regs.pc = addr + 1;          ここ
+  return val;
+}
+
+このときの呼び出し履歴は
+
+where
+#0  cpu_fetch8 (cpu=0x8d6c2e0) at sim-main.h:512
+#1  0x084b31fd in cpu_interp_m6811 (cpu=0x8d6c2e0) at m68hc11int.c:723
+#2  0x084c2fec in cpu_single_step (cpu=0x8d6c2e0) at m68hc11_sim.c:1009
+#3  0x084b046c in sim_engine_run (sd=0x8d6bf10, next_cpu_nr=0, nr_cpus=1, siggnal=0) at interp.c:491
+#4  0x084d6cf3 in sim_resume (sd=0x8d6bf10, step=1, siggnal=0) at ./../common/sim-resume.c:89
+
+であった. さて 2 回目の s コマンドに対して cpu_fetch8 が呼び出されることが
+ないだろうから pc が 0x102 にならないのだろうが, 少なくとも sim_resume
+が呼び出されることは調査済みである.
+
+b cpu_interp_m6811
+b cpu_single_step
+b sim_engine_run
+
+この 3 つにブレークポイントをセットした.
+なるほど, この 3 つは呼び出されず, いきなり
+
+sim_engine_halt
+
+が呼び出された. ということは sim_resume を呼び出したのに 1 命令もシミュレーションせず
+停止したことが今回の原因.
+
+2 回目の s コマンドに対して
+
+      sim_events_preprocess (sd, last_cpu_nr >= nr_cpus, next_cpu_nr >= nr_cpus)
+
+を実行したとき sim_engine_halt が呼び出されてしまっているのが原因. 結果的に 1 命令
+もシミュレーションしない. しかし
+
+gdb-10.2.m68hc11-elf/sim/common/sim-resume.c
+
+  jmpval = setjmp (buf);
+  if (jmpval == sim_engine_start_jmpval
+      || jmpval == sim_engine_restart_jmpval)
+    {
+      int last_cpu_nr = sim_engine_last_cpu_nr (sd);
+      int next_cpu_nr = sim_engine_next_cpu_nr (sd);
+      int nr_cpus = sim_engine_nr_cpus (sd);
+      int sig_to_deliver;
+
+      sim_events_preprocess (sd, last_cpu_nr >= nr_cpus, next_cpu_nr >= nr_cpus)
+
+のようにここは共通ソース. おそらく使用のしかたが良くないのだろう.
+
+
+最初の run コマンドに対しては以下
+
+last_cpu_nr = 0x1
+next_cpu_nr = 0x2
+nr_cpus = 0x1
+
+1 回目の s コマンドに対して
+
+last_cpu_nr = 0x0
+next_cpu_nr = 0x1
+nr_cpus = 0x1
+
+2 回目の s コマンドに対して
+
+last_cpu_nr = 0x1
+next_cpu_nr = 0x2
+nr_cpus = 0x1
+
+のようになっている. さてこれは期待値通りなのか不明. しかし
+
+last_cpu_nr >= nr_cpus
+
+が true になれば問題の現象が発生してしまう. 仮に
+
+set last_cpu_nr = 0x0
+
+とすれば sim_engine_run を呼び出される.
+
+しかし h8300-elf-gdb のシミュレータで全く同じことを確認してみたところ 2 回目の s
+コマンドに対しては 
+
+last_cpu_nr = 0x1
+next_cpu_nr = 0x2
+nr_cpus = 0x1
+
+であった. ここはおそらく正しいらしい.
+
+ところで gdb-6.0 で実は m68hc11-elf-gdb ではステップ実行が一応動作していた.
+emacs 27.2 との相性の問題で採用しなかったのだ. そこで
+
+gdb-10.2.m68hc11-elf/gdb/Makefile
+
+を以下のように修正し
+
+SIM = /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.m68hc11-elf/sim/m68hc11/libsim.a
+
+そして gdb のリンクをやり直した.
+
+  CXXLD  gdb
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: remote-sim.o: in function `sim_command_completer(cmd_list_element*, completion_tracker&, char const*, char const*)':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.m68hc11-elf/gdb/remote-sim.c:1198: undefined reference to `sim_complete_command'
+collect2: エラー: ld はステータス 1 で終了しました
+make: *** [Makefile:1866: gdb] エラー 1
+
+なるほど, これは「i386 のシミュレータ作成メモ」でも述べたような
+gdb と シミュレータとのインターフェースが変更されているようである.
+
+上の Makefile の修正をもとに戻した.
+一応 sim_complete_command が今回の動作には影響していないことを確認した.
+
+h8300-elf-gdb との動きを比較してみたところ以下の条件が
+
+m68hc11-elf-gdb では成立している
+h8300-elf-gdb   では成立していない
+
+  while (events->queue->time_of_event <
+	 (event_time + events->nr_ticks_to_process))
+    {
+      sim_event *to_do = events->queue;
+
+
+最初の run コマンド
+
+                                   h8300-elf-gdb     m68hc11-elf-gdb
+
+events->queue->time_of_event           0              0
+event_time                             0              0
+events->nr_ticks_to_process            1              1
+
+1 回目の s コマンド
+
+events->queue->time_of_event           2              2
+event_time                             2              2
+events->nr_ticks_to_process            1              2
+
+2 回目の s コマンド
+
+events->queue->time_of_event           3              3
+event_time                             2              2
+events->nr_ticks_to_process            1              2
+
+このような違いがある. 2 回目の s コマンドの前に値に違いが出ている.
+ということは最初の run コマンドから 1 回目の s コマンドの間に
+
+events->nr_ticks_to_process
+
+を書き替えているところを調査するべき.
+
+m68hc11-elf-gdb:
+  while (1)
+    {
+      cpu_single_step (cpu);
+
+      /* process any events */
+      if (sim_events_tickn (sd, cpu->cpu_current_cycle))
+	{
+	  sim_events_process (sd);
+	}
+    }
+
+h8300-elf-gdb:
+
+  while (1)
+    {
+      step_once (sd, cpu);
+      if (sim_events_tick (sd))
+	sim_events_process (sd);
+    }
+
+ここで違いがあって
+
+events->nr_ticks_to_process
+
+が異なる値になっていた. h8300-elf-gdb と同じように修正したところ期待通り
+2 回目の s コマンドが機能している.
+
