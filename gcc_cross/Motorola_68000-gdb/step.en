@@ -1,0 +1,21 @@
+step commmand bug fix
+
+gdb-10.2.m68hc11-elf/sim/m68hc11/interp.c
+
+  while (1)
+    {
+      cpu_single_step (cpu);
+#if 0
+      /* process any events */
+      if (sim_events_tickn (sd, cpu->cpu_current_cycle))
+	{
+	  sim_events_process (sd);
+	}
+#else
+      if (sim_events_tick (sd))
+	  sim_events_process (sd);
+#endif      
+    }
+
+By above fix, step command works well.
+
