@@ -5,7 +5,7 @@ Motorola 68000 のクロスコンパイル環境
 (*3) gcc-3.4.4 のインストール
 (*4) gdb のインストール
 (*5) newlib-1.13.0 のインストール
-(*6) 動作確認 => NG. ステップ実行で無限ループする
+(*6) 動作確認 => ステップ実行で無限ループするが修正方法がある
 
 (*1) Motorola 68000
 https://en.wikipedia.org/wiki/Motorola_68000
@@ -49,133 +49,43 @@ make: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_L
 % cd gcc
 % cp ./config/m68hc11/larith.asm ./config/m68hc11/larith.asm.org
 
-エラー回避のために .softregs というセクションを .data セクションにした: 
+以下のように修正した:
 
 % diff -c ./config/m68hc11/larith.asm.org ./config/m68hc11/larith.asm
 *** ./config/m68hc11/larith.asm.org	2021-07-01 11:26:24.000000000 +0900
---- ./config/m68hc11/larith.asm	2021-07-01 11:26:53.000000000 +0900
+--- ./config/m68hc11/larith.asm	2021-07-03 12:55:07.000000000 +0900
 ***************
-*** 102,108 ****
+*** 92,103 ****
+  
+  	.sect .text
+  	
+! 
+  #define REG(NAME)			\
+  NAME:	.dc.w	1;			\
+  	.type NAME,@object ;		\
+  	.size NAME,2
+! 
+  #ifdef L_regs_min
   /* Pseudo hard registers used by gcc.
      They should be located in page0.  */
+--- 92,108 ----
   
-! 	.sect .softregs
-  	.globl _.tmp
-  	.globl _.z,_.xy
-  REG(_.tmp)
---- 102,108 ----
+  	.sect .text
+  	
+! #if 0
+  #define REG(NAME)			\
+  NAME:	.dc.w	1;			\
+  	.type NAME,@object ;		\
+  	.size NAME,2
+! #else
+! #define REG(NAME)			\
+! NAME:					\
+! 	.space 2
+! #endif	
+! 	
+  #ifdef L_regs_min
   /* Pseudo hard registers used by gcc.
      They should be located in page0.  */
-  
-! 	.sect .data
-  	.globl _.tmp
-  	.globl _.z,_.xy
-  REG(_.tmp)
-***************
-*** 112,145 ****
-  #endif
-  
-  #ifdef L_regs_frame
-! 	.sect .softregs
-  	.globl _.frame
-  REG(_.frame)
-  #endif
-  
-  #ifdef L_regs_d1_2
-! 	.sect .softregs
-  	.globl _.d1,_.d2
-  REG(_.d1)
-  REG(_.d2)
-  #endif
-  
-  #ifdef L_regs_d3_4
-! 	.sect .softregs
-  	.globl _.d3,_.d4
-  REG(_.d3)
-  REG(_.d4)
-  #endif
-  
-  #ifdef L_regs_d5_6
-! 	.sect .softregs
-  	.globl _.d5,_.d6
-  REG(_.d5)
-  REG(_.d6)
-  #endif
-  
-  #ifdef L_regs_d7_8
-! 	.sect .softregs
-  	.globl _.d7,_.d8
-  REG(_.d7)
-  REG(_.d8)
---- 112,145 ----
-  #endif
-  
-  #ifdef L_regs_frame
-! 	.sect .data
-  	.globl _.frame
-  REG(_.frame)
-  #endif
-  
-  #ifdef L_regs_d1_2
-! 	.sect .data
-  	.globl _.d1,_.d2
-  REG(_.d1)
-  REG(_.d2)
-  #endif
-  
-  #ifdef L_regs_d3_4
-! 	.sect .data
-  	.globl _.d3,_.d4
-  REG(_.d3)
-  REG(_.d4)
-  #endif
-  
-  #ifdef L_regs_d5_6
-! 	.sect .data
-  	.globl _.d5,_.d6
-  REG(_.d5)
-  REG(_.d6)
-  #endif
-  
-  #ifdef L_regs_d7_8
-! 	.sect .data
-  	.globl _.d7,_.d8
-  REG(_.d7)
-  REG(_.d8)
-***************
-*** 148,154 ****
-  #ifdef L_regs_d9_16
-  /* Pseudo hard registers used by gcc.
-     They should be located in page0.  */
-! 	.sect .softregs
-  	.globl _.d9,_.d10,_.d11,_.d12,_.d13,_.d14
-  	.globl _.d15,_.d16
-  REG(_.d9)
---- 148,154 ----
-  #ifdef L_regs_d9_16
-  /* Pseudo hard registers used by gcc.
-     They should be located in page0.  */
-! 	.sect .data
-  	.globl _.d9,_.d10,_.d11,_.d12,_.d13,_.d14
-  	.globl _.d15,_.d16
-  REG(_.d9)
-***************
-*** 165,171 ****
-  #ifdef L_regs_d17_32
-  /* Pseudo hard registers used by gcc.
-     They should be located in page0.  */
-! 	.sect .softregs
-  	.globl _.d17,_.d18,_.d19,_.d20,_.d21,_.d22
-  	.globl _.d23,_.d24,_.d25,_.d26,_.d27,_.d28
-  	.globl _.d29,_.d30,_.d31,_.d32
---- 165,171 ----
-  #ifdef L_regs_d17_32
-  /* Pseudo hard registers used by gcc.
-     They should be located in page0.  */
-! 	.sect .data
-  	.globl _.d17,_.d18,_.d19,_.d20,_.d21,_.d22
-  	.globl _.d23,_.d24,_.d25,_.d26,_.d27,_.d28
-  	.globl _.d29,_.d30,_.d31,_.d32
 %
 % cd ..
 % make -w all-gcc install-gcc LANGUAGES="c c++"
@@ -202,7 +112,7 @@ newlib-4.1.0 だとエラーするので newlib-1.13.0 にした.
 % make
 % make install
 
-(*6) 動作確認 => NG. ステップ実行で無限ループする
+(*6) 動作確認 => ステップ実行で無限ループするが修正方法がある
 
 ブレークポイントに停止した後, 1 回目のステップ実行は期待通り動作するが続く 2 回目の
 ステップ実行で無限ループしている.
@@ -214,3 +124,6 @@ start:
 	nop
 end:
 	nop
+
+=> 「Motorola 68000 の gdb」で修正できて, 期待通り動作している.
+
