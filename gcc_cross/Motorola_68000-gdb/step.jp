@@ -1,16 +1,7 @@
 Motorola 6800 の gdb
 
-症状 : 2 回目の s コマンドが停止しない.
-
-M-x gdb
-cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_m68hc11.000
-run -q -x x test000.elf
-
-のようにすると s コマンドが 2 回実行される. この 2 回目の実行が停止しない.
-
-b execute_command
-
-で各コマンドが実行される. "s" が引数のときを追跡する.
+簡単なプログラム test000.elf が動作するか確認した. ところ 2 回目の s コマンドが停止
+しない.
 
 gdb 側                                    シミュレータ
 
@@ -59,7 +50,7 @@ maybe_wait_sync_command_done()
                                   --------> sim_stop_reason
 				  <--------
 
-これを延々繰り返している. sim_stop_reason では 1 回目の step と同じように
+これを延々繰り返している. sim_stop_reason では 1 回目の s コマンドと同じように
 
 reason : sim_stopped
 sigrc : 5
@@ -67,7 +58,7 @@ sigrc : 5
 を返していることを確認した. だから何故 (*A) の sim_resume の呼び出しが発生している
 かを調査する.
 
-2 回目のステップは
+2 回目の s コマンドは
 
 void
 wait_sync_command_done (void)
@@ -76,18 +67,18 @@ wait_sync_command_done (void)
   scoped_restore save_ui = make_scoped_restore (&current_ui);
   struct ui *ui = current_ui;
 
-  while (gdb_do_one_event () >= 0)              ここでループしている
+  while (gdb_do_one_event () >= 0)             // ここでループしている
     if (ui->prompt_state != PROMPT_BLOCKED)
       break;
 }
 
-1 回目が上のループをどのようにして抜けるかだが
+1 回目が上のループをどのようにして抜けるかは
 
 ui->prompt_state != PROMPT_BLOCKED
 
 が成立するからなのだが, それがどのように起きるのか確認する.
 
-1 回目のステップでは gdb_do_one_event() から戻ったところですぐに
+1 回目の s コマンドでは gdb_do_one_event() から戻ったところですぐに
 
 ui->prompt_state != PROMPT_BLOCKED
 
@@ -126,7 +117,7 @@ where
 
 のような呼び出し履歴になっている.
 
-2 回目の s で何故 fetch_inferior_event から normal_stop が呼び出されていないのか
+2 回目の s コマンドで何故 fetch_inferior_event から normal_stop が呼び出されていないのか
 を調べる.
 
 if (!ecs->wait_some_more) {
@@ -144,13 +135,10 @@ gdb 側から呼び出されている.
 
 ecs->wait_some_more
 
-はどのような値になっているか. 確認すると
+はどのような値になっているか. 確認すると 0 であった. ということはこの値が非 0 に書き
+替えているところを調べるべき.
 
-0
-
-であった. ということはこの値が非 0 に書き替えているところを調べるべき.
-
-実行に先立って ecs->wait_some_more はちゃんとクリアしている.
+実行に先立って ecs->wait_some_more はちゃんとクリアしている:
 
 fetch_inferior_event ()
 {
@@ -161,7 +149,7 @@ fetch_inferior_event ()
   memset (ecs, 0, sizeof (*ecs));           // ここでクリア
 
 ということは, その後でどこかで書き替えているはず.
-2 回目のステップのときはここで書き替えていた:
+2 回目の s コマンドのときはここで書き替えていた:
 
 prepare_to_wait (struct execution_control_state *ecs)
 {
@@ -249,14 +237,13 @@ test000.objdump
 ...
   1 回目の s コマンドはこの辺で処理されている.
 
-2 回目の s コマンドが無限ループになる件(続き)
+だらから 2 回目の s コマンドに対して上の条件が成立する理由を調査する.
 
 1 回目の s コマンドに対して
 
 pc_in_thread_step_range
 
 は 0 を返すので
-
 
   if (pc_in_thread_step_range (ecs->event_thread->suspend.stop_pc,
 			       ecs->event_thread)
@@ -266,8 +253,7 @@ pc_in_thread_step_range
     {
       ここは実行されない.
 
-一方, 2 回目の s コマンドに対して 1 を返している. しかもこのときの gdb による動き
-が期待しないものになっている.
+一方, 2 回目の s コマンドに対して 1 を返している.
 
 1 回目の s コマンドに対して 0 が返るのは
 
@@ -298,7 +284,7 @@ pc = 0x101
 
 として返している. ここが間違い.
 
-このシミュレータの場合 PC を
+このシミュレータの場合プログラムカウンタを
 
 cpu->cpu_regs.pc
 
@@ -327,7 +313,7 @@ cpu_fetch8 (sim_cpu *cpu)
   uint8 val;
   
   val = memory_read8 (cpu, addr);
-  cpu->cpu_regs.pc = addr + 1;          ここ
+  cpu->cpu_regs.pc = addr + 1;          // ここ
   return val;
 }
 
@@ -378,24 +364,23 @@ gdb-10.2.m68hc11-elf/sim/common/sim-resume.c
 
 のようにここは共通ソース. おそらく使用のしかたが良くないのだろう.
 
-
 最初の run コマンドに対しては以下
 
-last_cpu_nr = 0x1
-next_cpu_nr = 0x2
-nr_cpus = 0x1
+last_cpu_nr = 1
+next_cpu_nr = 2
+nr_cpus = 0
 
 1 回目の s コマンドに対して
 
-last_cpu_nr = 0x0
-next_cpu_nr = 0x1
-nr_cpus = 0x1
+last_cpu_nr = 0
+next_cpu_nr = 1
+nr_cpus = 1
 
 2 回目の s コマンドに対して
 
-last_cpu_nr = 0x1
-next_cpu_nr = 0x2
-nr_cpus = 0x1
+last_cpu_nr = 1
+next_cpu_nr = 2
+nr_cpus = 1
 
 のようになっている. さてこれは期待値通りなのか不明. しかし
 
@@ -403,18 +388,18 @@ last_cpu_nr >= nr_cpus
 
 が true になれば問題の現象が発生してしまう. 仮に
 
-set last_cpu_nr = 0x0
+set last_cpu_nr = 0
 
 とすれば sim_engine_run を呼び出される.
 
 しかし h8300-elf-gdb のシミュレータで全く同じことを確認してみたところ 2 回目の s
 コマンドに対しては 
 
-last_cpu_nr = 0x1
-next_cpu_nr = 0x2
-nr_cpus = 0x1
+last_cpu_nr = 1
+next_cpu_nr = 2
+nr_cpus = 1
 
-であった. ここはおそらく正しいらしい.
+であった. だからここはおそらく正しいらしい.
 
 ところで gdb-6.0 で実は m68hc11-elf-gdb ではステップ実行が一応動作していた.
 emacs 27.2 との相性の問題で採用しなかったのだ. そこで
@@ -425,7 +410,7 @@ gdb-10.2.m68hc11-elf/gdb/Makefile
 
 SIM = /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.m68hc11-elf/sim/m68hc11/libsim.a
 
-そして gdb のリンクをやり直した.
+そして gdb のリンクをやり直してみた:
 
   CXXLD  gdb
 /usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: remote-sim.o: in function `sim_command_completer(cmd_list_element*, completion_tracker&, char const*, char const*)':
@@ -433,15 +418,15 @@ SIM = /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.m68hc11-
 collect2: エラー: ld はステータス 1 で終了しました
 make: *** [Makefile:1866: gdb] エラー 1
 
-なるほど, これは「i386 のシミュレータ作成メモ」でも述べたような
-gdb と シミュレータとのインターフェースが変更されているようである.
+なるほど, これは「シミュレータ作成」でも述べたような gdb と シミュレータとのインターフェース
+が変更されているようである.
 
 上の Makefile の修正をもとに戻した.
 一応 sim_complete_command が今回の動作には影響していないことを確認した.
 
 h8300-elf-gdb との動きを比較してみたところ以下の条件が
 
-m68hc11-elf-gdb では成立している
+m68hc11-elf-gdb では成立しているが
 h8300-elf-gdb   では成立していない
 
   while (events->queue->time_of_event <
@@ -504,4 +489,4 @@ events->nr_ticks_to_process
 
 が異なる値になっていた. h8300-elf-gdb と同じように修正したところ期待通り
 2 回目の s コマンドが機能している.
-
+l
