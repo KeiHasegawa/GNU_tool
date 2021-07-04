@@ -62,8 +62,10 @@ cr16_register_type(struct gdbarch* gdbarch, int regno)
 {
   switch (regno) {
   case pc_regno: return builtin_type(gdbarch)->builtin_func_ptr;
-  case sp_regno: return builtin_type(gdbarch)->builtin_data_ptr;
-  default:       return builtin_type(gdbarch)->builtin_int32;
+  case 12: case 13:
+  case 14: case 15: /* sp_regno = 15 */
+    return builtin_type(gdbarch)->builtin_data_ptr;
+  default:       return builtin_type(gdbarch)->builtin_int16;
   }
 }
 

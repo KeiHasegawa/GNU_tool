@@ -1,0 +1,29 @@
+all:hello.objdump
+
+start.o:start.S
+	cr16-elf-as -o start.o -g start.S
+
+#hello.s:hello.c
+#	cr16-elf-gcc -o hello.s -S hello.c
+#
+#hello.o:hello.s
+#	cr16-elf-as -o hello.o -g hello.s
+
+hello.o:hello.c
+	cr16-elf-gcc -o hello.o -g -c hello.c
+
+dummy.o:dummy.c
+	cr16-elf-gcc -o dummy.o -g -c dummy.c
+
+DIR1 = /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/lib
+DIR2 = /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/cr16-elf/10.2.0
+
+hello.elf:start.o hello.o dummy.o hello.x
+	cr16-elf-ld -o hello.elf start.o hello.o dummy.o \
+	-L$(DIR1) -lc -L$(DIR2) -lgcc -T hello.x -Map hello.map
+
+hello.objdump:hello.elf
+	cr16-elf-objdump -x -d hello.elf > hello.objdump
+
+clean:
+	rm -f *.s *.o *.elf *.map *.objdump *~
