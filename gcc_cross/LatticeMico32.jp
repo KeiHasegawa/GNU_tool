@@ -3,6 +3,7 @@ LatticeMico32 のクロスコンパイル環境
 (*1) LatticeMico32
 (*2) スクリプトによるインストール
 (*3) 動作確認 => OK
+(*4) 付録
 
 (*1) LatticeMico32
 https://ja.wikipedia.org/wiki/LatticeMico32
@@ -73,3 +74,23 @@ End of assembler dump.
 hello world
 [Inferior 1 (process 42000) exited normally]
 %
+
+(*4) 付録
+
+今回のコンパイルエラーは gcc の拡張機能を使用していたコードで発生していた:
+
+% cat a.c
+void f();
+
+void g()
+{
+  void* label1 = &&label2;  // OK
+
+ label2:
+  f();    
+}
+%
+
+こういう書き方ができるらしい. そしてビルドのエラーは上の例で言うと label2 を
+sh スクリプトで自動生成するはずだったのだが, 環境変数 SHELL に sh スクリプトを指定
+していたので sh スクリプトがエラーしていて label2 を生成できなかったという現象だった.
