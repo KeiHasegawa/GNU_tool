@@ -1,0 +1,83 @@
+hello world
+
+I tried to execute "hello world" and noticed that:
+
+(1) step to `puts' from `main', stop address is not correct.
+
+        The prologue part is not skipped. If we set break-point
+	at `puts' and execute until the break-point is hit,
+	the stop address is correct.
+
+(2) `_isatty' and `_write' break-point stop address are not correct.
+
+        On the other hand, `puts', `_fstat', `_malloc_r' break-point
+	stop address are correct.   
+
+(3) where, finish command don't work.
+
+hell world program is built and executed like below:
+
+% cr16-elf-as -o start.o -g start.S
+% cr16-elf-gcc -o hello.o -g -c hello.c
+% cr16-elf-gcc -o dummy.o -g -c dummy.c
+% cr16-elf-ld -o hello.elf start.o hello.o dummy.o \
+-L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/lib -lc -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/cr16-elf/10.2.0 -lgcc -T hello.x -Map hello.map
+% cat gdbcom.001
+set prompt (cr16-elf-gdb) 
+target sim
+load
+b end
+b main
+b _write
+command
+next
+c
+end
+run
+disassemble
+c
+quit
+% cr16-elf-gdb -q -x gdbcom.001 hello.elf
+Reading symbols from hello.elf...
+Connected to the simulator.
+Loading section .text, size 0x1360 lma 0x100
+Loading section .rodata, size 0x10 lma 0x1460
+Loading section .data, size 0x3d0 lma 0x1470
+Start address 0x100
+Transfer rate: 47616 bits in <1 sec.
+Breakpoint 1 at 0x10a: file start.S, line 7.
+Breakpoint 2 at 0x114: file hello.c, line 5.
+Breakpoint 3 at 0x1c0: file dummy.c, line 30.
+
+Breakpoint 2, main () at hello.c:5
+5	  printf("hello world\n");
+Dump of assembler code for function main:
+   0x0000010c <+0>:	push	$0x2,r13,RA
+   0x0000010e <+2>:	addd	$0xfffc:m,(sp)
+   0x00000112 <+6>:	movd	(sp),(r13)
+=> 0x00000114 <+8>:	movd	$0x1460:m,(r1,r0)
+   0x00000118 <+12>:	movd	(r1,r0),(r3,r2)
+   0x0000011a <+14>:	bal	(ra),*+0x310 <puts>:m
+   0x0000011e <+18>:	movw	$0x0:s,r0
+   0x00000120 <+20>:	storw	r0,0x0:s(r13)
+   0x00000122 <+22>:	loadw	0x0:s(r13),r0
+   0x00000124 <+24>:	movd	(r13),(sp)
+   0x00000126 <+26>:	addd	$0x4:s,(sp)
+   0x00000128 <+28>:	popret	$0x2,r13,RA
+   0x0000012a <+30>:	illegal 
+End of assembler dump.
+
+Breakpoint 3, _write (fd=0, buf=0x1470 <impure_data> "", len=1) at dummy.c:30
+30	{
+_write (fd=1, buf=0x2000 "hello world\n", len=12) at dummy.c:31
+31	  return len;
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
+%
+
+For the problem (2), when `_write' break-point is hit, the specified
+arguments are not correct, but after step to the next line,
+they are expected values.
