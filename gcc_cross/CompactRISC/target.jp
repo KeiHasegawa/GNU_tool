@@ -206,3 +206,40 @@ gcc-10.2.0/gcc/config/cr16/constraints.md:
 )
 
 に規則をつけ加えて修正するというよりも addsi3 にきているのを修正するということになる.
+
+sp = sp + 0xfffffffc
+
+は
+
+gcc-10.2.0.cr16-elf/gcc/emit-rtl.c:
+
+    default:
+      last = make_insn_raw (x);
+      add_insn (last);           ここで作っていた
+      break;
+
+これを呼び出していたのは
+
+      insn = emit_insn (gen_addsi3 (stack_pointer_rtx, stack_pointer_rtx,
+				    GEN_INT (-current_frame_info.total_size)));
+      RTX_FRAME_RELATED_P (insn) = 1;
+
+ということは...
+
+#if 0
+      insn = emit_insn (gen_addsi3 (stack_pointer_rtx, stack_pointer_rtx,
+				    GEN_INT (-current_frame_info.total_size)));
+#else
+      insn = emit_insn (gen_subsi3 (stack_pointer_rtx, stack_pointer_rtx,
+				    GEN_INT (current_frame_info.total_size)));
+#endif
+
+とすればどうか
+
+  =>
+
+確認してみたが,
+
+0x0000010e <+2>:	addd	$0xfffc:m,(sp)
+
+の代りに subd 相当が出るのかと思ったが出ていない. だめ.
