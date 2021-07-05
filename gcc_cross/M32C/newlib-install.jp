@@ -1,0 +1,173 @@
+newlib のインストール
+
+m32c-elf-gcc は最適化で問題が起こる可能性があるので以下のように -O2 オプションに
+よるビルドを避けた:
+
+% gunzip -c ../newlib-4.1.0.tar.gz | tar xf -
+% mv newlib-4.1.0 newlib-4.1.0.m32c-elf
+% cd newlib-4.1.0.m32c-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=m32c-elf
+% cat /tmp/a
+#! /bin/csh -f
+
+sed -e 's/-O2/-O0/g' $argv[1] > $argv[1].$$
+mv $argv[1].$$ $argv[1]
+chmod +x $argv[1]
+% find . -name 'configure' -exec /tmp/a {} \;
+% find . -name 'Makefile*' -exec /tmp/a {} \;
+% make
+...
+ for i in argz/lib.a stdlib/lib.a ctype/lib.a search/lib.a stdio/lib.a   string/lib.a signal/lib.a time/lib.a locale/lib.a reent/lib.a  errno/lib.a misc/lib.a ssp/lib.a     machine/lib.a ; do \
+   m32c-elf-ar x ../$i; \
+ done; \
+m32c-elf-ar rc ../libc.a *.o
+m32c-elf-ar: ../stdio/lib.a: そのようなファイルやディレクトリはありません
+m32c-elf-ranlib libc.a
+rm -rf tmp
+make[8]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/newlib/libc' から出ます
+...
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/newlib/libc/stdio
+% m32c-elf-ar r lib.a *.o
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf
+% make
+...
+make[8]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/newlib/libc/stdio' に入ります
+m32c-elf-gcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/newlib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/newlib/libc/include -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/libgloss/m32c -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/libgloss/libnosys -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/libgloss/m32c  -mcpu=m32cm -DPACKAGE_NAME=\"newlib\" -DPACKAGE_TARNAME=\"newlib\" -DPACKAGE_VERSION=\"4.1.0\" -DPACKAGE_STRING=\"newlib\ 4.1.0\" -DPACKAGE_BUGREPORT=\"\" -DPACKAGE_URL=\"\" -I. -I../../../../.././newlib/libc/stdio -Os -fno-builtin -DPREFER_SIZE_OVER_SPEED -DSMALL_MEMORY -DMISSING_SYSCALL_NAMES -DABORT_PROVIDED -DHAVE_INIT_FINI      -g -O0  -mcpu=m32cm -c -o lib_a-fopencookie.o `test -f 'fopencookie.c' || echo '../../../../.././newlib/libc/stdio/'`fopencookie.c
+during RTL pass: expand
+../../../../.././newlib/libc/stdio/fopencookie.c: 関数 ‘fopencookie’ 内:
+../../../../.././newlib/libc/stdio/fopencookie.c:254:10: コンパイラ内部エラー: expand_call 内、位置 calls.c:4928
+  254 |   return _fopencookie_r (_REENT, cookie, mode, functions);
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+0x81635b6 expand_call(tree_node*, rtx_def*, int)
+	../.././gcc/calls.c:4928
+0x83947b1 expand_expr_real_1(tree_node*, rtx_def*, machine_mode, expand_modifier, rtx_def**, bool)
+	../.././gcc/expr.c:11140
+0x839ea6c expand_expr_real(tree_node*, rtx_def*, machine_mode, expand_modifier, rtx_def**, bool)
+	../.././gcc/expr.c:8363
+0x839ea6c store_expr(tree_node*, rtx_def*, int, bool, bool)
+	../.././gcc/expr.c:5752
+0x839f9f7 expand_assignment(tree_node*, tree_node*, bool)
+	../.././gcc/expr.c:5514
+0x839f9f7 expand_assignment(tree_node*, tree_node*, bool)
+	../.././gcc/expr.c:5056
+0x829fc8b expand_call_stmt
+	../.././gcc/cfgexpand.c:2701
+0x829fc8b expand_gimple_stmt_1
+	../.././gcc/cfgexpand.c:3682
+0x829fc8b expand_gimple_stmt
+	../.././gcc/cfgexpand.c:3847
+0x82a6179 expand_gimple_basic_block
+	../.././gcc/cfgexpand.c:5888
+0x82a6179 execute
+	../.././gcc/cfgexpand.c:6543
+Please submit a full bug report,
+with preprocessed source if appropriate.
+Please include the complete backtrace with any bug report.
+See <https://gcc.gnu.org/bugs/> for instructions.
+...
+%
+
+最適化しなくてもエラーしているらしい
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/newlib/libc/stdio
+% m32c-elf-gcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/newlib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/newlib/libc/include -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/libgloss/m32c -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/libgloss/libnosys -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/libgloss/m32c  -mcpu=m32cm -DPACKAGE_NAME=\"newlib\" -DPACKAGE_TARNAME=\"newlib\" -DPACKAGE_VERSION=\"4.1.0\" -DPACKAGE_STRING=\"newlib\ 4.1.0\" -DPACKAGE_BUGREPORT=\"\" -DPACKAGE_URL=\"\" -I. -I../../../../.././newlib/libc/stdio -Os -fno-builtin -DPREFER_SIZE_OVER_SPEED -DSMALL_MEMORY -DMISSING_SYSCALL_NAMES -DABORT_PROVIDED -DHAVE_INIT_FINI      -g -O0  -mcpu=m32cm -c -o lib_a-fopencookie.o `test -f 'fopencookie.c' || echo '../../../../.././newlib/libc/stdio/'`fopencookie.c
+during RTL pass: expand
+../../../../.././newlib/libc/stdio/fopencookie.c: 関数 ‘fopencookie’ 内:
+../../../../.././newlib/libc/stdio/fopencookie.c:254:10: コンパイラ内部エラー: expand_call 内、位置 calls.c:4928
+  254 |   return _fopencookie_r (_REENT, cookie, mode, functions);
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+0x81635b6 expand_call(tree_node*, rtx_def*, int)
+	../.././gcc/calls.c:4928
+0x83947b1 expand_expr_real_1(tree_node*, rtx_def*, machine_mode, expand_modifier, rtx_def**, bool)
+	../.././gcc/expr.c:11140
+0x839ea6c expand_expr_real(tree_node*, rtx_def*, machine_mode, expand_modifier, rtx_def**, bool)
+	../.././gcc/expr.c:8363
+0x839ea6c store_expr(tree_node*, rtx_def*, int, bool, bool)
+	../.././gcc/expr.c:5752
+0x839f9f7 expand_assignment(tree_node*, tree_node*, bool)
+	../.././gcc/expr.c:5514
+0x839f9f7 expand_assignment(tree_node*, tree_node*, bool)
+	../.././gcc/expr.c:5056
+0x829fc8b expand_call_stmt
+	../.././gcc/cfgexpand.c:2701
+0x829fc8b expand_gimple_stmt_1
+	../.././gcc/cfgexpand.c:3682
+0x829fc8b expand_gimple_stmt
+	../.././gcc/cfgexpand.c:3847
+0x82a6179 expand_gimple_basic_block
+	../.././gcc/cfgexpand.c:5888
+0x82a6179 execute
+	../.././gcc/cfgexpand.c:6543
+Please submit a full bug report,
+with preprocessed source if appropriate.
+Please include the complete backtrace with any bug report.
+See <https://gcc.gnu.org/bugs/> for instructions.
+%
+
+再現している.
+
+% m32c-elf-gcc -### -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/newlib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/newlib/libc/include -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/libgloss/m32c -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/libgloss/libnosys -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/libgloss/m32c  -mcpu=m32cm -DPACKAGE_NAME=\"newlib\" -DPACKAGE_TARNAME=\"newlib\" -DPACKAGE_VERSION=\"4.1.0\" -DPACKAGE_STRING=\"newlib\ 4.1.0\" -DPACKAGE_BUGREPORT=\"\" -DPACKAGE_URL=\"\" -I. -I../../../../.././newlib/libc/stdio -Os -fno-builtin -DPREFER_SIZE_OVER_SPEED -DSMALL_MEMORY -DMISSING_SYSCALL_NAMES -DABORT_PROVIDED -DHAVE_INIT_FINI      -g -O0  -mcpu=m32cm -c -o lib_a-fopencookie.o `test -f 'fopencookie.c' || echo '../../../../.././newlib/libc/stdio/'`fopencookie.c
+組み込み spec を使用しています。
+COLLECT_GCC=m32c-elf-gcc
+ターゲット: m32c-elf
+configure 設定: ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=m32c-elf --disable-libstdc++-v3 --disable-libssp --disable-libquadmath --disable-libgfortran --disable-libobjc
+スレッドモデル: single
+Supported LTO compression algorithms: zlib zstd
+gcc バージョン 10.2.0 (GCC) 
+COLLECT_GCC_OPTIONS='-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/newlib/' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/newlib/targ-include' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/newlib/libc/include' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/libgloss/m32c' '-L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/libgloss/libnosys' '-L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/libgloss/m32c' '-mcpu=m32cm' '-D' 'PACKAGE_NAME="newlib"' '-D' 'PACKAGE_TARNAME="newlib"' '-D' 'PACKAGE_VERSION="4.1.0"' '-D' 'PACKAGE_STRING="newlib 4.1.0"' '-D' 'PACKAGE_BUGREPORT=""' '-D' 'PACKAGE_URL=""' '-I' '.' '-I' '../../../../.././newlib/libc/stdio' '-Os' '-fno-builtin' '-D' 'PREFER_SIZE_OVER_SPEED' '-D' 'SMALL_MEMORY' '-D' 'MISSING_SYSCALL_NAMES' '-D' 'ABORT_PROVIDED' '-D' 'HAVE_INIT_FINI' '-g' '-O0' '-mcpu=m32cm' '-c' '-o' 'lib_a-fopencookie.o'
+ /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/libexec/gcc/m32c-elf/10.2.0/cc1 -quiet -I . -I ../../../../.././newlib/libc/stdio -imultilib m32cm -D "PACKAGE_NAME=\"newlib\"" -D "PACKAGE_TARNAME=\"newlib\"" -D "PACKAGE_VERSION=\"4.1.0\"" -D "PACKAGE_STRING=\"newlib 4.1.0\"" -D "PACKAGE_BUGREPORT=\"\"" -D "PACKAGE_URL=\"\"" -D PREFER_SIZE_OVER_SPEED -D SMALL_MEMORY -D MISSING_SYSCALL_NAMES -D ABORT_PROVIDED -D HAVE_INIT_FINI -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/newlib/libc/include ../../../../.././newlib/libc/stdio/fopencookie.c -quiet -dumpbase fopencookie.c "-mcpu=m32cm" "-mcpu=m32cm" -auxbase-strip lib_a-fopencookie.o -g -Os -O0 -fno-builtin -o /tmp/ccGMfci7.s
+COLLECT_GCC_OPTIONS='-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/newlib/' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/newlib/targ-include' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/newlib/libc/include' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/libgloss/m32c' '-L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/libgloss/libnosys' '-L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/libgloss/m32c' '-mcpu=m32cm' '-D' 'PACKAGE_NAME="newlib"' '-D' 'PACKAGE_TARNAME="newlib"' '-D' 'PACKAGE_VERSION="4.1.0"' '-D' 'PACKAGE_STRING="newlib 4.1.0"' '-D' 'PACKAGE_BUGREPORT=""' '-D' 'PACKAGE_URL=""' '-I' '.' '-I' '../../../../.././newlib/libc/stdio' '-Os' '-fno-builtin' '-D' 'PREFER_SIZE_OVER_SPEED' '-D' 'SMALL_MEMORY' '-D' 'MISSING_SYSCALL_NAMES' '-D' 'ABORT_PROVIDED' '-D' 'HAVE_INIT_FINI' '-g' '-O0' '-mcpu=m32cm' '-c' '-o' 'lib_a-fopencookie.o'
+ /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/m32c-elf/10.2.0/../../../../m32c-elf/bin/as --m32c -o lib_a-fopencookie.o /tmp/ccGMfci7.s
+COMPILER_PATH=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/newlib/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/libexec/gcc/m32c-elf/10.2.0/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/libexec/gcc/m32c-elf/10.2.0/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/libexec/gcc/m32c-elf/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/m32c-elf/10.2.0/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/m32c-elf/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/m32c-elf/10.2.0/../../../../m32c-elf/bin/
+LIBRARY_PATH=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/newlib/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/m32c-elf/10.2.0/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/m32c-elf/10.2.0/../../../../m32c-elf/lib/
+COLLECT_GCC_OPTIONS='-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/newlib/' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/newlib/targ-include' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/newlib/libc/include' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/libgloss/m32c' '-L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/libgloss/libnosys' '-L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/libgloss/m32c' '-mcpu=m32cm' '-D' 'PACKAGE_NAME="newlib"' '-D' 'PACKAGE_TARNAME="newlib"' '-D' 'PACKAGE_VERSION="4.1.0"' '-D' 'PACKAGE_STRING="newlib 4.1.0"' '-D' 'PACKAGE_BUGREPORT=""' '-D' 'PACKAGE_URL=""' '-I' '.' '-I' '../../../../.././newlib/libc/stdio' '-Os' '-fno-builtin' '-D' 'PREFER_SIZE_OVER_SPEED' '-D' 'SMALL_MEMORY' '-D' 'MISSING_SYSCALL_NAMES' '-D' 'ABORT_PROVIDED' '-D' 'HAVE_INIT_FINI' '-g' '-O0' '-mcpu=m32cm' '-c' '-o' 'lib_a-fopencookie.o'
+%
+
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/newlib/libc/stdio
+(gdb) run -quiet -I . -I ../../../../.././newlib/libc/stdio -imultilib m32cm -D PREFER_SIZE_OVER_SPEED -D SMALL_MEMORY -D MISSING_SYSCALL_NAMES -D ABORT_PROVIDED -D HAVE_INIT_FINI -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/newlib/libc/include ../../../../.././newlib/libc/stdio/fopencookie.c -quiet -dumpbase fopencookie.c "-mcpu=m32cm" "-mcpu=m32cm" -auxbase-strip lib_a-fopencookie.o -g -Os -O0 -fno-builtin -o /tmp/ccGMfci7.s
+during RTL pass: expand
+../../../../.././newlib/libc/stdio/fopencookie.c: 関数 ‘fopencookie’ 内:
+../../../../.././newlib/libc/stdio/fopencookie.c:254:10: コンパイラ内部エラー: expand_call 内、位置 calls.c:4928
+  254 |   return _fopencookie_r (_REENT, cookie, mode, functions);
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+0x81635b6 expand_call(tree_node*, rtx_def*, int)
+	../.././gcc/calls.c:4928
+0x83947b1 expand_expr_real_1(tree_node*, rtx_def*, machine_mode, expand_modifier, rtx_def**, bool)
+	../.././gcc/expr.c:11140
+0x839ea6c expand_expr_real(tree_node*, rtx_def*, machine_mode, expand_modifier, rtx_def**, bool)
+	../.././gcc/expr.c:8363
+0x839ea6c store_expr(tree_node*, rtx_def*, int, bool, bool)
+	../.././gcc/expr.c:5752
+0x839f9f7 expand_assignment(tree_node*, tree_node*, bool)
+	../.././gcc/expr.c:5514
+0x839f9f7 expand_assignment(tree_node*, tree_node*, bool)
+	../.././gcc/expr.c:5056
+0x829fc8b expand_call_stmt
+	../.././gcc/cfgexpand.c:2701
+0x829fc8b expand_gimple_stmt_1
+	../.././gcc/cfgexpand.c:3682
+0x829fc8b expand_gimple_stmt
+	../.././gcc/cfgexpand.c:3847
+0x82a6179 expand_gimple_basic_block
+	../.././gcc/cfgexpand.c:5888
+0x82a6179 execute
+	../.././gcc/cfgexpand.c:6543
+Please submit a full bug report,
+with preprocessed source if appropriate.
+Please include the complete backtrace with any bug report.
+See <https://gcc.gnu.org/bugs/> for instructions.
+[Inferior 1 (process 9527) exited with code 04]
+(gdb)
+
+gdb からエラーを再現することができている.
+
+
+gcc-10.2.0.m32c-elf/gcc/calls.c:
+
+	  gcc_assert ((flags & ECF_NORETURN)
+		      || known_eq (old_stack_allocated,
+				   stack_pointer_delta
+				   - pending_stack_adjust));
+
+この gcc_asert で失敗していることが判明した.
+おそらく原因を救命することが難しい.
