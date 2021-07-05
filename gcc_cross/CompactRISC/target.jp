@@ -43,3 +43,166 @@ cr16.md の中で adddi3 の文字列が出現するのは以下:
 )
 
 そしておそらく 2 つ目が問題の箇所と思われる.
+
+genrecog
+
+デバッグビルドした genrecog を gdb から実行してみた.
+
+(gdb) run a.txt
+
+とすると
+
+a.txt: No such file or directory
+
+というメッセージは出るが同時に C++ のプログラムが出力された. 今度は空のファイルを
+指定してみた. するとエラーメッセージはなく C++ のプログラムが出力された.
+このとき生成された C++ のプログラムだがヘッダファイルのインクルード部分を
+除けば以下:
+
+int
+recog (rtx x1 ATTRIBUTE_UNUSED,
+	rtx_insn *insn ATTRIBUTE_UNUSED,
+	int *pnum_clobbers ATTRIBUTE_UNUSED)
+{
+  rtx * const operands ATTRIBUTE_UNUSED = &recog_data.operand[0];
+  int res ATTRIBUTE_UNUSED;
+  recog_data.insn = NULL;
+  return -1;
+}
+
+rtx_insn *
+split_insns (rtx x1 ATTRIBUTE_UNUSED, rtx_insn *insn ATTRIBUTE_UNUSED)
+{
+  rtx * const operands ATTRIBUTE_UNUSED = &recog_data.operand[0];
+  rtx_insn *res ATTRIBUTE_UNUSED;
+  recog_data.insn = NULL;
+  return NULL;
+}
+
+rtx_insn *
+peephole2_insns (rtx x1 ATTRIBUTE_UNUSED,
+	rtx_insn *insn ATTRIBUTE_UNUSED,
+	int *pmatch_len_ ATTRIBUTE_UNUSED)
+{
+  rtx * const operands ATTRIBUTE_UNUSED = &recog_data.operand[0];
+  rtx_insn *res ATTRIBUTE_UNUSED;
+  recog_data.insn = NULL;
+  return NULL;
+}
+
+これは, おそらく必ずエラーするようなものなのかもしれないが, テンプレートといった
+ところだろう.
+
+さて入力ファイルの文法だが Lisp のようなもので, 例えば
+
+gcc-10.2.0/gcc/common.md
+
+にあるような
+
+(define_register_constraint "r" "GENERAL_REGS"
+  "Matches any general register.")
+
+ものである. これだけ a.txt に入れて同じように genrecog を動かしても出力は変更ない.
+もう少し, 複雑に書かなければ目に見える形で違いは出ないのだろう.
+
+ところでこの上の宣言あるいは定義なのか不明だが, おそらく何らかの
+制限を記述する文脈で
+
+"r"
+
+は
+
+"GENERAL_REGS"
+
+を意味する. あるいはそれだけを受け入れるといったことを意味するのだろうと思う.
+とすれば今回問題になった
+
+(define_insn "addsi3"
+  [(set (match_operand:SI 0 "register_operand" "=r,r,r,r,r")
+	(plus:SI (match_operand:SI 1 "register_operand" "%0,0,0,0,0")
+		 (match_operand:SI 2 "reg_si_int_operand" "r,M,N,O,i")))]
+  ""
+  "addd\t%2, %0"
+  [(set_attr "length" "2,2,4,4,6")]
+)
+
+だが
+
+"=r,r,r,r,r"
+
+や
+
+"r,M,N,O,i"
+
+が意味するところに少なからず影響を与えているだろう.
+
+gcc-10.2.0/gcc/common.md
+
+には以下もある.
+
+(define_constraint "i"
+  "Matches a general integer constant."
+  (and (match_test "CONSTANT_P (op)")
+       (match_test "!flag_pic || LEGITIMATE_PIC_OPERAND_P (op)")))
+
+同じように "M" や "N", "O" もあるのかと思ったがそうでもないらしい.
+
+gcc-10.2.0/gcc/config/cr16/cr16.md
+
+にもなかったがこれの先頭で
+
+(include "predicates.md")
+(include "constraints.md")
+
+のようになっている
+
+gcc-10.2.0/gcc/config/cr16/constraints.md:
+
+(define_constraint "M"
+  "A unsigned and customized  4-bit immediate."
+  (and (match_code "const_int")
+       (match_test "(IN_RANGE_P (ival, 0, 15) && ((ival != 9) && (ival != 11)))")))
+
+(define_constraint "N"
+  "A signed 16-bit immediate."
+  (and (match_code "const_int")
+       (match_test "IN_RANGE_P (ival, -32768, 32767)")))
+
+
+(define_constraint "O"
+  "A unsigned 20-bit immediate."
+  (and (match_code "const_int")
+       (match_test "IN_RANGE_P (ival, 0, 1048575)")))
+
+こんな感じになっている.
+
+"r,M,N,O,i"
+
+と
+
+"2,2,4,4,6"
+
+の並びが対応しているとすれば, 今回問題になった
+
+   29: sp:SI=sp:SI+0xfffffffc
+
+がこれらのどれにも対応していなかったということだろう. おそらくこれは
+
+   29: sp:SI=sp:SI-0x4
+
+となっているのが正しい. そうすれば "M" にマッチして, 問題が発生した直前の
+
+   28: sp:SI=sp:SI-0x6
+
+と同様に処理できたのだろう. だから
+
+(define_insn "addsi3"
+  [(set (match_operand:SI 0 "register_operand" "=r,r,r,r,r")
+	(plus:SI (match_operand:SI 1 "register_operand" "%0,0,0,0,0")
+		 (match_operand:SI 2 "reg_si_int_operand" "r,M,N,O,i")))]
+  ""
+  "addd\t%2, %0"
+  [(set_attr "length" "2,2,4,4,6")]
+)
+
+に規則をつけ加えて修正するというよりも addsi3 にきているのを修正するということになる.
