@@ -170,4 +170,17 @@ gcc-10.2.0.m32c-elf/gcc/calls.c:
 				   - pending_stack_adjust));
 
 この gcc_asert で失敗していることが判明した.
-おそらく原因を救命することが難しい.
+おそらく原因を究明することが難しい.
+
+
+エラーするファイルを除外した形で newlib をビルドすることにした.
+このページにある newlib-Makefile.tar.gz を使って以下のようにする.
+
+% cd newlib-4.1.0.m32c-elf
+% cd newlib
+% gunzip -c newlib-Makefile.tar.gz | tar xf -
+% make -f Makefile.mine
+% make -f Makefile.mine install
+
+インストール先は私の環境のものなのであなたの環境に合わせて書き替えるとよい.
+

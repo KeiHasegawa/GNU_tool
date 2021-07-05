@@ -1,0 +1,16 @@
+newlib install WA
+
+At first, I tried to buld with -O0 option not -O2 option. But m32c-elf-gcc
+caused internal error.
+
+So I did like below:
+
+% cd newlib-4.1.0.m32c-elf
+% cd newlib
+% gunzip -c newlib-Makefile.tar.gz | tar xf -
+% make -f Makefile.mine
+% make -f Makefile.mine install
+
+This `Makefile.mine' excludes error source files.
+When you install, change install directory for your environment.
+
