@@ -1,6 +1,10 @@
 OpenRISC 1000 cross compile environment
 
 (*1) OpenRISC 1000
+(*2) Install with script
+(*3) Verification => OK
+
+(*1) OpenRISC 1000
 https://openrisc.io/or1k.html
 
 (*2) Install with script
@@ -9,12 +13,52 @@ Use the same script with "IQ2000":
 
 set TARGET = or1k-elf  # Change
 
+(*3) Verification => OK
 
-Unfortunately, link for target compiler failed like below:
+% or1k-elf-gcc -g -o hello.elf hello.c
+% cat gdbcom
+target sim
+load
+b main
+command
+disassemble
+continue
+end
+run
+quit
+% or1k-elf-gdb --silent -x gdbcom hello.elf
+Reading symbols from hello.elf...
+Connected to the simulator.
+Loading section .vectors, size 0x2000 lma 0x0
+Loading section .text, size 0x4980 lma 0x2000
+Loading section .rodata, size 0x12 lma 0x6980
+Loading section .eh_frame, size 0x4 lma 0x8994
+Loading section .init_array, size 0x4 lma 0x8998
+Loading section .fini_array, size 0x4 lma 0x899c
+Loading section .data, size 0xc70 lma 0x89a0
+Start address 0x100
+Transfer rate: 241776 bits in <1 sec.
+Breakpoint 1 at 0x2274: file hello.c, line 5.
 
-g++ -no-pie   -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H -static-libstdc++ -static-libgcc  -o cc1 c/c-lang.o c-family/stub-objc.o attribs.o c/c-errors.o c/c-decl.o c/c-typeck.o c/c-convert.o c/c-aux-info.o c/c-objc-common.o c/c-parser.o c/c-fold.o c/gimple-parser.o c-family/c-common.o c-family/c-cppbuiltin.o c-family/c-dump.o c-family/c-format.o c-family/c-gimplify.o c-family/c-indentation.o c-family/c-lex.o c-family/c-omp.o c-family/c-opts.o c-family/c-pch.o c-family/c-ppoutput.o c-family/c-pragma.o c-family/c-pretty-print.o c-family/c-semantics.o c-family/c-ada-spec.o c-family/c-ubsan.o c-family/known-headers.o c-family/c-attribs.o c-family/c-warn.o c-family/c-spellcheck.o default-c.o \
-	  cc1-checksum.o libbackend.a main.o libcommon-target.a libcommon.a ../libcpp/libcpp.a ../libdecnumber/libdecnumber.a libcommon.a ../libcpp/libcpp.a   ../libbacktrace/.libs/libbacktrace.a ../libiberty/libiberty.a ../libdecnumber/libdecnumber.a   -lmpc -lmpfr -lgmp -rdynamic -ldl  -L./../zlib -lz -lzstd 
-/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: c/c-decl.o: in function `warn_if_shadowing(tree_node*)':
-/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.or1k-elf/host-i686-pc-linux-gnu/gcc/../.././gcc/c/c-decl.c:3006: undefined reference to `comptypes(tree_node*, tree_node*)'
-/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: c/c-decl.o: in function `warn_if_shadowing':
-/media/8492805f-d30e-493d-8911-503c83a1d4ab/work/GNU_LANG/gcc-10.2.0.or1k-elf/host-i686-pc-linux-gnu/gcc/../.././gcc/c/c-decl.c:3045: undefined reference to `comptypes(tree_node*, tree_node*)'
+Breakpoint 1, main () at hello.c:5
+5	  printf("hello world\n");
+Dump of assembler code for function main:
+   0x00002264 <+0>:	l.addi r1,r1,-8
+   0x00002268 <+4>:	l.sw 0(r1),r2
+   0x0000226c <+8>:	l.addi r2,r1,8
+   0x00002270 <+12>:	l.sw 4(r1),r9
+=> 0x00002274 <+16>:	l.movhi r17,0x0
+   0x00002278 <+20>:	l.addi r3,r17,27008
+   0x0000227c <+24>:	l.jal 0x24f0 <puts>
+   0x00002280 <+28>:	l.nop 0x0
+   0x00002284 <+32>:	l.movhi r17,0x0
+   0x00002288 <+36>:	l.or r11,r17,r17
+   0x0000228c <+40>:	l.lwz r2,0(r1)
+   0x00002290 <+44>:	l.lwz r9,4(r1)
+   0x00002294 <+48>:	l.addi r1,r1,8
+   0x00002298 <+52>:	l.jr r9
+   0x0000229c <+56>:	l.nop 0x0
+End of assembler dump.
+hello world
+[Inferior 1 (process 42000) exited normally]
+%
