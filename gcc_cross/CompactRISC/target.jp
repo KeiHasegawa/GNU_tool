@@ -1,0 +1,45 @@
+insn-recog.c はざっくりと言えば
+
+build/genrecog ../.././gcc/common.md ../.././gcc/config/cr16/cr16.md > insn-recog.c
+
+のように生成される.
+
+build/genrecog
+
+がコンパイラ記述言語のコンパイラで, これが問題の箇所
+
+            case E_DImode:
+              if (pattern0 (x2) != 0)
+                return -1;
+              return 6; /* adddi3 */
+
+を生成している. build/genrecog は以下のようにビルドされている:
+例によって -O2 ビルドされているっぽいので -O0 ビルドした.
+
+mk_build_recog
+
+にスクリプトにしておいた. これでビルドした build/genrecog でも確かに
+問題の箇所は再現している.
+
+cr16.md の中で adddi3 の文字列が出現するのは以下:
+
+;; Addition-Subtraction "adddi3/subdi3" insns.
+(define_insn "<plusminus_insn>di3"
+  [(set (match_operand:DI 0 "register_operand" "=r")
+	(plusminus:DI (match_operand:DI 1 "register_operand" "<comm>0")
+		      (match_operand:DI 2 "register_operand" "r")))]
+  ""
+  {
+    return cr16_emit_add_sub_di (operands, <plusminus_flag>);
+  })
+
+(define_insn "addsi3"
+  [(set (match_operand:SI 0 "register_operand" "=r,r,r,r,r")
+	(plus:SI (match_operand:SI 1 "register_operand" "%0,0,0,0,0")
+		 (match_operand:SI 2 "reg_si_int_operand" "r,M,N,O,i")))]
+  ""
+  "addd\t%2, %0"
+  [(set_attr "length" "2,2,4,4,6")]
+)
+
+そしておそらく 2 つ目が問題の箇所と思われる.
