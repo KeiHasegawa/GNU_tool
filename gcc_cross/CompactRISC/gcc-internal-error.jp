@@ -1,0 +1,3553 @@
+CompactRISC の gcc のインストールでエラーが発生する件の調査
+
+> cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/cr16-elf/far-pic/libgcc
+> /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/sys-include  -fPIC -mcr16cplus -mdata-model=far -g -O2 -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../../host-i686-pc-linux-gnu/gcc -I../../.././libgcc -I../../.././libgcc/. -I../../.././libgcc/../gcc -I../../.././libgcc/../include  -DHAVE_CC_TLS  -o _ashldi3.o -MT _ashldi3.o -MD -MP -MF _ashldi3.dep -DL_ashldi3 -c ../../.././libgcc/libgcc2.c
+../../.././libgcc/libgcc2.c: In function ‘__ashldi3’:
+../../.././libgcc/libgcc2.c:455:1: error: unrecognizable insn:
+  455 | }
+      | ^
+(insn/f 113 112 114 2 (set (reg/f:SI 15 sp)
+        (plus:SI (reg/f:SI 15 sp)
+            (const_int 4294967288 [0xfffffff8]))) "../../.././libgcc/libgcc2.c":433:1 -1
+     (nil))
+during RTL pass: cprop_hardreg
+../../.././libgcc/libgcc2.c:455:1: internal compiler error: in extract_insn, at recog.c:2294
+0x816f631 _fatal_insn(char const*, rtx_def const*, char const*, int, char const*)
+	../.././gcc/rtl-error.c:108
+0x816f65c _fatal_insn_not_found(rtx_def const*, char const*, int, char const*)
+	../.././gcc/rtl-error.c:116
+0x816ea9a extract_insn(rtx_insn*)
+	../.././gcc/recog.c:2294
+0x8607e9d extract_constrain_insn(rtx_insn*)
+	../.././gcc/recog.c:2193
+0x860ac6c copyprop_hardreg_forward_1
+	../.././gcc/regcprop.c:802
+0x860b9b7 execute
+	../.././gcc/regcprop.c:1367
+Please submit a full bug report,
+with preprocessed source if appropriate.
+Please include the complete backtrace with any bug report.
+See <https://gcc.gnu.org/bugs/> for instructions.
+> 
+
+エラーを再現できている.
+
+xgcc から cc1 をどのように起動するか確認する:
+
+> /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/sys-include  -fPIC -mcr16cplus -mdata-model=far -g -O2 -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../../host-i686-pc-linux-gnu/gcc -I../../.././libgcc -I../../.././libgcc/. -I../../.././libgcc/../gcc -I../../.././libgcc/../include  -DHAVE_CC_TLS  -o _ashldi3.o -MT _ashldi3.o -MD -MP -MF _ashldi3.dep -DL_ashldi3 -c ../../.././libgcc/libgcc2.c -###
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/specs から spec を読み込み中
+COLLECT_GCC=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/xgcc
+Target: cr16-elf
+コンフィグオプション: ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=cr16-elf --disable-libstdc++-v3 --disable-libssp --disable-libquadmath --disable-libgfortran --disable-libobjc
+スレッドモデル: single
+Supported LTO compression algorithms: zlib zstd
+gcc version 10.2.0 (GCC) 
+COLLECT_GCC_OPTIONS='-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/bin/' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/lib/' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/include' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/sys-include' '-fPIC' '-mcr16cplus' '-mdata-model=far' '-g' '-O2' '-O2' '-g' '-O2' '-D' 'IN_GCC' '-D' 'CROSS_DIRECTORY_STRUCTURE' '-Wextra' '-Wall' '-Wno-narrowing' '-Wwrite-strings' '-Wcast-qual' '-Wno-error=format-diag' '-Wstrict-prototypes' '-Wmissing-prototypes' '-Wno-error=format-diag' '-Wold-style-definition' '-isystem' './include' '-g' '-D' 'IN_LIBGCC2' '-fbuilding-libgcc' '-fno-stack-protector' '-D' 'inhibit_libc' '-I' '.' '-I' '.' '-I' '../../../host-i686-pc-linux-gnu/gcc' '-I' '../../.././libgcc' '-I' '../../.././libgcc/.' '-I' '../../.././libgcc/../gcc' '-I' '../../.././libgcc/../include' '-D' 'HAVE_CC_TLS' '-o' '_ashldi3.o' '-MT' '_ashldi3.o' '-MD' '-MP' '-MF' '_ashldi3.dep' '-D' 'L_ashldi3' '-c'
+ /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/cc1 -quiet -I . -I . -I ../../../host-i686-pc-linux-gnu/gcc -I ../../.././libgcc -I ../../.././libgcc/. -I ../../.././libgcc/../gcc -I ../../.././libgcc/../include -imultilib far-pic -iprefix /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/../lib/gcc/cr16-elf/10.2.0/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/include-fixed -MD _ashldi3.d -MF _ashldi3.dep -MP -MT _ashldi3.o -D IN_GCC -D CROSS_DIRECTORY_STRUCTURE -D IN_LIBGCC2 -D inhibit_libc -D HAVE_CC_TLS -D L_ashldi3 -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/sys-include -isystem ./include ../../.././libgcc/libgcc2.c -quiet -dumpbase libgcc2.c -mcr16cplus "-mdata-model=far" -auxbase-strip _ashldi3.o -g -g -g -O2 -O2 -O2 -Wextra -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual "-Wno-error=format-diag" -Wstrict-prototypes -Wmissing-prototypes "-Wno-error=format-diag" -Wold-style-definition -fPIC -fbuilding-libgcc -fno-stack-protector -o /tmp/ccIysxqZ.s
+COLLECT_GCC_OPTIONS='-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/bin/' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/lib/' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/include' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/sys-include' '-fPIC' '-mcr16cplus' '-mdata-model=far' '-g' '-O2' '-O2' '-g' '-O2' '-D' 'IN_GCC' '-D' 'CROSS_DIRECTORY_STRUCTURE' '-Wextra' '-Wall' '-Wno-narrowing' '-Wwrite-strings' '-Wcast-qual' '-Wno-error=format-diag' '-Wstrict-prototypes' '-Wmissing-prototypes' '-Wno-error=format-diag' '-Wold-style-definition' '-isystem' './include' '-g' '-D' 'IN_LIBGCC2' '-fbuilding-libgcc' '-fno-stack-protector' '-D' 'inhibit_libc' '-I' '.' '-I' '.' '-I' '../../../host-i686-pc-linux-gnu/gcc' '-I' '../../.././libgcc' '-I' '../../.././libgcc/.' '-I' '../../.././libgcc/../gcc' '-I' '../../.././libgcc/../include' '-D' 'HAVE_CC_TLS' '-o' '_ashldi3.o' '-MT' '_ashldi3.o' '-MD' '-MP' '-MF' '_ashldi3.dep' '-D' 'L_ashldi3' '-c'
+ /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/as -o _ashldi3.o /tmp/ccIysxqZ.s
+COMPILER_PATH=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/bin/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/lib/
+LIBRARY_PATH=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/bin/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/lib/
+COLLECT_GCC_OPTIONS='-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/bin/' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/lib/' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/include' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/sys-include' '-fPIC' '-mcr16cplus' '-mdata-model=far' '-g' '-O2' '-O2' '-g' '-O2' '-D' 'IN_GCC' '-D' 'CROSS_DIRECTORY_STRUCTURE' '-Wextra' '-Wall' '-Wno-narrowing' '-Wwrite-strings' '-Wcast-qual' '-Wno-error=format-diag' '-Wstrict-prototypes' '-Wmissing-prototypes' '-Wno-error=format-diag' '-Wold-style-definition' '-isystem' './include' '-g' '-D' 'IN_LIBGCC2' '-fbuilding-libgcc' '-fno-stack-protector' '-D' 'inhibit_libc' '-I' '.' '-I' '.' '-I' '../../../host-i686-pc-linux-gnu/gcc' '-I' '../../.././libgcc' '-I' '../../.././libgcc/.' '-I' '../../.././libgcc/../gcc' '-I' '../../.././libgcc/../include' '-D' 'HAVE_CC_TLS' '-o' '_ashldi3.o' '-MT' '_ashldi3.o' '-MD' '-MP' '-MF' '_ashldi3.dep' '-D' 'L_ashldi3' '-c'
+>
+
+そこで以下を試してみた:
+
+> /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/cc1 -quiet -I . -I . -I ../../../host-i686-pc-linux-gnu/gcc -I ../../.././libgcc -I ../../.././libgcc/. -I ../../.././libgcc/../gcc -I ../../.././libgcc/../include -imultilib far-pic -iprefix /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/../lib/gcc/cr16-elf/10.2.0/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/include-fixed -MD _ashldi3.d -MF _ashldi3.dep -MP -MT _ashldi3.o -D IN_GCC -D CROSS_DIRECTORY_STRUCTURE -D IN_LIBGCC2 -D inhibit_libc -D HAVE_CC_TLS -D L_ashldi3 -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/sys-include -isystem ./include ../../.././libgcc/libgcc2.c -quiet -dumpbase libgcc2.c -mcr16cplus "-mdata-model=far" -auxbase-strip _ashldi3.o -g -g -g -O2 -O2 -O2 -Wextra -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual "-Wno-error=format-diag" -Wstrict-prototypes -Wmissing-prototypes "-Wno-error=format-diag" -Wold-style-definition -fPIC -fbuilding-libgcc -fno-stack-protector -o /tmp/ccIysxqZ.s
+../../.././libgcc/libgcc2.c: In function ‘__ashldi3’:
+../../.././libgcc/libgcc2.c:455:1: error: unrecognizable insn:
+  455 | }
+      | ^
+(insn/f 113 112 114 2 (set (reg/f:SI 15 sp)
+        (plus:SI (reg/f:SI 15 sp)
+            (const_int 4294967288 [0xfffffff8]))) "../../.././libgcc/libgcc2.c":433:1 -1
+     (nil))
+during RTL pass: cprop_hardreg
+../../.././libgcc/libgcc2.c:455:1: internal compiler error: in extract_insn, at recog.c:2294
+0x816f631 _fatal_insn(char const*, rtx_def const*, char const*, int, char const*)
+	../.././gcc/rtl-error.c:108
+0x816f65c _fatal_insn_not_found(rtx_def const*, char const*, int, char const*)
+	../.././gcc/rtl-error.c:116
+0x816ea9a extract_insn(rtx_insn*)
+	../.././gcc/recog.c:2294
+0x8607e9d extract_constrain_insn(rtx_insn*)
+	../.././gcc/recog.c:2193
+0x860ac6c copyprop_hardreg_forward_1
+	../.././gcc/regcprop.c:802
+0x860b9b7 execute
+	../.././gcc/regcprop.c:1367
+Please submit a full bug report,
+with preprocessed source if appropriate.
+Please include the complete backtrace with any bug report.
+See <https://gcc.gnu.org/bugs/> for instructions.
+>
+
+再現できている.
+
+M-x gdb
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/cc1
+cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/cr16-elf/far-pic/libgcc
+run  -quiet -I . -I . -I ../../../host-i686-pc-linux-gnu/gcc -I ../../.././libgcc -I ../../.././libgcc/. -I ../../.././libgcc/../gcc -I ../../.././libgcc/../include -imultilib far-pic -iprefix /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/../lib/gcc/cr16-elf/10.2.0/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/include-fixed -MD _ashldi3.d -MF _ashldi3.dep -MP -MT _ashldi3.o -D IN_GCC -D CROSS_DIRECTORY_STRUCTURE -D IN_LIBGCC2 -D inhibit_libc -D HAVE_CC_TLS -D L_ashldi3 -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/sys-include -isystem ./include ../../.././libgcc/libgcc2.c -quiet -dumpbase libgcc2.c -mcr16cplus "-mdata-model=far" -auxbase-strip _ashldi3.o -g -g -g -O2 -O2 -O2 -Wextra -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual "-Wno-error=format-diag" -Wstrict-prototypes -Wmissing-prototypes "-Wno-error=format-diag" -Wold-style-definition -fPIC -fbuilding-libgcc -fno-stack-protector -o /tmp/ccIysxqZ.s
+
+gdb からも再現できている.
+問題の箇所はメッセージを出しているから write にブレークポイントをセットして特定できた.
+それは
+
+b langhooks.c:468
+
+
+b _fatal_insn
+
+これにきている. ここが呼び出されること自体が期待していない動作.
+
+
+      icode = recog_memoized (insn);
+      if (icode < 0)
+	fatal_insn_not_found (insn);
+
+こんな感じでエラーしている. さてこの insn だが
+
+(gdb) ptype insn
+type = struct rtx_insn : public rtx_def {
+  public:
+    bool deleted(void) const;
+    void set_deleted(void);
+    void set_undeleted(void);
+} *
+
+これは「cc1 アセンブラ生成の調査」で調査した.
+
+(gdb) p debug_insn_slim(insn)
+  113: sp:SI=sp:SI+0xfffffff8
+$2 = void
+(gdb)
+
+こんな感じらしい.想像するにこれは sp = sp - 8 に対するコードを生成する
+ことのように思える.
+
+以下のような a.c を作成:
+
+% cat a.c
+int f(int a, int b)
+{
+  return a + b;
+}
+%
+
+これをコンパイルさせてみた:
+
+run  -quiet -I . -I . -I ../../../host-i686-pc-linux-gnu/gcc -I ../../.././libgcc -I ../../.././libgcc/. -I ../../.././libgcc/../gcc -I ../../.././libgcc/../include -imultilib far-pic -iprefix /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/../lib/gcc/cr16-elf/10.2.0/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/include-fixed -MD _ashldi3.d -MF _ashldi3.dep -MP -MT _ashldi3.o -D IN_GCC -D CROSS_DIRECTORY_STRUCTURE -D IN_LIBGCC2 -D inhibit_libc -D HAVE_CC_TLS -D L_ashldi3 -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/sys-include -isystem ./include a.c -quiet -dumpbase libgcc2.c -mcr16cplus "-mdata-model=far" -auxbase-strip _ashldi3.o -g -g -g -O2 -O2 -O2 -Wextra -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual "-Wno-error=format-diag" -Wstrict-prototypes -Wmissing-prototypes "-Wno-error=format-diag" -Wold-style-definition -fPIC -fbuilding-libgcc -fno-stack-protector -o a.s
+
+これは正常終了している.
+簡単には再現しないかと思ったが
+
+% cat a.c
+int g(int a, int b);
+
+int f(int a, int b)
+{
+  return a + b + g(a,b);
+}
+%
+
+これで再現している. 
+このときの insn は
+
+(gdb) p debug_insn_slim(insn)
+   29: sp:SI=sp:SI+0xfffffffc
+$1 = void
+(gdb)
+
+であった.
+さて問題なのは
+
+      icode = recog_memoized (insn);
+      if (icode < 0)
+
+のように recog_memoized (insn) で見つからないことなのだがこれは一体.
+
+      icode = recog_memoized (insn);
+
+にきたときに debug_insn_slim(insn) を呼び出して continue したら
+以下のようになった:
+
+Breakpoint 5, extract_insn (insn=0xb7877480) at ../.././gcc/recog.c:2292
+
+--Type <RET> for more, q to quit, c to continue without paging--c
+starting
+    2: r25:HI=r2:HI
+$270 = void
+
+Breakpoint 5, extract_insn (insn=0xb78774a4) at ../.././gcc/recog.c:2292
+    3: r26:HI=r3:HI
+$271 = void
+
+Breakpoint 5, extract_insn (insn=0xb78774ec) at ../.././gcc/recog.c:2292
+    8: r22:HI=r25:HI+r26:HI
+$272 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877534) at ../.././gcc/recog.c:2292
+    9: r3:HI=r26:HI
+$273 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877558) at ../.././gcc/recog.c:2292
+   10: r2:HI=r25:HI
+$274 = void
+
+Breakpoint 5, extract_insn (insn=0xb787757c) at ../.././gcc/recog.c:2292
+   11: r27:SI=unspec[`g'] 1
+$275 = void
+
+Breakpoint 5, extract_insn (insn=0xb78d61e0) at ../.././gcc/recog.c:2292
+   12: r0:HI=call [r27:SI] argc:0
+      REG_CALL_DECL `g'
+$276 = void
+
+Breakpoint 5, extract_insn (insn=0xb78775a0) at ../.././gcc/recog.c:2292
+   13: r23:HI=r0:HI
+$277 = void
+
+Breakpoint 5, extract_insn (insn=0xb78775c4) at ../.././gcc/recog.c:2292
+   14: r28:HI=r22:HI+r23:HI
+$278 = void
+
+Breakpoint 5, extract_insn (insn=0xb78775e8) at ../.././gcc/recog.c:2292
+   15: r24:HI=r28:HI
+$279 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877630) at ../.././gcc/recog.c:2292
+   19: r0:HI=r24:HI
+$280 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877480) at ../.././gcc/recog.c:2292
+    2: r25:HI=r2:HI
+$281 = void
+
+Breakpoint 5, extract_insn (insn=0xb78774a4) at ../.././gcc/recog.c:2292
+    3: r26:HI=r3:HI
+$282 = void
+
+Breakpoint 5, extract_insn (insn=0xb78774ec) at ../.././gcc/recog.c:2292
+    8: r22:HI=r25:HI+r26:HI
+$283 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877534) at ../.././gcc/recog.c:2292
+    9: r3:HI=r26:HI
+$284 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877558) at ../.././gcc/recog.c:2292
+   10: r2:HI=r25:HI
+$285 = void
+
+Breakpoint 5, extract_insn (insn=0xb787757c) at ../.././gcc/recog.c:2292
+   11: r27:SI=unspec[`g'] 1
+$286 = void
+
+Breakpoint 5, extract_insn (insn=0xb78d61e0) at ../.././gcc/recog.c:2292
+   12: r0:HI=call [r27:SI] argc:0
+      REG_CALL_DECL `g'
+$287 = void
+
+Breakpoint 5, extract_insn (insn=0xb78775a0) at ../.././gcc/recog.c:2292
+   13: r23:HI=r0:HI
+$288 = void
+
+Breakpoint 5, extract_insn (insn=0xb78775c4) at ../.././gcc/recog.c:2292
+   14: r28:HI=r22:HI+r23:HI
+$289 = void
+
+Breakpoint 5, extract_insn (insn=0xb78775e8) at ../.././gcc/recog.c:2292
+   15: r24:HI=r28:HI
+$290 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877630) at ../.././gcc/recog.c:2292
+   19: r0:HI=r24:HI
+$291 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877678) at ../.././gcc/recog.c:2292
+   22: r29:HI=r2:HI
+      REG_DEAD r2:HI
+$292 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877480) at ../.././gcc/recog.c:2292
+    2: r25:HI=r29:HI
+      REG_DEAD r29:HI
+$293 = void
+
+Breakpoint 5, extract_insn (insn=0xb787769c) at ../.././gcc/recog.c:2292
+   23: r30:HI=r3:HI
+      REG_DEAD r3:HI
+$294 = void
+
+Breakpoint 5, extract_insn (insn=0xb78774a4) at ../.././gcc/recog.c:2292
+    3: r26:HI=r30:HI
+      REG_DEAD r30:HI
+$295 = void
+
+Breakpoint 5, extract_insn (insn=0xb78774ec) at ../.././gcc/recog.c:2292
+    8: r22:HI=r25:HI+r26:HI
+$296 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877534) at ../.././gcc/recog.c:2292
+    9: r3:HI=r26:HI
+      REG_DEAD r26:HI
+$297 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877558) at ../.././gcc/recog.c:2292
+   10: r2:HI=r25:HI
+      REG_DEAD r25:HI
+$298 = void
+
+Breakpoint 5, extract_insn (insn=0xb787757c) at ../.././gcc/recog.c:2292
+   11: r27:SI=unspec[`g'] 1
+$299 = void
+
+Breakpoint 5, extract_insn (insn=0xb78d61e0) at ../.././gcc/recog.c:2292
+   12: r0:HI=call [r27:SI] argc:0
+      REG_DEAD r27:SI
+      REG_DEAD r3:HI
+      REG_DEAD r2:HI
+      REG_CALL_DECL `g'
+$300 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776c0) at ../.././gcc/recog.c:2292
+   24: r31:HI=r0:HI
+      REG_DEAD r0:HI
+$301 = void
+
+Breakpoint 5, extract_insn (insn=0xb78775c4) at ../.././gcc/recog.c:2292
+   14: r28:HI=r22:HI+r31:HI
+      REG_DEAD r31:HI
+      REG_DEAD r22:HI
+$302 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877630) at ../.././gcc/recog.c:2292
+   19: r0:HI=r28:HI
+      REG_DEAD r28:HI
+$303 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=r0:HI
+$304 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: r0:HI=[r0:SI+0x10000]
+$305 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=r0:SI
+$306 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: r0:SI=[r0:SI+0x10000]
+$307 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=r1:HI
+$308 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: r1:HI=[r0:SI+0x10000]
+$309 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=r1:SI
+$310 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: r1:SI=[r0:SI+0x10000]
+$311 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=r2:HI
+$312 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: r2:HI=[r0:SI+0x10000]
+$313 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=r2:SI
+$314 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: r2:SI=[r0:SI+0x10000]
+$315 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=r3:HI
+$316 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: r3:HI=[r0:SI+0x10000]
+$317 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=r3:SI
+$318 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: r3:SI=[r0:SI+0x10000]
+$319 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=r4:HI
+$320 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: r4:HI=[r0:SI+0x10000]
+$321 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=r4:SI
+$322 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: r4:SI=[r0:SI+0x10000]
+$323 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=r5:HI
+$324 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: r5:HI=[r0:SI+0x10000]
+$325 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=r5:SI
+$326 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: r5:SI=[r0:SI+0x10000]
+$327 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=r6:HI
+$328 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: r6:HI=[r0:SI+0x10000]
+$329 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=r6:SI
+$330 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: r6:SI=[r0:SI+0x10000]
+$331 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=r7:HI
+$332 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: r7:HI=[r0:SI+0x10000]
+$333 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=r7:SI
+$334 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: r7:SI=[r0:SI+0x10000]
+$335 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=r8:HI
+$336 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: r8:HI=[r0:SI+0x10000]
+$337 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=r8:SI
+$338 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: r8:SI=[r0:SI+0x10000]
+$339 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=r9:HI
+$340 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: r9:HI=[r0:SI+0x10000]
+$341 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=r9:SI
+$342 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: r9:SI=[r0:SI+0x10000]
+$343 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=r10:HI
+$344 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: r10:HI=[r0:SI+0x10000]
+$345 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=r10:SI
+$346 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: r10:SI=[r0:SI+0x10000]
+$347 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=r11:HI
+$348 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: r11:HI=[r0:SI+0x10000]
+$349 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=r12:SI
+$350 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: r12:SI=[r0:SI+0x10000]
+$351 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=r13:SI
+$352 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: r13:SI=[r0:SI+0x10000]
+$353 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=ra:SI
+$354 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: ra:SI=[r0:SI+0x10000]
+$355 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776e4) at ../.././gcc/recog.c:2292
+    0: [r0:SI+0x10000]=sp:SI
+$356 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877708) at ../.././gcc/recog.c:2292
+    0: sp:SI=[r0:SI+0x10000]
+$357 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r0:QI=r0:QI
+$358 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r1:QI=r1:QI
+$359 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r2:QI=r2:QI
+$360 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r3:QI=r3:QI
+$361 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r4:QI=r4:QI
+$362 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r5:QI=r5:QI
+$363 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r6:QI=r6:QI
+$364 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r7:QI=r7:QI
+$365 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r8:QI=r8:QI
+$366 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r9:QI=r9:QI
+$367 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r10:QI=r10:QI
+$368 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r11:QI=r11:QI
+$369 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r12:QI=r12:QI
+$370 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r13:QI=r13:QI
+$371 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: ra:QI=ra:QI
+$372 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: sp:QI=sp:QI
+$373 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r0:HI=r0:HI
+$374 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r1:HI=r1:HI
+$375 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r2:HI=r2:HI
+$376 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r3:HI=r3:HI
+$377 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r4:HI=r4:HI
+$378 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r5:HI=r5:HI
+$379 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r6:HI=r6:HI
+$380 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r7:HI=r7:HI
+$381 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r8:HI=r8:HI
+$382 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r9:HI=r9:HI
+$383 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r10:HI=r10:HI
+$384 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r11:HI=r11:HI
+$385 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r12:HI=r12:HI
+$386 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r13:HI=r13:HI
+$387 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: ra:HI=ra:HI
+$388 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: sp:HI=sp:HI
+$389 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r0:SI=r0:SI
+$390 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r1:SI=r1:SI
+$391 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r2:SI=r2:SI
+$392 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r3:SI=r3:SI
+$393 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r4:SI=r4:SI
+$394 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r5:SI=r5:SI
+$395 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r6:SI=r6:SI
+$396 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r7:SI=r7:SI
+$397 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r8:SI=r8:SI
+$398 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r9:SI=r9:SI
+$399 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r10:SI=r10:SI
+$400 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r12:SI=r12:SI
+$401 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r13:SI=r13:SI
+$402 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: ra:SI=ra:SI
+$403 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: sp:SI=sp:SI
+$404 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r0:DI=r0:DI
+$405 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r2:DI=r2:DI
+$406 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r4:DI=r4:DI
+$407 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r6:DI=r6:DI
+$408 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r8:DI=r8:DI
+$409 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r0:SF=r0:SF
+$410 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r1:SF=r1:SF
+$411 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r2:SF=r2:SF
+$412 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r3:SF=r3:SF
+$413 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r4:SF=r4:SF
+$414 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r5:SF=r5:SF
+$415 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r6:SF=r6:SF
+$416 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r7:SF=r7:SF
+$417 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r8:SF=r8:SF
+$418 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r9:SF=r9:SF
+$419 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r10:SF=r10:SF
+$420 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r12:SF=r12:SF
+$421 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r13:SF=r13:SF
+$422 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: ra:SF=ra:SF
+$423 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: sp:SF=sp:SF
+$424 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r0:DF=r0:DF
+$425 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r2:DF=r2:DF
+$426 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r4:DF=r4:DF
+$427 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r6:DF=r6:DF
+$428 = void
+
+Breakpoint 5, extract_insn (insn=0xb787772c) at ../.././gcc/recog.c:2292
+    0: r8:DF=r8:DF
+$429 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877678) at ../.././gcc/recog.c:2292
+   22: r29:HI=r2:HI
+      REG_DEAD r2:HI
+$430 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877480) at ../.././gcc/recog.c:2292
+    2: r25:HI=r29:HI
+      REG_DEAD r29:HI
+$431 = void
+
+Breakpoint 5, extract_insn (insn=0xb787769c) at ../.././gcc/recog.c:2292
+   23: r30:HI=r3:HI
+      REG_DEAD r3:HI
+$432 = void
+
+Breakpoint 5, extract_insn (insn=0xb78774a4) at ../.././gcc/recog.c:2292
+    3: r26:HI=r30:HI
+      REG_DEAD r30:HI
+$433 = void
+
+Breakpoint 5, extract_insn (insn=0xb78774ec) at ../.././gcc/recog.c:2292
+    8: r22:HI=r25:HI+r26:HI
+$434 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877534) at ../.././gcc/recog.c:2292
+    9: r3:HI=r26:HI
+      REG_DEAD r26:HI
+$435 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877558) at ../.././gcc/recog.c:2292
+   10: r2:HI=r25:HI
+      REG_DEAD r25:HI
+$436 = void
+
+Breakpoint 5, extract_insn (insn=0xb787757c) at ../.././gcc/recog.c:2292
+   11: r27:SI=unspec[`g'] 1
+      REG_EQUIV unspec[`g'] 1
+$437 = void
+
+Breakpoint 5, extract_insn (insn=0xb78d61e0) at ../.././gcc/recog.c:2292
+   12: r0:HI=call [r27:SI] argc:0
+      REG_DEAD r27:SI
+      REG_DEAD r3:HI
+      REG_DEAD r2:HI
+      REG_CALL_DECL `g'
+$438 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776c0) at ../.././gcc/recog.c:2292
+   24: r31:HI=r0:HI
+      REG_DEAD r0:HI
+$439 = void
+
+Breakpoint 5, extract_insn (insn=0xb78775c4) at ../.././gcc/recog.c:2292
+   14: r28:HI=r22:HI+r31:HI
+      REG_DEAD r31:HI
+      REG_DEAD r22:HI
+$440 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877630) at ../.././gcc/recog.c:2292
+   19: r0:HI=r28:HI
+      REG_DEAD r28:HI
+$441 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877678) at ../.././gcc/recog.c:2292
+   22: r29:HI=r2:HI
+      REG_DEAD r2:HI
+$442 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877480) at ../.././gcc/recog.c:2292
+    2: r25:HI=r29:HI
+      REG_DEAD r29:HI
+$443 = void
+
+Breakpoint 5, extract_insn (insn=0xb787769c) at ../.././gcc/recog.c:2292
+   23: r30:HI=r3:HI
+      REG_DEAD r3:HI
+$444 = void
+
+Breakpoint 5, extract_insn (insn=0xb78774a4) at ../.././gcc/recog.c:2292
+    3: r26:HI=r30:HI
+      REG_DEAD r30:HI
+$445 = void
+
+Breakpoint 5, extract_insn (insn=0xb78774ec) at ../.././gcc/recog.c:2292
+    8: r22:HI=r25:HI+r26:HI
+$446 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877534) at ../.././gcc/recog.c:2292
+    9: r3:HI=r26:HI
+      REG_DEAD r26:HI
+$447 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877558) at ../.././gcc/recog.c:2292
+   10: r2:HI=r25:HI
+      REG_DEAD r25:HI
+$448 = void
+
+Breakpoint 5, extract_insn (insn=0xb787757c) at ../.././gcc/recog.c:2292
+   11: r27:SI=unspec[`g'] 1
+      REG_EQUIV unspec[`g'] 1
+$449 = void
+
+Breakpoint 5, extract_insn (insn=0xb78d61e0) at ../.././gcc/recog.c:2292
+   12: r0:HI=call [r27:SI] argc:0
+      REG_DEAD r27:SI
+      REG_DEAD r3:HI
+      REG_DEAD r2:HI
+      REG_CALL_DECL `g'
+$450 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776c0) at ../.././gcc/recog.c:2292
+   24: r31:HI=r0:HI
+      REG_DEAD r0:HI
+$451 = void
+
+Breakpoint 5, extract_insn (insn=0xb78775c4) at ../.././gcc/recog.c:2292
+   14: r28:HI=r22:HI+r31:HI
+      REG_DEAD r31:HI
+      REG_DEAD r22:HI
+$452 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877630) at ../.././gcc/recog.c:2292
+   19: r0:HI=r28:HI
+      REG_DEAD r28:HI
+$453 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877678) at ../.././gcc/recog.c:2292
+   22: r29:HI=r2:HI
+      REG_DEAD r2:HI
+$454 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877480) at ../.././gcc/recog.c:2292
+    2: r25:HI=r29:HI
+      REG_DEAD r29:HI
+$455 = void
+
+Breakpoint 5, extract_insn (insn=0xb787769c) at ../.././gcc/recog.c:2292
+   23: r30:HI=r3:HI
+      REG_DEAD r3:HI
+$456 = void
+
+Breakpoint 5, extract_insn (insn=0xb78774a4) at ../.././gcc/recog.c:2292
+    3: r26:HI=r30:HI
+      REG_DEAD r30:HI
+$457 = void
+
+Breakpoint 5, extract_insn (insn=0xb78774ec) at ../.././gcc/recog.c:2292
+    8: r22:HI=r25:HI+r26:HI
+$458 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877534) at ../.././gcc/recog.c:2292
+    9: r3:HI=r26:HI
+      REG_DEAD r26:HI
+$459 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877558) at ../.././gcc/recog.c:2292
+   10: r2:HI=r25:HI
+      REG_DEAD r25:HI
+$460 = void
+
+Breakpoint 5, extract_insn (insn=0xb787757c) at ../.././gcc/recog.c:2292
+   11: r27:SI=unspec[`g'] 1
+      REG_EQUIV unspec[`g'] 1
+$461 = void
+
+Breakpoint 5, extract_insn (insn=0xb78d61e0) at ../.././gcc/recog.c:2292
+   12: r0:HI=call [r27:SI] argc:0
+      REG_DEAD r27:SI
+      REG_DEAD r3:HI
+      REG_DEAD r2:HI
+      REG_CALL_DECL `g'
+$462 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776c0) at ../.././gcc/recog.c:2292
+   24: r31:HI=r0:HI
+      REG_DEAD r0:HI
+$463 = void
+
+Breakpoint 5, extract_insn (insn=0xb78775c4) at ../.././gcc/recog.c:2292
+   14: r28:HI=r22:HI+r31:HI
+      REG_DEAD r31:HI
+      REG_DEAD r22:HI
+$464 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877630) at ../.././gcc/recog.c:2292
+   19: r0:HI=r28:HI
+      REG_DEAD r28:HI
+$465 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877630) at ../.././gcc/recog.c:2292
+   19: r0:HI=r28:HI
+      REG_DEAD r28:HI
+$466 = void
+
+Breakpoint 5, extract_insn (insn=0xb78775c4) at ../.././gcc/recog.c:2292
+   14: r28:HI=r22:HI+r31:HI
+      REG_DEAD r31:HI
+      REG_DEAD r22:HI
+$467 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776c0) at ../.././gcc/recog.c:2292
+   24: r31:HI=r0:HI
+      REG_DEAD r0:HI
+$468 = void
+
+Breakpoint 5, extract_insn (insn=0xb78d61e0) at ../.././gcc/recog.c:2292
+   12: r0:HI=call [r27:SI] argc:0
+      REG_DEAD r27:SI
+      REG_DEAD r3:HI
+      REG_DEAD r2:HI
+      REG_CALL_DECL `g'
+$469 = void
+
+Breakpoint 5, extract_insn (insn=0xb787757c) at ../.././gcc/recog.c:2292
+   11: r27:SI=unspec[`g'] 1
+      REG_EQUIV unspec[`g'] 1
+$470 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877558) at ../.././gcc/recog.c:2292
+   10: r2:HI=r25:HI
+      REG_DEAD r25:HI
+$471 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877534) at ../.././gcc/recog.c:2292
+    9: r3:HI=r26:HI
+      REG_DEAD r26:HI
+$472 = void
+
+Breakpoint 5, extract_insn (insn=0xb78774ec) at ../.././gcc/recog.c:2292
+    8: r22:HI=r25:HI+r26:HI
+$473 = void
+
+Breakpoint 5, extract_insn (insn=0xb78774a4) at ../.././gcc/recog.c:2292
+    3: r26:HI=r30:HI
+      REG_DEAD r30:HI
+$474 = void
+
+Breakpoint 5, extract_insn (insn=0xb787769c) at ../.././gcc/recog.c:2292
+   23: r30:HI=r3:HI
+      REG_DEAD r3:HI
+$475 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877480) at ../.././gcc/recog.c:2292
+    2: r25:HI=r29:HI
+      REG_DEAD r29:HI
+$476 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877678) at ../.././gcc/recog.c:2292
+   22: r29:HI=r2:HI
+      REG_DEAD r2:HI
+$477 = void
+
+Breakpoint 5, extract_insn (insn=0xb78d61e0) at ../.././gcc/recog.c:2292
+   12: r0:HI=call [r27:SI] argc:0
+      REG_DEAD r27:SI
+      REG_DEAD r3:HI
+      REG_DEAD r2:HI
+      REG_CALL_DECL `g'
+$478 = void
+
+Breakpoint 5, extract_insn (insn=0xb78775c4) at ../.././gcc/recog.c:2292
+   14: r28:HI=r22:HI+r31:HI
+      REG_DEAD r31:HI
+      REG_DEAD r22:HI
+$479 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877678) at ../.././gcc/recog.c:2292
+   22: r29:HI=r2:HI
+      REG_DEAD r2:HI
+$480 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877678) at ../.././gcc/recog.c:2292
+   22: r29:HI=r2:HI
+      REG_DEAD r2:HI
+$481 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877480) at ../.././gcc/recog.c:2292
+    2: r2:HI=r29:HI
+      REG_DEAD r29:HI
+$482 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877480) at ../.././gcc/recog.c:2292
+    2: r2:HI=r29:HI
+      REG_DEAD r29:HI
+$483 = void
+
+Breakpoint 5, extract_insn (insn=0xb787769c) at ../.././gcc/recog.c:2292
+   23: r30:HI=r3:HI
+      REG_DEAD r3:HI
+$484 = void
+
+Breakpoint 5, extract_insn (insn=0xb787769c) at ../.././gcc/recog.c:2292
+   23: r30:HI=r3:HI
+      REG_DEAD r3:HI
+$485 = void
+
+Breakpoint 5, extract_insn (insn=0xb78774a4) at ../.././gcc/recog.c:2292
+    3: r3:HI=r30:HI
+      REG_DEAD r30:HI
+$486 = void
+
+Breakpoint 5, extract_insn (insn=0xb78774a4) at ../.././gcc/recog.c:2292
+    3: r3:HI=r30:HI
+      REG_DEAD r30:HI
+$487 = void
+
+Breakpoint 5, extract_insn (insn=0xb78774ec) at ../.././gcc/recog.c:2292
+    8: r7:HI=r2:HI+r3:HI
+$488 = void
+
+Breakpoint 5, extract_insn (insn=0xb78774ec) at ../.././gcc/recog.c:2292
+    8: r7:HI=r2:HI+r3:HI
+$489 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877534) at ../.././gcc/recog.c:2292
+    9: r3:HI=r3:HI
+      REG_DEAD r3:HI
+$490 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877534) at ../.././gcc/recog.c:2292
+    9: r3:HI=r3:HI
+      REG_DEAD r3:HI
+$491 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877558) at ../.././gcc/recog.c:2292
+   10: r2:HI=r2:HI
+      REG_DEAD r2:HI
+$492 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877558) at ../.././gcc/recog.c:2292
+   10: r2:HI=r2:HI
+      REG_DEAD r2:HI
+$493 = void
+
+Breakpoint 5, extract_insn (insn=0xb787757c) at ../.././gcc/recog.c:2292
+   11: r0:SI=unspec[`g'] 1
+      REG_EQUIV unspec[`g'] 1
+$494 = void
+
+Breakpoint 5, extract_insn (insn=0xb787757c) at ../.././gcc/recog.c:2292
+   11: r0:SI=unspec[`g'] 1
+      REG_EQUIV unspec[`g'] 1
+$495 = void
+
+Breakpoint 5, extract_insn (insn=0xb78d61e0) at ../.././gcc/recog.c:2292
+   12: r0:HI=call [r0:SI] argc:0
+      REG_DEAD r0:SI
+      REG_DEAD r3:HI
+      REG_DEAD r2:HI
+      REG_CALL_DECL `g'
+$496 = void
+
+Breakpoint 5, extract_insn (insn=0xb78d61e0) at ../.././gcc/recog.c:2292
+   12: r0:HI=call [r0:SI] argc:0
+      REG_DEAD r0:SI
+      REG_DEAD r3:HI
+      REG_DEAD r2:HI
+      REG_CALL_DECL `g'
+$497 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776c0) at ../.././gcc/recog.c:2292
+   24: r0:HI=r0:HI
+      REG_DEAD r0:HI
+$498 = void
+
+Breakpoint 5, extract_insn (insn=0xb78776c0) at ../.././gcc/recog.c:2292
+   24: r0:HI=r0:HI
+      REG_DEAD r0:HI
+$499 = void
+
+Breakpoint 5, extract_insn (insn=0xb78775c4) at ../.././gcc/recog.c:2292
+   14: r0:HI=r7:HI+r0:HI
+      REG_DEAD r0:HI
+      REG_DEAD r7:HI
+$500 = void
+
+Breakpoint 5, extract_insn (insn=0xb78775c4) at ../.././gcc/recog.c:2292
+   14: r0:HI=r7:HI+r0:HI
+      REG_DEAD r0:HI
+      REG_DEAD r7:HI
+$501 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877630) at ../.././gcc/recog.c:2292
+   19: r0:HI=r0:HI
+      REG_DEAD r0:HI
+$502 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877630) at ../.././gcc/recog.c:2292
+   19: r0:HI=r0:HI
+      REG_DEAD r0:HI
+$503 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877678) at ../.././gcc/recog.c:2292
+   22: r29:HI=r2:HI
+      REG_DEAD r2:HI
+$504 = void
+
+Breakpoint 5, extract_insn (insn=0xb787769c) at ../.././gcc/recog.c:2292
+   23: r30:HI=r3:HI
+      REG_DEAD r3:HI
+$505 = void
+
+Breakpoint 5, extract_insn (insn=0xb78774ec) at ../.././gcc/recog.c:2292
+    8: r7:HI=r2:HI+r3:HI
+$506 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877678) at ../.././gcc/recog.c:2292
+   22: [sp:SI]=r2:HI
+$507 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877480) at ../.././gcc/recog.c:2292
+    2: r2:HI=[sp:SI]
+$508 = void
+
+Breakpoint 5, extract_insn (insn=0xb787769c) at ../.././gcc/recog.c:2292
+   23: [sp:SI]=r3:HI
+$509 = void
+
+Breakpoint 5, extract_insn (insn=0xb78774a4) at ../.././gcc/recog.c:2292
+    3: r3:HI=[sp:SI]
+$510 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877750) at ../.././gcc/recog.c:2292
+   27: r7:HI=r2:HI
+$511 = void
+
+Breakpoint 5, extract_insn (insn=0xb78774ec) at ../.././gcc/recog.c:2292
+    8: r7:HI=r7:HI+r3:HI
+$512 = void
+
+Breakpoint 5, extract_insn (insn=0xb787757c) at ../.././gcc/recog.c:2292
+   11: r0:SI=unspec[`g'] 1
+      REG_EQUIV unspec[`g'] 1
+$513 = void
+
+Breakpoint 5, extract_insn (insn=0xb78d61e0) at ../.././gcc/recog.c:2292
+   12: r0:HI=call [r0:SI] argc:0
+      REG_CALL_DECL `g'
+$514 = void
+
+Breakpoint 5, extract_insn (insn=0xb78775c4) at ../.././gcc/recog.c:2292
+   14: r0:HI=r0:HI+r7:HI
+$515 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877678) at ../.././gcc/recog.c:2292
+   22: [sp:SI]=r2:HI
+$516 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877480) at ../.././gcc/recog.c:2292
+    2: r2:HI=[sp:SI]
+$517 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877480) at ../.././gcc/recog.c:2292
+    2: r2:HI=r2:HI
+$518 = void
+
+Breakpoint 5, extract_insn (insn=0xb787769c) at ../.././gcc/recog.c:2292
+   23: [sp:SI]=r3:HI
+$519 = void
+
+Breakpoint 5, extract_insn (insn=0xb78774a4) at ../.././gcc/recog.c:2292
+    3: r3:HI=[sp:SI]
+$520 = void
+
+Breakpoint 5, extract_insn (insn=0xb78774a4) at ../.././gcc/recog.c:2292
+    3: r3:HI=r3:HI
+$521 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877750) at ../.././gcc/recog.c:2292
+   27: r7:HI=r2:HI
+$522 = void
+
+Breakpoint 5, extract_insn (insn=0xb78774ec) at ../.././gcc/recog.c:2292
+    8: r7:HI=r7:HI+r3:HI
+$523 = void
+
+Breakpoint 5, extract_insn (insn=0xb787757c) at ../.././gcc/recog.c:2292
+   11: r0:SI=unspec[`g'] 1
+      REG_EQUIV unspec[`g'] 1
+$524 = void
+
+Breakpoint 5, extract_insn (insn=0xb78775c4) at ../.././gcc/recog.c:2292
+   14: r0:HI=r0:HI+r7:HI
+$525 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877678) at ../.././gcc/recog.c:2292
+   22: [sp:SI]=r2:HI
+$526 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877480) at ../.././gcc/recog.c:2292
+    2: r2:HI=r2:HI
+$527 = void
+
+Breakpoint 5, extract_insn (insn=0xb787769c) at ../.././gcc/recog.c:2292
+   23: [sp:SI]=r3:HI
+$528 = void
+
+Breakpoint 5, extract_insn (insn=0xb78774a4) at ../.././gcc/recog.c:2292
+    3: r3:HI=r3:HI
+$529 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877750) at ../.././gcc/recog.c:2292
+   27: r7:HI=r2:HI
+$530 = void
+
+Breakpoint 5, extract_insn (insn=0xb78774ec) at ../.././gcc/recog.c:2292
+    8: r7:HI=r7:HI+r3:HI
+$531 = void
+
+Breakpoint 5, extract_insn (insn=0xb787757c) at ../.././gcc/recog.c:2292
+   11: r0:SI=unspec[`g'] 1
+      REG_EQUIV unspec[`g'] 1
+$532 = void
+
+Breakpoint 5, extract_insn (insn=0xb78775c4) at ../.././gcc/recog.c:2292
+   14: r0:HI=r0:HI+r7:HI
+$533 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877774) at ../.././gcc/recog.c:2292
+   28: sp:SI=sp:SI-0x6
+      REG_FRAME_RELATED_EXPR sequence{sp:SI=sp:SI-0x6;[sp:SI]=r7:HI;[sp:SI+0x2]=ra:SI;}
+$534 = void
+
+Breakpoint 5, extract_insn (insn=0xb7877798) at ../.././gcc/recog.c:2292
+   29: sp:SI=sp:SI+0xfffffffc
+$535 = void
+
+Breakpoint 4, extract_insn (insn=0xb7877798) at ../.././gcc/recog.c:2294
+(gdb)
+
+これは, 思いの他たくさんきている.
+気になるのはエラーしている
+
+sp:SI=sp:SI+0xfffffffc
+
+の前は
+
+sp:SI=sp:SI-0x6
+
+でこっちはエラーしていないということ.
+
+まずは recog.o を -g3 でビルドし直して libbackend.a を作り直し, cc1 をリンクし
+直せるように簡単なスクリプトを作成した. make cc1 とかやっても期待した
+ようにはならない.
+
+例えば, 最初に
+
+
+      icode = recog_memoized (insn);   (*A)
+      if (icode < 0)
+	fatal_insn_not_found (insn);
+
+(*A) で停止したとき, inline 函数 recog_memoized は以下だが
+
+static inline int
+recog_memoized (rtx_insn *insn)
+{
+  if (INSN_CODE (insn) < 0)
+    INSN_CODE (insn) = recog (PATTERN (insn), insn, 0);
+  return INSN_CODE (insn);
+}
+
+(gdb) p debug_insn_slim(insn)
+    2: r25:HI=r2:HI
+
+であり
+
+(gdb) p INSN_CODE (insn)
+$539 = -1
+(gdb) n
+(gdb) n
+(gdb) p INSN_CODE (insn)
+$540 = 70
+
+のような動作になっている. つまり, 最初は INSN_CODE(insn) は -1 なのだが
+
+INSN_CODE (insn) = recog (PATTERN (insn), insn, 0);
+
+とすることでこれが「検索済み」のような状態になるというわけだ.
+ちなみにこの PATTERN はマクロではなくて inline 函数.
+
+そして recog にステップインすると
+
+gcc-10.2.0.cr16-elf/gcc/config/cr16/cr16.md
+
+の Lisp っぽい函数の中に入っていく.
+
+このときの呼び出し履歴は一応
+where
+#0  recog (x1=0xb78fb850, insn=0xb7877480, pnum_clobbers=0x0) at ../.././gcc/config/cr16/cr16.md:872
+#1  0x086072a4 in recog_memoized (insn=0xb7877480) at ../.././gcc/recog.h:167
+#2  0x0860b4d2 in extract_insn (insn=0xb7877480) at ../.././gcc/recog.c:2292
+
+のようになっている. 表示されたソースは以下:
+
+(define_insn "interrupt_return"
+  [(unspec_volatile [(const_int 0)] 0)
+   (return)]
+  ""
+  {
+    return cr16_prepare_push_pop_string (1);
+  }
+  [(set_attr "length" "14")]
+)
+
+このいわゆるコンパイラ記述言語ファイル cr16.md だがビルドの過程でどの
+ように使用されている
+か調べてみた.
+cr16.md を touch して make -n を実行したところ以下のようになった:
+
+
+build/genmddeps ../.././gcc/common.md ../.././gcc/config/cr16/cr16.md > tmp-mddeps
+/bin/sh ../.././gcc/../move-if-change tmp-mddeps mddeps.mk
+echo timestamp > s-mddeps
+true
+build/gengtype  \
+                    -S ../.././gcc -I gtyp-input.list -w tmp-gtype.state
+/bin/sh ../.././gcc/../move-if-change tmp-gtype.state gtype.state
+build/gengtype  \
+                    -r gtype.state
+echo timestamp > s-gtype
+true
+build/genconstants ../.././gcc/common.md ../.././gcc/config/cr16/cr16.md \
+   > tmp-constants.h
+/bin/sh ../.././gcc/../move-if-change tmp-constants.h insn-constants.h
+echo timestamp > s-constants
+true
+g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/genpreds.o ../.././gcc/genpreds.c
+g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/rtl.o ../.././gcc/rtl.c
+...
+
+つまり insn-constants.h を生成しているらしい. と思ったが, insn-constants.h はシンプルな
+もの. 
+
+cr16.md から tmp-mddeps を生成しているっぽい. そしてそれは mddeps.mk におそらく mv され
+ている. mddeps.mk もそれほど複雑なものではない.
+
+s-gtype が生成されている. これも中は "timestamp" という文字列のみ.
+
+ということは, cr16.md がどこかのファイルで include されている可能性は高い.
+
+上の make -n の結果 g++ を起動する前までは大したことはやっていない.
+cr16.md に recog の函数定義があるのだろうが, これをコンパイラ記述言語ではなく
+C や C++ のレベルもしくはアセンブラのレベルで見ることができないか調べ
+てみる.
+
+recog にステップインした状態で逆アセンブルしてみた:
+
+(gdb) disassemble
+Dump of assembler code for function _Z5recogP7rtx_defP8rtx_insnPi:
+=> 0x08af3fd0 <+0>:	push   %ebp
+   0x08af3fd1 <+1>:	push   %edi
+   0x08af3fd2 <+2>:	push   %esi
+   0x08af3fd3 <+3>:	push   %ebx
+   0x08af3fd4 <+4>:	sub    $0xc,%esp
+   0x08af3fd7 <+7>:	movl   $0x0,0x91ef264
+   0x08af3fe1 <+17>:	mov    0x20(%esp),%ebx
+   0x08af3fe5 <+21>:	movzwl (%ebx),%eax
+   0x08af3fe8 <+24>:	cmp    $0x19,%ax
+   0x08af3fec <+28>:	je     0x8af4010 <_Z5recogP7rtx_defP8rtx_insnPi+64>
+   0x08af3fee <+30>:	cmp    $0x21,%ax
+   0x08af3ff2 <+34>:	je     0x8af4108 <_Z5recogP7rtx_defP8rtx_insnPi+312>
+   0x08af3ff8 <+40>:	cmp    $0x11,%ax
+   0x08af3ffc <+44>:	je     0x8af4030 <_Z5recogP7rtx_defP8rtx_insnPi+96>
+   0x08af3ffe <+46>:	mov    $0xffffffff,%esi
+   0x08af4003 <+51>:	add    $0xc,%esp
+   0x08af4006 <+54>:	mov    %esi,%eax
+   0x08af4008 <+56>:	pop    %ebx
+   0x08af4009 <+57>:	pop    %esi
+   0x08af400a <+58>:	pop    %edi
+   0x08af400b <+59>:	pop    %ebp
+   0x08af400c <+60>:	ret    
+   0x08af400d <+61>:	lea    0x0(%esi),%esi
+   0x08af4010 <+64>:	mov    0xc(%ebx),%edi
+   0x08af4013 <+67>:	movzwl (%edi),%edx
+   0x08af4016 <+70>:	lea    -0x14(%edx),%eax
+   0x08af4019 <+73>:	cmp    $0x6b,%ax
+   0x08af401d <+77>:	ja     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af401f <+79>:	movzwl %ax,%eax
+   0x08af4022 <+82>:	jmp    *0x8d9a740(,%eax,4)
+   0x08af4029 <+89>:	lea    0x0(%esi,%eiz,1),%esi
+   0x08af4030 <+96>:	mov    0x8(%ebx),%eax
+   0x08af4033 <+99>:	mov    (%eax),%edx
+   0x08af4035 <+101>:	cmp    $0x2,%edx
+   0x08af4038 <+104>:	je     0x8af4128 <_Z5recogP7rtx_defP8rtx_insnPi+344>
+   0x08af403e <+110>:	cmp    $0x3,%edx
+   0x08af4041 <+113>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4043 <+115>:	mov    0x4(%eax),%ecx
+   0x08af4046 <+118>:	cmpw   $0x19,(%ecx)
+   0x08af404a <+122>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af404c <+124>:	mov    0xc(%ecx),%ebx
+   0x08af404f <+127>:	mov    (%ebx),%edx
+   0x08af4051 <+129>:	and    $0xffffff,%edx
+   0x08af4057 <+135>:	cmp    $0x60036,%edx
+   0x08af405d <+141>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af405f <+143>:	mov    0x8(%ebx),%edx
+   0x08af4062 <+146>:	cmpw   $0x2a,(%edx)
+   0x08af4066 <+150>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4068 <+152>:	cmpl   $0xf,0x8(%edx)
+   0x08af406c <+156>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af406e <+158>:	cmpb   $0x6,0x2(%edx)
+   0x08af4072 <+162>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4074 <+164>:	mov    0x8(%ecx),%edx
+   0x08af4077 <+167>:	cmpw   $0x2a,(%edx)
+   0x08af407b <+171>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af407d <+173>:	cmpl   $0xf,0x8(%edx)
+   0x08af4081 <+177>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4087 <+183>:	cmpb   $0x6,0x2(%edx)
+   0x08af408b <+187>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4091 <+193>:	mov    0x8(%eax),%edx
+   0x08af4094 <+196>:	cmpw   $0x1a,(%edx)
+   0x08af4098 <+200>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af409e <+206>:	mov    0x8(%edx),%edx
+   0x08af40a1 <+209>:	cmpw   $0x2a,(%edx)
+   0x08af40a5 <+213>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af40ab <+219>:	cmpl   $0xe,0x8(%edx)
+   0x08af40af <+223>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af40b5 <+229>:	cmpb   $0x6,0x2(%edx)
+   0x08af40b9 <+233>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af40bf <+239>:	mov    0xc(%eax),%eax
+   0x08af40c2 <+242>:	cmpw   $0x1d,(%eax)
+   0x08af40c6 <+246>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af40cc <+252>:	mov    0xc(%ebx),%eax
+   0x08af40cf <+255>:	sub    $0x8,%esp
+   0x08af40d2 <+258>:	push   $0x6
+   0x08af40d4 <+260>:	push   %eax
+   0x08af40d5 <+261>:	mov    %eax,0x91eefe0
+   0x08af40da <+266>:	call   0x860958d <_Z17immediate_operandP7rtx_def12machine_mode>
+   0x08af40df <+271>:	add    $0x10,%esp
+   0x08af40e2 <+274>:	test   %eax,%eax
+   0x08af40e4 <+276>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af40ea <+282>:	mov    0x91ef270,%edi
+   0x08af40f0 <+288>:	test   %edi,%edi
+   0x08af40f2 <+290>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af40f8 <+296>:	mov    $0x2,%esi
+   0x08af40fd <+301>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4102 <+306>:	lea    0x0(%esi),%esi
+   0x08af4108 <+312>:	mov    0xc(%ebx),%eax
+   0x08af410b <+315>:	or     0x8(%ebx),%eax
+   0x08af410e <+318>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4114 <+324>:	add    $0xc,%esp
+   0x08af4117 <+327>:	mov    $0x5b,%esi
+   0x08af411c <+332>:	pop    %ebx
+   0x08af411d <+333>:	mov    %esi,%eax
+   0x08af411f <+335>:	pop    %esi
+   0x08af4120 <+336>:	pop    %edi
+   0x08af4121 <+337>:	pop    %ebp
+   0x08af4122 <+338>:	ret    
+   0x08af4123 <+339>:	lea    0x0(%esi,%eiz,1),%esi
+   0x08af4127 <+343>:	nop
+   0x08af4128 <+344>:	mov    0x4(%eax),%esi
+   0x08af412b <+347>:	movzwl (%esi),%ecx
+   0x08af412e <+350>:	lea    -0x14(%ecx),%edx
+   0x08af4131 <+353>:	cmp    $0x8,%dx
+   0x08af4135 <+357>:	ja     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af413b <+363>:	movzwl %dx,%edx
+   0x08af413e <+366>:	jmp    *0x8d9a8f0(,%edx,4)
+   0x08af4145 <+373>:	lea    0x0(%esi),%esi
+   0x08af4148 <+376>:	sub    $0x21,%edx
+   0x08af414b <+379>:	mov    0x8(%ebx),%esi
+   0x08af414e <+382>:	cmp    $0x11,%dx
+   0x08af4152 <+386>:	ja     0x8af4447 <_Z5recogP7rtx_defP8rtx_insnPi+1143>
+   0x08af4158 <+392>:	movzwl %dx,%edx
+   0x08af415b <+395>:	jmp    *0x8d9a914(,%edx,4)
+   0x08af4162 <+402>:	lea    0x0(%esi),%esi
+   0x08af4168 <+408>:	sub    $0x8,%esp
+   0x08af416b <+411>:	mov    %edi,0x91eefe4
+   0x08af4171 <+417>:	push   $0x5
+   0x08af4173 <+419>:	push   %edi
+   0x08af4174 <+420>:	call   0x8609cda <_Z27ordered_comparison_operatorP7rtx_def12machine_mode>
+   0x08af4179 <+425>:	add    $0x10,%esp
+   0x08af417c <+428>:	test   %eax,%eax
+   0x08af417e <+430>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4184 <+436>:	mov    0x8(%edi),%eax
+   0x08af4187 <+439>:	cmpw   $0x33,(%eax)
+   0x08af418b <+443>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4191 <+449>:	mov    0x91de180,%eax
+   0x08af4196 <+454>:	cmp    %eax,0xc(%edi)
+   0x08af4199 <+457>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af419f <+463>:	mov    0x8(%ebx),%eax
+   0x08af41a2 <+466>:	sub    $0x8,%esp
+   0x08af41a5 <+469>:	push   $0x5
+   0x08af41a7 <+471>:	push   %eax
+   0x08af41a8 <+472>:	mov    %eax,0x91eefe0
+   0x08af41ad <+477>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af41b2 <+482>:	add    $0x10,%esp
+   0x08af41b5 <+485>:	test   %eax,%eax
+   0x08af41b7 <+487>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af41bd <+493>:	mov    $0x4d,%esi
+   0x08af41c2 <+498>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af41c7 <+503>:	mov    0x8(%esi),%ecx
+   0x08af41ca <+506>:	mov    (%ecx),%edx
+   0x08af41cc <+508>:	and    $0xffffff,%edx
+   0x08af41d2 <+514>:	cmp    $0x40030,%edx
+   0x08af41d8 <+520>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af41de <+526>:	mov    0x8(%eax),%eax
+   0x08af41e1 <+529>:	cmpw   $0x1b,(%eax)
+   0x08af41e5 <+533>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af41eb <+539>:	mov    0x8(%ecx),%edx
+   0x08af41ee <+542>:	mov    0x8(%eax),%eax
+   0x08af41f1 <+545>:	sub    $0x8,%esp
+   0x08af41f4 <+548>:	mov    %edx,0x91eefe0
+   0x08af41fa <+554>:	mov    0xc(%esi),%edx
+   0x08af41fd <+557>:	push   $0x6
+   0x08af41ff <+559>:	push   %eax
+   0x08af4200 <+560>:	mov    %edx,0x91eefe4
+   0x08af4206 <+566>:	mov    %eax,0x91eefe8
+   0x08af420b <+571>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af4210 <+576>:	add    $0x10,%esp
+   0x08af4213 <+579>:	test   %eax,%eax
+   0x08af4215 <+581>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af421b <+587>:	mov    0x91eefe0,%edx
+   0x08af4221 <+593>:	movzwl (%edx),%eax
+   0x08af4224 <+596>:	cmp    $0x32,%ax
+   0x08af4228 <+600>:	ja     0x8af43d7 <_Z5recogP7rtx_defP8rtx_insnPi+1031>
+   0x08af422e <+606>:	cmp    $0x20,%ax
+   0x08af4232 <+610>:	jbe    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4238 <+616>:	sub    $0x21,%eax
+   0x08af423b <+619>:	cmp    $0x11,%ax
+   0x08af423f <+623>:	ja     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4245 <+629>:	movzwl %ax,%eax
+   0x08af4248 <+632>:	jmp    *0x8d9a95c(,%eax,4)
+   0x08af424f <+639>:	mov    0x8(%esi),%edx
+   0x08af4252 <+642>:	cmpw   $0x2a,(%edx)
+   0x08af4256 <+646>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af425c <+652>:	cmpl   $0xe,0x8(%edx)
+   0x08af4260 <+656>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4266 <+662>:	cmpb   $0x6,0x2(%edx)
+   0x08af426a <+666>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4270 <+672>:	mov    0x8(%eax),%eax
+   0x08af4273 <+675>:	cmpw   $0x1d,(%eax)
+   0x08af4277 <+679>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af427d <+685>:	mov    0x91ef270,%esi
+   0x08af4283 <+691>:	test   %esi,%esi
+   0x08af4285 <+693>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af428b <+699>:	mov    $0x3,%esi
+   0x08af4290 <+704>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4295 <+709>:	mov    0xc(%esi),%edi
+   0x08af4298 <+712>:	movzwl (%edi),%edx
+   0x08af429b <+715>:	cmp    $0x2c,%dx
+   0x08af429f <+719>:	je     0x8af57f5 <_Z5recogP7rtx_defP8rtx_insnPi+6181>
+   0x08af42a5 <+725>:	ja     0x8af500d <_Z5recogP7rtx_defP8rtx_insnPi+4157>
+   0x08af42ab <+731>:	cmp    $0x1c,%dx
+   0x08af42af <+735>:	jne    0x8af4f8e <_Z5recogP7rtx_defP8rtx_insnPi+4030>
+   0x08af42b5 <+741>:	mov    0x8(%edi),%ecx
+   0x08af42b8 <+744>:	mov    (%ecx),%edx
+   0x08af42ba <+746>:	and    $0xffffff,%edx
+   0x08af42c0 <+752>:	cmp    $0x40030,%edx
+   0x08af42c6 <+758>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af42cc <+764>:	mov    0x8(%eax),%eax
+   0x08af42cf <+767>:	cmpw   $0x1b,(%eax)
+   0x08af42d3 <+771>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af42d9 <+777>:	mov    0x8(%esi),%edx
+   0x08af42dc <+780>:	sub    $0x8,%esp
+   0x08af42df <+783>:	mov    %edx,0x91eefe0
+   0x08af42e5 <+789>:	mov    0x8(%ecx),%edx
+   0x08af42e8 <+792>:	mov    %edx,0x91eefe4
+   0x08af42ee <+798>:	mov    0xc(%edi),%edx
+   0x08af42f1 <+801>:	mov    %edx,0x91eefe8
+   0x08af42f7 <+807>:	mov    0x8(%eax),%eax
+   0x08af42fa <+810>:	push   $0x6
+   0x08af42fc <+812>:	push   %eax
+   0x08af42fd <+813>:	mov    %eax,0x91eefec
+   0x08af4302 <+818>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af4307 <+823>:	add    $0x10,%esp
+   0x08af430a <+826>:	test   %eax,%eax
+   0x08af430c <+828>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4312 <+834>:	mov    0x91eefe4,%edx
+   0x08af4318 <+840>:	movzwl (%edx),%eax
+   0x08af431b <+843>:	cmp    $0x32,%ax
+   0x08af431f <+847>:	ja     0x8af4b49 <_Z5recogP7rtx_defP8rtx_insnPi+2937>
+   0x08af4325 <+853>:	cmp    $0x20,%ax
+   0x08af4329 <+857>:	jbe    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af432f <+863>:	sub    $0x21,%eax
+   0x08af4332 <+866>:	cmp    $0x11,%ax
+   0x08af4336 <+870>:	ja     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af433c <+876>:	movzwl %ax,%eax
+   0x08af433f <+879>:	jmp    *0x8d9a9a4(,%eax,4)
+   0x08af4346 <+886>:	mov    0x8(%esi),%edx
+   0x08af4349 <+889>:	cmpl   $0x1,(%edx)
+   0x08af434c <+892>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4352 <+898>:	mov    0xc(%esi),%ecx
+   0x08af4355 <+901>:	test   %ecx,%ecx
+   0x08af4357 <+903>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af435d <+909>:	mov    0x4(%edx),%ecx
+   0x08af4360 <+912>:	cmp    %ecx,0x91de180
+   0x08af4366 <+918>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af436c <+924>:	mov    0x8(%eax),%eax
+   0x08af436f <+927>:	cmpw   $0x1d,(%eax)
+   0x08af4373 <+931>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4379 <+937>:	mov    $0x51,%esi
+   0x08af437e <+942>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4383 <+947>:	mov    0x8(%esi),%edx
+   0x08af4386 <+950>:	cmpl   $0x1,(%edx)
+   0x08af4389 <+953>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af438f <+959>:	cmpl   $0x5,0xc(%esi)
+   0x08af4393 <+963>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4399 <+969>:	cmpb   $0x6,0x2(%esi)
+   0x08af439d <+973>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af43a3 <+979>:	mov    0x4(%edx),%ecx
+   0x08af43a6 <+982>:	cmp    %ecx,0x91de180
+   0x08af43ac <+988>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af43b2 <+994>:	mov    0x8(%eax),%eax
+   0x08af43b5 <+997>:	cmpw   $0x1d,(%eax)
+   0x08af43b9 <+1001>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af43bf <+1007>:	mov    0x91ef270,%ebx
+   0x08af43c5 <+1013>:	test   %ebx,%ebx
+   0x08af43c7 <+1015>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af43cd <+1021>:	mov    $0x4f,%esi
+   0x08af43d2 <+1026>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af43d7 <+1031>:	cmp    $0x7f,%ax
+   0x08af43db <+1035>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af43e1 <+1041>:	sub    $0x8,%esp
+   0x08af43e4 <+1044>:	push   $0x6
+   0x08af43e6 <+1046>:	push   %edx
+   0x08af43e7 <+1047>:	call   0x8af3430 <_Z16call_imm_operandP7rtx_def12machine_mode>
+   0x08af43ec <+1052>:	add    $0x10,%esp
+   0x08af43ef <+1055>:	test   %eax,%eax
+   0x08af43f1 <+1057>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af43f7 <+1063>:	mov    0x9206ac4,%eax
+   0x08af43fc <+1068>:	cmp    $0x2,%eax
+   0x08af43ff <+1071>:	je     0x8af55ac <_Z5recogP7rtx_defP8rtx_insnPi+5596>
+   0x08af4405 <+1077>:	cmp    $0x1,%eax
+   0x08af4408 <+1080>:	ja     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af440e <+1086>:	mov    $0x56,%esi
+   0x08af4413 <+1091>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4418 <+1096>:	cmpw   $0x7e,(%esi)
+   0x08af441c <+1100>:	je     0x8af544b <_Z5recogP7rtx_defP8rtx_insnPi+5243>
+   0x08af4422 <+1106>:	sub    $0x8,%esp
+   0x08af4425 <+1109>:	mov    %edi,0x91eefe0
+   0x08af442b <+1115>:	push   $0x0
+   0x08af442d <+1117>:	push   %edi
+   0x08af442e <+1118>:	call   0x8af3400 <_Z16jump_imm_operandP7rtx_def12machine_mode>
+   0x08af4433 <+1123>:	add    $0x10,%esp
+   0x08af4436 <+1126>:	test   %eax,%eax
+   0x08af4438 <+1128>:	je     0x8af4444 <_Z5recogP7rtx_defP8rtx_insnPi+1140>
+   0x08af443a <+1130>:	cmpw   $0x29,(%esi)
+   0x08af443e <+1134>:	je     0x8af570d <_Z5recogP7rtx_defP8rtx_insnPi+5949>
+   0x08af4444 <+1140>:	mov    0x8(%ebx),%esi
+   0x08af4447 <+1143>:	mov    %edi,0x91eefe4
+   0x08af444d <+1149>:	mov    %esi,0x91eefe0
+   0x08af4453 <+1155>:	movzbl 0x2(%esi),%eax
+   0x08af4457 <+1159>:	sub    $0x4,%eax
+   0x08af445a <+1162>:	cmp    $0x18,%al
+   0x08af445c <+1164>:	ja     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4462 <+1170>:	movzbl %al,%eax
+   0x08af4465 <+1173>:	jmp    *0x8d9a9ec(,%eax,4)
+   0x08af446c <+1180>:	movzwl (%esi),%eax
+   0x08af446f <+1183>:	cmp    $0x29,%ax
+   0x08af4473 <+1187>:	je     0x8af54e2 <_Z5recogP7rtx_defP8rtx_insnPi+5394>
+   0x08af4479 <+1193>:	cmp    $0x30,%ax
+   0x08af447d <+1197>:	jne    0x8af4447 <_Z5recogP7rtx_defP8rtx_insnPi+1143>
+   0x08af447f <+1199>:	mov    %esi,0x91eefe0
+   0x08af4485 <+1205>:	mov    %edi,0x91eefe4
+   0x08af448b <+1211>:	movzbl 0x2(%esi),%eax
+   0x08af448f <+1215>:	sub    $0x4,%eax
+   0x08af4492 <+1218>:	cmp    $0x18,%al
+   0x08af4494 <+1220>:	ja     0x8af4447 <_Z5recogP7rtx_defP8rtx_insnPi+1143>
+   0x08af4496 <+1222>:	movzbl %al,%eax
+   0x08af4499 <+1225>:	jmp    *0x8d9aa50(,%eax,4)
+   0x08af44a0 <+1232>:	mov    0x8(%ebx),%eax
+   0x08af44a3 <+1235>:	mov    %edi,%edx
+   0x08af44a5 <+1237>:	call   0x8af3e10 <pattern7(rtx, rtx)>
+   0x08af44aa <+1242>:	cmp    $0x5,%eax
+   0x08af44ad <+1245>:	ja     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af44b3 <+1251>:	jmp    *0x8d9aab4(,%eax,4)
+   0x08af44ba <+1258>:	mov    $0x33,%esi
+   0x08af44bf <+1263>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af44c4 <+1268>:	mov    $0x32,%esi
+   0x08af44c9 <+1273>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af44ce <+1278>:	sub    $0x8,%esp
+   0x08af44d1 <+1281>:	push   $0x4
+   0x08af44d3 <+1283>:	push   0x91eefe8
+   0x08af44d9 <+1289>:	call   0x8af33d0 <_Z20shift_si_imm_operandP7rtx_def12machine_mode>
+   0x08af44de <+1294>:	add    $0x10,%esp
+   0x08af44e1 <+1297>:	test   %eax,%eax
+   0x08af44e3 <+1299>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af44e9 <+1305>:	mov    $0x31,%esi
+   0x08af44ee <+1310>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af44f3 <+1315>:	sub    $0x8,%esp
+   0x08af44f6 <+1318>:	push   $0x4
+   0x08af44f8 <+1320>:	push   0x91eefe8
+   0x08af44fe <+1326>:	call   0x8af33a0 <_Z20shift_hi_imm_operandP7rtx_def12machine_mode>
+   0x08af4503 <+1331>:	add    $0x10,%esp
+   0x08af4506 <+1334>:	test   %eax,%eax
+   0x08af4508 <+1336>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af450e <+1342>:	mov    $0x30,%esi
+   0x08af4513 <+1347>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4518 <+1352>:	sub    $0x8,%esp
+   0x08af451b <+1355>:	push   $0x4
+   0x08af451d <+1357>:	push   0x91eefe8
+   0x08af4523 <+1363>:	call   0x8af3370 <_Z20shift_qi_imm_operandP7rtx_def12machine_mode>
+   0x08af4528 <+1368>:	add    $0x10,%esp
+   0x08af452b <+1371>:	test   %eax,%eax
+   0x08af452d <+1373>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4533 <+1379>:	mov    $0x2f,%esi
+   0x08af4538 <+1384>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af453d <+1389>:	mov    $0x34,%esi
+   0x08af4542 <+1394>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4547 <+1399>:	mov    0x8(%ebx),%eax
+   0x08af454a <+1402>:	mov    %edi,%edx
+   0x08af454c <+1404>:	call   0x8af3e10 <pattern7(rtx, rtx)>
+   0x08af4551 <+1409>:	cmp    $0x5,%eax
+   0x08af4554 <+1412>:	ja     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af455a <+1418>:	jmp    *0x8d9aacc(,%eax,4)
+   0x08af4561 <+1425>:	mov    $0x39,%esi
+   0x08af4566 <+1430>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af456b <+1435>:	mov    $0x38,%esi
+   0x08af4570 <+1440>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4575 <+1445>:	sub    $0x8,%esp
+   0x08af4578 <+1448>:	push   $0x4
+   0x08af457a <+1450>:	push   0x91eefe8
+   0x08af4580 <+1456>:	call   0x8af38d0 <_Z16shift_si_operandP7rtx_def12machine_mode>
+   0x08af4585 <+1461>:	add    $0x10,%esp
+   0x08af4588 <+1464>:	test   %eax,%eax
+   0x08af458a <+1466>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4590 <+1472>:	mov    $0x37,%esi
+   0x08af4595 <+1477>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af459a <+1482>:	sub    $0x8,%esp
+   0x08af459d <+1485>:	push   $0x4
+   0x08af459f <+1487>:	push   0x91eefe8
+   0x08af45a5 <+1493>:	call   0x8af3850 <_Z16shift_hi_operandP7rtx_def12machine_mode>
+   0x08af45aa <+1498>:	add    $0x10,%esp
+   0x08af45ad <+1501>:	test   %eax,%eax
+   0x08af45af <+1503>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af45b5 <+1509>:	mov    $0x36,%esi
+   0x08af45ba <+1514>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af45bf <+1519>:	sub    $0x8,%esp
+   0x08af45c2 <+1522>:	push   $0x4
+   0x08af45c4 <+1524>:	push   0x91eefe8
+   0x08af45ca <+1530>:	call   0x8af37d0 <_Z16shift_qi_operandP7rtx_def12machine_mode>
+   0x08af45cf <+1535>:	add    $0x10,%esp
+   0x08af45d2 <+1538>:	test   %eax,%eax
+   0x08af45d4 <+1540>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af45da <+1546>:	mov    $0x35,%esi
+   0x08af45df <+1551>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af45e4 <+1556>:	mov    $0x3a,%esi
+   0x08af45e9 <+1561>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af45ee <+1566>:	mov    0x8(%edi),%eax
+   0x08af45f1 <+1569>:	cmpl   $0x1,(%eax)
+   0x08af45f4 <+1572>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af45fa <+1578>:	mov    0x8(%ebx),%eax
+   0x08af45fd <+1581>:	sub    $0x8,%esp
+   0x08af4600 <+1584>:	push   $0x6
+   0x08af4602 <+1586>:	push   %eax
+   0x08af4603 <+1587>:	mov    %eax,0x91eefe0
+   0x08af4608 <+1592>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af460d <+1597>:	add    $0x10,%esp
+   0x08af4610 <+1600>:	test   %eax,%eax
+   0x08af4612 <+1602>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4618 <+1608>:	cmpb   $0x6,0x2(%edi)
+   0x08af461c <+1612>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4622 <+1618>:	mov    0x8(%edi),%eax
+   0x08af4625 <+1621>:	mov    $0x5c,%esi
+   0x08af462a <+1626>:	mov    0x4(%eax),%eax
+   0x08af462d <+1629>:	mov    %eax,0x91eefe4
+   0x08af4632 <+1634>:	mov    0xc(%edi),%eax
+   0x08af4635 <+1637>:	test   %eax,%eax
+   0x08af4637 <+1639>:	je     0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af463d <+1645>:	mov    $0x5d,%esi
+   0x08af4642 <+1650>:	cmp    $0x1,%eax
+   0x08af4645 <+1653>:	je     0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af464b <+1659>:	jmp    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4650 <+1664>:	mov    0x8(%ebx),%eax
+   0x08af4653 <+1667>:	sub    $0x8,%esp
+   0x08af4656 <+1670>:	mov    %eax,0x91eefe0
+   0x08af465b <+1675>:	mov    0x8(%edi),%eax
+   0x08af465e <+1678>:	mov    %eax,0x91eefe4
+   0x08af4663 <+1683>:	mov    0xc(%edi),%eax
+   0x08af4666 <+1686>:	push   $0x4
+   0x08af4668 <+1688>:	push   %eax
+   0x08af4669 <+1689>:	mov    %eax,0x91eefe8
+   0x08af466e <+1694>:	call   0x8609825 <_Z17nonmemory_operandP7rtx_def12machine_mode>
+   0x08af4673 <+1699>:	add    $0x10,%esp
+   0x08af4676 <+1702>:	test   %eax,%eax
+   0x08af4678 <+1704>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af467e <+1710>:	mov    %edi,%eax
+   0x08af4680 <+1712>:	call   0x8af3b00 <pattern6(rtx)>
+   0x08af4685 <+1717>:	lea    0x2c(%eax),%esi
+   0x08af4688 <+1720>:	cmp    $0x2,%eax
+   0x08af468b <+1723>:	jbe    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4691 <+1729>:	jmp    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4696 <+1734>:	mov    0x8(%ebx),%edx
+   0x08af4699 <+1737>:	mov    0x8(%edi),%eax
+   0x08af469c <+1740>:	mov    %edx,0x91eefe0
+   0x08af46a2 <+1746>:	mov    %eax,0x91eefe4
+   0x08af46a7 <+1751>:	movzbl 0x2(%edx),%eax
+   0x08af46ab <+1755>:	cmp    $0x6,%al
+   0x08af46ad <+1757>:	je     0x8af534b <_Z5recogP7rtx_defP8rtx_insnPi+4987>
+   0x08af46b3 <+1763>:	ja     0x8af4f41 <_Z5recogP7rtx_defP8rtx_insnPi+3953>
+   0x08af46b9 <+1769>:	cmp    $0x4,%al
+   0x08af46bb <+1771>:	je     0x8af5390 <_Z5recogP7rtx_defP8rtx_insnPi+5056>
+   0x08af46c1 <+1777>:	cmp    $0x5,%al
+   0x08af46c3 <+1779>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af46c9 <+1785>:	sub    $0x8,%esp
+   0x08af46cc <+1788>:	push   $0x5
+   0x08af46ce <+1790>:	push   %edx
+   0x08af46cf <+1791>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af46d4 <+1796>:	add    $0x10,%esp
+   0x08af46d7 <+1799>:	test   %eax,%eax
+   0x08af46d9 <+1801>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af46df <+1807>:	cmpb   $0x5,0x2(%edi)
+   0x08af46e3 <+1811>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af46e9 <+1817>:	sub    $0x8,%esp
+   0x08af46ec <+1820>:	push   $0x5
+   0x08af46ee <+1822>:	push   0x91eefe4
+   0x08af46f4 <+1828>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af46f9 <+1833>:	add    $0x10,%esp
+   0x08af46fc <+1836>:	test   %eax,%eax
+   0x08af46fe <+1838>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4704 <+1844>:	mov    $0x2a,%esi
+   0x08af4709 <+1849>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af470e <+1854>:	mov    0x8(%ebx),%eax
+   0x08af4711 <+1857>:	mov    %eax,0x91eefe0
+   0x08af4716 <+1862>:	mov    %edi,%eax
+   0x08af4718 <+1864>:	call   0x8af3cf0 <pattern3(rtx)>
+   0x08af471d <+1869>:	cmp    $0x3,%eax
+   0x08af4720 <+1872>:	ja     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4726 <+1878>:	lea    0x1a(%eax,%eax,2),%esi
+   0x08af472a <+1882>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af472f <+1887>:	mov    0x8(%ebx),%eax
+   0x08af4732 <+1890>:	mov    %edi,%edx
+   0x08af4734 <+1892>:	call   0x8af3f50 <pattern4(rtx, rtx)>
+   0x08af4739 <+1897>:	cmp    $0x5,%eax
+   0x08af473c <+1900>:	ja     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4742 <+1906>:	jmp    *0x8d9aae4(,%eax,4)
+   0x08af4749 <+1913>:	mov    $0x1c,%esi
+   0x08af474e <+1918>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4753 <+1923>:	mov    $0x19,%esi
+   0x08af4758 <+1928>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af475d <+1933>:	sub    $0x8,%esp
+   0x08af4760 <+1936>:	push   $0x5
+   0x08af4762 <+1938>:	push   0x91eefe0
+   0x08af4768 <+1944>:	call   0x8af31e0 <_Z11bit_operandP7rtx_def12machine_mode>
+   0x08af476d <+1949>:	add    $0x10,%esp
+   0x08af4770 <+1952>:	test   %eax,%eax
+   0x08af4772 <+1954>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4778 <+1960>:	cmpb   $0x5,0x2(%edi)
+   0x08af477c <+1964>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4782 <+1970>:	sub    $0x8,%esp
+   0x08af4785 <+1973>:	push   $0x5
+   0x08af4787 <+1975>:	push   0x91eefe4
+   0x08af478d <+1981>:	call   0x8af32c0 <_Z15one_bit_operandP7rtx_def12machine_mode>
+   0x08af4792 <+1986>:	add    $0x10,%esp
+   0x08af4795 <+1989>:	test   %eax,%eax
+   0x08af4797 <+1991>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af479d <+1997>:	testb  $0x1,0x92061d0
+   0x08af47a4 <+2004>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af47aa <+2010>:	mov    $0x15,%esi
+   0x08af47af <+2015>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af47b4 <+2020>:	sub    $0x8,%esp
+   0x08af47b7 <+2023>:	push   $0x4
+   0x08af47b9 <+2025>:	push   0x91eefe0
+   0x08af47bf <+2031>:	call   0x8af31e0 <_Z11bit_operandP7rtx_def12machine_mode>
+   0x08af47c4 <+2036>:	add    $0x10,%esp
+   0x08af47c7 <+2039>:	test   %eax,%eax
+   0x08af47c9 <+2041>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af47cf <+2047>:	cmpb   $0x4,0x2(%edi)
+   0x08af47d3 <+2051>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af47d9 <+2057>:	sub    $0x8,%esp
+   0x08af47dc <+2060>:	push   $0x4
+   0x08af47de <+2062>:	push   0x91eefe4
+   0x08af47e4 <+2068>:	call   0x8af32c0 <_Z15one_bit_operandP7rtx_def12machine_mode>
+   0x08af47e9 <+2073>:	add    $0x10,%esp
+   0x08af47ec <+2076>:	test   %eax,%eax
+   0x08af47ee <+2078>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af47f4 <+2084>:	testb  $0x1,0x92061d0
+   0x08af47fb <+2091>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4801 <+2097>:	mov    $0x14,%esi
+   0x08af4806 <+2102>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af480b <+2107>:	mov    $0x22,%esi
+   0x08af4810 <+2112>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4815 <+2117>:	mov    $0x1f,%esi
+   0x08af481a <+2122>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af481f <+2127>:	mov    0x8(%ebx),%eax
+   0x08af4822 <+2130>:	mov    %edi,%edx
+   0x08af4824 <+2132>:	call   0x8af3f50 <pattern4(rtx, rtx)>
+   0x08af4829 <+2137>:	cmp    $0x5,%eax
+   0x08af482c <+2140>:	ja     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4832 <+2146>:	jmp    *0x8d9aafc(,%eax,4)
+   0x08af4839 <+2153>:	mov    $0x1b,%esi
+   0x08af483e <+2158>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4843 <+2163>:	mov    $0x18,%esi
+   0x08af4848 <+2168>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af484d <+2173>:	sub    $0x8,%esp
+   0x08af4850 <+2176>:	push   $0x5
+   0x08af4852 <+2178>:	push   0x91eefe0
+   0x08af4858 <+2184>:	call   0x8af31e0 <_Z11bit_operandP7rtx_def12machine_mode>
+   0x08af485d <+2189>:	add    $0x10,%esp
+   0x08af4860 <+2192>:	test   %eax,%eax
+   0x08af4862 <+2194>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4868 <+2200>:	cmpb   $0x5,0x2(%edi)
+   0x08af486c <+2204>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4872 <+2210>:	sub    $0x8,%esp
+   0x08af4875 <+2213>:	push   $0x5
+   0x08af4877 <+2215>:	push   0x91eefe4
+   0x08af487d <+2221>:	call   0x8af3310 <_Z19rev_one_bit_operandP7rtx_def12machine_mode>
+   0x08af4882 <+2226>:	add    $0x10,%esp
+   0x08af4885 <+2229>:	test   %eax,%eax
+   0x08af4887 <+2231>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af488d <+2237>:	testb  $0x1,0x92061d0
+   0x08af4894 <+2244>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af489a <+2250>:	mov    $0x17,%esi
+   0x08af489f <+2255>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af48a4 <+2260>:	sub    $0x8,%esp
+   0x08af48a7 <+2263>:	push   $0x4
+   0x08af48a9 <+2265>:	push   0x91eefe0
+   0x08af48af <+2271>:	call   0x8af31e0 <_Z11bit_operandP7rtx_def12machine_mode>
+   0x08af48b4 <+2276>:	add    $0x10,%esp
+   0x08af48b7 <+2279>:	test   %eax,%eax
+   0x08af48b9 <+2281>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af48bf <+2287>:	cmpb   $0x4,0x2(%edi)
+   0x08af48c3 <+2291>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af48c9 <+2297>:	sub    $0x8,%esp
+   0x08af48cc <+2300>:	push   $0x4
+   0x08af48ce <+2302>:	push   0x91eefe4
+   0x08af48d4 <+2308>:	call   0x8af3310 <_Z19rev_one_bit_operandP7rtx_def12machine_mode>
+   0x08af48d9 <+2313>:	add    $0x10,%esp
+   0x08af48dc <+2316>:	test   %eax,%eax
+   0x08af48de <+2318>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af48e4 <+2324>:	testb  $0x1,0x92061d0
+   0x08af48eb <+2331>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af48f1 <+2337>:	mov    $0x16,%esi
+   0x08af48f6 <+2342>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af48fb <+2347>:	mov    $0x21,%esi
+   0x08af4900 <+2352>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4905 <+2357>:	mov    $0x1e,%esi
+   0x08af490a <+2362>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af490f <+2367>:	cmpb   $0x5,0x2(%edi)
+   0x08af4913 <+2371>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4919 <+2377>:	mov    0x8(%ebx),%eax
+   0x08af491c <+2380>:	sub    $0x8,%esp
+   0x08af491f <+2383>:	push   $0x5
+   0x08af4921 <+2385>:	push   %eax
+   0x08af4922 <+2386>:	mov    %eax,0x91eefe0
+   0x08af4927 <+2391>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af492c <+2396>:	add    $0x10,%esp
+   0x08af492f <+2399>:	test   %eax,%eax
+   0x08af4931 <+2401>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4937 <+2407>:	mov    0x8(%edi),%edx
+   0x08af493a <+2410>:	movzwl (%edx),%eax
+   0x08af493d <+2413>:	cmp    $0x2c,%ax
+   0x08af4941 <+2417>:	je     0x8af4957 <_Z5recogP7rtx_defP8rtx_insnPi+2439>
+   0x08af4943 <+2419>:	cmp    $0x67,%ax
+   0x08af4947 <+2423>:	je     0x8af5257 <_Z5recogP7rtx_defP8rtx_insnPi+4743>
+   0x08af494d <+2429>:	cmp    $0x2a,%ax
+   0x08af4951 <+2433>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4957 <+2439>:	sub    $0x8,%esp
+   0x08af495a <+2442>:	mov    %edx,0x91eefe4
+   0x08af4960 <+2448>:	push   $0x5
+   0x08af4962 <+2450>:	push   %edx
+   0x08af4963 <+2451>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af4968 <+2456>:	add    $0x10,%esp
+   0x08af496b <+2459>:	test   %eax,%eax
+   0x08af496d <+2461>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4973 <+2467>:	mov    0xc(%edi),%eax
+   0x08af4976 <+2470>:	sub    $0x8,%esp
+   0x08af4979 <+2473>:	push   $0x5
+   0x08af497b <+2475>:	push   %eax
+   0x08af497c <+2476>:	mov    %eax,0x91eefe8
+   0x08af4981 <+2481>:	call   0x8af3610 <_Z18reg_or_int_operandP7rtx_def12machine_mode>
+   0x08af4986 <+2486>:	add    $0x10,%esp
+   0x08af4989 <+2489>:	test   %eax,%eax
+   0x08af498b <+2491>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4991 <+2497>:	mov    $0xe,%esi
+   0x08af4996 <+2502>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af499b <+2507>:	cmpb   $0x6,0x2(%edi)
+   0x08af499f <+2511>:	mov    0x8(%edi),%edx
+   0x08af49a2 <+2514>:	mov    0x8(%ebx),%eax
+   0x08af49a5 <+2517>:	mov    0xc(%edi),%ecx
+   0x08af49a8 <+2520>:	je     0x8af50ec <_Z5recogP7rtx_defP8rtx_insnPi+4380>
+   0x08af49ae <+2526>:	mov    %eax,0x91eefe0
+   0x08af49b3 <+2531>:	mov    %edx,0x91eefe4
+   0x08af49b9 <+2537>:	mov    %ecx,0x91eefe8
+   0x08af49bf <+2543>:	movzbl 0x2(%eax),%eax
+   0x08af49c3 <+2547>:	cmp    $0x6,%al
+   0x08af49c5 <+2549>:	je     0x8af53d5 <_Z5recogP7rtx_defP8rtx_insnPi+5125>
+   0x08af49cb <+2555>:	ja     0x8af4f20 <_Z5recogP7rtx_defP8rtx_insnPi+3920>
+   0x08af49d1 <+2561>:	cmp    $0x4,%al
+   0x08af49d3 <+2563>:	je     0x8af5332 <_Z5recogP7rtx_defP8rtx_insnPi+4962>
+   0x08af49d9 <+2569>:	cmp    $0x5,%al
+   0x08af49db <+2571>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af49e1 <+2577>:	mov    $0x5,%edx
+   0x08af49e6 <+2582>:	mov    %edi,%eax
+   0x08af49e8 <+2584>:	call   0x8af3c80 <pattern2(rtx, machine_mode)>
+   0x08af49ed <+2589>:	test   %eax,%eax
+   0x08af49ef <+2591>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af49f5 <+2597>:	mov    $0x8,%esi
+   0x08af49fa <+2602>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af49ff <+2607>:	mov    0x8(%ebx),%edx
+   0x08af4a02 <+2610>:	mov    0x8(%edi),%ebx
+   0x08af4a05 <+2613>:	mov    %edx,0x91eefe0
+   0x08af4a0b <+2619>:	movzwl (%ebx),%eax
+   0x08af4a0e <+2622>:	cmp    $0x2c,%ax
+   0x08af4a12 <+2626>:	je     0x8af4a28 <_Z5recogP7rtx_defP8rtx_insnPi+2648>
+   0x08af4a14 <+2628>:	cmp    $0x39,%ax
+   0x08af4a18 <+2632>:	je     0x8af5160 <_Z5recogP7rtx_defP8rtx_insnPi+4496>
+   0x08af4a1e <+2638>:	cmp    $0x2a,%ax
+   0x08af4a22 <+2642>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4a28 <+2648>:	mov    0xc(%edi),%eax
+   0x08af4a2b <+2651>:	mov    %ebx,0x91eefe4
+   0x08af4a31 <+2657>:	mov    %eax,0x91eefe8
+   0x08af4a36 <+2662>:	movzbl 0x2(%edx),%eax
+   0x08af4a3a <+2666>:	cmp    $0x6,%al
+   0x08af4a3c <+2668>:	je     0x8af5508 <_Z5recogP7rtx_defP8rtx_insnPi+5432>
+   0x08af4a42 <+2674>:	ja     0x8af5236 <_Z5recogP7rtx_defP8rtx_insnPi+4710>
+   0x08af4a48 <+2680>:	cmp    $0x4,%al
+   0x08af4a4a <+2682>:	je     0x8af5521 <_Z5recogP7rtx_defP8rtx_insnPi+5457>
+   0x08af4a50 <+2688>:	cmp    $0x5,%al
+   0x08af4a52 <+2690>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4a58 <+2696>:	mov    $0x5,%edx
+   0x08af4a5d <+2701>:	mov    %edi,%eax
+   0x08af4a5f <+2703>:	call   0x8af3c80 <pattern2(rtx, machine_mode)>
+   0x08af4a64 <+2708>:	test   %eax,%eax
+   0x08af4a66 <+2710>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4a6c <+2716>:	mov    $0x7,%esi
+   0x08af4a71 <+2721>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4a76 <+2726>:	lea    0x0(%esi,%eiz,1),%esi
+   0x08af4a7d <+2733>:	lea    0x0(%esi),%esi
+   0x08af4a80 <+2736>:	mov    0x8(%ebx),%eax
+   0x08af4a83 <+2739>:	cmpw   $0x33,(%eax)
+   0x08af4a87 <+2743>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4a8d <+2749>:	mov    0x8(%edi),%edx
+   0x08af4a90 <+2752>:	mov    0xc(%edi),%eax
+   0x08af4a93 <+2755>:	mov    %edx,0x91eefe0
+   0x08af4a99 <+2761>:	mov    %eax,0x91eefe4
+   0x08af4a9e <+2766>:	movzbl 0x2(%edx),%eax
+   0x08af4aa2 <+2770>:	cmp    $0x5,%al
+   0x08af4aa4 <+2772>:	je     0x8af52f7 <_Z5recogP7rtx_defP8rtx_insnPi+4903>
+   0x08af4aaa <+2778>:	cmp    $0x6,%al
+   0x08af4aac <+2780>:	je     0x8af52bc <_Z5recogP7rtx_defP8rtx_insnPi+4844>
+   0x08af4ab2 <+2786>:	cmp    $0x4,%al
+   0x08af4ab4 <+2788>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4aba <+2794>:	sub    $0x8,%esp
+   0x08af4abd <+2797>:	push   $0x4
+   0x08af4abf <+2799>:	push   %edx
+   0x08af4ac0 <+2800>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af4ac5 <+2805>:	add    $0x10,%esp
+   0x08af4ac8 <+2808>:	test   %eax,%eax
+   0x08af4aca <+2810>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4ad0 <+2816>:	sub    $0x8,%esp
+   0x08af4ad3 <+2819>:	push   $0x4
+   0x08af4ad5 <+2821>:	push   0x91eefe4
+   0x08af4adb <+2827>:	call   0x8609825 <_Z17nonmemory_operandP7rtx_def12machine_mode>
+   0x08af4ae0 <+2832>:	add    $0x10,%esp
+   0x08af4ae3 <+2835>:	test   %eax,%eax
+   0x08af4ae5 <+2837>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4aeb <+2843>:	mov    $0x4a,%esi
+   0x08af4af0 <+2848>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4af5 <+2853>:	mov    0x8(%ebx),%eax
+   0x08af4af8 <+2856>:	mov    %edi,%edx
+   0x08af4afa <+2858>:	mov    $0x25,%esi
+   0x08af4aff <+2863>:	call   0x8af3ea0 <pattern5(rtx, rtx)>
+   0x08af4b04 <+2868>:	test   %eax,%eax
+   0x08af4b06 <+2870>:	je     0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4b0c <+2876>:	mov    $0x27,%esi
+   0x08af4b11 <+2881>:	cmp    $0x1,%eax
+   0x08af4b14 <+2884>:	je     0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4b1a <+2890>:	jmp    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4b1f <+2895>:	mov    0x8(%ebx),%eax
+   0x08af4b22 <+2898>:	mov    %edi,%edx
+   0x08af4b24 <+2900>:	mov    $0x24,%esi
+   0x08af4b29 <+2905>:	call   0x8af3ea0 <pattern5(rtx, rtx)>
+   0x08af4b2e <+2910>:	test   %eax,%eax
+   0x08af4b30 <+2912>:	je     0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4b36 <+2918>:	mov    $0x26,%esi
+   0x08af4b3b <+2923>:	cmp    $0x1,%eax
+   0x08af4b3e <+2926>:	je     0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4b44 <+2932>:	jmp    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4b49 <+2937>:	cmp    $0x7f,%ax
+   0x08af4b4d <+2941>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4b53 <+2947>:	sub    $0x8,%esp
+   0x08af4b56 <+2950>:	push   $0x6
+   0x08af4b58 <+2952>:	push   %edx
+   0x08af4b59 <+2953>:	call   0x8af3430 <_Z16call_imm_operandP7rtx_def12machine_mode>
+   0x08af4b5e <+2958>:	add    $0x10,%esp
+   0x08af4b61 <+2961>:	test   %eax,%eax
+   0x08af4b63 <+2963>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4b69 <+2969>:	mov    0x9206ac4,%eax
+   0x08af4b6e <+2974>:	cmp    $0x2,%eax
+   0x08af4b71 <+2977>:	je     0x8af57eb <_Z5recogP7rtx_defP8rtx_insnPi+6171>
+   0x08af4b77 <+2983>:	cmp    $0x1,%eax
+   0x08af4b7a <+2986>:	ja     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4b80 <+2992>:	mov    $0x59,%esi
+   0x08af4b85 <+2997>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4b8a <+3002>:	sub    $0x8,%esp
+   0x08af4b8d <+3005>:	push   $0x6
+   0x08af4b8f <+3007>:	push   %edx
+   0x08af4b90 <+3008>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af4b95 <+3013>:	add    $0x10,%esp
+   0x08af4b98 <+3016>:	test   %eax,%eax
+   0x08af4b9a <+3018>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4ba0 <+3024>:	mov    $0x57,%esi
+   0x08af4ba5 <+3029>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4baa <+3034>:	cmpw   $0x29,(%esi)
+   0x08af4bae <+3038>:	jne    0x8af4447 <_Z5recogP7rtx_defP8rtx_insnPi+1143>
+   0x08af4bb4 <+3044>:	mov    0x8(%edi),%eax
+   0x08af4bb7 <+3047>:	mov    $0x53,%esi
+   0x08af4bbc <+3052>:	mov    %eax,0x91eefe0
+   0x08af4bc1 <+3057>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4bc6 <+3062>:	sub    $0x8,%esp
+   0x08af4bc9 <+3065>:	push   $0x1c
+   0x08af4bcb <+3067>:	push   %esi
+   0x08af4bcc <+3068>:	call   0x86097e4 <_Z20nonimmediate_operandP7rtx_def12machine_mode>
+   0x08af4bd1 <+3073>:	add    $0x10,%esp
+   0x08af4bd4 <+3076>:	test   %eax,%eax
+   0x08af4bd6 <+3078>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4bdc <+3084>:	sub    $0x8,%esp
+   0x08af4bdf <+3087>:	push   $0x1c
+   0x08af4be1 <+3089>:	push   0x91eefe4
+   0x08af4be7 <+3095>:	call   0x8609027 <_Z15general_operandP7rtx_def12machine_mode>
+   0x08af4bec <+3100>:	add    $0x10,%esp
+   0x08af4bef <+3103>:	test   %eax,%eax
+   0x08af4bf1 <+3105>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4bf7 <+3111>:	sub    $0x8,%esp
+   0x08af4bfa <+3114>:	push   $0x7
+   0x08af4bfc <+3116>:	push   0x91eefe0
+   0x08af4c02 <+3122>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af4c07 <+3127>:	add    $0x10,%esp
+   0x08af4c0a <+3130>:	test   %eax,%eax
+   0x08af4c0c <+3132>:	jne    0x8af4c54 <_Z5recogP7rtx_defP8rtx_insnPi+3204>
+   0x08af4c0e <+3134>:	push   %edi
+   0x08af4c0f <+3135>:	push   %edi
+   0x08af4c10 <+3136>:	push   $0x1c
+   0x08af4c12 <+3138>:	push   0x91eefe0
+   0x08af4c18 <+3144>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af4c1d <+3149>:	add    $0x10,%esp
+   0x08af4c20 <+3152>:	test   %eax,%eax
+   0x08af4c22 <+3154>:	jne    0x8af4c54 <_Z5recogP7rtx_defP8rtx_insnPi+3204>
+   0x08af4c24 <+3156>:	push   %esi
+   0x08af4c25 <+3157>:	push   %esi
+   0x08af4c26 <+3158>:	push   $0x7
+   0x08af4c28 <+3160>:	push   0x91eefe4
+   0x08af4c2e <+3166>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af4c33 <+3171>:	add    $0x10,%esp
+   0x08af4c36 <+3174>:	test   %eax,%eax
+   0x08af4c38 <+3176>:	jne    0x8af4c54 <_Z5recogP7rtx_defP8rtx_insnPi+3204>
+   0x08af4c3a <+3178>:	push   %ebx
+   0x08af4c3b <+3179>:	push   %ebx
+   0x08af4c3c <+3180>:	push   $0x1c
+   0x08af4c3e <+3182>:	push   0x91eefe4
+   0x08af4c44 <+3188>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af4c49 <+3193>:	add    $0x10,%esp
+   0x08af4c4c <+3196>:	test   %eax,%eax
+   0x08af4c4e <+3198>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4c54 <+3204>:	mov    $0x42,%esi
+   0x08af4c59 <+3209>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4c5e <+3214>:	sub    $0x8,%esp
+   0x08af4c61 <+3217>:	push   $0x1b
+   0x08af4c63 <+3219>:	push   %esi
+   0x08af4c64 <+3220>:	call   0x86097e4 <_Z20nonimmediate_operandP7rtx_def12machine_mode>
+   0x08af4c69 <+3225>:	add    $0x10,%esp
+   0x08af4c6c <+3228>:	test   %eax,%eax
+   0x08af4c6e <+3230>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4c74 <+3236>:	sub    $0x8,%esp
+   0x08af4c77 <+3239>:	push   $0x1b
+   0x08af4c79 <+3241>:	push   0x91eefe4
+   0x08af4c7f <+3247>:	call   0x8609027 <_Z15general_operandP7rtx_def12machine_mode>
+   0x08af4c84 <+3252>:	add    $0x10,%esp
+   0x08af4c87 <+3255>:	test   %eax,%eax
+   0x08af4c89 <+3257>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4c8f <+3263>:	sub    $0x8,%esp
+   0x08af4c92 <+3266>:	mov    $0x44,%esi
+   0x08af4c97 <+3271>:	push   $0x1b
+   0x08af4c99 <+3273>:	push   0x91eefe0
+   0x08af4c9f <+3279>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af4ca4 <+3284>:	add    $0x10,%esp
+   0x08af4ca7 <+3287>:	test   %eax,%eax
+   0x08af4ca9 <+3289>:	jne    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4caf <+3295>:	push   %edx
+   0x08af4cb0 <+3296>:	push   %edx
+   0x08af4cb1 <+3297>:	push   $0x1b
+   0x08af4cb3 <+3299>:	push   0x91eefe4
+   0x08af4cb9 <+3305>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af4cbe <+3310>:	add    $0x10,%esp
+   0x08af4cc1 <+3313>:	test   %eax,%eax
+   0x08af4cc3 <+3315>:	jne    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4cc9 <+3321>:	jmp    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4cce <+3326>:	xchg   %ax,%ax
+   0x08af4cd0 <+3328>:	sub    $0x8,%esp
+   0x08af4cd3 <+3331>:	push   $0x7
+   0x08af4cd5 <+3333>:	push   %esi
+   0x08af4cd6 <+3334>:	call   0x86097e4 <_Z20nonimmediate_operandP7rtx_def12machine_mode>
+   0x08af4cdb <+3339>:	add    $0x10,%esp
+   0x08af4cde <+3342>:	test   %eax,%eax
+   0x08af4ce0 <+3344>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4ce6 <+3350>:	sub    $0x8,%esp
+   0x08af4ce9 <+3353>:	push   $0x7
+   0x08af4ceb <+3355>:	push   0x91eefe4
+   0x08af4cf1 <+3361>:	call   0x8609027 <_Z15general_operandP7rtx_def12machine_mode>
+   0x08af4cf6 <+3366>:	add    $0x10,%esp
+   0x08af4cf9 <+3369>:	test   %eax,%eax
+   0x08af4cfb <+3371>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4d01 <+3377>:	sub    $0x8,%esp
+   0x08af4d04 <+3380>:	push   $0x7
+   0x08af4d06 <+3382>:	push   0x91eefe0
+   0x08af4d0c <+3388>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af4d11 <+3393>:	add    $0x10,%esp
+   0x08af4d14 <+3396>:	test   %eax,%eax
+   0x08af4d16 <+3398>:	jne    0x8af4d5e <_Z5recogP7rtx_defP8rtx_insnPi+3470>
+   0x08af4d18 <+3400>:	push   %eax
+   0x08af4d19 <+3401>:	push   %eax
+   0x08af4d1a <+3402>:	push   $0x1c
+   0x08af4d1c <+3404>:	push   0x91eefe0
+   0x08af4d22 <+3410>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af4d27 <+3415>:	add    $0x10,%esp
+   0x08af4d2a <+3418>:	test   %eax,%eax
+   0x08af4d2c <+3420>:	jne    0x8af4d5e <_Z5recogP7rtx_defP8rtx_insnPi+3470>
+   0x08af4d2e <+3422>:	push   %eax
+   0x08af4d2f <+3423>:	push   %eax
+   0x08af4d30 <+3424>:	push   $0x7
+   0x08af4d32 <+3426>:	push   0x91eefe4
+   0x08af4d38 <+3432>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af4d3d <+3437>:	add    $0x10,%esp
+   0x08af4d40 <+3440>:	test   %eax,%eax
+   0x08af4d42 <+3442>:	jne    0x8af4d5e <_Z5recogP7rtx_defP8rtx_insnPi+3470>
+   0x08af4d44 <+3444>:	push   %ebp
+   0x08af4d45 <+3445>:	push   %ebp
+   0x08af4d46 <+3446>:	push   $0x1c
+   0x08af4d48 <+3448>:	push   0x91eefe4
+   0x08af4d4e <+3454>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af4d53 <+3459>:	add    $0x10,%esp
+   0x08af4d56 <+3462>:	test   %eax,%eax
+   0x08af4d58 <+3464>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4d5e <+3470>:	mov    $0x41,%esi
+   0x08af4d63 <+3475>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4d68 <+3480>:	sub    $0x8,%esp
+   0x08af4d6b <+3483>:	push   $0x6
+   0x08af4d6d <+3485>:	push   %esi
+   0x08af4d6e <+3486>:	call   0x86097e4 <_Z20nonimmediate_operandP7rtx_def12machine_mode>
+   0x08af4d73 <+3491>:	add    $0x10,%esp
+   0x08af4d76 <+3494>:	test   %eax,%eax
+   0x08af4d78 <+3496>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4d7e <+3502>:	sub    $0x8,%esp
+   0x08af4d81 <+3505>:	push   $0x6
+   0x08af4d83 <+3507>:	push   0x91eefe4
+   0x08af4d89 <+3513>:	call   0x8609027 <_Z15general_operandP7rtx_def12machine_mode>
+   0x08af4d8e <+3518>:	add    $0x10,%esp
+   0x08af4d91 <+3521>:	test   %eax,%eax
+   0x08af4d93 <+3523>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4d99 <+3529>:	sub    $0x8,%esp
+   0x08af4d9c <+3532>:	mov    $0x43,%esi
+   0x08af4da1 <+3537>:	push   $0x6
+   0x08af4da3 <+3539>:	push   0x91eefe0
+   0x08af4da9 <+3545>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af4dae <+3550>:	add    $0x10,%esp
+   0x08af4db1 <+3553>:	test   %eax,%eax
+   0x08af4db3 <+3555>:	jne    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4db9 <+3561>:	push   %ecx
+   0x08af4dba <+3562>:	push   %ecx
+   0x08af4dbb <+3563>:	push   $0x6
+   0x08af4dbd <+3565>:	jmp    0x8af4cb3 <_Z5recogP7rtx_defP8rtx_insnPi+3299>
+   0x08af4dc2 <+3570>:	sub    $0x8,%esp
+   0x08af4dc5 <+3573>:	push   $0x5
+   0x08af4dc7 <+3575>:	push   %esi
+   0x08af4dc8 <+3576>:	call   0x86097e4 <_Z20nonimmediate_operandP7rtx_def12machine_mode>
+   0x08af4dcd <+3581>:	add    $0x10,%esp
+   0x08af4dd0 <+3584>:	test   %eax,%eax
+   0x08af4dd2 <+3586>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4dd8 <+3592>:	sub    $0x8,%esp
+   0x08af4ddb <+3595>:	push   $0x5
+   0x08af4ddd <+3597>:	push   0x91eefe4
+   0x08af4de3 <+3603>:	call   0x8609027 <_Z15general_operandP7rtx_def12machine_mode>
+   0x08af4de8 <+3608>:	add    $0x10,%esp
+   0x08af4deb <+3611>:	test   %eax,%eax
+   0x08af4ded <+3613>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4df3 <+3619>:	sub    $0x8,%esp
+   0x08af4df6 <+3622>:	push   $0x5
+   0x08af4df8 <+3624>:	push   0x91eefe0
+   0x08af4dfe <+3630>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af4e03 <+3635>:	add    $0x10,%esp
+   0x08af4e06 <+3638>:	test   %eax,%eax
+   0x08af4e08 <+3640>:	jne    0x8af4e54 <_Z5recogP7rtx_defP8rtx_insnPi+3716>
+   0x08af4e0a <+3642>:	push   %eax
+   0x08af4e0b <+3643>:	push   %eax
+   0x08af4e0c <+3644>:	push   $0x5
+   0x08af4e0e <+3646>:	push   0x91eefe0
+   0x08af4e14 <+3652>:	call   0x8af35c0 <_Z13store_operandP7rtx_def12machine_mode>
+   0x08af4e19 <+3657>:	add    $0x10,%esp
+   0x08af4e1c <+3660>:	test   %eax,%eax
+   0x08af4e1e <+3662>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4e24 <+3668>:	push   %eax
+   0x08af4e25 <+3669>:	push   %eax
+   0x08af4e26 <+3670>:	push   $0x5
+   0x08af4e28 <+3672>:	push   0x91eefe4
+   0x08af4e2e <+3678>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af4e33 <+3683>:	add    $0x10,%esp
+   0x08af4e36 <+3686>:	test   %eax,%eax
+   0x08af4e38 <+3688>:	jne    0x8af4e54 <_Z5recogP7rtx_defP8rtx_insnPi+3716>
+   0x08af4e3a <+3690>:	push   %ebp
+   0x08af4e3b <+3691>:	push   %ebp
+   0x08af4e3c <+3692>:	push   $0x5
+   0x08af4e3e <+3694>:	push   0x91eefe4
+   0x08af4e44 <+3700>:	call   0x8af3240 <_Z14u4bits_operandP7rtx_def12machine_mode>
+   0x08af4e49 <+3705>:	add    $0x10,%esp
+   0x08af4e4c <+3708>:	test   %eax,%eax
+   0x08af4e4e <+3710>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4e54 <+3716>:	mov    $0x46,%esi
+   0x08af4e59 <+3721>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4e5e <+3726>:	sub    $0x8,%esp
+   0x08af4e61 <+3729>:	push   $0x4
+   0x08af4e63 <+3731>:	push   %esi
+   0x08af4e64 <+3732>:	call   0x86097e4 <_Z20nonimmediate_operandP7rtx_def12machine_mode>
+   0x08af4e69 <+3737>:	add    $0x10,%esp
+   0x08af4e6c <+3740>:	test   %eax,%eax
+   0x08af4e6e <+3742>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4e74 <+3748>:	sub    $0x8,%esp
+   0x08af4e77 <+3751>:	push   $0x4
+   0x08af4e79 <+3753>:	push   0x91eefe4
+   0x08af4e7f <+3759>:	call   0x8609027 <_Z15general_operandP7rtx_def12machine_mode>
+   0x08af4e84 <+3764>:	add    $0x10,%esp
+   0x08af4e87 <+3767>:	test   %eax,%eax
+   0x08af4e89 <+3769>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4e8f <+3775>:	sub    $0x8,%esp
+   0x08af4e92 <+3778>:	push   $0x4
+   0x08af4e94 <+3780>:	push   0x91eefe0
+   0x08af4e9a <+3786>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af4e9f <+3791>:	add    $0x10,%esp
+   0x08af4ea2 <+3794>:	test   %eax,%eax
+   0x08af4ea4 <+3796>:	jne    0x8af4ef0 <_Z5recogP7rtx_defP8rtx_insnPi+3872>
+   0x08af4ea6 <+3798>:	push   %eax
+   0x08af4ea7 <+3799>:	push   %eax
+   0x08af4ea8 <+3800>:	push   $0x4
+   0x08af4eaa <+3802>:	push   0x91eefe0
+   0x08af4eb0 <+3808>:	call   0x8af35c0 <_Z13store_operandP7rtx_def12machine_mode>
+   0x08af4eb5 <+3813>:	add    $0x10,%esp
+   0x08af4eb8 <+3816>:	test   %eax,%eax
+   0x08af4eba <+3818>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4ec0 <+3824>:	push   %eax
+   0x08af4ec1 <+3825>:	push   %eax
+   0x08af4ec2 <+3826>:	push   $0x4
+   0x08af4ec4 <+3828>:	push   0x91eefe4
+   0x08af4eca <+3834>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af4ecf <+3839>:	add    $0x10,%esp
+   0x08af4ed2 <+3842>:	test   %eax,%eax
+   0x08af4ed4 <+3844>:	jne    0x8af4ef0 <_Z5recogP7rtx_defP8rtx_insnPi+3872>
+   0x08af4ed6 <+3846>:	push   %eax
+   0x08af4ed7 <+3847>:	push   %eax
+   0x08af4ed8 <+3848>:	push   $0x4
+   0x08af4eda <+3850>:	push   0x91eefe4
+   0x08af4ee0 <+3856>:	call   0x8af3240 <_Z14u4bits_operandP7rtx_def12machine_mode>
+   0x08af4ee5 <+3861>:	add    $0x10,%esp
+   0x08af4ee8 <+3864>:	test   %eax,%eax
+   0x08af4eea <+3866>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4ef0 <+3872>:	mov    $0x45,%esi
+   0x08af4ef5 <+3877>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4efa <+3882>:	sub    $0x8,%esp
+   0x08af4efd <+3885>:	push   $0x6
+   0x08af4eff <+3887>:	push   %edx
+   0x08af4f00 <+3888>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af4f05 <+3893>:	add    $0x10,%esp
+   0x08af4f08 <+3896>:	test   %eax,%eax
+   0x08af4f0a <+3898>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4f10 <+3904>:	mov    $0x5a,%esi
+   0x08af4f15 <+3909>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4f1a <+3914>:	lea    0x0(%esi),%esi
+   0x08af4f20 <+3920>:	cmp    $0x7,%al
+   0x08af4f22 <+3922>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4f28 <+3928>:	mov    %edi,%eax
+   0x08af4f2a <+3930>:	call   0x8af3a90 <pattern0(rtx)>
+   0x08af4f2f <+3935>:	test   %eax,%eax
+   0x08af4f31 <+3937>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4f37 <+3943>:	mov    $0x5,%esi
+   0x08af4f3c <+3948>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4f41 <+3953>:	cmp    $0x7,%al
+   0x08af4f43 <+3955>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4f49 <+3961>:	sub    $0x8,%esp
+   0x08af4f4c <+3964>:	push   $0x7
+   0x08af4f4e <+3966>:	push   %edx
+   0x08af4f4f <+3967>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af4f54 <+3972>:	add    $0x10,%esp
+   0x08af4f57 <+3975>:	test   %eax,%eax
+   0x08af4f59 <+3977>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4f5f <+3983>:	cmpb   $0x7,0x2(%edi)
+   0x08af4f63 <+3987>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4f69 <+3993>:	sub    $0x8,%esp
+   0x08af4f6c <+3996>:	push   $0x7
+   0x08af4f6e <+3998>:	push   0x91eefe4
+   0x08af4f74 <+4004>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af4f79 <+4009>:	add    $0x10,%esp
+   0x08af4f7c <+4012>:	test   %eax,%eax
+   0x08af4f7e <+4014>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4f84 <+4020>:	mov    $0x28,%esi
+   0x08af4f89 <+4025>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af4f8e <+4030>:	cmp    $0x2a,%dx
+   0x08af4f92 <+4034>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4f98 <+4040>:	mov    0x8(%esi),%edx
+   0x08af4f9b <+4043>:	cmpw   $0x29,(%edx)
+   0x08af4f9f <+4047>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4fa5 <+4053>:	cmpl   $0xe,0x8(%edi)
+   0x08af4fa9 <+4057>:	je     0x8af55b6 <_Z5recogP7rtx_defP8rtx_insnPi+5606>
+   0x08af4faf <+4063>:	mov    0x8(%eax),%eax
+   0x08af4fb2 <+4066>:	cmpw   $0x1a,(%eax)
+   0x08af4fb6 <+4070>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4fbc <+4076>:	mov    0x8(%eax),%ebx
+   0x08af4fbf <+4079>:	mov    (%ebx),%eax
+   0x08af4fc1 <+4081>:	and    $0xffffff,%eax
+   0x08af4fc6 <+4086>:	cmp    $0x60031,%eax
+   0x08af4fcb <+4091>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4fd1 <+4097>:	sub    $0x8,%esp
+   0x08af4fd4 <+4100>:	mov    %edi,0x91eefe0
+   0x08af4fda <+4106>:	push   $0x6
+   0x08af4fdc <+4108>:	push   %edi
+   0x08af4fdd <+4109>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af4fe2 <+4114>:	add    $0x10,%esp
+   0x08af4fe5 <+4117>:	test   %eax,%eax
+   0x08af4fe7 <+4119>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af4fed <+4125>:	mov    0x8(%ebx),%eax
+   0x08af4ff0 <+4128>:	mov    0x9206ac4,%esi
+   0x08af4ff6 <+4134>:	mov    %eax,0x91eefe4
+   0x08af4ffb <+4139>:	test   %esi,%esi
+   0x08af4ffd <+4141>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af5003 <+4147>:	mov    $0x54,%esi
+   0x08af5008 <+4152>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af500d <+4157>:	cmp    $0x34,%dx
+   0x08af5011 <+4161>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af5017 <+4167>:	mov    0x8(%edi),%ebp
+   0x08af501a <+4170>:	sub    $0x8,%esp
+   0x08af501d <+4173>:	push   $0x0
+   0x08af501f <+4175>:	push   %ebp
+   0x08af5020 <+4176>:	call   0x8609cda <_Z27ordered_comparison_operatorP7rtx_def12machine_mode>
+   0x08af5025 <+4181>:	add    $0x10,%esp
+   0x08af5028 <+4184>:	test   %eax,%eax
+   0x08af502a <+4186>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af5030 <+4192>:	mov    0xc(%edi),%edx
+   0x08af5033 <+4195>:	mov    %ebp,0x91eefe0
+   0x08af5039 <+4201>:	cmpw   $0x31,(%edx)
+   0x08af503d <+4205>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af5043 <+4211>:	mov    0x10(%edi),%eax
+   0x08af5046 <+4214>:	cmpw   $0x29,(%eax)
+   0x08af504a <+4218>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af5050 <+4224>:	mov    0x8(%esi),%eax
+   0x08af5053 <+4227>:	cmpw   $0x29,(%eax)
+   0x08af5057 <+4231>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af505d <+4237>:	mov    0x8(%ebx),%eax
+   0x08af5060 <+4240>:	mov    0x8(%eax),%eax
+   0x08af5063 <+4243>:	cmpw   $0x1b,(%eax)
+   0x08af5067 <+4247>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af506d <+4253>:	mov    0x8(%eax),%eax
+   0x08af5070 <+4256>:	cmpw   $0x33,(%eax)
+   0x08af5074 <+4260>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af507a <+4266>:	mov    0xc(%ebp),%ecx
+   0x08af507d <+4269>:	mov    0x8(%ebp),%eax
+   0x08af5080 <+4272>:	mov    %ecx,0x91eefe8
+   0x08af5086 <+4278>:	mov    0x8(%edx),%edx
+   0x08af5089 <+4281>:	mov    %eax,0x91eefe4
+   0x08af508e <+4286>:	mov    %edx,0x91eefec
+   0x08af5094 <+4292>:	movzbl 0x2(%eax),%edx
+   0x08af5098 <+4296>:	cmp    $0x5,%dl
+   0x08af509b <+4299>:	je     0x8af5573 <_Z5recogP7rtx_defP8rtx_insnPi+5539>
+   0x08af50a1 <+4305>:	cmp    $0x6,%dl
+   0x08af50a4 <+4308>:	je     0x8af553a <_Z5recogP7rtx_defP8rtx_insnPi+5482>
+   0x08af50aa <+4314>:	cmp    $0x4,%dl
+   0x08af50ad <+4317>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af50b3 <+4323>:	push   %ebx
+   0x08af50b4 <+4324>:	push   %ebx
+   0x08af50b5 <+4325>:	push   $0x4
+   0x08af50b7 <+4327>:	push   %eax
+   0x08af50b8 <+4328>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af50bd <+4333>:	add    $0x10,%esp
+   0x08af50c0 <+4336>:	test   %eax,%eax
+   0x08af50c2 <+4338>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af50c8 <+4344>:	push   %ecx
+   0x08af50c9 <+4345>:	push   %ecx
+   0x08af50ca <+4346>:	push   $0x4
+   0x08af50cc <+4348>:	push   0x91eefe8
+   0x08af50d2 <+4354>:	call   0x8609825 <_Z17nonmemory_operandP7rtx_def12machine_mode>
+   0x08af50d7 <+4359>:	add    $0x10,%esp
+   0x08af50da <+4362>:	test   %eax,%eax
+   0x08af50dc <+4364>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af50e2 <+4370>:	mov    $0x47,%esi
+   0x08af50e7 <+4375>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af50ec <+4380>:	cmpw   $0x2a,(%edx)
+   0x08af50f0 <+4384>:	jne    0x8af49ae <_Z5recogP7rtx_defP8rtx_insnPi+2526>
+   0x08af50f6 <+4390>:	cmpl   $0xf,0x8(%edx)
+   0x08af50fa <+4394>:	jne    0x8af49ae <_Z5recogP7rtx_defP8rtx_insnPi+2526>
+   0x08af5100 <+4400>:	cmpb   $0x6,0x2(%edx)
+   0x08af5104 <+4404>:	jne    0x8af49ae <_Z5recogP7rtx_defP8rtx_insnPi+2526>
+   0x08af510a <+4410>:	cmpw   $0x2a,(%eax)
+   0x08af510e <+4414>:	jne    0x8af49ae <_Z5recogP7rtx_defP8rtx_insnPi+2526>
+   0x08af5114 <+4420>:	cmpl   $0xf,0x8(%eax)
+   0x08af5118 <+4424>:	jne    0x8af49ae <_Z5recogP7rtx_defP8rtx_insnPi+2526>
+   0x08af511e <+4430>:	cmpb   $0x6,0x2(%eax)
+   0x08af5122 <+4434>:	jne    0x8af49ae <_Z5recogP7rtx_defP8rtx_insnPi+2526>
+   0x08af5128 <+4440>:	push   %eax
+   0x08af5129 <+4441>:	push   %eax
+   0x08af512a <+4442>:	push   $0x6
+   0x08af512c <+4444>:	push   %ecx
+   0x08af512d <+4445>:	mov    %ecx,0x91eefe0
+   0x08af5133 <+4451>:	call   0x860958d <_Z17immediate_operandP7rtx_def12machine_mode>
+   0x08af5138 <+4456>:	add    $0x10,%esp
+   0x08af513b <+4459>:	test   %eax,%eax
+   0x08af513d <+4461>:	je     0x8af514c <_Z5recogP7rtx_defP8rtx_insnPi+4476>
+   0x08af513f <+4463>:	cmpl   $0x0,0x91ef270
+   0x08af5146 <+4470>:	jne    0x8af5807 <_Z5recogP7rtx_defP8rtx_insnPi+6199>
+   0x08af514c <+4476>:	mov    0x8(%edi),%edx
+   0x08af514f <+4479>:	mov    0x8(%ebx),%eax
+   0x08af5152 <+4482>:	mov    0xc(%edi),%ecx
+   0x08af5155 <+4485>:	jmp    0x8af49ae <_Z5recogP7rtx_defP8rtx_insnPi+2526>
+   0x08af515a <+4490>:	lea    0x0(%esi),%esi
+   0x08af5160 <+4496>:	cmpb   $0x6,0x2(%ebx)
+   0x08af5164 <+4500>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af516a <+4506>:	sub    $0x8,%esp
+   0x08af516d <+4509>:	push   $0x6
+   0x08af516f <+4511>:	push   %edx
+   0x08af5170 <+4512>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af5175 <+4517>:	add    $0x10,%esp
+   0x08af5178 <+4520>:	test   %eax,%eax
+   0x08af517a <+4522>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af5180 <+4528>:	cmpb   $0x6,0x2(%edi)
+   0x08af5184 <+4532>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af518a <+4538>:	mov    0x8(%ebx),%esi
+   0x08af518d <+4541>:	cmpb   $0x6,0x2(%esi)
+   0x08af5191 <+4545>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af5197 <+4551>:	mov    0xc(%ebx),%ebx
+   0x08af519a <+4554>:	cmpb   $0x6,0x2(%ebx)
+   0x08af519e <+4558>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af51a4 <+4564>:	mov    0xc(%edi),%eax
+   0x08af51a7 <+4567>:	sub    $0x8,%esp
+   0x08af51aa <+4570>:	push   $0x6
+   0x08af51ac <+4572>:	push   %eax
+   0x08af51ad <+4573>:	mov    %eax,0x91eefec
+   0x08af51b2 <+4578>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af51b7 <+4583>:	add    $0x10,%esp
+   0x08af51ba <+4586>:	test   %eax,%eax
+   0x08af51bc <+4588>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af51c2 <+4594>:	movzwl (%esi),%eax
+   0x08af51c5 <+4597>:	cmp    $0x67,%ax
+   0x08af51c9 <+4601>:	je     0x8af53ee <_Z5recogP7rtx_defP8rtx_insnPi+5150>
+   0x08af51cf <+4607>:	cmp    $0x68,%ax
+   0x08af51d3 <+4611>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af51d9 <+4617>:	cmpw   $0x68,(%ebx)
+   0x08af51dd <+4621>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af51e3 <+4627>:	mov    0x8(%esi),%eax
+   0x08af51e6 <+4630>:	sub    $0x8,%esp
+   0x08af51e9 <+4633>:	push   $0x5
+   0x08af51eb <+4635>:	push   %eax
+   0x08af51ec <+4636>:	mov    %eax,0x91eefe4
+   0x08af51f1 <+4641>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af51f6 <+4646>:	add    $0x10,%esp
+   0x08af51f9 <+4649>:	test   %eax,%eax
+   0x08af51fb <+4651>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af5201 <+4657>:	mov    0x8(%ebx),%eax
+   0x08af5204 <+4660>:	sub    $0x8,%esp
+   0x08af5207 <+4663>:	push   $0x5
+   0x08af5209 <+4665>:	push   %eax
+   0x08af520a <+4666>:	mov    %eax,0x91eefe8
+   0x08af520f <+4671>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af5214 <+4676>:	add    $0x10,%esp
+   0x08af5217 <+4679>:	test   %eax,%eax
+   0x08af5219 <+4681>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af521f <+4687>:	testb  $0x8,0x92061d0
+   0x08af5226 <+4694>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af522c <+4700>:	mov    $0xd,%esi
+   0x08af5231 <+4705>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af5236 <+4710>:	cmp    $0x7,%al
+   0x08af5238 <+4712>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af523e <+4718>:	mov    %edi,%eax
+   0x08af5240 <+4720>:	call   0x8af3a90 <pattern0(rtx)>
+   0x08af5245 <+4725>:	test   %eax,%eax
+   0x08af5247 <+4727>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af524d <+4733>:	mov    $0x4,%esi
+   0x08af5252 <+4738>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af5257 <+4743>:	cmpb   $0x5,0x2(%edx)
+   0x08af525b <+4747>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af5261 <+4753>:	mov    0xc(%edi),%ebx
+   0x08af5264 <+4756>:	mov    (%ebx),%eax
+   0x08af5266 <+4758>:	and    $0xffffff,%eax
+   0x08af526b <+4763>:	cmp    $0x50067,%eax
+   0x08af5270 <+4768>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af5276 <+4774>:	mov    0x8(%edx),%eax
+   0x08af5279 <+4777>:	sub    $0x8,%esp
+   0x08af527c <+4780>:	push   $0x4
+   0x08af527e <+4782>:	push   %eax
+   0x08af527f <+4783>:	mov    %eax,0x91eefe4
+   0x08af5284 <+4788>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af5289 <+4793>:	add    $0x10,%esp
+   0x08af528c <+4796>:	test   %eax,%eax
+   0x08af528e <+4798>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af5294 <+4804>:	mov    0x8(%ebx),%eax
+   0x08af5297 <+4807>:	sub    $0x8,%esp
+   0x08af529a <+4810>:	push   $0x4
+   0x08af529c <+4812>:	push   %eax
+   0x08af529d <+4813>:	mov    %eax,0x91eefe8
+   0x08af52a2 <+4818>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af52a7 <+4823>:	add    $0x10,%esp
+   0x08af52aa <+4826>:	test   %eax,%eax
+   0x08af52ac <+4828>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af52b2 <+4834>:	mov    $0xf,%esi
+   0x08af52b7 <+4839>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af52bc <+4844>:	sub    $0x8,%esp
+   0x08af52bf <+4847>:	push   $0x6
+   0x08af52c1 <+4849>:	push   %edx
+   0x08af52c2 <+4850>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af52c7 <+4855>:	add    $0x10,%esp
+   0x08af52ca <+4858>:	test   %eax,%eax
+   0x08af52cc <+4860>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af52d2 <+4866>:	sub    $0x8,%esp
+   0x08af52d5 <+4869>:	push   $0x6
+   0x08af52d7 <+4871>:	push   0x91eefe4
+   0x08af52dd <+4877>:	call   0x8609825 <_Z17nonmemory_operandP7rtx_def12machine_mode>
+   0x08af52e2 <+4882>:	add    $0x10,%esp
+   0x08af52e5 <+4885>:	test   %eax,%eax
+   0x08af52e7 <+4887>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af52ed <+4893>:	mov    $0x4c,%esi
+   0x08af52f2 <+4898>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af52f7 <+4903>:	sub    $0x8,%esp
+   0x08af52fa <+4906>:	push   $0x5
+   0x08af52fc <+4908>:	push   %edx
+   0x08af52fd <+4909>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af5302 <+4914>:	add    $0x10,%esp
+   0x08af5305 <+4917>:	test   %eax,%eax
+   0x08af5307 <+4919>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af530d <+4925>:	sub    $0x8,%esp
+   0x08af5310 <+4928>:	push   $0x5
+   0x08af5312 <+4930>:	push   0x91eefe4
+   0x08af5318 <+4936>:	call   0x8609825 <_Z17nonmemory_operandP7rtx_def12machine_mode>
+   0x08af531d <+4941>:	add    $0x10,%esp
+   0x08af5320 <+4944>:	test   %eax,%eax
+   0x08af5322 <+4946>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af5328 <+4952>:	mov    $0x4b,%esi
+   0x08af532d <+4957>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af5332 <+4962>:	mov    %edi,%eax
+   0x08af5334 <+4964>:	call   0x8af3da0 <pattern8(rtx)>
+   0x08af5339 <+4969>:	test   %eax,%eax
+   0x08af533b <+4971>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af5341 <+4977>:	mov    $0xa,%esi
+   0x08af5346 <+4982>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af534b <+4987>:	sub    $0x8,%esp
+   0x08af534e <+4990>:	push   $0x6
+   0x08af5350 <+4992>:	push   %edx
+   0x08af5351 <+4993>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af5356 <+4998>:	add    $0x10,%esp
+   0x08af5359 <+5001>:	test   %eax,%eax
+   0x08af535b <+5003>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af5361 <+5009>:	cmpb   $0x6,0x2(%edi)
+   0x08af5365 <+5013>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af536b <+5019>:	sub    $0x8,%esp
+   0x08af536e <+5022>:	push   $0x6
+   0x08af5370 <+5024>:	push   0x91eefe4
+   0x08af5376 <+5030>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af537b <+5035>:	add    $0x10,%esp
+   0x08af537e <+5038>:	test   %eax,%eax
+   0x08af5380 <+5040>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af5386 <+5046>:	mov    $0x2b,%esi
+   0x08af538b <+5051>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af5390 <+5056>:	sub    $0x8,%esp
+   0x08af5393 <+5059>:	push   $0x4
+   0x08af5395 <+5061>:	push   %edx
+   0x08af5396 <+5062>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af539b <+5067>:	add    $0x10,%esp
+   0x08af539e <+5070>:	test   %eax,%eax
+   0x08af53a0 <+5072>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af53a6 <+5078>:	cmpb   $0x4,0x2(%edi)
+   0x08af53aa <+5082>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af53b0 <+5088>:	sub    $0x8,%esp
+   0x08af53b3 <+5091>:	push   $0x4
+   0x08af53b5 <+5093>:	push   0x91eefe4
+   0x08af53bb <+5099>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af53c0 <+5104>:	add    $0x10,%esp
+   0x08af53c3 <+5107>:	test   %eax,%eax
+   0x08af53c5 <+5109>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af53cb <+5115>:	mov    $0x29,%esi
+   0x08af53d0 <+5120>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af53d5 <+5125>:	mov    %edi,%eax
+   0x08af53d7 <+5127>:	call   0x8af3c10 <pattern1(rtx)>
+   0x08af53dc <+5132>:	test   %eax,%eax
+   0x08af53de <+5134>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af53e4 <+5140>:	mov    $0xb,%esi
+   0x08af53e9 <+5145>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af53ee <+5150>:	cmpw   $0x67,(%ebx)
+   0x08af53f2 <+5154>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af53f8 <+5160>:	mov    0x8(%esi),%eax
+   0x08af53fb <+5163>:	sub    $0x8,%esp
+   0x08af53fe <+5166>:	push   $0x5
+   0x08af5400 <+5168>:	push   %eax
+   0x08af5401 <+5169>:	mov    %eax,0x91eefe4
+   0x08af5406 <+5174>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af540b <+5179>:	add    $0x10,%esp
+   0x08af540e <+5182>:	test   %eax,%eax
+   0x08af5410 <+5184>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af5416 <+5190>:	mov    0x8(%ebx),%eax
+   0x08af5419 <+5193>:	sub    $0x8,%esp
+   0x08af541c <+5196>:	push   $0x5
+   0x08af541e <+5198>:	push   %eax
+   0x08af541f <+5199>:	mov    %eax,0x91eefe8
+   0x08af5424 <+5204>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af5429 <+5209>:	add    $0x10,%esp
+   0x08af542c <+5212>:	test   %eax,%eax
+   0x08af542e <+5214>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af5434 <+5220>:	testb  $0x8,0x92061d0
+   0x08af543b <+5227>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af5441 <+5233>:	mov    $0xc,%esi
+   0x08af5446 <+5238>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af544b <+5243>:	mov    0x91de184,%eax
+   0x08af5450 <+5248>:	cmp    %eax,0xc(%esi)
+   0x08af5453 <+5251>:	jne    0x8af4422 <_Z5recogP7rtx_defP8rtx_insnPi+1106>
+   0x08af5459 <+5257>:	mov    0x8(%esi),%eax
+   0x08af545c <+5260>:	sub    $0x8,%esp
+   0x08af545f <+5263>:	mov    %eax,0x91eefe0
+   0x08af5464 <+5268>:	mov    0x10(%esi),%eax
+   0x08af5467 <+5271>:	push   $0x0
+   0x08af5469 <+5273>:	push   %eax
+   0x08af546a <+5274>:	mov    %eax,0x91eefe4
+   0x08af546f <+5279>:	call   0x860958d <_Z17immediate_operandP7rtx_def12machine_mode>
+   0x08af5474 <+5284>:	add    $0x10,%esp
+   0x08af5477 <+5287>:	test   %eax,%eax
+   0x08af5479 <+5289>:	je     0x8af4422 <_Z5recogP7rtx_defP8rtx_insnPi+1106>
+   0x08af547f <+5295>:	mov    0xc(%ebx),%edx
+   0x08af5482 <+5298>:	mov    0x8(%edx),%eax
+   0x08af5485 <+5301>:	mov    0xc(%edx),%edx
+   0x08af5488 <+5304>:	mov    %edx,%ecx
+   0x08af548a <+5306>:	or     %eax,%ecx
+   0x08af548c <+5308>:	je     0x8af55e4 <_Z5recogP7rtx_defP8rtx_insnPi+5652>
+   0x08af5492 <+5314>:	xor    $0x1,%eax
+   0x08af5495 <+5317>:	or     %eax,%edx
+   0x08af5497 <+5319>:	jne    0x8af4422 <_Z5recogP7rtx_defP8rtx_insnPi+1106>
+   0x08af549d <+5325>:	movzbl 0x2(%esi),%eax
+   0x08af54a1 <+5329>:	cmp    $0x4,%al
+   0x08af54a3 <+5331>:	je     0x8af5789 <_Z5recogP7rtx_defP8rtx_insnPi+6073>
+   0x08af54a9 <+5337>:	cmp    $0x5,%al
+   0x08af54ab <+5339>:	jne    0x8af4422 <_Z5recogP7rtx_defP8rtx_insnPi+1106>
+   0x08af54b1 <+5345>:	push   %eax
+   0x08af54b2 <+5346>:	push   %eax
+   0x08af54b3 <+5347>:	push   $0x5
+   0x08af54b5 <+5349>:	push   0x91eefe0
+   0x08af54bb <+5355>:	call   0x8609ae0 <_Z14memory_operandP7rtx_def12machine_mode>
+   0x08af54c0 <+5360>:	add    $0x10,%esp
+   0x08af54c3 <+5363>:	test   %eax,%eax
+   0x08af54c5 <+5365>:	je     0x8af4422 <_Z5recogP7rtx_defP8rtx_insnPi+1106>
+   0x08af54cb <+5371>:	testb  $0x1,0x92061d0
+   0x08af54d2 <+5378>:	je     0x8af4422 <_Z5recogP7rtx_defP8rtx_insnPi+1106>
+   0x08af54d8 <+5384>:	mov    $0x11,%esi
+   0x08af54dd <+5389>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af54e2 <+5394>:	sub    $0x8,%esp
+   0x08af54e5 <+5397>:	mov    %edi,0x91eefe0
+   0x08af54eb <+5403>:	mov    $0x50,%esi
+   0x08af54f0 <+5408>:	push   $0x6
+   0x08af54f2 <+5410>:	push   %edi
+   0x08af54f3 <+5411>:	call   0x8af3510 <_Z18reg_or_sym_operandP7rtx_def12machine_mode>
+   0x08af54f8 <+5416>:	add    $0x10,%esp
+   0x08af54fb <+5419>:	test   %eax,%eax
+   0x08af54fd <+5421>:	je     0x8af4444 <_Z5recogP7rtx_defP8rtx_insnPi+1140>
+   0x08af5503 <+5427>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af5508 <+5432>:	mov    %edi,%eax
+   0x08af550a <+5434>:	call   0x8af3c10 <pattern1(rtx)>
+   0x08af550f <+5439>:	test   %eax,%eax
+   0x08af5511 <+5441>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af5517 <+5447>:	mov    $0x6,%esi
+   0x08af551c <+5452>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af5521 <+5457>:	mov    %edi,%eax
+   0x08af5523 <+5459>:	call   0x8af3da0 <pattern8(rtx)>
+   0x08af5528 <+5464>:	test   %eax,%eax
+   0x08af552a <+5466>:	jne    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af5530 <+5472>:	mov    $0x9,%esi
+   0x08af5535 <+5477>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af553a <+5482>:	push   %ebp
+   0x08af553b <+5483>:	push   %ebp
+   0x08af553c <+5484>:	push   $0x6
+   0x08af553e <+5486>:	push   %eax
+   0x08af553f <+5487>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af5544 <+5492>:	add    $0x10,%esp
+   0x08af5547 <+5495>:	test   %eax,%eax
+   0x08af5549 <+5497>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af554f <+5503>:	push   %edi
+   0x08af5550 <+5504>:	push   %edi
+   0x08af5551 <+5505>:	push   $0x6
+   0x08af5553 <+5507>:	push   0x91eefe8
+   0x08af5559 <+5513>:	call   0x8609825 <_Z17nonmemory_operandP7rtx_def12machine_mode>
+   0x08af555e <+5518>:	add    $0x10,%esp
+   0x08af5561 <+5521>:	test   %eax,%eax
+   0x08af5563 <+5523>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af5569 <+5529>:	mov    $0x49,%esi
+   0x08af556e <+5534>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af5573 <+5539>:	push   %edx
+   0x08af5574 <+5540>:	push   %edx
+   0x08af5575 <+5541>:	push   $0x5
+   0x08af5577 <+5543>:	push   %eax
+   0x08af5578 <+5544>:	call   0x8609479 <_Z16register_operandP7rtx_def12machine_mode>
+   0x08af557d <+5549>:	add    $0x10,%esp
+   0x08af5580 <+5552>:	test   %eax,%eax
+   0x08af5582 <+5554>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af5588 <+5560>:	push   %eax
+   0x08af5589 <+5561>:	push   %eax
+   0x08af558a <+5562>:	push   $0x5
+   0x08af558c <+5564>:	push   0x91eefe8
+   0x08af5592 <+5570>:	call   0x8609825 <_Z17nonmemory_operandP7rtx_def12machine_mode>
+   0x08af5597 <+5575>:	add    $0x10,%esp
+   0x08af559a <+5578>:	test   %eax,%eax
+   0x08af559c <+5580>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af55a2 <+5586>:	mov    $0x48,%esi
+   0x08af55a7 <+5591>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af55ac <+5596>:	mov    $0x55,%esi
+   0x08af55b1 <+5601>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af55b6 <+5606>:	cmpb   $0x6,0x2(%edi)
+   0x08af55ba <+5610>:	mov    0x8(%eax),%eax
+   0x08af55bd <+5613>:	jne    0x8af4fb2 <_Z5recogP7rtx_defP8rtx_insnPi+4066>
+   0x08af55c3 <+5619>:	cmpw   $0x1d,(%eax)
+   0x08af55c7 <+5623>:	jne    0x8af4fb2 <_Z5recogP7rtx_defP8rtx_insnPi+4066>
+   0x08af55cd <+5629>:	cmpl   $0x0,0x91ef270
+   0x08af55d4 <+5636>:	je     0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af55da <+5642>:	mov    $0x4e,%esi
+   0x08af55df <+5647>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af55e4 <+5652>:	movzbl 0x2(%esi),%eax
+   0x08af55e8 <+5656>:	cmp    $0x4,%al
+   0x08af55ea <+5658>:	je     0x8af57ba <_Z5recogP7rtx_defP8rtx_insnPi+6122>
+   0x08af55f0 <+5664>:	cmp    $0x5,%al
+   0x08af55f2 <+5666>:	jne    0x8af4422 <_Z5recogP7rtx_defP8rtx_insnPi+1106>
+   0x08af55f8 <+5672>:	push   %ecx
+   0x08af55f9 <+5673>:	push   %ecx
+   0x08af55fa <+5674>:	push   $0x5
+   0x08af55fc <+5676>:	push   0x91eefe0
+   0x08af5602 <+5682>:	call   0x8609ae0 <_Z14memory_operandP7rtx_def12machine_mode>
+   0x08af5607 <+5687>:	add    $0x10,%esp
+   0x08af560a <+5690>:	test   %eax,%eax
+   0x08af560c <+5692>:	je     0x8af4422 <_Z5recogP7rtx_defP8rtx_insnPi+1106>
+   0x08af5612 <+5698>:	testb  $0x1,0x92061d0
+   0x08af5619 <+5705>:	je     0x8af4422 <_Z5recogP7rtx_defP8rtx_insnPi+1106>
+   0x08af561f <+5711>:	mov    $0x13,%esi
+   0x08af5624 <+5716>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af5629 <+5721>:	push   %eax
+   0x08af562a <+5722>:	push   %eax
+   0x08af562b <+5723>:	push   $0x6
+   0x08af562d <+5725>:	push   %esi
+   0x08af562e <+5726>:	call   0x8609867 <_Z12push_operandP7rtx_def12machine_mode>
+   0x08af5633 <+5731>:	add    $0x10,%esp
+   0x08af5636 <+5734>:	test   %eax,%eax
+   0x08af5638 <+5736>:	je     0x8af4444 <_Z5recogP7rtx_defP8rtx_insnPi+1140>
+   0x08af563e <+5742>:	push   %eax
+   0x08af563f <+5743>:	push   %eax
+   0x08af5640 <+5744>:	push   $0x6
+   0x08af5642 <+5746>:	push   0x91eefe4
+   0x08af5648 <+5752>:	call   0x8af3560 <_Z16nosp_reg_operandP7rtx_def12machine_mode>
+   0x08af564d <+5757>:	add    $0x10,%esp
+   0x08af5650 <+5760>:	test   %eax,%eax
+   0x08af5652 <+5762>:	je     0x8af4444 <_Z5recogP7rtx_defP8rtx_insnPi+1140>
+   0x08af5658 <+5768>:	mov    $0x3d,%esi
+   0x08af565d <+5773>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af5662 <+5778>:	push   %eax
+   0x08af5663 <+5779>:	push   %eax
+   0x08af5664 <+5780>:	push   $0x5
+   0x08af5666 <+5782>:	push   %esi
+   0x08af5667 <+5783>:	call   0x8609867 <_Z12push_operandP7rtx_def12machine_mode>
+   0x08af566c <+5788>:	add    $0x10,%esp
+   0x08af566f <+5791>:	test   %eax,%eax
+   0x08af5671 <+5793>:	je     0x8af4444 <_Z5recogP7rtx_defP8rtx_insnPi+1140>
+   0x08af5677 <+5799>:	push   %eax
+   0x08af5678 <+5800>:	push   %eax
+   0x08af5679 <+5801>:	push   $0x5
+   0x08af567b <+5803>:	push   0x91eefe4
+   0x08af5681 <+5809>:	call   0x8af3560 <_Z16nosp_reg_operandP7rtx_def12machine_mode>
+   0x08af5686 <+5814>:	add    $0x10,%esp
+   0x08af5689 <+5817>:	test   %eax,%eax
+   0x08af568b <+5819>:	je     0x8af4444 <_Z5recogP7rtx_defP8rtx_insnPi+1140>
+   0x08af5691 <+5825>:	mov    $0x3c,%esi
+   0x08af5696 <+5830>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af569b <+5835>:	push   %eax
+   0x08af569c <+5836>:	push   %eax
+   0x08af569d <+5837>:	push   $0x1c
+   0x08af569f <+5839>:	push   %esi
+   0x08af56a0 <+5840>:	call   0x8609867 <_Z12push_operandP7rtx_def12machine_mode>
+   0x08af56a5 <+5845>:	add    $0x10,%esp
+   0x08af56a8 <+5848>:	test   %eax,%eax
+   0x08af56aa <+5850>:	je     0x8af4444 <_Z5recogP7rtx_defP8rtx_insnPi+1140>
+   0x08af56b0 <+5856>:	push   %eax
+   0x08af56b1 <+5857>:	push   %eax
+   0x08af56b2 <+5858>:	push   $0x1c
+   0x08af56b4 <+5860>:	push   0x91eefe4
+   0x08af56ba <+5866>:	call   0x8af3560 <_Z16nosp_reg_operandP7rtx_def12machine_mode>
+   0x08af56bf <+5871>:	add    $0x10,%esp
+   0x08af56c2 <+5874>:	test   %eax,%eax
+   0x08af56c4 <+5876>:	je     0x8af4444 <_Z5recogP7rtx_defP8rtx_insnPi+1140>
+   0x08af56ca <+5882>:	mov    $0x40,%esi
+   0x08af56cf <+5887>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af56d4 <+5892>:	push   %edx
+   0x08af56d5 <+5893>:	push   %edx
+   0x08af56d6 <+5894>:	push   $0x4
+   0x08af56d8 <+5896>:	push   %esi
+   0x08af56d9 <+5897>:	call   0x8609867 <_Z12push_operandP7rtx_def12machine_mode>
+   0x08af56de <+5902>:	add    $0x10,%esp
+   0x08af56e1 <+5905>:	test   %eax,%eax
+   0x08af56e3 <+5907>:	je     0x8af4444 <_Z5recogP7rtx_defP8rtx_insnPi+1140>
+   0x08af56e9 <+5913>:	push   %eax
+   0x08af56ea <+5914>:	push   %eax
+   0x08af56eb <+5915>:	push   $0x4
+   0x08af56ed <+5917>:	push   0x91eefe4
+   0x08af56f3 <+5923>:	call   0x8af3560 <_Z16nosp_reg_operandP7rtx_def12machine_mode>
+   0x08af56f8 <+5928>:	add    $0x10,%esp
+   0x08af56fb <+5931>:	test   %eax,%eax
+   0x08af56fd <+5933>:	je     0x8af4444 <_Z5recogP7rtx_defP8rtx_insnPi+1140>
+   0x08af5703 <+5939>:	mov    $0x3b,%esi
+   0x08af5708 <+5944>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af570d <+5949>:	mov    $0x52,%esi
+   0x08af5712 <+5954>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af5717 <+5959>:	push   %ebp
+   0x08af5718 <+5960>:	push   %ebp
+   0x08af5719 <+5961>:	push   $0x1b
+   0x08af571b <+5963>:	push   %esi
+   0x08af571c <+5964>:	call   0x8609867 <_Z12push_operandP7rtx_def12machine_mode>
+   0x08af5721 <+5969>:	add    $0x10,%esp
+   0x08af5724 <+5972>:	test   %eax,%eax
+   0x08af5726 <+5974>:	je     0x8af4444 <_Z5recogP7rtx_defP8rtx_insnPi+1140>
+   0x08af572c <+5980>:	push   %ecx
+   0x08af572d <+5981>:	push   %ecx
+   0x08af572e <+5982>:	push   $0x1b
+   0x08af5730 <+5984>:	push   0x91eefe4
+   0x08af5736 <+5990>:	call   0x8af3560 <_Z16nosp_reg_operandP7rtx_def12machine_mode>
+   0x08af573b <+5995>:	add    $0x10,%esp
+   0x08af573e <+5998>:	test   %eax,%eax
+   0x08af5740 <+6000>:	je     0x8af4444 <_Z5recogP7rtx_defP8rtx_insnPi+1140>
+   0x08af5746 <+6006>:	mov    $0x3e,%esi
+   0x08af574b <+6011>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af5750 <+6016>:	push   %edx
+   0x08af5751 <+6017>:	push   %edx
+   0x08af5752 <+6018>:	push   $0x7
+   0x08af5754 <+6020>:	push   %esi
+   0x08af5755 <+6021>:	call   0x8609867 <_Z12push_operandP7rtx_def12machine_mode>
+   0x08af575a <+6026>:	add    $0x10,%esp
+   0x08af575d <+6029>:	test   %eax,%eax
+   0x08af575f <+6031>:	je     0x8af4444 <_Z5recogP7rtx_defP8rtx_insnPi+1140>
+   0x08af5765 <+6037>:	push   %eax
+   0x08af5766 <+6038>:	push   %eax
+   0x08af5767 <+6039>:	push   $0x7
+   0x08af5769 <+6041>:	push   0x91eefe4
+   0x08af576f <+6047>:	call   0x8af3560 <_Z16nosp_reg_operandP7rtx_def12machine_mode>
+   0x08af5774 <+6052>:	add    $0x10,%esp
+   0x08af5777 <+6055>:	test   %eax,%eax
+   0x08af5779 <+6057>:	je     0x8af4444 <_Z5recogP7rtx_defP8rtx_insnPi+1140>
+   0x08af577f <+6063>:	mov    $0x3f,%esi
+   0x08af5784 <+6068>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af5789 <+6073>:	push   %eax
+   0x08af578a <+6074>:	push   %eax
+   0x08af578b <+6075>:	push   $0x4
+   0x08af578d <+6077>:	push   0x91eefe0
+   0x08af5793 <+6083>:	call   0x8609ae0 <_Z14memory_operandP7rtx_def12machine_mode>
+   0x08af5798 <+6088>:	add    $0x10,%esp
+   0x08af579b <+6091>:	test   %eax,%eax
+   0x08af579d <+6093>:	je     0x8af4422 <_Z5recogP7rtx_defP8rtx_insnPi+1106>
+   0x08af57a3 <+6099>:	testb  $0x1,0x92061d0
+   0x08af57aa <+6106>:	je     0x8af4422 <_Z5recogP7rtx_defP8rtx_insnPi+1106>
+   0x08af57b0 <+6112>:	mov    $0x10,%esi
+   0x08af57b5 <+6117>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af57ba <+6122>:	push   %ebp
+   0x08af57bb <+6123>:	push   %ebp
+   0x08af57bc <+6124>:	push   $0x4
+   0x08af57be <+6126>:	push   0x91eefe0
+   0x08af57c4 <+6132>:	call   0x8609ae0 <_Z14memory_operandP7rtx_def12machine_mode>
+   0x08af57c9 <+6137>:	add    $0x10,%esp
+   0x08af57cc <+6140>:	test   %eax,%eax
+   0x08af57ce <+6142>:	je     0x8af4422 <_Z5recogP7rtx_defP8rtx_insnPi+1106>
+   0x08af57d4 <+6148>:	testb  $0x1,0x92061d0
+   0x08af57db <+6155>:	je     0x8af4422 <_Z5recogP7rtx_defP8rtx_insnPi+1106>
+   0x08af57e1 <+6161>:	mov    $0x12,%esi
+   0x08af57e6 <+6166>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af57eb <+6171>:	mov    $0x58,%esi
+   0x08af57f0 <+6176>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+   0x08af57f5 <+6181>:	mov    0x8(%esi),%edx
+   0x08af57f8 <+6184>:	cmpw   $0x29,(%edx)
+   0x08af57fc <+6188>:	je     0x8af4faf <_Z5recogP7rtx_defP8rtx_insnPi+4063>
+   0x08af5802 <+6194>:	jmp    0x8af3ffe <_Z5recogP7rtx_defP8rtx_insnPi+46>
+   0x08af5807 <+6199>:	mov    $0x1,%esi
+   0x08af580c <+6204>:	jmp    0x8af4003 <_Z5recogP7rtx_defP8rtx_insnPi+51>
+End of assembler dump.
+(gdb)
+
+函数の名前からするに C++ の函数である.
+
+_Z5recogP7rtx_defP8rtx_insnPi:
+
+=>
+
+recog(rtx_def*, rtx_insn*, int*)
+
+という函数がどこかで定義されている.
+
+recog.c に以下を追加
+
+int
+recog(rtx_def*, rtx_insn*, int*)
+{
+  return -1;
+}
+
+そしてビルドし直してみた. リンカのエラーは以下：
+
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: insn-recog.o: in function `recog(rtx_def*, rtx_insn*, int*)':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/../.././gcc/config/cr16/cr16.md:872: multiple definition of `recog(rtx_def*, rtx_insn*, int*)'; recog.o:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/../.././gcc/recog.c:4127: first defined here
+
+なるほど. insn-recog.o というファイルがあるらしい.
+
+mv insn-recog.o insn-recog.o.org として make -n insn-recog.o としてみると
+以下が表示された:
+
+> make -n insn-recog.o
+true
+build/gengtype  \
+                    -S ../.././gcc -I gtyp-input.list -w tmp-gtype.state
+/bin/sh ../.././gcc/../move-if-change tmp-gtype.state gtype.state
+build/gengtype  \
+                    -r gtype.state
+echo timestamp > s-gtype
+true
+build/genmddeps ../.././gcc/common.md ../.././gcc/config/cr16/cr16.md > tmp-mddeps
+/bin/sh ../.././gcc/../move-if-change tmp-mddeps mddeps.mk
+echo timestamp > s-mddeps
+build/genconstants ../.././gcc/common.md ../.././gcc/config/cr16/cr16.md \
+   > tmp-constants.h
+/bin/sh ../.././gcc/../move-if-change tmp-constants.h insn-constants.h
+echo timestamp > s-constants
+true
+g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/genrecog.o ../.././gcc/genrecog.c
+g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/rtl.o ../.././gcc/rtl.c
+g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/read-rtl.o ../.././gcc/read-rtl.c
+g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/ggc-none.o ../.././gcc/ggc-none.c
+g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/vec.o ../.././gcc/vec.c
+true
+g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/min-insn-modes.o min-insn-modes.c
+g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/gensupport.o ../.././gcc/gensupport.c
+g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/print-rtl.o ../.././gcc/print-rtl.c
+g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/hash-table.o ../.././gcc/hash-table.c
+g++   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -static-libstdc++ -static-libgcc   -no-pie -o build/genrecog \
+    build/genrecog.o build/rtl.o build/read-rtl.o build/ggc-none.o build/vec.o build/min-insn-modes.o build/gensupport.o build/print-rtl.o build/hash-table.o build/sort.o build/read-md.o build/errors.o build/inchash.o ../../build-i686-pc-linux-gnu/libiberty/libiberty.a
+g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/genconditions.o ../.././gcc/genconditions.c
+g++   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -static-libstdc++ -static-libgcc   -no-pie -o build/genconditions \
+    build/genconditions.o build/rtl.o build/read-rtl.o build/ggc-none.o build/vec.o build/min-insn-modes.o build/gensupport.o build/print-rtl.o build/hash-table.o build/sort.o build/read-md.o build/errors.o ../../build-i686-pc-linux-gnu/libiberty/libiberty.a
+build/genconditions ../.././gcc/common.md ../.././gcc/config/cr16/cr16.md > tmp-condmd.c
+/bin/sh ../.././gcc/../move-if-change tmp-condmd.c build/gencondmd.c
+echo timestamp > s-conditions
+true
+g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/genpreds.o ../.././gcc/genpreds.c
+g++   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -static-libstdc++ -static-libgcc   -no-pie -o build/genpreds \
+    build/genpreds.o build/rtl.o build/read-rtl.o build/ggc-none.o build/vec.o build/min-insn-modes.o build/gensupport.o build/print-rtl.o build/hash-table.o build/sort.o build/read-md.o build/errors.o ../../build-i686-pc-linux-gnu/libiberty/libiberty.a
+build/genpreds -h ../.././gcc/common.md ../.././gcc/config/cr16/cr16.md > tmp-preds.h
+/bin/sh ../.././gcc/../move-if-change tmp-preds.h tm-preds.h
+echo timestamp > s-preds-h
+true
+build/genpreds -c ../.././gcc/common.md ../.././gcc/config/cr16/cr16.md > tmp-constrs.h
+/bin/sh ../.././gcc/../move-if-change tmp-constrs.h tm-constrs.h
+echo timestamp > s-constrs-h
+true
+g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/gencondmd.o build/gencondmd.c
+g++   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -static-libstdc++ -static-libgcc   -no-pie -o build/gencondmd \
+    build/gencondmd.o build/errors.o ../../build-i686-pc-linux-gnu/libiberty/libiberty.a
+build/gencondmd > tmp-cond.md
+/bin/sh ../.././gcc/../move-if-change tmp-cond.md insn-conditions.md
+echo timestamp > s-condmd
+true
+build/genrecog ../.././gcc/common.md ../.././gcc/config/cr16/cr16.md \
+  insn-conditions.md > tmp-recog.c
+/bin/sh ../.././gcc/../move-if-change tmp-recog.c insn-recog.c
+echo timestamp > s-recog
+true
+g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/genflags.o ../.././gcc/genflags.c
+g++   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -static-libstdc++ -static-libgcc   -no-pie -o build/genflags \
+    build/genflags.o build/rtl.o build/read-rtl.o build/ggc-none.o build/vec.o build/min-insn-modes.o build/gensupport.o build/print-rtl.o build/hash-table.o build/sort.o build/read-md.o build/errors.o ../../build-i686-pc-linux-gnu/libiberty/libiberty.a
+build/genflags ../.././gcc/common.md ../.././gcc/config/cr16/cr16.md \
+  insn-conditions.md > tmp-flags.h
+/bin/sh ../.././gcc/../move-if-change tmp-flags.h insn-flags.h
+echo timestamp > s-flags
+true
+g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/genattr.o ../.././gcc/genattr.c
+g++   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -static-libstdc++ -static-libgcc   -no-pie -o build/genattr \
+    build/genattr.o build/rtl.o build/read-rtl.o build/ggc-none.o build/vec.o build/min-insn-modes.o build/gensupport.o build/print-rtl.o build/hash-table.o build/sort.o build/read-md.o build/errors.o ../../build-i686-pc-linux-gnu/libiberty/libiberty.a
+build/genattr ../.././gcc/common.md ../.././gcc/config/cr16/cr16.md \
+  insn-conditions.md > tmp-attr.h
+/bin/sh ../.././gcc/../move-if-change tmp-attr.h insn-attr.h
+echo timestamp > s-attr
+true
+g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/genattr-common.o ../.././gcc/genattr-common.c
+g++   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -static-libstdc++ -static-libgcc   -no-pie -o build/genattr-common \
+    build/genattr-common.o build/rtl.o build/read-rtl.o build/ggc-none.o build/vec.o build/min-insn-modes.o build/gensupport.o build/print-rtl.o build/hash-table.o build/sort.o build/read-md.o build/errors.o ../../build-i686-pc-linux-gnu/libiberty/libiberty.a
+build/genattr-common ../.././gcc/common.md ../.././gcc/config/cr16/cr16.md \
+  insn-conditions.md > tmp-attr-common.h
+/bin/sh ../.././gcc/../move-if-change tmp-attr-common.h insn-attr-common.h
+echo timestamp > s-attr-common
+true
+g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/gencodes.o ../.././gcc/gencodes.c
+g++   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -static-libstdc++ -static-libgcc   -no-pie -o build/gencodes \
+    build/gencodes.o build/rtl.o build/read-rtl.o build/ggc-none.o build/vec.o build/min-insn-modes.o build/gensupport.o build/print-rtl.o build/hash-table.o build/sort.o build/read-md.o build/errors.o ../../build-i686-pc-linux-gnu/libiberty/libiberty.a
+build/gencodes ../.././gcc/common.md ../.././gcc/config/cr16/cr16.md \
+  insn-conditions.md > tmp-codes.h
+/bin/sh ../.././gcc/../move-if-change tmp-codes.h insn-codes.h
+echo timestamp > s-codes
+true
+g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/genconfig.o ../.././gcc/genconfig.c
+g++   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -static-libstdc++ -static-libgcc   -no-pie -o build/genconfig \
+    build/genconfig.o build/rtl.o build/read-rtl.o build/ggc-none.o build/vec.o build/min-insn-modes.o build/gensupport.o build/print-rtl.o build/hash-table.o build/sort.o build/read-md.o build/errors.o ../../build-i686-pc-linux-gnu/libiberty/libiberty.a
+build/genconfig ../.././gcc/common.md ../.././gcc/config/cr16/cr16.md \
+  insn-conditions.md > tmp-config.h
+/bin/sh ../.././gcc/../move-if-change tmp-config.h insn-config.h
+echo timestamp > s-config
+true
+g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/gentarget-def.o ../.././gcc/gentarget-def.c
+g++   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -static-libstdc++ -static-libgcc   -no-pie -o build/gentarget-def \
+    build/gentarget-def.o build/rtl.o build/read-rtl.o build/ggc-none.o build/vec.o build/min-insn-modes.o build/gensupport.o build/print-rtl.o build/hash-table.o build/sort.o build/read-md.o build/errors.o ../../build-i686-pc-linux-gnu/libiberty/libiberty.a
+build/gentarget-def ../.././gcc/common.md ../.././gcc/config/cr16/cr16.md \
+  insn-conditions.md > tmp-target-def.h
+/bin/sh ../.././gcc/../move-if-change tmp-target-def.h insn-target-def.h
+echo timestamp > s-target-def
+true
+g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/gencheck.o ../.././gcc/gencheck.c
+g++   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -static-libstdc++ -static-libgcc   -no-pie -o build/gencheck \
+    build/gencheck.o ../../build-i686-pc-linux-gnu/libiberty/libiberty.a
+build/gencheck > tmp-check.h
+/bin/sh ../.././gcc/../move-if-change tmp-check.h tree-check.h
+echo timestamp > s-check
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/gcov-iov.o ../.././gcc/gcov-iov.c
+g++   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -static-libstdc++ -static-libgcc   -no-pie \
+	build/gcov-iov.o -o build/gcov-iov
+build/gcov-iov '10.2.0' '' \
+    > tmp-gcov-iov.h
+/bin/sh ../.././gcc/../move-if-change tmp-gcov-iov.h gcov-iov.h
+echo timestamp > s-iov
+true
+g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/genopinit.o ../.././gcc/genopinit.c
+g++   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -static-libstdc++ -static-libgcc   -no-pie -o build/genopinit \
+    build/genopinit.o build/rtl.o build/read-rtl.o build/ggc-none.o build/vec.o build/min-insn-modes.o build/gensupport.o build/print-rtl.o build/hash-table.o build/sort.o build/read-md.o build/errors.o ../../build-i686-pc-linux-gnu/libiberty/libiberty.a
+build/genopinit ../.././gcc/common.md ../.././gcc/config/cr16/cr16.md \
+  insn-conditions.md -htmp-opinit.h -ctmp-opinit.c
+/bin/sh ../.././gcc/../move-if-change tmp-opinit.h insn-opinit.h
+/bin/sh ../.././gcc/../move-if-change tmp-opinit.c insn-opinit.c
+echo timestamp > s-opinit
+true
+g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/gencfn-macros.o ../.././gcc/gencfn-macros.c
+g++   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -static-libstdc++ -static-libgcc   -no-pie -o build/gencfn-macros \
+    build/gencfn-macros.o build/errors.o build/hash-table.o build/vec.o build/ggc-none.o build/sort.o ../../build-i686-pc-linux-gnu/libiberty/libiberty.a
+build/gencfn-macros -c \
+  > tmp-case-cfn-macros.h
+/bin/sh ../.././gcc/../move-if-change tmp-case-cfn-macros.h \
+  case-cfn-macros.h
+echo timestamp > s-case-cfn-macros
+true
+build/gencfn-macros -o \
+  > tmp-cfn-operators.pd
+/bin/sh ../.././gcc/../move-if-change tmp-cfn-operators.pd \
+  cfn-operators.pd
+echo timestamp > s-cfn-operators
+true
+g++ -fno-PIE -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H -I. -I. -I../.././gcc -I../.././gcc/. -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber -I../.././gcc/../libbacktrace   -o insn-recog.o -MT insn-recog.o -MMD -MP -MF ./.deps/insn-recog.TPo insn-recog.c
+mv ./.deps/insn-recog.TPo ./.deps/insn-recog.Po
+> 
+
+これは突っこみどころがたくさんあるが, isn-recog.c は生成されそしてコンパイルされる
+ということだ.
+
+
+g++ -fno-PIE -E   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H -I. -I. -I../.././gcc -I../.././gcc/. -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber -I../.././gcc/../libbacktrace   -o insn-recog.i -MT insn-recog.o -MMD -MP -MF ./.deps/insn-recog.TPo insn-recog.c
+
+を実行してみた. insn-recog.i を見ると例えば以下:
+
+    {
+    case 1LL:
+      switch (((machine_mode) (x2)->mode))
+        {
+        case E_QImode:
+          if (!memory_operand (operands[0], E_QImode)
+              || !
+# 275 "../.././gcc/config/cr16/cr16.md"
+(((global_options.x_target_flags & (1U << 0)) != 0)))
+            return -1;
+          return 16;
+
+なるほど, これが recog にステップインしたときに cr16.md が表示される仕組みというわけだ.
+また insn-recog.i から以下を見つけた:
+
+int
+recog (rtx x1 __attribute__ ((__unused__)),
+ rtx_insn *insn __attribute__ ((__unused__)),
+ int *pnum_clobbers __attribute__ ((__unused__)))
+{
+  rtx * const operands __attribute__ ((__unused__)) = &recog_data.operand[0];
+  rtx x2, x3, x4, x5, x6, x7, x8, x9;
+  rtx x10, x11, x12, x13, x14, x15, x16;
+  int res __attribute__ ((__unused__));
+  recog_data.insn = 
+# 877 "../.././gcc/config/cr16/cr16.md" 3 4
+                   __null
+		   
+さて, このライン情報をなんとかしたい. どうせ生成されるファイルなのだからとりあえず
+insn-recog.i から削除して insn-recog.c に上書きし, そしてビルドし直してみる.
+
+すると期待通り C++ のレベルのデバッグができている.
+
+問題の
+
+p debug_insn_slim(insn)
+   29: sp:SI=sp:SI+0xfffffffc
+
+だが recog にステップインして以下で -1 が返っていることを確認した:
+
+            case E_SImode:
+              if (pattern1 (x2) != 0)
+                return -1;                  // ここ
+              return 6;
+
+
+ところで a.c をコンパイルすると以下の 3 つがくるはずで 
+
+    0: sp:SI=sp:SI
+   28: sp:SI=sp:SI-0x6
+   29: sp:SI=sp:SI+0xfffffffc
+
+この 3 つに絞りたかったが絞り切れず
+
+#if 1
+      if (GET_CODE (insn) == INSN) {
+	switch (INSN_UID (insn)) {
+	case 28 : case 29:
+	  {
+	    rtx x = PATTERN (insn);
+	    if (GET_CODE (x) == SET) {
+	      asm("int3");
+	    }
+	  }
+	}
+      }
+#endif      
+
+のようにすることで
+
+   28: sp:SI=sp:SI-0x6
+   29: sp:SI=sp:SI+0xfffffffc
+
+で止めることはできている. 調べてみたが 28 と 29 は違う部分で計算されている.
+とりあえず,
+
+            case E_SImode:
+#if 0	    
+              if (pattern1 (x2) != 0)
+                return -1;                  // ここ
+#endif		
+              return 6;
+
+のようにすればエラーは回避できている. この修正が正しいかどうかは不明.
+
+トップのディレクトリで make を実行すると insn-recog.c はもう一度生成さ
+れる. だから一旦 make を止めて上の修正を入れ, 再び make を実行すれば
+エラー回避した cc1 等がビルドされ, libgcc でのビルドもエラー回避される.
+
+この後インストールスクリプトの通りやってみたが,
+
+cr16-elf/libbacktrace
+
+ディレクトリがないため
+
+mkdir cr16-elf/libbacktrace
+
+とする必要があった.
+
+> make install
+...
+  /bin/sh ../.././gcc/../mkinstalldirs /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/cr16-elf/10.2.0/install-tools/include${multi_dir}; \
+  /usr/local/bin/install -c -m 644 include-fixed${multi_dir}/limits.h /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/cr16-elf/10.2.0/install-tools/include${multi_dir}/limits.h; \
+done
+/usr/local/bin/install: 'include-fixed/limits.h' を stat できません: そのようなファイルやディレクトリはありません
+make[2]: *** [Makefile:3901: install-mkheaders] エラー 1
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc' から出ます
+make[1]: *** [Makefile:4457: install-gcc] エラー 2
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf' から出ます
+make: *** [Makefile:2375: install] エラー 2
+>
+
+エラーしている. 空のファイルをインストールしておく.
+
+> touch host-i686-pc-linux-gnu/gcc/include-fixed/limits.h
+> make install
