@@ -1,7 +1,7 @@
 CompactRISC の gcc のインストールでエラーが発生する件の調査
 
-> cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/cr16-elf/far-pic/libgcc
-> /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/sys-include  -fPIC -mcr16cplus -mdata-model=far -g -O2 -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../../host-i686-pc-linux-gnu/gcc -I../../.././libgcc -I../../.././libgcc/. -I../../.././libgcc/../gcc -I../../.././libgcc/../include  -DHAVE_CC_TLS  -o _ashldi3.o -MT _ashldi3.o -MD -MP -MF _ashldi3.dep -DL_ashldi3 -c ../../.././libgcc/libgcc2.c
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/cr16-elf/far-pic/libgcc
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/sys-include  -fPIC -mcr16cplus -mdata-model=far -g -O2 -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../../host-i686-pc-linux-gnu/gcc -I../../.././libgcc -I../../.././libgcc/. -I../../.././libgcc/../gcc -I../../.././libgcc/../include  -DHAVE_CC_TLS  -o _ashldi3.o -MT _ashldi3.o -MD -MP -MF _ashldi3.dep -DL_ashldi3 -c ../../.././libgcc/libgcc2.c
 ../../.././libgcc/libgcc2.c: In function ‘__ashldi3’:
 ../../.././libgcc/libgcc2.c:455:1: error: unrecognizable insn:
   455 | }
@@ -28,13 +28,13 @@ Please submit a full bug report,
 with preprocessed source if appropriate.
 Please include the complete backtrace with any bug report.
 See <https://gcc.gnu.org/bugs/> for instructions.
-> 
+% 
 
 エラーを再現できている.
 
 xgcc から cc1 をどのように起動するか確認する:
 
-> /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/sys-include  -fPIC -mcr16cplus -mdata-model=far -g -O2 -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../../host-i686-pc-linux-gnu/gcc -I../../.././libgcc -I../../.././libgcc/. -I../../.././libgcc/../gcc -I../../.././libgcc/../include  -DHAVE_CC_TLS  -o _ashldi3.o -MT _ashldi3.o -MD -MP -MF _ashldi3.dep -DL_ashldi3 -c ../../.././libgcc/libgcc2.c -###
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/sys-include  -fPIC -mcr16cplus -mdata-model=far -g -O2 -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../../host-i686-pc-linux-gnu/gcc -I../../.././libgcc -I../../.././libgcc/. -I../../.././libgcc/../gcc -I../../.././libgcc/../include  -DHAVE_CC_TLS  -o _ashldi3.o -MT _ashldi3.o -MD -MP -MF _ashldi3.dep -DL_ashldi3 -c ../../.././libgcc/libgcc2.c -###
 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/specs から spec を読み込み中
 COLLECT_GCC=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/xgcc
 Target: cr16-elf
@@ -49,11 +49,11 @@ COLLECT_GCC_OPTIONS='-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_L
 COMPILER_PATH=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/bin/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/lib/
 LIBRARY_PATH=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/bin/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/lib/
 COLLECT_GCC_OPTIONS='-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/bin/' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/lib/' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/include' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/sys-include' '-fPIC' '-mcr16cplus' '-mdata-model=far' '-g' '-O2' '-O2' '-g' '-O2' '-D' 'IN_GCC' '-D' 'CROSS_DIRECTORY_STRUCTURE' '-Wextra' '-Wall' '-Wno-narrowing' '-Wwrite-strings' '-Wcast-qual' '-Wno-error=format-diag' '-Wstrict-prototypes' '-Wmissing-prototypes' '-Wno-error=format-diag' '-Wold-style-definition' '-isystem' './include' '-g' '-D' 'IN_LIBGCC2' '-fbuilding-libgcc' '-fno-stack-protector' '-D' 'inhibit_libc' '-I' '.' '-I' '.' '-I' '../../../host-i686-pc-linux-gnu/gcc' '-I' '../../.././libgcc' '-I' '../../.././libgcc/.' '-I' '../../.././libgcc/../gcc' '-I' '../../.././libgcc/../include' '-D' 'HAVE_CC_TLS' '-o' '_ashldi3.o' '-MT' '_ashldi3.o' '-MD' '-MP' '-MF' '_ashldi3.dep' '-D' 'L_ashldi3' '-c'
->
+%
 
 そこで以下を試してみた:
 
-> /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/cc1 -quiet -I . -I . -I ../../../host-i686-pc-linux-gnu/gcc -I ../../.././libgcc -I ../../.././libgcc/. -I ../../.././libgcc/../gcc -I ../../.././libgcc/../include -imultilib far-pic -iprefix /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/../lib/gcc/cr16-elf/10.2.0/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/include-fixed -MD _ashldi3.d -MF _ashldi3.dep -MP -MT _ashldi3.o -D IN_GCC -D CROSS_DIRECTORY_STRUCTURE -D IN_LIBGCC2 -D inhibit_libc -D HAVE_CC_TLS -D L_ashldi3 -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/sys-include -isystem ./include ../../.././libgcc/libgcc2.c -quiet -dumpbase libgcc2.c -mcr16cplus "-mdata-model=far" -auxbase-strip _ashldi3.o -g -g -g -O2 -O2 -O2 -Wextra -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual "-Wno-error=format-diag" -Wstrict-prototypes -Wmissing-prototypes "-Wno-error=format-diag" -Wold-style-definition -fPIC -fbuilding-libgcc -fno-stack-protector -o /tmp/ccIysxqZ.s
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/cc1 -quiet -I . -I . -I ../../../host-i686-pc-linux-gnu/gcc -I ../../.././libgcc -I ../../.././libgcc/. -I ../../.././libgcc/../gcc -I ../../.././libgcc/../include -imultilib far-pic -iprefix /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/../lib/gcc/cr16-elf/10.2.0/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/include-fixed -MD _ashldi3.d -MF _ashldi3.dep -MP -MT _ashldi3.o -D IN_GCC -D CROSS_DIRECTORY_STRUCTURE -D IN_LIBGCC2 -D inhibit_libc -D HAVE_CC_TLS -D L_ashldi3 -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/sys-include -isystem ./include ../../.././libgcc/libgcc2.c -quiet -dumpbase libgcc2.c -mcr16cplus "-mdata-model=far" -auxbase-strip _ashldi3.o -g -g -g -O2 -O2 -O2 -Wextra -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual "-Wno-error=format-diag" -Wstrict-prototypes -Wmissing-prototypes "-Wno-error=format-diag" -Wold-style-definition -fPIC -fbuilding-libgcc -fno-stack-protector -o /tmp/ccIysxqZ.s
 ../../.././libgcc/libgcc2.c: In function ‘__ashldi3’:
 ../../.././libgcc/libgcc2.c:455:1: error: unrecognizable insn:
   455 | }
@@ -80,26 +80,25 @@ Please submit a full bug report,
 with preprocessed source if appropriate.
 Please include the complete backtrace with any bug report.
 See <https://gcc.gnu.org/bugs/> for instructions.
->
+%
 
 再現できている.
 
 M-x gdb
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/cc1
-cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/cr16-elf/far-pic/libgcc
-run  -quiet -I . -I . -I ../../../host-i686-pc-linux-gnu/gcc -I ../../.././libgcc -I ../../.././libgcc/. -I ../../.././libgcc/../gcc -I ../../.././libgcc/../include -imultilib far-pic -iprefix /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/../lib/gcc/cr16-elf/10.2.0/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/include-fixed -MD _ashldi3.d -MF _ashldi3.dep -MP -MT _ashldi3.o -D IN_GCC -D CROSS_DIRECTORY_STRUCTURE -D IN_LIBGCC2 -D inhibit_libc -D HAVE_CC_TLS -D L_ashldi3 -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/sys-include -isystem ./include ../../.././libgcc/libgcc2.c -quiet -dumpbase libgcc2.c -mcr16cplus "-mdata-model=far" -auxbase-strip _ashldi3.o -g -g -g -O2 -O2 -O2 -Wextra -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual "-Wno-error=format-diag" -Wstrict-prototypes -Wmissing-prototypes "-Wno-error=format-diag" -Wold-style-definition -fPIC -fbuilding-libgcc -fno-stack-protector -o /tmp/ccIysxqZ.s
+gdb --annotate /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/cc1
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/cr16-elf/far-pic/libgcc
+(gdb) run  -quiet -I . -I . -I ../../../host-i686-pc-linux-gnu/gcc -I ../../.././libgcc -I ../../.././libgcc/. -I ../../.././libgcc/../gcc -I ../../.././libgcc/../include -imultilib far-pic -iprefix /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/../lib/gcc/cr16-elf/10.2.0/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/include-fixed -MD _ashldi3.d -MF _ashldi3.dep -MP -MT _ashldi3.o -D IN_GCC -D CROSS_DIRECTORY_STRUCTURE -D IN_LIBGCC2 -D inhibit_libc -D HAVE_CC_TLS -D L_ashldi3 -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/sys-include -isystem ./include ../../.././libgcc/libgcc2.c -quiet -dumpbase libgcc2.c -mcr16cplus "-mdata-model=far" -auxbase-strip _ashldi3.o -g -g -g -O2 -O2 -O2 -Wextra -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual "-Wno-error=format-diag" -Wstrict-prototypes -Wmissing-prototypes "-Wno-error=format-diag" -Wold-style-definition -fPIC -fbuilding-libgcc -fno-stack-protector -o /tmp/ccIysxqZ.s
 
 gdb からも再現できている.
 問題の箇所はメッセージを出しているから write にブレークポイントをセットして特定できた.
 それは
 
-b langhooks.c:468
+langhooks.c:468
 
 
-b _fatal_insn
+_fatal_insn
 
 これにきている. ここが呼び出されること自体が期待していない動作.
-
 
       icode = recog_memoized (insn);
       if (icode < 0)
@@ -146,12 +145,11 @@ int g(int a, int b);
 
 int f(int a, int b)
 {
-  return a + b + g(a,b);
+  return a + b + g(a, b);
 }
 %
 
-これで再現している. 
-このときの insn は
+これで再現している. このときの insn は
 
 (gdb) p debug_insn_slim(insn)
    29: sp:SI=sp:SI+0xfffffffc
@@ -164,17 +162,14 @@ $1 = void
       icode = recog_memoized (insn);
       if (icode < 0)
 
-のように recog_memoized (insn) で見つからないことなのだがこれは一体.
+のように recog_memoized (insn) で見つからないことなのだがこれはどういうことだろうか.
 
       icode = recog_memoized (insn);
 
-にきたときに debug_insn_slim(insn) を呼び出して continue したら
+にきたときに debug_insn_slim(insn) を呼び出して continue させるようにしたら
 以下のようになった:
 
 Breakpoint 5, extract_insn (insn=0xb7877480) at ../.././gcc/recog.c:2292
-
---Type <RET> for more, q to quit, c to continue without paging--c
-starting
     2: r25:HI=r2:HI
 $270 = void
 
@@ -1360,8 +1355,7 @@ $535 = void
 Breakpoint 4, extract_insn (insn=0xb7877798) at ../.././gcc/recog.c:2294
 (gdb)
 
-これは, 思いの他たくさんきている.
-気になるのはエラーしている
+これは, 思いの他たくさんきている. 気になるのはエラーしている
 
 sp:SI=sp:SI+0xfffffffc
 
@@ -1372,8 +1366,7 @@ sp:SI=sp:SI-0x6
 でこっちはエラーしていないということ.
 
 まずは recog.o を -g3 でビルドし直して libbackend.a を作り直し, cc1 をリンクし
-直せるように簡単なスクリプトを作成した. make cc1 とかやっても期待した
-ようにはならない.
+直せるように簡単なスクリプトを作成した. make cc1 とかやっても期待したようにはならない.
 
 例えば, 最初に
 
@@ -1395,7 +1388,7 @@ recog_memoized (rtx_insn *insn)
 (gdb) p debug_insn_slim(insn)
     2: r25:HI=r2:HI
 
-であり
+となり
 
 (gdb) p INSN_CODE (insn)
 $539 = -1
@@ -1409,7 +1402,7 @@ $540 = 70
 INSN_CODE (insn) = recog (PATTERN (insn), insn, 0);
 
 とすることでこれが「検索済み」のような状態になるというわけだ.
-ちなみにこの PATTERN はマクロではなくて inline 函数.
+ちなみにこの PATTERN はマクロではなくて inline 函数だった.
 
 そして recog にステップインすると
 
@@ -1418,7 +1411,7 @@ gcc-10.2.0.cr16-elf/gcc/config/cr16/cr16.md
 の Lisp っぽい函数の中に入っていく.
 
 このときの呼び出し履歴は一応
-where
+(gdb) where
 #0  recog (x1=0xb78fb850, insn=0xb7877480, pnum_clobbers=0x0) at ../.././gcc/config/cr16/cr16.md:872
 #1  0x086072a4 in recog_memoized (insn=0xb7877480) at ../.././gcc/recog.h:167
 #2  0x0860b4d2 in extract_insn (insn=0xb7877480) at ../.././gcc/recog.c:2292
@@ -1435,11 +1428,10 @@ where
   [(set_attr "length" "14")]
 )
 
-このいわゆるコンパイラ記述言語ファイル cr16.md だがビルドの過程でどの
-ように使用されている
+このいわゆるコンパイラ記述言語ファイル cr16.md だがビルドの過程でどのように使用されている
 か調べてみた.
-cr16.md を touch して make -n を実行したところ以下のようになった:
 
+cr16.md を touch して make -n を実行したところ以下のようになった:
 
 build/genmddeps ../.././gcc/common.md ../.././gcc/config/cr16/cr16.md > tmp-mddeps
 /bin/sh ../.././gcc/../move-if-change tmp-mddeps mddeps.mk
@@ -1466,17 +1458,17 @@ g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti 
 つまり insn-constants.h を生成しているらしい. と思ったが, insn-constants.h はシンプルな
 もの. 
 
-cr16.md から tmp-mddeps を生成しているっぽい. そしてそれは mddeps.mk におそらく mv され
-ている. mddeps.mk もそれほど複雑なものではない.
+cr16.md から tmp-mddeps を生成しているっぽい. そしてそれは mddeps.mk におそらく
+リネームされている. mddeps.mk もそれほど複雑なものではない.
 
 s-gtype が生成されている. これも中は "timestamp" という文字列のみ.
 
-ということは, cr16.md がどこかのファイルで include されている可能性は高い.
+ということは, cr16.md がどこかのファイルで include されているのかと思った
+(実はこれは正しくなかった).
 
 上の make -n の結果 g++ を起動する前までは大したことはやっていない.
 cr16.md に recog の函数定義があるのだろうが, これをコンパイラ記述言語ではなく
-C や C++ のレベルもしくはアセンブラのレベルで見ることができないか調べ
-てみる.
+C や C++ のレベルもしくはアセンブラのレベルで見ることができないか調べてみる.
 
 recog にステップインした状態で逆アセンブルしてみた:
 
@@ -3125,7 +3117,7 @@ recog(rtx_def*, rtx_insn*, int*)
 mv insn-recog.o insn-recog.o.org として make -n insn-recog.o としてみると
 以下が表示された:
 
-> make -n insn-recog.o
+% make -n insn-recog.o
 true
 build/gengtype  \
                     -S ../.././gcc -I gtyp-input.list -w tmp-gtype.state
@@ -3425,13 +3417,13 @@ echo timestamp > s-cfn-operators
 true
 g++ -fno-PIE -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H -I. -I. -I../.././gcc -I../.././gcc/. -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber -I../.././gcc/../libbacktrace   -o insn-recog.o -MT insn-recog.o -MMD -MP -MF ./.deps/insn-recog.TPo insn-recog.c
 mv ./.deps/insn-recog.TPo ./.deps/insn-recog.Po
-> 
+% 
 
 これは突っこみどころがたくさんあるが, isn-recog.c は生成されそしてコンパイルされる
 ということだ.
 
 
-g++ -fno-PIE -E   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H -I. -I. -I../.././gcc -I../.././gcc/. -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber -I../.././gcc/../libbacktrace   -o insn-recog.i -MT insn-recog.o -MMD -MP -MF ./.deps/insn-recog.TPo insn-recog.c
+% g++ -fno-PIE -E   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H -I. -I. -I../.././gcc -I../.././gcc/. -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber -I../.././gcc/../libbacktrace   -o insn-recog.i -MT insn-recog.o -MMD -MP -MF ./.deps/insn-recog.TPo insn-recog.c
 
 を実行してみた. insn-recog.i を見ると例えば以下:
 
@@ -3470,7 +3462,7 @@ insn-recog.i から削除して insn-recog.c に上書きし, そしてビルド
 
 問題の
 
-p debug_insn_slim(insn)
+(gdb) p debug_insn_slim(insn)
    29: sp:SI=sp:SI+0xfffffffc
 
 だが recog にステップインして以下で -1 が返っていることを確認した:
@@ -3479,7 +3471,6 @@ p debug_insn_slim(insn)
               if (pattern1 (x2) != 0)
                 return -1;                  // ここ
               return 6;
-
 
 ところで a.c をコンパイルすると以下の 3 つがくるはずで 
 
@@ -3511,14 +3502,18 @@ p debug_insn_slim(insn)
 で止めることはできている. 調べてみたが 28 と 29 は違う部分で計算されている.
 とりあえず,
 
+   29: sp:SI=sp:SI+0xfffffffc
+
+に対してコンパイラの内部エラーを回避するためには
+
             case E_SImode:
 #if 0	    
               if (pattern1 (x2) != 0)
-                return -1;                  // ここ
+                return -1;
 #endif		
               return 6;
 
-のようにすればエラーは回避できている. この修正が正しいかどうかは不明.
+とすればよいが, この修正が正しいかどうかは全く確信はない.
 
 トップのディレクトリで make を実行すると insn-recog.c はもう一度生成さ
 れる. だから一旦 make を止めて上の修正を入れ, 再び make を実行すれば
@@ -3534,7 +3529,7 @@ mkdir cr16-elf/libbacktrace
 
 とする必要があった.
 
-> make install
+% make install
 ...
   /bin/sh ../.././gcc/../mkinstalldirs /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/cr16-elf/10.2.0/install-tools/include${multi_dir}; \
   /usr/local/bin/install -c -m 644 include-fixed${multi_dir}/limits.h /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/cr16-elf/10.2.0/install-tools/include${multi_dir}/limits.h; \
@@ -3545,9 +3540,12 @@ make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GN
 make[1]: *** [Makefile:4457: install-gcc] エラー 2
 make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf' から出ます
 make: *** [Makefile:2375: install] エラー 2
->
+%
 
 エラーしている. 空のファイルをインストールしておく.
 
-> touch host-i686-pc-linux-gnu/gcc/include-fixed/limits.h
-> make install
+% touch host-i686-pc-linux-gnu/gcc/include-fixed/limits.h
+% make install
+
+この対処は一応だが機能した. 正しい対処は「スクリプトによるインストール」で述べた通り
+だが, その理由は「gcc ターゲット固有部の調査」を参照.
