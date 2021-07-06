@@ -1,0 +1,21 @@
+gcc install WA
+
+Before executing `make'
+
+gcc-10.2.0.cr16-elf/gcc/config/cr16/cr16.md
+
+Modify above file like below:
+
+#if 0
+      insn = emit_insn (gen_addsi3 (stack_pointer_rtx, stack_pointer_rtx,
+				    GEN_INT (-current_frame_info.total_size)));
+#else      
+      long long int n = current_frame_info.total_size;
+      insn = emit_insn (gen_addsi3 (stack_pointer_rtx, stack_pointer_rtx,
+				    GEN_INT (-n)));
+#endif      
+
+By above fix, we can get rid of compiler internal error describe at
+"Install with script".
+
+More precicely, refer to "Target specific part".

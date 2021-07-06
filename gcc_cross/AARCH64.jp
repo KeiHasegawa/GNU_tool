@@ -169,8 +169,8 @@ tfile
 
 gdb-10.2/gdb/init.c
 
-に以下を追加. init.c は生成されるファイルなので, 例えば configure 実行のタイミングで
-この修正が無効になる可能性はある.
+に以下を追加. init.c は make 実行時に生成されるファイルで以下のように
+宣言と呼び出しが追加されるようにする:
 
  extern initialize_file_ftype _initialize_ser_socket;
  extern initialize_file_ftype _initialize_mi_cmd_env;
@@ -180,6 +180,8 @@ gdb-10.2/gdb/init.c
   _initialize_mi_cmd_env ();
 + _initialize_remote_sim ();
 
+このためには
+
 gdb-10.2/gdb/Makefile
 
 を以下のように修正
@@ -188,6 +190,7 @@ SIM = ../sim/aarch64/libsim.a
 
 SIM_OBS = remote-sim.o
 
+直接 init.c を修正するとタイミングによって init.c が破棄されてしまうので注意.
 これでビルドした gdb で target sim コマンドを入力すると
 
 Target byte order unspecified

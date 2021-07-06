@@ -1,0 +1,118 @@
+Fix for simple target program
+
+`pru-elf-gdb' receives SIGSEGV if it is built without fix.
+As described at "MCORE gdb", we have to do processor specialized 
+configuration:
+
+At first
+
+pru-tdep.c
+
+add this file. Refer to "MCORE gdb". I confirmed that I could just
+build as I expected.
+
+(*1) PRU register
+
+gdb-10.2.pru-elf/sim/pru
+
+From above directory I, found below declarations:
+
+struct pru_regset
+{
+  uint32_t	  regs[32];		/* Primary registers.  */
+  uint16_t	  pc;			/* IMEM _word_ address.  */
+  uint32_t	  pc_addr_space_marker; /* IMEM virtual linker offset.  This
+					   is the artificial offset that
+					   we invent in order to "separate"
+					   the DMEM and IMEM memory spaces.  */
+  unsigned int	  carry : 1;
+  uint32_t	  ctable[32];		/* Constant offsets table for xBCO.  */
+  uint32_t	  macregs[PRU_MAC_NREGS];
+  uint32_t	  scratchpads[XFRID_MAX + 1][32];
+  struct {
+    uint16_t looptop;			/* LOOP top (PC of loop instr).  */
+    uint16_t loopend;			/* LOOP end (PC of loop end label).  */
+    int loop_in_progress;		/* Whether to check for PC==loopend.  */
+    uint32_t loop_counter;		/* LOOP counter.  */
+  } loop;
+  int		  cycles;
+  int		  insts;
+};
+
+const struct pru_reg pru_regs[] = {
+  /* Standard register names.  */
+  DECLARE_REG (r0, 0),
+  DECLARE_REG (r1, 1),
+  DECLARE_REG (sp, 2),		/* Stack pointer.  */
+  DECLARE_REG (ra, 3),		/* Return address.  */
+  DECLARE_REG (fp, 4),		/* Frame pointer.  */
+  DECLARE_REG (r5, 5),
+  DECLARE_REG (r6, 6),
+  DECLARE_REG (r7, 7),
+  DECLARE_REG (r8, 8),
+  DECLARE_REG (r9, 9),
+  DECLARE_REG (r10, 10),
+  DECLARE_REG (r11, 11),
+  DECLARE_REG (r12, 12),
+  DECLARE_REG (r13, 13),
+  DECLARE_REG (r14, 14),
+  DECLARE_REG (r15, 15),
+  DECLARE_REG (r16, 16),
+  DECLARE_REG (r17, 17),
+  DECLARE_REG (r18, 18),
+  DECLARE_REG (r19, 19),
+  DECLARE_REG (r20, 20),
+  DECLARE_REG (r21, 21),
+  DECLARE_REG (r22, 22),
+  DECLARE_REG (r23, 23),
+  DECLARE_REG (r24, 24),
+  DECLARE_REG (r25, 25),
+  DECLARE_REG (r26, 26),
+  DECLARE_REG (r27, 27),
+  DECLARE_REG (r28, 28),
+  DECLARE_REG (r29, 29),
+  DECLARE_REG (r30, 30),
+  DECLARE_REG (r31, 31),
+
+  /* Alternative names for special registers.  */
+  DECLARE_REG (r2, 2),
+  DECLARE_REG (r3, 3),
+  DECLARE_REG (r4, 4)
+};
+
+Then, I decided that
+
+PC register number is 32
+SP register number is 2
+The total number of register
+
+(*2) Break instruction
+
+No break instruction at PRU instruction set. So I choesed like below:
+
+  static unsigned char break_inst[] = { 0xee, 0xdb, 0xba, 0x26 };
+
+This is a false instruction. At this time, I noticed that
+PRU endian was little endian.
+Now, let PRU simulator to stop when PRU simulator execute this instruction.:
+
+gdb-10.2.pru-elf/sim/pru/interp.c
+
+  if (!op)
+    {
++     if (inst == 0x26badbee) {
++       sim_engine_halt (CPU_STATE (cpu), cpu, NULL, PC_byteaddr,
++    	                 sim_stopped, SIM_SIGTRAP);
++     }
++     else {
+	sim_io_eprintf (sd, "Unknown instruction 0x%04x\n", inst);
+	RAISE_SIGILL (sd);
++     }
+    }
+  else
+
+(*2) Simple target program
+
+`test000.elf' is a simple target program which locates 4 `nop' instructions
+at address 0x100. I confirmed that pru-elf-gdb worked as I expected.
+I uploaded `pru-tdep.c' at this point as `pru-tdep.c.000' on this web page. 

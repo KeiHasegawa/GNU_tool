@@ -1,0 +1,28 @@
+rx-elf-gcc の内部コンパイルエラーの調査
+
+dwarf2cfi.c で gcc_assert で失敗していたので, とりあえず dwarf2cfi.c を
+
+-g3 -O0
+
+でコンパイルし直した. そして実行してみると
+
+gcc-10.2.0.rx-elf/gcc/dwarf2cfi.c:
+
+static void
+dwarf2out_frame_debug_adjust_cfa (rtx pat)
+{
+...
+      gcc_assert (dwf_regno (XEXP (src, 0)) == cur_cfa->reg);
+
+この gcc_assert で失敗している.
+
+(gdb) p XEXP (src, 0)
+$6 = (rtx) 0xb7855050
+(gdb) p dwf_regno (XEXP (src, 0))
+$7 = 0
+(gdb) p cur_cfa->reg
+$8 = 6
+(gdb)
+
+のようになっている. しかしこの時点ではこれ以上調査することは難しかったので中断.
+

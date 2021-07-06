@@ -1,0 +1,28 @@
+cr16-elf-gdb のビルド
+
+% xz -d -c ~/gdb-10.2-1.src/gdb-10.2.tar.xz | tar xf -
+% mv gdb-10.2 gdb-10.2.cr16-elf
+% cd gdb-10.2.cr16-elf
+% ./configure --target=cr16-elf --prefix=....
+% make
+
+gdb-10.2.cr16-elf/sim/cr16
+
+で `run' のビルドでリンクエラーが発生する.
+
+gdb-10.2.cr16-elf/sim/cr16/cr16_sim.h
+
+を以下のように修正:
+
+extern struct _state State;
+
+gdb-10.2.cr16-elf/sim/cr16/interp.c
+
+の最後に
+
+struct _state State;
+
+を追加した.
+
+% make
+% make install

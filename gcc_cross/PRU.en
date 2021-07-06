@@ -12,9 +12,13 @@ set TARGET = pru-elf   # Change
 (*3) Verification => NG
 
 % pru-elf-gcc -g -o hello.elf hello.c -Tpruelf-sim.x
-% pru-elf-gdb 00_batch.verify.elf
+% pru-elf-gdb hello.elf
 arch-utils.c:693: internal-error: initialize_current_architecture: Selection of initial architecture failed
 A problem internal to GDB has been detected,
 further debugging may prove unreliable.
 Quit this debugging session? (y or n) Segmentation fault
 %
+
+I examined above phenomenon. Refer to "PRU gdb". But finaly, a break-point
+of C function doesn't work at pru-elf-gdb.
+

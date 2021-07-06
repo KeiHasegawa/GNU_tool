@@ -1,6 +1,13 @@
 Moxie cross compile environment
 
 (*1) Moxie
+(*2) Install with script
+(*3) gcc fix
+(*4) gdb install and fix
+(*5) newlib install
+(*6) Verification => OK
+
+(*1) Moxie
 
 http://moxielogic.org/blog/pages/architecture.html
 
@@ -23,3 +30,90 @@ during RTL pass: final
 0x8667efa crash_signal
 	../.././gcc/toplev.c:328
 0x4023f47e __fprintf
+
+(*3) gcc fix
+
+gcc-10.2.0.moxie-elf/gcc/config/moxie/moxie.c:
+
+Fix like below:
+
+#if 0
+	  fprintf (file, "%ld(%s)",
+		   INTVAL(XEXP (x, 1)), reg_names[REGNO (XEXP (x, 0))]);
+#else	  
+	  fprintf (file, "%lld(%s)",
+		   INTVAL(XEXP (x, 1)), reg_names[REGNO (XEXP (x, 0))]);
+#endif
+
+#if 0		
+		fprintf (file,"+%ld(%s)", INTVAL (XEXP (plus, 1)),
+			 reg_names[REGNO (XEXP (x, 0))]);
+#else
+		fprintf (file,"+%lld(%s)", INTVAL (XEXP (plus, 1)),
+			 reg_names[REGNO (XEXP (x, 0))]);
+#endif		
+
+I confirmed that this fix worked well.
+
+(*4) gdb install and fix
+
+If you install in the same way, `make' causes error.
+Then fix
+
+gdb-10.2.moxie-elf/sim/moxie/Makefile
+
+like below:
+
+SIM_EXTRA_INSTALL = 
+...
+
+#all: moxie-gdb.dtb
+#
+#moxie-gdb.dtb: moxie-gdb.dts
+#	dtc -O dtb -o moxie-gdb.dtb ${srcdir}/moxie-gdb.dts
+#
+#install-dtb: moxie-gdb.dtb
+#	$(SHELL) $(srcdir)/../../mkinstalldirs $(DESTDIR)$(dtbdir)
+#	$(INSTALL_DATA) moxie-gdb.dtb $(DESTDIR)$(dtbdir)/moxie-gdb.dtb
+
+
+Now you can build and install like below:
+
+% cd gdb-10.2.moxie-elf
+% make
+% make install
+
+(*5) newlib install
+
+I confirmed that the install script worked well.
+
+(*6) Verification => OK
+
+% moxie-elf-gcc -g -o hello.elf hello.c -T sim.ld
+% moxie-elf-gdb -q -x gdbcom hello.elf
+Reading symbols from hello.elf...
+Connected to the simulator.
+Loading section .text, size 0x31aa lma 0x1000
+Loading section .init, size 0xe lma 0x41aa
+Loading section .fini, size 0x8 lma 0x41b8
+Loading section .rodata, size 0x12 lma 0x41c0
+Loading section .data, size 0x840 lma 0x42d4
+Loading section .eh_frame, size 0x4 lma 0x4b14
+Loading section .ctors, size 0x8 lma 0x4b18
+Loading section .dtors, size 0x8 lma 0x4b20
+Start address 0x1000
+Transfer rate: 119088 bits in <1 sec.
+Breakpoint 1 at 0x115e: file hello.c, line 5.
+
+Breakpoint 1, main () at hello.c:5
+5	  printf("hello world\n");
+Dump of assembler code for function main:
+   0x0000115c <+0>:	dec	$sp, 0x18
+=> 0x0000115e <+2>:	ldi.l	$r0, 0x41c0
+   0x00001164 <+8>:	jsra	0x138a <puts>
+   0x0000116a <+14>:	xor	$r0, $r0
+   0x0000116c <+16>:	ret
+End of assembler dump.
+hello world
+[Inferior 1 (process 42000) exited normally]
+%

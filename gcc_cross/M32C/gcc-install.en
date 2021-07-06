@@ -1,0 +1,121 @@
+gcc install WA
+
+(*1) `make' envoked `configure' and it failed.
+(*2) target compiler caused internal error
+(*3) target compiler caused internal error(2)
+
+
+(*1) `make' envoked `configure' and it failed.
+
+% cd gcc-10.2.0.m32c-elf
+% ./configure --target=m32c-elf
+% make
+...
+checking for m32c-elf-gcc... /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/sys-include   
+checking for suffix of object files... configure: error: in `/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/m32c-elf/libgcc':
+configure: error: cannot compute suffix of object files: cannot compile
+See `config.log' for more details
+make[1]: *** [Makefile:11917: configure-target-libgcc] error 1
+make[1]: Leaving directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf'
+make: *** [Makefile:938: all] error 2
+%
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/m32c-elf/libgcc
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/libgcc/configure --srcdir=../.././libgcc --cache-file=./config.cache --enable-multilib --with-cross-host=i686-pc-linux-gnu --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --disable-libstdc++-v3 --disable-libssp --disable-libquadmath --disable-libgfortran --disable-libobjc --enable-languages=c,c++,fortran,lto,objc --program-transform-name='s&^&m32c-elf-&' --disable-option-checking --with-target-subdir=m32c-elf --build=i686-pc-linux-gnu --host=m32c-elf --target=m32c-elf
+...
+% echo $status
+0
+%
+
+The error could not be reproduced.
+
+(*2) target compiler caused internal error
+
+Again I executed from top directory:
+
+% make
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/sys-include    -g -O2 -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../host-i686-pc-linux-gnu/gcc -I../.././libgcc -I../.././libgcc/. -I../.././libgcc/../gcc -I../.././libgcc/../include -I../.././libgcc/../libdecnumber/no -I../.././libgcc/../libdecnumber -DHAVE_CC_TLS  -o _muldi3.o -MT _muldi3.o -MD -MP -MF _muldi3.dep -DL_muldi3 -c ../.././libgcc/libgcc2.c -fvisibility=hidden -DHIDE_EXPORTS
+during RTL pass: pro_and_epilogue
+../.././libgcc/libgcc2.c: in function `__muldi3':
+../.././libgcc/libgcc2.c:558:1: compiler internal error: leaf_function_p at final.c:4473
+  558 | }
+      | ^
+0x81653d3 leaf_function_p()
+	../.././gcc/final.c:4473
+0x891cbf8 m32c_leaf_function_p
+	../.././gcc/config/m32c/m32c.c:4014
+0x891cbf8 m32c_emit_prologue()
+	../.././gcc/config/m32c/m32c.c:4068
+0x8b0738d gen_prologue()
+	../.././gcc/config/m32c/prologue.md:26
+0x8919d87 target_gen_prologue
+	../.././gcc/config/m32c/blkmov.md:359
+0x83eb43a make_prologue_seq
+	../.././gcc/function.c:5787
+0x83eb5e3 thread_prologue_and_epilogue_insns()
+	../.././gcc/function.c:5904
+0x83ebb51 rest_of_handle_thread_prologue_and_epilogue
+	../.././gcc/function.c:6395
+0x83ebb51 execute
+	../.././gcc/function.c:6471
+Please submit a full bug report,
+with preprocessed source if appropriate.
+Please include the complete backtrace with any bug report.
+See <https://gcc.gnu.org/bugs/> for instructions.
+make[2]: *** [Makefile:501: _muldi3.o] error 1
+...
+%
+
+Omitted precise stuff, I got rid of this error like below:
+
+gcc-10.2.0.m32c-elf/gcc/config/m32c/m32c.c:
+
+static int
+m32c_leaf_function_p (void)
+{
+#if 0  
+  int rv;
+
+  push_topmost_sequence ();
+  rv = leaf_function_p ();
+  pop_topmost_sequence ();
+  return rv;
+#else
+  return 0;
+#endif  
+}
+
+(*3) target compiler caused internal error(2)
+
+Again and again I executed from top directory:
+
+% make
+...
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/sys-include    -g -O2 -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../host-i686-pc-linux-gnu/gcc -I../.././libgcc -I../.././libgcc/. -I../.././libgcc/../gcc -I../.././libgcc/../include -I../.././libgcc/../libdecnumber/no -I../.././libgcc/../libdecnumber -DHAVE_CC_TLS  -o _addsub_sf.o -MT _addsub_sf.o -MD -MP -MF _addsub_sf.dep -DFINE_GRAINED_LIBRARIES -DL_addsub_sf -DFLOAT  -c ../.././libgcc/fp-bit.c -fvisibility=hidden -DHIDE_EXPORTS
+../.././libgcc/fp-bit.c: in fuction `_fpadd_parts':
+../.././libgcc/fp-bit.c:706:1: error: unable to find a register to spill in class ‘A_REGS’
+  706 | }
+      | ^
+../.././libgcc/fp-bit.c:706:1: error: this is the insn:
+(jump_insn 61 60 62 6 (set (pc)
+        (if_then_else (eq (mem:HI (plus:HI (reg/f:HI 0 r0 [orig:71 <retval> ] [71])
+                        (const_int 2 [0x2])) [2 a_48(D)->sign+0 S2 A8])
+                (mem:HI (plus:HI (reg/v/f:HI 73 [ b ])
+                        (const_int 2 [0x2])) [2 b_50(D)->sign+0 S2 A8]))
+            (label_ref:HI 353)
+            (pc))) "../.././libgcc/fp-bit.c":592:21 49 {cbranchhi4}
+     (expr_list:REG_DEAD (reg/v/f:HI 73 [ b ])
+        (int_list:REG_BR_PROB 365072228 (nil)))
+ -> 353)
+...
+%
+
+Omitted precise stuff,
+
+gcc-10.2.0.m32c-elf/m32c-elf/libgcc/Makefile
+
+I changed -O2 option to -O0 option and got rid of above error.
+
+At last I could build and install them.

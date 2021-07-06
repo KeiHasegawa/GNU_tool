@@ -1,0 +1,111 @@
+簡単なプログラムを動かすまで
+
+pru-elf-gdb はビルドしたものをそのまま動かすと SIGSEGV を受ける. これはプロセッサ固有の
+設定をしていないからで「MCORE の gdb」と同じ対処をする必要がある.
+
+ひとまず
+
+pru-tdep.c
+
+を追加しビルドが成功することのみ確認した.
+
+(*1) PRU のレジスタ
+
+以下は sim/pru のソースから
+
+struct pru_regset
+{
+  uint32_t	  regs[32];		/* Primary registers.  */
+  uint16_t	  pc;			/* IMEM _word_ address.  */
+  uint32_t	  pc_addr_space_marker; /* IMEM virtual linker offset.  This
+					   is the artificial offset that
+					   we invent in order to "separate"
+					   the DMEM and IMEM memory spaces.  */
+  unsigned int	  carry : 1;
+  uint32_t	  ctable[32];		/* Constant offsets table for xBCO.  */
+  uint32_t	  macregs[PRU_MAC_NREGS];
+  uint32_t	  scratchpads[XFRID_MAX + 1][32];
+  struct {
+    uint16_t looptop;			/* LOOP top (PC of loop instr).  */
+    uint16_t loopend;			/* LOOP end (PC of loop end label).  */
+    int loop_in_progress;		/* Whether to check for PC==loopend.  */
+    uint32_t loop_counter;		/* LOOP counter.  */
+  } loop;
+  int		  cycles;
+  int		  insts;
+};
+
+const struct pru_reg pru_regs[] = {
+  /* Standard register names.  */
+  DECLARE_REG (r0, 0),
+  DECLARE_REG (r1, 1),
+  DECLARE_REG (sp, 2),		/* Stack pointer.  */
+  DECLARE_REG (ra, 3),		/* Return address.  */
+  DECLARE_REG (fp, 4),		/* Frame pointer.  */
+  DECLARE_REG (r5, 5),
+  DECLARE_REG (r6, 6),
+  DECLARE_REG (r7, 7),
+  DECLARE_REG (r8, 8),
+  DECLARE_REG (r9, 9),
+  DECLARE_REG (r10, 10),
+  DECLARE_REG (r11, 11),
+  DECLARE_REG (r12, 12),
+  DECLARE_REG (r13, 13),
+  DECLARE_REG (r14, 14),
+  DECLARE_REG (r15, 15),
+  DECLARE_REG (r16, 16),
+  DECLARE_REG (r17, 17),
+  DECLARE_REG (r18, 18),
+  DECLARE_REG (r19, 19),
+  DECLARE_REG (r20, 20),
+  DECLARE_REG (r21, 21),
+  DECLARE_REG (r22, 22),
+  DECLARE_REG (r23, 23),
+  DECLARE_REG (r24, 24),
+  DECLARE_REG (r25, 25),
+  DECLARE_REG (r26, 26),
+  DECLARE_REG (r27, 27),
+  DECLARE_REG (r28, 28),
+  DECLARE_REG (r29, 29),
+  DECLARE_REG (r30, 30),
+  DECLARE_REG (r31, 31),
+
+  /* Alternative names for special registers.  */
+  DECLARE_REG (r2, 2),
+  DECLARE_REG (r3, 3),
+  DECLARE_REG (r4, 4)
+};
+
+こんな感じになっている. PC のレジスタ番号は 32 にして
+0 から 31 は /* Primary registers */ にする. その他は不明なのでとりあえず
+レジスタの本数は 33 ということにしておく.
+スタックポインタは 2 番らしい.
+
+(*2) ブレーク命令
+PRU にはブレーク命令がないらしい. なのでオペコードにない
+
+  static unsigned char break_inst[] = { 0xee, 0xdb, 0xba, 0x26 };
+
+をブレーク命令としておく. このとき気付いたが PRU はリトルエンディアンらしい.
+この偽の命令を実行したとき通常通りブレークポイントにヒットした動作をしておく: 
+
+gdb-10.2.pru-elf/sim/pru/interp.c
+
+  if (!op)
+    {
++     if (inst == 0x26badbee) {
++       sim_engine_halt (CPU_STATE (cpu), cpu, NULL, PC_byteaddr,
++    	                 sim_stopped, SIM_SIGTRAP);
++     }
++     else {
+	sim_io_eprintf (sd, "Unknown instruction 0x%04x\n", inst);
+	RAISE_SIGILL (sd);
++     }
+    }
+  else
+
+(*3) 簡単なプログラム
+
+test000.elf は nop を 4 命令 0x100 番地に置いたプログラムで, これをロードし
+ステップ実行ができている. このときの pru-tdep.c を pru-tdep.c.000 として
+このページにアップロードしておいた.

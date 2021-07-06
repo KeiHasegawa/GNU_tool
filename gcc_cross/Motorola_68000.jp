@@ -1,0 +1,129 @@
+Motorola 68000 のクロスコンパイル環境
+
+(*1) Motorola 68000
+(*2) binutils のインストール
+(*3) gcc-3.4.4 のインストール
+(*4) gdb のインストール
+(*5) newlib-1.13.0 のインストール
+(*6) 動作確認 => ステップ実行で無限ループするが修正方法がある
+
+(*1) Motorola 68000
+https://en.wikipedia.org/wiki/Motorola_68000
+
+(*2) binutlis のインストール
+% xz -d -c ../binutils-2.36.1-2.src/binutils-2.36.1.tar.xz | tar xf -
+% mv binutils-2.36.1 binutils-2.36.1.m68hc11-elf
+% cd binutils-2.36.1.m68hc11-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=m68hc11-elf
+% make
+% make install
+% cd ..
+
+(*3) gcc-3.4.4 のインストール
+
+gcc-10.2 だと「ARM」と同じように
+
+configure-gcc
+
+のターゲットのビルドでエラーするので gcc-3.4.4 にした:
+
+% bunzip2 -c ../gcc-3.4.4.tar.bz2 | tar xf -
+% mv gcc-3.4.4 gcc-3.4.4.m68hc11-elf
+% cd gcc-3.4.4.m68hc11-elf
+% ./configure --target=m68hc11-elf --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --with-newlib
+% make -w all-gcc install-gcc LANGUAGES="c c++"
+
+ランタイムライブラリのビルドでエラーしてしまう.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.m68hc11-elf/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.m68hc11-elf/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include -Os -mrelax  -DUSE_GAS -DIN_GCC -Dinhibit_libc -g  -DIN_LIBGCC2 -I. -I. -I. -I./. -I./../include  -DL_regs_min -xassembler-with-cpp -c ./config/m68hc11/larith.asm -o libgcc/./_regs_min.o
+./config/m68hc11/larith.asm: Assembler messages:
+./config/m68hc11/larith.asm:108: Error: attempt to store non-zero value in section `.softregs'
+./config/m68hc11/larith.asm:109: Error: attempt to store non-zero value in section `.softregs'
+./config/m68hc11/larith.asm:110: Error: attempt to store non-zero value in section `.softregs'
+make[2]: *** [libgcc.mk:200: libgcc/./_regs_min.o] エラー 1
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.m68hc11-elf/gcc' から出ます
+make[1]: *** [Makefile:1261: stmp-multilib] エラー 2
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.m68hc11-elf/gcc' から出ます
+make: *** [Makefile:23373: all-gcc] エラー 2
+make: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.m68hc11-elf' から出ます
+% cd gcc
+% cp ./config/m68hc11/larith.asm ./config/m68hc11/larith.asm.org
+
+以下のように修正した:
+
+% diff -c ./config/m68hc11/larith.asm.org ./config/m68hc11/larith.asm
+*** ./config/m68hc11/larith.asm.org	2021-07-01 11:26:24.000000000 +0900
+--- ./config/m68hc11/larith.asm	2021-07-03 12:55:07.000000000 +0900
+***************
+*** 92,103 ****
+  
+  	.sect .text
+  	
+! 
+  #define REG(NAME)			\
+  NAME:	.dc.w	1;			\
+  	.type NAME,@object ;		\
+  	.size NAME,2
+! 
+  #ifdef L_regs_min
+  /* Pseudo hard registers used by gcc.
+     They should be located in page0.  */
+--- 92,108 ----
+  
+  	.sect .text
+  	
+! #if 0
+  #define REG(NAME)			\
+  NAME:	.dc.w	1;			\
+  	.type NAME,@object ;		\
+  	.size NAME,2
+! #else
+! #define REG(NAME)			\
+! NAME:					\
+! 	.space 2
+! #endif	
+! 	
+  #ifdef L_regs_min
+  /* Pseudo hard registers used by gcc.
+     They should be located in page0.  */
+%
+% cd ..
+% make -w all-gcc install-gcc LANGUAGES="c c++"
+% cd ..
+
+(*4) gdb-10.2 のインストール
+
+% xz -d -c gdb-10.2.tar.xz | tar xf -
+% mv gdb-10.2 gdb-10.2.m68hc11-elf
+% cd gdb-10.2.m68hc11-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=m68hc11-elf
+% make
+% make install
+% cd ..
+
+(*5) newlib-1.13.0 のインストール
+
+newlib-4.1.0 だとエラーするので newlib-1.13.0 にした.
+
+% gunzip -c ../newlib-1.13.0.tar.gz
+% mv newlib-1.13.0 newlib-1.13.0.m68hc11-elf
+% cd newlib-1.13.0.m68hc11-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=m68hc11-elf
+% make
+% make install
+
+(*6) 動作確認 => ステップ実行で無限ループするが修正方法がある
+
+ブレークポイントに停止した後, 1 回目のステップ実行は期待通り動作するが続く 2 回目の
+ステップ実行で無限ループしている.
+
+	.text
+start:
+	nop	; これはステップ実行できている.
+	nop	; これをステップ実行できていない.
+	nop
+end:
+	nop
+
+=> 「Motorola 68000 の gdb」で修正できて, 期待通り動作している.
+

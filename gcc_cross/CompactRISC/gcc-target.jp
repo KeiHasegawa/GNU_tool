@@ -1,0 +1,350 @@
+insn-recog.c はざっくりと言えば
+
+build/genrecog ../.././gcc/common.md ../.././gcc/config/cr16/cr16.md > insn-recog.c
+
+のように生成される.
+
+build/genrecog
+
+がコンパイラ記述言語のコンパイラで, これが問題の箇所
+
+            case E_DImode:
+              if (pattern0 (x2) != 0)
+                return -1;
+              return 6; /* adddi3 */
+
+を生成している. build/genrecog は以下のようにビルドされている:
+例によって -O2 ビルドされているっぽいので -O0 ビルドした.
+
+mk_build_recog
+
+にスクリプトにしておいた. これでビルドした build/genrecog でも確かに
+問題の箇所は再現している.
+
+cr16.md の中で adddi3 の文字列が出現するのは以下:
+
+;; Addition-Subtraction "adddi3/subdi3" insns.
+(define_insn "<plusminus_insn>di3"
+  [(set (match_operand:DI 0 "register_operand" "=r")
+	(plusminus:DI (match_operand:DI 1 "register_operand" "<comm>0")
+		      (match_operand:DI 2 "register_operand" "r")))]
+  ""
+  {
+    return cr16_emit_add_sub_di (operands, <plusminus_flag>);
+  })
+
+(define_insn "addsi3"
+  [(set (match_operand:SI 0 "register_operand" "=r,r,r,r,r")
+	(plus:SI (match_operand:SI 1 "register_operand" "%0,0,0,0,0")
+		 (match_operand:SI 2 "reg_si_int_operand" "r,M,N,O,i")))]
+  ""
+  "addd\t%2, %0"
+  [(set_attr "length" "2,2,4,4,6")]
+)
+
+そしておそらく 2 つ目が問題の箇所と思われる.
+
+デバッグビルドした genrecog を gdb から実行してみた.
+
+(gdb) run a.txt
+
+とすると
+
+a.txt: No such file or directory
+
+というメッセージは出るが同時に C++ のプログラムが出力された. 今度は空のファイルを
+指定してみた. するとエラーメッセージはなく C++ のプログラムが出力された.
+このとき生成された C++ のプログラムだがヘッダファイルのインクルード部分を
+除けば以下:
+
+int
+recog (rtx x1 ATTRIBUTE_UNUSED,
+	rtx_insn *insn ATTRIBUTE_UNUSED,
+	int *pnum_clobbers ATTRIBUTE_UNUSED)
+{
+  rtx * const operands ATTRIBUTE_UNUSED = &recog_data.operand[0];
+  int res ATTRIBUTE_UNUSED;
+  recog_data.insn = NULL;
+  return -1;
+}
+
+rtx_insn *
+split_insns (rtx x1 ATTRIBUTE_UNUSED, rtx_insn *insn ATTRIBUTE_UNUSED)
+{
+  rtx * const operands ATTRIBUTE_UNUSED = &recog_data.operand[0];
+  rtx_insn *res ATTRIBUTE_UNUSED;
+  recog_data.insn = NULL;
+  return NULL;
+}
+
+rtx_insn *
+peephole2_insns (rtx x1 ATTRIBUTE_UNUSED,
+	rtx_insn *insn ATTRIBUTE_UNUSED,
+	int *pmatch_len_ ATTRIBUTE_UNUSED)
+{
+  rtx * const operands ATTRIBUTE_UNUSED = &recog_data.operand[0];
+  rtx_insn *res ATTRIBUTE_UNUSED;
+  recog_data.insn = NULL;
+  return NULL;
+}
+
+これは, おそらく必ずエラーするようなものなのかもしれないが, テンプレートといった
+ところだろう.
+
+さて入力ファイルの文法だが Lisp のようなもので, 例えば
+
+gcc-10.2.0/gcc/common.md
+
+にあるような
+
+(define_register_constraint "r" "GENERAL_REGS"
+  "Matches any general register.")
+
+上のようなものである. これだけ a.txt に入れて同じように genrecog を動かしても出力は変更ない.
+もう少し, 複雑に書かなければ目に見える形で違いは出ないのだろう.
+
+ところでこの上の宣言あるいは定義なのか不明だが, おそらく何らかの
+制限を記述する文脈で
+
+"r"
+
+は
+
+"GENERAL_REGS"
+
+を意味する, あるいはそれだけを受け入れるといったことを意味するのだろうと思う.
+とすれば今回問題になった
+
+(define_insn "addsi3"
+  [(set (match_operand:SI 0 "register_operand" "=r,r,r,r,r")
+	(plus:SI (match_operand:SI 1 "register_operand" "%0,0,0,0,0")
+		 (match_operand:SI 2 "reg_si_int_operand" "r,M,N,O,i")))]
+  ""
+  "addd\t%2, %0"
+  [(set_attr "length" "2,2,4,4,6")]
+)
+
+だが
+
+"=r,r,r,r,r"
+
+や
+
+"r,M,N,O,i"
+
+が意味するところに少なからず影響を与えているだろう.
+
+gcc-10.2.0/gcc/common.md
+
+には以下もある.
+
+(define_constraint "i"
+  "Matches a general integer constant."
+  (and (match_test "CONSTANT_P (op)")
+       (match_test "!flag_pic || LEGITIMATE_PIC_OPERAND_P (op)")))
+
+同じように "M" や "N", "O" もあるのかと思ったがそうでもないらしい.
+
+gcc-10.2.0/gcc/config/cr16/cr16.md
+
+にもなかったがこれの先頭で
+
+(include "predicates.md")
+(include "constraints.md")
+
+のようになっている
+
+gcc-10.2.0/gcc/config/cr16/constraints.md:
+
+(define_constraint "M"
+  "A unsigned and customized  4-bit immediate."
+  (and (match_code "const_int")
+       (match_test "(IN_RANGE_P (ival, 0, 15) && ((ival != 9) && (ival != 11)))")))
+
+(define_constraint "N"
+  "A signed 16-bit immediate."
+  (and (match_code "const_int")
+       (match_test "IN_RANGE_P (ival, -32768, 32767)")))
+
+(define_constraint "O"
+  "A unsigned 20-bit immediate."
+  (and (match_code "const_int")
+       (match_test "IN_RANGE_P (ival, 0, 1048575)")))
+
+こんな感じになっている.
+
+"r,M,N,O,i"
+
+と
+
+"2,2,4,4,6"
+
+の並びが対応しているとすれば, 今回問題になった
+
+   29: sp:SI=sp:SI+0xfffffffc
+
+がこれらのどれにも対応していなかったということだろう. おそらくこれは
+
+   29: sp:SI=sp:SI-0x4
+
+となっているのが正しいのかと思った. そうすれば "M" にマッチして, 問題が発生した直前の
+
+   28: sp:SI=sp:SI-0x6
+
+と同様に処理できたのだろう. だから
+
+(define_insn "addsi3"
+  [(set (match_operand:SI 0 "register_operand" "=r,r,r,r,r")
+	(plus:SI (match_operand:SI 1 "register_operand" "%0,0,0,0,0")
+		 (match_operand:SI 2 "reg_si_int_operand" "r,M,N,O,i")))]
+  ""
+  "addd\t%2, %0"
+  [(set_attr "length" "2,2,4,4,6")]
+)
+
+に規則をつけ加えて修正するというよりも addsi3 にきているのを修正するということになる.
+
+sp = sp + 0xfffffffc
+
+は
+
+gcc-10.2.0.cr16-elf/gcc/emit-rtl.c:
+
+    default:
+      last = make_insn_raw (x);
+      add_insn (last);           // ここで作っていた
+      break;
+
+これを呼び出していたのは
+
+      insn = emit_insn (gen_addsi3 (stack_pointer_rtx, stack_pointer_rtx,
+				    GEN_INT (-current_frame_info.total_size)));
+      RTX_FRAME_RELATED_P (insn) = 1;
+
+ということは...
+
+#if 0
+      insn = emit_insn (gen_addsi3 (stack_pointer_rtx, stack_pointer_rtx,
+				    GEN_INT (-current_frame_info.total_size)));
+#else
+      insn = emit_insn (gen_subsi3 (stack_pointer_rtx, stack_pointer_rtx,
+				    GEN_INT (current_frame_info.total_size)));
+#endif
+
+とすればどうか
+
+  =>
+
+確認してみたが,
+
+0x0000010e <+2>:	addd	$0xfffc:m,(sp)
+
+の代りに subd 相当が出るのかと思ったが出ていない. これはだめ.
+
+
+(*A)
+#if 0      
+      insn = emit_insn (gen_addsi3 (stack_pointer_rtx, stack_pointer_rtx,
+				    GEN_INT (-current_frame_info.total_size)));
+#else
+      int n = -current_frame_info.total_size;
+      n &= 0xffff;
+      insn = emit_insn (gen_addsi3 (stack_pointer_rtx, stack_pointer_rtx,
+				    GEN_INT (n)));
+#endif
+
+
+のようにしてみた. 2021/07/05 18:45 
+
+=> だめっぽい.
+
+        addd	$0xfffc:m,(sp)
+
+	addd	$65532, (sp)
+
+のようなコード生成で
+
+65532 = 0xfffc
+
+だからできていると思ったができていない.
+
+さてどうしたものか.
+
+_fstat で最後の popret 命令をステップ実行したときに何らかの原因で不正メモリアクセス
+が発生している.
+
+Dump of assembler code for function _fstat:
+   0x0000012c <+0>:	push	$0x2,r13,RA
+   0x0000012e <+2>:	addd	$0xfff8:m,(sp)
+   0x00000132 <+6>:	movd	(sp),(r13)
+   0x00000134 <+8>:	storw	r2,0x0:s(r13)
+   0x00000136 <+10>:	stord	(r4,r3),0x4:s(r13)
+=> 0x00000138 <+12>:	movd	$0x48:m,(r3,r2)
+   0x0000013c <+16>:	loadd	0x4:s(r13),(r1,r0)
+   0x0000013e <+18>:	movd	(r3,r2),(r6,r5)
+   0x00000140 <+20>:	movw	$0x0:s,r4
+   0x00000142 <+22>:	movd	(r1,r0),(r3,r2)
+   0x00000144 <+24>:	bal	(ra),*+0x538 <memset>:m
+   0x00000148 <+28>:	loadd	0x4:s(r13),(r1,r0)
+   0x0000014a <+30>:	movd	$0x2190:m,(r3,r2)
+   0x0000014e <+34>:	stord	(r3,r2),0x4:s(r1,r0)
+   0x00000150 <+36>:	movw	$0x0:s,r0
+   0x00000152 <+38>:	storw	r0,0x2:s(r13)
+   0x00000154 <+40>:	loadw	0x2:s(r13),r0
+   0x00000156 <+42>:	movd	(r13),(sp)
+   0x00000158 <+44>:	addd	$0x8:s,(sp)
+   0x0000015a <+46>:	popret	$0x2,r13,RA
+End of assembler dump.
+(cr16-elf-gdb) b *0x15a
+Breakpoint 8 at 0x15a: file dummy.c, line 9.
+(cr16-elf-gdb) c
+Continuing.
+
+Breakpoint 8, 0x0000015a in _fstat (fd=1, st=0x12f20) at dummy.c:9
+(cr16-elf-gdb) stepi
+0x00000000 in ?? ()
+(cr16-elf-gdb)
+
+正しく動作していてたものと (*A) の修正を加えたものとで比較してみた:
+
+正
+0000010c <_main>:
+     10c:	9d 01       	push	$0x2,r13,RA
+     10e:	bf 60 fc ff 	addd	$0xfffc:m,(sp)
+
+
+誤
+0000010c <_main>:
+     10c:	9d 01       	push	$0x2,r13,RA
+     10e:	f0 04 fc ff 	addd	$0xfffc:m,(sp)
+
+オブジェクトコードが異なっている. 見た目が同じで違う命令ということか.
+
+つまり
+
+(正)
+        addd	$0xfffc:m,(sp)
+
+(誤)
+	addd	$65532, (sp)
+
+ということで (*A) の修正では十分ではないということ.
+
+逆アセンブルではなくて実際のコンパイラの出力は以下:
+
+(正)
+	addd	$-4, (sp)
+
+(誤)
+	addd	$65532, (sp)
+
+(*B) 
+以下が正しい: 
+#if 0
+      insn = emit_insn (gen_addsi3 (stack_pointer_rtx, stack_pointer_rtx,
+				    GEN_INT (-current_frame_info.total_size)));
+#else      
+      long long int n = current_frame_info.total_size;
+      insn = emit_insn (gen_addsi3 (stack_pointer_rtx, stack_pointer_rtx,
+				    GEN_INT (-n)));
+#endif      

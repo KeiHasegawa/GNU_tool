@@ -1,0 +1,26 @@
+gdb install WA
+
+% xz -d -c ~/gdb-10.2-1.src/gdb-10.2.tar.xz | tar xf -
+% mv gdb-10.2 gdb-10.2.cr16-elf
+% cd gdb-10.2.cr16-elf
+% ./configure --target=cr16-elf --prefix=....
+% make
+
+gdb-10.2.cr16-elf/sim/cr16
+
+At above directory link error occurs for `run'.
+
+gdb-10.2.cr16-elf/sim/cr16/cr16_sim.h
+
+Fix above file like below:
+
+extern struct _state State;
+
+gdb-10.2.cr16-elf/sim/cr16/interp.c
+
+Add above file below
+
+struct _state State;
+
+% make
+% make install

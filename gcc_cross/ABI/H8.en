@@ -1,0 +1,170 @@
+H8 ABI
+
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long long' argument and return value
+(*7) `float', `double' argument and return value
+(*8) Structure argument and return value
+
+(*1) Function call
+
+	jsr func
+
+	Pseudo code
+
+	r7 -= 2;
+	memory[r7] = (jsr next address);
+	pc = func;
+
+	`r7' works as stack pointer.
+	Push return address and jump to `func'.
+
+(*2) Return from function
+
+	rts
+
+	Pseudo code
+
+	pc = memory[r7];
+	r7 += 2;
+
+	Pop return address and jump there.
+
+(*3) Prologue
+
+	mov.w	r6,@-r7
+	mov.w	r7,r6
+	mov.w	#-128,r3
+	add.w	r3,r7
+
+	`r6' is used as frame pointer. Above is code for 128 bytes local area.
+
+         +----------------+ <- r7_{new}
+         |                |
+         |                |
+         | local variable |   
+         |                |
+         |                |
+         +----------------+ <- r6_{new}
+         |     r6_{old}   |
+         +----------------+ <- r7_{old}
+         | return address |
+         +----------------+ 
+
+(*4) Epilogue
+
+	mov.w	#128,r3
+	add.w	r3,r7
+	mov.w	@r7+,r6
+	rts
+
+	Above is code for 128 bytes local area.
+
+(*5) Normal argument and return value
+
+     1st : r0
+     2nd : r1
+     3rd : r2
+     4th : use stack
+
+     return value : r0
+
+     Fro example, `int f(int a, int b, int c, int d, int e);' function
+     is called like
+
+     f(5, 6, 7, 8, 9);
+
+     becomes like below:
+
+	mov.w	#9,r2
+	mov.w	r2,@-r7
+	mov.w	#8,r2
+	mov.w	r2,@-r7
+	mov.w	#7,r2
+	mov.w	#6,r1
+	mov.w	#5,r0
+	jsr	@_f
+	adds	#2,r7
+	adds	#2,r7
+
+     At stop at `f', the stack layout becomes like below:
+
+         +----------------+ <- sp
+         | return address |
+         +----------------+ 
+         |       8        |
+         +----------------+ 
+         |       9        |
+         +----------------+
+
+(*6) `long long' argument and return value
+
+     sizeof(long long) = 8
+
+     Even if it the 1st argument, use stack. For example
+
+     void f(long long a);
+
+     f(0x123456789abcdef0LL);
+
+     Then, stack becomes like below at `f'
+
+         +----------------+ <- sp
+         | return address |
+         +----------------+ 
+         |    0x1234      |
+         +----------------+ 
+         |    0x5678      |
+         +----------------+
+         |    0x9abc      |
+         +----------------+
+         |    0xdef0      |
+         +----------------+
+
+     When calling the function which returns `long long',
+     set the address for return value to `r0'. Consequently, the 1st
+     argument is set to `r1' not to `r0'.
+      
+(*7) `float', `double' argument and return value
+
+     H8 has no FPU so software calculates. 
+     
+     sizeof(float) = sizeof(double) = 4
+
+     If the 1st argument is double, `r0' and `r1' are set
+     for the value. If the 2nd argument is double, use stack.
+     For example,
+     
+     double f(double a, double b)
+     {
+       return a + b;
+     }
+
+     f(1.0, 0.5);
+
+     At start adddrss of `f',
+
+     r0 = 0x3f80 r1 = 0x0000
+
+     and stack becomes like below:
+
+         +----------------+ <- sp
+         | return address |
+         +----------------+ 
+         |    0x3f00      |
+         +----------------+ 
+         |    0x0000      |
+         +----------------+
+
+
+     `float' or `double' return value is set to `r0' and `r1'.
+
+(*8) Structure argument and return value
+
+     Same with `long long'. Arugment is passed via stack.
+     Return value is set to the address indicated by `r0'.
+
+     

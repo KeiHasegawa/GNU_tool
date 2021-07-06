@@ -1,6 +1,11 @@
 LatticeMico32 のクロスコンパイル環境
 
 (*1) LatticeMico32
+(*2) スクリプトによるインストール
+(*3) 動作確認 => OK
+(*4) 付録
+
+(*1) LatticeMico32
 https://ja.wikipedia.org/wiki/LatticeMico32
 
 (*2) スクリプトによるインストール
@@ -9,7 +14,8 @@ https://ja.wikipedia.org/wiki/LatticeMico32
 
 set TARGET = lm32-elf  # ここを変更
 
-残念ながら gdb のビルドで以下のようにエラーになってしまう.
+
+環境変数 SHELL を /bin/tcsh にセットしていたため以下のようにエラーになってしまった:
 
 gcc -DHAVE_CONFIG_H -DWITH_DEFAULT_MODEL='"lm32"' -DWITH_DEFAULT_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BFD_ENDIAN_BIG  -DWITH_HW=1 -DDEFAULT_INLINE=0  -DWITH_SCACHE=16384       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes  -g -O2 -c -o model.o -MT model.o -MMD -MP -MF .deps/model.Tpo model.c
 gcc -DHAVE_CONFIG_H -DWITH_DEFAULT_MODEL='"lm32"' -DWITH_DEFAULT_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BFD_ENDIAN_BIG  -DWITH_HW=1 -DDEFAULT_INLINE=0  -DWITH_SCACHE=16384       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes  -g -O2 -c -o mloop.o -MT mloop.o -MMD -MP -MF .deps/mloop.Tpo mloop.c
@@ -18,3 +24,73 @@ mloop.c: 関数 ‘lm32bf_engine_run_fast’ 内:
 sem-switch.c:101:5: エラー: ラベル ‘case_sem_INSN_SCALL’ が使用されましたが、定義されていません
   101 |     { LM32BF_INSN_SCALL, && case_sem_INSN_SCALL },
       |     ^
+
+% setenv SHELL /bin/sh
+
+として make し直せばビルドに成功する.
+これ以外はスクリプトによるインストールでうまくいく.
+スクリプトを動かす前に環境変数をセットしておけば問題なし.
+
+(*3) 動作確認 => OK
+
+% lm32-elf-gcc -o hello.elf -g hello.c
+% cat gdbcom
+target sim
+load
+b main
+run
+disassemble
+c
+quit
+% lm32-elf-gdb -q -x gdbcom hello.elf
+Reading symbols from hello.elf...
+Connected to the simulator.
+Loading section .boot, size 0x50 lma 0x0
+Loading section .text, size 0x4148 lma 0x50
+Loading section .eh_frame, size 0x4 lma 0x4198
+Loading section .rodata, size 0x210 lma 0x419c
+Loading section .data, size 0x848 lma 0x43b0
+Start address 0x0
+Transfer rate: 155552 bits in <1 sec.
+Breakpoint 1 at 0x64: file hello.c, line 5.
+
+Breakpoint 1, main () at hello.c:5
+5	  printf("hello world\n");
+Dump of assembler code for function main:
+   0x00000050 <+0>:	addi sp,sp,-8
+   0x00000054 <+4>:	sw (sp+8),fp
+   0x00000058 <+8>:	sw (sp+4),ra
+   0x0000005c <+12>:	mv fp,sp
+   0x00000060 <+16>:	addi fp,fp,8
+=> 0x00000064 <+20>:	mvhi r1,0x0
+   0x00000068 <+24>:	ori r1,r1,0x419c
+   0x0000006c <+28>:	calli 0x5ac <puts>
+   0x00000070 <+32>:	mvi r1,0
+   0x00000074 <+36>:	lw fp,(sp+8)
+   0x00000078 <+40>:	lw ra,(sp+4)
+   0x0000007c <+44>:	addi sp,sp,8
+   0x00000080 <+48>:	ret
+End of assembler dump.
+hello world
+[Inferior 1 (process 42000) exited normally]
+%
+
+(*4) 付録
+
+今回のコンパイルエラーは gcc の拡張機能を使用していたコードで発生していた:
+
+% cat a.c
+void f();
+
+void g()
+{
+  void* label1 = &&label2;  // OK
+
+ label2:
+  f();    
+}
+%
+
+こういう書き方ができるらしい. そしてビルドのエラーは上の例で言うと label2 を
+sh スクリプトで自動生成するはずだったのだが, 環境変数 SHELL に sh スクリプトを指定
+していたので sh スクリプトがエラーしていて label2 を生成できなかったという現象だった.

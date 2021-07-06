@@ -1,0 +1,472 @@
+m32c gcc のインストール
+
+(*1) make から実行した configure でエラー
+(*2) ターゲットコンパイラの内部エラー
+(*3) ターゲットコンパイラの内部エラー(その2)
+
+(*1) make から実行した configure でエラー
+
+% cd gcc-10.2.0.m32c-elf
+% ./configure --target=m32c-elf
+% make
+...
+checking for m32c-elf-gcc... /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/sys-include   
+checking for suffix of object files... configure: error: in `/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/m32c-elf/libgcc':
+configure: error: cannot compute suffix of object files: cannot compile
+See `config.log' for more details
+make[1]: *** [Makefile:11917: configure-target-libgcc] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf' から出ます
+make: *** [Makefile:938: all] エラー 2
+%
+
+これは configure でエラーになったように見えるが, 厳密に言えば
+
+configure-target-libgcc
+
+という Makefile のターゲットがあってそれに対するコマンドを実行してそしてエラーしたということで
+ある. 実行されたコマンドがたまたま configure だったということ.
+さて問題の config.log はどこにあるかだが上のログからすると
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/m32c-elf/libgcc/config.log
+
+かと思った. そしてそこにはそれがあった. 試しに
+
+% ls -ltr `find . -name config.log`
+
+としてみるといくつか config.log が見つかったがやはりそれだった. この config.log の
+先頭は
+
+
+  $ /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/libgcc/configure --srcdir=../.././libgcc --cache-file=./config.cache --enable-multilib --with-cross-host=i686-pc-linux-gnu --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --disable-libstdc++-v3 --disable-libssp --disable-libquadmath --disable-libgfortran --disable-libobjc --enable-languages=c,c++,fortran,lto,objc --program-transform-name=s&^&m32c-elf-& --disable-option-checking --with-target-subdir=m32c-elf --build=i686-pc-linux-gnu --host=m32c-elf --target=m32c-elf
+
+のようになっていた. そこで以下のようにしてみた:
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/m32c-elf/libgcc
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/libgcc/configure --srcdir=../.././libgcc --cache-file=./config.cache --enable-multilib --with-cross-host=i686-pc-linux-gnu --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --disable-libstdc++-v3 --disable-libssp --disable-libquadmath --disable-libgfortran --disable-libobjc --enable-languages=c,c++,fortran,lto,objc --program-transform-name='s&^&m32c-elf-&' --disable-option-checking --with-target-subdir=m32c-elf --build=i686-pc-linux-gnu --host=m32c-elf --target=m32c-elf
+...
+configure: updating cache ./config.cache
+configure: creating ./config.status
+config.status: creating Makefile
+config.status: creating auto-target.h
+config.status: executing default commands
+../.././libgcc/../config-ml.in: line 133: enable_libstdc++_v3=no: command not found
+Adding multilib support to Makefile in ../.././libgcc
+multidirs=
+with_multisubdir=
+% echo $status
+0
+%
+
+エラーメッセージらしきものが見えるが configure	自体はエラーしていない.
+そしてエラーは再現できていない.
+
+% cd ../..
+% make configure-target-libgcc
+
+理由は不明だがエラー回避できている.
+
+% make
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/sys-include    -g -O2 -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../host-i686-pc-linux-gnu/gcc -I../.././libgcc -I../.././libgcc/. -I../.././libgcc/../gcc -I../.././libgcc/../include -I../.././libgcc/../libdecnumber/no -I../.././libgcc/../libdecnumber -DHAVE_CC_TLS  -o _muldi3.o -MT _muldi3.o -MD -MP -MF _muldi3.dep -DL_muldi3 -c ../.././libgcc/libgcc2.c -fvisibility=hidden -DHIDE_EXPORTS
+during RTL pass: pro_and_epilogue
+../.././libgcc/libgcc2.c: 関数 ‘__muldi3’ 内:
+../.././libgcc/libgcc2.c:558:1: コンパイラ内部エラー: leaf_function_p 内、位置 final.c:4473
+  558 | }
+      | ^
+0x81653d3 leaf_function_p()
+	../.././gcc/final.c:4473
+0x891cbf8 m32c_leaf_function_p
+	../.././gcc/config/m32c/m32c.c:4014
+0x891cbf8 m32c_emit_prologue()
+	../.././gcc/config/m32c/m32c.c:4068
+0x8b0738d gen_prologue()
+	../.././gcc/config/m32c/prologue.md:26
+0x8919d87 target_gen_prologue
+	../.././gcc/config/m32c/blkmov.md:359
+0x83eb43a make_prologue_seq
+	../.././gcc/function.c:5787
+0x83eb5e3 thread_prologue_and_epilogue_insns()
+	../.././gcc/function.c:5904
+0x83ebb51 rest_of_handle_thread_prologue_and_epilogue
+	../.././gcc/function.c:6395
+0x83ebb51 execute
+	../.././gcc/function.c:6471
+Please submit a full bug report,
+with preprocessed source if appropriate.
+Please include the complete backtrace with any bug report.
+See <https://gcc.gnu.org/bugs/> for instructions.
+make[2]: *** [Makefile:501: _muldi3.o] エラー 1
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/m32c-elf/libgcc' から出ます
+make[1]: *** [Makefile:11989: all-target-libgcc] エラー 2
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf' から出ます
+make: *** [Makefile:938: all] エラー 2
+%
+
+今回ビルドしたターゲットコンパイラで内部エラーが発生している.
+しかし最初のエラーは理由は不明だが回避できている. というよりも再現できなかったというのが正しい.
+
+(*2) ターゲットコンパイラの内部エラー
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/m32c-elf/libgcc
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/sys-include    -g -O2 -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../host-i686-pc-linux-gnu/gcc -I../.././libgcc -I../.././libgcc/. -I../.././libgcc/../gcc -I../.././libgcc/../include -I../.././libgcc/../libdecnumber/no -I../.././libgcc/../libdecnumber -DHAVE_CC_TLS  -o _muldi3.o -MT _muldi3.o -MD -MP -MF _muldi3.dep -DL_muldi3 -c ../.././libgcc/libgcc2.c -fvisibility=hidden -DHIDE_EXPORTS
+during RTL pass: pro_and_epilogue
+../.././libgcc/libgcc2.c: 関数 ‘__muldi3’ 内:
+../.././libgcc/libgcc2.c:558:1: コンパイラ内部エラー: leaf_function_p 内、位置 final.c:4473
+  558 | }
+      | ^
+0x81653d3 leaf_function_p()
+	../.././gcc/final.c:4473
+0x891cbf8 m32c_leaf_function_p
+	../.././gcc/config/m32c/m32c.c:4014
+0x891cbf8 m32c_emit_prologue()
+	../.././gcc/config/m32c/m32c.c:4068
+0x8b0738d gen_prologue()
+	../.././gcc/config/m32c/prologue.md:26
+0x8919d87 target_gen_prologue
+	../.././gcc/config/m32c/blkmov.md:359
+0x83eb43a make_prologue_seq
+	../.././gcc/function.c:5787
+0x83eb5e3 thread_prologue_and_epilogue_insns()
+	../.././gcc/function.c:5904
+0x83ebb51 rest_of_handle_thread_prologue_and_epilogue
+	../.././gcc/function.c:6395
+0x83ebb51 execute
+	../.././gcc/function.c:6471
+Please submit a full bug report,
+with preprocessed source if appropriate.
+Please include the complete backtrace with any bug report.
+See <https://gcc.gnu.org/bugs/> for instructions.
+%
+
+エラーは再現できている.
+
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/sys-include    -g -O2 -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../host-i686-pc-linux-gnu/gcc -I../.././libgcc -I../.././libgcc/. -I../.././libgcc/../gcc -I../.././libgcc/../include -I../.././libgcc/../libdecnumber/no -I../.././libgcc/../libdecnumber -DHAVE_CC_TLS  -o _muldi3.o -MT _muldi3.o -MD -MP -MF _muldi3.dep -DL_muldi3 -c ../.././libgcc/libgcc2.c -fvisibility=hidden -DHIDE_EXPORTS -###
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/specs から spec を読み込んでいます
+COLLECT_GCC=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/xgcc
+ターゲット: m32c-elf
+configure 設定: ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=m32c-elf --disable-libstdc++-v3 --disable-libssp --disable-libquadmath --disable-libgfortran --disable-libobjc
+スレッドモデル: single
+Supported LTO compression algorithms: zlib zstd
+gcc バージョン 10.2.0 (GCC) 
+COLLECT_GCC_OPTIONS='-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/bin/' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/lib/' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/include' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/sys-include' '-g' '-O2' '-O2' '-g' '-O2' '-D' 'IN_GCC' '-D' 'CROSS_DIRECTORY_STRUCTURE' '-Wextra' '-Wall' '-Wno-narrowing' '-Wwrite-strings' '-Wcast-qual' '-Wno-error=format-diag' '-Wstrict-prototypes' '-Wmissing-prototypes' '-Wno-error=format-diag' '-Wold-style-definition' '-isystem' './include' '-g' '-D' 'IN_LIBGCC2' '-fbuilding-libgcc' '-fno-stack-protector' '-D' 'inhibit_libc' '-I' '.' '-I' '.' '-I' '../../host-i686-pc-linux-gnu/gcc' '-I' '../.././libgcc' '-I' '../.././libgcc/.' '-I' '../.././libgcc/../gcc' '-I' '../.././libgcc/../include' '-I' '../.././libgcc/../libdecnumber/no' '-I' '../.././libgcc/../libdecnumber' '-D' 'HAVE_CC_TLS' '-o' '_muldi3.o' '-MT' '_muldi3.o' '-MD' '-MP' '-MF' '_muldi3.dep' '-D' 'L_muldi3' '-c' '-fvisibility=hidden' '-D' 'HIDE_EXPORTS'
+ /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/cc1 -quiet -I . -I . -I ../../host-i686-pc-linux-gnu/gcc -I ../.././libgcc -I ../.././libgcc/. -I ../.././libgcc/../gcc -I ../.././libgcc/../include -I ../.././libgcc/../libdecnumber/no -I ../.././libgcc/../libdecnumber -iprefix /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/../lib/gcc/m32c-elf/10.2.0/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/include-fixed -MD _muldi3.d -MF _muldi3.dep -MP -MT _muldi3.o -D IN_GCC -D CROSS_DIRECTORY_STRUCTURE -D IN_LIBGCC2 -D inhibit_libc -D HAVE_CC_TLS -D L_muldi3 -D HIDE_EXPORTS -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/sys-include -isystem ./include ../.././libgcc/libgcc2.c -quiet -dumpbase libgcc2.c -auxbase-strip _muldi3.o -g -g -g -O2 -O2 -O2 -Wextra -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual "-Wno-error=format-diag" -Wstrict-prototypes -Wmissing-prototypes "-Wno-error=format-diag" -Wold-style-definition -fbuilding-libgcc -fno-stack-protector "-fvisibility=hidden" -o /tmp/cctQD4gn.s
+COLLECT_GCC_OPTIONS='-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/bin/' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/lib/' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/include' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/sys-include' '-g' '-O2' '-O2' '-g' '-O2' '-D' 'IN_GCC' '-D' 'CROSS_DIRECTORY_STRUCTURE' '-Wextra' '-Wall' '-Wno-narrowing' '-Wwrite-strings' '-Wcast-qual' '-Wno-error=format-diag' '-Wstrict-prototypes' '-Wmissing-prototypes' '-Wno-error=format-diag' '-Wold-style-definition' '-isystem' './include' '-g' '-D' 'IN_LIBGCC2' '-fbuilding-libgcc' '-fno-stack-protector' '-D' 'inhibit_libc' '-I' '.' '-I' '.' '-I' '../../host-i686-pc-linux-gnu/gcc' '-I' '../.././libgcc' '-I' '../.././libgcc/.' '-I' '../.././libgcc/../gcc' '-I' '../.././libgcc/../include' '-I' '../.././libgcc/../libdecnumber/no' '-I' '../.././libgcc/../libdecnumber' '-D' 'HAVE_CC_TLS' '-o' '_muldi3.o' '-MT' '_muldi3.o' '-MD' '-MP' '-MF' '_muldi3.dep' '-D' 'L_muldi3' '-c' '-fvisibility=hidden' '-D' 'HIDE_EXPORTS'
+ /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/as -o _muldi3.o /tmp/cctQD4gn.s
+COMPILER_PATH=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/bin/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/lib/
+LIBRARY_PATH=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/bin/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/lib/
+COLLECT_GCC_OPTIONS='-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/bin/' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/lib/' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/include' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/sys-include' '-g' '-O2' '-O2' '-g' '-O2' '-D' 'IN_GCC' '-D' 'CROSS_DIRECTORY_STRUCTURE' '-Wextra' '-Wall' '-Wno-narrowing' '-Wwrite-strings' '-Wcast-qual' '-Wno-error=format-diag' '-Wstrict-prototypes' '-Wmissing-prototypes' '-Wno-error=format-diag' '-Wold-style-definition' '-isystem' './include' '-g' '-D' 'IN_LIBGCC2' '-fbuilding-libgcc' '-fno-stack-protector' '-D' 'inhibit_libc' '-I' '.' '-I' '.' '-I' '../../host-i686-pc-linux-gnu/gcc' '-I' '../.././libgcc' '-I' '../.././libgcc/.' '-I' '../.././libgcc/../gcc' '-I' '../.././libgcc/../include' '-I' '../.././libgcc/../libdecnumber/no' '-I' '../.././libgcc/../libdecnumber' '-D' 'HAVE_CC_TLS' '-o' '_muldi3.o' '-MT' '_muldi3.o' '-MD' '-MP' '-MF' '_muldi3.dep' '-D' 'L_muldi3' '-c' '-fvisibility=hidden' '-D' 'HIDE_EXPORTS'
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/cc1 -quiet -I . -I . -I ../../host-i686-pc-linux-gnu/gcc -I ../.././libgcc -I ../.././libgcc/. -I ../.././libgcc/../gcc -I ../.././libgcc/../include -I ../.././libgcc/../libdecnumber/no -I ../.././libgcc/../libdecnumber -iprefix /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/../lib/gcc/m32c-elf/10.2.0/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/include-fixed -MD _muldi3.d -MF _muldi3.dep -MP -MT _muldi3.o -D IN_GCC -D CROSS_DIRECTORY_STRUCTURE -D IN_LIBGCC2 -D inhibit_libc -D HAVE_CC_TLS -D L_muldi3 -D HIDE_EXPORTS -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/sys-include -isystem ./include ../.././libgcc/libgcc2.c -quiet -dumpbase libgcc2.c -auxbase-strip _muldi3.o -g -g -g -O2 -O2 -O2 -Wextra -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual "-Wno-error=format-diag" -Wstrict-prototypes -Wmissing-prototypes "-Wno-error=format-diag" -Wold-style-definition -fbuilding-libgcc -fno-stack-protector "-fvisibility=hidden" -o /tmp/cctQD4gn.s
+../.././libgcc/libgcc2.c: 関数 ‘__muldi3’ 内:
+../.././libgcc/libgcc2.c:558:1: コンパイラ内部エラー: leaf_function_p 内、位置 final.c:4473
+  558 | }
+      | ^
+0x81653d3 leaf_function_p()
+	../.././gcc/final.c:4473
+0x891cbf8 m32c_leaf_function_p
+	../.././gcc/config/m32c/m32c.c:4014
+0x891cbf8 m32c_emit_prologue()
+	../.././gcc/config/m32c/m32c.c:4068
+0x8b0738d gen_prologue()
+	../.././gcc/config/m32c/prologue.md:26
+0x8919d87 target_gen_prologue
+	../.././gcc/config/m32c/blkmov.md:359
+0x83eb43a make_prologue_seq
+	../.././gcc/function.c:5787
+0x83eb5e3 thread_prologue_and_epilogue_insns()
+	../.././gcc/function.c:5904
+0x83ebb51 rest_of_handle_thread_prologue_and_epilogue
+	../.././gcc/function.c:6395
+0x83ebb51 execute
+	../.././gcc/function.c:6471
+Please submit a full bug report,
+with preprocessed source if appropriate.
+Please include the complete backtrace with any bug report.
+See <https://gcc.gnu.org/bugs/> for instructions.
+%
+
+再現できている.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc
+M-x gdb
+gdb --annotate=3 ./cc1
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/m32c-elf/libgcc
+(gdb) run -quiet -I . -I . -I ../../host-i686-pc-linux-gnu/gcc -I ../.././libgcc -I ../.././libgcc/. -I ../.././libgcc/../gcc -I ../.././libgcc/../include -I ../.././libgcc/../libdecnumber/no -I ../.././libgcc/../libdecnumber -iprefix /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/../lib/gcc/m32c-elf/10.2.0/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/include-fixed -MD _muldi3.d -MF _muldi3.dep -MP -MT _muldi3.o -D IN_GCC -D CROSS_DIRECTORY_STRUCTURE -D IN_LIBGCC2 -D inhibit_libc -D HAVE_CC_TLS -D L_muldi3 -D HIDE_EXPORTS -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/sys-include -isystem ./include ../.././libgcc/libgcc2.c -quiet -dumpbase libgcc2.c -auxbase-strip _muldi3.o -g -g -g -O2 -O2 -O2 -Wextra -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual "-Wno-error=format-diag" -Wstrict-prototypes -Wmissing-prototypes "-Wno-error=format-diag" -Wold-style-definition -fbuilding-libgcc -fno-stack-protector "-fvisibility=hidden" -o /tmp/cctQD4gn.s
+during RTL pass: pro_and_epilogue
+../.././libgcc/libgcc2.c: 関数 ‘__muldi3’ 内:
+../.././libgcc/libgcc2.c:558:1: コンパイラ内部エラー: leaf_function_p 内、位置 final.c:4473
+  558 | }
+      | ^
+0x81653d3 leaf_function_p()
+	../.././gcc/final.c:4473
+0x891cbf8 m32c_leaf_function_p
+	../.././gcc/config/m32c/m32c.c:4014
+0x891cbf8 m32c_emit_prologue()
+	../.././gcc/config/m32c/m32c.c:4068
+0x8b0738d gen_prologue()
+	../.././gcc/config/m32c/prologue.md:26
+0x8919d87 target_gen_prologue
+	../.././gcc/config/m32c/blkmov.md:359
+0x83eb43a make_prologue_seq
+	../.././gcc/function.c:5787
+0x83eb5e3 thread_prologue_and_epilogue_insns()
+	../.././gcc/function.c:5904
+0x83ebb51 rest_of_handle_thread_prologue_and_epilogue
+	../.././gcc/function.c:6395
+0x83ebb51 execute
+	../.././gcc/function.c:6471
+Please submit a full bug report,
+with preprocessed source if appropriate.
+Please include the complete backtrace with any bug report.
+See <https://gcc.gnu.org/bugs/> for instructions.
+[Inferior 1 (process 4559) exited with code 04]
+(gdb)
+
+gdb から cc1 を実行しても再現できている.
+おそらく
+
+during RTL pass: pro_and_epilogue
+
+のメッセージが出ているところでエラーを検出していると予測したので
+
+(gdb) write
+(gdb) run
+
+とした. ブレークポイントにヒットして以下を発見した:
+
+gcc-10.2.0.m32c-elf/gcc/final.c:
+
+int
+leaf_function_p (void)
+{
+  rtx_insn *insn;
+
+  /* Ensure we walk the entire function body.  */
+  gcc_assert (!in_sequence_p ());
+
+どうやら上の gcc_assert で失敗しているらしいが例によって -O2 ビルドされているので
+よく状況が分からない.
+そこでとりあえず final.c のみ -g3 -O0 でビルドし直してみた.
+
+改めて, write で停止して gcc_assert や in_sequence_p を調べてみた:
+
+(gdb) p gcc_assert
+No symbol "gcc_assert" in current context.
+(gdb) p in_sequence_p
+$1 = {int (void)} 0x836a2a0 <in_sequence_p()>
+(gdb)
+
+-g3 ビルドしたのだから仮に gcc_assert がマクロであったとしてもそれが何か表示できるのか
+と思ったがそうではなさそうである.
+
+(gdb) p !in_sequence_p ()
+$2 = false
+(gdb)
+
+やはりエラーしている.
+
+(gdb) p gcc_assert (!in_sequence_p ())
+A syntax error in expression, near `, 0 : 0))'.
+(gdb)
+
+せっかくなのでプリプロセスの結果を確認してみた:
+
+int
+leaf_function_p (void)
+{
+  rtx_insn *insn;
+
+
+  ((void)(!(!in_sequence_p ()) ? fancy_abort ("../.././gcc/final.c", 4473, __FUNCTION__), 0 : 0));
+
+なるほど. マクロであった. だから where コマンドで fancy_abort に遡っていたのだ.
+ともあれこの gcc_assert で失敗するのが原因で, なおかつこの final.c は
+共通ソースなのでエラーの原因はこのソースではなく他にあるのだろう. しかしこの考え方は論理の飛躍
+というものだ.
+
+ところで
+
+in_sequence_p
+
+自体がターゲットコンパイラ依存の函数だとしたら合点がいく.
+
+(gdb) b in_sequence_p
+(gdb) p in_sequence_p()
+
+gcc-10.2.0.m32c-elf/gcc/emit-rtl.h:
+
+static inline struct sequence_stack *
+get_current_sequence (void)
+{
+  return &crtl->emit.seq;
+}
+
+こんな感じだった. やはり共通ソース.
+
+(gdb) p &crtl->emit.seq
+$3 = (sequence_stack *) 0x92109c8 <x_rtl+40>
+(gdb)
+
+ここで気付くことは, ブレークポイントは in_sequence_p にセットしたのに停止したのは
+
+get_current_sequence
+
+という函数でこれは自分が期待した動作ではない. もしかすると -O2 ビルドが影響しているの
+だろうか. final.c だけ -g3 -O0 ビルドしたのであっては期待する動作にはなっていないらしい.
+
+結局共通函数を呼び出していることが問題のように思えたので以下のように修正:
+
+
+gcc-10.2.0.m32c-elf/gcc/config/m32c/m32c.c:
+
+static int
+m32c_leaf_function_p (void)
+{
+#if 0  
+  int rv;
+
+  push_topmost_sequence ();
+  rv = leaf_function_p ();
+  pop_topmost_sequence ();
+  return rv;
+#else
+  return 0;
+#endif  
+}
+
+この修正方法だと「葉の函数」でもそうでないと判定することになる.
+m32c.c をビルドし直してエラーを回避した.
+
+(*3) ターゲットコンパイラの内部エラー(その2)
+
+以下のように改めてトップのディレクトリからビルドした.
+
+% cd ../..
+% make
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/sys-include    -g -O2 -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../host-i686-pc-linux-gnu/gcc -I../.././libgcc -I../.././libgcc/. -I../.././libgcc/../gcc -I../.././libgcc/../include -I../.././libgcc/../libdecnumber/no -I../.././libgcc/../libdecnumber -DHAVE_CC_TLS  -o _addsub_sf.o -MT _addsub_sf.o -MD -MP -MF _addsub_sf.dep -DFINE_GRAINED_LIBRARIES -DL_addsub_sf -DFLOAT  -c ../.././libgcc/fp-bit.c -fvisibility=hidden -DHIDE_EXPORTS
+../.././libgcc/fp-bit.c: 関数 ‘_fpadd_parts’ 内:
+../.././libgcc/fp-bit.c:706:1: エラー: unable to find a register to spill in class ‘A_REGS’
+  706 | }
+      | ^
+../.././libgcc/fp-bit.c:706:1: エラー: this is the insn:
+(jump_insn 61 60 62 6 (set (pc)
+        (if_then_else (eq (mem:HI (plus:HI (reg/f:HI 0 r0 [orig:71 <retval> ] [71])
+                        (const_int 2 [0x2])) [2 a_48(D)->sign+0 S2 A8])
+                (mem:HI (plus:HI (reg/v/f:HI 73 [ b ])
+                        (const_int 2 [0x2])) [2 b_50(D)->sign+0 S2 A8]))
+            (label_ref:HI 353)
+            (pc))) "../.././libgcc/fp-bit.c":592:21 49 {cbranchhi4}
+     (expr_list:REG_DEAD (reg/v/f:HI 73 [ b ])
+        (int_list:REG_BR_PROB 365072228 (nil)))
+ -> 353)
+../.././libgcc/fp-bit.c:706: 前のエラーにより混乱していますので、脱出します
+make[2]: *** [Makefile:570: _addsub_sf.o] エラー 1
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/m32c-elf/libgcc' から出ます
+make[1]: *** [Makefile:11989: all-target-libgcc] エラー 2
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf' から出ます
+make: *** [Makefile:938: all] エラー 2
+%
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/m32c-elf/libgcc
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/sys-include    -g -O2 -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../host-i686-pc-linux-gnu/gcc -I../.././libgcc -I../.././libgcc/. -I../.././libgcc/../gcc -I../.././libgcc/../include -I../.././libgcc/../libdecnumber/no -I../.././libgcc/../libdecnumber -DHAVE_CC_TLS  -o _addsub_sf.o -MT _addsub_sf.o -MD -MP -MF _addsub_sf.dep -DFINE_GRAINED_LIBRARIES -DL_addsub_sf -DFLOAT  -c ../.././libgcc/fp-bit.c -fvisibility=hidden -DHIDE_EXPORTS
+../.././libgcc/fp-bit.c: 関数 ‘_fpadd_parts’ 内:
+../.././libgcc/fp-bit.c:706:1: エラー: unable to find a register to spill in class ‘A_REGS’
+  706 | }
+      | ^
+../.././libgcc/fp-bit.c:706:1: エラー: this is the insn:
+(jump_insn 61 60 62 6 (set (pc)
+        (if_then_else (eq (mem:HI (plus:HI (reg/f:HI 0 r0 [orig:71 <retval> ] [71])
+                        (const_int 2 [0x2])) [2 a_48(D)->sign+0 S2 A8])
+                (mem:HI (plus:HI (reg/v/f:HI 73 [ b ])
+                        (const_int 2 [0x2])) [2 b_50(D)->sign+0 S2 A8]))
+            (label_ref:HI 353)
+            (pc))) "../.././libgcc/fp-bit.c":592:21 49 {cbranchhi4}
+     (expr_list:REG_DEAD (reg/v/f:HI 73 [ b ])
+        (int_list:REG_BR_PROB 365072228 (nil)))
+ -> 353)
+../.././libgcc/fp-bit.c:706: 前のエラーにより混乱していますので、脱出します
+%
+
+エラーを再現できている.
+
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/sys-include    -g -O2 -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../host-i686-pc-linux-gnu/gcc -I../.././libgcc -I../.././libgcc/. -I../.././libgcc/../gcc -I../.././libgcc/../include -I../.././libgcc/../libdecnumber/no -I../.././libgcc/../libdecnumber -DHAVE_CC_TLS  -o _addsub_sf.o -MT _addsub_sf.o -MD -MP -MF _addsub_sf.dep -DFINE_GRAINED_LIBRARIES -DL_addsub_sf -DFLOAT  -c ../.././libgcc/fp-bit.c -fvisibility=hidden -DHIDE_EXPORTS -###
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/specs から spec を読み込んでいます
+COLLECT_GCC=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/xgcc
+ターゲット: m32c-elf
+configure 設定: ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=m32c-elf --disable-libstdc++-v3 --disable-libssp --disable-libquadmath --disable-libgfortran --disable-libobjc
+スレッドモデル: single
+Supported LTO compression algorithms: zlib zstd
+gcc バージョン 10.2.0 (GCC) 
+COLLECT_GCC_OPTIONS='-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/bin/' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/lib/' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/include' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/sys-include' '-g' '-O2' '-O2' '-g' '-O2' '-D' 'IN_GCC' '-D' 'CROSS_DIRECTORY_STRUCTURE' '-Wextra' '-Wall' '-Wno-narrowing' '-Wwrite-strings' '-Wcast-qual' '-Wno-error=format-diag' '-Wstrict-prototypes' '-Wmissing-prototypes' '-Wno-error=format-diag' '-Wold-style-definition' '-isystem' './include' '-g' '-D' 'IN_LIBGCC2' '-fbuilding-libgcc' '-fno-stack-protector' '-D' 'inhibit_libc' '-I' '.' '-I' '.' '-I' '../../host-i686-pc-linux-gnu/gcc' '-I' '../.././libgcc' '-I' '../.././libgcc/.' '-I' '../.././libgcc/../gcc' '-I' '../.././libgcc/../include' '-I' '../.././libgcc/../libdecnumber/no' '-I' '../.././libgcc/../libdecnumber' '-D' 'HAVE_CC_TLS' '-o' '_addsub_sf.o' '-MT' '_addsub_sf.o' '-MD' '-MP' '-MF' '_addsub_sf.dep' '-D' 'FINE_GRAINED_LIBRARIES' '-D' 'L_addsub_sf' '-D' 'FLOAT' '-c' '-fvisibility=hidden' '-D' 'HIDE_EXPORTS'
+ /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/cc1 -quiet -I . -I . -I ../../host-i686-pc-linux-gnu/gcc -I ../.././libgcc -I ../.././libgcc/. -I ../.././libgcc/../gcc -I ../.././libgcc/../include -I ../.././libgcc/../libdecnumber/no -I ../.././libgcc/../libdecnumber -iprefix /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/../lib/gcc/m32c-elf/10.2.0/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/include-fixed -MD _addsub_sf.d -MF _addsub_sf.dep -MP -MT _addsub_sf.o -D IN_GCC -D CROSS_DIRECTORY_STRUCTURE -D IN_LIBGCC2 -D inhibit_libc -D HAVE_CC_TLS -D FINE_GRAINED_LIBRARIES -D L_addsub_sf -D FLOAT -D HIDE_EXPORTS -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/sys-include -isystem ./include ../.././libgcc/fp-bit.c -quiet -dumpbase fp-bit.c -auxbase-strip _addsub_sf.o -g -g -g -O2 -O2 -O2 -Wextra -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual "-Wno-error=format-diag" -Wstrict-prototypes -Wmissing-prototypes "-Wno-error=format-diag" -Wold-style-definition -fbuilding-libgcc -fno-stack-protector "-fvisibility=hidden" -o /tmp/ccIEz8Er.s
+COLLECT_GCC_OPTIONS='-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/bin/' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/lib/' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/include' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/sys-include' '-g' '-O2' '-O2' '-g' '-O2' '-D' 'IN_GCC' '-D' 'CROSS_DIRECTORY_STRUCTURE' '-Wextra' '-Wall' '-Wno-narrowing' '-Wwrite-strings' '-Wcast-qual' '-Wno-error=format-diag' '-Wstrict-prototypes' '-Wmissing-prototypes' '-Wno-error=format-diag' '-Wold-style-definition' '-isystem' './include' '-g' '-D' 'IN_LIBGCC2' '-fbuilding-libgcc' '-fno-stack-protector' '-D' 'inhibit_libc' '-I' '.' '-I' '.' '-I' '../../host-i686-pc-linux-gnu/gcc' '-I' '../.././libgcc' '-I' '../.././libgcc/.' '-I' '../.././libgcc/../gcc' '-I' '../.././libgcc/../include' '-I' '../.././libgcc/../libdecnumber/no' '-I' '../.././libgcc/../libdecnumber' '-D' 'HAVE_CC_TLS' '-o' '_addsub_sf.o' '-MT' '_addsub_sf.o' '-MD' '-MP' '-MF' '_addsub_sf.dep' '-D' 'FINE_GRAINED_LIBRARIES' '-D' 'L_addsub_sf' '-D' 'FLOAT' '-c' '-fvisibility=hidden' '-D' 'HIDE_EXPORTS'
+ /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/as -o _addsub_sf.o /tmp/ccIEz8Er.s
+COMPILER_PATH=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/bin/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/lib/
+LIBRARY_PATH=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/bin/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/lib/
+COLLECT_GCC_OPTIONS='-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/bin/' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/lib/' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/include' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/sys-include' '-g' '-O2' '-O2' '-g' '-O2' '-D' 'IN_GCC' '-D' 'CROSS_DIRECTORY_STRUCTURE' '-Wextra' '-Wall' '-Wno-narrowing' '-Wwrite-strings' '-Wcast-qual' '-Wno-error=format-diag' '-Wstrict-prototypes' '-Wmissing-prototypes' '-Wno-error=format-diag' '-Wold-style-definition' '-isystem' './include' '-g' '-D' 'IN_LIBGCC2' '-fbuilding-libgcc' '-fno-stack-protector' '-D' 'inhibit_libc' '-I' '.' '-I' '.' '-I' '../../host-i686-pc-linux-gnu/gcc' '-I' '../.././libgcc' '-I' '../.././libgcc/.' '-I' '../.././libgcc/../gcc' '-I' '../.././libgcc/../include' '-I' '../.././libgcc/../libdecnumber/no' '-I' '../.././libgcc/../libdecnumber' '-D' 'HAVE_CC_TLS' '-o' '_addsub_sf.o' '-MT' '_addsub_sf.o' '-MD' '-MP' '-MF' '_addsub_sf.dep' '-D' 'FINE_GRAINED_LIBRARIES' '-D' 'L_addsub_sf' '-D' 'FLOAT' '-c' '-fvisibility=hidden' '-D' 'HIDE_EXPORTS'
+%
+
+(gdb) run -quiet -I . -I . -I ../../host-i686-pc-linux-gnu/gcc -I ../.././libgcc -I ../.././libgcc/. -I ../.././libgcc/../gcc -I ../.././libgcc/../include -I ../.././libgcc/../libdecnumber/no -I ../.././libgcc/../libdecnumber -iprefix /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/../lib/gcc/m32c-elf/10.2.0/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/include-fixed -MD _addsub_sf.d -MF _addsub_sf.dep -MP -MT _addsub_sf.o -D IN_GCC -D CROSS_DIRECTORY_STRUCTURE -D IN_LIBGCC2 -D inhibit_libc -D HAVE_CC_TLS -D FINE_GRAINED_LIBRARIES -D L_addsub_sf -D FLOAT -D HIDE_EXPORTS -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/sys-include -isystem ./include ../.././libgcc/fp-bit.c -quiet -dumpbase fp-bit.c -auxbase-strip _addsub_sf.o -g -g -g -O2 -O2 -O2 -Wextra -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual "-Wno-error=format-diag" -Wstrict-prototypes -Wmissing-prototypes "-Wno-error=format-diag" -Wold-style-definition -fbuilding-libgcc -fno-stack-protector "-fvisibility=hidden" -o /tmp/ccIEz8Er.s
+../.././libgcc/fp-bit.c: 関数 ‘_fpadd_parts’ 内:
+../.././libgcc/fp-bit.c:706:1: エラー: unable to find a register to spill in class ‘A_REGS’
+  706 | }
+      | ^
+../.././libgcc/fp-bit.c:706:1: エラー: this is the insn:
+(jump_insn 61 60 62 6 (set (pc)
+        (if_then_else (eq (mem:HI (plus:HI (reg/f:HI 0 r0 [orig:71 <retval> ] [71])
+                        (const_int 2 [0x2])) [2 a_48(D)->sign+0 S2 A8])
+                (mem:HI (plus:HI (reg/v/f:HI 73 [ b ])
+                        (const_int 2 [0x2])) [2 b_50(D)->sign+0 S2 A8]))
+            (label_ref:HI 353)
+            (pc))) "../.././libgcc/fp-bit.c":592:21 49 {cbranchhi4}
+     (expr_list:REG_DEAD (reg/v/f:HI 73 [ b ])
+        (int_list:REG_BR_PROB 365072228 (nil)))
+ -> 353)
+../.././libgcc/fp-bit.c:706: 前のエラーにより混乱していますので、脱出します
+[Inferior 1 (process 11462) exited with code 04]
+(gdb)
+
+エラーを再現できている.
+エラーメッセージを出すきっかけになっているところは以下:
+
+gcc-10.2.0.m32c-elf/gcc/reload.c:
+
+	if (! find_reg (chain, i))
+	  {
+	    if (dump_file)
+	      fprintf (dump_file, "reload failure for reload %d\n", r);
+	    spill_failure (chain->insn, rld[r].rclass);
+	    failure = 1;
+	    return;
+	  }
+
+find_reg (chain, i) の呼び出しで 0 でない値が返るべきところで
+0 が返ってしまってエラーしているということ. そしてこれも共通ソース.
+このエラーはソースを修正することで回避するのが困難だと考えた.
+
+以下のように -O2 オプションなしで試してみた:
+
+(gdb) run -quiet -I . -I . -I ../../host-i686-pc-linux-gnu/gcc -I ../.././libgcc -I ../.././libgcc/. -I ../.././libgcc/../gcc -I ../.././libgcc/../include -I ../.././libgcc/../libdecnumber/no -I ../.././libgcc/../libdecnumber -iprefix /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/../lib/gcc/m32c-elf/10.2.0/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/include-fixed -MD _addsub_sf.d -MF _addsub_sf.dep -MP -MT _addsub_sf.o -D IN_GCC -D CROSS_DIRECTORY_STRUCTURE -D IN_LIBGCC2 -D inhibit_libc -D HAVE_CC_TLS -D FINE_GRAINED_LIBRARIES -D L_addsub_sf -D FLOAT -D HIDE_EXPORTS -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m32c-elf/sys-include -isystem ./include ../.././libgcc/fp-bit.c -quiet -dumpbase fp-bit.c -auxbase-strip _addsub_sf.o -g -g -g -Wextra -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual "-Wno-error=format-diag" -Wstrict-prototypes -Wmissing-prototypes "-Wno-error=format-diag" -Wold-style-definition -fbuilding-libgcc -fno-stack-protector "-fvisibility=hidden" -o /tmp/ccIEz8Er.s
+[Inferior 1 (process 12578) exited normally]
+(gdb)
+
+正常終了している. ということは最適化の過程でエラーしているらしい.
+
+
+gcc-10.2.0.m32c-elf/m32c-elf/libgcc/Makefile
+
+で -O2 を指定している部分を -O0 に書き替えた.
+
+% cd ../..
+% make
+
+予定していたエラーが発生した.
+
+% perl ../modify.pl Makefile > Makefile.tmp
+% mv Makefile.tmp Makefile
+% mkdir m32c-elf/libbacktrace
+% cp ../Makefile.empty m32c-elf/libbacktrace/Makefile
+% make
+% make install
+
+インストールされた m32c-elf-gcc は最適化で問題を発生させることになる.
