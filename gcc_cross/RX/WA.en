@@ -1,0 +1,57 @@
+WA ： specify -g -O2 option
+
+I tried to execute "hello world" program:
+
+% rx-elf-gcc -o hello.o hello.c -c -O2 -g
+% rx-elf-gcc -o dummy.o dummy.c -c -O2 -g
+% rx-elf-gcc -o hello.elf hello.o dummy.o -Trx-sim.ld
+% cat gdbcom
+set prompt (rx-elf-gdb) 
+target sim
+load
+b main
+b write
+command
+c
+end
+b exit
+command
+quit
+end
+run
+disassemble
+c
+% rx-elf-gdb -q -x gdbcom hello.elf 
+Reading symbols from hello.elf...
+Connected to the simulator.
+Loading section .text, size 0x2a58 lma 01000000 vma 01000000
+Loading section .vectors, size 0x30 lma ffffffd0 vma ffffffd0
+Breakpoint 1 at 0x1000148: file hello.c, line 5.
+Breakpoint 2 at 0x100017e: file dummy.c, line 27.
+Breakpoint 3 at 0x1000188: file ../../../.././newlib/libc/stdlib/exit.c, line 60.
+
+Breakpoint 1, main () at hello.c:5
+5	  printf("hello world\n");
+Dump of assembler code for function main:
+=> 0x01000148 <+0>:	mov.l	#0x10021e4, r1
+   0x0100014e <+6>:	bsr.a	0x1000220 <puts>
+   0x01000152 <+10>:	mov.l	#0, r1
+   0x01000154 <+12>:	rts
+End of assembler dump.
+
+Breakpoint 2, write (fd=1, buf=0x1002ab8 "hello world\n", len=12)
+    at dummy.c:27
+27	  return len;
+
+Breakpoint 3, exit (code=0) at ../../../.././newlib/libc/stdlib/exit.c:60
+60	    __call_exitprocs (code, NULL);
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
+%
+
+`write' was called as I expected.
+
+
