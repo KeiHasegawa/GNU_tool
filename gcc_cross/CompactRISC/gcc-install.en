@@ -1,52 +1,21 @@
 gcc install WA
 
-After `make' stops, modify
+Before executing `make'
 
-gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/insn-recog.c
+gcc-10.2.0.cr16-elf/gcc/config/cr16/cr16.md
 
-like below:
+Modify above file like below:
 
-            case E_SImode:
-#if 0	      
-              if (pattern1 (x2) != 0)
-                return -1;
-#endif	      
-              return 6; /* addsi3 */
+#if 0
+      insn = emit_insn (gen_addsi3 (stack_pointer_rtx, stack_pointer_rtx,
+				    GEN_INT (-current_frame_info.total_size)));
+#else      
+      long long int n = current_frame_info.total_size;
+      insn = emit_insn (gen_addsi3 (stack_pointer_rtx, stack_pointer_rtx,
+				    GEN_INT (-n)));
+#endif      
 
-Unfortunately, I'm not sure it correct. But that is all I can do at this point.
+By above fix, we can get rid of compiler internal error describe at
+"Install with script".
 
-Again
-
-% make
-
-This `make' exectuion fails as scheduled.
-Then manually continue work which should have been done by the common script.
-
-% perl ../modify.pl Makefile > Makefile.tmp
-% mv Makefile.tmp Makefile
-% mkdir cr16-elf/libbacktrace
-% cp ../Makefile.empty cr16-elf/libbacktrace/Makefile
-
-I noticed that `cr16-elf/libbacktrace' directory was not created so
-I had to create `cr16-elf/libbacktrace' like above.
-
-% make
-% make install
-...
-  /bin/sh ../.././gcc/../mkinstalldirs /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/cr16-elf/10.2.0/install-tools/include${multi_dir}; \
-  /usr/local/bin/install -c -m 644 include-fixed${multi_dir}/limits.h /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/cr16-elf/10.2.0/install-tools/include${multi_dir}/limits.h; \
-done
-/usr/local/bin/install: 'include-fixed/limits.h' : no such file or directory
-make[2]: *** [Makefile:3901: install-mkheaders] error 1
-make[2]: Leaving directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc'
-make[1]: *** [Makefile:4457: install-gcc] error 2
-make[1]: Leaving directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf'
-make: *** [Makefile:2375: install] error 2
-%
-
-Unexpected error occured. Just install empty file.
-
-% touch host-i686-pc-linux-gnu/gcc/include-fixed/limits.h
-% make install
-
-
+More precicely, refer to "Target specific part".

@@ -329,3 +329,22 @@ Breakpoint 8, 0x0000015a in _fstat (fd=1, st=0x12f20) at dummy.c:9
 	addd	$65532, (sp)
 
 ということで (*A) の修正では十分ではないということ.
+
+逆アセンブルではなくて実際のコンパイラの出力は以下:
+
+(正)
+	addd	$-4, (sp)
+
+(誤)
+	addd	$65532, (sp)
+
+(*B) 
+以下が正しい: 
+#if 0
+      insn = emit_insn (gen_addsi3 (stack_pointer_rtx, stack_pointer_rtx,
+				    GEN_INT (-current_frame_info.total_size)));
+#else      
+      long long int n = current_frame_info.total_size;
+      insn = emit_insn (gen_addsi3 (stack_pointer_rtx, stack_pointer_rtx,
+				    GEN_INT (-n)));
+#endif      
