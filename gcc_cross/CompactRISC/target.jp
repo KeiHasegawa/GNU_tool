@@ -242,6 +242,7 @@ gcc-10.2.0.cr16-elf/gcc/emit-rtl.c:
 の代りに subd 相当が出るのかと思ったが出ていない. これはだめ.
 
 
+(*A)
 #if 0      
       insn = emit_insn (gen_addsi3 (stack_pointer_rtx, stack_pointer_rtx,
 				    GEN_INT (-current_frame_info.total_size)));
@@ -253,7 +254,7 @@ gcc-10.2.0.cr16-elf/gcc/emit-rtl.c:
 #endif
 
 
-のようにしてみた. 2021/07/05 18:45
+のようにしてみた. 2021/07/05 18:45 
 
 => だめっぽい.
 
@@ -306,4 +307,27 @@ Breakpoint 8, 0x0000015a in _fstat (fd=1, st=0x12f20) at dummy.c:9
 
 それと気付いたが puts にステップインしたとき正しいところまでステップインできていない.
 プロローグの分を進めた所にブレークポイントをセットできていない.
+
+正
+0000010c <_main>:
+     10c:	9d 01       	push	$0x2,r13,RA
+     10e:	bf 60 fc ff 	addd	$0xfffc:m,(sp)
+
+
+誤
+0000010c <_main>:
+     10c:	9d 01       	push	$0x2,r13,RA
+     10e:	f0 04 fc ff 	addd	$0xfffc:m,(sp)
+
+オブジェクトコードが異なっている.
+
+つまり
+
+(正)
+        addd	$0xfffc:m,(sp)
+
+(誤)
+	addd	$65532, (sp)
+
+ということで (*A) の修正では十分ではないということ.
 
