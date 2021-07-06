@@ -13,6 +13,16 @@ https://openrisc.io/or1k.html
 
 set TARGET = or1k-elf  # ここを変更
 
+linux では問題が発生しなかったが, cygwin では newlib のインストールで make が
+途中でエラーした.
+
+% cd newlib-4.1.0.or1k-elf/or1k-elf/mcmov/msoft-div/newlib/libm/math
+% ar r lib.a *.o
+% cd newlib-4.1.0.or1k-elf
+% make
+
+のように手動で回避する必要があった.
+
 (*3) 動作確認 => OK
 
 % or1k-elf-gcc -g -o hello.elf hello.c
