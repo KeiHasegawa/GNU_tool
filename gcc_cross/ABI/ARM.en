@@ -1,51 +1,51 @@
-ARM の ABI
+ARM ABI
 
-(*0) レジスタの別名
-(*1) 函数呼び出し
-(*2) 函数復帰
-(*3) プロローグ
-(*4) エピローグ
-(*5) 通常の函数の引数と戻り値
-(*6) long long を引数にとる函数, 返す函数
-(*7) 浮動少数点数を引数にとる函数, 返す函数
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*0) Register alias
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long long' argument and return value
+(*7) floating point number argument and return value
+(*8) Structure argument and return value
 
-(*0) レジスタの別名
+(*0) Rgister alias
 
-     ARM の GPR は 16 本あって r0 から r15 で表記するがこのうち以下は
-     特別な用途で使用される.	 
+     There are 16 GPRs and they are written as r0, ..., r15 respectively.
+     And r11, ..., r15 are used like below:
 
-           別名      用途
-     r11   fp       フレームポインタ
-     r12   ip       stmfd 命令で使用される
-     r13   sp       スタックポインタ
-     r14   lr       リンクレジスタ 
-     r15   pc       プログラムカウンタ
+           Alias    Use
+     r11   fp       frame pointer
+     r12   ip       use this at `stmfd' instruction
+     r13   sp       stack pointer
+     r14   lr       link register
+     r15   pc       program counter
 
-     fp, ip, sp にどの GPR を使用するかはコンパイラが選択することはできる.
+     A compiler can chose registers for fp, ip and sp.
 
-(*1) 函数呼び出し
+(*1) Function call
 
         bl	func
 
-	疑似コード
+	Pseudo code
 
-	lr = (bl 命令の次のアドレス)
+	lr = (bl instruction next address)
 	pc = func
 
-(*2) 函数復帰
+(*2) Return from function
 
 	mov	pc, lr
 	
-	しかしコンパイラは大抵 ldmfd 命令を使用する. プロローグとエピローグ参照.
+	But normally, a compiler uses `ldmfd' instruction. See (*3) and (*4).
 
-(*3) プロローグ
+(*3) Prologue
 
 	mov	ip, sp
 	stmfd	sp!, {fp, ip, lr, pc}
 	sub	fp, ip, #4
 
-	この 3 命令を実行することにより
+	By executing above 3 instructions, stack layout becomes like below:
 
         +--------------+ <- sp_{new}
         |   fp_{old}   |
@@ -57,45 +57,39 @@ ARM の ABI
         |   pc_{old}+8 |
         +--------------+ <- sp_{old}
 
-	のようになる.
-
-(*4) エピローグ
+(*4) Epilogue
 
 	ldmfd	sp, {fp, sp, pc}
 
         +--------------+ <- sp
-        |              |
+        |   fp_{old}   |
         +--------------+ +4
-        |              |
+        |   sp_{old}   |
         +--------------+ +8
-        |              |
+        |   lr_{old}   |
         +--------------+ +12
 
-        疑似コード
+        Pseudo code
 
 	fp = memory[sp]
 	sp = memory[sp+4]
 	pc = memory[sp+8]
 
-	この命令を実行するときに, 函数を呼び出した時点での fp, sp, lr が
-	所定の領域にあれば期待通り復元されることになり呼び出し元に復帰する
-	ことになる.	
+(*5) Normal argument and return value
 
-(*5) 通常の函数の引数と戻り値
+        1st : r0
+        2nd : r1
+        3rd : r2
+        4th : r3
+	5th : use stack
 
-        第 1 引数 : r0
-        第 2 引数 : r1
-        第 3 引数 : r2
-        第 4 引数 : r3
-	第 5 引数以降 : スタックに積む
-
-	例えば
+	For example,
 
 	int f(int a0, int a1, int a2, int a3, int a4, int a5);
 
 	f(10, 11, 12, 13, 14, 15);
 
-	を呼び出すと f の先頭で
+	At start of `f'
 
 	r0 = 10, r1 = 11, r2 = 12, r3 = 13
 
@@ -105,43 +99,43 @@ ARM の ABI
         |      15      |
         +--------------+ +8
 
-        のようになっている. 戻り値は r0 にセットする.
+        Return value is set to `r0'
 
-(*6) long long を引数にとる函数, 返す函数
+(*6) `long long' argument and return value
 
         sizeof(long long) = 8
 
-	引数に使用するときはレジスタをペアで使用する. すなわち第 1 引数が long long
-	ならば r0 と r1 を使用する.
-	戻り値が long long ならば r0, r1 に値をセットする.
+        r0, ..., r3 are use as pair. i.e. if 1st argument type is long long,
+	r0 and r1 is used.
 
-(*7) 浮動少数点数を引数にとる函数, 返す函数
+	Return value is set to r0 and r1.
+
+(*7) floating point number argument and return value
 
         sizeof(float) = 4
 	sizeof(double) = 8
 	sizeof(long double) = 8
 
-	浮動少数点ユニットが ARM にはないらしい. ソフトウェアで計算している.
-	float に対しては (*5) と同様. double, long double に対しては
-	(*6) と同様.
+	FPU doesn't exist at ARM. Software calculates floating point operation.
+	For `float', same with (*5). For `double' and `long double'
+	same with (*6).
 
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*8) Structure argument and return value
 
-        構造体を引数とする函数を呼び出すとき, 先頭の 16 バイトを r0, ..., r3
-	にセットする. それ以降はスタックに積む.
-
-	例えば
-
+        First 16 bytes are set to r0, ... r3 and use stack for the rest.
+	For example,
+	
 	struct S {
           int i[5];	
 	};
 
         struct S s = { 10, 11, 12, 13, 14 };
 
-        この構造体を第 1 引数として函数に渡すとき r0 = 10, r1 = 11, r2 = 12, r3 = 13
-	にセットして, 15 はスタックに積む.
-	
-	構造体を返す函数を呼び出すときは戻り値を格納するアドレスを r0 にセットして
-	呼び出す.
+	When call function with `s', set like below:
+
+	r0 = 10, r1 = 11, r2 = 12, r3 = 13 and memory[sp] = 15
+
+	When calling a function which returns structure, r0 is
+	set to the address for the result.
 	
 
