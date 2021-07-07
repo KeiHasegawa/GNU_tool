@@ -56,9 +56,30 @@ A debugging session is active.
 Quit anyway? (y or n) [answered Y; input not from terminal]
 %
 
-この要領でシミュレータの試験をすることができる. 例えば命令を
+この要領でシミュレータの試験をすることもできる. 例えば命令を
 実行したらレジスタの値を表示するとか, アクセスしたメモリの中を
 表示するとかという具合にである.
+
+しかし一方でシミュレータを試験するだけであれば何も gdb から実行する必要は
+ない.
+
+h8300-elf-run
+
+というコマンドがあるが, これでシミュレータ部分だけを動かすことができる.
+H8 のシミュレータはサポートしていないが, 例えば AARCH64(ARM64) の
+シミュレータは gdb のコマンドとして
+
+sim trace-insn
+sim trace-disasm
+sim trace-decode
+sim trace-branch
+sim trace-memory
+
+により有益な情報を出すことができている. そして
+
+aarch64-elf-run
+
+は対応するオプションをサポートしている. いずれもシミュレータの実装に依存する.
 
 備考
 h8300-elf-as で絶対セクションを書くことができるか試してみた:
