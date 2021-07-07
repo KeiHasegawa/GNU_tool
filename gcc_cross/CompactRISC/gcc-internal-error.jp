@@ -91,18 +91,11 @@ gdb --annotate /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.
 
 gdb からも再現できている.
 問題の箇所はメッセージを出しているから write にブレークポイントをセットして特定できた.
-それは
-
-langhooks.c:468
-
-
-_fatal_insn
-
 これにきている. ここが呼び出されること自体が期待していない動作.
 
       icode = recog_memoized (insn);
       if (icode < 0)
-	fatal_insn_not_found (insn);
+	fatal_insn_not_found (insn);      // ここ
 
 こんな感じでエラーしている. さてこの insn だが
 
@@ -135,7 +128,7 @@ int f(int a, int b)
 
 これをコンパイルさせてみた:
 
-run  -quiet -I . -I . -I ../../../host-i686-pc-linux-gnu/gcc -I ../../.././libgcc -I ../../.././libgcc/. -I ../../.././libgcc/../gcc -I ../../.././libgcc/../include -imultilib far-pic -iprefix /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/../lib/gcc/cr16-elf/10.2.0/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/include-fixed -MD _ashldi3.d -MF _ashldi3.dep -MP -MT _ashldi3.o -D IN_GCC -D CROSS_DIRECTORY_STRUCTURE -D IN_LIBGCC2 -D inhibit_libc -D HAVE_CC_TLS -D L_ashldi3 -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/sys-include -isystem ./include a.c -quiet -dumpbase libgcc2.c -mcr16cplus "-mdata-model=far" -auxbase-strip _ashldi3.o -g -g -g -O2 -O2 -O2 -Wextra -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual "-Wno-error=format-diag" -Wstrict-prototypes -Wmissing-prototypes "-Wno-error=format-diag" -Wold-style-definition -fPIC -fbuilding-libgcc -fno-stack-protector -o a.s
+(gdb) run  -quiet -I . -I . -I ../../../host-i686-pc-linux-gnu/gcc -I ../../.././libgcc -I ../../.././libgcc/. -I ../../.././libgcc/../gcc -I ../../.././libgcc/../include -imultilib far-pic -iprefix /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/../lib/gcc/cr16-elf/10.2.0/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.cr16-elf/host-i686-pc-linux-gnu/gcc/include-fixed -MD _ashldi3.d -MF _ashldi3.dep -MP -MT _ashldi3.o -D IN_GCC -D CROSS_DIRECTORY_STRUCTURE -D IN_LIBGCC2 -D inhibit_libc -D HAVE_CC_TLS -D L_ashldi3 -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/sys-include -isystem ./include a.c -quiet -dumpbase libgcc2.c -mcr16cplus "-mdata-model=far" -auxbase-strip _ashldi3.o -g -g -g -O2 -O2 -O2 -Wextra -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual "-Wno-error=format-diag" -Wstrict-prototypes -Wmissing-prototypes "-Wno-error=format-diag" -Wold-style-definition -fPIC -fbuilding-libgcc -fno-stack-protector -o a.s
 
 これは正常終了している.
 簡単には再現しないかと思ったが
@@ -1463,8 +1456,8 @@ cr16.md から tmp-mddeps を生成しているっぽい. そしてそれは mdd
 
 s-gtype が生成されている. これも中は "timestamp" という文字列のみ.
 
-ということは, cr16.md がどこかのファイルで include されているのかと思った
-(実はこれは正しくなかった).
+ということは, cr16.md がどこかのファイルで include されているのかと思った.
+よくよく考えれば明らかにこれは正しくない. C や C++ で書かれたファイルではないからだ.
 
 上の make -n の結果 g++ を起動する前までは大したことはやっていない.
 cr16.md に recog の函数定義があるのだろうが, これをコンパイラ記述言語ではなく
