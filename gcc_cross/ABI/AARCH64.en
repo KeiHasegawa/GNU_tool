@@ -1,36 +1,37 @@
-AARCH64(ARM64) の ABI
+AARCH64(ARM64) ABI
 
-(*1) 函数呼び出し
-(*2) 函数復帰
-(*3) プロローグ
-(*4) エピローグ
-(*5) 通常の函数の引数と戻り値
-(*6) long long を引数にとる函数, 返す函数
-(*7) 浮動少数点数を引数にとる函数, 返す函数
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long long' argument and return value
+(*7) floating point number argument and return value
+(*8) Structure argument and return value
 
-(*1) 函数呼び出し
+(*1) Function call
 
 	bl func
 
-	疑似コード
+	Pseudo code
 
-	x30 = (bl 命令の次のアドレス)
+	x30 = (bl next address)
 	pc = func
 
-	x30 がリンクレジスタの役割りをしている.
+	x30 works as link register.
 
-(*2) 函数復帰
+(*2) Return from function
 
         ret
 
-	疑似コード
+	Pseudo code
 
 	pc = x30
 	
-(*3) プロローグ
+(*3) Prologue
 
-        以下は 128 バイトのローカル領域を使用する函数
+        For the function which uses 128 bytes local area, prologue becomes
+	like below:
 
 	stp	x29, x30, [sp, -144]!
 	add	x29, sp, 128
@@ -49,75 +50,74 @@ AARCH64(ARM64) の ABI
 	|      x30_{old}     |
 	+--------------------+ <- sp_{old}
 
-	x29 をフレームポインタとして使用している.
+	x29 is used as frame pointer
 
-(*4) エピローグ
+(*4) Epilogue
 
-        以下は 128 バイトのローカル領域を使用する函数
-
+        For the function which uses 128 bytes local area, epilogue becomes
+	like below:
+	
 	ldp	x29, x30, [sp], 144
 	ret
 
-(*5) 通常の函数の引数と戻り値
+(*5) Normal argument and return value
 
-        第 1 引数 : w0
-	第 2 引数 : w1
+        1st : w0
+	2nd : w1
 	...
-	第 8 引数 : w7
-	第 9 引数以降 : スタックを使用する.
+	8th : w7
+	9th : use stack
 
+	For example,
 
         int f(int a0, int a1, int a2, int a3, int a4, int a5, int a6, int a7,
               int a8, int a9);
 
-        を
 
 	f(10, 11, 12, 13, 14, 15, 16, 17, 18, 19);
 
-	として呼び出したとき f の先頭アドレスでは
-
-	w0 = 10, w1 = 11, w2 = 12, w3 = 13, w4 = 14, w5 = 15, w6 = 16, w7 = 17
-
-	となっていてスタックは以下のようになっている.
+	At stop at `f', the stack layout becomes like below:
 
 	+--------------------+ <- sp
 	|         18         |
 	+--------------------+  +8
 	|         19         |
 	+--------------------+  +16
+
+	And registers are set like below:
 	
+	w0 = 10, w1 = 11, w2 = 12, w3 = 13, w4 = 14, w5 = 15, w6 = 16, w7 = 17
+	
+	return value : w0
 
-	戻り値は w0 を使用する.
-
-(*6) long long を引数にとる函数, 返す函数
+(*6) `long long' argument and return value
 
         sizeof(long long) = 8
 
-        w0, ..., w7 の代りに x0, ..., x7 が使用される.
+        Use x0, ..., x7 instead of w0, ..., w7
 
-	x0 の下位 32 ビットが w0 のこと.
+	x0 lower 32 bit is w0.
 
-(*7) float, double を引数にとる函数, 返す函数
+(*7) floating point number argument and return value
 
         sizeof(float) = 4
 	sizeof(double) = 8
         sizeof(long double) = 16
 
-	float の引数に対しては
+	For float type argument,
 
-	第 1 引数 : s0
-	第 2 引数 : s1
+	1st : s0
+	2nd : s1
 	...
-	第 8 引数 ： s7
-	第 9 引数以降 : スタックを使用する.
+	8th : s7
+	9th : use stack
 
-	double の引数に対しては s0, ..., s7 の代わりに d0, ..., d7 が使用される.
-	long double の引数に対しては q0, ..., q7 が使用される.
+	For double type argument, use d0, ..., d7 instead of s0, ..., s7.
+	For long dobule type argument, use q0, ..., q7.
 
-	戻り値はそれぞれ s0, d0, q0 が使用される.
+	Return value : s0, d0, q0 for respectively
 
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*8) Structure argument and return value
 
-        構造体のアドレスが第 1 引数ならば r0 にセットされる.
-
-	構造体を返す函数に対して戻り値を格納するアドレスを r8 にセットして呼び出す.
+        For the structure type argument, its address is set to r0, ..., r7.
+        Return value is set to the address indicated by `r8'.
