@@ -1,43 +1,43 @@
-MN10300 の ABI
+MN10300 ABI
 
-(*1) 函数呼び出し
-(*2) 函数復帰
-(*3) プロローグ
-(*4) エピローグ
-(*5) 通常の函数の引数と戻り値
-(*6) long long を引数にとる函数, 返す函数
-(*7) 浮動少数点数を引数にとる函数, 返す函数
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long long' argument and return value
+(*7) Floating point number argument and return value
+(*8) Structure argument and return value
 
-(*1) 函数呼び出し
+(*1) Function call
 
 	call func,[],0
 
-	疑似コード
+	Pseudo code
 
-	mdr = (call 命令の次のアドレス)
+	mdr = (`call' instruction next address)
 	memory[sp] = mdr
 	pc = func
 
-(*2) 函数復帰
+(*2) Return from function
 
 	ret [a3],4
 
-	疑似コード
+	Pseudo code
 
 	a3 = memory[sp]
 	sp += 4
 	mdr = memory[sp]
 	pc = mdr
 
-(*3) プロローグ
+(*3) Prologue
 
 	movm [a3],(sp)
 	mov sp,a3
 	add -140,sp
 
-	上は 128 バイトのローカルエリアを必要とする函数のプロローグ.
-	a3 レジスタをフレームポインタのように使用する.
+	Above is prologue of the function which uses 128 bytes local area.
+	`a3' register is used as frame pointer.
 
 	+------------------+ <- sp_{new}
 	|                  |
@@ -51,25 +51,28 @@ MN10300 の ABI
 	|  return address  |
 	+------------------+
 
-(*4) エピローグ
+(*4) Epilogue
 
 	mov a3,sp
 	ret [a3],4
 
-	上は函数のプロローグで, ローカルエリアの領域に依存しない. この 2 つの命令の
-	実行で sp, a3 を函数が呼び出された状態に復元し, そして呼び出し元へ戻る.
+	Above is prologue and it doesn't depend on the function.
+	By above 2 instruction execution, `sp' and `a3 ' registers
+	are restored and rturn to the caller.
 	
-(*5) 通常の函数の引数と戻り値
+(*5) Normal argument and return value
 
-        第 1 引数 : d0
-	第 2 引数 : d1
-	第 3 引数以降 : 第 1 引数と第 2 引数の分を開けてスタックを使用する.
+        1st : d0
+	2nd : d1
+	3rd : use stack with offset for 1st and 2nd argument
+
+	For example,
 
 	int f(int a, int b, int c, int d);
 
 	f(10, 11, 12, 13);
 
-	のようなコードに対して f の先頭では
+	At start address of `f', registers and stack layout become like below:
 
 	d0 = 10, d1 = 11
 	
@@ -85,21 +88,22 @@ MN10300 の ABI
 	|        13        |
 	+------------------+ +20
 
-	のようになっている.
-	函数の戻り値は d0 レジスタが使用される.
+	Function return value is set to d0.
 	
-(*6) long long を引数にとる函数, 返す函数
+(*6) `long long' argument and return value
 
 	sizeof(long long) = 8
 
-	第 1 引数には d0 と d1 が使用される. それ以外は (*5) と同様にスタックが
-	使用される.
+	For 1st argument, d0 and d1 is used. For the rest of arguments
+	stack is used.
+
+	For example,
 
 	long long f(long long a, long long b);
 
 	f(0x123456789abcdef0LL, 0x1122334455667788LL);
 
-	に対して f の先頭では
+	At start address of `f', registers and stack layout become like below:
 
 	d0 = 0x9abcdef0, d1 = 0x12345678
 	
@@ -115,21 +119,22 @@ MN10300 の ABI
 	|     0x11223344   |
 	+------------------+ +20
 
-	のようになっている.
-	函数の戻り値は d0 と d1 が使用される.
+	Function return value is set to d0 and d1.
 
-(*7) 浮動少数点数を引数にとる函数, 返す函数
+(*7) Floating point number argument and return value
 
 	sizeof(float) = 4
 	sizeof(double) = 8
 	sizeof(long double) = 8
 
-	MN10300 には FPU がないのでソフトウェアで計算している.
-	float に対しては (*5) と同様. double, long double に対しては (*6)
-	と同様である.
+	MN10300 doesn't have FPU, so software calculates floating point
+	number operation.
+	For `float' same with (*5). For `double' and `long double' same
+	with (*6).
 
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*8) Structure argument and return value
 
-        構造体を引数にとる函数を呼び出すとき, (*5) に従って引数のアドレスを渡す.
-	構造体を返す函数を呼び出すとき, 戻り値を格納するアドレスを d0 に
-	セットして呼び出す.
+        When calling the function which takes structure type argument,
+	pass the address of structure according to (*5).
+
+        Return value is set to the address indicated by `d0'.
