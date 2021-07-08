@@ -1,41 +1,41 @@
-SH の ABI
+SH ABI
 
-(*1) 函数呼び出し
-(*2) 函数復帰
-(*3) プロローグ
-(*4) エピローグ
-(*5) 通常の函数の引数と戻り値
-(*6) long long を引数にとる函数, 返す函数
-(*7) 浮動少数点数を引数にとる函数, 返す函数
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long long' argument and return value
+(*7) Floating point number argument and return value
+(*8) Structure argument and return value
 
-(*1) 函数呼び出し
+(*1) Function call
 
         jsr @r1
 
-	疑似コード
+	Pseudo code
 
-	pr = (jsr 命令の次の命令のアドレス)
+	pr = (`jsr' instruction next address)
 	pc = r1
 
-	pr レジスタがリンクレジスタの役割りをしている.
+	pr register works as, the so-called, link register.
 
-(*2) 函数復帰
+(*2) Return from function
 
 	rts
 
-	疑似コード
+	Pseudo code
 
 	pc = pr
 
-(*3) プロローグ
+(*3) Prologue
 
 	mov.l	r14,@-r15
 	sts.l	pr,@-r15
 	add	#-128,r15
 	mov	r15,r14
 
-	上は 128 バイトのローカルエリアを必要とする函数のプロローグのコード
+	Above is prologue of the function which uses 128 bytes local area.
 
         +-----------------+ <- r15_{new}, r14_{new}
 	|                 |
@@ -43,16 +43,16 @@ SH の ABI
 	|  local area     |
 	|                 |
 	|                 |
-	+-----------------+ <- r14 はここじゃない
+	+-----------------+ <- r14 does not point here.
 	|     pr_{old}    |
 	+-----------------+
 	|     r14_{old}   |
 	+-----------------+ <- r15_{old}
 
-	上だと r14 と r15 が同じアドレスを指すことになり r14 を使う意味がないように
-	も思えるがそこはコンパイラの勝手ということでスルーする.
+	This prologue code makes `r14' point to the same address with `r15'.
+	But it just depends on this compiler impelemntation. 
 
-(*4) エピローグ
+(*4) Epilogue
 
 	add	#64,r14
 	add	#64,r14
@@ -61,29 +61,29 @@ SH の ABI
 	mov.l	@r15+,r14
 	rts
 
-	上は 128 バイトの領域を必要とする函数のエピローグで r14 を 128 加算してから
-	r15 にその値をセットしていることで r15 の値を復元する準備をしている.
-	だったらプロローグで r15 と同じアドレスにしなければ良かったように思えるがそこは
-	コンパイラの勝手なのでスルーする.
+	Above is epilogue of the function which uses 128 bytes local area.
+	There, `r14' is added 128 and move to `r15' for preparing to restore
+	`r15'. I think `r14' shoud points to the adress. But as I said (*3)
+	it just depends on this compiler impeementation.
 
-	いずれにしてもこれで r14, r15, pr を復元できて rts により呼び出し元にプログラ
-	ムの制御が移る.
+	Anyway, r14, r15, pr are restored and `rts' execution makes
+	return to the caller.
 	
-(*5) 通常の函数の引数と戻り値
+(*5) Normal argument and return value
 
-        第 1 引数 : r4
-        第 2 引数 : r5
-        第 3 引数 : r6
-        第 4 引数 : r7
-	第 5 引数以降 : スタックを使用する.
+        1st : r4
+        2nd : r5
+        3rd : r6
+        4th : r7
+	5th : use stack
 
-	例えば
+	For example,
 
 	int f(int a0, int a1, int a2, int a3, int a4, int a5);
 
 	f(10, 11, 12, 13, 14, 15);
 
-	に対して f の先頭にきたとき
+	At the start of `f', registers and stack layout becomes like below:
 
 	r4 = 10, r5 = 11, r6 = 12, r7 = 13
 
@@ -93,54 +93,55 @@ SH の ABI
 	|        15       |
 	+-----------------+ +8
 
-	のようになっている. 函数の戻り値は r0 にセットされる.
+	Function return value is set to `r0'
 
-(*6) long long を引数にとる函数, 返す函数
+(*6) `long long' argument and return value
 
         sizeof(long long) = 8
 
-	引数として函数に渡すとき r4, ..., r7 をペアで使用する. レジスタで足りない
-	場合はスタックが使用される.
+	The `long long' type argument is paassed by using 2 registers.
+	
+	For example,
 
 	f(int a, long long b, long long c);
 
 	f(10, 11L, 12L);
 
-	に対して f の先頭にきたとき
+	At the start of `f', registers and stack layout becomes like below:
 
-	r4 = 10, r5 = 0, r6 = 11, r7 = 0 
+	r4 = 10, r5 = 0, r6 = 11, r7 = 0
 
 	+-----------------+ <- r15
 	|        12       |
 	+-----------------+ +4
 
-	のようになっている. 函数の戻り値は r0 と r1 にセットされる.
+	Function retun value is set to `r0' and `r1'.
 
 
-(*7) 浮動少数点数を引数にとる函数, 返す函数
+(*7) Floating point number argument and return value
 
         sizeof(float) = 4
         sizeof(double) = 8
 	sizeof(long double) = 8
 
-	SH は FPU がないのでソフトウェアで浮動少数点演算を行なっている.
-	float に対しては (*5) と同様. double, long double に対しては
-	(*6) と同様.
+	Because SH doesn't have FPU, software calculates floating point
+	number operation. For `float' same with (*5), For `double' and
+	`long double' same with (*6).
 
-	SH2/SH3/SH4 は型番によって FPU があるらしい.
+	SH2/SH3/SH4 have FPU according to its type.
 
-	float に対しては fr4, fr5, ..., fr11 が使用され残りはスタックが使用される.
-	戻り値は fr0 が使用される.
+	For `float', fr4, fr5, ... fr11 are used and stack is used
+	for the rest. Return value is set to fr0.
 	
-	double に対しては dr4, dr6, dr8, dr10 が使用され残りはスタックが使用される.
-	戻り値は dr0 が使用される.
+	For `double', dr4, dr6, dr8, dr10 are used and stack is used
+	for the rest. Retun value is set to dr0
 
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*8) Structure argument and return value
 
-        構造体を引数とする函数を呼び出すとき, 先頭 16 バイトが r4, ..., r7
-	で渡され残りはスタックを使用する.
-
-	例えば
+        When calling function which takes structure argument,
+	the first 16 bytes of the argument is passed by using
+	r4, ..., r7 and stack is used for the rest.
+	For example,
 
 	struct S {
 	  int i[6];
@@ -151,7 +152,7 @@ SH の ABI
 	struct S s = { 10, 11, 12, 13, 14, 15 };
 	f(s);
 
-	に対して f の先頭では
+	At the start of `f', registers and stack layout becomes like below:
 
 	r4 = 10, r5 = 11, r6 = 12, r7 = 13
 
@@ -161,11 +162,9 @@ SH の ABI
 	|        15       |
 	+-----------------+ +8
 
-	のようになっている.
 
-備考:
+Appendix:
 
-	sh-elf-gcc -o a.s -S a.c -m2a
-	sh-elf-as -o a.o a.s --isa=sh2a
+	usage % sh-elf-gcc -o a.s -S a.c -m2a
+	usage % sh-elf-as -o a.o a.s --isa=sh2a
 
-のように使用するらしい.
