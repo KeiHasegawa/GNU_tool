@@ -1,33 +1,34 @@
-V850 の ABI
+V850 ABI
 
-(*1) 函数呼び出し
-(*2) 函数復帰
-(*3) プロローグ
-(*4) エピローグ
-(*5) 通常の函数の引数と戻り値
-(*6) long long を引数にとる函数, 返す函数
-(*7) 浮動少数点数を引数にとる函数, 返す函数
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long long' argument and return value
+(*7) Floating point number argument and return value
+(*8) Structure argument and return value
 
-(*1) 函数呼び出し
+(*1) Function call
 
 	jarl .+4, r31 ; add 4, r31 ; jmp r10
 
-	上のように 3 命令で行なう. v850-elf-as では ';' はコメントを意味しない.
+	Normally function call is done like above, where ';' doesn't
+	mean comment start (as far as `v850-elf-as').
 
-	疑似コード
+	Pseudo code
 
-	r31 = (jmp r10 命令の次のアドレス)
+	r31 = (`jmp r10' instruction next address)
 	pc = r10
 
-	r31 がリンクレジスタの役割りをしている. アーキテクチャがリンクレジスタを決定する
-	ことが多いが, V850 ではコンパイラがどのレジスタを使用するか選択することができる.
+	r31 is used as link register. Normally architecture decides
+	link register, but at V850, a compiler can chose it.
 	
-(*2) 函数復帰
+(*2) Return from function
 
 	jmp [r31]
 
-(*3) プロローグ
+(*3) Prologue
 
 	add -8,sp
 	st.w r31,4[sp]
@@ -35,22 +36,22 @@ V850 の ABI
 	addi -128,sp,sp
 	mov sp,r29
 
-	上は 128 バイトのローカルエリアを必要とする函数のプロローグ. 
-	sp は r3 の別名. r29 をフレームポインタとして使用する.
+	Above is prologue for the function which uses 128 bytes local area.
+	sp is alias of r3. r29 is used as frame pointer.
 	
 	+---------------+ <- sp_{new}
 	|               |
 	|               |
-	|  local area   |
+	|   local area  |
 	|               |
 	|               |
 	+---------------+ <- r29_{new}
-	|    r29_{old}  |
+	|   r29_{old}   |
 	+---------------+
-	|    r31_{old}  |
+	|   r31_{old}   |
 	+---------------+ <- sp_{old}
 	
-(*4) エピローグ
+(*4) Epilogue
 
 	mov r29,sp
 	ld.w 132[sp],r31
@@ -58,23 +59,26 @@ V850 の ABI
 	addi 136,sp,sp
 	jmp [r31]
 
-	上は 128 バイトのローカルエリアを使用する函数のエピローグ. なんだか
-	フレームポインタを有効利用していないようにも思えるが, 正しく動作する.
-	上の命令で sp, r29, r31 を復元し呼び出し元に復帰している.
+	Above is epilogue for the function which uses 128 bytes local area.
+	I think r29 is not used effectively, but it works correctly.
+	By above instructions, sp, r29 and r31 are restored and jump
+	to callee.
 	
-(*5) 通常の函数の引数と戻り値
+(*5) Normal argument and return value
 
-        第 1 引数 : r6
-        第 2 引数 : r7
-        第 3 引数 : r8
-        第 4 引数 : r9
-	第 5 引数以降 : スタックを使用する.
+        1st : r6
+        2nd : r7
+        3rd : r8
+        4th : r9
+	5th : use stack
+
+	For example,
 
 	int f(int a0, int a1, int a2, int a3, int a4, int a5);
 
 	f(10, 11, 12, 13, 14, 15);
 
-	に対して f の先頭アドレスでは
+	At start address of `f', registers and stack layout become like below:
 
 	r6 = 10, r7 = 11, r8 = 12, r9 = 13
 
@@ -84,22 +88,22 @@ V850 の ABI
 	|       15      |
 	+---------------+
 
-	のようになっている.
-	函数の戻り値は r10 にセットされる.
+	Function return value is set to r10.
 
-
-(*6) long long を引数にとる函数, 返す函数
+(*6) `long long' argument and return value
 
 	sizeof(long long) = 8
 
-	引数を 2 つのレジスタを使って渡し, 残りはスタックを使用する.
+	For long long type arugment, 2 registers are used and the rest
+	are passed by using stack.
+	For example,
 
 	long long f(int a0, long long a1, long long a2, long long a3);
 
 	f(0x11223344,
 	  0x123456789abcdef0LL, 0x5566778899aabbccLL, 0xddddeeeeffff0000LL)
 
-	に対して f の先頭アドレスでは
+	At start address of `f', registers and stack layout become like below:
 
 	r6 = 11223344, r7 = 0x9abcdef0, r8 = 0x12345678, r9 = 0x99aabbcc
 
@@ -111,22 +115,22 @@ V850 の ABI
 	|  0xddddeeee   |
 	+---------------+
 
-	のようになっている.
-	函数の戻り値は r10, r11 レジスタにセットされる.
+	Function return value is set to r10 and r11.
 
-(*7) 浮動少数点数を引数にとる函数, 返す函数
+(*7) Floating point number argument and return value
 
         sizeof(float) = 4
 	sizeof(double) = 8
 	sizeof(long double) = 8
 
-	V850 には FPU がないのでソフトウェアで浮動少数点演算を行なっている.
-	float に対しては (*5) と同様. double, long double に対しては
-	(*6) と同様.
+	V850 doesn't have FPU, so software calculates floating point number
+	operation. For `float' same with (*5). For `double' and `long double'
+	same with (*6).
 
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*8) Structure argument and return value
 
-        構造体を引数にとる函数を呼び出すとき, 先頭の 16 バイトが r6, r7, r8, r9
-	レジスタにセットされ, 残りはスタックにセットされる.
-	構造体を返す函数を呼び出すとき r6 レジスタに戻り値を格納する領域のアドレスがセット
-	されて呼び出される.
+        When calling the function which takes structure type argument,
+	the first 16 btyes are set to r6, r7, r8, r9 and the rest are
+	set to stack.
+	When calling the function which returns structure type,
+	the address of the return value are is set to r6.
