@@ -1,27 +1,55 @@
-iq2000-elf のツールでソースレベルデバッグができない件の調査.
+IQ2000 ソースレベルデバッグ
 
+(*1) 修正方法
+(*2) iq2000-elf-*** のツールでソースレベルデバッグができない件の調査
+
+(*1) 修正方法
+
+binutils-2.36.1.iq2000-elf/bfd/elf32-iq2000.c
+
+  /* A 32 bit absolute relocation.  */
+  HOWTO (R_IQ2000_32,		     /* type */
+	 0,			     /* rightshift */
+	 2,			     /* size (0 = byte, 1 = short, 2 = long) */
+	 31,			     /* bitsize */
+	 FALSE,			     /* pc_relative */
+	 0,			     /* bitpos */
+	 complain_overflow_bitfield, /* complain_on_overflow */
+	 bfd_elf_generic_reloc,	     /* special_function */
+	 "R_IQ2000_32",		     /* name */
+	 FALSE,			     /* partial_inplace */
+#if 0	 
+	 0x00000000,		     /* src_mask */
+	 0x7fffffff,		     /* dst_mask */
+#else
+	 0xffffffff,		     /* src_mask */
+	 0xffffffff,		     /* dst_mask */
+#endif	 
+	 FALSE),		     /* pcrel_offset */
+
+
+(*2) iq2000-elf-*** のツールでソースレベルデバッグができない件の調査
 
 % h8300-elf-addr2line -a 0x100 -e test000.elf
 0x00000100
 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_h8300.000/test000.S:3
 %
 
-ちゃんとライン情報が出ている.
+当り前だがちゃんとライン情報が出ている.
 
 % iq2000-elf-addr2line -a 0x80000100 -e test000.elf
 0x80000100
 test000.o:?
 %
 
-出ていない. 意図的に間違ったアドレスを指定してみた.
+期待した表示ではない. 試しに意図的に間違ったアドレスを指定してみた.
 
 % iq2000-elf-addr2line -a 0x00000100 -e test000.elf
 0x00000100
 ??:0
 %
 
-これはこれで正しい.
-どうやらこれはアセンブラの問題らしい.
+これはこれで正しい. どうやらこれはアセンブラの問題らしい(最初はそう思ったが実はリンカの問題だった)
 
 test000.objdump
 
@@ -46,49 +74,7 @@ test000.objdump
 %
 
 のようになるもの間違っていることになる.
-
-
-以下は期待通り動作している h8300-elf-as の test000.elf の test000.objdump
-
-  Entry	Dir	時刻	サイズ	名前
-  1	0	0	0	test000.S
-
- Line Number Statements:
-  [0x0000002a]  拡張命令コード 2: 設定アドレス 0x100
-  [0x0000002f]  Special opcode 7: advance Address by 0 to 0x100 and Line by 2 to 3
-  [0x00000030]  Special opcode 20: advance Address by 2 to 0x102 and Line by 1 to 4
-  [0x00000031]  Special opcode 20: advance Address by 2 to 0x104 and Line by 1 to 5
-  [0x00000032]  Special opcode 21: advance Address by 2 to 0x106 and Line by 2 to 7
-  [0x00000033]  Advance PC by 2 to 0x108
-  [0x00000035]  拡張命令コード 1: 列の終り
-
-どちらも
-
-  [0x0000002a]  拡張命令コード 2: 設定アドレス 0x100
-
-で始まっているが
-
-  [0x00000031]  Special opcode 7: advance Address by 0 to 0x100 and Line by 2 to 3
-
-が 0x0000002f と 0x00000031 とで異なっている.
-
-正しく動く aarch64-elf の環境では以下:
-
- Line Number Statements:
-  [0x0000002a]  拡張命令コード 2: 設定アドレス 0x100
-  [0x00000035]  Special opcode 7: advance Address by 0 to 0x100 and Line by 2 to 3
-  [0x00000036]  Special opcode 20: advance Address by 4 to 0x104 and Line by 1 to 4
-  [0x00000037]  Special opcode 20: advance Address by 4 to 0x108 and Line by 1 to 5
-  [0x00000038]  Special opcode 21: advance Address by 4 to 0x10c and Line by 2 to 7
-  [0x00000039]  Advance PC by 4 to 0x110
-  [0x0000003b]  拡張命令コード 1: 列の終り
-
-これからすると 0x0000002a となってて, 異なっているから動かないというわけではないらしい.
-iq2000-elf のツールでソースレベルデバッグができない件の調査(その2).
-
-../test_iq2000.002
-
-は 0x80000100 ではなく 0x100 にプログラムを配置してみた.
+0x80000100 ではなく 0x100 にプログラムを配置してみた.
 
 % iq2000-elf-addr2line -a 0x100 -e test002.elf
 0x00000100
@@ -101,22 +87,17 @@ iq2000-elf のツールでソースレベルデバッグができない件の調
 0x80000000
 
 のアドレスにプログラムを配置しないと期待通りシミュレーションできないので
-
-../test_iq2000.002/test002.elf
-
-の動作確認することはできない.
+シミュレータで動作確認することはできない.
 
 同じことを 32 ビットアドレス空間をサポートしている ARM で試してみた.
-
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_arm.004
 
 % arm-elf-addr2line -a 0x80000100 -e start.elf
 0x80000100
 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_arm.004/start.S:3
 %
 
-できている. arm-elf-gdb にはアドレスの制限がないから勿論これをシミュレーションはできている.
-iq2000-elf-as, iq2000-elf-ld に問題があると推測できる.
+できている. arm-elf-gdb のシミュレータにはアドレスの制限がないから勿論これをシミュレーショ
+ンはできている. iq2000-elf-as, iq2000-elf-ld に問題があると推測できる.
 
 
 以下は 0x80000100 に配置した ARM のプログラムの objdump の結果
@@ -132,12 +113,8 @@ iq2000-elf-as, iq2000-elf-ld に問題があると推測できる.
 
 期待通りになっている.
 
-ということはそもそも
-
-間違ったオブジェクトファイルを直接生成しているのは iq2000-elf-ld  なのでまずはこれから
+間違った実行ファイルを生成しているのは iq2000-elf-ld  なのでまずはこれから
 調べるべき.
-iq2000-elf-ld で生成したオブジェクトファイルでライン情報が正しく生成されて
-いない件の調査
 
 一旦 -g3 -O0 でビルドし直した.
 
@@ -194,15 +171,14 @@ gdb --annotate=3 ./ld-new
   [0x00000035]  Advance PC by 4 to 0x110
   [0x00000037]  拡張命令コード 1: 列の終り
 
-のようになっている. 
+のようになっている. バグを再現できている.
 
 .debug_line セクションが正しくない.
 
-そこで ld-new がどこで .debug_line セクションを生成しているかをまず突き止めようかと
-思ったが.
+そこで ld-new がどこで .debug_line セクションを生成しているかをまず調査した.
 
 write システムコールを実行している
-      ファイルを生成しているから.
+      実行ファイルを生成するから
 
 read システムコールを実行している
       アセンブラの生成した test000.o
@@ -212,7 +188,7 @@ read システムコールを実行している
 
 	 . = 0x80000100;
 
-が正しいかどうかということ. まずこれがどの変数に読み込まれるかを探してみる.
+が正しいかどうかということ. まずこれがどの変数(?)に読み込まれるかを探してみる.
 
 (gdb) b read
 (gdb) run
@@ -277,7 +253,7 @@ dst = "." なのでこれに間違いなし.
 
 0x80000100
 
-であるかどうかをどうやって確認できるか.
+であるかどうかをどうやって確認できるかだが
 
 (gdb) p *src
 $3 = {type = {node_code = 258, lineno = 2, filename = 0xbffff844 "test000.x", 
@@ -310,19 +286,6 @@ x", node_class = etree_value}, value = 2147483904,
 0x80000100 が
 0x00000100 に化けているとかは考えられない.
 
-これら statement はかき集められて
-
-script_file:
-	{ ldlex_both(); }
-	ifile_list
-	{ ldlex_popstate(); }
-	;
-
-ここにくるはず.
-
-(gdb) b ldlex_popstate
-
-
 結局
 
 int main()
@@ -334,10 +297,7 @@ int main()
 
 }
 
-のようになっている. lang_final で実際にファイル生成していると考えられる(しかしあくまでも推測).
-しかしこの函数は単純に出力ファイル名を決めているだけだった.
-
-実際 write が呼び出されているのは以下を next 実行したとき:
+のようになっている. 実際 write が呼び出されているのは以下を next 実行したとき:
 
   ldwrite ();
 
@@ -351,100 +311,16 @@ int main()
 
 のようになっているから, おそらく lang_process () で書き込む内容は決定されているのだろう.
 
-(gdb) delete
-(gdb) b lang_process
-(gdb) run
-
-void
-lang_process (void)
-{
-  ...
-  /* Give initial values for __start and __stop symbols, so that  ELF
-     gc_sections will keep sections referenced by these symbols.  Must
-     be done before lang_do_assignments below.  */
-  if (config.build_constructors)
-    lang_init_start_stop ();
-
-...
-  lang_do_assignments (lang_mark_phase_enum);
-
-...
-  map_input_to_output_sections (statement_list.head, NULL, NULL);
-...
-  lang_place_orphans ();
-
-
-  if (!bfd_link_relocatable (&link_info))
-    {
-      /* Look for a text section and set the readonly attribute in it.  */
-      found = bfd_get_section_by_name (link_info.output_bfd, ".text");
-
-      if (found != NULL)
-...
-  lang_do_assignments (lang_final_phase_enum);
-
-  ldemul_finish ();
-
-上はそれっぽいところを当たりを予想したが, いまひとつ不明. やはり ldwrite ()
-から解析するべき.
-
-bfd_boolean
-bfd_elf_final_link (bfd *abfd, struct bfd_link_info *info)
-{
-...
-  for (o = abfd->sections; o != NULL; o = o->next)
-    {
-  ここで最初に .text を処理している.
-  2 個目は問題の .debug_line
-  最初のループは特定のセクションをは削除している.
-
-
-
-  for (o = abfd->sections; o != NULL; o = o->next)
-    {
-      struct bfd_elf_section_data *esdo = elf_section_data (o);
-
-  2 回目のループは不明だが少なくとも write は呼び出していない.
-
-
-  /* Set sizes, and assign file positions for reloc sections.  */
-  for (o = abfd->sections; o != NULL; o = o->next)
-    {
-      struct bfd_elf_section_data *esdo = elf_section_data (o);
-  3 回目のループは不明だが少なくとも write は呼び出していない.
-
-
-これまでと違うやり方だが 4 回目のループ
-	  for (i = 1; i < elf_numsections (abfd); i++)
-	    {
-	      o = bfd_section_from_elf_index (abfd, i);
-
-
-write のブレークポイントにひっかかるまで進んだほうが早い
+write のブレークポイントにひっかかるまで進んだほうが早いと考えてそこを特定した:
 
   if (BFD_SEND (abfd, _bfd_set_section_contents,
 		(abfd, section, location, offset, count)))
 
-ここで write を呼び出している.
-最初に .text セクションが書き込まれている. このあと .debug_line セクションに対しても
-同じように wirte が呼び出されるかと思ったがそうではなかった.
-
-ともあれ最初に write が呼び出された時点で, シンボル解決等は済んでいると考えるのが普通.
+ここで write を呼び出している. 最初に .text セクションが書き込まれている.
+最初に write が呼び出された時点で, シンボル解決等は済んでいると考えるのが普通だと思った.
 そのときの
 
 .debug_line
-
-セクションがどうなっているか確認する.
-
-(gdb) delete
-(gdb) b write
-(gdb) run
-
-
-  if (BFD_SEND (abfd, _bfd_set_section_contents,
-		(abfd, section, location, offset, count)))
-
-ここで write している.
 
 (gdb) delete
 (gdb) b section.c:1523 
@@ -452,43 +328,21 @@ write のブレークポイントにひっかかるまで進んだほうが早�
 
 停止した. そして期待したところで止まっている.
 
-
-void debug(unsigned char* buf, int size)
-{
-  for (int i = 0 ; i != size ; ++i) {
-    if (!(i & 7))
-      printf("\n");
-    printf(" %02x", buf[i]);
-  }
-  printf("\n");
-}
-
-この函数を section.c に入れてコンパイル & リンク.
-
-.debug_line に対して BFD_SEND のところにきたときに
-
-(gdb) p debug(location, count)
-
- 00 00 00 36 00 03 00 00
- 00 20 01 01 fb 0e 0d 00
- 01 01 01 01 00 00 00 01
- 00 00 01 00 74 65 73 74
- 30 30 30 2e 53 00 00 00
- 00 00 00 05 02 00 00 01
- 00 14 4b 4b 4c 02 04 00
- 01 01
-
-のようになっている.
+(gdb) x/58bx location
+0x81b6fa0:	0x00	0x00	0x00	0x36	0x00	0x03	0x00	0x00
+0x81b6fa8:	0x00	0x20	0x01	0x01	0xfb	0x0e	0x0d	0x00
+0x81b6fb0:	0x01	0x01	0x01	0x01	0x00	0x00	0x00	0x01
+0x81b6fb8:	0x00	0x00	0x01	0x00	0x74	0x65	0x73	0x74
+0x81b6fc0:	0x30	0x30	0x30	0x2e	0x53	0x00	0x00	0x00
+0x81b6fc8:	0x00	0x00	0x00	0x05	0x02	0x00	0x00	0x01
+0x81b6fd0:	0x00	0x14	0x4b	0x4b	0x4c	0x02	0x04	0x00
+0x81b6fd8:	0x01	0x01
 
 さてどれが問題の 0x100 か不明ではある.
+
 これと同じことをできている arm-elf-ld で行なってみた:
 
-ダンプするだけだから
-
 (gdb) x/56bx location
-
-としてみた
-
 
 0x820bf28:	0x34	0x00	0x00	0x00	0x03	0x00	0x1e	0x00
 0x820bf30:	0x00	0x00	0x02	0x01	0xfb	0x0e	0x0d	0x00
@@ -512,17 +366,8 @@ bfd_putl32 (bfd_vma data, void *p)
 ここで書き込んでいた. なるほど ARM はリトルエンディアンだから 0x80000100
 こういう並びになるとうわけだ.
 
-一方 IQ2000 のほうは
+同じように IQ2000 でもそれっぽいところにウォッチポイントをセットしてみた.
 
-(gdb) x/58bx location
-0x81b6fa0:	0x00	0x00	0x00	0x36	0x00	0x03	0x00	0x00
-0x81b6fa8:	0x00	0x20	0x01	0x01	0xfb	0x0e	0x0d	0x00
-0x81b6fb0:	0x01	0x01	0x01	0x01	0x00	0x00	0x00	0x01
-0x81b6fb8:	0x00	0x00	0x01	0x00	0x74	0x65	0x73	0x74
-0x81b6fc0:	0x30	0x30	0x30	0x2e	0x53	0x00	0x00	0x00
-0x81b6fc8:	0x00	0x00	0x00	0x05	0x02	0x00	0x00	0x01
-0x81b6fd0:	0x00	0x14	0x4b	0x4b	0x4c	0x02	0x04	0x00
-0x81b6fd8:	0x01	0x01
 (gdb) p/x *(char*)0x81b6fcf
 $61 = 0x1
 (gdb) watch *(char*)0x81b6fcf
@@ -541,9 +386,9 @@ bfd_putb32 (bfd_vma data, void *p)
 }
 
 そしてこのとき data = 0x100 である. 期待値は 0x80000100 である.
-このときデバッガで強制的に
+このときデバッガで
 
-set addr[0]=0x80
+(gdb) set addr[0]=0x80
 
 としてみた. 生成された test000.elf を iq2000-elf-objdump -g とした結果は
 
@@ -556,14 +401,13 @@ set addr[0]=0x80
   [0x00000035]  Advance PC by 4 to 0x80000110
   [0x00000037]  拡張命令コード 1: 列の終り
 
-であるが一方
+であるが, 一方
 
 % addr2line -e test000.elf -a 0x80000100
 0x80000100
 test000.o:?
-となっている.
-しかしバグの場所は絞り込めていている.
-
+%
+となっている. ここだけ直してもだめらしい.
 
 _bfd_relocate_contents が以下のように
 
@@ -577,7 +421,6 @@ $66 = 0x80000100
 
 なのでここまでは正しい.
 
-
   x = ((x & ~howto->dst_mask)
        | (((x & howto->src_mask) + relocation) & howto->dst_mask));
 
@@ -585,13 +428,6 @@ $66 = 0x80000100
   write_reloc (input_bfd, x, location, howto);
 
 x が 0x100 に計算されそして bfd_putb32 が 0x100 で呼び出される.
-この計算で 0x80000100 になったところで
-
-% addr2line -e test000.elf -a 0x80000100
-0x80000100
-test000.o:?
-
-のようになるのだから
 
 howto->dst_mask
 howto->src_mask
@@ -612,7 +448,6 @@ $11 = 0xffffffff
 (gdb) p/x howto->dst_mask
 $12 = 0xffffffff
 (gdb)
-
 
 src_mask の値も違っているのだろうか...
 これらの値は
@@ -650,5 +485,3 @@ binutils-2.36.1.iq2000-elf/bfd/elf32-iq2000.c
 で実行したところデバッグ情報が正しく生成されていることが確認できた.
 
 だとすると...他にも似たようなところがあるが, とりあえず問題が発覚してから調べることにする.
-
-
