@@ -1,42 +1,42 @@
-IQ2000 の ABI
+IQ2000 ABI
 
-(*1) 函数呼び出し
-(*2) 函数復帰
-(*3) プロローグ
-(*4) エピローグ
-(*5) 通常の函数の引数と戻り値
-(*6) long long を引数にとる函数, 返す函数
-(*7) 浮動少数点数を引数にとる函数, 返す函数
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long long' argument and return value
+(*7) Floating point number argument and return value
+(*8) Structure argument and return value
 
 
-(*1) 函数呼び出し
+(*1) Function call
 
 	jalr	%31,%3
 
-	疑似コード
+	Pseudo code
 
-	r31 = (jalr 命令の次の次のアドレス)
+	r31 = (`jalr' instruction next next address)
 	pc = r3
 
-	r31 はリンクレジスタとして使用されるが, コンパイラがどのレジスタをリンクレジスタ
-	として使用するかは選択できる.
-        この命令は遅延分岐なので r31 には次の次のアドレスがセットされる.
+	r31 is used as link register, but a compiler can chose link register.
+	Thih instruction is delayed branch. So jalr instruction next next
+	address is set to r31.
 
-(*2) 函数復帰
+(*2) Return from function
 
 	j	%31
 
-	この命令も遅延分岐である.
+	This instruction is also delayed branch.
 
-(*3) プロローグ
+(*3) Prologue
 
 	addiu	%29,%29,-136
 	sw	%31,132(%29)
 	sw	%27,128(%29)
 	or	%27,%0,%29
 
-	上は 128 バイトのローカルエリアを使用する函数のプロローグである.
+	Above is prologue for the function which uses 128 bytes local area.
 
 	+------------------+ <- r29_{new}, r27_{new}
 	|                  |
@@ -44,16 +44,16 @@ IQ2000 の ABI
 	|    local area    |
 	|                  |
 	|                  |
-	+------------------+ <- r27 はここではない
+	+------------------+ <- r27 doesn't point here
 	|     r27_{old}    |
 	+------------------+
 	|     r31_{old}    |
 	+------------------+
 
-	r27 をフレームポインタとして使用しているかとも思うが, 指しているところが
-	r29 と同じになっている. しかしこれはコンパイラの勝手である.
+	r27 may be used as frame pointer but r27 points to the same address
+	with r29. But it just depends on this compiler impelemntation.
 
-(*4) エピローグ
+(*4) Epilogue
 
 	or	%29,%0,%27
 	lw	%31,132(%29)
@@ -63,22 +63,24 @@ IQ2000 の ABI
 	j	%31
 	nop
 
-	上は 128 バイトのローカルエリアを使用する函数のエピローグである.
-	r31, r27, r29 が復元されて呼び出し元に復帰する.
+	Above is epilogue for the function which uses 128 bytes local area.
+	r31, r27 and r29 are restored and reutn to callee.
 	
-(*5) 通常の函数の引数と戻り値	
+(*5) Normal argument and return value
 
-        第 1 引数 : r4
-        第 2 引数 : r5
+        1st : r4
+        2nd : r5
 	...
-        第 8 引数 : r11
-        第 9 引数以降 : スタックに積む
+        8th : r11
+        9th : use stack
+
+	For exmaple,
 
 	int f(int a0, int a1, int a2, int a3, int a4, int a5, int a6, int a7, int a8);
 
 	f(10, 11, 12, 13, 14, 15, 16, 17, 18);
 
-	に対して f の先頭では
+	At start addres of `f', registers and stack layout become like below:
 
 	r4 = 10, ..., r11 = 17
 
@@ -86,18 +88,17 @@ IQ2000 の ABI
 	|        18        |
 	+------------------+
 
-	のようになっている.
-	函数の戻り値は r2 レジスタにセットされる.
+	Function return value is set to r2.
 
-
-(*6) long long を引数にとる函数, 返す函数
+(*6) `long long' argument and return value
 
         sizeof(long long) = 8
 
-	第 1 引数が long long の場合 r4, r5 がペアとして使われる.
-	同様に第 2 引数が long long の場合 r6, r7 がペアとして使われる.
-	第 3 引数は r8, r9 が, 第 4 引数は r10, r11 がペアとして使われる.
-	残りはスタックに積まれる.
+	If 1st argument type is `long long', r4 and r5 are used.
+	Similarly if 2nd argument type is `long long', r6 and r7 are sued.
+	If 3rd, r8 and r9 are used. If 4th, r10 and r11 are used.
+	For the rest, stack is used.
+	For example,
 
 	long long f(int a0, long long a1, long long a2, long long a3, long long a4);
 
@@ -105,7 +106,7 @@ IQ2000 の ABI
 	  0x123456789abcdef0LL, 0x5566778899aabbccLL,
 	  0xddeeff0087654321LL, 0x0fedcba987654321LL);
 
-	に対して f の先頭アドレスでは
+	At start address of `f', registers and stack layout become like below:
 
 	r4 = 0x11223344
 	r6 = 0x12345678, r7 = 0x9abcdef0
@@ -118,22 +119,22 @@ IQ2000 の ABI
 	|    0x87654321    |
 	+------------------+
 
-	のようになっている.
-	函数の戻り値は r2, r3 にセットされる.
+	Function return value is set to r2 and r3.
 
-(*7) 浮動少数点数を引数にとる函数, 返す函数
+(*7) Floating point number argument and return value
 
         sizeof(float) = 4
 	sizeof(double) = 8
 	sizeof(long double) = 8
 
-	IQ2000 には FPU がないので浮動少数点演算はソフトウェアで行なう.
-	float に対しては (*5) と同様. double, long double に対しては (*6) と同様.
+	IQ2000 doens't have FPU, so software calculates floating point number
+	operation. For `float', same with (*5). For `double' and `long double'
+	same with (*6).
 
+(*8) Structure argument and return value
 
-(*8) 構造体を引数にとる函数, 構造体を返す函数
-
-        構造体を引数にとる函数を呼び出すとき構造体のアドレスが函数に渡される.
-	構造体を返す函数を呼び出すとき r4 レジスタに戻り値を格納する領域の
-	アドレスがセットされて呼び出される.
+        When calling the function which taks structure type argument,
+	set the address of structure.
+	When calling the function which returns structure type, set the
+	address for return value to r4.
 	
