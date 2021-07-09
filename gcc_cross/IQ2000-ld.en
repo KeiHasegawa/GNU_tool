@@ -1,0 +1,307 @@
+IQ2000 source level debugging 
+
+(*1) How to fix
+(*2) iq2000-elf-*** investigation for source level debugging
+
+(*1) How to fix
+
+binutils-2.36.1.iq2000-elf/bfd/elf32-iq2000.c
+
+  /* A 32 bit absolute relocation.  */
+  HOWTO (R_IQ2000_32,		     /* type */
+	 0,			     /* rightshift */
+	 2,			     /* size (0 = byte, 1 = short, 2 = long) */
+	 31,			     /* bitsize */
+	 FALSE,			     /* pc_relative */
+	 0,			     /* bitpos */
+	 complain_overflow_bitfield, /* complain_on_overflow */
+	 bfd_elf_generic_reloc,	     /* special_function */
+	 "R_IQ2000_32",		     /* name */
+	 FALSE,			     /* partial_inplace */
+#if 0	 
+	 0x00000000,		     /* src_mask */
+	 0x7fffffff,		     /* dst_mask */
+#else
+	 0xffffffff,		     /* src_mask */
+	 0xffffffff,		     /* dst_mask */
+#endif	 
+	 FALSE),		     /* pcrel_offset */
+
+
+(*2) iq2000-elf-*** investigation for source level debugging
+
+% h8300-elf-addr2line -a 0x100 -e test000.elf
+0x00000100
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_h8300.000/test000.S:3
+%
+
+Of cause, OK. Above displays line information.
+
+% iq2000-elf-addr2line -a 0x80000100 -e test000.elf
+0x80000100
+test000.o:?
+%
+
+Unexpected result. I also tried to specify wrong address intentionally.
+
+% iq2000-elf-addr2line -a 0x00000100 -e test000.elf
+0x00000100
+??:0
+%
+
+OK. This is right. I guessed that there was a problem at `iq2000-elf-as'
+(But actually `iq2000-elf-ld').
+
+test000.objdump
+
+  Entry	Dir	Time	Size	Name
+  1	0	0	0	test000.S
+
+ Line Number Statements:
+  [0x0000002a]  extended opcode 2: address 0x100
+  [0x00000031]  Special opcode 7: advance Address by 0 to 0x100 and Line by 2 to 3
+  [0x00000032]  Special opcode 62: advance Address by 4 to 0x104 and Line by 1 to 4
+  [0x00000033]  Special opcode 62: advance Address by 4 to 0x108 and Line by 1 to 5
+  [0x00000034]  Special opcode 63: advance Address by 4 to 0x10c and Line by 2 to 7
+  [0x00000035]  Advance PC by 4 to 0x110
+  [0x00000037]  extended opcode 1: end
+
+
+The address is wrong, I think. But if so
+
+% iq2000-elf-addr2line -a 0x100 -e test000.elf
+0x00000100
+??:0
+%
+
+the reason of above can not be explained.
+
+I tried to locate program 0x100 not 0x80000100.
+
+% iq2000-elf-addr2line -a 0x100 -e test002.elf
+0x00000100
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_iq2000.002/test002.S:3
+%
+
+OK. fine. Unfortunately, at iq2000-elf-gdb simulator enviornment
+program must be located at
+
+0x80000000
+
+so could not confirm it worked well.
+
+I also confirmed that ARM which supports 32 bit address space.
+
+% arm-elf-addr2line -a 0x80000100 -e start.elf
+0x80000100
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_arm.004/start.S:3
+%
+
+OK. fine. At arm-elf-gdb simulator environment, program can be located
+anywhere and I confirmed that it worked well.
+
+For a ARM target program which is located at 0x80000100, arm-elf-objdump -g
+displays below:
+
+ Line Number Statements:
+  [0x00000028]  extended opcdoe 2: address 0x80000100
+  [0x0000002f]  Special opcode 7: advance Address by 0 to 0x80000100 and Line by 2 to 3
+  [0x00000030]  Special opcode 34: advance Address by 4 to 0x80000104 and Line by 1 to 4
+  [0x00000031]  Special opcode 34: advance Address by 4 to 0x80000108 and Line by 1 to 5
+  [0x00000032]  Special opcode 35: advance Address by 4 to 0x8000010c and Line by 2 to 7
+  [0x00000033]  Advance PC by 4 to 0x80000110
+  [0x00000035]  extended opcode 1: end
+
+OK. fine.
+
+Because `iq2000-elf-ld' generated wrong executable file, I decided to examine
+it first.
+
+Once I built it `-g3 -O0' option.
+
+M-x gdb
+gdb --annotate=3 ./ld-new
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_iq2000.000
+(gdb) run -o test000.elf test000.o -T test000.x
+
+For generated `test000.elf'
+
+% iq2000-elf-objdump -g test000.elf
+
+displays like below:
+
+ Line Number Statements:
+  [0x0000002a]  extended opcode 2: address 0x100
+  [0x00000031]  Special opcode 7: advance Address by 0 to 0x100 and Line by 2 to 3
+  [0x00000032]  Special opcode 62: advance Address by 4 to 0x104 and Line by 1 to 4
+  [0x00000033]  Special opcode 62: advance Address by 4 to 0x108 and Line by 1 to 5
+  [0x00000034]  Special opcode 63: advance Address by 4 to 0x10c and Line by 2 to 7
+  [0x00000035]  Advance PC by 4 to 0x110
+  [0x00000037]  extended opcdoe 1: end
+
+OK. I could reprodece under control `gdb'.
+
+incorrect `.debug_line' section was outputed.
+
+Now, first I examined the `ld-new' part of output section.
+`write' system call must be used for generating executable file.
+
+I noticed that `write' is called below:
+
+  if (BFD_SEND (abfd, _bfd_set_section_contents,
+		(abfd, section, location, offset, count)))
+
+Here, `.text' section was outputed. I thought all sections contents
+were decided at this point
+
+(gdb) delete
+(gdb) b section.c:1523 
+(gdb) run
+
+For `.debug_line' section I examined contents at above break-point:
+
+(gdb) x/58bx location
+0x81b6fa0:	0x00	0x00	0x00	0x36	0x00	0x03	0x00	0x00
+0x81b6fa8:	0x00	0x20	0x01	0x01	0xfb	0x0e	0x0d	0x00
+0x81b6fb0:	0x01	0x01	0x01	0x01	0x00	0x00	0x00	0x01
+0x81b6fb8:	0x00	0x00	0x01	0x00	0x74	0x65	0x73	0x74
+0x81b6fc0:	0x30	0x30	0x30	0x2e	0x53	0x00	0x00	0x00
+0x81b6fc8:	0x00	0x00	0x00	0x05	0x02	0x00	0x00	0x01
+0x81b6fd0:	0x00	0x14	0x4b	0x4b	0x4c	0x02	0x04	0x00
+0x81b6fd8:	0x01	0x01
+
+It's not clear that address 0x100 is located.
+
+I also tried to do the same thing with `arm-elf-ld':
+
+(gdb) x/56bx location
+
+0x820bf28:	0x34	0x00	0x00	0x00	0x03	0x00	0x1e	0x00
+0x820bf30:	0x00	0x00	0x02	0x01	0xfb	0x0e	0x0d	0x00
+0x820bf38:	0x01	0x01	0x01	0x01	0x00	0x00	0x00	0x01
+0x820bf40:	0x00	0x00	0x01	0x00	0x73	0x74	0x61	0x72
+0x820bf48:	0x74	0x2e	0x53	0x00	0x00	0x00	0x00	0x00
+0x820bf50:	0x00	0x05	0x02	0x00	0x01	0x00	0x80	0x14
+0x820bf58:	0x2f	0x2f	0x30	0x02	0x02	0x00	0x01	0x01
+
+(gdb) p/x *(char*)0x820bf56
+$3 = 0x80
+(gdb) watch *(char*)0x820bf56
+
+By above command, I noticed that it was written at:
+
+void
+bfd_putl32 (bfd_vma data, void *p)
+
+
+Then I tried to do the same operation:
+
+(gdb) p/x *(char*)0x81b6fcf
+$61 = 0x1
+(gdb) watch *(char*)0x81b6fcf
+Hardware watchpoint 20: *(char*)0x81b6fcf
+(gdb)
+
+At last, I confirmed that it was written at:
+
+void
+bfd_putb32 (bfd_vma data, void *p)
+{
+  bfd_byte *addr = (bfd_byte *) p;
+  addr[0] = (data >> 24) & 0xff;
+  addr[1] = (data >> 16) & 0xff;
+  addr[2] = (data >>  8) & 0xff;
+  addr[3] = data & 0xff;
+}
+
+And the expected value of `data' is 0x80000100. At this time,
+`data' was 0x100. I tried to modify like below:
+
+(gdb) set addr[0]=0x80
+
+Then for generated `test000.elf', executing `iq2000-elf-objdump -g' 
+
+ Line Number Statements:
+  [0x0000002a]  extended opcode 2: address 0x80000100
+  [0x00000031]  Special opcode 7: advance Address by 0 to 0x80000100 and Line by 2 to 3
+  [0x00000032]  Special opcode 62: advance Address by 4 to 0x80000104 and Line by 1 to 4
+  [0x00000033]  Special opcode 62: advance Address by 4 to 0x80000108 and Line by 1 to 5
+  [0x00000034]  Special opcode 63: advance Address by 4 to 0x8000010c and Line by 2 to 7
+  [0x00000035]  Advance PC by 4 to 0x80000110
+  [0x00000037]  extended opcode 1: end
+
+On the other hand,
+
+% addr2line -e test000.elf -a 0x80000100
+0x80000100
+test000.o:?
+%
+
+It was not enough to fix the value of written. 
+
+`_bfd_relocate_contents' was called like below:
+
+#2  0x080845ed in _bfd_relocate_contents (howto=0x8147710 <iq2000_elf_howto_table+48>, input_bfd=0x8189468, relocation=2147483904, location=0x81b6fcd "") at reloc.c:1541
+
+i.e.
+
+(gdb) p/x relocation
+$66 = 0x80000100
+(gdb) 
+
+It's expected but,
+
+  x = ((x & ~howto->dst_mask)
+       | (((x & howto->src_mask) + relocation) & howto->dst_mask));
+
+  /* Put the relocated value back in the object file.  */
+  write_reloc (input_bfd, x, location, howto);
+
+`x' was calculated and becames `0x100' and `bfd_putb32' was called.
+
+(gdb) p/x howto->src_mask
+$71 = 0x0
+(gdb) p/x howto->dst_mask
+$72 = 0x7fffffff
+(gdb) 
+
+I also confirmed with `arm-elf-ld'
+
+
+(gdb) p/x howto->src_mask
+$11 = 0xffffffff
+(gdb) p/x howto->dst_mask
+$12 = 0xffffffff
+(gdb)
+
+They was diffrenrent each other. Anyway these value came from:
+
+iq2000_elf_howto_table+56
+iq2000_elf_howto_table+60
+
+
+`iq2000_elf_howto_table' was defined at
+
+binutils-2.36.1.iq2000-elf/bfd/elf32-iq2000.c
+
+  /* A 32 bit absolute relocation.  */
+  HOWTO (R_IQ2000_32,		     /* type */
+	 0,			     /* rightshift */
+	 2,			     /* size (0 = byte, 1 = short, 2 = long) */
+	 31,			     /* bitsize */
+	 FALSE,			     /* pc_relative */
+	 0,			     /* bitpos */
+	 complain_overflow_bitfield, /* complain_on_overflow */
+	 bfd_elf_generic_reloc,	     /* special_function */
+	 "R_IQ2000_32",		     /* name */
+	 FALSE,			     /* partial_inplace */
+#if 0	 
+	 0x00000000,		     /* src_mask */
+	 0x7fffffff,		     /* dst_mask */
+#else
+	 0xffffffff,		     /* src_mask */
+	 0xffffffff,		     /* dst_mask */
+#endif	 
+	 FALSE),		     /* pcrel_offset */
+
+I fixed like above and cofirmed that it worked well.
