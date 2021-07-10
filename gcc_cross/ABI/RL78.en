@@ -1,104 +1,101 @@
-RL78 の ABI
+RL78 ABI
 
-(*1) 函数呼び出し
-(*2) 函数復帰
-(*3) プロローグ
-(*4) エピローグ
-(*5) 通常の函数の引数と戻り値
-(*6) long long を引数にとる函数, 返す函数
-(*7) 浮動少数点数を引数にとる函数, 返す函数
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long', `long long' argument and return value
+(*7) Floating point number argument and return value
+(*8) Structure argument and return value
 
 
-(*1) 函数呼び出し
+(*1) Function call
 
 	call	!!func
 
-	疑似コード
+	Pseudo code
 
 	sp -= 4
-	memory[sp|0xf0000] = (call 命令の次のアドレス);
+	memory[sp|0xf0000] = (`call' instruction next address);
 	pc = func
 
-	但し 0xf0000 - 0xf1000 の領域はアクセスできないので, sp が 0x1000 以下
-	だと期待通り動作しない.
-
-(*2) 函数復帰
+	Note that 0xf0000 - 0xf1000 cannot be accessed. So if sp is
+	less thant 0x1000, it doesn't work.
+	
+(*2) Return from function
 
 	ret
 
-	疑似コード
+	Pseudo code
 
 	pc = memory[sp|0xf0000]
 	sp += 4
 
-(*3) プロローグ
+(*3) Prologue
 
 	subw	sp, #128
 
-	上は 128 バイトの領域を使用する函数のプロローグ.
 
-
-(*4) エピローグ
+(*4) Epilogue
 
 	addw	sp, #4
 	ret
 
-	上は 128 バイトの領域を使用する函数のエピローグ.
-	sp を復元し, 呼び出し元に復帰する.
+(*5) Normal argument and return value
 
-(*5) 通常の函数の引数と戻り値
-
-        第 1 引数は sp 相対 0
-	第 2 引数は sp 相対 2
+        1st : memory[sp]
+	2nd : memory[sp+2]
 	...
 
-	のようにスタックを使用する.
-	函数の戻り値は x レジスタに値がセットされる.
+	Function return value is set to `x' register.
 
-(*6) long long を引数にとる函数, 返す函数
+(*6) `long', `long long' argument and return value
 
 	sizeof(long) = 4
 	sizeof(long long) = 8
 
-	long に対しては
-        第 1 引数は sp 相対 0
-	第 2 引数は sp 相対 4
+	For `long' type argument
+	
+        1st : memory[sp]
+	2nd : memory[sp+4]
 	...
 
-	のようにスタックを使用する.
-	函数の戻り値は 2 バイトずつ r12, r14 を使用する. r12, r14 はメモリマップドレジス
-	タでそれぞれのアドレスは以下:
+	Function return value is set to r12 and r14, where, r12 and r14
+	are memory mapped registers and they are mapped:
 
 	r12	=	0xffef4
 	r14	=	0xffef6
 
-	long long に対しては
-        第 1 引数は sp 相対 0
-	第 2 引数は sp 相対 8
+	For `long long' type arugment
+
+	1st : memory[sp]
+	2nd : memroy[sp+8]
 	...
 
-	のようにスタックを使用する.
-	函数の戻り値は 4 バイトずつ r8, r12 レジスタにセットされる. やはりメモリマップドレジ
-	スタでそれぞれのアドレスは以下:
-
+	Function return value is set to r8 and r12, where r8, and r12
+	are memory mapped registers and they are mapped:
+	
 	r8	=	0xffef0
 	r12	=	0xffef4
 
-	別の言い方をすれば r8, r10, r12, r14 を 2 バイトずつ使用するとも言える.
+	In other words, r8, r10, r12 and r14 are set by 2 bytes.
 
-(*7) 浮動少数点数を引数にとる函数, 返す函数
+(*7) Floating point number argument and return value
 
 	sizeof(float) = sizeof(double) = 4
 	sizeof(long double) = 8
 
-	RL78 には FPU がないので浮動少数点演算はソフトウェアで行なう.
+	RL78 doesn't have FPU , so software calculates floating point number
+	operation.
 
-	float, double に対しては (*5) の規則が適用される.
-	long double に対しては (*6) の規則が適用される.
+	For `float' and `double', same with (*5).
+	For `long double', same with (*6).
 
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*8) Structure argument and return value
 
-        構造体を引数に取る函数を呼び出すときスタックに構造体がコピーされて呼び出される.
-	構造体を返す函数を呼び出すと結果がアドレス 0xffef0 にセットされる. このアドレス
-	はメモリマップドレジスタ r8 のアドレスである.
+        When calling the function which takes structure type argument,
+	the structure is copied to stack.
+	When calling the function which returns structure type,
+	the return value is copied to the address 0xffef0, which is
+	memory mapped register `r8' address.
