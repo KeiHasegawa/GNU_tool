@@ -2,7 +2,7 @@ RL78 cross compile environment
 
 (*1) RL78
 (*2) Install with script
-(*3) Verification => Almost OK
+(*3) Verification => OK
 
 (*1) RL78
 https://en.wikipedia.org/wiki/RL78
@@ -59,3 +59,11 @@ End of assembler dump.
 
 extra `^@' was output.
 
+The reason was:
+
+newlib-4.1.0.rl78-elf/libgloss/rl78/write.c
+
+  if (!initted)
+    init_uart0 ();  // Here, output `^@'
+
+I thought this was done intentionally.
