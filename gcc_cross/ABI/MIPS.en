@@ -1,20 +1,21 @@
-MIPS の ABI
+MIPS ABI
 
-(*0) グローバルポインタ
-(*1) 函数呼び出し
-(*2) 函数復帰
-(*3) プロローグ
-(*4) エピローグ
-(*5) 通常の函数の引数と戻り値
-(*6) long long を引数にとる函数, 返す函数
-(*7) 浮動少数点数を引数にとる函数, 返す函数
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*0) Global pointer
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long long' argument and return value
+(*7) Floating point number argument and return value
+(*8) Structure argument and return value
 
 
-(*0) グローバルポインタ
+(*0) Global pointer
 
-	初期値をもつデータは gp レジスタ相対でアクセスされる. このため初期値を
-	もつデータにアクセスする前に gp レジスタが適切にセットされる必要がある.
+        .data, .rodata and .sdata area are accessed via `gp'
+	register. For accessing these area, `gp' register
+	must be set suitably.
 
 	+------------------+
 	|                  |
@@ -36,35 +37,34 @@ MIPS の ABI
 	|                  |
 	+------------------+
 
-	mips-elf-ld は特別なシンボル `_gr' の配置位置からこれらのデータが 64KB に
-	収まっているかチェックする.
-	スタートアップルーチンでは gr レジスタが `_gr' が配置されているアドレスを
-	指すことで main 函数が呼ばれた後に初期値をもつデータに正しくアクセスできるよう
-	になる.
+	mips-elf-ld checks these area are located within 64 KB
+	from special symbol `gr' location address.
+	At start-up routine `gr' must be set to `_gr' so that
+	compiler generatded code can access these area correctly.
 
-(*1) 函数呼び出し
+(*1) Function call
 
 	jal	func
 
-	疑似コード
+	Pseudo code
 
-	r31 = (jal 命令の次のアドレス)
+	r31 = (`jal' instruction next address)
 	pc = func
 
-	r31 がリンクレジスタの役割りをしている.
+	r31 is used as link register.
 
-(*2) 函数復帰
+(*2) Return from function
 
 	j	$31
 
-(*3) プロローグ
+(*2) Return from function
 
 	addiu	$sp,$sp,-152
 	sw	$31,148($sp)
 	sw	$fp,144($sp)
 	move	$fp,$sp
 
-	上は 144 バイトのローカルエリアを使用する函数のプロローグである.
+	Above is prologue for the function which use 144 bytes local area.
 
 	+------------------+ <- sp_{new}, fp_{new}
 	|                  |
@@ -72,17 +72,18 @@ MIPS の ABI
 	|    local area    |	
 	|                  |
 	|                  |
-	+------------------+ <- fp はここを指していない.
+	+------------------+ <- fp doesn't point here
 	|     fp_{old}     |
 	+------------------+
 	|    r31_{old}     |
 	+------------------+ <- sp_{old}
 
-	実際には 128 バイトの配列を宣言したが 144 バイト確保している. しかしそれは
-	コンパイラの勝手である. このコンパイラでも fp と sp が同じアドレスを
-	指している.
+	Acutally 128 bytes array is declared at this function. But
+	this compiler allocates 144 bytes. Anyway it depends on this
+	compiler implementation. This compiler may use fp register
+	as a frame pointer.
 
-(*4) エピローグ
+(*4) Epilogue
 
 	move	$sp,$fp
 	lw	$31,148($sp)
@@ -90,22 +91,24 @@ MIPS の ABI
 	addiu	$sp,$sp,152
 	j	$31
 
-	上は 144 バイトのローカルエリアを使用する函数のプロローグである. fp, sp, r31
-	が復元され呼び出し元に復帰する.
+	Above is epilogue for the function which uses 144 bytes local area.
+	fp, sp and r31 are recovered and return to callee.
 
-(*5) 通常の函数の引数と戻り値
+(*5) Normal argument and return value
 
-        第 1 引数 : r4
-        第 2 引数 : r5
-        第 3 引数 : r6
-        第 4 引数 : r7
-	第 5 引数以降 : 16 バイト開けてスタックを使用する
+        1st : r4
+        2nd : r5
+        3rd : r6
+        4th : r7
+	5th : use stack with 16 bytes offset
 
+	For example,
+	
 	int f(int a0, int a1, int a2, int a3, int a4, int a5);
 
 	f(10, 11, 12, 13, 14, 15);
 
-	に対して f の先頭アドレスでは以下のようになっている.
+	At start address of `f', registers and stack layout become like below:
 
 	r4 = 10, r5 = 11, r6 = 12, r7 = 13
 
@@ -123,21 +126,24 @@ MIPS の ABI
         |        15        |
 	+------------------+
 
-	函数の戻り値は r3 レジスタに値がセットされる.
+	Frunction return value is set to r3.
 
-(*6) long long を引数にとる函数, 返す函数
+(*6) `long long' argument and return value
 
         sizeof(long long) = 8
 
-	第 1 引数が long long の場合 r4 と r5 が使用される.
-	第 2 引数が long long の場合 r6 と r7 が使用される.
-	残りはスタックを使用する.
+	If the 1st argument type is `long long', r4 and r5 are used.
+	If the 2nd argument type is `long long', r6 and r7 are used.
+	For the rest, use stack.
+
+	For example,
 
 	long long f(int a0, long long a1, long long a2);
 
 	f(0x11223344, 0x123456789abcdef0LL, 0x5566778899aabbccLL);
 
-	に対して f の先頭アドレスでは
+	At the start address of `f', registers and stack layout become
+	like below:
 
 	r4 = 0x11223344
 	r6 = 0x12345678, r7 = 0x9abcdef0
@@ -156,28 +162,29 @@ MIPS の ABI
         |    0xaabbccdd    |
 	+------------------+
 
-	のようになっている.
+	Furnction return value is set to r2 and r3.
 
-	函数の戻り値は r2 と r3 にセットされる.
-
-(*7) 浮動少数点数を引数にとる函数, 返す函数
+(*7) Floating point number argument and return value
 
         sizeof(float) = 4
 	sizeof(double) = 8
 	sizeof(long double) = 8
 
-	float に対して
+	For `float' argument
 	
-	第 1 引数 ： f2
-	第 2 引数 ： f4
-	第 3 引数 ： f6
-	第 4 引数以降 ： 16 バイト開けてスタックを使用
+	1st ： f2
+	2nd ： f4
+	3rd ： f6
+	4th ： use stack with 16 bytes offset
+
+	For example,
 	
 	float f(float a0, float a1, float a2, float a3, float a4);
 
 	f(10.0F, 11.0F, 12.0F, 13.0F, 14.0F);
 
-	に対して f の先頭では
+	At the start address of `f', registers and stack layout becomes
+	like below:
 
 	f2 = 10.0F, f4 = 11.0F, f6 = 12.0F
 
@@ -195,22 +202,23 @@ MIPS の ABI
         |       14.0F      |
 	+------------------+
 
-	のようになっている.
-	戻り値は f0 にセットされる.
+	Function return value is set to f0.
 
-	double, long double に対して
+	For `double' or `long double' argument
 
-	第 1 引数 ： f2, f3
-	第 2 引数 ： f4, f5
-	第 4 引数以降 ： 16 バイト開けてスタックを使用
+	1st ： f2, f3
+	2nd ： f4, f5
+	3rd ： use stack with 16 bytes offset
 
-	例えば
+	For exmpale,
 
 	double f(double a0, double a1, double a2, double a3, double a4);
 
 	f(10.0, 11.0, 12.0, 13.0, 14.0);
 
-	に対して f の先頭アドレスで以下のようになっている.
+	At the start address of `f', registers and stack layout become
+	like below:
+
 
 	(f2, f3) = 10.0, (f4, f5) = 11.0
 
@@ -233,11 +241,13 @@ MIPS の ABI
         |                  |
 	+------------------+
 
-	戻り値は (f0, f1) にセットされる.
+	Function return value is set to (f0, f1)
 
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*8) Structure argument and return value
 
-        構造体を引数にとる函数を呼び出すとき先頭の 16 バイトが r4, r5, r6, r7 に
-	セットされる. 残りはスタックにセットされる.
-	構造体を返す函数を呼び出すとき戻り値を格納する領域を r4 レジスタにセットして
-	呼び出す.
+        When calling the function which takes structure type, first
+	16 bytes are set to r4, r5, r6 and r7. And for the rest,
+	stack is used.
+	When calling the function which returns structure type,
+	r4 is set to the address for the return value.
+

@@ -6,7 +6,7 @@ H8 ABI
 (*4) Epilogue
 (*5) Normal argument and return value
 (*6) `long long' argument and return value
-(*7) `float', `double' argument and return value
+(*7) Floating point number argument and return value
 (*8) Structure argument and return value
 
 (*1) Function call
@@ -128,13 +128,12 @@ H8 ABI
      set the address for return value to `r0'. Consequently, the 1st
      argument is set to `r1' not to `r0'.
       
-(*7) `float', `double' argument and return value
+(*7) Floating point number argument and return value
 
-     H8 has no FPU so software calculates. 
+     sizeof(float) = sizeof(double) = sizeof(long double) = 4
      
-     sizeof(float) = sizeof(double) = 4
-
-     If the 1st argument is double, `r0' and `r1' are set
+     H8 has no FPU so software calculates. 
+     If the 1st argument is `float' or `double', `r0' and `r1' are set
      for the value. If the 2nd argument is double, use stack.
      For example,
      
