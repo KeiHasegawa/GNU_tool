@@ -1,41 +1,41 @@
-M32R の ABI
+M32R ABI
 
-(*1) 函数呼び出し
-(*2) 函数復帰
-(*3) プロローグ
-(*4) エピローグ
-(*5) 通常の函数の引数と戻り値
-(*6) long long を引数にとる函数, 返す函数
-(*7) 浮動少数点数を引数にとる函数, 返す函数
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long long' argument and return value
+(*7) Floating point number argument and return value
+(*8) Structure argument and return value
 
 
-(*1) 函数呼び出し
+(*1) Function call
 
 	bl func
 
-	疑似コード
+	Pseudo code
 	
-	lr = (bl 命令の次のアドレス)
+	lr = (`bl' instruction next address)
 	pc = func
 	
 
-(*2) 函数復帰
+(*2) Return from function
 
 	jmp lr
 
-	疑似コード
+	Pseudo code
 	
 	pc = lr
 
-(*3) プロローグ
+(*3) Prologue
 
 	push fp
 	push lr
 	addi sp,#-128
 	mv fp,sp
 
-	上は 128 バイトのローカルエリアを使用する函数のプロローグ.
+	Above is prologue for the function which uses 128 bytes local area.
 
 	+----------------+ <- sp_{new}, fp_{new}
         |                |
@@ -49,37 +49,38 @@ M32R の ABI
         |    fp_{old}    |
 	+----------------+ <- sp_{old}
 
-(*4) エピローグ
+(*4) Epilogue
 
 	addi sp,#128
 	pop lr
 	pop fp
 	jmp lr
 
-	上は 128 バイトのローカルエリアを使用する函数のエピローグ.
+	Above is epilogue for the function which uses 128 bytes local area.
 
-(*5) 通常の函数の引数と戻り値
+(*5) Normal argument and return value
 
-        第 1 引数 : r0
-        第 2 引数 : r1
-        第 3 引数 : r2
-        第 4 引数 : r3
-        第 5 引数以降 : スタックに積む
+        1st : r0
+        2nd : r1
+        3rd : r2
+        4th : r3
+        5th : use stack
 
-	函数の戻り値は r0 を使用する.
+	Function return value is set to r0.
 
-(*6) long long を引数にとる函数, 返す函数
+(*6) `long long' argument and return value
 
 	sizeof(long long) = 8
 
-	long long の引数に対してレジスタが 2 つ使用される.
-	例えば
+	For `long long' type argument, 2 registers are used.
+	For example,
 
 	long long f(int a, long long b, long long c);
 
 	f(10, 0x123456789abcdef0LL, 0x1122334455667788LL);
 
-	に対して f の先頭アドレスでは
+	At the start of address of `f', registers and stack layout become
+	like below:
 
 	r0 = 10
 	r1 = 0x12345678, r2 = 0x9abcdef0
@@ -89,21 +90,20 @@ M32R の ABI
         |   0x55667788   |
 	+----------------+
 
-	のようになっている.
-
-(*7) 浮動少数点数を引数にとる函数, 返す函数
+(*7) Floating point number argument and return value
 
         sizeof(float) = 4
 	sizeof(double) = sizeof(long double) = 8
 
-	M32R には FPU がないので浮動少数点数演算はソフトウェアで行なう.
+	M32R doesn't have FPU, so software calculates floating point number
+	operation.
 
-	float に対しては (*5) の規則が, double, long double に対しては (*6)
-	の規則が適用される.
+	For `float' same with (*5). For `dobule' or `long double' same
+	with (*6).
 
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*8) Structure argument and return value
 
-	構造体を引数とする函数を呼び出すとき, レジスタは使用せずスタックにコピーして呼び出す.
-	構造体を返す函数を呼び出すとき, r0 レジスタに戻り値を格納する領域のアドレスをセット
-	して呼び出す.
-	
+        When calling the function which takes structure type argument,
+	no register is used, the structure is copied to stack.
+	When calliing the function which returns structure type,
+	r0 is set to the address of the function return value.
