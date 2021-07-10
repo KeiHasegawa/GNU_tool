@@ -5,7 +5,7 @@ H8 ABI
 (*3) Prologue
 (*4) Epilogue
 (*5) Normal argument and return value
-(*6) `long long' argument and return value
+(*6) `long', `long long' argument and return value
 (*7) Floating point number argument and return value
 (*8) Structure argument and return value
 
@@ -100,11 +100,24 @@ H8 ABI
          |       9        |
          +----------------+
 
-(*6) `long long' argument and return value
+(*6) `long', `long long' argument and return value
 
+     sizeof(long) = 4
      sizeof(long long) = 8
 
-     Even if it the 1st argument, use stack. For example
+     For `long' type argument, use 2 registers.
+     For example,
+
+     long f(int, long);
+
+     f(0x1234, 0x9abcdef0L);
+
+     `f' is called with r0 = 0x1234, r1 = 0x9abc, r2 = 0xdef0
+
+     Retrun value is set to r0 and r1.
+     
+     For `long long' argument, even if it the 1st argument, use stack.
+     For example
 
      void f(long long a);
 
