@@ -1,32 +1,33 @@
-PowerPC の ABI
+PowerPC ABI
 
-(*1) 函数呼び出し
-(*2) 函数復帰
-(*3) プロローグ
-(*4) エピローグ
-(*5) 通常の函数の引数と戻り値
-(*6) long long を引数にとる函数, 返す函数
-(*7) 浮動少数点数を引数にとる函数, 返す函数
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long long' argument and return value
+(*7) Floating point number argument and return value
+(*8) Structure argument and return value
 
-(*1) 函数呼び出し
+
+(*1) Function call
 
 	bl func
 
-	疑似コード
+	Pseudo code
 
-	lr = (bl 命令の次のアドレス)
+	lr = (`bl' instruction next address)
 	pc = func
 
-(*2) 函数復帰
+(*2) Return from function
 
 	blr
 
-	疑似コード
+	Pseudo code
 
 	pc = lr
 
-(*3) プロローグ
+(*3) Prologue
 
 	stwu 1,-144(1)
 	mflr 0
@@ -34,7 +35,7 @@ PowerPC の ABI
 	stw 31,140(1)
 	mr 31,1
 
-	上は 132 バイトの領域を使用する函数のプロローグである.
+	Above is prologue for the function which uses 132 bytes local area.
 
 	+------------------+ <- r1_{new}, r31_{new}
 	|     r1_{old}     |
@@ -56,12 +57,12 @@ PowerPC の ABI
 	|     ********     |	
 	+------------------+
 
-	実際はこの函数で 128 バイトの配列を宣言したがスタックは 132 バイト分確保
-	している.
-	r31 はフレームポインタのような使い方をしているが, 実際は r1 レジスタと
-	同じアドレスを指している.
+	Acutually 128 bytes array is declared at this function, but
+	132 bytes are allocated.
+	r31 may be used as frame pointer but it points to the same address
+	with r1.
 
-(*4) エピローグ
+(*4) Epilogue
 
 	addi 11,31,144
 	lwz 0,4(11)
@@ -70,27 +71,28 @@ PowerPC の ABI
 	mr 1,11
 	blr
 
-	上は 132 バイトの領域を使用する函数のエピローグである.
-	r31, lr, r1 が復元されて呼び出し元に復帰する.
-	プロローグでは r1 の指す領域に r1 のもとの値を保存していたが, このエピローグでは
-	その値を参照していない.
+	Above is epilogue for the function which uses 132 bytes area.
+	r31, lr and r1 are restored and return to callee.
+	At prologue of this function, r1 is saved at stack area which
+	pointed by itself. But the save value is not used here.
 
-(*5) 通常の函数の引数と戻り値
+(*5) Normal argument and return value
 
-        第 1 引数 : r3
-        第 2 引数 : r4
+        1st : r3
+        2nd : r4
 	...
-        第 8 引数 : r10
-	第 9 引数以降 : スタックを使用する
+        8th : r10
+	9th : use stack
 
-	例えば
+	For example,
 
 	int f(int a0, int a1, int a2, int a3, int a4, int a5, int a6, int a7,
 	      int a8, int a9);
 	      
 	f(10, 11, 12, 13, 14, 15, 16, 17, 18, 19);
 
-	に対して f の先頭アドレスでは
+	At the start address of `f', registers and stack layout becomes
+	like below:
 
 	r3 = 10, r4 = 11, r5 = 12, r6 = 13, r6 = 14, r7 = 15, r8 = 16, r9 = 17
 
@@ -104,20 +106,20 @@ PowerPC の ABI
 	|        19        |
 	+------------------+ +16
 
-	のようになっている. ここで r1_{old} は f を呼び出す函数が呼ばれる前の r1 の
-	値である.
-	函数の戻り値は r3 レジスタにセットされる.
+	where, r1_{old} denotes the value of r1 before calling `f'.
+	Function return value is set to r3.
 
-(*6) long long を引数にとる函数, 返す函数
-
+(*6) `long long' argument and return value
 
 	sizeof(long long) = 8
 
-	第 1 引数が long long ならば r3, r4 レジスタに値がセットされる.
-	第 2 引数が long long ならば r5, r6 レジスタに値がセットされる.
-	第 3 引数が long long ならば r7, r8 レジスタに値がセットされる.
-	第 4 引数が long long ならば r9, r10 レジスタに値がセットされる.
-	第 5 引数以降はスタックを使用する.
+	If the 1st argument type is `long long', r3 and r4 are used.
+	If the 2nd argument type is `long long', r5 and r6 are used.
+	If the 3rd argument type is `long long', r7 and r8 are used.
+	If the 4th argument type is `long long', r9 and r10 are used.
+	If the 5th argument type is `long long', stack is used.
+
+	For example,
 
 	long long
 	f(int a0, long long a1, long long a2, long long a3, long long a4);
@@ -125,7 +127,8 @@ PowerPC の ABI
 	f(10, 0x123456789abcdef0L, 0x1122334455667788,
 	  0x99aabbccddeeff00, 0x0fedcba987654321);
 
-	に対して f の先頭アドレスでは
+	At the start address of `f', registers and stack layout becomes
+	like below:
 
 	r3 = 10
 	r5 = 0x12345678, r6 = 0x9abcdef0
@@ -142,42 +145,38 @@ PowerPC の ABI
 	|    0x87654321    |
 	+------------------+ +16
 
-	のようになっている.
-	函数の戻り値は r3, r4 にセットされる.
+	Function return value is set to r3 and r4.
 	
-(*7) 浮動少数点数を引数にとる函数, 返す函数
+(*7) Floating point number argument and return value
 
 	sizeof(float) = 4
 	sizeof(double) = sizeof(long double) = 8
 
-	float に対して
-	第 1 引数 : f1
+	For `float'
+	
+	1st : f1
 	...
-	第 8 引数 : f8
-	第 9 引数以降 : スタックを使用する.
+	8th : f8
+	9th : use stack
 
-	戻り値は f1 にセットされる.
+	Function return value is set to f1.
 
-	double に対しても同様. 浮動少数点レジスタが float の加算
+	For `double', above rule holds.
+	i.e. for example, addition of `float' instruction
 
 	fadds
 
-	に対して 4 バイトとしてプロセッサが扱うが
+	treats f1 as float, of cause. And  for `double'
+	
 
 	faddd
 
-	に対しては 8 バイトとしてプロセッサが扱うということなのだろうと思う.
-	ところで
-	
-	(ppc-elf-gdb) p sizeof(long double)
-	16
-	(ppc-elf-gdb)
-	
-	のようになった. おそらくこれは間違いで 8 が正しい.
+	treats f1 as double.
 
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*8) Structure argument and return value
 
-        構造体を引数とする函数を呼び出す場合, レジスタは使用せず, スタックに構造体がコピー
-	される.
-	構造体を返す函数を呼び出す場合, 戻り値を格納するアドレスが r3 レジスタにセットされ
-	る.
+     	When calling the fuction which takes structure type argument,
+        no register is used. The structre is copied to stack.
+	When calling the function which returns structure type,
+	r3 is set the address for the return value.
+
