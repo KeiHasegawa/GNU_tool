@@ -1,66 +1,67 @@
-MSP430 の ABI
+MSP430 ABI
 
-(*1) 函数呼び出し
-(*2) 函数復帰
-(*3) プロローグ
-(*4) エピローグ
-(*5) 通常の函数の引数と戻り値
-(*6) long, long long を引数にとる函数, 返す函数
-(*7) 浮動少数点数を引数にとる函数, 返す函数
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long', `long long' argument and return value
+(*7) Floating point number argument and return value
+(*8) Structure argument and return value
 
-
-(*1) 函数呼び出し
+(*1) Function call
 
 	CALL	#func
 
-	疑似コード
+	Pseudo code
 
 	sp -= 2
-	memory[sp] = (CALL 命令の次のアドレス)
+	memory[sp] = (`CALL' instruction next address)
 	pc = func
 
-(*2) 函数復帰
+(*2) Return from function
 
 	RET
 
-	疑似コード
+	Pseudo code
 
 	pc = memory[sp]
 	sp += 2;
 
-(*3) プロローグ
+(*3) Prologue
 
-	PUSHM.W	#3, R10     ; オプショナル
+	PUSHM.W	#3, R10     ; Optional
 	SUB.W	#128, R1
 
-	上は 128 バイトの領域を使用する函数のプロローグである. 函数内で
-	R8, R9, R10 を使用する場合上のように PUSHM 命令で 3 つのレジスタが
-	保存される.
+	Above is porlogue for the function which uses 128 bytes local area.
+	If this function uses R8, R9 and R10, save them by `PUSHM' instruction.
 
-(*4) エピローグ
+(*4) Epilogue
 
 	ADD.W	#128, R1
-	POPM.W	#3, r10     ; オプショナル.
+	POPM.W	#3, r10     ; Optional.
 	RET
 
-	上は 128 バイトの領域を使用する函数のエピローグである.
-	R1 が復元され呼び出し元に復帰する.  PPOPM は (*3) の PUSHM と
-	ペアで生成される.
+	Above is epilogue for the function which uses 128 bytes local area.
+	R1 is recovered and return to calle. `POPM' is genereated
+	if `PUSHM' is generated at (*3).
 
-(*5) 通常の函数の引数と戻り値
+(*5) Normal argument and return value
 
-	第 1 引数 : R12
-	第 2 引数 : R13
-	第 3 引数 : R14
-	第 4 引数 : R15
-	第 5 引数以降 : スタックに積む
+	1st : R12
+	2nd : R13
+	3rd : R14
+	4th : R15
+	5th : use stack
+
+	For example,
 
 	int f(int a0, int a1, int a2, int a3, int a4, int a5);
 
 	f(10, 11, 12, 13, 14, 15);
 
-	に対して f の先頭アドレスでは以下のようになっている:
+	At the start address of `f', registers and stack layout becomes
+	like below:
 
 	R12 = 10, R13 = 11, R14 = 12, R15 = 13
 	
@@ -72,20 +73,23 @@ MSP430 の ABI
 	|          15          |
 	+----------------------+ +6
 
-	函数の戻り値は R12 にセットされる.
+	Function return value is set to R12.
 
 (*6) long, long long を引数にとる函数, 返す函数
 
 	sizeof(long) = 4
 	sizeof(long long) = 8
 
-	long 型の引数にレジスタが 2 つ使用される. 残りはスタックに積まれる.
+	For `long' type argument, 2 registers are used and for the rest,
+	use stack.
+	For example,
 
 	long f(int a0, long a1, long a2);
 	
 	f(0x1234, 0x56789abcL, 0xddeeff00L);
 
-	に対して f の先頭アドレスでは以下のようになっている:
+	At the start adddress of `f', registers and stack layout becomes
+	like below:
 
         r12 = 0x1234, r13 = 0x9abc, r14 = 0x5678, 15= 0xff00
 
@@ -95,19 +99,19 @@ MSP430 の ABI
 	|       0xddee         |
 	+----------------------+ +4
 
-	函数の戻り値は R12 と R13 にセットされる.
+	Function return value is set to R12 and R13.
 
-	long long 型の引数が第 1 引数ならば R12, R13, R14, R15 に
-	引数の値をセットして函数が呼び出される.
-	そうでなければスタックが使用される.
+	For 1st `long long' type argumet, R12, R13, R14 and R15 are used.
+	otherwise, use stack.
 	
-	例えば
+	For example,
 
 	long long f(int, long long);
 
 	f(5, 0x123456789abcdef0LL);
 
-	に対して f の先頭アドレスでは
+	At the start address of `f', register and stack layout becomes
+	like below:
 
 	R12 = 5
 
@@ -123,20 +127,19 @@ MSP430 の ABI
 	|        0x1234        |
 	+----------------------+ +10
 
-	のようになっている.
-
-
-(*7) 浮動少数点数を引数にとる函数, 返す函数
+(*7) Floating point number argument and return value
 
 	sizeof(float) = 4
 	sizeof(double) = sizeof(long double) = 8
 
-	MSP430 には FPU がないのでソフトウェアで浮動少数点演算を行なう.
-
-	float に対しては (*5) と同様. double, long double に対しては (*6) と同様.
+	MSP430 doesn't have FPU so software calculate floating point nubmer
+	operation.
+	For `float' same with (*5), For `double' and `long double' same
+	with (*6).
 	
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*8) Structure argument and return value
 
-        構造体を引数に取る函数を呼び出すときに構造体のアドレスが (*5) の規則に従って
-	渡される.
-	構造体を返す函数を呼び出すときに戻り値を格納する領域が R12 にセットされる.
+        When calling the function which takes structure type argument,
+	the address of the structure is passed according to (*5).
+	When calling the function which returns struct type, R12 is set
+	to the addresss for the return value.
