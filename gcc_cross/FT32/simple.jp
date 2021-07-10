@@ -1,0 +1,55 @@
+シミュレータ修正
+
+簡単なアセンブラのプログラムが期待通り動作していないことに気付いた.
+調べてみるとプログラムのエントリポイントが正しくセットされていなかった. そこで以下の修正
+を行なった.
+
+gdb-10.2.ft32-elf/sim/ft32/interp.c
+
+#if 0  
+  cpu->state.regs[FT32_HARD_SP] = addr;
+#else
+  cpu->state.pc = addr;
+#endif
+
+これで動作するかと思ったがまだだめ.
+
+% ft32-elf-addr2line -a 0x100 -e test000.elf
+0x00000100
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:3
+% ft32-elf-addr2line -a 0x104 -e test000.elf
+0x00000104
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:3
+% ft32-elf-addr2line -a 0x108 -e test000.elf
+0x00000108
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:3
+% ft32-elf-addr2line -a 0x10c -e test000.elf
+0x0000010c
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:3
+%
+
+どの命令も 3 行目になっている.
+
+ft32-elf-objdump -g test000.elf の結果は以下：
+
+ ファイル名表(オフセット 0x1c):
+
+  Entry	Dir	時刻	サイズ	名前
+  1	0	0	0	test000.S
+
+ Line Number Statements:
+  [0x0000002a]  拡張命令コード 2: 設定アドレス 0x100
+  [0x00000031]  Special opcode 7: advance Address by 0 to 0x100 and Line by 2 to 3
+  [0x00000032]  行を 1 進め 4 とします
+  [0x00000034]  PC を固定サイズ 260 分進め 0x204 とします
+  [0x00000037]  コピー (view 1)
+  [0x00000038]  行を 1 進め 5 とします
+  [0x0000003a]  PC を固定サイズ 264 分進め 0x30c とします
+  [0x0000003d]  コピー (view 2)
+  [0x0000003e]  行を 2 進め 7 とします
+  [0x00000040]  PC を固定サイズ 268 分進め 0x418 とします
+  [0x00000043]  コピー (view 3)
+  [0x00000044]  PC を固定サイズ 272 分進め 0x528 とします
+  [0x00000047]  拡張命令コード 1: 列の終り
+
+なんだか見慣れない感じになっている.

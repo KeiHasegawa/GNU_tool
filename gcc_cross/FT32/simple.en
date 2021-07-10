@@ -1,0 +1,52 @@
+(*1) Fix simulator
+
+I noticed that simple assembler program could not be debug correctly.
+I examined and found that program entry point was not set to program counter.
+
+I fixed like below:
+
+gdb-10.2.ft32-elf/sim/ft32/interp.c
+
+#if 0  
+  cpu->state.regs[FT32_HARD_SP] = addr;
+#else
+  cpu->state.pc = addr;
+#endif
+
+I thought this worked well. But still ft32-elf-gdb did not work.
+
+
+% ft32-elf-addr2line -a 0x100 -e test000.elf
+0x00000100
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:3
+% ft32-elf-addr2line -a 0x104 -e test000.elf
+0x00000104
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:3
+% ft32-elf-addr2line -a 0x108 -e test000.elf
+0x00000108
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:3
+% ft32-elf-addr2line -a 0x10c -e test000.elf
+0x0000010c
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:3
+%
+
+All instructions line information is `3'.
+
+ft32-elf-objdump -g test000.elf displayed below：
+
+ Line Number Statements:
+  [0x0000002a]  Extended opcode 2: set Address to 0x100
+  [0x00000031]  Special opcode 7: advance Address by 0 to 0x100 and Line by 2 to 3
+  [0x00000032]  Advance Line by 1 to 4
+  [0x00000034]  Advance PC by fixed size amount 260 to 0x204
+  [0x00000037]  Copy (view 1)
+  [0x00000038]  Advance Line by 1 to 5
+  [0x0000003a]  Advance PC by fixed size amount 264 to 0x30c
+  [0x0000003d]  Copy (view 2)
+  [0x0000003e]  Advance Line by 2 to 7
+  [0x00000040]  Advance PC by fixed size amount 268 to 0x418
+  [0x00000043]  Copy (view 3)
+  [0x00000044]  Advance PC by fixed size amount 272 to 0x528
+  [0x00000047]  Extended opcode 1: End of Sequence
+
+It's different from others somewhat.
