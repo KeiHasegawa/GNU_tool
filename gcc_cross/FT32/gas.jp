@@ -257,7 +257,7 @@ DWARF2_USE_FIXED_ADVANCE_PC
 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ft32-elf/gas/a.S:7
 %
 
-これはいけるかと思ったが ft32-elf-gdb ではライン情報を正しく受け取れていない.
+これはで期待通り動作するかと思ったが ft32-elf-gdb ではライン情報を正しく受け取れていない.
 
 まずは 20 が 62 になっている原因を調査する.
 
@@ -336,34 +336,6 @@ ft32-elf-objdump -g ../gas/a.out
 
 ということ. 62 の正体は 0x4b だった.
 
-論理が飛躍するかもしれないが
-
-DWARF2_USE_FIXED_ADVANCE_PC
-
-を grep してみたところ
-
-Change-Log に
-
-config/tc-h8300.h
-
-に
-
-#define DWARF2_USE_FIXED_ADVANCE_PC 0
-
-を入れたという話がある.
-
-試しに
-
-config/tc-ft32.h
-
-#define DWARF2_USE_FIXED_ADVANCE_PC 0
-
-を入れてリビルドしてみた. やはり 62 の状況は代わりない.
-
-デバッガで試してみたが, やはり動作していない. 論理の飛躍は悪であることの証拠がこれだ.
-
-62 = 75 - 13 = 0x4b で 0x14 の後だった.
-
 完全一致しているとか書いたが実は違っていた.
 
 (gdb) x/52bx  location
@@ -389,14 +361,14 @@ addr_delta は ppc では 1 だが ft32 では 4 のまま.
 //# define DWARF2_LINE_MIN_INSN_LENGTH	1
 # define DWARF2_LINE_MIN_INSN_LENGTH	4
 
-これで試してみたが ft32-elf-gdb で動作せず.
+これで試してみたが ft32-elf-gdb では期待した動作にはなっていない.
 
-この方式のアセンブラが他にあるのか調査してみた:
+DWARF2_USE_FIXED_ADVANCE_PC が 1 に define されているアセンブラが他にあるのか
+調査してみた:
 
-mn10300, msp430, rl78 はこの方式を採用している.
+mn10300, msp430, rl78 では 1 に define
 
-aarch64, arm, h8300, iq2000, m32r, mips, ppc, sh, v850 はよく見慣れたやつを
-採用している.
+aarch64, arm, h8300, iq2000, m32r, mips, ppc, sh, v850 は 0 に define
 
 
 arm
@@ -417,7 +389,5 @@ iq2000
   [0x00000034]  Special opcode 63: advance Address by 4 to 0x8000010c and Line b
 
 
-問題は, そもそも ft32-elf-as 自体が行番号情報が正しくなさそうなこと.
+問題は, そもそも ft32-elf-as 自体が行番号情報が正しく出せていなかったこと.
 仮に ppc スタイルのほうに修正しても ft32-elf-gdb 自体がこれを読み込めていないこと.
-
-
