@@ -1,4 +1,4 @@
-シミュレータ修正
+(*1) シミュレータ修正
 
 簡単なアセンブラのプログラムが期待通り動作していないことに気付いた.
 調べてみるとプログラムのエントリポイントが正しくセットされていなかった. そこで以下の修正
@@ -11,6 +11,8 @@ gdb-10.2.ft32-elf/sim/ft32/interp.c
 #else
   cpu->state.pc = addr;
 #endif
+
+(*2) アセンブラ修正
 
 これで動作するかと思ったがまだだめ.
 
@@ -53,3 +55,46 @@ ft32-elf-objdump -g test000.elf の結果は以下：
   [0x00000047]  拡張命令コード 1: 列の終り
 
 なんだか見慣れない感じになっている.
+
+期待通り動作している ppc-elf-*** と比較してみた:
+
+ Line Number Statements:
+  [0x0000002a]  拡張命令コード 2: 設定アドレス 0x100
+  [0x00000031]  Special opcode 7: advance Address by 0 to 0x100 and Line by 2 to 3
+  [0x00000032]  Special opcode 20: advance Address by 4 to 0x104 and Line by 1 to 4
+  [0x00000033]  Special opcode 20: advance Address by 4 to 0x108 and Line by 1 to 5
+  [0x00000034]  Special opcode 21: advance Address by 4 to 0x10c and Line by 2 to 7
+  [0x00000035]  Advance PC by 4 to 0x110
+  [0x00000037]  拡張命令コード 1: 列の終り
+
+なるほど. これはいつも見ていたやつだ.
+
+ft32-elf-as の出力がすでに期待しないものになっている:
+
+ Line Number Statements:
+  [0x0000002a]  拡張命令コード 2: 設定アドレス 0x0
+  [0x00000031]  Special opcode 7: advance Address by 0 to 0x0 and Line by 2 to 3
+  [0x00000032]  行を 1 進め 4 とします
+  [0x00000034]  PC を固定サイズ 4 分進め 0x4 とします
+  [0x00000037]  コピー (view 1)
+  [0x00000038]  行を 1 進め 5 とします
+  [0x0000003a]  PC を固定サイズ 8 分進め 0xc とします
+  [0x0000003d]  コピー (view 2)
+  [0x0000003e]  行を 2 進め 7 とします
+  [0x00000040]  PC を固定サイズ 12 分進め 0x18 とします
+  [0x00000043]  コピー (view 3)
+  [0x00000044]  PC を固定サイズ 16 分進め 0x28 とします
+  [0x00000047]  拡張命令コード 1: 列の終り
+
+以下は ppc-elf-as の出力結果を ppc-elf-objdump -g で見たもの:
+
+ Line Number Statements:
+  [0x0000002a]  拡張命令コード 2: 設定アドレス 0x0
+  [0x00000031]  Special opcode 7: advance Address by 0 to 0x0 and Line by 2 to 3
+  [0x00000032]  Special opcode 20: advance Address by 4 to 0x4 and Line by 1 to 4
+  [0x00000033]  Special opcode 20: advance Address by 4 to 0x8 and Line by 1 to 5
+  [0x00000034]  Special opcode 21: advance Address by 4 to 0xc and Line by 2 to 7
+  [0x00000035]  Advance PC by 4 to 0x10
+  [0x00000037]  拡張命令コード 1: 列の終り
+
+というわけでおそらく ft32-elf-as の問題.
