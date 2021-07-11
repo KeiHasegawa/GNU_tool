@@ -12,9 +12,18 @@ gdb-10.2.ft32-elf/sim/ft32/interp.c
   cpu->state.pc = addr;
 #endif
 
-(*2) アセンブラ修正
+(*2) 行番号情報が間違っている
 
 これで動作するかと思ったがまだだめ.
+
+(ft32-elf-gdb) b start
+Breakpoint 1 at 0x100
+(ft32-elf-gdb) b end
+Breakpoint 2 at 0x10c: file test000.S, line 1.
+(ft32-elf-gdb)
+
+b start では test000.S の 3 行目が対応するのが期待値だが対応が取れていない.
+また b end で test000.S の 7 行目が対応するのが期待値だが 1 行目になっている.
 
 % ft32-elf-addr2line -a 0x100 -e test000.elf
 0x00000100
@@ -31,6 +40,23 @@ gdb-10.2.ft32-elf/sim/ft32/interp.c
 %
 
 どの命令も 3 行目になっている.
+
+% ft32-elf-addr2line -a 0x0 -e test000.o
+0x00000000
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:3
+% ft32-elf-addr2line -a 0x4 -e test000.o >> test000.o.addr2line
+0x00000004
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:4
+% ft32-elf-addr2line -a 0x8 -e test000.o
+0x00000008
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:4
+% ft32-elf-addr2line -a 0xc -e test000.o
+0x0000000c
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:5
+%
+
+これは, ... できているかと思ったが 3, 4, 5, 7 行目が対応するのが正しい.
+ということは ft32-elf-as にも ft32-elf-ld にも問題があるということ.
 
 ft32-elf-objdump -g test000.elf の結果は以下：
 
@@ -97,4 +123,8 @@ ft32-elf-as の出力がすでに期待しないものになっている:
   [0x00000035]  Advance PC by 4 to 0x10
   [0x00000037]  拡張命令コード 1: 列の終り
 
-というわけでおそらく ft32-elf-as の問題.
+ここでの結論は ft32-elf-as に問題があるということで, もしかすると ft32-elf-ld にも
+問題があるということになる.
+
+
+
