@@ -128,7 +128,6 @@ emit_inc_line_addr (line_delta=2, addr_delta=0, p=0x8171e64 "", len=1) at dwarf2
 (gdb)
 
 やはりここ. ということは実はエラーはもっと前の段階で発生している可能性が高い.
-
 かとも思ったが, それっぽいところが見つからず.
 
 20 = 0x14
@@ -169,7 +168,7 @@ emit_fixed_inc_line_addr (line_delta=1, addr_delta=4, frag=0x8171e00, p=0x8171e6
 
 emit_fixed_inc_line_addr
 
-だった.
+これだった.
 
                     20                     33
 ppc-elf-as          emit_inc_line_addr     emit_inc_line_addr
@@ -204,18 +203,14 @@ $7 = 1
 動作を比較してみた
 
 
-ppc-elf-as
-
       else if (frag == last_frag && ! DWARF2_USE_FIXED_ADVANCE_PC)
 +	out_inc_line_addr (line_delta, frag_ofs - last_frag_ofs);
       else
 -	relax_inc_line_addr (line_delta, lab, last_lab);
 
-上の + の行を実行している.
+ppc-elf-as は 上の + の行を実行している.
 
-ft32-elf-as
-
-はこの行を実行していないので - の行を実行している.
+ft32-elf-as はこの行を実行していないので - の行を実行している.
 
 ppc-elf-as で
 
@@ -234,7 +229,6 @@ DWARF2_USE_FIXED_ADVANCE_PC
 
 //# define DWARF2_USE_FIXED_ADVANCE_PC	linkrelax
 # define DWARF2_USE_FIXED_ADVANCE_PC	0
-
 
 修正した as-new は以下
 
@@ -286,7 +280,6 @@ DWARF2_USE_FIXED_ADVANCE_PC
 
 だが 0x3e は見当たらない.
 
-
 以下は改めて ppc-elf-as のダンプ
 
 (gdb) x/52bx location
@@ -299,16 +292,15 @@ DWARF2_USE_FIXED_ADVANCE_PC
 0x820c390:	0x01	0x00	0x01	0x01
 (gdb)
 
-完全一致している. .debug_line のダンプ内容が一致しているのに 62 と 20 との違いがある.
-さてこれは一体.
+完全一致している(実は後で違いに気付く). .debug_line のダンプ内容が一致しているの
+に 62 と 20 との違いがある. さてこれは一体.
 
 であれば ft32-elf-objdump が修正前に 20 と表示していたものを何故 62 と変更することに
 なったのかそれを調べるべきだろう.
 
-objdump -g ../gas/a.out 
+ft32-elf-objdump -g ../gas/a.out 
 
 で何故 20 ではなくて 62 になるのか調査する.
-
 
  Line Number Statements:
   [0x00000024]  拡張命令コード 2: 設定アドレス 0x0
@@ -339,7 +331,6 @@ objdump -g ../gas/a.out
 		  op_code -= linfo.li_opcode_base;
 
 のような計算をしている. linfo.li_opcode_base = 13 だから
-つまり
 
 62 = 75 - 13 = 0x4b - 13
 
@@ -387,7 +378,6 @@ config/tc-ft32.h
 
 ここが 0x4b になる理由は...
 
-
 addr_delta は ppc では 1 だが ft32 では 4 のまま.
 
   if (DWARF2_LINE_MIN_INSN_LENGTH > 1)
@@ -399,29 +389,15 @@ addr_delta は ppc では 1 だが ft32 では 4 のまま.
 //# define DWARF2_LINE_MIN_INSN_LENGTH	1
 # define DWARF2_LINE_MIN_INSN_LENGTH	4
 
-試してみたが動作せず.
+これで試してみたが ft32-elf-gdb で動作せず.
 
-# define DWARF2_USE_FIXED_ADVANCE_PC	0
+この方式のアセンブラが他にあるのか調査してみた:
 
-とした修正が正しくないのかも.
+mn10300, msp430, rl78 はこの方式を採用している.
 
-この方式のアセンブラが他にあるのか調査してみる.
+aarch64, arm, h8300, iq2000, m32r, mips, ppc, sh, v850 はよく見慣れたやつを
+採用している.
 
-mn10300
-msp430
-rl78
-はこの方式を採用している.
-
-以下はよく見慣れたやつを採用している.
-ppc
-aarch64
-arm
-h8300
-iq2000
-m32r
-mips
-sh
-v850
 
 arm
  Line Number Statements:
@@ -433,7 +409,6 @@ arm
 
 なので 20 は必ずしも必須ではないらしい.
 
-
 iq2000
   [0x0000002a]  拡張命令コード 2: 設定アドレス 0x80000100
   [0x00000031]  Special opcode 7: advance Address by 0 to 0x80000100 and Line by 2 to 3
@@ -441,10 +416,6 @@ iq2000
   [0x00000033]  Special opcode 62: advance Address by 4 to 0x80000108 and Line by 1 to 5
   [0x00000034]  Special opcode 63: advance Address by 4 to 0x8000010c and Line b
 
-
-ということは,... ますますこの修正が正しくなさそう.
-
-# define DWARF2_USE_FIXED_ADVANCE_PC	0
 
 問題は, そもそも ft32-elf-as 自体が行番号情報が正しくなさそうなこと.
 仮に ppc スタイルのほうに修正しても ft32-elf-gdb 自体がこれを読み込めていないこと.
