@@ -1,0 +1,44 @@
+ft32-elf-objdump -g の結果
+
+ Line Number Statements:
+  [0x00000024]  拡張命令コード 2: 設定アドレス 0x0
+  [0x0000002b]  Special opcode 7: advance Address by 0 to 0x0 and Line by 2 to 3
+  [0x0000002c]  行を 1 進め 4 とします
+  [0x0000002e]  PC を固定サイズ 4 分進め 0x4 とします
+  [0x00000031]  コピー (view 1)
+  [0x00000032]  行を 1 進め 5 とします
+  [0x00000034]  PC を固定サイズ 8 分進め 0xc とします
+  [0x00000037]  コピー (view 2)
+  [0x00000038]  行を 2 進め 7 とします
+  [0x0000003a]  PC を固定サイズ 12 分進め 0x18 とします
+  [0x0000003d]  コピー (view 3)
+  [0x0000003e]  PC を固定サイズ 16 分進め 0x28 とします
+  [0x00000041]  拡張命令コード 1: 列の終り
+
+のようになるが
+
+「PC を固定サイズ x 分進め」
+
+はどのバイトを見ているか確認する.
+
+
+ここだった:
+		  case DW_LNS_fixed_advance_pc:
+		    SAFE_BYTE_GET_AND_INC (uladv, data, 2, end);
+		    state_machine_regs.address += uladv;
+		    state_machine_regs.op_index = 0;
+		    printf (_("  Advance PC by fixed size amount %s to 0x%s\n"),
+			    dwarf_vmatoa ("u", uladv),
+			    dwarf_vmatoa ("x", state_machine_regs.address));
+		    /* Do NOT reset view.  */
+		    break;
+
+DW_LNS_fixed_advance_pc = 9
+なのでこれに続く 2 バイト
+4, 8, 12, 16
+と一定でないが, 常に 4 が期待値. なので
+
+0x09, 0x04, 0x00
+
+が期待するデータ.
+
