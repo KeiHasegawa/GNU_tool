@@ -1,0 +1,270 @@
+ft32-elf-as が期待した行番号情報を生成していない件の調査.
+
+rl78-elf-as はできている. それと比較してみたい.
+
+% ./as-new -g a.S
+% ft32-elf-addr2line -a 0x0
+0x00000000
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ft32-elf/gas/a.S:3
+% ft32-elf-addr2line -a 0x4
+0x00000004
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ft32-elf/gas/a.S:4
+% ft32-elf-addr2line -a 0x8
+0x00000008
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ft32-elf/gas/a.S:4
+% ft32-elf-addr2line -a 0xc
+0x0000000c
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ft32-elf/gas/a.S:5
+%
+
+同じことを, 正しく動作している rl78-elf-as でやってみた.
+
+% ./as-new -g a.S
+% rl78-elf-addr2line -a 0x0
+0x00000000
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.rl78-elf/gas/a.S:3
+% rl78-elf-addr2line -a 0x1
+0x00000001
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.rl78-elf/gas/a.S:4
+% rl78-elf-addr2line -a 0x2
+0x00000002
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.rl78-elf/gas/a.S:5
+% rl78-elf-addr2line -a 0x3
+0x00000003
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.rl78-elf/gas/a.S:7
+%
+
+% ft32-elf-objdump -g
+...
+ Line Number Statements:
+  [0x00000024]  拡張命令コード 2: 設定アドレス 0x0
+  [0x0000002b]  Special opcode 7: advance Address by 0 to 0x0 and Line by 2 to 3
+  [0x0000002c]  行を 1 進め 4 とします
+  [0x0000002e]  PC を固定サイズ 4 分進め 0x4 とします
+  [0x00000031]  コピー (view 1)
+  [0x00000032]  行を 1 進め 5 とします
+  [0x00000034]  PC を固定サイズ 8 分進め 0xc とします
+  [0x00000037]  コピー (view 2)
+  [0x00000038]  行を 2 進め 7 とします
+  [0x0000003a]  PC を固定サイズ 12 分進め 0x18 とします
+  [0x0000003d]  コピー (view 3)
+  [0x0000003e]  PC を固定サイズ 16 分進め 0x28 とします
+  [0x00000041]  拡張命令コード 1: 列の終り
+
+
+% rl78-elf-objdump -g
+...
+ Line Number Statements:
+  [0x00000024]  拡張命令コード 2: 設定アドレス 0x0
+  [0x0000002b]  Special opcode 7: advance Address by 0 to 0x0 and Line by 2 to 3
+  [0x0000002c]  行を 1 進め 4 とします
+  [0x0000002e]  PC を固定サイズ 1 分進め 0x1 とします
+  [0x00000031]  コピー (view 1)
+  [0x00000032]  行を 1 進め 5 とします
+  [0x00000034]  PC を固定サイズ 1 分進め 0x2 とします
+  [0x00000037]  コピー (view 2)
+  [0x00000038]  行を 2 進め 7 とします
+  [0x0000003a]  PC を固定サイズ 1 分進め 0x3 とします
+  [0x0000003d]  コピー (view 3)
+  [0x0000003e]  PC を固定サイズ 1 分進め 0x4 とします
+  [0x00000041]  拡張命令コード 1: 列の終り
+
+
+ft32-elf-objdump -g
+の結果でおかしいと思ったのは
+
+  [0x00000034]  PC を固定サイズ 8 分進め 0xc とします
+
+これは
+
+  [0x00000034]  PC を固定サイズ 4 分進め 0x8 とします
+
+が正しいかと思った.
+
+  [0x0000003a]  PC を固定サイズ 12 分進め 0x18 とします
+  [0x0000003e]  PC を固定サイズ 16 分進め 0x28 とします
+
+も
+
+  [0x0000003a]  PC を固定サイズ 4 分進め 0xc とします
+  [0x0000003e]  PC を固定サイズ 4 分進め 0x10 とします
+
+が期待する結果.
+
+(gdb) b section.c:1523
+(gdb) run -g a.S
+...
+(gdb) c
+最初は .text セクション
+(gdb) p section->name
+$1 = 0x80ef836 ".debug_line"
+(gdb) x/50bx location
+0x8171e38:	0x00	0x00	0x00	0x00	0x03	0x00	0x00	0x00
+0x8171e40:	0x00	0x00	0x01	0x01	0xfb	0x0e	0x0d	0x00
+0x8171e48:	0x01	0x01	0x01	0x01	0x00	0x00	0x00	0x01
+0x8171e50:	0x00	0x00	0x01	0x00	0x61	0x2e	0x53	0x00
+0x8171e58:	0x00	0x00	0x00	0x00	0x00	0x05	0x02	0x00
+0x8171e60:	0x00	0x00	0x00	0x14	0x03	0x01	0x09	0x00
+0x8171e68:	0x00	0x01
+(gdb)
+
+同じことを rl78-elf-gas でやってみた.
+
+(gdb) x/50xb location
+0x8182834:	0x40	0x00	0x00	0x00	0x03	0x00	0x1a	0x00
+0x818283c:	0x00	0x00	0x01	0x01	0xfb	0x0e	0x0d	0x00
+0x8182844:	0x01	0x01	0x01	0x01	0x00	0x00	0x00	0x01
+0x818284c:	0x00	0x00	0x01	0x00	0x61	0x2e	0x53	0x00
+0x8182854:	0x00	0x00	0x00	0x00	0x00	0x05	0x02	0x00
+0x818285c:	0x00	0x00	0x00	0x14	0x03	0x01	0x09	0x01
+0x8182864:	0x00	0x01
+(gdb)
+
+
+emit_fixed_inc_line_addr
+
+で以下の部分が問題
+
+    {
+      *p++ = DW_LNS_fixed_advance_pc;
+      emit_expr_fix (pexp, 2, frag, p, TC_PARSE_CONS_RETURN_NONE);
+      p += 2;
+    }
+
+これの pexp が違っている. 正し最初に呼ばれたときは正しい.
+
+emit_expr_fix の中にステップインして気付いたが,
+
+
+#ifdef TC_CONS_FIX_NEW
+  TC_CONS_FIX_NEW (frag, p - frag->fr_literal + offset, size, exp, r);
+#else
+  if (r != TC_PARSE_CONS_RETURN_NONE)
+...
+#endif
+
+ft32-elf-as では #else 以降を実行している. 一方 rl78-elf-as では上を実行している.
+しかし, 下が有効になっているからといって間違いではない.
+
+2 回目に emit_fixed_inc_line_addr が呼び出されたとき emit_expr_fix
+によって 4 ではなくて 8 が生成されているのが原因だと考えた.
+
+しかしいずれの場合も生成している 2 バイトは 0x0000 そしてこの状況は rl78 でも
+同じ.
+
+rl78 は
+
+      emit_expr_fix (pexp, 2, frag, p, TC_PARSE_CONS_RETURN_NONE);
+      p += 2;
+
+として後でこの領域を更新していた.
+ft32 では更新していない.
+
+msp430-elf-as のほうがむしろ参考になるかもしれない. msp430-elf-gas は
+
+#ifdef TC_CONS_FIX_NEW
+  TC_CONS_FIX_NEW (frag, p - frag->fr_literal + offset, size, exp, r);
+#else
+  if (r != TC_PARSE_CONS_RETURN_NONE)
+...
+#endif
+
+で #else 以下を実行している.
+
+
+% msp430-elf-addr2line -a 0x0 
+0x00000000
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.msp430-elf/gas/a.S:3
+% msp430-elf-addr2line -a 0x2 
+0x00000002
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.msp430-elf/gas/a.S:4
+% msp430-elf-addr2line -a 0x4 
+0x00000004
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.msp430-elf/gas/a.S:4
+% msp430-elf-addr2line -a 0x6 
+0x00000006
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.msp430-elf/gas/a.S:5
+%
+
+これは -a 0x2 に対しても -a 0x4 に対しても a.S:4 となっている.
+しかし一方で.
+
+cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_msp430.000/
+% msp430-elf-addr2line -a 0x0 -e start.o
+0x00000000
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_msp430.000/start.S:3
+% msp430-elf-addr2line -a 0x2 -e start.o
+0x00000002
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_msp430.000/start.S:4
+% msp430-elf-addr2line -a 0x4 -e start.o
+0x00000004
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_msp430.000/start.S:4
+% msp430-elf-addr2line -a 0x6 -e start.o
+0x00000006
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_msp430.000/start.S:5
+% msp430-elf-addr2line -a 0x500 -e start.elf
+0x00000500
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_msp430.000/start.S:3
+% msp430-elf-addr2line -a 0x502 -e start.elf
+0x00000502
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_msp430.000/start.S:4
+% msp430-elf-addr2line -a 0x504 -e start.elf
+0x00000504
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_msp430.000/start.S:5
+% msp430-elf-addr2line -a 0x506 -e start.elf
+0x00000506
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_msp430.000/start.S:7
+%
+
+実行ファイルであれば行番号が合っている.
+せっかくなので mn10300 でも確認してみた.
+
+test003.o の objdump -g
+ Line Number Statements:
+  [0x0000002a]  拡張命令コード 2: 設定アドレス 0x0
+  [0x00000031]  Special opcode 7: advance Address by 0 to 0x0 and Line by 2 to 3
+  [0x00000032]  行を 1 進め 4 とします
+  [0x00000034]  PC を固定サイズ 1 分進め 0x1 とします
+  [0x00000037]  コピー (view 1)
+  [0x00000038]  行を 1 進め 5 とします
+  [0x0000003a]  PC を固定サイズ 3 分進め 0x4 とします
+  [0x0000003d]  コピー (view 2)
+  [0x0000003e]  行を 2 進め 7 とします
+  [0x00000040]  PC を固定サイズ 5 分進め 0x9 とします
+  [0x00000043]  コピー (view 3)
+  [0x00000044]  PC を固定サイズ 7 分進め 0x10 とします
+  [0x00000047]  拡張命令コード 1: 列の終り
+
+test003.elf の objdump -g
+ Line Number Statements:
+  [0x0000002a]  拡張命令コード 2: 設定アドレス 0x100
+  [0x00000031]  Special opcode 7: advance Address by 0 to 0x100 and Line by 2 to 3
+  [0x00000032]  行を 1 進め 4 とします
+  [0x00000034]  PC を固定サイズ 1 分進め 0x101 とします
+  [0x00000037]  コピー (view 1)
+  [0x00000038]  行を 1 進め 5 とします
+  [0x0000003a]  PC を固定サイズ 1 分進め 0x102 とします
+  [0x0000003d]  コピー (view 2)
+  [0x0000003e]  行を 2 進め 7 とします
+  [0x00000040]  PC を固定サイズ 1 分進め 0x103 とします
+  [0x00000043]  コピー (view 3)
+  [0x00000044]  PC を固定サイズ 1 分進め 0x104 とします
+  [0x00000047]  拡張命令コード 1: 列の終り
+
+mn10300 はアセンブラで期待しない結果になっているが, リンカの出力で帳尻が合っている.
+
+mn10300 は
+
+#ifdef TC_CONS_FIX_NEW
+  TC_CONS_FIX_NEW (frag, p - frag->fr_literal + offset, size, exp, r);
+#else
+  if (r != TC_PARSE_CONS_RETURN_NONE)
+...
+#endif
+
+TC_CONS_FIX_NEW を define していて上が有効になっている.
+
+さて, これは ft32-elf-as を修正しようにも期待値が不明だったりして混乱している.
+rl78-elf-as, rl78-elf-ld は期待した通り動作している.
+msp430, mn10300 のようにアセンブラの出力は一見正しくなさそうでリンカで帳尻が合って
+いるものもある.
