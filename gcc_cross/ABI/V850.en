@@ -39,13 +39,13 @@ V850 ABI
 	Above is prologue for the function which uses 128 bytes local area.
 	sp is alias of r3. r29 is used as frame pointer.
 	
-	+---------------+ <- sp_{new}
+	+---------------+ <- sp_{new}, r29_{new}
 	|               |
 	|               |
 	|   local area  |
 	|               |
 	|               |
-	+---------------+ <- r29_{new}
+	+---------------+
 	|   r29_{old}   |
 	+---------------+
 	|   r31_{old}   |
@@ -60,7 +60,6 @@ V850 ABI
 	jmp [r31]
 
 	Above is epilogue for the function which uses 128 bytes local area.
-	I think r29 is not used effectively, but it works correctly.
 	By above instructions, sp, r29 and r31 are restored and jump
 	to callee.
 	
