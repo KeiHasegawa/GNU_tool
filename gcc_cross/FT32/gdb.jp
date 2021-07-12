@@ -1,0 +1,369 @@
+ft32-elf-as の行番号情報を修正したが, ft32-elf-gdb で期待した形で
+読み込めていないことの調査.
+
+
+(*1) ft32-elf-as 修正前に b end で test000.S の 1 行目に対応をとっていた動作の調査
+
+b start
+b end
+
+create_breakpoint
+
+b start に対しては単に 0x100
+b end に対しては test000.S の 1 行目に対応を取っている(間違っているが).
+
+対応を取っているのはここ.
+
+  if (!internal)
+    mention (b);
+
+
+
+mention(b) の実行で対応を表示している. だから b がおそらく対応内容について保持しているはず.
+
+b start
+
+に対して単に
+
+Breakpoint 1 at 0x100
+
+と表示するだけなのに対して
+
+b end
+
+に対しては
+
+Breakpoint 2 at 0x10c: file test000.S, line 1.
+
+のようになる.
+
+
+b start
+
+に対しては
+
+(gdb) p b->loc->line_number
+0
+
+b end
+に対しては
+
+(gdb) p b->loc->line_number
+1
+
+のようになっている.
+
+1 をセットしているのは以下
+
+  loc->line_number = sal->line;
+
+
+sal というのは sytab and line の略
+
+  add_location_to_breakpoint (b, &sal);
+
+なるほどこんな感じらしい. で, b->loc->line_number = sal->line;
+というわけだ.
+
+
+b start, b end に対する add_location_to_breakpoint は以下から呼び出されていた:
+
+      if (&sal == &sals[0])
+	{
+	  init_raw_breakpoint (b, gdbarch, sal, type, ops);
+
+そして
+
+b start に対しては sal.line = 0 sal.pc = 0x100
+b end   に対しては sal.line = 1 sal.pc = 0x10c
+
+になっているわけである. この sal だがどこで計算しているか
+
+static void
+create_breakpoints_sal (struct gdbarch *gdbarch,
+			struct linespec_result *canonical,
+...
+{
+...
+  for (const auto &lsal : canonical->lsals)
+    {
+...
+      create_breakpoint_sal (gdbarch, lsal.sals,
+                                      ^^^^^^^^^
+
+これからすると create_breakpoints_sal が呼び出された時点ですでに計算されている
+可能性はある.
+
+デバッグ用の函数を付け加えて
+
+create_breakpoints_sal
+
+で停止したときに呼び出してみた.
+
+(gdb) p debug(canonical)
+pc = 0x100 line = 0
+(gdb) c
+(gdb) p debug(canonical)
+pc = 0x10c line = 1
+(gdb)
+
+既に計算されている.
+
+
+breakpoint.c:9376
+      ops->create_breakpoints_sal (gdbarch, &canonical,
+				   std::move (cond_string_copy),
+				   std::move (extra_string_copy),
+				   type_wanted,
+
+
+(gdb) delete
+(gdb) b 9376
+(gdb) run
+(gdb) p debug(&canonical)
+pc = 0x100 line = 0
+(gdb) c
+(gdb) p debug(&canonical)
+pc = 0x10c line = 1
+(gdb)
+
+この時点でも既に計算されている. どのように canonical が計算されるか調べてみた:
+
+(gdb) delete
+(gdb) b create_breakpoint
+
+      ops->create_sals_from_location (location, &canonical, type_wanted);
+
+ここだった. この名前からすると location で既に計算されている可能性もある.
+とはいえこの中は調べてみる.
+
+これを実行して計算されていることを確認した:
+
+  decode_line_full (location, DECODE_LINE_FUNFIRSTLINE, NULL,
+		    cursal.symtab, cursal.line, canonical, NULL, NULL);
+
+(gdb) delete
+(gdb) b decode_line_full
+
+
+
+  std::vector<symtab_and_line> result = event_location_to_sals (&parser,
+								location);
+
+ここで
+(gdb) p debug(result)
+pc = 0x100 line = 0
+$27 = void
+(gdb)
+
+のように計算されている. この結果 canonical が更新されている.
+だとすれば location で既に計算されているかもしれな.
+
+(gdb) delete
+(gdb) b event_location_to_sals
+
+
+	    result = parse_linespec (parser,
+				     ls->spec_string, ls->match_type);
+
+
+ここで result がセットされている.
+
+(gdb) delete
+(gdb) b parse_linespec
+
+ここで気付いたが, 文字列 "start" がきている. start のアドレスはまだ計算されていなかった
+のかも.
+
+(gdb) delete
+(gdb) b convert_linespec_to_sals
+
+	      minsym_found (state, elem.objfile, elem.minsym, &sals);
+
+ここで計算している.
+
+(gdb) delete
+(gdb) b minsym_found
+
+(gdb) delete
+(gdb) b find_function_start_sal
+
+(gdb) delete
+(gdb) b find_pc_sect_line
+
+この函数は
+
+b start
+
+に対して数回くる. しかし
+
+b end
+
+に対しては 1 回.
+
+
+      val.is_stmt = best->is_stmt;
+      val.symtab = best_symtab;
+      val.line = best->line;
+      val.pc = best->pc;
+
+ここで best が見つかっているから行番号情報が付加されている.
+
+b start に対しては best が見つからない.
+
+
+      if (prev && prev->line && (!best || prev->pc > best->pc))
+	{
+	  best = prev;
+	  best_symtab = iter_s;
+
+この条件が成立しているから best が見つかっている. この条件が成立するためには少なくとも
+prev が非ゼロである必要があるが
+
+      if (item != first)
+	prev = item - 1;		/* Found a matching item.  */
+
+b end
+
+に対しては prev はここでセットされている.
+
+      auto pc_compare = [](const CORE_ADDR & comp_pc,
+			   const struct linetable_entry & lhs)->bool
+      {
+	return comp_pc < lhs.pc;
+      };
+
+      struct linetable_entry *first = item;
+      struct linetable_entry *last = item + len;
+      item = std::upper_bound (first, last, pc, pc_compare);
+      if (item != first)
+	prev = item - 1;		/* Found a matching item.  */
+
+こんな感じ. ちなみに len = 4.
+
+
+(gdb) p/x *(first+0)
+$61 = {line = 0x1, is_stmt = 0x1, pc = 0x104}
+(gdb) p/x *(first+1)
+$62 = {line = 0x2, is_stmt = 0x1, pc = 0x20c}
+(gdb) p/x *(first+2)
+$63 = {line = 0x4, is_stmt = 0x1, pc = 0x318}
+(gdb) p/x *(first+3)
+$64 = {line = 0x0, is_stmt = 0x1, pc = 0x428}
+(gdb)
+
+これは 0x100 に対しては見つからず 0x104 に対しては見つかるわけだ.
+
+同様のことを test000.elf.correct に対して行なってみたところ
+
+len = 2 で
+
+
+(gdb) p/x *(first+0)
+$73 = {line = 0x3, is_stmt = 0x1, pc = 0x4}
+(gdb) p/x *(first+1)
+$74 = {line = 0x0, is_stmt = 0x1, pc = 0x8}
+(gdb)
+
+のようになっている. 以下のように gdb から値を変更すれば
+
+(gdb) set (first+0)->pc=0x100
+(gdb) set (first+1)->pc=0x104
+
+b start
+
+に対しては期待通り test000.S の 3 行目と対応はとれることになる.
+
+さて, 既に期待通り動作している h8300-elf-gdb で同じことをためしてみた:
+
+(gdb) p len
+$2 = 5
+(gdb) p/x *(first+0)
+$3 = {line = 0x3, is_stmt = 0x1, pc = 0x100}
+(gdb) p/x *(first+1)
+$4 = {line = 0x4, is_stmt = 0x1, pc = 0x102}
+(gdb) p/x *(first+2)
+$5 = {line = 0x5, is_stmt = 0x1, pc = 0x104}
+(gdb) p/x *(first+3)
+$6 = {line = 0x7, is_stmt = 0x1, pc = 0x106}
+(gdb) p/x *(first+4)
+$7 = {line = 0x0, is_stmt = 0x1, pc = 0x108}
+(gdb)
+
+1		.text
+2	start:
+3		nop
+4		nop
+5		nop
+6	end:
+7		nop
+
+H8 は nop が 2 バイトだからこのようにアドレスの違いはあるが len = 5 が期待値
+で FT32 の場合は 0x100, 0x104, 0x108, 0x10c, 0x110 のようになるのが
+正しい.
+
+「gas の調査」でライン情報の生成のしかたに 2 パターンあることを調査していたが
+h8300-elf-as は ppc と同じ方式.
+
+一方 rl78 はオリジナルの ft32-elf-as と同じ方式を採用している. rl78-elf-gdb
+でも同様のことを試してみたところやはり len = 5 で
+
+(gdb) p/x *(first+0)
+$2 = {line = 0x3, is_stmt = 0x1, pc = 0x100}
+(gdb) p/x *(first+1)
+$3 = {line = 0x4, is_stmt = 0x1, pc = 0x101}
+(gdb) p/x *(first+2)
+$4 = {line = 0x5, is_stmt = 0x1, pc = 0x102}
+(gdb) p/x *(first+3)
+$5 = {line = 0x7, is_stmt = 0x1, pc = 0x103}
+(gdb) p/x *(first+4)
+$6 = {line = 0x0, is_stmt = 0x1, pc = 0x104}
+(gdb)
+
+RL78 の場合 nop が 1 バイトだからアドレスの違いはあるが, 期待したものになっている.
+つまり ft32-elf-*** で期待した動作にならない直接の原因は ft32-elf-gdb で
+
+(gdb) p len
+$2 = 5
+(gdb) p/x *(first+0)
+$3 = {line = 0x3, is_stmt = 0x1, pc = 0x100}
+(gdb) p/x *(first+1)
+$4 = {line = 0x4, is_stmt = 0x1, pc = 0x104}
+(gdb) p/x *(first+2)
+$5 = {line = 0x5, is_stmt = 0x1, pc = 0x108}
+(gdb) p/x *(first+3)
+$6 = {line = 0x7, is_stmt = 0x1, pc = 0x10c}
+(gdb) p/x *(first+4)
+$7 = {line = 0x0, is_stmt = 0x1, pc = 0x110}
+(gdb)
+
+になっていないこと. そしてその原因が ft32-elf-gdb, ft32-elf-ld , ft32-elf-as
+のいずれかにある.
+
+オリジナルの ft32-elf-as で生成した test000.elf を試すと
+
+(gdb) p len
+$96 = 4
+(gdb) p/x *(first+0)
+$97 = {line = 0x1, is_stmt = 0x1, pc = 0x104}
+(gdb) p/x *(first+1)
+$98 = {line = 0x2, is_stmt = 0x1, pc = 0x20c}
+(gdb) p/x *(first+2)
+$99 = {line = 0x4, is_stmt = 0x1, pc = 0x318}
+(gdb) p/x *(first+3)
+$100 = {line = 0x0, is_stmt = 0x1, pc = 0x428}
+(gdb) 
+
+である.
+
+そこでもう一度
+
+DWARF2_USE_FIXED_ADVANCE_PC
+DWARF2_LINE_MIN_INSN_LENGTH
+
+を define することなしで修正する方法を考えてみる. 勿論 define して修正する方法が分かるの
+ならばそれでもよい.
+
+いずれにしても ft32-elf-as をもう一度見直す.
+
+
