@@ -14,6 +14,18 @@ Use the same script with "IQ2000":
 
 set TARGET = ppc-elf   # Change
 
+At cygwin gdb install, I had to fix
+
+gdb-10.2.ppc-elf/sim/ppc/Makefile
+
+like below:
+
+run: psim
+	rm -f run$(EXEEXT)
+-	ln psim$(EXEEXT) run$(EXEEXT)
++	cp psim$(EXEEXT) run$(EXEEXT)
+
+
 (*3) Verification => OK
 
 Build like below:
