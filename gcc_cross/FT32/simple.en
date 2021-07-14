@@ -50,3 +50,12 @@ ft32-elf-objdump -g test000.elf displayed below：
   [0x00000047]  Extended opcode 1: End of Sequence
 
 It's different from others somewhat.
+
+=>
+
+I investigated the phenomenon precisely. At last, I found --no-relax option.
+
+% ft32-elf-as -o test000.o -g --no-relax test000.S
+
+Above may work well.
+
