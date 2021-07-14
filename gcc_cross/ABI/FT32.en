@@ -1,52 +1,50 @@
-FT32 の ABI
+FT32 ABI
 
-(*0) 命令用メモリとデータ用メモリ
-(*1) 函数呼び出し
-(*2) 函数復帰
-(*3) プロローグ
-(*4) エピローグ
-(*5) 通常の函数の引数と戻り値
-(*6) long long を引数にとる函数, 返す函数
-(*7) 浮動少数点数を引数にとる函数, 返す函数
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*0) Instruction memory and data memory
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long long' argument and return value
+(*7) Floating point number argument and return value
+(*8) Structure argument and return value
 
-(*0) 命令用メモリとデータ用メモリ
 
-        FT32 では命令用メモリとデータ用メモリに分かれている. プログラムや変数の初期値は命
-	令用メモリにロードされる.
+(*0) Instruction memory and data memory
 
-	プログラムが通常のロード/ストアを発行するとデータ用メモリにアクセスする.
-	スタートアップルーチンではロードされたデータをデータ用メモリに LPM 命令で
-	コピーする必要がある.
+	FT32 arhchitecture has instruction memory and data memory. Program
+	code and initial values of variables are loaded into instruction
+	memory.
 
-(*1) 函数呼び出し
+	Load/Store instruction accesses data memory. So startup routine
+	copies initial values of variables into data memory using
+	`LPM' instruction.
+
+(*1) Function call
 
 	call   func
 
-	疑似コード
+	Pseudo code
 
 	sp -= 4
-	memory[sp] = (call 命令の次のアドレス)
+	memory[sp] = (`call' instruction next address)
 	pc = func
 
-	戻りアドレスをスタックに積んでジャンプするということ.
-
-(*2) 函数復帰
+(*2) Return from function
 
 	return
 
-	疑似コード
+	Pseudo code
 
 	pc = memory[sp]
 	sp -= 4
 
-	スタックからポップしたアドレスにジャンプするということ.
-
-(*3) プロローグ
+(*3) Prologue
 
 	link   $fp,128
 
-	上は 128 バイトのローカルエリアを使用する函数のプロローグ.
+	Above is prologue for the function which uses 128 bytes local area.
 
 	+----------------------+ <- sp_{new}
 	|                      |
@@ -62,50 +60,53 @@ FT32 の ABI
 	|    return address    |
 	+----------------------+
 
-	疑似コード
+	Pseudo code
 
 	sp -= 4
 	memory[sp] = fp
 	fp = sp
 	sp -= 128
 
-	場合によって以下のようになる:
+	Prologue may become like below in case:
 
-	pop.l  $cc      ; オプショナル
-	push.l $r5      ; オプショナル
-	push.l $cc      ; オプショナル
+	pop.l  $cc      ; Optional
+	push.l $r5      ; Optional
+	push.l $cc      ; Optional
 	link   $fp,128
 
-(*4) エピローグ
+(*4) Epilogue
 
 	unlink $fp
 	return
 
-	上はエピローグで使用するローカルエリアのバイト数に依存しない.
+	Above is epilogue and it doesn't depend the mount of local area.
 
 
-	以下は (*3) で「場合によって」に対するエピローグである.
+	Epilogue may become like below for (*3) special cas:
 	
 	unlink $fp
 	pop.l  $cc
 	add.l  $sp,$sp,4
 	jmpi   $cc
 	
-(*5) 通常の函数の引数と戻り値
+(*5) Normal argument and return value
 
-        第 1 引数 : r0
-        第 2 引数 : r1
-        第 3 引数 : r2
-        第 4 引数 : r3
-        第 5 引数 : r4
-        第 6 引数 : r5
-	第 7 引数以降 : スタックに積む
+        1st : r0
+        2nd : r1
+        3rd : r2
+        4th : r3
+        5th : r4
+        6th : r5
+	7th : use stack
+
+	For example,
 
 	int f(int a0, int a1, int a2, int a3, int a4, int a5, int a6, int a7);
 
 	f(10, 11, 12, 13, 14, 15, 16, 17);
 
-	に対して f の先頭アドレスでは
+	At the start address of `f', registers and stack layout becomes like
+	below:
 
 	r0 = 10, r1 = 11, r2 = 12, r3 = 13, r4 = 14, r5 = 15
 
@@ -117,21 +118,23 @@ FT32 の ABI
 	|          17          |
 	+----------------------+	
 
-	のようになっている.
-	函数の戻り値は r0 にセットされる.
+	Function return value is set to r0.
 
-(*6) long long を引数にとる函数, 返す函数
+(*6) `long long' argument and return value
 
         sizeof(long long) = 8
 
-	引数を渡すときに 2 つのレジスタが使用され残りはスタックに積まれる.
+	`long long' type arguments are passed by using 2 registers. The
+	rest of the arguments are passed by using stack.
+	For example,
 
 	long long f(int a0, long long a1, long long a2, long long a3);
 
 
 	f(10, 0x123456789abcdef0LL, 0x1122334455667788LL, 0x99aabbccddeeff00LL);
 
-	に対して f の先頭アドレスでは
+	At the start address of `f', registers and stack layout becomes
+	like below:
 
 	r0 = 10,
 	r1 = 0x9abcdef0, r2 = 0x12345678, r3 = 0x55667788, r4 = 0x11223344
@@ -143,18 +146,20 @@ FT32 の ABI
 	|      0x99aabbcc      |
 	+----------------------+
 
-	のようになっている.
-	函数の戻り値は r0 と r1 にセットされる.
+	Function return value is set to `r0' and `r1'.
 
-(*7) 浮動少数点数を引数にとる函数, 返す函数
+(*7) Floating point number argument and return value
 
 	sizeof(float) = 4
 	sizeof(double) = sizeof(long double) = 8
 
-	FT32 には FPU がないので浮動少数点数演算はソフトウェアで行なわれる.
-	float に対しては (*5), double, long double に対しては (*6) と同じ.
+	FT32 doesn't have FPU, so software calculates floating point number
+	operation. For `float', same with (*5). For `double' and `long double'
+	same with (*6).
 
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*8) Structure argument and return value
 
-	構造体を引数にとる函数を呼び出すとき, レジスタは使用されず, スタックにコピーされる.
-	構造体を返す函数を呼び出すとき, 戻り値を格納するアドレスが r0 レジスタにセットされる.
+	When calling the function which takes strucutre type argument,
+	structure is copied into stack. No register is used.
+	Wehn calling the function which returns structure type, the address
+	for the return value is set to `r0'.
