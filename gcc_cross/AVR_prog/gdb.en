@@ -1,36 +1,11 @@
-avr-elf-gcc でブレークポイントが機能しない件の調査.
+avr-elf-gdb fix
 
-M-x gdb
-(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_avr.004
-(gdb) run -q -x gdbcom test004.elf
+If a program entry point is not zero, this bug will be reproduced.
 
-で再現する.
-
-b start
-
-で
-
-run
-
-すると
-
-sim_write (sd=0x8bfc048, addr=24, buffer=0x8640b40 <avr_break_insn> "\230\225", size=2) at interp.c:1533
-
-のように sim_write が呼び出される.
-
-adr = 24 = 0x18
-
-だから期待した動作.
-
-sim_create_inferior
-
-で
+gdb-10.2.avr-elf/sim/avr/interp.c
 
 #if 0  
   sim_pc_set (cpu, addr);
 #else
   sim_pc_set (cpu, addr >> 1);
 #endif
-
-のようにする必要がある. AVR のシミュレータはよくある PC の値を
-2 で割った値を保持しているので.
