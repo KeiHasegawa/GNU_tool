@@ -1,36 +1,37 @@
-FT32 の hello world
+FT32 hello world
 
-インストール確認で行なった hello world は変数の初期値をコピーしていな
-かったらしく puts が呼び出された状態で引数が 0 になっていたらしい.
+At install verification, "hello world" program did not copy
+initial values to its area so that `puts' was called with `0'.
 
-改めて自前のスタートアップルーチンで試してみた.
+Again I tried to run "hello world" program:
 
-しかし _malloc_r の呼び出しで無限ループしているっぽい.
+I noticed that `_malloc_r' entered infinit loop:
 
     for (victim = last(bin); victim != bin; victim = victim->bk)
     {
 
-このループ
 
 bin    = 0x00804bd0
 victim = 0xff804bd0
 
-なのでどこかで victim の上位バイトが 0xff に化けている可能性がある.
-
-ビルドのログを確認した:
+I guessed that `victim' value was corruped somewhere.
+I confirmed that newlib build log and found:
 
 % make
 ...
-make[5]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/newlib/libc/stdlib' に入ります
+make[5]: Entering directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/newlib/libc/stdlib'
 ...
 ft32-elf-gcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/newlib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/newlib/libc/include -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/libgloss/ft32 -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/libgloss/libnosys -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/libgloss/ft32    -DPACKAGE_NAME=\"newlib\" -DPACKAGE_TARNAME=\"newlib\" -DPACKAGE_VERSION=\"4.1.0\" -DPACKAGE_STRING=\"newlib\ 4.1.0\" -DPACKAGE_BUGREPORT=\"\" -DPACKAGE_URL=\"\" -I. -I../../../.././newlib/libc/stdlib -fno-builtin -DPREFER_SIZE_OVER_SPEED -DHAVE_INIT_FINI      -g -O0 -DINTERNAL_NEWLIB -DDEFINE_MALLOC -c ../../../.././newlib/libc/stdlib/mallocr.c -o lib_a-mallocr.o
+
+Then I did like below:
 
 % cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/newlib/libc/stdlib
 % ft32-elf-gcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/newlib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/newlib/libc/include -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/libgloss/ft32 -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/libgloss/libnosys -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/libgloss/ft32    -DPACKAGE_NAME=\"newlib\" -DPACKAGE_TARNAME=\"newlib\" -DPACKAGE_VERSION=\"4.1.0\" -DPACKAGE_STRING=\"newlib\ 4.1.0\" -DPACKAGE_BUGREPORT=\"\" -DPACKAGE_URL=\"\" -I. -I../../../.././newlib/libc/stdlib -fno-builtin -DPREFER_SIZE_OVER_SPEED -DHAVE_INIT_FINI      -g -O0 -DINTERNAL_NEWLIB -DDEFINE_MALLOC -E ../../../.././newlib/libc/stdlib/mallocr.c -o lib_a-mallocr.i
 
-lib_a-mallocr.i
 
-から以下を発見
+and found below from `lib_a-mallocr.i':
+
+
 
 void* _malloc_r(struct _reent *reent_ptr, size_t bytes)
 
@@ -43,7 +44,7 @@ void* _malloc_r(struct _reent *reent_ptr, size_t bytes)
 
     for (victim = ((bin)->bk); victim != bin; victim = victim->bk)
 
-ということは bin->bk が壊れている可能性がある.
+i.e. `bin->bk' might be corruped.
 
 
 (ft32-elf-gdb) p __malloc_av_
@@ -55,11 +56,9 @@ $3 = {0x800000, 0x800000, 0xff804990, 0xff804990, 0xff804998, 0xff804998,
   0xff804a00, 0xff804a00, 0xff804a08, 0xff804a08, 0xff804a10, 0xff804a10, 
 ...
 
-なるほど, 化けている.
+I see. They were corrupted.
 
-lib_a-mallocr.i
-
-から以下を発見
+I also found from `lib_a-mallocr.i' below:
 
  mbinptr __malloc_av_[128 * 2 + 2] = {
  0, 0,
@@ -82,13 +81,9 @@ $6 = 0x804990
 $7 = 0x804990
 (ft32-elf-gdb)
 
-ここはデバッガから見て合っている. しかし今大事なのはデバッガの解釈ではない.l
+OK. `ft32-elf-gdb' works well. But it doesn't matter with this phenomenon.
 
-問題点を整理すると __malloc_av_ という配列が定義されていてその初期値の
-期待値 0x00804990 が 0xff804990 のように上位 1 バイトが期待しないものになっている.
-
-
-以下を試してみた:
+I tried simple program like below:
 
 void* a[3] = { (void*)0x800000, (void*)0x800000, &a[2] };
 
@@ -105,19 +100,16 @@ $1 = {0x800000, 0x800000, 0xff800144}
 $2 = (void *(*)[3]) 0x80013c
 (ft32-elf-gdb)
 
-やはり a[2] の値が間違えている.
+The value of `a[2]' is wrong.
 
-ft32-elf-gcc は以下を生成している:
+`ft32-elf-gcc' generates like below:
 
 a:
 	.long	8388608
 	.long	8388608
 	.long	a-0x800000+8
 
-これは一体...変数 a のアドレスを参照するときコンパイラが意図して -0x800000
-のようにしている.
+If the variables are located at 0xff800000, this program may work well.
 
-仮に変数を 0xff800000 に配置できればプログラムが期待通り動作しそうに思える.
-
-回避策があるのかもしれないが, 釈然としない. ステータスとしてはコンパイラの
-変数のアドレス参照に問題があるということにしておく.
+There may exist WA. I think `ft32-elf-gcc' has the problem
+that the code which refers to the variable address is not correct.
