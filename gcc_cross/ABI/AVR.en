@@ -1,52 +1,65 @@
-AVR の ABI
+AVR ABI
 
-(*0) 命令用メモリとデータ用メモリ
-(*1) 函数呼び出し
-(*2) 函数復帰
-(*3) プロローグ
-(*4) エピローグ
-(*5) 通常の函数の引数と戻り値
-(*6) long, long long を引数にとる函数, 返す函数
-(*7) 浮動少数点数を引数にとる函数, 返す函数
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*0) Instruction memory, data memory, memory mapped register and stack pointer
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long long' argument and return value
+(*7) Floating point number argument and return value
+(*8) Structure argument and return value
 
 
-(*0) 命令用メモリとデータ用メモリ, メモリマップドレジスタ, スタックポインタ
+(*0) Instruction memory, data memory, memory mapped register and stack pointer
 
-        「AVR プログラミング」を参照.
+        Refer to "AVR programing"
 
-(*1) 函数呼び出し
+(*1) Function call
 
 	rcall func
 
-	疑似コード
+	Pseudo code
 
-	memory[sp-1] = (rcall 命令の次のアドレス)
+	memory[sp-1] = (`rcall' instruction next address)
 	sp -= 2;
 	pc = func
 
-	メモリに書き込んでからスタックポインタをずらすらしい. スタック
-	ポンイタが微妙なところを指しているが上は誤記ではない. シミュレ
-	ータでは復帰アドレスを 2 で割ったものをビッグエンディアン形
-	式で書き込んでいた. このプロセッサ自体はリトルエンディアン.
-	おそらく pc の保持のしかたがシミュレータで間違えているのだが,
-	辻褄は合っているし
+	Note that fist wirte the address to memory and update
+	stack pointer. It's not error that the stack pointer
+	points to the delicate address.
+	I confirmed that AVR simulator wrote to here
+	not
+
+	(`rcall' instruction next address)
+
+	but
+
+	(`rcall' instruction next address) >> 1
+
+	in big endian format. AVR itself is a little endian
+	architecture. I guessed that AVR simulator
+	implementation was not correct at the view point of maintaining
+	program counter but it was consistent.
+	And more
 
 	(avr-elf-gdb) info register
 
-	で本来の pc の値を表示しているので, 作成した人は知っていてやっ
-	ているか, あるいはそういう仕様なのかもしれない.
+	also showed program counter original value.
 
-(*2) 函数復帰
+	This means that AVR simulator is implemented intentionally
+	in this way, or that may be the specification of AVR architechtre.
+
+(*2) Return from function
 
 	ret
 
-	疑似コード
+	Pseudo code
 
 	sp += 2;
 	pc = memory[sp-1]
 
-(*3) プロローグ
+(*3) Prologue
 
 	push r28
 	push r29
@@ -60,7 +73,7 @@ AVR の ABI
 	out __SREG__,__tmp_reg__
 	out __SP_L__,r28
 
-	上は 128 バイトのローカルエリアを使用する函数のプロローグ.
+	Above is prologue for the function which uses 128 bytes local area.
 
         +---------------------+ <- sp_{new}
         |                     |
@@ -78,7 +91,7 @@ AVR の ABI
 	|          address    |	
         +---------------------+
 
-(*4) エピローグ
+(*4) Epilogue
 
 	subi r28,-128
 	sbci r29,-1
@@ -91,24 +104,28 @@ AVR の ABI
 	pop r28
 	ret
 
-	上は 128 バイトのローカルエリアを使用する函数のエピローグ.
-	スタックポインタが復元され, r29, r28 が復元され呼び出し元に復
-	帰する.
+	Above is epilogue for the function which uses 128 bytes local area.
+	sp, r29 and r28 are recovered and return to callee.
 
-(*5) 通常の函数の引数と戻り値
+(*5) Normal argument and return value
 
 	sizeof(int) = 2
 
-	第 1 引数 : r24, r25
-	第 2 引数 : r22, r23
-	第 3 引数 : r20, r21
-	第 4 引数 : r18, r19
-	第 5 引数 : r16, r17
-	第 6 引数以降 : スタックを使用する.
+	1st : r24, r25
+	2nd : r22, r23
+	3rd : r20, r21
+	4th : r18, r19
+	5th : r16, r17
+	6th : use stack
 
+	For example,
+	
 	int f(int a0, int a1, int a2, int a3, int a4, int a5, int a6, int a7);
 
 	f(0x1234, 0x5678, 0x9abc, 0xdef0, 0x1122, 0x3344, 0x5566, 0x7788);
+
+	At the start address of `f', registers and stack layout becomes
+	like below:
 
 	r25 = 0x12, r24 = 0x34
 	r23 = 0x56, r22 = 0x78
@@ -145,47 +162,51 @@ AVR の ABI
         +---------------------+
 
 
-(*6) long, long long を引数にとる函数, 返す函数
+(*6) `long long' argument and return value
 
         sizeof(long) = 4
         sizeof(long long) = 8
 
-	long にはレジスタが 2 つ使用され, long long にはレジスタが 8
-	つ使用される.
+	For `long', 4 registers are used. For `long long' 8 registers are
+	used.
+
+	For example,
 
 	long f(long a0, long a1, long a2, long a3);
 
 	f(0x12345678L, 0x9abcdef0L, 0x11223344L, 0x55667788L);
 
-	に対して `f' の先頭アドレスでは (*5) と同じ状況になっている.
-	同様に
+	At the start address of `f', registers and stack layout are
+	the same with (*5).
+	Similary,
 
 	long long f(long long a0, long long a1);
 	
 	f(0x123456789abcdef0L, 0x1122334455667788L);
 
-	に対して `f' の先頭アドレスではやはり (*5) と同じ状況になっている.
+	At the start address of `f', the are the same with (*5).
 
-(*7) 浮動少数点数を引数にとる函数, 返す函数
+(*7) Floating point number argument and return value
 
 	sizeof(float) = 4
 	sizeof(double) = sizeoof(long double) = 8
 	
-        AVR には FPU がないので浮動少数点数演算はソフトウェアによって
-        行なわれる.
+        AVR doesn't have FPU so software calculates floating point number
+	operation.
 
-	float に対しては (*5) と同じ. double, long double に対しては
-	(*6) と同じ.
+	For `float' same with (*5). For `double' and `long double',
+	same with (*6).
 
-	libgcc.a のビルドの問題で int への変換や加算のコードを書くとラ
-	ンタイムライブラリのエラーを引き起こす.
+	I noticed that there were the problem with `libgcc.a', where
+	conversion from or to `int' or, for example, addtion
+	caused link error.
 
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*8) Structure argument and return value
 
-        構造体を引数にとる函数を呼び出すとき, レジスタは使用されずに, スタックにコピー 
-	される.
+        When calling the function which takes structure type argument,
+	the structure is copied to the stack. No register is used.
 
-	例えば
+	For example,
 
 	struct S { int i[4]; };
 	void f(struct S);
@@ -193,7 +214,7 @@ AVR の ABI
 	struct S s = { 0x1234	0x5678	0x9abc	0xdef0 };
 	f(s);
 
-	に対して f の先頭アドレスでは
+	At the start address of `f', stack layout becomes like below:
 
         +---------------------+ <- sp
 	|                     |
@@ -219,7 +240,6 @@ AVR の ABI
 	|         0xde        |
         +---------------------+
 
-	のようになっている.
 
-	構造体を返す函数は戻り値をセットする領域を Y レジスタ (r28, r29)にセッ
-	トして函数を呼び出す.
+	When calling the function which returns structure type,
+	Y register (r28, r29) is set to the address for the return value.
