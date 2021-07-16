@@ -1,13 +1,6 @@
-pru-elf-gdb でブレークポイントがずれる件の調査
+Investigation of break point is off the point at pru-elf-gdb.
 
-M-x gdb
-gdb --annotate=3 ./gdb
-(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_pru.003
-(gdb) run -q -x x test003.elf
-
-で再現している.
-
-単純に nop だけを配置した場合は問題ないが
+If just locate `nop' instruction, there is no problem. But
 
 	.text
 start:
@@ -20,9 +13,8 @@ end:
 my_func:
 	ret
 	
-
-のようなソースで再現している. ここで start は 0x100 番地に配置されている.
-一応, 逆アセンブルの結果を確認した:
+for above source, this bug is reproduced, where `start' address is 0x100.
+I confirmed disassemble result:
 
 00000100 <start>:
  100:	12e0e0e0 	nop
