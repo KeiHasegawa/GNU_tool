@@ -1,45 +1,45 @@
-FR-V の ABI
+FR-V ABI
 
-(*0) グローバルポインタ
-(*1) 函数呼び出し
-(*2) 函数復帰
-(*3) プロローグ
-(*4) エピローグ
-(*5) 通常の函数の引数と戻り値
-(*6) long long を引数にとる函数, 返す函数
-(*7) 浮動少数点数を引数にとる函数, 返す函数
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*0) Global pointer
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long long' argument and return value
+(*7) Floating point number argument and return value
+(*8) Structure argument and return value
 
 
-(*0) グローバルポインタ
+(*0) Global pointer
 
-        スタックではないメモリに配置された変数をアクセスするとき gr16
-	レジスタ相対でアクセスするようなコードをコンパイラが生成する. 
+        For accessing to the variables which located at memory, not
+	stack, compiler generates code which access them via `gr16'.
 
-(*1) 函数呼び出し
+(*1) Function call
 
 	call func
 
-	疑似コード
+	Pseoudo code
 	
-	lr = (call 命令の次のアドレス)
+	lr = (`call' instruction next address)
 	pc = func
 	
-(*2) 函数復帰
+(*2) Return from function
 
 	ret
 
-	疑似コード
+	Pseudo code
 
 	pc = lr
 
-	しかしコンパイラは大抵 lr レジスタを gr5 に移して
+	But frv-elf-gcc normally copies `lr' to `gr5' and generates:
 
 	jmpl @(gr5,gr0)
 
-	のようなコードを生成する (*4) も参照. gr0 は常に 0 が読み出されるレジスタ.
+	See also (*4), where `gr0' is always read value `0'.
 	
-(*3) プロローグ
+(*3) Prologue
 
 	addi sp,#-144,sp
 	sti fp, @(sp,128)
@@ -47,7 +47,7 @@ FR-V の ABI
 	movsg lr, gr5
 	sti gr5, @(fp,8)
 
-	上は 128 バイトのローカルエリアを使用する函数のプロローグ.
+	Above is prologue for the function which uses 128 bytes local area.
 
 
 	+----------+ <- sp_{new}
@@ -62,37 +62,40 @@ FR-V の ABI
 	+----------+
 	|          |
 	+----------+
-	| lr_{old} | 戻りアドレス
+	| lr_{old} |
 	+----------+
 	|          |
 	+----------+ <- sp_{old}
 
 
-(*4) エピローグ
+(*4) Epilogue
 
 	ldi @(fp,8), gr5
 	ld @(fp,gr0), fp
 	addi sp,#144,sp
 	jmpl @(gr5,gr0)
 
-	上は 128 バイトのローカルエリアを使用する函数のエピローグ.
-	fp, sp が復元され呼び出し元へ復帰する.
+	Above is epilogue for the function which uses 128 bytes local area.
+	fp and sp are restored and reutrn to callee.
 
-(*5) 通常の函数の引数と戻り値
+(*5) Normal argument and return value
 
-	第 1 引数 : gr8
-	第 2 引数 : gr9
-	第 3 引数 : gr10
-	第 4 引数 : gr11
-	第 5 引数 : gr12
-	第 6 引数 : gr13
-	第 7 引数 : スタックに積む
+	1st : gr8
+	2nd : gr9
+	3rd : gr10
+	4th : gr11
+	5th : gr12
+	6th : gr13
+	7th : use stack
 
+	For example,
+	
 	int f(int a0, int a1, int a2, int a3, int a4, int a5, int a6, int a7);
 
 	f(10, 11, 12, 13, 14, 15, 16, 17);
 
-	に対して f の先頭では
+	At the start address of `f', registers and stack layout becomes
+	like below:
 
 	gr8 = 10, gr9 = 11, gr10 = 12, gr11 = 13, gr12 = 14, gr13 = 15
 	
@@ -102,22 +105,21 @@ FR-V の ABI
 	|    17    |
 	+----------+
 
-	のようになっている.
-	
-	函数の戻り値は gr8 にセットされる.
+	Function return value is set to `gr8'.
 
-(*6) long long を引数にとる函数, 返す函数
+(*6) `long long' argument and return value
 
 	sizeof(long long) = 8
 
-	long long の引数に対してレジスタを 2 個使用して函数にわたす. 残りは
-	スタックに積まれる. 例えば
-	
+	For `long long' type arugment, use 2 registers. Fo the rest of
+	arguments, use stack. For example,
+
 	long long f(int a0, long long a1, long long a2, long long a3);
 
 	f(10, 0x123456789abcdef0LL, 0x1122334455667788, 0x99aabbccddeeff00LL);
 
-	に対して f の先頭アドレスでは
+	At the start address of `f', registers and stack layout becomes
+	like below:
 	
 	gr8  = 10
 	gr9  = 0x12345678, gr10 = 0x9abcdef0
@@ -128,23 +130,23 @@ FR-V の ABI
 	|0xddeeff00|
 	+----------+
 
-	のようになっている.
-	函数の戻り値は gr8, gr9 にセットされる.
+	Function return value is set to `gr8' and `gr9'.
 	
-(*7) 浮動少数点数を引数にとる函数, 返す函数
+(*7) Floating point number argument and return value
 
 	sizeof(float) = 4
 	sizeof(double) = sizeof(long double) = 8
 
-	FR-V に FPU はあるが fr0, fr1 などのレジスタは使用されず,
-	float に対しては (*5) と同じ規則で引数がわたされる. 例えば
+	FR-V has FPU, but `fr0' or `fr1' is not used. For `float'
+	same with (*5). For example,
 	
 	float f(float a0, float a1, float a2, float a3,
 	       float a4, float a5, float a6, float a7);
 
 	f(10.0F, 11.0F, 12.0F, 13.0F, 14.0F, 15.0F, 16.0F, 17.0F);
 
-	に対して f の先頭アドレスでは
+	At the start address of `f', registers and stack layout becomes
+	like below:
 
 	gr8  = 0x41200000
 	gr9  = 0x41300000
@@ -159,15 +161,13 @@ FR-V の ABI
 	|0x41880000|
 	+----------+
 
-	のようになっている.
+	For double, long double operation, software calculates them.
+	(*6) rule is applied.
 
-	double, long double に対する浮動少数点数演算はソフトウェアで行なう.
-	やはり (*6) と同じ規則が適用される.
+(*8) Structure argument and return value
 
-(*8) 構造体を引数にとる函数, 構造体を返す函数
-
-        構造体を引数とする函数を呼び出すとき, レジスタは使用されずにスタックにコピー
-	される.
-	構造体を返す函数を呼び出すとき gr3 に函数の戻り値を格納するアドレスをセット
-	して呼び出す.
+        When calling function which takes structure type argument,
+	no register is used, structure is copied to stack.
+	When calling function which returns structure type, `gr3' is
+	set to the address for the return value.
 	
