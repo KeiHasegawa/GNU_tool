@@ -1,46 +1,45 @@
-PRU の ABI
+PRU ABI
 
-(*1) 函数呼び出し
-(*2) 函数復帰
-(*3) プロローグ
-(*4) エピローグ
-(*5) 通常の函数の引数と戻り値
-(*6) long long を引数にとる函数, 返す函数
-(*7) 浮動少数点数を引数にとる函数, 返す函数
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long long' argument and return value
+(*7) Floating point number argument and return value
+(*8) Structure argument and return value
 
 
-(*1) 函数呼び出し
+(*1) Function call
 
 	call	%label(func)
 
-	疑似コード
+	Pseudo code
 
-	r3 = (call 命令の次のアドレス)
+	r3 = (`call' instruction next address) << 14
 	pc = func
 
-	実際 r3 には ((call 命令の次のアドレス) << 14) がセットされる.
-
-(*2) 函数復帰
+(*2) Return from function
 
 	ret
 
-	疑似コード
+	Pseoudo code
 
 	pc = r3
 
-	実際の動作は pc = r3 >> 14
+	Actually, pc = r3 >> 14
 
-(*3) プロローグ
+(*3) Prologue
 
 	sub	r2, r2, 134
 	sbbo	r3.b2, r2, 128, 6
 	add	r4, r2, 134
 
-	上は 128 バイトのローカルエリアを使用する函数のプロローグである.
-	r2 レジスタはスタックポインタ, r4 レジスタをフレムポインタとして使用している.
-	普通のフレームポインタとは少し違うところを指しているが, これはコンパイラの勝手である.
-
+	Above is prologue for the function which use 128 bytes local area.
+	`r2' is used for stack pointer and `r4' is used for frame pointer.
+	`r4' points to the diffenret area from general frame pointer,
+	but it depends on compiler implementation.
+	
 	+--------------------+ <- r2_{new}
 	|                    |
 	|                    |
@@ -59,22 +58,24 @@ PRU の ABI
 	+--------------------+ <- r2_{old}, r4_{new}
 
 
-(*4) エピローグ
+(*4) Epilogue
 
 	sub	r2, r4, 6
 	lbbo	r3.b2, r2, 0, 6
 	add	r2, r2, 6
 	ret
 
-	上は 128 バイトのローカルエリアを使用する函数のエピローグである.
-	r2, r3, r4 の値が復元されて呼び出し元に復帰する.
+	Above is epilogue for the function which uses 128 bytes local area.
+	r2, r3 and r4 are restored and return to callee.
 
-(*5) 通常の函数の引数と戻り値
+(*5) Normal argument and return value
 
-        第 1 引数 : r14
+        1st : r14
 	...
-	第 16 引数 : r29
-	第 17 引数以降 : スタックに積む
+	16th : r29
+	17th : use stack
+
+	For example,
 
 	int f(int a0, int a1, int a2, int a3, int a4, int a5, int a6, int a7,
 	      int b0, int b1, int b2, int b3, int b4, int b5, int b6, int b7,
@@ -84,7 +85,8 @@ PRU の ABI
 	  18, 19, 20, 21, 22, 23, 24, 25,
 	  26, 27);
 
-        f の先頭アドレスでは
+        At the start address of `f', resters and stack layout become
+	like below:
 
         r14 = 10, ..., r29 = 25
 
@@ -94,15 +96,15 @@ PRU の ABI
 	|        27          |
 	+--------------------+ +8
 
-        のようになっている.
-	函数の戻り値は r14 にセットされる.
+	Function return value is set to r14.
 
-(*6) long long を引数にとる函数, 返す函数
+(*6) `long long' argument and return value
 
         sizeof(long long) = 8
 
-	long long の引数に対してレジスタを 2 つ使って引数をわたす. レジスタでわたし
-	きれない場合はスタックが使用される.
+	For `long long' type argument, 2 registers are used. For the rest,
+	stack is used.
+	For example,
 
 	long long f(int a0,
 	     	    long long a1, long long a2, long long a3, long long a4,
@@ -110,7 +112,8 @@ PRU の ABI
 
         f(10, 11LL, 12LL, 13LL, 14LL, 15LL, 16LL, 17LL, 0x123456789abcdef0LL);
 
-	に対して f の先頭アドレスでは
+	At the start address of `f', registers and stack layout become
+	like below:
 
 	r14 = 10,
 	r15 = 11, r16 = 0, r17 = 12, r18 = 0, r19 = 13, r20 = 0,
@@ -122,20 +125,21 @@ PRU の ABI
 	|     0x12345678     |
 	+--------------------+ +8
 
-	のようになっている.
-	函数の戻り値は r14, r15 にセットされる.
+	Function return value is set to r14 and r15.
 
-(*7) 浮動少数点数を引数にとる函数, 返す函数
+(*7) Floating point number argument and return value
 
         sizeof(float) = 4
 	sizeof(double) = sizeof(long double) = 8
 
-	PRU には FPU がないので浮動少数点数演算はソフトウェアが行なう.
-	float に対しては (*5) の規則が, double, long double に対しては (*6) の
-	規則が適用される.
+	PRU doesn't have FPU so software calculates floating point number
+	operation.
+	For `float', same with (*5). For `double' or `long double' same
+	with (*6).
 
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*8) Structure argument and return value
 
-        構造体を引数にとる函数を呼び出すとき, レジスタは使用されず, 引数の値をスタックにコピ
-	ーする.
-	構造体を返す函数を呼び出すとき戻り値を格納するアドレスが r14 にセットされる.
+	When calling function which takes structure type argument, no register
+	is used, argument value is copied to stack.
+	When calling function which returns structure type, r14 is set
+	to the address for the return value.
