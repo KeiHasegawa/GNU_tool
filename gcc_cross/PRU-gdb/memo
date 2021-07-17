@@ -3,3 +3,39 @@
 	call %label(func)
 
 を next 実行したときステップインしてしまっている.
+
+
+同じ現象は h8300-elf-gdb でも起っている.
+
+aarch64-elf-gdb : OK
+arm-elf-gdb     : OK
+avr-elf-gdb     : OK
+frv-elf-gdb     : NG
+ft32-elf-gdb    : NG
+h8300-elf-gdb   : NG
+iq2000-elf-gdb  : NG
+m32r-elf-gdb    : NG
+mips-elf-gdb    : OK
+mn10300-elf-gdb : OK
+msp430-elf-gdb  : OK
+ppc-elf-gdb     : NG
+pru-elf-gdb     : NG
+rl78-elf-gdb    : NG
+sh-elf-gdb      : ??   test_sh.004
+v850-elf-gdb    : NG
+
+
+sh-elf-gdb
+
+以下のようになる.
+
+Type "apropos word" to search for commands related to "word"...
+Reading symbols from test004.elf...
+Connected to the simulator.
+Loading section .text, size 0x18 lma 0x100
+Debugger aborted
+
+これは以前も見た. linux を再起動して回避した記憶がある. メモリを確保できなかった
+ときに, このように確保できない領域にアクセスしてエラーしていた.
+おそらくシミュレーション時の巨大な領域を確保しているのかも.
+
