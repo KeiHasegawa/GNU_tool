@@ -1,0 +1,327 @@
+xxx_prologue_this_id の調査 
+
+この函数はブレークポイントにヒットしたときに呼び出され, そして next コマンド
+で実行を再開させる判定に影響を与えることが判明している.
+
+そこで正しく動作している AARCH64(ARM64) の gdb でどのように実装されているか
+調べてみる.
+
+static void
+aarch64_prologue_this_id (struct frame_info *this_frame,
+			  void **this_cache, struct frame_id *this_id)
+{
+
+簡単なテストプログラム
+
+	.text
+start:
+	bl func
+	nop
+
+func:
+        ret
+
+でこれを 0x100 番地に配置して bl 命令で next を実行するというもの.
+最初のブレークポイントのヒットは start にセットされた run コマンドに
+よるもの. 時系列で示すと以下のようになる:
+
+         b start
+         run
+
+                   命令制限なしで実行
+		   
+                   ブレークポイントにヒット
+                                       -----> aarch64_prologue_this_id() 呼び出し
+
+         next
+	 
+	           1 命令実行
+		   
+	           実行停止
+                                       -----> aarch64_prologue_this_id() 呼び出し
+				       
+		   2 つの内部ブレークポイントをセット		       
+                   実行再開
+
+
+以下の 2 つの函数
+
+aarch64_prologue_this_id
+aarch64_prologue_prev_register
+
+と
+
+run_command
+next_command
+sim_resume
+sim_stop_reason
+
+がどのように呼び出されるか確かめてみた:
+
+(gdb) run
+Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.aarch64-elf/gdb/gdb -q -x gdbcom test003.elf
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib/libthread_db.so.1".
+warning: File "/usr/local/lib/libstdc++.so.6.0.28-gdb.py" auto-loading has been declined by your `auto-load safe-path' set to "$debugdir:$datadir/auto-load".
+[Detaching after vfork from child process 22210]
+[New Thread 0xb7733b70 (LWP 22211)]
+[New Thread 0xb6dffb70 (LWP 22212)]
+Reading symbols from test003.elf...
+pre-prompt-for-continue
+--Type <RET> for more, q to quit, c to continue without paging--ch64-elf/gdb/infcmd.c:546:16753:beg:0x81fad2e
+(gdb) up
+#1  0x0810274f in do_const_cfunc (c=0x8cab020, args=0x0, from_tty=0) at cli/cli-decode.c:95
+(gdb) down
+#0  run_command (args=0x0, from_tty=0) at infcmd.c:546
+まず run コマンドがきている
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 5, sim_resume (sd=0x8d5d098, step=0, siggnal=0) at ./../common/sim-resume.c:41
+run コマンドに対する sim_resume がきている
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 6, sim_stop_reason (sd=0x8d5d098, reason=0xbfffed04, sigrc=0xbfffed08) at ./../common/sim-reason.c:30
+sim_resume の結果停止したので sim_stop_reason がきている
+(gdb) c
+Continuing.
+
+
+Thread 1 "gdb" hit Breakpoint 1, aarch64_prologue_this_id (this_frame=0x8d3c274, this_cache=0x8d3c280, this_id=0x8d3c2b0) at aarch64-tdep.c:1056
+ここで frame の問い合わせ
+(gdb) fin
+Run till exit from #0  aarch64_prologue_this_id (this_frame=0x8d3c274, this_cache=0x8d3c280, this_id=0x8d3c2b0) at aarch64-tdep.c:1056
+0x081cd617 in compute_frame_id (fi=0x8d3c274) at frame.c:590
+(gdb) p/x fi->this_id.value
+$20 = {stack_addr = 0x7ffff00, code_addr = 0x100, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+0x100 がここでは返る. 停止したアドレスとたまたま一致しているが, 必ずしもそうではない.
+だからシミュレータの保持する pc を参照するとかではなくて, this_frame 引数から
+結果を計算する必要がある.
+(gdb) c
+Continuing.
+Breakpoint 1, start () at test003.S:3
+3		bl func
+
+Thread 1 "gdb" hit Breakpoint 4, next_command (count_string=0x0, from_tty=0) at infcmd.c:801
+ここで next コマンド
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 5, sim_resume (sd=0x8d5d098, step=1, siggnal=0) at ./../common/sim-resume.c:41
+next コマンドに対する sim_resume. 1 命令のみ実行.
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 6, sim_stop_reason (sd=0x8d5d098, reason=0xbfffed04, sigrc=0xbfffed08) at ./../common/sim-reason.c:30
+上の sim_resume が停止したので sim_stop_reason で問い合わせ
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 1, aarch64_prologue_this_id (this_frame=0x8d3c274, this_cache=0x8d3c280, this_id=0x8d3c2b0) at aarch64-tdep.c:1056
+ここで frame の問い合わせ
+(gdb) fin
+Run till exit from #0  aarch64_prologue_this_id (this_frame=0x8d3c274, this_cache=0x8d3c280, this_id=0x8d3c2b0) at aarch64-tdep.c:1056
+0x081cd617 in compute_frame_id (fi=0x8d3c274) at frame.c:590
+(gdb) p/x fi->this_id.value
+$21 = {stack_addr = 0x7ffff00, code_addr = 0x108, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+やはり停止したアドレス 0x108. これは ret 命令のアドレス. たまたま一致している.
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 2, aarch64_prologue_prev_register (this_frame=0x8d3c274, this_cache=0x8d3c280, prev_regnum=32) at aarch64-tdep.c:1071
+ここで 32 番(PC)の問い合わせ.
+(gdb) fin
+Run till exit from #0  aarch64_prologue_prev_register (this_frame=0x8d3c274, this_cache=0x8d3c280, prev_regnum=32) at aarch64-tdep.c:1071
+
+Thread 1 "gdb" hit Breakpoint 2, aarch64_prologue_prev_register (this_frame=0x8d3c274, this_cache=0x8d3c280, prev_regnum=30) at aarch64-tdep.c:1071
+32 番(PC) の結果を得るために 30 番(LR) に対して再帰的に呼ばれている
+(gdb) fin
+Run till exit from #0  aarch64_prologue_prev_register (this_frame=0x8d3c274, this_cache=0x8d3c280, prev_regnum=30) at aarch64-tdep.c:1071
+0x081ced57 in frame_unwind_register_value (next_frame=0x8d3c274, regnum=30) at frame.c:1279
+Value returned is $22 = (value *) 0x8d62338
+(gdb) n
+(gdb) p/x *value
+$23 = {lval = 0x2, modifiable = 0x1, lazy = 0x1, initialized = 0x1, 
+  stack = 0x0, location = {address = 0x1e, reg = {regnum = 0x1e, 
+      next_frame_id = {stack_addr = 0x0, code_addr = 0x0, special_addr = 0x0, 
+        stack_status = 0x2, code_addr_p = 0x0, special_addr_p = 0x1, 
+        artificial_depth = 0x0}}, internalvar = 0x1e, xm_worker = 0x1e, 
+    computed = {funcs = 0x1e, closure = 0x0}}, offset = 0x0, bitsize = 0x0, 
+  bitpos = 0x0, reference_count = 0x1, parent = {m_obj = 0x0}, 
+  type = 0x8cf2278, enclosing_type = 0x8cf2278, embedded_offset = 0x0, 
+  pointed_to_offset = 0x0, contents = {
+    _M_t = {<std::__uniq_ptr_impl<unsigned char, gdb::xfree_deleter<unsigned char> >> = {
+        _M_t = {<std::_Tuple_impl<0, unsigned char*, gdb::xfree_deleter<unsigned char> >> = {<std::_Tuple_impl<1, gdb::xfree_deleter<unsigned char> >> = {<std::_Head_base<1, gdb::xfree_deleter<unsigned char>, true>> = {<gdb::xfree_deleter<unsigned char>> = {<No data fields>}, <No data fields>}, <No data fields>}, <std::_Head_base<0, unsigned char*, false>> = {
+_M_head_impl = 0x0}, <No data fie--Type <RET> for more, q to quit, c to continue without paging--
+lds>}, <No data fields>}}, <No data fields>}}, 
+  unavailable = {<std::_Vector_base<range, std::allocator<range> >> = {
+      _M_impl = {<std::allocator<range>> = {<__gnu_cxx::new_allocator<range>> = {<No data fields>}, <No data fields>}, <std::_Vector_base<range, std::allocator<range> >::_Vector_impl_data> = {_M_start = 0x0, _M_finish = 0x0, 
+          _M_end_of_storage = 0x0}, <No data fields>}}, <No data fields>}, 
+  optimized_out = {<std::_Vector_base<range, std::allocator<range> >> = {
+      _M_impl = {<std::allocator<range>> = {<__gnu_cxx::new_allocator<range>> = {<No data fields>}, <No data fields>}, <std::_Vector_base<range, std::allocator<range> >::_Vector_impl_data> = {_M_start = 0x0, _M_finish = 0x0, 
+          _M_end_of_storage = 0x0}, <No data fields>}}, <No data fields>}}
+(gdb) fin
+Run till exit from #0  frame_unwind_register_value (next_frame=0x8d3c274, regnum=30) at frame.c:1283
+0x081cf139 in frame_unwind_register_unsigned (next_frame=0x8d3c274, regnum=30) at frame.c:1370
+Value returned is $24 = (value *) 0x8d62338
+(gdb) 
+Run till exit from #0  0x081cf139 in frame_unwind_register_unsigned (next_frame=0x8d3c274, regnum=30) at frame.c:1370
+0x0807914e in aarch64_prologue_prev_register (this_frame=0x8d3c274, this_cache=0x8d3c280, prev_regnum=32) at aarch64-tdep.c:1082
+Value returned is $25 = 260
+32 番(PC) の問い合わせに対して LR を参照してそれが 260 = 0x104 だと判明.
+(gdb) n
+(gdb) p/x lr
+$26 = 0x104
+(gdb) fin
+Run till exit from #0  aarch64_prologue_prev_register (this_frame=0x8d3c274, this_cache=0x8d3c280, prev_regnum=32) at aarch64-tdep.c:1084
+0x081ced57 in frame_unwind_register_value (next_frame=0x8d3c274, regnum=32) at frame.c:1279
+Value returned is $27 = (value *) 0x8d62338
+(gdb) n
+(gdb) p/x *value
+$28 = {lval = 0x0, modifiable = 0x1, lazy = 0x0, initialized = 0x1, 
+  stack = 0x0, location = {address = 0x0, reg = {regnum = 0x0, 
+      next_frame_id = {stack_addr = 0x0, code_addr = 0x0, special_addr = 0x0, 
+        stack_status = 0x0, code_addr_p = 0x0, special_addr_p = 0x0, 
+        artificial_depth = 0x0}}, internalvar = 0x0, xm_worker = 0x0, 
+    computed = {funcs = 0x0, closure = 0x0}}, offset = 0x0, bitsize = 0x0, 
+  bitpos = 0x0, reference_count = 0x1, parent = {m_obj = 0x0}, 
+  type = 0x8d4e724, enclosing_type = 0x8d4e724, embedded_offset = 0x0, 
+  pointed_to_offset = 0x0, contents = {
+    _M_t = {<std::__uniq_ptr_impl<unsigned char, gdb::xfree_deleter<unsigned char> >> = {
+        _M_t = {<std::_Tuple_impl<0, unsigned char*, gdb::xfree_deleter<unsigned char> >> = {<std::_Tuple_impl<1, gdb::xfree_deleter<unsigned char> >> = {<std::_Head_base<1, gdb::xfree_deleter<unsigned char>, true>> = {<gdb::xfree_deleter<unsigned char>> = {<No data fields>}, <No data fields>}, <No data fields>}, <std::_Head_base<0, unsigned char*, false>> = {
+_M_head_impl = 0x8d22d08}, <No da--Type <RET> for more, q to quit, c to continue without paging--
+ta fields>}, <No data fields>}}, <No data fields>}}, 
+  unavailable = {<std::_Vector_base<range, std::allocator<range> >> = {
+      _M_impl = {<std::allocator<range>> = {<__gnu_cxx::new_allocator<range>> = {<No data fields>}, <No data fields>}, <std::_Vector_base<range, std::allocator<range> >::_Vector_impl_data> = {_M_start = 0x0, _M_finish = 0x0, 
+          _M_end_of_storage = 0x0}, <No data fields>}}, <No data fields>}, 
+  optimized_out = {<std::_Vector_base<range, std::allocator<range> >> = {
+      _M_impl = {<std::allocator<range>> = {<__gnu_cxx::new_allocator<range>> = {<No data fields>}, <No data fields>}, <std::_Vector_base<range, std::allocator<range> >::_Vector_impl_data> = {_M_start = 0x0, _M_finish = 0x0, 
+          _M_end_of_storage = 0x0}, <No data fields>}}, <No data fields>}}
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 1, aarch64_prologue_this_id (this_frame=0x8d3cdc4, this_cache=0x8d3cdd0, this_id=0x8d3ce00) at aarch64-tdep.c:1056
+ここで frame の問い合わせ
+(gdb) fin
+Run till exit from #0  aarch64_prologue_this_id (this_frame=0x8d3cdc4, this_cache=0x8d3cdd0, this_id=0x8d3ce00) at aarch64-tdep.c:1056
+
+Thread 1 "gdb" hit Breakpoint 2, aarch64_prologue_prev_register (this_frame=0x8d3c274, this_cache=0x8d3c280, prev_regnum=31) at aarch64-tdep.c:1071
+そして frame の問い合わせに 31 番(SP) に対してこの函数が呼ばれている.
+(gdb) fin
+Run till exit from #0  aarch64_prologue_prev_register (this_frame=0x8d3c274, this_cache=0x8d3c280, prev_regnum=31) at aarch64-tdep.c:1071
+0x081ced57 in frame_unwind_register_value (next_frame=0x8d3c274, regnum=31) at frame.c:1279
+Value returned is $29 = (value *) 0x8d63378
+(gdb) n
+(gdb) p/ *value
+$30 = {lval = 0x0, modifiable = 0x1, lazy = 0x0, initialized = 0x1, 
+  stack = 0x0, location = {address = 0x0, reg = {regnum = 0x0, 
+      next_frame_id = {stack_addr = 0x0, code_addr = 0x0, special_addr = 0x0, 
+        stack_status = 0x0, code_addr_p = 0x0, special_addr_p = 0x0, 
+        artificial_depth = 0x0}}, internalvar = 0x0, xm_worker = 0x0, 
+    computed = {funcs = 0x0, closure = 0x0}}, offset = 0x0, bitsize = 0x0, 
+  bitpos = 0x0, reference_count = 0x1, parent = {m_obj = 0x0}, 
+  type = 0x8d4e698, enclosing_type = 0x8d4e698, embedded_offset = 0x0, 
+  pointed_to_offset = 0x0, contents = {
+    _M_t = {<std::__uniq_ptr_impl<unsigned char, gdb::xfree_deleter<unsigned char> >> = {
+        _M_t = {<std::_Tuple_impl<0, unsigned char*, gdb::xfree_deleter<unsigned char> >> = {<std::_Tuple_impl<1, gdb::xfree_deleter<unsigned char> >> = {<std::_Head_base<1, gdb::xfree_deleter<unsigned char>, true>> = {<gdb::xfree_deleter<unsigned char>> = {<No data fields>}, <No data fields>}, <No data fields>}, <std::_Head_base<0, unsigned char*, false>> = {
+_M_head_impl = 0x8d22d08}, <No da--Type <RET> for more, q to quit, c to continue without paging--
+ta fields>}, <No data fields>}}, <No data fields>}}, 
+  unavailable = {<std::_Vector_base<range, std::allocator<range> >> = {
+      _M_impl = {<std::allocator<range>> = {<__gnu_cxx::new_allocator<range>> = {<No data fields>}, <No data fields>}, <std::_Vector_base<range, std::allocator<range> >::_Vector_impl_data> = {_M_start = 0x0, _M_finish = 0x0, 
+          _M_end_of_storage = 0x0}, <No data fields>}}, <No data fields>}, 
+  optimized_out = {<std::_Vector_base<range, std::allocator<range> >> = {
+      _M_impl = {<std::allocator<range>> = {<__gnu_cxx::new_allocator<range>> = {<No data fields>}, <No data fields>}, <std::_Vector_base<range, std::allocator<range> >::_Vector_impl_data> = {_M_start = 0x0, _M_finish = 0x0, 
+          _M_end_of_storage = 0x0}, <No data fields>}}, <No data fields>}}
+(gdb) fin
+Run till exit from #0  frame_unwind_register_value (next_frame=0x8d3c274, regnum=31) at frame.c:1283
+0x081cf139 in frame_unwind_register_unsigned (next_frame=0x8d3c274, regnum=31) at frame.c:1370
+Value returned is $31 = (value *) 0x8d63378
+(gdb) 
+Run till exit from #0  0x081cf139 in frame_unwind_register_unsigned (next_frame=0x8d3c274, regnum=31) at frame.c:1370
+0x081cf243 in get_frame_register_unsigned (frame=0x8d3cdc4, regnum=31) at frame.c:1395
+Value returned is $32 = 134217472
+(gdb) 
+Run till exit from #0  0x081cf243 in get_frame_register_unsigned (frame=0x8d3cdc4, regnum=31) at frame.c:1395
+0x08078dc9 in aarch64_make_prologue_cache_1 (this_frame=0x8d3cdc4, cache=0x8d3ce3c) at aarch64-tdep.c:978
+Value returned is $33 = 134217472
+(gdb) 
+Run till exit from #0  0x08078dc9 in aarch64_make_prologue_cache_1 (this_frame=0x8d3cdc4, cache=0x8d3ce3c) at aarch64-tdep.c:978
+0x08078f29 in aarch64_make_prologue_cache (this_frame=0x8d3cdc4, this_cache=0x8d3cdd0) at aarch64-tdep.c:1014
+(gdb) 
+Run till exit from #0  0x08078f29 in aarch64_make_prologue_cache (this_frame=0x8d3cdc4, this_cache=0x8d3cdd0) at aarch64-tdep.c:1014
+0x0807903f in aarch64_prologue_this_id (this_frame=0x8d3cdc4, this_cache=0x8d3cdd0, this_id=0x8d3ce00) at aarch64-tdep.c:1056
+Value returned is $34 = (aarch64_prologue_cache *) 0x8d3ce3c
+(gdb) fin
+Run till exit from #0  0x0807903f in aarch64_prologue_this_id (this_frame=0x8d3cdc4, this_cache=0x8d3cdd0, this_id=0x8d3ce00) at aarch64-tdep.c:1056
+0x081cd617 in compute_frame_id (fi=0x8d3cdc4) at frame.c:590
+(gdb) p/x fi->this_id.value
+$35 = {stack_addr = 0x7ffff00, code_addr = 0x100, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+結局これを返している. 0x100. 現在は ret 命令のある 0x108 で停止しているはずだから pc とは
+必ずしも一致しない.
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 5, sim_resume (sd=0x8d5d098, step=0, siggnal=0) at ./../common/sim-resume.c:41
+そこで ret 命令から実行を再開するために sim_resume が呼ばれる.
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 6, sim_stop_reason (sd=0x8d5d098, reason=0xbfffed04, sigrc=0xbfffed08) at ./../common/sim-reason.c:30
+上の sim_resume が停止したので理由を sim_stop_reason で問い合わせている.
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 1, aarch64_prologue_this_id (this_frame=0x8d3c274, this_cache=0x8d3c280, this_id=0x8d3c2b0) at aarch64-tdep.c:1056
+frame の問い合わせ
+(gdb) fin
+Run till exit from #0  aarch64_prologue_this_id (this_frame=0x8d3c274, this_cache=0x8d3c280, this_id=0x8d3c2b0) at aarch64-tdep.c:1056
+0x081cd617 in compute_frame_id (fi=0x8d3c274) at frame.c:590
+(gdb) p/x fi->this_id.value
+$36 = {stack_addr = 0x7ffff00, code_addr = 0x100, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+0x100 が返っている. 現在の pc は nop 命令のある 0x104 だから pc とは必ずしも一致しない.
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 1, aarch64_prologue_this_id (this_frame=0x8d3c274, this_cache=0x8d3c280, this_id=0x8d3c2b0) at aarch64-tdep.c:1056
+frame の問い合わせ
+(gdb) fin
+Run till exit from #0  aarch64_prologue_this_id (this_frame=0x8d3c274, this_cache=0x8d3c280, this_id=0x8d3c2b0) at aarch64-tdep.c:1056
+0x081cd617 in compute_frame_id (fi=0x8d3c274) at frame.c:590
+(gdb) p/x fi->this_id.value
+$37 = {stack_addr = 0x7ffff00, code_addr = 0x100, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+ 0x100 が返っている.
+(gdb) c
+Continuing.
+4		nop
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
+[Thread 0xb6dffb70 (LWP 22212) exited]
+[Thread 0xb7733b70 (LWP 22211) exited]
+[Inferior 1 (process 22132) exited normally]
+(gdb)
+
+つまりこのプログラムには
+
+	.text
+start:
+	bl func
+	nop
+
+func:
+        ret
+
+2 つのフレームがあって, ざっくりというと 1 つは 0x100, もう 1 つは 0x108 ということ.
