@@ -1,0 +1,123 @@
+FT32 の hello world
+
+インストール確認で行なった hello world は変数の初期値をコピーしていな
+かったらしく puts が呼び出された状態で引数が 0 になっていたらしい.
+
+改めて自前のスタートアップルーチンで試してみた.
+
+しかし _malloc_r の呼び出しで無限ループしているっぽい.
+
+    for (victim = last(bin); victim != bin; victim = victim->bk)
+    {
+
+このループ
+
+bin    = 0x00804bd0
+victim = 0xff804bd0
+
+なのでどこかで victim の上位バイトが 0xff に化けている可能性がある.
+
+ビルドのログを確認した:
+
+% make
+...
+make[5]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/newlib/libc/stdlib' に入ります
+...
+ft32-elf-gcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/newlib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/newlib/libc/include -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/libgloss/ft32 -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/libgloss/libnosys -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/libgloss/ft32    -DPACKAGE_NAME=\"newlib\" -DPACKAGE_TARNAME=\"newlib\" -DPACKAGE_VERSION=\"4.1.0\" -DPACKAGE_STRING=\"newlib\ 4.1.0\" -DPACKAGE_BUGREPORT=\"\" -DPACKAGE_URL=\"\" -I. -I../../../.././newlib/libc/stdlib -fno-builtin -DPREFER_SIZE_OVER_SPEED -DHAVE_INIT_FINI      -g -O0 -DINTERNAL_NEWLIB -DDEFINE_MALLOC -c ../../../.././newlib/libc/stdlib/mallocr.c -o lib_a-mallocr.o
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/newlib/libc/stdlib
+% ft32-elf-gcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/newlib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/newlib/libc/include -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/libgloss/ft32 -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/libgloss/libnosys -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/libgloss/ft32    -DPACKAGE_NAME=\"newlib\" -DPACKAGE_TARNAME=\"newlib\" -DPACKAGE_VERSION=\"4.1.0\" -DPACKAGE_STRING=\"newlib\ 4.1.0\" -DPACKAGE_BUGREPORT=\"\" -DPACKAGE_URL=\"\" -I. -I../../../.././newlib/libc/stdlib -fno-builtin -DPREFER_SIZE_OVER_SPEED -DHAVE_INIT_FINI      -g -O0 -DINTERNAL_NEWLIB -DDEFINE_MALLOC -E ../../../.././newlib/libc/stdlib/mallocr.c -o lib_a-mallocr.i
+
+lib_a-mallocr.i
+
+から以下を発見
+
+void* _malloc_r(struct _reent *reent_ptr, size_t bytes)
+
+
+
+{
+...
+    idx = (((((unsigned long)(nb)) >> 9) == 0) ? (((unsigned long)(nb)) >> 3): ((((unsigned long)(nb)) >> 9) <= 4) ? 56 + (((unsigned long)(nb)) >> 6): ((((unsigned long)(nb)) >> 9) <= 20) ? 91 + (((unsigned long)(nb)) >> 9): ((((unsigned long)(nb)) >> 9) <= 84) ? 110 + (((unsigned long)(nb)) >> 12): ((((unsigned long)(nb)) >> 9) <= 340) ? 119 + (((unsigned long)(nb)) >> 15): ((((unsigned long)(nb)) >> 9) <= 1364) ? 124 + (((unsigned long)(nb)) >> 18): 126);
+    bin = ((mbinptr)((char*)&(__malloc_av_[2*(idx) + 2]) - 2*(sizeof(size_t))));
+
+    for (victim = ((bin)->bk); victim != bin; victim = victim->bk)
+
+ということは bin->bk が壊れている可能性がある.
+
+
+(ft32-elf-gdb) p __malloc_av_
+$3 = {0x800000, 0x800000, 0xff804990, 0xff804990, 0xff804998, 0xff804998, 
+  0xff8049a0, 0xff8049a0, 0xff8049a8, 0xff8049a8, 0xff8049b0, 0xff8049b0, 
+  0xff8049b8, 0xff8049b8, 0xff8049c0, 0xff8049c0, 0xff8049c8, 0xff8049c8, 
+  0xff8049d0, 0xff8049d0, 0xff8049d8, 0xff8049d8, 0xff8049e0, 0xff8049e0, 
+  0xff8049e8, 0xff8049e8, 0xff8049f0, 0xff8049f0, 0xff8049f8, 0xff8049f8, 
+  0xff804a00, 0xff804a00, 0xff804a08, 0xff804a08, 0xff804a10, 0xff804a10, 
+...
+
+なるほど, 化けている.
+
+lib_a-mallocr.i
+
+から以下を発見
+
+ mbinptr __malloc_av_[128 * 2 + 2] = {
+ 0, 0,
+ ((mbinptr)((char*)&(__malloc_av_[2*(0) + 2]) - 2*(sizeof(size_t)))), ((mbinptr)
+
+
+(ft32-elf-gdb) ptype mbinptr
+type = struct malloc_chunk {
+    size_t prev_size;
+    size_t size;
+    struct malloc_chunk *fd;
+    struct malloc_chunk *bk;
+} *
+(ft32-elf-gdb) p/x (char*)&(__malloc_av_[2*(0) + 2])
+$5 = 0x804998
+(ft32-elf-gdb) p/x (char*)&(__malloc_av_[2*(0) + 2]) - 2*(sizeof(size_t))
+(ft32-elf-gdb) p/x (char*)&(__malloc_av_[2*(0) + 2]) - 2*(sizeof(size_t))
+$6 = 0x804990
+(ft32-elf-gdb) p/x ((mbinptr)((char*)&(__malloc_av_[2*(0) + 2]) - 2*(sizeof(size_t))))
+$7 = 0x804990
+(ft32-elf-gdb)
+
+ここはデバッガから見て合っている. しかし今大事なのはデバッガの解釈ではない.
+
+問題点を整理すると __malloc_av_ という配列が定義されていてその初期値の
+期待値 0x00804990 が 0xff804990 のように上位 1 バイトが期待しないものになっている.
+
+
+以下を試してみた:
+
+void* a[3] = { (void*)0x800000, (void*)0x800000, &a[2] };
+
+int main()
+{
+  return 0;
+}
+
+
+Breakpoint 3, main () at hello.c:5
+(ft32-elf-gdb) p a
+$1 = {0x800000, 0x800000, 0xff800144}
+(ft32-elf-gdb) p &a
+$2 = (void *(*)[3]) 0x80013c
+(ft32-elf-gdb)
+
+やはり a[2] の値が間違えている.
+
+ft32-elf-gcc は以下を生成している:
+
+a:
+	.long	8388608
+	.long	8388608
+	.long	a-0x800000+8
+
+これは一体...変数 a のアドレスを参照するときコンパイラが意図して -0x800000
+のようにしている.
+
+仮に変数を 0xff800000 に配置できればプログラムが期待通り動作しそうに思える.
+
+回避策があるのかもしれないが, 釈然としない. ステータスとしてはコンパイラの
+変数のアドレス参照に問題があるということにしておく.

@@ -1,0 +1,115 @@
+FT32 hello world
+
+At install verification, "hello world" program did not copy
+initial values to its area so that `puts' was called with `0'.
+
+Again I tried to run "hello world" program:
+
+I noticed that `_malloc_r' entered infinit loop:
+
+    for (victim = last(bin); victim != bin; victim = victim->bk)
+    {
+
+
+bin    = 0x00804bd0
+victim = 0xff804bd0
+
+I guessed that `victim' value was corruped somewhere.
+I confirmed that newlib build log and found:
+
+% make
+...
+make[5]: Entering directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/newlib/libc/stdlib'
+...
+ft32-elf-gcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/newlib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/newlib/libc/include -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/libgloss/ft32 -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/libgloss/libnosys -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/libgloss/ft32    -DPACKAGE_NAME=\"newlib\" -DPACKAGE_TARNAME=\"newlib\" -DPACKAGE_VERSION=\"4.1.0\" -DPACKAGE_STRING=\"newlib\ 4.1.0\" -DPACKAGE_BUGREPORT=\"\" -DPACKAGE_URL=\"\" -I. -I../../../.././newlib/libc/stdlib -fno-builtin -DPREFER_SIZE_OVER_SPEED -DHAVE_INIT_FINI      -g -O0 -DINTERNAL_NEWLIB -DDEFINE_MALLOC -c ../../../.././newlib/libc/stdlib/mallocr.c -o lib_a-mallocr.o
+
+Then I did like below:
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/newlib/libc/stdlib
+% ft32-elf-gcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/newlib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/newlib/libc/include -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/libgloss/ft32 -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/libgloss/libnosys -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/libgloss/ft32    -DPACKAGE_NAME=\"newlib\" -DPACKAGE_TARNAME=\"newlib\" -DPACKAGE_VERSION=\"4.1.0\" -DPACKAGE_STRING=\"newlib\ 4.1.0\" -DPACKAGE_BUGREPORT=\"\" -DPACKAGE_URL=\"\" -I. -I../../../.././newlib/libc/stdlib -fno-builtin -DPREFER_SIZE_OVER_SPEED -DHAVE_INIT_FINI      -g -O0 -DINTERNAL_NEWLIB -DDEFINE_MALLOC -E ../../../.././newlib/libc/stdlib/mallocr.c -o lib_a-mallocr.i
+
+
+and found below from `lib_a-mallocr.i':
+
+
+
+void* _malloc_r(struct _reent *reent_ptr, size_t bytes)
+
+
+
+{
+...
+    idx = (((((unsigned long)(nb)) >> 9) == 0) ? (((unsigned long)(nb)) >> 3): ((((unsigned long)(nb)) >> 9) <= 4) ? 56 + (((unsigned long)(nb)) >> 6): ((((unsigned long)(nb)) >> 9) <= 20) ? 91 + (((unsigned long)(nb)) >> 9): ((((unsigned long)(nb)) >> 9) <= 84) ? 110 + (((unsigned long)(nb)) >> 12): ((((unsigned long)(nb)) >> 9) <= 340) ? 119 + (((unsigned long)(nb)) >> 15): ((((unsigned long)(nb)) >> 9) <= 1364) ? 124 + (((unsigned long)(nb)) >> 18): 126);
+    bin = ((mbinptr)((char*)&(__malloc_av_[2*(idx) + 2]) - 2*(sizeof(size_t))));
+
+    for (victim = ((bin)->bk); victim != bin; victim = victim->bk)
+
+i.e. `bin->bk' might be corruped.
+
+
+(ft32-elf-gdb) p __malloc_av_
+$3 = {0x800000, 0x800000, 0xff804990, 0xff804990, 0xff804998, 0xff804998, 
+  0xff8049a0, 0xff8049a0, 0xff8049a8, 0xff8049a8, 0xff8049b0, 0xff8049b0, 
+  0xff8049b8, 0xff8049b8, 0xff8049c0, 0xff8049c0, 0xff8049c8, 0xff8049c8, 
+  0xff8049d0, 0xff8049d0, 0xff8049d8, 0xff8049d8, 0xff8049e0, 0xff8049e0, 
+  0xff8049e8, 0xff8049e8, 0xff8049f0, 0xff8049f0, 0xff8049f8, 0xff8049f8, 
+  0xff804a00, 0xff804a00, 0xff804a08, 0xff804a08, 0xff804a10, 0xff804a10, 
+...
+
+I see. They were corrupted.
+
+I also found from `lib_a-mallocr.i' below:
+
+ mbinptr __malloc_av_[128 * 2 + 2] = {
+ 0, 0,
+ ((mbinptr)((char*)&(__malloc_av_[2*(0) + 2]) - 2*(sizeof(size_t)))), ((mbinptr)
+
+
+(ft32-elf-gdb) ptype mbinptr
+type = struct malloc_chunk {
+    size_t prev_size;
+    size_t size;
+    struct malloc_chunk *fd;
+    struct malloc_chunk *bk;
+} *
+(ft32-elf-gdb) p/x (char*)&(__malloc_av_[2*(0) + 2])
+$5 = 0x804998
+(ft32-elf-gdb) p/x (char*)&(__malloc_av_[2*(0) + 2]) - 2*(sizeof(size_t))
+(ft32-elf-gdb) p/x (char*)&(__malloc_av_[2*(0) + 2]) - 2*(sizeof(size_t))
+$6 = 0x804990
+(ft32-elf-gdb) p/x ((mbinptr)((char*)&(__malloc_av_[2*(0) + 2]) - 2*(sizeof(size_t))))
+$7 = 0x804990
+(ft32-elf-gdb)
+
+OK. `ft32-elf-gdb' works well. But it doesn't matter with this phenomenon.
+
+I tried simple program like below:
+
+void* a[3] = { (void*)0x800000, (void*)0x800000, &a[2] };
+
+int main()
+{
+  return 0;
+}
+
+
+Breakpoint 3, main () at hello.c:5
+(ft32-elf-gdb) p a
+$1 = {0x800000, 0x800000, 0xff800144}
+(ft32-elf-gdb) p &a
+$2 = (void *(*)[3]) 0x80013c
+(ft32-elf-gdb)
+
+The value of `a[2]' is wrong.
+
+`ft32-elf-gcc' generates like below:
+
+a:
+	.long	8388608
+	.long	8388608
+	.long	a-0x800000+8
+
+If the variables are located at 0xff800000, this program may work well.
+
+There may exist WA. I think `ft32-elf-gcc' has the problem
+that the code which refers to the variable address is not correct.

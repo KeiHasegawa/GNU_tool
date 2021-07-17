@@ -1,0 +1,245 @@
+AVR ABI
+
+(*0) Instruction memory, data memory, memory mapped register and stack pointer
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long long' argument and return value
+(*7) Floating point number argument and return value
+(*8) Structure argument and return value
+
+
+(*0) Instruction memory, data memory, memory mapped register and stack pointer
+
+        Refer to "AVR programing"
+
+(*1) Function call
+
+	rcall func
+
+	Pseudo code
+
+	memory[sp-1] = (`rcall' instruction next address)
+	sp -= 2;
+	pc = func
+
+	Note that fist wirte the address to memory and update
+	stack pointer. It's not error that the stack pointer
+	points to the delicate address.
+	I confirmed that AVR simulator wrote to here
+	not
+
+	(`rcall' instruction next address)
+
+	but
+
+	(`rcall' instruction next address) >> 1
+
+	in big endian format. AVR itself is a little endian
+	architecture. I guessed that AVR simulator
+	implementation was not correct at the view point of maintaining
+	program counter but it was consistent.
+	And more
+
+	(avr-elf-gdb) info register
+
+	also showed program counter original value.
+
+	This means that AVR simulator is implemented intentionally
+	in this way, or that may be the specification of AVR architechtre.
+
+(*2) Return from function
+
+	ret
+
+	Pseudo code
+
+	sp += 2;
+	pc = memory[sp-1]
+
+(*3) Prologue
+
+	push r28
+	push r29
+	in r28,__SP_L__
+	in r29,__SP_H__
+	subi r28,-128
+	sbc r29,__zero_reg__
+	in __tmp_reg__,__SREG__
+	cli
+	out __SP_H__,r29
+	out __SREG__,__tmp_reg__
+	out __SP_L__,r28
+
+	Above is prologue for the function which uses 128 bytes local area.
+
+        +---------------------+ <- sp_{new}
+        |                     |
+        |                     |	
+        |     local area      |
+        |                     |
+        |                     |
+        +---------------------+
+	|         r29         |
+        +---------------------+ <- sp_{old}
+	|         r28         |
+        +---------------------+
+	|    reurn            |
+        +---------------------+
+	|          address    |	
+        +---------------------+
+
+(*4) Epilogue
+
+	subi r28,-128
+	sbci r29,-1
+	in __tmp_reg__,__SREG__
+	cli
+	out __SP_H__,r29
+	out __SREG__,__tmp_reg__
+	out __SP_L__,r28
+	pop r29
+	pop r28
+	ret
+
+	Above is epilogue for the function which uses 128 bytes local area.
+	sp, r29 and r28 are recovered and return to callee.
+
+(*5) Normal argument and return value
+
+	sizeof(int) = 2
+
+	1st : r24, r25
+	2nd : r22, r23
+	3rd : r20, r21
+	4th : r18, r19
+	5th : r16, r17
+	6th : use stack
+
+	For example,
+	
+	int f(int a0, int a1, int a2, int a3, int a4, int a5, int a6, int a7);
+
+	f(0x1234, 0x5678, 0x9abc, 0xdef0, 0x1122, 0x3344, 0x5566, 0x7788);
+
+	At the start address of `f', registers and stack layout becomes
+	like below:
+
+	r25 = 0x12, r24 = 0x34
+	r23 = 0x56, r22 = 0x78
+	r21 = 0x9a, r20 = 0xbc
+	r19 = 0xde, r18 = 0xf0
+	r17 = 0x11, r16 = 0x22
+
+        +---------------------+ <- sp
+	|                     |
+        +---------------------+
+	|    reurn            |
+        +---------------------+
+	|          address    |	
+        +---------------------+
+	|    *************    |	
+        +---------------------+
+	|    *************    |
+        +---------------------+	
+	|    *************    |	
+        +---------------------+
+	|    *************    |	
+        +---------------------+
+	|         0x44        |	
+        +---------------------+
+	|         0x33        |	
+        +---------------------+
+	|         0x66        |	
+        +---------------------+
+	|         0x55        |	
+        +---------------------+
+	|         0x88        |	
+        +---------------------+
+	|         0x77        |	
+        +---------------------+
+
+
+(*6) `long long' argument and return value
+
+        sizeof(long) = 4
+        sizeof(long long) = 8
+
+	For `long', 4 registers are used. For `long long' 8 registers are
+	used.
+
+	For example,
+
+	long f(long a0, long a1, long a2, long a3);
+
+	f(0x12345678L, 0x9abcdef0L, 0x11223344L, 0x55667788L);
+
+	At the start address of `f', registers and stack layout are
+	the same with (*5).
+	Similary,
+
+	long long f(long long a0, long long a1);
+	
+	f(0x123456789abcdef0L, 0x1122334455667788L);
+
+	At the start address of `f', the are the same with (*5).
+
+(*7) Floating point number argument and return value
+
+	sizeof(float) = 4
+	sizeof(double) = sizeoof(long double) = 8
+	
+        AVR doesn't have FPU so software calculates floating point number
+	operation.
+
+	For `float' same with (*5). For `double' and `long double',
+	same with (*6).
+
+	I noticed that there were the problem with `libgcc.a', where
+	conversion from or to `int' or, for example, addtion
+	caused link error.
+
+(*8) Structure argument and return value
+
+        When calling the function which takes structure type argument,
+	the structure is copied to the stack. No register is used.
+
+	For example,
+
+	struct S { int i[4]; };
+	void f(struct S);
+	
+	struct S s = { 0x1234	0x5678	0x9abc	0xdef0 };
+	f(s);
+
+	At the start address of `f', stack layout becomes like below:
+
+        +---------------------+ <- sp
+	|                     |
+        +---------------------+
+	|    reurn            |
+        +---------------------+
+	|          address    |	
+        +---------------------+
+	|         0x34        |	
+        +---------------------+
+	|         0x12        |	
+        +---------------------+
+	|         0x78        |	
+        +---------------------+
+	|         0x56        |	
+        +---------------------+
+	|         0xbc        |	
+        +---------------------+
+	|         0x9a        |
+        +---------------------+
+	|         0xf0        |
+        +---------------------+
+	|         0xde        |
+        +---------------------+
+
+
+	When calling the function which returns structure type,
+	Y register (r28, r29) is set to the address for the return value.

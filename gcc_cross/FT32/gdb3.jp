@@ -1,0 +1,169 @@
+ft32-elf-gdb で a.out.fake-ld-new を期待通り処理できていない件の調査
+
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000
+(gdb) run -q -x x a.out.fake-ld-new
+
+としたが,
+
+dwarf_decode_lines_1
+
+は呼ばれるのだが
+最初に以下の部分にきている: 
+
+	    case DW_LNS_fixed_advance_pc:
+	      {
+		CORE_ADDR addr_adj = read_2_bytes (abfd, line_ptr);
+		line_ptr += 2;
+
+		state_machine.handle_fixed_advance_pc (addr_adj);
+	      }
+	      break;
+
+最初の動作の期待値は拡張オペコードを読んで以下にくること:
+
+		case DW_LNE_set_address:
+		  {
+		    CORE_ADDR address
+		      = cu->header.read_address (abfd, line_ptr, &bytes_read);
+		    line_ptr += bytes_read;
+
+		    state_machine.check_line_address (cu, line_ptr,
+						      lowpc - baseaddr, address);
+		    state_machine.handle_set_address (baseaddr, address);
+		  }
+		  break;
+
+
+これの原因が
+
+gdb-10.2.ft32-elf/gdb/dwarf2/line-header.c
+
+  lh->header_length = read_offset (abfd, line_ptr, offset_size);
+
+ここで 36 になっているが,
+
+offset_size = 4
+
+で結果的にではあるが line_ptr を進めすぎている. 以下のように調整すれば
+期待したところを line_ptr が指すことになる.
+
+(gdb) set line_ptr-=10
+(gdb) x/32bx line_ptr + lh->header_length
+0x8dbed84:	0x00	0x05	0x02	0x00	0x01	0x00	0x00	0x14
+0x8dbed8c:	0x03	0x01	0x09	0x04	0x00	0x01	0x03	0x01
+0x8dbed94:	0x09	0x04	0x00	0x01	0x03	0x02	0x09	0x04
+0x8dbed9c:	0x00	0x01	0x09	0x04	0x00	0x00	0x01	0x01
+(gdb) 
+
+                         rl78      ft32
+  lh->header_length       32       36
+  offset_size;             4        4
+
+しかしこのまま continue すると 0 割りが発生してしまう.
+
+void
+lnp_state_machine::handle_special_opcode (unsigned char op_code)
+{
+  unsigned char adj_opcode = op_code - m_line_header->opcode_base;
+  unsigned char adj_opcode_d = adj_opcode / m_line_header->line_range;  ここ
+  unsigned char adj_opcode_r = adj_opcode % m_line_header->line_range;
+
+本来期待するデータが入っていないらしい.
+
+  オフセット:                  0x0
+  長さ:                        64
+  DWARF バージョン:            3
+  Prologue の長さ:             36
+  最小命令長:                  1
+  'is_stmt' の初期値:          1
+  Line ベース:                 -5
+  Line 範囲:                   14
+  オペコードベース:            13
+
+36 は Prologue の長さが該当するようだ. また最小命令長は 4 が正しいようにも思える.
+
+できている rl78-elf-gdb で試したところ m_line_header->line_range = 14
+が期待値で
+
+Old value = 0 '\000'
+New value = 14 '\016'
+dwarf_decode_line_header (sect_off=0, is_dwz=false, per_objfile=0x91ab470, section=0x91c14f0, cu_header=0x91c1ae8) at dwarf2/line-header.c:378
+
+ここで書き変えられていた. なるほど Line 範囲というのがこれだったのだ.
+
+これはまず Prologue の長さを間違えている可能性がある.
+
+アセンブラの出力で
+
+  オフセット:                  0x0
+  長さ:                        70
+  DWARF バージョン:            3
+  Prologue の長さ:             42
+  最小命令長:                  1
+  'is_stmt' の初期値:          1
+  Line ベース:                 -5
+  Line 範囲:                   14
+  オペコードベース:            13
+
+となっているが, 70 = 0x46 や 42 = 0x2a はリロケータブル
+
+RELOCATION RECORDS FOR [.debug_line]:
+OFFSET   TYPE              VALUE 
+00000000 R_FT32_32         .debug_line+0x00000046       これ
+00000006 R_FT32_32         .debug_line+0x0000002a       これ 
+0000002d R_FT32_32         .text
+00000035 R_FT32_16         .text+0x00000004
+0000003b R_FT32_16         .text+0x00000008
+00000041 R_FT32_16         .text+0x0000000c
+00000045 R_FT32_16         .text+0x00000010
+
+(gdb) set line_ptr-=10
+
+がまずかった. 仮に
+
+(gdb) info b
+Num     Type           Disp Enb Address    What
+5       breakpoint     keep y   0x081c9a64 in dwarf_decode_line_header(sect_offset, bool, dwarf2_per_objfile*, dwarf2_section_info*, comp_unit_head const*) at dwarf2/line-header.c:356
+	breakpoint already hit 2 times
+        set lh->statement_program_start-=10    これ
+        c
+(gdb)
+
+のような状態で実行すれば
+
+Breakpoint 1 at 0x100: file a.S, line 3.
+Breakpoint 2 at 0x10c: file a.S, line 7.
+[Thread 0xb6f03b70 (LWP 27762) exited]
+[Thread 0xb7704b70 (LWP 27761) exited]
+
+のように期待した動作になっている.
+
+
+M-x gdb
+run -q -x x a.out.fake-ld-new.conv
+
+のように実行すれば以下のように期待値と合致している.
+
+
+(gdb) p len
+$38 = 5
+(gdb) p/x first[0]
+$39 = {line = 0x3, is_stmt = 0x1, pc = 0x100}
+(gdb) p/x first[1]
+$40 = {line = 0x4, is_stmt = 0x1, pc = 0x104}
+(gdb) p/x first[2]
+$41 = {line = 0x5, is_stmt = 0x1, pc = 0x108}
+(gdb) p/x first[3]
+$42 = {line = 0x7, is_stmt = 0x1, pc = 0x10c}
+(gdb) p/x first[4]
+$43 = {line = 0x0, is_stmt = 0x1, pc = 0x110}
+(gdb)
+
+a.out.fake-ld-new.conv は a.out.fake-ld-new の
+
+Prologue の長さ:             42
+
+を 26 に変更したもの.
+
+42 = 0x2a
+26 = 0x1a

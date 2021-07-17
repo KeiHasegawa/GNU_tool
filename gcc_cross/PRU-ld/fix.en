@@ -1,0 +1,13 @@
+pru-elf-ld bug fix.
+
+Omitted precisely. I fixed like below:
+
+binutils-2.36.1.pru-elf/bfd/elf32-pru.c:
+
+#if 0
+  if (shrinked_insn_address >= start_address
+      && shrinked_insn_address <= end_address)
+#else
+  if (shrinked_insn_address == start_address || 
+      end_address - start_address > 4)
+#endif    

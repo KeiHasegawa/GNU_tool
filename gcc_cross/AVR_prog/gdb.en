@@ -1,0 +1,11 @@
+avr-elf-gdb fix
+
+If a program entry point is not zero, this bug will be reproduced.
+
+gdb-10.2.avr-elf/sim/avr/interp.c
+
+#if 0  
+  sim_pc_set (cpu, addr);
+#else
+  sim_pc_set (cpu, addr >> 1);
+#endif

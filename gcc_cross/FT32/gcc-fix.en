@@ -1,0 +1,29 @@
+ft32-elf-gcc fix 
+
+ft32-elf-gcc generates code like below:
+
+	ldk.l  $r0,a-0x800000
+
+where `a' is a variable.
+
+Now I fixed above. "-0x800000" is not necessary.
+
+Omitted precisely
+
+gcc-10.2.0.ft32-elf/gcc/config/ft32/ft32.h
+
+fix like below:
+
++#if 0
+#define ASM_OUTPUT_SYMBOL_REF(stream, sym) \
+  do { \
+    assemble_name (stream, XSTR (sym, 0)); \
+    int section_debug = in_section && \
+      (SECTION_STYLE (in_section) == SECTION_NAMED) && \
+      (in_section->named.common.flags & SECTION_DEBUG); \
+    if (!section_debug && SYMBOL_REF_FLAGS (sym) & 0x1000) \
+      asm_fprintf (stream, "-0x800000"); \
+  } while (0)
++#endif
+
+I confirmed that "hello world" program worked well after above fix.

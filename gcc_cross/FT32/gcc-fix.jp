@@ -1,0 +1,149 @@
+ft32-elf-gccc の修正
+
+ft32-elf-gcc で変数のアドレス参照で
+
+a-0x800000
+
+のように生成されるのを修正する.
+
+M-x gdb
+gdb --annotate=3 ./cc1
+(gdb) run -quiet a.c -quiet -dumpbase a.c -auxbase a -o a.s
+
+再現している.
+函数のアドレスがどのようになっているか気になったので試してみるとこっちは
+
+a-0x800000
+
+のように生成されていない. おそらく区別されているということだろう.
+
+さて, 問題の箇所をつきとめたい.
+
+テストのソースは以下:
+void* p = &p;
+
+そして生成されるファイルは以下:
+	.file	"a.c"
+	.text
+	.global	p
+	.data
+	.p2align	2
+	.type	p, @object
+	.size	p, 4
+p:
+	.long	p-0x800000
+	.ident	"GCC: (GNU) 10.2.0"
+
+ひとまず ".long" を生成しているところを捕えるために write にブレークポイントをセット
+した. 残念ながら flocse のタイミングで一気に書き込まれている.
+
+しかしこれは「cc1 アセンブラ生成の調査」ですでに場所は調査済みで final_1 という函数に
+ブレークポイントをセットした.
+
+しかしブレークポイントにヒットせず. なるほどこれは函数に対するコードで使用されるわけだ.
+簡単にテストソースを修正することにした:
+
+extern int a;
+
+int* f()
+{
+  return &a;
+}
+
+これなら final_1 で停止する. 以下も調査済みの手順:
+
+(gdb) set asm_out_file=stdout
+
+
+	ldk.l  $r0,a-0x800000
+
+が生成されていることが確認できている. そしてこれに対する insn に以下を実行してみた:
+
+(gdb) p debug_insn_slim(insn)
+    5: $r0:SI=`a'
+$8 = void
+(gdb)
+
+実際に命令を出していたのは以下:
+
+	output_asm_insn (templ, recog_data.operand);
+
+ここで final.c のみ -g3 -O0 でビルドし直した.
+
+そして再びこの行で停止して以下を確認した:
+
+(gdb) p templ
+$17 = 0x8d99f47 "ldk.l  %0,%1"
+(gdb) 
+
+%1 が a-0x800000 に変換されてその結果問題のコードが出ていると考えるのが自然.
+
+ステップ実行していくと以下に辿り着いた:
+
+void
+ft32_print_operand (FILE * file, rtx x, int code)
+{
+
+そしてさらに以下に辿り着いた:
+
+    case SYMBOL_REF:
+      if (SYMBOL_REF_DECL (x))
+	assemble_external (SYMBOL_REF_DECL (x));
+#ifdef ASM_OUTPUT_SYMBOL_REF
+      ASM_OUTPUT_SYMBOL_REF (file, x);
+#else
+      assemble_name (file, XSTR (x, 0));
+#endif
+      break;
+
+ここで問題の -0x800000 が出ている.
+
+varasm. を -g3 -O0 でビルドしなおした.
+
+プリプロセスの結果を確認した final.i の該当箇所は以下: 
+
+    case SYMBOL_REF:
+      if (((((x))->unchanging) ? 
+# 4087 "../.././gcc/final.c" 3 4
+         __null 
+# 4087 "../.././gcc/final.c"
+         : ((((x))->u.fld[1]).rt_tree)))
+ assemble_external (((((x))->unchanging) ? 
+# 4088 "../.././gcc/final.c" 3 4
+                   __null 
+# 4088 "../.././gcc/final.c"
+                   : ((((x))->u.fld[1]).rt_tree)));
+
+      do { assemble_name (file, (((x)->u.fld[0]).rt_str)); int section_debug = in_section && (((in_section)->common.flags & 0x600000) == 0x200000) && (in_section->named.common.flags & 0x00400); if (!section_debug && (((x)) ->u2.symbol_ref_flags) & 0x1000) asm_fprintf (file, "-0x800000"); } while (0);
+
+ASM_OUTPUT_SYMBOL_REF
+
+は
+
+gcc-10.2.0.ft32-elf/gcc/config/ft32/ft32.h
+
+で定義されている. そこでこれをコンパイルアウトした:
+
++#if 0
+#define ASM_OUTPUT_SYMBOL_REF(stream, sym) \
+  do { \
+    assemble_name (stream, XSTR (sym, 0)); \
+    int section_debug = in_section && \
+      (SECTION_STYLE (in_section) == SECTION_NAMED) && \
+      (in_section->named.common.flags & SECTION_DEBUG); \
+    if (!section_debug && SYMBOL_REF_FLAGS (sym) & 0x1000) \
+      asm_fprintf (stream, "-0x800000"); \
+  } while (0)
++#endif
+
+これで謎の -0x800000 が出ることはなくなる.
+
+さてビルドし直せばよいのは
+
+cc1, cc1plus, libg.a libc.a libsim.a
+
+といったところか. でも色々心配することなしにもういちど make を実行する.
+
+修正して再インストールされた ft32-elf-gcc と newlib とで hello world
+が正常に動作することを確認した.
+

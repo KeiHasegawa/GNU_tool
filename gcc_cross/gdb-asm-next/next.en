@@ -1,0 +1,34 @@
+next command
+
+    gdb                     simulator
+
+    ---------------------------> sim_resum(step=1)         (*A)
+
+                                     simulate just 1 instruction
+
+    <------------------------------- sim_engine_halt()
+
+    ---------------------------> sim_stop_reason()
+    <---------------------------
+
+    ---------------------------> Set break-point to the address which is
+    <--------------------------  simulated at (*A)                         (*B)
+
+
+    ---------------------------> Set break-point to the next addre which
+    <--------------------------  is simulated at (*A)                      (*C)
+				
+    ---------------------------> sim_resume(step=0)
+
+                                     simulate until simulation stops
+
+    <------------------------------- sim_engine_halt()
+
+    ---------------------------> sim_stop_reason()
+    <---------------------------
+
+    ---------------------------> Cancel break-point of (*C)
+    <---------------------------
+
+    ---------------------------> Cancel break-point of (*B)
+    <---------------------------

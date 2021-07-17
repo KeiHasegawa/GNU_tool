@@ -1,0 +1,173 @@
+FR-V ABI
+
+(*0) Global pointer
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long long' argument and return value
+(*7) Floating point number argument and return value
+(*8) Structure argument and return value
+
+
+(*0) Global pointer
+
+        For accessing to the variables which located at memory, not
+	stack, compiler generates code which access them via `gr16'.
+
+(*1) Function call
+
+	call func
+
+	Pseoudo code
+	
+	lr = (`call' instruction next address)
+	pc = func
+	
+(*2) Return from function
+
+	ret
+
+	Pseudo code
+
+	pc = lr
+
+	But frv-elf-gcc normally copies `lr' to `gr5' and generates:
+
+	jmpl @(gr5,gr0)
+
+	See also (*4), where `gr0' is always read value `0'.
+	
+(*3) Prologue
+
+	addi sp,#-144,sp
+	sti fp, @(sp,128)
+	addi sp,#128,fp
+	movsg lr, gr5
+	sti gr5, @(fp,8)
+
+	Above is prologue for the function which uses 128 bytes local area.
+
+
+	+----------+ <- sp_{new}
+	|          |
+	|          |	
+	|  local   |
+	|   area   |
+	|          |
+	|          |
+	+----------+ <- fp_{new}
+	| fp_{old} |
+	+----------+
+	|          |
+	+----------+
+	| lr_{old} |
+	+----------+
+	|          |
+	+----------+ <- sp_{old}
+
+
+(*4) Epilogue
+
+	ldi @(fp,8), gr5
+	ld @(fp,gr0), fp
+	addi sp,#144,sp
+	jmpl @(gr5,gr0)
+
+	Above is epilogue for the function which uses 128 bytes local area.
+	fp and sp are restored and reutrn to callee.
+
+(*5) Normal argument and return value
+
+	1st : gr8
+	2nd : gr9
+	3rd : gr10
+	4th : gr11
+	5th : gr12
+	6th : gr13
+	7th : use stack
+
+	For example,
+	
+	int f(int a0, int a1, int a2, int a3, int a4, int a5, int a6, int a7);
+
+	f(10, 11, 12, 13, 14, 15, 16, 17);
+
+	At the start address of `f', registers and stack layout becomes
+	like below:
+
+	gr8 = 10, gr9 = 11, gr10 = 12, gr11 = 13, gr12 = 14, gr13 = 15
+	
+	+----------+ <- sp
+	|    16    |
+	+----------+
+	|    17    |
+	+----------+
+
+	Function return value is set to `gr8'.
+
+(*6) `long long' argument and return value
+
+	sizeof(long long) = 8
+
+	For `long long' type arugment, use 2 registers. Fo the rest of
+	arguments, use stack. For example,
+
+	long long f(int a0, long long a1, long long a2, long long a3);
+
+	f(10, 0x123456789abcdef0LL, 0x1122334455667788, 0x99aabbccddeeff00LL);
+
+	At the start address of `f', registers and stack layout becomes
+	like below:
+	
+	gr8  = 10
+	gr9  = 0x12345678, gr10 = 0x9abcdef0
+	gr11 = 0x11223344, gr12 = 0x55667788
+        gr13 = 0x99aabbcc
+
+	+----------+ <- sp
+	|0xddeeff00|
+	+----------+
+
+	Function return value is set to `gr8' and `gr9'.
+	
+(*7) Floating point number argument and return value
+
+	sizeof(float) = 4
+	sizeof(double) = sizeof(long double) = 8
+
+	FR-V has FPU, but `fr0' or `fr1' is not used. For `float'
+	same with (*5). For example,
+	
+	float f(float a0, float a1, float a2, float a3,
+	       float a4, float a5, float a6, float a7);
+
+	f(10.0F, 11.0F, 12.0F, 13.0F, 14.0F, 15.0F, 16.0F, 17.0F);
+
+	At the start address of `f', registers and stack layout becomes
+	like below:
+
+	gr8  = 0x41200000
+	gr9  = 0x41300000
+	gr10 = 0x41400000
+	gr11 = 0x41500000
+	gr12 = 0x41600000
+	gr13 = 0x41700000
+
+	+----------+ <- sp
+	|0x41800000|
+	+----------+
+	|0x41880000|
+	+----------+
+
+	For double, long double operation, software calculates them.
+	(*6) rule is applied.
+
+(*8) Structure argument and return value
+
+        When calling function which takes structure type argument,
+	no register is used, structure is copied to stack.
+	When calling function which returns structure type, `gr3' is
+	set to the address for the return value.
+	

@@ -1,0 +1,165 @@
+FT32 ABI
+
+(*0) Instruction memory and data memory
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long long' argument and return value
+(*7) Floating point number argument and return value
+(*8) Structure argument and return value
+
+
+(*0) Instruction memory and data memory
+
+	FT32 arhchitecture has instruction memory and data memory. Program
+	code and initial values of variables are loaded into instruction
+	memory.
+
+	Load/Store instruction accesses data memory. So startup routine
+	copies initial values of variables into data memory using
+	`LPM' instruction.
+
+(*1) Function call
+
+	call   func
+
+	Pseudo code
+
+	sp -= 4
+	memory[sp] = (`call' instruction next address)
+	pc = func
+
+(*2) Return from function
+
+	return
+
+	Pseudo code
+
+	pc = memory[sp]
+	sp -= 4
+
+(*3) Prologue
+
+	link   $fp,128
+
+	Above is prologue for the function which uses 128 bytes local area.
+
+	+----------------------+ <- sp_{new}
+	|                      |
+	|                      |
+	|                      |
+	|      local area      |
+	|                      |
+	|                      |
+	|                      |
+	+----------------------+ <- fp_{new}
+	|       fp_{old}       |
+	+----------------------+ <- sp_{old}
+	|    return address    |
+	+----------------------+
+
+	Pseudo code
+
+	sp -= 4
+	memory[sp] = fp
+	fp = sp
+	sp -= 128
+
+	Prologue may become like below in case:
+
+	pop.l  $cc      ; Optional
+	push.l $r5      ; Optional
+	push.l $cc      ; Optional
+	link   $fp,128
+
+(*4) Epilogue
+
+	unlink $fp
+	return
+
+	Above is epilogue and it doesn't depend the mount of local area.
+
+
+	Epilogue may become like below for (*3) special cas:
+	
+	unlink $fp
+	pop.l  $cc
+	add.l  $sp,$sp,4
+	jmpi   $cc
+	
+(*5) Normal argument and return value
+
+        1st : r0
+        2nd : r1
+        3rd : r2
+        4th : r3
+        5th : r4
+        6th : r5
+	7th : use stack
+
+	For example,
+
+	int f(int a0, int a1, int a2, int a3, int a4, int a5, int a6, int a7);
+
+	f(10, 11, 12, 13, 14, 15, 16, 17);
+
+	At the start address of `f', registers and stack layout becomes like
+	below:
+
+	r0 = 10, r1 = 11, r2 = 12, r3 = 13, r4 = 14, r5 = 15
+
+	+----------------------+ <- sp
+	|    return address    |
+	+----------------------+
+	|          16          |
+	+----------------------+	
+	|          17          |
+	+----------------------+	
+
+	Function return value is set to r0.
+
+(*6) `long long' argument and return value
+
+        sizeof(long long) = 8
+
+	`long long' type arguments are passed by using 2 registers. The
+	rest of the arguments are passed by using stack.
+	For example,
+
+	long long f(int a0, long long a1, long long a2, long long a3);
+
+
+	f(10, 0x123456789abcdef0LL, 0x1122334455667788LL, 0x99aabbccddeeff00LL);
+
+	At the start address of `f', registers and stack layout becomes
+	like below:
+
+	r0 = 10,
+	r1 = 0x9abcdef0, r2 = 0x12345678, r3 = 0x55667788, r4 = 0x11223344
+	r5 = 0xddeeff00
+
+	+----------------------+ <- sp
+	|    return address    |
+	+----------------------+
+	|      0x99aabbcc      |
+	+----------------------+
+
+	Function return value is set to `r0' and `r1'.
+
+(*7) Floating point number argument and return value
+
+	sizeof(float) = 4
+	sizeof(double) = sizeof(long double) = 8
+
+	FT32 doesn't have FPU, so software calculates floating point number
+	operation. For `float', same with (*5). For `double' and `long double'
+	same with (*6).
+
+(*8) Structure argument and return value
+
+	When calling the function which takes strucutre type argument,
+	structure is copied into stack. No register is used.
+	Wehn calling the function which returns structure type, the address
+	for the return value is set to `r0'.

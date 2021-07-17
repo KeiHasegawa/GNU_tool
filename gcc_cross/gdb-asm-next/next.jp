@@ -1,0 +1,131 @@
+(*1) アセンブリレベルの next
+
+    gdb                     simulator
+
+    ---------------------------> sim_resum(step=1)         (*A)
+
+                                     1 命令だけ実行 
+
+    <------------------------------- sim_engine_halt()
+
+    ---------------------------> sim_stop_reason()
+    <---------------------------
+
+    ---------------------------> (*A) で既に実行した命令にブレークポイントをセット  (*B)
+    <--------------------------
+
+
+    ---------------------------> (*A) で実行した次の命令にブレークポイントをセット  (*C)
+    <--------------------------
+				
+    ---------------------------> sim_resume(step=0)
+
+                                     止まるまで実行
+
+    <------------------------------- sim_engine_halt()
+
+    ---------------------------> sim_stop_reason()
+    <---------------------------
+
+    ---------------------------> (*C) のブレークポイント解除
+    <---------------------------
+
+    ---------------------------> (*B) のブレークポイント解除
+    <---------------------------
+
+
+
+(*2) aarch64-elf-gdb で調査した内容
+
+aarch64-elf-gdb でアセンブラのソース
+
+	bl func
+	nop
+
+の bl 命令で next としたときの動作.
+
+step1(skip_subroutines=1, ...)
+
+のように呼び出される.
+この後シミュレータが
+
+Thread 1 "gdb" hit Breakpoint 2, sim_resume (sd=0x8d59098, step=1, siggnal=0) at ./../common/sim-resume.c:41
+
+のように step=1 で呼び出される.
+そして
+
+
+Thread 1 "gdb" hit Breakpoint 3, sim_engine_halt (sd=0x8d59098, last_cpu=0x0, next_cpu=0x0, cia=0, reason=sim_stopped, sigrc=66) at ./../common/sim-engine.c:62
+
+のようにしてシミュレータは停止する.
+
+この後 gdb 本体から以下のように問い合わせがある:
+
+Thread 1 "gdb" hit Breakpoint 4, sim_stop_reason (sd=0x8d59098, reason=0xbfffed04, sigrc=0xbfffed08) at ./../common/sim-reason.c:30
+(gdb) n
+(gdb) 
+(gdb) 
+(gdb) 
+(gdb) 
+(gdb) 
+(gdb) p *reason
+$3 = sim_stopped
+(gdb) p *sigrc
+$4 = 5
+(gdb)
+
+この後
+
+Thread 1 "gdb" hit Breakpoint 5, sim_write (sd=0x8d59098, mem=256, buf=0x871c960 <aarch64_default_breakpoint> "", length=4) at ./../common/sim-hrw.c:37
+(gdb) p/x mem
+$5 = 0x100
+(gdb)
+
+のように 0x100 にブレークポイントがセットされる.
+
+Thread 1 "gdb" hit Breakpoint 5, sim_write (sd=0x8d59098, mem=260, buf=0x871c960 <aarch64_default_breakpoint> "", length=4) at ./../common/sim-hrw.c:37
+(gdb) p/x mem
+$6 = 0x104
+
+さらに 0x104 にもブレークポイントがセットされる.
+そして以下のように sim_resume が呼び出される.
+
+
+Thread 1 "gdb" hit Breakpoint 2, sim_resume (sd=0x8d59098, step=0, siggnal=0) at ./../common/sim-resume.c:41
+(gdb)
+
+そして以下のようにしてシミュレーションが停止する:
+
+Thread 1 "gdb" hit Breakpoint 3, sim_engine_halt (sd=0x8d59098, last_cpu=0x8d59480, next_cpu=0x0, cia=260, reason=sim_stopped, sigrc=66) at ./../common/sim-engine.c:62
+
+cia = 0x104
+
+そして gdb 本体から問い合わせがある:
+
+Thread 1 "gdb" hit Breakpoint 4, sim_stop_reason (sd=0x8d59098, reason=0xbfffed04, sigrc=0xbfffed08) at ./../common/sim-reason.c:30
+(gdb) n
+(gdb) 
+(gdb) 
+(gdb) 
+(gdb) 
+(gdb) 
+(gdb) p *reson
+No symbol "reson" in current context.
+(gdb) p *reason
+$7 = sim_stopped
+(gdb) p *sigrc
+$8 = 5
+(gdb)
+
+そして next 実行のためにセットしたブレークポイントが以下のようにして解除される:
+
+Thread 1 "gdb" hit Breakpoint 5, sim_write (sd=0x8d59098, mem=260, buf=0x8d5f4ac "\037 ", <incomplete sequence \325>, length=4) at ./../common/sim-hrw.c:37
+(gdb) p/x mem
+$9 = 0x104
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 5, sim_write (sd=0x8d59098, mem=256, buf=0x8d5ab0c "\002", length=4) at ./../common/sim-hrw.c:37
+(gdb) p/x mem
+$10 = 0x100
+(gdb)

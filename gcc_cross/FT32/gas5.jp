@@ -1,0 +1,154 @@
+(*1) ロケーションカウンタ 4 ずつずらす対応
+(*2) .debug_line の Prologue の長さ 36(0x24) -> 26(0x1a)
+(*3) .debug_line の Prologue の長さの計算
+
+(*1) ロケーションカウンタ 4 ずつずらす対応
+
+ft32-elf-gas で現状
+
+binutils-2.36.1.ft32-elf/gas/config/tc-ft32.c
+
+#if 0
+  dwarf2_emit_insn (4);
+#else
+  int n = frag_now_fix_octets ();
+  if (n > 4)
+    n -= 4;
+  dwarf2_emit_insn(n);
+#endif
+
+の対応を入れることで 1 行に 4 ずつロケーションをずらせているが
+
+% ./as-new -g a.S
+% ft32-elf-objdump --dwarf=rawline --dwarf=decodedline a.out
+...
+  [0x0000003e]  PC を固定サイズ 16 分進め 0x1c とします
+  [0x00000041]  拡張命令コード 1: 列の終り
+...
+File name                            Line number    Starting address    View    Stmt
+a.S                                            3                   0               x
+a.S                                            4                 0x4       1       x
+a.S                                            5                 0x8       2       x
+a.S                                            7                 0xc       3       x
+a.S                                            -                0x1c
+
+のように最後の PC を固定サイズ 16 進めてしまっている.
+これを
+
+(gdb) b dwarf2dbg.c:1734 
+(gdb) run
+
+      emit_expr_fix (pexp, 2, frag, p, TC_PARSE_CONS_RETURN_NONE);
+
+(gdb) p debug(pexp)
+
+  if (expr->X_add_number == 16)
+    asm("int3");                   これにヒットする
+  if (expr->X_add_number == 36)
+    asm("int3");
+
+...
+(gdb) p &expr->X_add_number
+$3 = (offsetT *) 0x815b6c0
+(gdb) watch *(offsetT *) 0x815b6c0
+(gdb) run
+The program being debugged has been started already.
+Start it from the beginning? (y or n) y
+Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ft32-elf/gas/as-new -g a.S
+
+Hardware watchpoint 4: *(offsetT *) 0x815b6c0
+
+Old value = <unreadable>
+New value = 0
+memset () at ../sysdeps/i386/i686/memset.S:85
+85	../sysdeps/i386/i686/memset.S: そのようなファイルやディレクトリはありません.
+(gdb) c
+Continuing.
+
+Hardware watchpoint 4: *(offsetT *) 0x815b6c0
+
+Old value = 0
+New value = 16
+S_SET_VALUE (s=0x815b6a0, val=16) at symbols.c:2173
+(gdb) set s->x->value.X_add_number=4
+(gdb) 
+
+のようにすることで生成される a.out が期待したものになることが
+
+% ft32-elf-objdump --dwarf=rawline --dwarf=decodedline a.out
+
+で確認できる.
+
+(*2) .debug_line の Prologue の長さ 36(0x24) -> 26(0x1a)
+
+ft32-elf-objdump -r a.out
+
+a.out:     ファイル形式 elf32-ft32
+
+RELOCATION RECORDS FOR [.debug_line]:
+OFFSET   TYPE              VALUE 
+00000000 R_FT32_32         .debug_line+0x00000040
+00000006 R_FT32_32         .debug_line+0x00000024  これ
+00000027 R_FT32_32         .text
+0000002f R_FT32_16         .text+0x00000004
+00000035 R_FT32_16         .text+0x00000004
+0000003b R_FT32_16         .text+0x00000004
+0000003f R_FT32_16         .text+0x00000010
+
+  (*1) と同様に p debgu(pexp) とすると
+
+  if (expr->X_add_number == 16)
+    asm("int3");
+  if (expr->X_add_number == 36)
+    asm("int3");                   これにヒットする
+
+そこで同じように 
+
+(gdb) p &expr->X_add_number
+
+としてアドレスを確認してそこにウォッチポイントをセットする.
+
+そこにきたとき 36 をセットしているから
+
+(gdb) set s->x->value.X_add_number=26
+
+とすればよい.
+
+
+(*3) .debug_line の Prologue の長さの計算
+
+36 を返すのは結局は以下の値を参照しているから
+
+(gdb) p frchain_now->frch_obstack->next_free - frag_now->fr_literal
+
+函数 out_debug_line の先頭で
+
+(gdb) p frchain_now->frch_obstack->next_free - frag_now->fr_literal
+$18 = 0
+(gdb) 
+
+なのでこれがどのように変化していくか確認する.
+
+  asm("int3");
+#if 0
+  dwarf2_emit_insn (4);
+#else
+  int n = frag_now_fix_octets ();
+  if (n > 4)
+    n -= 4;
+  dwarf2_emit_insn(n);
+#endif
+
+  ここは out_debug_line より先に実行されている.
+
+  out_byte (0);			/* DW_LNS_set_epilogue_begin */
+  out_byte (1);			/* DW_LNS_set_isa */   これを実行する前が
+
+rchain_now->frch_obstack->next_free - frag_now->fr_literal = 26
+
+で実行すると
+
+rchain_now->frch_obstack->next_free - frag_now->fr_literal = 27
+
+になる. ということは (*2) で 36 を 26 にして動いていたのはどういう理由からか.
+それは ft32-elf-gdb がそういう解釈をしていたからという理由.
