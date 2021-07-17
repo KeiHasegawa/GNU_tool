@@ -1,11 +1,4 @@
-アセンブラレベルの
-
-	call %label(func)
-
-を next 実行したときステップインしてしまっている.
-
-
-同じ現象は h8300-elf-gdb でも起っている.
+next command at assmembly
 
 aarch64-elf-gdb : OK
 arm-elf-gdb     : OK
@@ -21,21 +14,5 @@ msp430-elf-gdb  : OK
 ppc-elf-gdb     : NG
 pru-elf-gdb     : NG
 rl78-elf-gdb    : NG
-sh-elf-gdb      : ??   test_sh.004
+sh-elf-gdb      : ??
 v850-elf-gdb    : NG
-
-
-2021/07/17 12:00
-
-sh-elf-gdb を動かすと以下のようになる.
-
-Type "apropos word" to search for commands related to "word"...
-Reading symbols from test004.elf...
-Connected to the simulator.
-Loading section .text, size 0x18 lma 0x100
-Debugger aborted
-
-これは以前も見た. linux を再起動して回避した記憶がある. メモリを確保できなかった
-ときに, このように確保できない領域にアクセスしてエラーしていた.
-おそらくシミュレーション時の巨大な領域を確保しているのかも.
-
