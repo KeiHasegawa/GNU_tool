@@ -1,0 +1,378 @@
+call 命令を next 実行するとステップインしてしまう件の調査
+
+M-x gdb
+gdb --annotate ./gdb
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_pru.004
+(gdb) run -q -x x test004.elf
+
+で再現することができている.
+
+next コマンドを捉えたいので
+
+(gdb) b next_command
+
+とした. そうすると step_1 を以下のように呼び出す.
+
+step_1 (skip_subroutines=1, single_inst=0, count_string=0x0) at infcmd.c:871
+
+なるほど, 第 1 引数で step コマンドと next コマンドの区別をしているらしい.
+先に aarch64-elf-gdb で期待通り動作しているのでそちらで事前に動きを確認した.
+
+この後 pru-elf-gdb では
+
+(gdb) b sim_resume
+Breakpoint 2 at 0x83fd605: file ./../common/sim-resume.c, line 41.
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 2, sim_resume (sd=0x8c32e80, step=1, siggnal=0) at ./../common/sim-resume.c:41
+(gdb) b sim_engine_halt
+
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 3, sim_engine_halt (sd=0x8c32e80, last_cpu=0x0, next_cpu=0x0, cia=0, reason=sim_stopped, sigrc=66) at ./../common/sim-engine.c:62
+(gdb) b sim_stop_reason
+
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 4, sim_stop_reason (sd=0x8c32e80, reason=0xbfffeda4, sigrc=0xbfffeda8) at ./../common/sim-reason.c:30
+(gdb) n
+(gdb) 
+(gdb) 
+(gdb) 
+(gdb) p *reason
+$1 = sim_stopped
+(gdb) n
+(gdb) 
+(gdb) p *sigrc
+$2 = 5
+(gdb) b sim_write
+
+(gdb) c
+Continuing.
+9		ret
+(pru-elf-gdb) 
+
+のようになりブレークポイントが call 命令のある 0x104 とその次の 0x108 に
+セットされるはずだがきていないのが直接の原因.
+
+aarch64-elf-gdb でブレークポイントをセットするために sim_write を呼び出したときの
+where コマンドの結果は以下:
+
+(gdb) where
+#0  sim_write (sd=0x8d59098, mem=256, buf=0x871c960 <aarch64_default_breakpoint> "", length=4) at ./../common/sim-hrw.c:37
+#1  0x082e6a8a in gdbsim_xfer_memory (target=0x8b5f4e4 <gdbsim_ops>, readbuf=0x0, writebuf=0x871c960 <aarch64_default_breakpoint> "", memaddr=256, len=4, xfered_len=0xbfffe768) at remote-sim.c:1061
+#2  0x082e6b5a in gdbsim_target::xfer_partial (this=0x8b5f4e4 <gdbsim_ops>, object=TARGET_OBJECT_MEMORY, annex=0x0, readbuf=0x0, writebuf=0x871c960 <aarch64_default_breakpoint> "", offset=256, len=4, xfered_len=0xbfffe768) at remote-sim.c:1091
+#3  0x0836e7ff in raw_memory_xfer_partial (ops=0x8b5f4e4 <gdbsim_ops>, readbuf=0x0, writebuf=0x871c960 <aarch64_default_breakpoint> "", memaddr=256, len=4, xfered_len=0xbfffe768) at target.c:918
+#4  0x08372292 in target_xfer_partial (ops=0x8b5f4e4 <gdbsim_ops>, object=TARGET_OBJECT_RAW_MEMORY, annex=0x0, readbuf=0x0, writebuf=0x871c960 <aarch64_default_breakpoint> "", offset=256, len=<optimized out>, xfered_len=0xbfffe768) at target.c:1156
+#5  0x083728ea in target_write_partial (xfered_len=0xbfffe768, len=4, offset=256, buf=0x871c960 <aarch64_default_breakpoint> "", annex=0x0, object=TARGET_OBJECT_RAW_MEMORY, ops=0x8b5f4e4 <gdbsim_ops>) at target.c:1397
+#6  target_write_with_progress (ops=0x8b5f4e4 <gdbsim_ops>, object=TARGET_OBJECT_RAW_MEMORY, annex=0x0, buf=0x871c960 <aarch64_default_breakpoint> "", offset=256, len=4, progress=0x0, baton=0x0) at target.c:1665
+#7  0x08372a1f in target_write (len=<optimized out>, offset=256, buf=0x871c960 <aarch64_default_breakpoint> "", annex=0x0, object=TARGET_OBJECT_RAW_MEMORY, ops=<optimized out>) at target.c:1690
+--Type <RET> for more, q to quit, c to continue without paging--c
+#8  target_write_raw_memory (memaddr=256, myaddr=0x871c960 <aarch64_default_breakpoint> "", len=4) at target.c:1318
+#9  0x082478e8 in default_memory_insert_breakpoint (gdbarch=0x8ced748, bp_tgt=0x8d5aaf4) at mem-break.c:68
+#10 0x0836ebff in target_insert_breakpoint (gdbarch=0x8ced748, bp_tgt=0x8d5aaf4) at target.c:1821
+#11 0x080bfbdb in bkpt_insert_location (bl=0x8d5aa90) at breakpoint.c:12411
+#12 0x080d01d6 in insert_bp_location (bl=0x8d5aa90, tmp_error_stream=<optimized out>, disabled_breaks=<optimized out>, hw_breakpoint_error=<optimized out>, hw_bp_error_explained_already=<optimized out>) at breakpoint.c:2515
+#13 0x080d24fe in insert_breakpoint_locations () at breakpoint.c:2940
+#14 update_global_location_list (insert_mode=UGLL_INSERT) at breakpoint.c:12069
+#15 0x0820fa82 in keep_going_pass_signal (ecs=0xbffff030) at infrun.c:7864
+#16 0x0820fbfc in keep_going (ecs=0xbffff030) at infrun.c:7895
+#17 0x0820d3b0 in process_event_stop_test (ecs=0xbffff030) at infrun.c:6822
+#18 0x0820c067 in handle_signal_stop (ecs=0xbffff030) at infrun.c:6298
+#19 0x0820a6f9 in handle_inferior_event (ecs=0xbffff030) at infrun.c:5549
+#20 0x08207014 in fetch_inferior_event () at infrun.c:3931
+#21 0x081f2069 in inferior_event_handler (event_type=INF_REG_EVENT) at inf-loop.c:42
+#22 0x08212275 in infrun_async_inferior_event_handler (data=0x0) at infrun.c:9207
+#23 0x080aab4c in check_async_event_handlers () at async-event.c:295
+#24 0x0852ffdb in gdb_do_one_event () at event-loop.cc:194
+#25 0x0837c875 in wait_sync_command_done () at top.c:526
+#26 0x0837c8e6 in maybe_wait_sync_command_done (was_sync=0) at top.c:543
+#27 0x0837cdbd in execute_command (p=0x8ca1eb4 "", from_tty=0) at top.c:670
+#28 0x081ba78c in command_handler (command=0x8ca1eb0 "next") at event-top.c:588
+#29 0x0837c738 in read_command_file (stream=0x8ca1448) at top.c:447
+#30 0x08111a58 in script_from_file (stream=0x8ca1448, file=0xbffff842 "gdbcom") at cli/cli-script.c:1622
+#31 0x080f7281 in source_script_from_stream (stream=0x8ca1448, file=0xbffff842 "gdbcom", file_to_open=0xbffff842 "gdbcom") at cli/cli-cmds.c:700
+#32 0x080f735a in source_script_with_search (file=0xbffff842 "gdbcom", from_tty=1, search_path=0) at cli/cli-cmds.c:736
+#33 0x080f73ad in source_script (file=0xbffff842 "gdbcom", file@entry=<error reading variable: value has been optimized out>, from_tty=1, from_tty@entry=<error reading variable: value has been optimized out>) at cli/cli-cmds.c:746
+#34 0x0823aeca in catch_command_errors (command=<optimized out>, arg=<optimized out>, from_tty=<optimized out>) at main.c:457
+#35 0x0823cbb0 in captured_main_1 (context=<optimized out>) at main.c:1214
+#36 0x0823cfad in captured_main (data=0xbffff544) at main.c:1243
+#37 gdb_main (args=0xbffff544) at main.c:1268
+#38 0x08069e6c in main (argc=5, argv=0xbffff614) at gdb.c:32
+(gdb)
+
+infrun.c:6822
+
+に pru-elf-gdb がきているのか調べてみた:
+
+
+(gdb) info b
+Num     Type           Disp Enb Address    What
+1       breakpoint     keep y   <MULTIPLE> 
+	breakpoint already hit 1 time
+1.1                         y   0x0805afaa in std::unique_ptr<char, gdb::xfree_deleter<char> >::~unique_ptr() at /usr/local/include/c++/10.2.0/bits/unique_ptr.h:172
+1.2                         y   0x0823c580 in step_1(int, int, char const*) at infcmd.c:871
+2       breakpoint     keep y   0x083fd605 in sim_resume at ./../common/sim-resume.c:41
+	breakpoint already hit 1 time
+3       breakpoint     keep y   0x08401fc8 in sim_engine_halt at ./../common/sim-engine.c:62
+	breakpoint already hit 1 time
+4       breakpoint     keep y   0x083f6d77 in sim_stop_reason at ./../common/sim-reason.c:30
+	breakpoint already hit 1 time
+5       breakpoint     keep y   0x083f2093 in sim_write at ./../common/sim-hrw.c:37
+(gdb) disa 2 3 4 5
+(gdb) run
+Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.pru-elf/gdb/gdb -q -x x test004.elf
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib/libthread_db.so.1".
+warning: File "/usr/local/lib/libstdc++.so.6.0.28-gdb.py" auto-loading has been declined by your `auto-load safe-path' set to "$debugdir:$datadir/auto-load".
+[Detaching after vfork from child process 22329]
+[New Thread 0xb7704b70 (LWP 22330)]
+[New Thread 0xb6f03b70 (LWP 22331)]
+Reading symbols from test004.elf...
+Connected to the simulator.
+Loading section .text, size 0x10 lma 0x100
+Start address 0x100
+Transfer rate: 128 bits in <1 sec.
+Breakpoint 1 at 0x104: file test004.S, line 4.
+
+Breakpoint 1, start () at test004.S:4
+4		call	%label(my_func)
+
+Thread 1 "gdb" hit Breakpoint 1, step_1 (skip_subroutines=1, single_inst=0, count_string=0x0) at infcmd.c:871
+(gdb) enable
+(gdb) b infrun.c:6822
+
+
+
+(gdb)   Id   Target Id                           Frame 
+* 1    Thread 0xb7a3fd10 (LWP 22256) "gdb" step_1 (skip_subroutines=1, single_inst=0, count_string=0x0) at infcmd.c:871
+  2    Thread 0xb7704b70 (LWP 22330) "gdb" 0xffffe424 in __kernel_vsyscall ()
+  3    Thread 0xb6f03b70 (LWP 22331) "gdb" 0xffffe424 in __kernel_vsyscall ()
+(gdb) info b
+  Id   Target Id                           Frame 
+* 1    Thread 0xb7a3fd10 (LWP 22256) "gdb" step_1 (skip_subroutines=1, single_inst=0, count_string=0x0) at infcmd.c:871
+  2    Thread 0xb7704b70 (LWP 22330) "gdb" 0xffffe424 in __kernel_vsyscall ()
+  3    Thread 0xb6f03b70 (LWP 22331) "gdb" 0xffffe424 in __kernel_vsyscall ()
+(gdb) info b
+  Id   Target Id                           Frame 
+* 1    Thread 0xb7a3fd10 (LWP 22256) "gdb" step_1 (skip_subroutines=1, single_inst=0, count_string=0x0) at infcmd.c:871
+  2    Thread 0xb7704b70 (LWP 22330) "gdb" 0xffffe424 in __kernel_vsyscall ()
+  3    Thread 0xb6f03b70 (LWP 22331) "gdb" 0xffffe424 in __kernel_vsyscall ()
+(gdb) info b
+  Id   Target Id                           Frame 
+* 1    Thread 0xb7a3fd10 (LWP 22256) "gdb" step_1 (skip_subroutines=1, single_inst=0, count_string=0x0) at infcmd.c:871
+  2    Thread 0xb7704b70 (LWP 22330) "gdb" 0xffffe424 in __kernel_vsyscall ()
+  3    Thread 0xb6f03b70 (LWP 22331) "gdb" 0xffffe424 in __kernel_vsyscall ()
+(gdb) n
+
+info b
+Num     Type           Disp Enb Address    What
+1       breakpoint     keep y   <MULTIPLE> 
+	breakpoint already hit 1 time
+1.1                         y   0x0805afaa in std::unique_ptr<char, gdb::xfree_deleter<char> >::~unique_ptr() at /usr/local/include/c++/10.2.0/bits/unique_ptr.h:172
+1.2                         y   0x0823c580 in step_1(int, int, char const*) at infcmd.c:871
+2       breakpoint     keep y   0x083fd605 in sim_resume at ./../common/sim-resume.c:41
+3       breakpoint     keep y   0x08401fc8 in sim_engine_halt at ./../common/sim-engine.c:62
+4       breakpoint     keep y   0x083f6d77 in sim_stop_reason at ./../common/sim-reason.c:30
+5       breakpoint     keep y   0x083f2093 in sim_write at ./../common/sim-hrw.c:37
+6       breakpoint     keep y   0x08250b55 in process_event_stop_test(execution_control_state*) at infrun.c:6822
+7       breakpoint     keep y   0x08250b55 in process_event_stop_test(execution_control_state*) at infrun.c:6822
+8       breakpoint     keep y   0x08250b55 in process_event_stop_test(execution_control_state*) at infrun.c:6822
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 2, sim_resume (sd=0x8c32e80, step=1, siggnal=0) at ./../common/sim-resume.c:41
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 3, sim_engine_halt (sd=0x8c32e80, last_cpu=0x0, next_cpu=0x0, cia=0, reason=sim_stopped, sigrc=66) at ./../common/sim-engine.c:62
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 4, sim_stop_reason (sd=0x8c32e80, reason=0xbfffeda4, sigrc=0xbfffeda8) at ./../common/sim-reason.c:30
+(gdb) 
+Continuing.
+9		ret
+(pru-elf-gdb)
+
+きていない.
+
+infrun.c:6298
+はどうか? ここはきている.
+aarch-elf-gdb と比較してみると
+
+  if (!frame_id_eq (get_stack_frame_id (frame),
+		    ecs->event_thread->control.step_stack_frame_id)
+      && (frame_id_eq (frame_unwind_caller_id (get_current_frame ()),
+		       ecs->event_thread->control.step_stack_frame_id)
+	  && (!frame_id_eq (ecs->event_thread->control.step_stack_frame_id,
+			    outer_frame_id)
+	      || (ecs->event_thread->control.step_start_function
+		  != find_pc_function (ecs->event_thread->suspend.stop_pc)))))
+    {
+      CORE_ADDR stop_pc = ecs->event_thread->suspend.stop_pc;
+      CORE_ADDR real_stop_pc;
+
+上の条件が
+成立するのが   aarch-elf-gdb
+成立しないのが pru-elf-gdb
+になっている.
+そしてこの if 文を実行することによりブレークポイントをセットするための sim_write
+が確かに呼び出されていることを確認した.
+
+だから pru-elf-gdb で何故上の条件が成立しないかを調べてみる.
+
+最初の frame_id_eq の呼び出しで
+
+false が返るのが aarch64-elf-gdb
+true  が返るのが pru-elf-gdb
+
+なのでこの時点で違いがある.
+この条件式は if (A || B) { ... } のようになっているから B の条件も厳密には考慮する
+必要はあるが, おそらく B は今は関係ない.
+
+そこで frame_id_eq の呼び出しでなぜ違いが出るのか調査する.
+
+aarch64-elf-gdb では以下の条件が成立しているので false が返る.
+
+  else if (l.code_addr_p && r.code_addr_p && l.code_addr != r.code_addr)
+    /* An invalid code addr is a wild card.  If .code addresses are
+       different, the frames are different.  */
+    eq = false;
+
+一方 pru-elf-gdb では上の条件が成立していない. 上の条件が成立しなくても false が返る
+可能性はあるが, 今はおそらく上の条件が成立しないので false が返らない理由になっている.
+
+以下は aarch64-elf-gdb での変数の結果:
+
+(gdb) p/x l.code_addr_p
+$8 = 0x1
+(gdb) p/x r.code_addr_p
+$9 = 0x1
+(gdb) p/x l.code_addr
+$10 = 0x108
+(gdb) p/x r.code_addr
+$11 = 0x100
+(gdb)
+
+以下は pru-elf-gdb での変数の結果:
+
+(gdb) p/x l.code_addr_p
+$6 = 0x0
+(gdb) p/x r.code_addr_p
+$7 = 0x0
+(gdb) p/x l.code_addr
+$8 = 0x0
+(gdb) p/x r.code_addr
+$9 = 0x0
+(gdb)
+
+これを見ると本来セットされているべき何かが単純にセットされていないということ.
+
+だから aarch64-elf-gdb でこの変数がどのタイミングでセットされるかを調査する.
+
+これは例の条件式で構造体を返す函数を呼び出しているところ
+
+aarch64-elf-gdb では
+
+(gd) p get_stack_frame_id (frame)
+$25 = {stack_addr = 134217472, code_addr = 264, special_addr = 0, 
+  stack_status = FID_STACK_VALID, code_addr_p = 1, special_addr_p = 0, 
+  artificial_depth = 0}
+(gdb)
+
+で code_addr = 264 = 0x108
+になっている.
+
+
+一方 pru-elf-gdb では
+
+(gdb) p get_stack_frame_id (frame)
+$10 = {stack_addr = 0, code_addr = 0, special_addr = 0, 
+  stack_status = FID_STACK_OUTER, code_addr_p = 0, special_addr_p = 1, 
+  artificial_depth = 0}
+(gdb)
+
+のようになっている. これはポインタ変数 frame の指しているものが間違えていると
+考えられる.
+
+
+aarch64-elf-gdb の場合
+
+(gdb) p *frame
+$26 = {level = 0, pspace = 0x8ce5c10, aspace = 0x8ce60b8, 
+  prologue_cache = 0x8d362ec, unwind = 0x8b55c00 <aarch64_prologue_unwind>, 
+  prev_arch = {p = false, arch = 0x0}, prev_pc = {status = CC_UNKNOWN, 
+    masked = false, value = 0}, prev_func = {addr = 0, status = CC_UNKNOWN}, 
+  this_id = {p = frame_id_status::COMPUTED, value = {stack_addr = 134217472, 
+      code_addr = 264, special_addr = 0, stack_status = FID_STACK_VALID, 
+      code_addr_p = 1, special_addr_p = 0, artificial_depth = 0}}, 
+  base = 0x0, base_cache = 0x0, next = 0x8d361f8, prev_p = false, prev = 0x0, 
+  stop_reason = UNWIND_NO_REASON, stop_string = 0x0}
+(gdb)
+
+pru-elf-gdb の場合
+(gdb) p *frame
+$12 = {level = 0, pspace = 0x8bc2638, aspace = 0x8bc2ae0, 
+  prologue_cache = 0x0, unwind = 0x8aa5740 <pru_frame_unwind>, prev_arch = {
+    p = false, arch = 0x0}, prev_pc = {status = CC_UNKNOWN, masked = false, 
+    value = 0}, prev_func = {addr = 0, status = CC_UNKNOWN}, this_id = {
+    p = frame_id_status::COMPUTED, value = {stack_addr = 0, code_addr = 0, 
+      special_addr = 0, stack_status = FID_STACK_OUTER, code_addr_p = 0, 
+      special_addr_p = 1, artificial_depth = 0}}, base = 0x0, 
+  base_cache = 0x0, next = 0x8b7bda0, prev_p = false, prev = 0x0, 
+  stop_reason = UNWIND_NO_REASON, stop_string = 0x0}
+(gdb)
+
+
+aarch-elf-gdb の場合以下のようになっている:
+
+(gdb) p frame->this_id->value
+$27 = {stack_addr = 134217472, code_addr = 264, special_addr = 0, 
+  stack_status = FID_STACK_VALID, code_addr_p = 1, special_addr_p = 0, 
+  artificial_depth = 0}
+(gdb)
+
+pru-elf-gdb の場合以下のようになっている:
+
+(gdb) p frame->this_id->value
+$14 = {stack_addr = 0, code_addr = 0, special_addr = 0, 
+  stack_status = FID_STACK_OUTER, code_addr_p = 0, special_addr_p = 1, 
+  artificial_depth = 0}
+(gdb)
+
+この値をセットしているのが
+
+aarch64-elf-gdb の場合以下だった:
+
+static void
+aarch64_prologue_this_id (struct frame_info *this_frame,
+			  void **this_cache, struct frame_id *this_id)
+{
+  struct aarch64_prologue_cache *cache
+    = aarch64_make_prologue_cache (this_frame, this_cache);
+
+  if (!cache->available_p)
+    *this_id = frame_id_build_unavailable_stack (cache->func);
+  else
+    *this_id = frame_id_build (cache->prev_sp, cache->func);  このときはこっち
+}
+
+一方 pru-elf-gdb は以下:
+
+static void
+pru_frame_this_id (struct frame_info *this_frame, void **this_cache,
+		     struct frame_id *this_id)
+{
+}
+
+単純に実装していないということ.
+そもそもここは MCORE のときにこうしていたのだが, 何をやるか不明だったので空の函数に
+していた. 「MCORE の gdb」->「簡単なプログラムを動かすまで」を参照.
+そこでは「ブレークポイントにヒットしたときこの函数が呼び出された」とある.
+
+今回は next コマンドのようにブレークポイントの組み合わせで実現するコマンドなので
+こういうことになったわけだ.
