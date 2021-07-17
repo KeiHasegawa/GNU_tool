@@ -1,0 +1,75 @@
+pru-elf-gdb のシミュレータ.
+
+(*1) マクロ
+CPU は cpu->pru_cpu に
+RD_REGN は GET_INSN_FIELD (RD, inst) に
+RDSEL は GET_INSN_FIELD (RDSEL, inst)
+
+define されている.
+
+      if (rd_is_modified)
+	write_regval (_RDVAL, &CPU.regs[RD_REGN], RDSEL);
+
+を通過するときに
+
+(gdb) p GET_INSN_FIELD (RD, inst)
+$3 = ...
+(gdb) p cpu->pru_cpu.regs[$3 の値]
+$4 = ...
+(gdb) p/x _RDVAL
+$5 = 
+(gdb) p GET_INSN_FIELD (RDSEL, inst)
+$6 = 
+
+のようにすればどのレジスタが何の値に変更されたか確認することができる.
+
+
+(*2) プログラムカウンタとリンクレジスタ(ra)の扱い
+
+	ldi32	sp, 0x1000
+	call	0x150       ; (*A)
+
+(*A) を実行したとき 3 番のレジスタ(ra レジスタ)が 0x420000 に変更されたのを確認したのだが,
+このプログラムは 0x100 番地に配置しているので期待値は
+
+0x108
+
+で何故化けているのか...
+
+0x108 >> 2 = 0x42
+
+これと関係しているのか.
+
+ret 命令を実行すると呼び出し元に戻ることができている.
+
+このシミュレータは pc の値を
+
+cpu->pru_cpu.pc
+
+として保持しているが, 本来の値を 4 で割った値を保持している.
+しかし sim_fetch_register で問い合わせがあった場合
+4 倍した値を返しているから辻褄は合っている.
+
+ret 命令で
+
+PC = RS2
+
+が行なわれる.
+
+RS2 は
+
+(gdb) p/x extract_regval (cpu->pru_cpu.regs[GET_INSN_FIELD (RS2, inst)], GET_INSN_FIELD (RS2SEL, inst))
+$7 = ...
+
+のようにすれば見ることができる.
+
+cpu->pru_cpu.pc = $7 の値
+
+ということになり, 辻褄は合っている.
+
+r3 の値を 16 ビット右シフトした値にさらに 4 倍したものを見ることで本来の r3 の値を見ることが
+できるようである:
+
+(pru-elf-gdb) p/x ($r3 >> 16) << 2
+
+と思ったが, 実はこれはバグではなくて仕様っぽい.
