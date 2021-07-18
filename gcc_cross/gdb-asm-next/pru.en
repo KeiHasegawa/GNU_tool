@@ -1,6 +1,6 @@
-PRU の gdb で next コマンド
+PRU gdb `next' fabrication
 
-以下の簡単なプログラム
+For very simple program like below:
 
 	.text
 start:
@@ -12,29 +12,32 @@ end:
 my_func:
 	ret
 
-を 0x100 番地に配置して call 命令で next コマンドを実行して nop まで実行するために
+locate this program at address 0x100, and at `call' instruction,
+execute `next' command and simulate until `nop' instruction.
+For this,
 
 static void
 pru_frame_this_id(frame_info *this_frame, void **this_cache, frame_id *this_id)
 {
 
-と
+and
 
 static value*
 pru_frame_prev_register(frame_info* this_frame, void** this_cache, int regnum)
 {
 
-でこの簡単なプログラムに対してのみ動作するようにしてみた. この簡単なプログラムは
-2 つのフレームを持っていて 1 つは 0x100 もう 1 つは 0x10c である.
+I tried to implement above 2 functions just for this simple program.
+This simple program has 2 frame. One is 0x100 and another is 0x10c.
 
-この 2 つの函数と
+For above 2 functions and below functions
 
 run_command
 next_command
 sim_resume
 sim_stop_reason
 
-がどのように呼び出されるかを確認した.
+I examined how they were used. And below is the log:
+Search for `(*)' from below log.
 
 (gdb) run
 The program being debugged has been started already.
@@ -55,7 +58,7 @@ Breakpoint 1 at 0x104: file test004.S, line 4.
 --Type <RET> for more, q to quit, c to continue without paging--c
 
 Thread 1 "gdb" hit Breakpoint 9, run_command (args=0x0, from_tty=0) at infcmd.c:546
-ここで run コマンドが実行されている.
+(*) Here `run' command was executed.
 (gdb) c
 Continuing.
 
@@ -71,17 +74,17 @@ Run till exit from #0  0x082c6ec8 in pru_frame_this_id (this_frame=0x8b7be1c, th
 $11 = {stack_addr = 0x1000, code_addr = 0x100, special_addr = 0x0, 
   stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
   artificial_depth = 0x0}
-ここで 0x100 が返されている.
+(*) 0x100 was returned.
 (gdb) c
 Continuing.
 
 Thread 1 "gdb" hit Breakpoint 8, sim_resume (sd=0x8c32e80, step=0, siggnal=0) at ./../common/sim-resume.c:41
-run コマンドに対する sim_resume
+(*) `sim_resume' was called for `run' command.
 (gdb) c
 Continuing.
 
 Thread 1 "gdb" hit Breakpoint 7, sim_stop_reason (sd=0x8c32e80, reason=0xbfffeda4, sigrc=0xbfffeda8) at ./../common/sim-reason.c:30
-sim_resume が終了したので sim_stop_reason が呼ばれている.
+(*) Because `sim_resume' was finshed, `sim_stop_reason' was called
 (gdb) c
 Continuing.
 
@@ -98,24 +101,24 @@ Run till exit from #0  0x082c6ec8 in pru_frame_this_id (this_frame=0x8b7be1c, th
 $13 = {stack_addr = 0x1000, code_addr = 0x100, special_addr = 0x0, 
   stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
   artificial_depth = 0x0}
-ここで 0x100 が返されている.  
+(*) 0x100 was returned
 (gdb) c
 Continuing.
 Breakpoint 1, start () at test004.S:4
 4		call	%label(my_func)
 
 Thread 1 "gdb" hit Breakpoint 10, next_command (count_string=0x0, from_tty=0) at infcmd.c:801
-ここで next コマンドを実行
+(*) `next' command was executed
 (gdb) c
 Continuing.
 
 Thread 1 "gdb" hit Breakpoint 8, sim_resume (sd=0x8c32e80, step=1, siggnal=0) at ./../common/sim-resume.c:41
-next コマンドに対する sim_resume の実行
+(*) `sim_resume' was called for `next' command
 (gdb) c
 Continuing.
 
 Thread 1 "gdb" hit Breakpoint 7, sim_stop_reason (sd=0x8c32e80, reason=0xbfffeda4, sigrc=0xbfffeda8) at ./../common/sim-reason.c:30
-sim_resume が終了したので sim_stop_reason が呼び出されている.
+(*) Because `sim_resume' was finished, `sim_stop_reason' was called.
 (gdb) c
 Continuing.
 
@@ -131,7 +134,7 @@ Run till exit from #0  0x082c6ec8 in pru_frame_this_id (this_frame=0x8b7be1c, th
 $15 = {stack_addr = 0xffc, code_addr = 0x10c, special_addr = 0x0, 
   stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
   artificial_depth = 0x0}
-ここで 0x10c が返されている.  
+(*) 0x10c was returned
 (gdb) c
 Continuing.
 
@@ -162,7 +165,7 @@ ta fields>}, <No data fields>}}, <No data fields>}},
   optimized_out = {<std::_Vector_base<range, std::allocator<range> >> = {
       _M_impl = {<std::allocator<range>> = {<__gnu_cxx::new_allocator<range>> = {<No data fields>}, <No data fields>}, <std::_Vector_base<range, std::allocator<range> >::_Vector_impl_data> = {_M_start = 0x0, _M_finish = 0x0, 
           _M_end_of_storage = 0x0}, <No data fields>}}, <No data fields>}}
-ここでは何かを捻り出した.
+(*) Here, return something understandable.
 (gdb) c
 Continuing.
 
@@ -178,17 +181,17 @@ Run till exit from #0  0x082c6ec8 in pru_frame_this_id (this_frame=0x8b7be94, th
 $19 = {stack_addr = 0x1000, code_addr = 0x100, special_addr = 0x0, 
   stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
   artificial_depth = 0x0}
-0x100 を返している.  
+(*) 0x100 was returned
 (gdb) c
 Continuing.
 
 Thread 1 "gdb" hit Breakpoint 8, sim_resume (sd=0x8c32e80, step=0, siggnal=0) at ./../common/sim-resume.c:41
-next コマンドに対して single step 後の実行再開
+(*) For `next' command, `sim_resume' was called after single step execution.
 (gdb) c
 Continuing.
 
 Thread 1 "gdb" hit Breakpoint 7, sim_stop_reason (sd=0x8c32e80, reason=0xbfffeda4, sigrc=0xbfffeda8) at ./../common/sim-reason.c:30
-sim_resume が停止したので sim_stop_reason が呼び出されている.
+(*) Because `sim_resume' was finished, `sim_stop_reason' was called.
 (gdb) c
 Continuing.
 
@@ -204,7 +207,7 @@ Run till exit from #0  0x082c6ec8 in pru_frame_this_id (this_frame=0x8b7be1c, th
 $21 = {stack_addr = 0x1000, code_addr = 0x100, special_addr = 0x0, 
   stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
   artificial_depth = 0x0}
-0x100 が返されている.  
+(*) 0x100 was returned.
 (gdb) c
 Continuing.
 
@@ -220,11 +223,12 @@ Run till exit from #0  0x082c6ec8 in pru_frame_this_id (this_frame=0x8b7be1c, th
 $23 = {stack_addr = 0x1000, code_addr = 0x100, special_addr = 0x0, 
   stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
   artificial_depth = 0x0}
-0x100 が返されている.  
+(*) 0x100 was returned.
 (gdb) c
 Continuing.
 6		nop
 (pru-elf-gdb)
 
-そして期待通り動作している.
-この特定の動作をする pru-tdep.c をこのページに pru-tdep.c.002 としてアップロードしておいた.
+pru-elf-gdb worked well. I up-loaded `pru-tdep.c' at this point as
+`pru-tdep.c.002' on this web page.
+
