@@ -1,17 +1,17 @@
-xxx_prologue_this_id の調査 
+`xxx_prologue_this_id' investigation
 
-この函数はブレークポイントにヒットしたときに呼び出され, そして next コマンド
-で実行を再開させる判定に影響を与えることが判明している.
+o This function is called when break-point is hit.
 
-そこで正しく動作している AARCH64(ARM64) の gdb でどのように実装されているか
-調べてみる.
+o `next' commmand judges if keep going after single step.
+
+Because `AARCH64(ARM64)' gdb works well, now I'll investigate it.
 
 static void
 aarch64_prologue_this_id (struct frame_info *this_frame,
 			  void **this_cache, struct frame_id *this_id)
 {
 
-簡単なテストプログラム
+Simple program like below:
 
 	.text
 start:
@@ -21,42 +21,43 @@ start:
 func:
         ret
 
-でこれを 0x100 番地に配置して bl 命令で next を実行するというもの.
-最初のブレークポイントのヒットは start にセットされた run コマンドに
-よるもの. 時系列で示すと以下のようになる:
+Locate this program at address 0x100, and execute `next' command
+at `bl' instuction like below:
+
 
          b start
          run
 
-                   命令制限なしで実行
+                   execute no restriction
 		   
-                   ブレークポイントにヒット
-                                       -----> aarch64_prologue_this_id() 呼び出し
+                   break-point hit
+                                       -----> aarch64_prologue_this_id()
 
          next
 	 
-	           1 命令実行
+	           single step
 		   
-	           実行停止
-                                       -----> aarch64_prologue_this_id() 呼び出し
+	           single step done
+                                       -----> aarch64_prologue_this_id()
 				       
-		   2 つの内部ブレークポイントをセット		       
-                   実行再開
+		   2 break-points are set
+                   execute no restriction
 
 
-以下の 2 つの函数
+Now below 2 functions
 
 aarch64_prologue_this_id
 aarch64_prologue_prev_register
 
-と
+and below well-known functions
 
 run_command
 next_command
 sim_resume
 sim_stop_reason
 
-がどのように呼び出されるか確かめてみた:
+are called like below:
+Search for `(*)' from below log.
 
 (gdb) run
 Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.aarch64-elf/gdb/gdb -q -x gdbcom test003.elf
@@ -73,23 +74,23 @@ Reading symbols from test003.elf...
 #1  0x0810274f in do_const_cfunc (c=0x8cab020, args=0x0, from_tty=0) at cli/cli-decode.c:95
 (gdb) down
 #0  run_command (args=0x0, from_tty=0) at infcmd.c:546
-まず run コマンドがきている
+(*) First `run' command was executed
 (gdb) c
 Continuing.
 
 Thread 1 "gdb" hit Breakpoint 5, sim_resume (sd=0x8d5d098, step=0, siggnal=0) at ./../common/sim-resume.c:41
-run コマンドに対する sim_resume がきている
+(*) For `run' command, `sim_resume' was called.
 (gdb) c
 Continuing.
 
 Thread 1 "gdb" hit Breakpoint 6, sim_stop_reason (sd=0x8d5d098, reason=0xbfffed04, sigrc=0xbfffed08) at ./../common/sim-reason.c:30
-sim_resume の結果停止したので sim_stop_reason がきている
+(*) `sim_resume' was finished so `sim_stop_reason' was called.
 (gdb) c
 Continuing.
 
 
 Thread 1 "gdb" hit Breakpoint 1, aarch64_prologue_this_id (this_frame=0x8d3c274, this_cache=0x8d3c280, this_id=0x8d3c2b0) at aarch64-tdep.c:1056
-ここでフレームの問い合わせ
+(*) Here, frame is queried.
 (gdb) fin
 Run till exit from #0  aarch64_prologue_this_id (this_frame=0x8d3c274, this_cache=0x8d3c280, this_id=0x8d3c2b0) at aarch64-tdep.c:1056
 0x081cd617 in compute_frame_id (fi=0x8d3c274) at frame.c:590
@@ -97,31 +98,29 @@ Run till exit from #0  aarch64_prologue_this_id (this_frame=0x8d3c274, this_cach
 $20 = {stack_addr = 0x7ffff00, code_addr = 0x100, special_addr = 0x0, 
   stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
   artificial_depth = 0x0}
-0x100 がここでは返る. 停止したアドレスとたまたま一致しているが, 必ずしもそうではない.
-だからシミュレータの保持する pc を参照するとかではなくて, this_frame 引数から
-結果を計算する必要がある.
+(*) `0x100' was returned.
 (gdb) c
 Continuing.
 Breakpoint 1, start () at test003.S:3
 3		bl func
 
 Thread 1 "gdb" hit Breakpoint 4, next_command (count_string=0x0, from_tty=0) at infcmd.c:801
-ここで next コマンド
+(*) Here `next' command
 (gdb) c
 Continuing.
 
 Thread 1 "gdb" hit Breakpoint 5, sim_resume (sd=0x8d5d098, step=1, siggnal=0) at ./../common/sim-resume.c:41
-next コマンドに対する sim_resume. 1 命令のみ実行.
+(*) For `next' command, `sim_resume' was called wih step=1.
 (gdb) c
 Continuing.
 
 Thread 1 "gdb" hit Breakpoint 6, sim_stop_reason (sd=0x8d5d098, reason=0xbfffed04, sigrc=0xbfffed08) at ./../common/sim-reason.c:30
-上の sim_resume が停止したので sim_stop_reason で問い合わせ
+(*) Above `sim_resume' was finished so `sim_stop_reason' was called.
 (gdb) c
 Continuing.
 
 Thread 1 "gdb" hit Breakpoint 1, aarch64_prologue_this_id (this_frame=0x8d3c274, this_cache=0x8d3c280, this_id=0x8d3c2b0) at aarch64-tdep.c:1056
-ここでフレームの問い合わせ
+(*) Here, frame was queried.
 (gdb) fin
 Run till exit from #0  aarch64_prologue_this_id (this_frame=0x8d3c274, this_cache=0x8d3c280, this_id=0x8d3c2b0) at aarch64-tdep.c:1056
 0x081cd617 in compute_frame_id (fi=0x8d3c274) at frame.c:590
@@ -129,17 +128,17 @@ Run till exit from #0  aarch64_prologue_this_id (this_frame=0x8d3c274, this_cach
 $21 = {stack_addr = 0x7ffff00, code_addr = 0x108, special_addr = 0x0, 
   stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
   artificial_depth = 0x0}
-やはり停止したアドレス 0x108. これは ret 命令のアドレス. たまたま一致している.
+(*) `0x108' was returned.
 (gdb) c
 Continuing.
 
 Thread 1 "gdb" hit Breakpoint 2, aarch64_prologue_prev_register (this_frame=0x8d3c274, this_cache=0x8d3c280, prev_regnum=32) at aarch64-tdep.c:1071
-ここで 32 番(PC)の問い合わせ.
+(*) Here, 32th register (PC) was queried.
 (gdb) fin
 Run till exit from #0  aarch64_prologue_prev_register (this_frame=0x8d3c274, this_cache=0x8d3c280, prev_regnum=32) at aarch64-tdep.c:1071
 
 Thread 1 "gdb" hit Breakpoint 2, aarch64_prologue_prev_register (this_frame=0x8d3c274, this_cache=0x8d3c280, prev_regnum=30) at aarch64-tdep.c:1071
-32 番(PC) の結果を得るために 30 番(LR) に対して再帰的に呼ばれている
+(*) Becaseu 32th regiser (PC) was queried, 30th (LR) was queried.
 (gdb) fin
 Run till exit from #0  aarch64_prologue_prev_register (this_frame=0x8d3c274, this_cache=0x8d3c280, prev_regnum=30) at aarch64-tdep.c:1071
 0x081ced57 in frame_unwind_register_value (next_frame=0x8d3c274, regnum=30) at frame.c:1279
@@ -173,7 +172,7 @@ Value returned is $24 = (value *) 0x8d62338
 Run till exit from #0  0x081cf139 in frame_unwind_register_unsigned (next_frame=0x8d3c274, regnum=30) at frame.c:1370
 0x0807914e in aarch64_prologue_prev_register (this_frame=0x8d3c274, this_cache=0x8d3c280, prev_regnum=32) at aarch64-tdep.c:1082
 Value returned is $25 = 260
-32 番(PC) の問い合わせに対して LR を参照してそれが 260 = 0x104 だと判明.
+(*) For 32th register(PC), LR was queried, and it was `0x104'.
 (gdb) n
 (gdb) p/x lr
 $26 = 0x104
@@ -206,12 +205,12 @@ ta fields>}, <No data fields>}}, <No data fields>}},
 Continuing.
 
 Thread 1 "gdb" hit Breakpoint 1, aarch64_prologue_this_id (this_frame=0x8d3cdc4, this_cache=0x8d3cdd0, this_id=0x8d3ce00) at aarch64-tdep.c:1056
-ここでフレームの問い合わせ
+(*) Here, frame was queried.
 (gdb) fin
 Run till exit from #0  aarch64_prologue_this_id (this_frame=0x8d3cdc4, this_cache=0x8d3cdd0, this_id=0x8d3ce00) at aarch64-tdep.c:1056
 
 Thread 1 "gdb" hit Breakpoint 2, aarch64_prologue_prev_register (this_frame=0x8d3c274, this_cache=0x8d3c280, prev_regnum=31) at aarch64-tdep.c:1071
-そして frame の問い合わせに 31 番(SP) に対してこの函数が呼ばれている.
+(*) And for frame query, for 31th register (SP), this function was called.
 (gdb) fin
 Run till exit from #0  aarch64_prologue_prev_register (this_frame=0x8d3c274, this_cache=0x8d3c280, prev_regnum=31) at aarch64-tdep.c:1071
 0x081ced57 in frame_unwind_register_value (next_frame=0x8d3c274, regnum=31) at frame.c:1279
@@ -263,13 +262,12 @@ Run till exit from #0  0x0807903f in aarch64_prologue_this_id (this_frame=0x8d3c
 $35 = {stack_addr = 0x7ffff00, code_addr = 0x100, special_addr = 0x0, 
   stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
   artificial_depth = 0x0}
-結局これを返している. 0x100. 現在は ret 命令のある 0x108 で停止しているはずだから pc とは
-必ずしも一致しない.
+(*) `0x100' was returned.
 (gdb) c
 Continuing.
 
 Thread 1 "gdb" hit Breakpoint 5, sim_resume (sd=0x8d5d098, step=0, siggnal=0) at ./../common/sim-resume.c:41
-そこで ret 命令から実行を再開するために sim_resume が呼ばれる.
+(*) Again resumed from `ret' instruction.
 (gdb) c
 Continuing.
 
@@ -279,7 +277,7 @@ Thread 1 "gdb" hit Breakpoint 6, sim_stop_reason (sd=0x8d5d098, reason=0xbfffed0
 Continuing.
 
 Thread 1 "gdb" hit Breakpoint 1, aarch64_prologue_this_id (this_frame=0x8d3c274, this_cache=0x8d3c280, this_id=0x8d3c2b0) at aarch64-tdep.c:1056
-ここでフレームの問い合わせ
+(*) Here, frame was queried.
 (gdb) fin
 Run till exit from #0  aarch64_prologue_this_id (this_frame=0x8d3c274, this_cache=0x8d3c280, this_id=0x8d3c2b0) at aarch64-tdep.c:1056
 0x081cd617 in compute_frame_id (fi=0x8d3c274) at frame.c:590
@@ -287,12 +285,12 @@ Run till exit from #0  aarch64_prologue_this_id (this_frame=0x8d3c274, this_cach
 $36 = {stack_addr = 0x7ffff00, code_addr = 0x100, special_addr = 0x0, 
   stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
   artificial_depth = 0x0}
-0x100 が返っている. 現在の pc は nop 命令のある 0x104 だから pc とは必ずしも一致しない.
+(*) `0x100' was returned.
 (gdb) c
 Continuing.
 
 Thread 1 "gdb" hit Breakpoint 1, aarch64_prologue_this_id (this_frame=0x8d3c274, this_cache=0x8d3c280, this_id=0x8d3c2b0) at aarch64-tdep.c:1056
-ここでフレームの問い合わせ
+(*) Here, frame was queried.
 (gdb) fin
 Run till exit from #0  aarch64_prologue_this_id (this_frame=0x8d3c274, this_cache=0x8d3c280, this_id=0x8d3c2b0) at aarch64-tdep.c:1056
 0x081cd617 in compute_frame_id (fi=0x8d3c274) at frame.c:590
@@ -300,7 +298,7 @@ Run till exit from #0  aarch64_prologue_this_id (this_frame=0x8d3c274, this_cach
 $37 = {stack_addr = 0x7ffff00, code_addr = 0x100, special_addr = 0x0, 
   stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
   artificial_depth = 0x0}
- 0x100 が返っている.
+(*) `0x100' was returned.
 (gdb) c
 Continuing.
 4		nop
@@ -314,7 +312,7 @@ Quit anyway? (y or n) [answered Y; input not from terminal]
 [Inferior 1 (process 22132) exited normally]
 (gdb)
 
-つまりこのプログラムには
+i.e. This program
 
 	.text
 start:
@@ -324,4 +322,4 @@ start:
 func:
         ret
 
-2 つのフレームがあって, ざっくりというと 1 つは 0x100, もう 1 つは 0x108 ということ.
+has 2 frames. One is `0x100' and another is `0x108'.
