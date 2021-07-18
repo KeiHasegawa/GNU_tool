@@ -1,7 +1,14 @@
-xxx_prologue_this_id の調査 
+xxx_this_id の調査 
 
 この函数はブレークポイントにヒットしたときに呼び出され, そして next コマンド
 で実行を再開させる判定に影響を与えることが判明している.
+
+この函数の機能はフレームの ID を回答するというものである. 単純に
+
+       o 函数の先頭アドレス.
+       o そのときのスタックポインタの値
+
+を特定できるのならばそれを ID とすればよい.
 
 そこで正しく動作している AARCH64(ARM64) の gdb でどのように実装されているか
 調べてみる.
@@ -22,6 +29,17 @@ func:
         ret
 
 でこれを 0x100 番地に配置して bl 命令で next を実行するというもの.
+仮にスタックポインタが開始時に
+
+0x7ffff00
+
+だったとすれば AARCH64(ARM64) の bl 命令でスタックポインタが変更されることはないから
+
+(0x100, 0x7ffff00)
+(0x108, 0x7ffff00)
+
+がスタックの ID ということになる.
+
 最初のブレークポイントのヒットは start にセットされた run コマンドに
 よるもの. 時系列で示すと以下のようになる:
 
@@ -97,8 +115,8 @@ Run till exit from #0  aarch64_prologue_this_id (this_frame=0x8d3c274, this_cach
 $20 = {stack_addr = 0x7ffff00, code_addr = 0x100, special_addr = 0x0, 
   stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
   artificial_depth = 0x0}
-0x100 がここでは返る. 停止したアドレスとたまたま一致しているが, 必ずしもそうではない.
-だからシミュレータの保持する pc を参照するとかではなくて, this_frame 引数から
+(0x100, 0x7ffff00) がここでは返る. 停止したアドレスとたまたま一致しているが, 必ずしもそう
+ではない. だからシミュレータの保持する pc を参照するとかではなくて, this_frame 引数から
 結果を計算する必要がある.
 (gdb) c
 Continuing.
@@ -129,7 +147,7 @@ Run till exit from #0  aarch64_prologue_this_id (this_frame=0x8d3c274, this_cach
 $21 = {stack_addr = 0x7ffff00, code_addr = 0x108, special_addr = 0x0, 
   stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
   artificial_depth = 0x0}
-やはり停止したアドレス 0x108. これは ret 命令のアドレス. たまたま一致している.
+(0x108, 0x7ffff00) を返している. これは ret 命令のアドレス. たまたま一致している.
 (gdb) c
 Continuing.
 
@@ -263,8 +281,8 @@ Run till exit from #0  0x0807903f in aarch64_prologue_this_id (this_frame=0x8d3c
 $35 = {stack_addr = 0x7ffff00, code_addr = 0x100, special_addr = 0x0, 
   stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
   artificial_depth = 0x0}
-結局これを返している. 0x100. 現在は ret 命令のある 0x108 で停止しているはずだから pc とは
-必ずしも一致しない.
+結局 (0x100, 0x7ffff00) を返している. 現在は ret 命令のある 0x108 で停止しているはずだ
+から pc とは必ずしも一致しない.
 (gdb) c
 Continuing.
 
@@ -287,7 +305,8 @@ Run till exit from #0  aarch64_prologue_this_id (this_frame=0x8d3c274, this_cach
 $36 = {stack_addr = 0x7ffff00, code_addr = 0x100, special_addr = 0x0, 
   stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
   artificial_depth = 0x0}
-0x100 が返っている. 現在の pc は nop 命令のある 0x104 だから pc とは必ずしも一致しない.
+(0x100, 0x7ffff00) が返っている. 現在の pc は nop 命令のある 0x104 だから pc とは必
+ずしも一致しない.
 (gdb) c
 Continuing.
 
@@ -300,7 +319,7 @@ Run till exit from #0  aarch64_prologue_this_id (this_frame=0x8d3c274, this_cach
 $37 = {stack_addr = 0x7ffff00, code_addr = 0x100, special_addr = 0x0, 
   stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
   artificial_depth = 0x0}
- 0x100 が返っている.
+(0x100, 0x7ffff00) が返っている.
 (gdb) c
 Continuing.
 4		nop
@@ -324,4 +343,5 @@ start:
 func:
         ret
 
-2 つのフレームがあって, ざっくりというと 1 つは 0x100, もう 1 つは 0x108 ということ.
+2 つのフレームがあって, ざっくりというと 1 つは (0x100, 0x7ffff00), もう 1 つは
+(0x108, 0x7ffff00) ということ.

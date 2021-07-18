@@ -1,8 +1,13 @@
-`xxx_prologue_this_id' investigation
+`xxx_this_id' investigation
 
 o This function is called when break-point is hit.
 
 o `next' commmand judges if keep going after single step.
+
+Roughly say, this function return frame-identifier which is
+
+     o start address of the function
+     o the value of stack pointer
 
 Because `AARCH64(ARM64)' gdb works well, now I'll investigate it.
 
@@ -21,8 +26,16 @@ start:
 func:
         ret
 
-Locate this program at address 0x100, and execute `next' command
-at `bl' instuction like below:
+Locate this program at address 0x100. Assume that stack pointer is
+
+0x7ffff00
+
+at start time, IDs are one of below:
+
+(0x100, 0x7ffff00)
+(0x108, 0x7ffff00)
+
+If executing `next' command at `bl' instuction, sequence becomes like below:
 
 
          b start
@@ -98,7 +111,7 @@ Run till exit from #0  aarch64_prologue_this_id (this_frame=0x8d3c274, this_cach
 $20 = {stack_addr = 0x7ffff00, code_addr = 0x100, special_addr = 0x0, 
   stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
   artificial_depth = 0x0}
-(*) `0x100' was returned.
+(*) (0x100, 0x7ffff00) was returned.
 (gdb) c
 Continuing.
 Breakpoint 1, start () at test003.S:3
@@ -128,7 +141,7 @@ Run till exit from #0  aarch64_prologue_this_id (this_frame=0x8d3c274, this_cach
 $21 = {stack_addr = 0x7ffff00, code_addr = 0x108, special_addr = 0x0, 
   stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
   artificial_depth = 0x0}
-(*) `0x108' was returned.
+(*) (0x108, 0x7ffff00) was returned.
 (gdb) c
 Continuing.
 
@@ -262,7 +275,7 @@ Run till exit from #0  0x0807903f in aarch64_prologue_this_id (this_frame=0x8d3c
 $35 = {stack_addr = 0x7ffff00, code_addr = 0x100, special_addr = 0x0, 
   stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
   artificial_depth = 0x0}
-(*) `0x100' was returned.
+(*) (0x100, 0x7ffff00) was returned.
 (gdb) c
 Continuing.
 
@@ -285,7 +298,7 @@ Run till exit from #0  aarch64_prologue_this_id (this_frame=0x8d3c274, this_cach
 $36 = {stack_addr = 0x7ffff00, code_addr = 0x100, special_addr = 0x0, 
   stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
   artificial_depth = 0x0}
-(*) `0x100' was returned.
+(*) (0x100, 0x7ffff00) was returned.
 (gdb) c
 Continuing.
 
@@ -298,7 +311,7 @@ Run till exit from #0  aarch64_prologue_this_id (this_frame=0x8d3c274, this_cach
 $37 = {stack_addr = 0x7ffff00, code_addr = 0x100, special_addr = 0x0, 
   stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
   artificial_depth = 0x0}
-(*) `0x100' was returned.
+(*) (0x100, 0x7ffff00) was returned.
 (gdb) c
 Continuing.
 4		nop
@@ -322,4 +335,4 @@ start:
 func:
         ret
 
-has 2 frames. One is `0x100' and another is `0x108'.
+has 2 frames. One is (0x100, 0x7ffff00) and another is (0x108, 0x7ffff00).
