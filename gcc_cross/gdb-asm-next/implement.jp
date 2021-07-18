@@ -19,11 +19,14 @@ msp430-elf-gdb  : OK
 ppc-elf-gdb     : NG
 pru-elf-gdb     : NG
 rl78-elf-gdb    : NG
-sh-elf-gdb      : ??   test_sh.004
+sh-elf-gdb      : ??
 v850-elf-gdb    : NG
 
+備考:
 
 2021/07/17 12:00
+
+今回のバグとは無関係だが
 
 sh-elf-gdb を動かすと以下のようになる.
 
@@ -34,6 +37,9 @@ Loading section .text, size 0x18 lma 0x100
 Debugger aborted
 
 これは以前も見た. linux を再起動して回避した記憶がある. メモリを確保できなかった
-ときに, このように確保できない領域にアクセスしてエラーしていた.
+ときに, このように確保できない領域にアクセスしてエラーしていたらしい.
 おそらくシミュレーション時の巨大な領域を確保しているのかも.
 
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_sh.004
+
+が再現環境

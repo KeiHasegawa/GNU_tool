@@ -1,0 +1,231 @@
+PRU の gdb で next コマンド
+
+以下の簡単なプログラム
+
+	.text
+start:
+	ldi32	sp, stack
+	call	%label(my_func)
+end:
+	nop
+	
+my_func:
+	ret
+
+を 0x100 番地に配置して call 命令で next コマンドを実行して nop まで実行するために
+
+static void
+pru_frame_this_id(frame_info *this_frame, void **this_cache, frame_id *this_id)
+{
+
+と
+
+static value*
+pru_frame_prev_register(frame_info* this_frame, void** this_cache, int regnum)
+{
+
+でこの簡単なプログラムに対してのみ動作するようにしてみた. この簡単なプログラムは
+stack = 0x1000 としてリンクしている. そして 2 つのフレームを持っていて 1 つは
+(0x100, 0x1000) もう 1 つは (0x10c, 0x0ffc) である.
+
+この 2 つの函数と
+
+run_command
+next_command
+sim_resume
+sim_stop_reason
+
+がどのように呼び出されるかを確認した.
+
+(gdb) run
+The program being debugged has been started already.
+Start it from the beginning? (y or n) y
+Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.pru-elf/gdb/gdb -q -x x test004.elf
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib/libthread_db.so.1".
+warning: File "/usr/local/lib/libstdc++.so.6.0.28-gdb.py" auto-loading has been declined by your `auto-load safe-path' set to "$debugdir:$datadir/auto-load".
+[Detaching after vfork from child process 31805]
+[New Thread 0xb7704b70 (LWP 31806)]
+[New Thread 0xb6dffb70 (LWP 31807)]
+Reading symbols from test004.elf...
+Connected to the simulator.
+Loading section .text, size 0x10 lma 0x100
+Start address 0x100
+Transfer rate: 128 bits in <1 sec.
+Breakpoint 1 at 0x104: file test004.S, line 4.
+--Type <RET> for more, q to quit, c to continue without paging--c
+
+Thread 1 "gdb" hit Breakpoint 9, run_command (args=0x0, from_tty=0) at infcmd.c:546
+ここで run コマンドが実行されている.
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 5, pru_make_prologue_cache (this_frame=0x8b7be1c, this_cache=0x8b7be28) at pru-tdep.c:96
+(gdb) fin
+Run till exit from #0  pru_make_prologue_cache (this_frame=0x8b7be1c, this_cache=0x8b7be28) at pru-tdep.c:96
+0x082c6ec8 in pru_frame_this_id (this_frame=0x8b7be1c, this_cache=0x8b7be28, this_id=0x8b7be58) at pru-tdep.c:123
+Value returned is $10 = (pru_prologue_cache *) 0x8bf9c08
+(gdb) fin
+Run till exit from #0  0x082c6ec8 in pru_frame_this_id (this_frame=0x8b7be1c, this_cache=0x8b7be28, this_id=0x8b7be58) at pru-tdep.c:123
+0x08210059 in compute_frame_id (fi=0x8b7be1c) at frame.c:590
+(gdb) p/x fi->this_id.value
+$11 = {stack_addr = 0x1000, code_addr = 0x100, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+ここで (0x100, 0x1000) が返されている.
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 8, sim_resume (sd=0x8c32e80, step=0, siggnal=0) at ./../common/sim-resume.c:41
+run コマンドに対する sim_resume
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 7, sim_stop_reason (sd=0x8c32e80, reason=0xbfffeda4, sigrc=0xbfffeda8) at ./../common/sim-reason.c:30
+sim_resume が終了したので sim_stop_reason が呼ばれている.
+(gdb) c
+Continuing.
+
+
+Thread 1 "gdb" hit Breakpoint 5, pru_make_prologue_cache (this_frame=0x8b7be1c, this_cache=0x8b7be28) at pru-tdep.c:96
+(gdb) fin
+Run till exit from #0  pru_make_prologue_cache (this_frame=0x8b7be1c, this_cache=0x8b7be28) at pru-tdep.c:96
+0x082c6ec8 in pru_frame_this_id (this_frame=0x8b7be1c, this_cache=0x8b7be28, this_id=0x8b7be58) at pru-tdep.c:123
+Value returned is $12 = (pru_prologue_cache *) 0x8c44b30
+(gdb) 
+Run till exit from #0  0x082c6ec8 in pru_frame_this_id (this_frame=0x8b7be1c, this_cache=0x8b7be28, this_id=0x8b7be58) at pru-tdep.c:123
+0x08210059 in compute_frame_id (fi=0x8b7be1c) at frame.c:590
+(gdb) p/x fi->this_id.value
+$13 = {stack_addr = 0x1000, code_addr = 0x100, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+ここで (0x100, 0x1000) が返されている.  
+(gdb) c
+Continuing.
+Breakpoint 1, start () at test004.S:4
+4		call	%label(my_func)
+
+Thread 1 "gdb" hit Breakpoint 10, next_command (count_string=0x0, from_tty=0) at infcmd.c:801
+ここで next コマンドを実行
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 8, sim_resume (sd=0x8c32e80, step=1, siggnal=0) at ./../common/sim-resume.c:41
+next コマンドに対する sim_resume の実行
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 7, sim_stop_reason (sd=0x8c32e80, reason=0xbfffeda4, sigrc=0xbfffeda8) at ./../common/sim-reason.c:30
+sim_resume が終了したので sim_stop_reason が呼び出されている.
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 5, pru_make_prologue_cache (this_frame=0x8b7be1c, this_cache=0x8b7be28) at pru-tdep.c:96
+(gdb) fin
+Run till exit from #0  pru_make_prologue_cache (this_frame=0x8b7be1c, this_cache=0x8b7be28) at pru-tdep.c:96
+0x082c6ec8 in pru_frame_this_id (this_frame=0x8b7be1c, this_cache=0x8b7be28, this_id=0x8b7be58) at pru-tdep.c:123
+Value returned is $14 = (pru_prologue_cache *) 0x8c44aa0
+(gdb) fin
+Run till exit from #0  0x082c6ec8 in pru_frame_this_id (this_frame=0x8b7be1c, this_cache=0x8b7be28, this_id=0x8b7be58) at pru-tdep.c:123
+0x08210059 in compute_frame_id (fi=0x8b7be1c) at frame.c:590
+(gdb) p/x fi->this_id.value
+$15 = {stack_addr = 0xffc, code_addr = 0x10c, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+ここで (0x10c, 0x0ffc) が返されている.  
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" received signal SIGTRAP, Trace/breakpoint trap.
+pru_frame_prev_register (this_frame=0x8b7be1c, this_cache=0x8b7be28, regnum=32) at pru-tdep.c:135
+(gdb) fin
+Run till exit from #0  pru_frame_prev_register (this_frame=0x8b7be1c, this_cache=0x8b7be28, regnum=32) at pru-tdep.c:135
+0x08211642 in frame_unwind_register_value (next_frame=0x8b7be1c, regnum=32) at frame.c:1279
+Value returned is $16 = (value *) 0x8c451a0
+(gdb) n
+(gdb) p/x *value
+$17 = {lval = 0x0, modifiable = 0x1, lazy = 0x0, initialized = 0x1, 
+  stack = 0x0, location = {address = 0x0, reg = {regnum = 0x0, 
+      next_frame_id = {stack_addr = 0x0, code_addr = 0x0, special_addr = 0x0, 
+        stack_status = 0x0, code_addr_p = 0x0, special_addr_p = 0x0, 
+        artificial_depth = 0x0}}, internalvar = 0x0, xm_worker = 0x0, 
+    computed = {funcs = 0x0, closure = 0x0}}, offset = 0x0, bitsize = 0x0, 
+  bitpos = 0x0, reference_count = 0x1, parent = {m_obj = 0x0}, 
+  type = 0x8c24224, enclosing_type = 0x8c24224, embedded_offset = 0x0, 
+  pointed_to_offset = 0x0, contents = {
+    _M_t = {<std::__uniq_ptr_impl<unsigned char, gdb::xfree_deleter<unsigned char> >> = {
+        _M_t = {<std::_Tuple_impl<0, unsigned char*, gdb::xfree_deleter<unsigned char> >> = {<std::_Tuple_impl<1, gdb::xfree_deleter<unsigned char> >> = {<std::_Head_base<1, gdb::xfree_deleter<unsigned char>, true>> = {<gdb::xfree_deleter<unsigned char>> = {<No data fields>}, <No data fields>}, <No data fields>}, <std::_Head_base<0, unsigned char*, false>> = {
+_M_head_impl = 0x8c448d8}, <No da--Type <RET> for more, q to quit, c to continue without paging--
+ta fields>}, <No data fields>}}, <No data fields>}}, 
+  unavailable = {<std::_Vector_base<range, std::allocator<range> >> = {
+      _M_impl = {<std::allocator<range>> = {<__gnu_cxx::new_allocator<range>> = {<No data fields>}, <No data fields>}, <std::_Vector_base<range, std::allocator<range> >::_Vector_impl_data> = {_M_start = 0x0, _M_finish = 0x0, 
+          _M_end_of_storage = 0x0}, <No data fields>}}, <No data fields>}, 
+  optimized_out = {<std::_Vector_base<range, std::allocator<range> >> = {
+      _M_impl = {<std::allocator<range>> = {<__gnu_cxx::new_allocator<range>> = {<No data fields>}, <No data fields>}, <std::_Vector_base<range, std::allocator<range> >::_Vector_impl_data> = {_M_start = 0x0, _M_finish = 0x0, 
+          _M_end_of_storage = 0x0}, <No data fields>}}, <No data fields>}}
+ここでは何かを捻り出した.
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 5, pru_make_prologue_cache (this_frame=0x8b7be94, this_cache=0x8b7bea0) at pru-tdep.c:96
+(gdb) fin
+Run till exit from #0  pru_make_prologue_cache (this_frame=0x8b7be94, this_cache=0x8b7bea0) at pru-tdep.c:96
+0x082c6ec8 in pru_frame_this_id (this_frame=0x8b7be94, this_cache=0x8b7bea0, this_id=0x8b7bed0) at pru-tdep.c:123
+Value returned is $18 = (pru_prologue_cache *) 0x8c3ca80
+(gdb) fin
+Run till exit from #0  0x082c6ec8 in pru_frame_this_id (this_frame=0x8b7be94, this_cache=0x8b7bea0, this_id=0x8b7bed0) at pru-tdep.c:123
+0x08210059 in compute_frame_id (fi=0x8b7be94) at frame.c:590
+(gdb) p/x fi->this_id.value
+$19 = {stack_addr = 0x1000, code_addr = 0x100, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(0x100, 0x1000) を返している.  
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 8, sim_resume (sd=0x8c32e80, step=0, siggnal=0) at ./../common/sim-resume.c:41
+next コマンドに対して single step 後の実行再開
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 7, sim_stop_reason (sd=0x8c32e80, reason=0xbfffeda4, sigrc=0xbfffeda8) at ./../common/sim-reason.c:30
+sim_resume が停止したので sim_stop_reason が呼び出されている.
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 5, pru_make_prologue_cache (this_frame=0x8b7be1c, this_cache=0x8b7be28) at pru-tdep.c:96
+(gdb) fin
+Run till exit from #0  pru_make_prologue_cache (this_frame=0x8b7be1c, this_cache=0x8b7be28) at pru-tdep.c:96
+0x082c6ec8 in pru_frame_this_id (this_frame=0x8b7be1c, this_cache=0x8b7be28, this_id=0x8b7be58) at pru-tdep.c:123
+Value returned is $20 = (pru_prologue_cache *) 0x8c3cdf0
+(gdb) 
+Run till exit from #0  0x082c6ec8 in pru_frame_this_id (this_frame=0x8b7be1c, this_cache=0x8b7be28, this_id=0x8b7be58) at pru-tdep.c:123
+0x08210059 in compute_frame_id (fi=0x8b7be1c) at frame.c:590
+(gdb) p/x fi->this_id.value
+$21 = {stack_addr = 0x1000, code_addr = 0x100, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(0x100, 0x1000) が返されている.  
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 5, pru_make_prologue_cache (this_frame=0x8b7be1c, this_cache=0x8b7be28) at pru-tdep.c:96
+(gdb) fin
+Run till exit from #0  pru_make_prologue_cache (this_frame=0x8b7be1c, this_cache=0x8b7be28) at pru-tdep.c:96
+0x082c6ec8 in pru_frame_this_id (this_frame=0x8b7be1c, this_cache=0x8b7be28, this_id=0x8b7be58) at pru-tdep.c:123
+Value returned is $22 = (pru_prologue_cache *) 0x8c3c968
+(gdb) 
+Run till exit from #0  0x082c6ec8 in pru_frame_this_id (this_frame=0x8b7be1c, this_cache=0x8b7be28, this_id=0x8b7be58) at pru-tdep.c:123
+0x08210059 in compute_frame_id (fi=0x8b7be1c) at frame.c:590
+(gdb) p/x fi->this_id.value
+$23 = {stack_addr = 0x1000, code_addr = 0x100, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(0x100, 0x1000) が返されている.  
+(gdb) c
+Continuing.
+6		nop
+(pru-elf-gdb)
+
+そして期待通り動作している.
+この特定の動作をする pru-tdep.c をこのページに pru-tdep.c.002 としてアップロードしておいた.
