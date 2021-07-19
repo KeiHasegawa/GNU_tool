@@ -1,0 +1,136 @@
+b.c をコンパイルするとライン情報
+
+	.loc 1 3 3
+
+が生成されるがそれを出しているのは
+
+~/gcc-10.2.0/gcc/final.c:2654
+
+	    (*debug_hooks->source_line) (last_linenum, last_columnnum,
+					 last_filename, last_discriminator,
+					 is_stmt);
+
+だった.
+
+a.c はどうなるか.
+
+
+p debug_insn_slim(insn)
+    5: flags:CCZ=cmp([bp:SI+0xc],0x3)
+
+の insn でこれを出していた.
+
+
+a.c の場合も
+
+(gdb) p debug_insn_slim(insn)
+    7: flags:CC=cmp([bp:SI+0xc],0x4)
+
+が出ているが, 
+
+	if (!DECL_IGNORED_P (current_function_decl)
+	    && notice_source_line (insn, is_stmt_p))
+	  {
+	    if (flag_verbose_asm)
+	      asm_show_source (last_filename, last_linenum);
+	    (*debug_hooks->source_line) (last_linenum, last_columnnum,
+
+この if の条件が成立しないのでライン情報が出ていない.
+
+DECL_IGNORED_P (current_function_decl) = 0
+
+notice_source_line (insn, is_stmt_p) = false
+
+なので
+
+notice_source_line (insn, is_stmt_p) = false
+
+となる原因を調べる.
+
+
+p INSN_HAS_LOCATION ((rtx_insn*)0xb785e9b4)
+
+が false になるのが原因.
+
+b.c の場合問題の insn は (rtx_insn *) 0xb785e84c で
+
+p INSN_HAS_LOCATION ((rtx_insn *) 0xb785e84c) = true
+
+b.c の場合
+
+INSN_HAS_LOCATION ((rtx_insn *) 0xb785e84c)
+
+が true になるところを調べる. すなち
+
+
+(((rtx_insn *) 0xb785e84c)->u.fld[4]).rt_uint
+
+が true になるところを調べる.
+
+
+rtx_insn *
+make_insn_raw (rtx pattern)
+{
+
+だった. ということは, a.c をコンパイルしたとき
+
+(((rtx_insn*)0xb785e9b4)->u.fld[4]).rt_uint
+
+が 0 になるのはどこかでクリアしている可能性が高い.
+と思ったが単純に
+
+curr_insn_location ()
+
+が 0 を返している.
+
+この函数は curr_location を返しているだけ.
+
+
+  set_curr_insn_location (gimple_location (stmt));
+
+これでクリアしていた. つまり
+
+
+tree -> gimple -> rtx_insn
+
+というとろで gimple の段階でライン情報がなくなってしまったということ.
+
+b.c の switch に対する gimple は以下でライン情報 b.c:3.3 が付加されている.
+
+static void
+annotate_one_with_location (gimple *gs, location_t location)
+{
+  if (!gimple_has_location (gs)
+      && !gimple_do_not_emit_location_p (gs)
+      && should_carry_location_p (gs))
+    gimple_set_location (gs, location);
+}
+
+
+a.c をビルドすると 2 回
+
+gimple_build_switch_nlabels
+
+が呼び出される. 1 回目呼び出されたものに対しては 
+
+annotate_one_with_location
+
+でライン情報が付加されるが 2 回目 gimple_build_switch_nlabels で作られたものに対しては
+
+annotate_one_with_location
+
+により行番号が付加されていない. 呼び出されていない.
+
+
+一回目はここから annotate_one_with_location が呼び出されていた.
+      if (!gimple_seq_empty_p (*pre_p))
+	annotate_all_with_location_after (*pre_p, pre_last_gsi, input_location);
+
+
+二回目 gimple_build_switch_nlabels を呼び出しているのは
+
+~/gcc-10.2.0/gcc/tree-switch-conversion.c:1727
+
+  vec<cluster *> output = jump_table_cluster::find_jump_tables (clusters);
+
+なるほどそれっぽい.

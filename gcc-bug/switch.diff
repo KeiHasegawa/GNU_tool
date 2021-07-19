@@ -1,0 +1,152 @@
+*** gcc-10.2.0.org/gcc/tree-switch-conversion.h	2020-07-23 15:35:18.656399007 +0900
+--- gcc-10.2.0/gcc/tree-switch-conversion.h	2021-07-19 15:41:39.100052951 +0900
+***************
+*** 71,77 ****
+    virtual void dump (FILE *f, bool details = false) = 0;
+  
+    /* Emit GIMPLE code to handle the cluster.  */
+!   virtual void emit (tree, tree, tree, basic_block) = 0;
+  
+    /* Return true if a cluster handles only a single case value and the
+       value is not a range.  */
+--- 71,77 ----
+    virtual void dump (FILE *f, bool details = false) = 0;
+  
+    /* Emit GIMPLE code to handle the cluster.  */
+!   virtual void emit (tree, tree, tree, basic_block, location_t) = 0;
+  
+    /* Return true if a cluster handles only a single case value and the
+       value is not a range.  */
+***************
+*** 165,171 ****
+      fprintf (f, " ");
+    }
+  
+!   void emit (tree, tree, tree, basic_block)
+    {
+      gcc_unreachable ();
+    }
+--- 165,171 ----
+      fprintf (f, " ");
+    }
+  
+!   void emit (tree, tree, tree, basic_block, location_t)
+    {
+      gcc_unreachable ();
+    }
+***************
+*** 251,257 ****
+    }
+  
+    void emit (tree index_expr, tree index_type,
+! 	     tree default_label_expr, basic_block default_bb);
+  
+    /* Find jump tables of given CLUSTERS, where all members of the vector
+       are of type simple_cluster.  New clusters are returned.  */
+--- 251,257 ----
+    }
+  
+    void emit (tree index_expr, tree index_type,
+! 	     tree default_label_expr, basic_block default_bb, location_t);
+  
+    /* Find jump tables of given CLUSTERS, where all members of the vector
+       are of type simple_cluster.  New clusters are returned.  */
+***************
+*** 369,375 ****
+      There *MUST* be max_case_bit_tests or less unique case
+      node targets.  */
+    void emit (tree index_expr, tree index_type,
+! 	     tree default_label_expr, basic_block default_bb);
+  
+    /* Find bit tests of given CLUSTERS, where all members of the vector
+       are of type simple_cluster.  New clusters are returned.  */
+--- 369,375 ----
+      There *MUST* be max_case_bit_tests or less unique case
+      node targets.  */
+    void emit (tree index_expr, tree index_type,
+! 	     tree default_label_expr, basic_block default_bb, location_t);
+  
+    /* Find bit tests of given CLUSTERS, where all members of the vector
+       are of type simple_cluster.  New clusters are returned.  */
+*** gcc-10.2.0.org/gcc/tree-switch-conversion.c	2020-07-23 15:35:18.656399007 +0900
+--- gcc-10.2.0/gcc/tree-switch-conversion.c	2021-07-19 15:43:13.356874580 +0900
+***************
+*** 1115,1121 ****
+  
+  void
+  jump_table_cluster::emit (tree index_expr, tree,
+! 			  tree default_label_expr, basic_block default_bb)
+  {
+    unsigned HOST_WIDE_INT range = get_range (get_low (), get_high ());
+    unsigned HOST_WIDE_INT nondefault_range = 0;
+--- 1115,1122 ----
+  
+  void
+  jump_table_cluster::emit (tree index_expr, tree,
+! 			  tree default_label_expr, basic_block default_bb,
+! 			  location_t location)
+  {
+    unsigned HOST_WIDE_INT range = get_range (get_low (), get_high ());
+    unsigned HOST_WIDE_INT nondefault_range = 0;
+***************
+*** 1134,1139 ****
+--- 1135,1141 ----
+  
+    gswitch *s = gimple_build_switch (index_expr,
+  				    unshare_expr (default_label_expr), labels);
++   s->location = location;
+    gimple_stmt_iterator gsi = gsi_start_bb (m_case_bb);
+    gsi_insert_after (&gsi, s, GSI_NEW_STMT);
+  
+***************
+*** 1472,1478 ****
+  
+  void
+  bit_test_cluster::emit (tree index_expr, tree index_type,
+! 			tree, basic_block default_bb)
+  {
+    case_bit_test test[m_max_case_bit_tests] = { {} };
+    unsigned int i, j, k;
+--- 1474,1480 ----
+  
+  void
+  bit_test_cluster::emit (tree index_expr, tree index_type,
+! 			tree, basic_block default_bb, location_t)
+  {
+    case_bit_test test[m_max_case_bit_tests] = { {} };
+    unsigned int i, j, k;
+***************
+*** 1839,1845 ****
+      {
+        cluster *c = clusters[0];
+        c->emit (index_expr, index_type,
+! 	       gimple_switch_default_label (m_switch), m_default_bb);
+        redirect_edge_succ (single_succ_edge (bb), c->m_case_bb);
+      }
+    else
+--- 1841,1848 ----
+      {
+        cluster *c = clusters[0];
+        c->emit (index_expr, index_type,
+! 	       gimple_switch_default_label (m_switch), m_default_bb,
+! 	       m_switch->location);
+        redirect_edge_succ (single_succ_edge (bb), c->m_case_bb);
+      }
+    else
+***************
+*** 1851,1857 ****
+  	if (clusters[i]->get_type () != SIMPLE_CASE)
+  	  clusters[i]->emit (index_expr, index_type,
+  			     gimple_switch_default_label (m_switch),
+! 			     m_default_bb);
+      }
+  
+    fix_phi_operands_for_edges ();
+--- 1854,1860 ----
+  	if (clusters[i]->get_type () != SIMPLE_CASE)
+  	  clusters[i]->emit (index_expr, index_type,
+  			     gimple_switch_default_label (m_switch),
+! 			     m_default_bb, 0);
+      }
+  
+    fix_phi_operands_for_edges ();
