@@ -1,0 +1,78 @@
+M-x gdb
+gdb --annotate=3 gdb
+(gdb) cd ~/lang/53_GNU_tool/gdb-bug
+(gdb) run -q -x gdbcom a.out
+...
+(gdb) break_command
+(gdb) run
+
+
+breakpoint.o を -g3 -O0 でビルドし直した.
+
+紆余曲折あったが結局以下にたどり着いた:
+
+c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 11, i386_skip_prologue (gdbarch=0x8d83990, start_pc=134517058) at i386-tdep.c:1851
+(gdb) p/x start_pc
+$26 = 0x8049142
+(gdb) fin
+Run till exit from #0  i386_skip_prologue (gdbarch=0x8d83990, start_pc=134517058) at i386-tdep.c:1851
+0x08201fc8 in gdbarch_skip_prologue_noexcept (gdbarch=0x8d83990, pc=134517058) at arch-utils.c:1007
+Value returned is $27 = 134517061
+(gdb) p/x $27
+$28 = 0x8049145
+(gdb)
+
+
+08049142 <f>:
+ 8049142:	55                   	push   %ebp
+ 8049143:	89 e5                	mov    %esp,%ebp
+ 8049145:	83 7d 0c 04          	cmpl   $0x4,0xc(%ebp)
+
+
+a.c                                            2           0x8049142               x
+a.c                                            4           0x804915a
+
+だからこの skip_prologue はできている.
+
+
+      if (skip && start_sal.pc != pc
+	  && (sym ? (BLOCK_ENTRY_PC (SYMBOL_BLOCK_VALUE (sym)) <= start_sal.end
+		     && start_sal.end < BLOCK_END (SYMBOL_BLOCK_VALUE (sym)))
+	      : (lookup_minimal_symbol_by_pc_section (start_sal.end, section).minsym
+		 == lookup_minimal_symbol_by_pc_section (pc, section).minsym)))
+	{
+	  /* First pc of next line */
+	  pc = start_sal.end;
+	  /* Recalculate the line number (might not be N+1).  */
+	  start_sal = find_pc_sect_line (pc, section, 0);
+	}
+
+この if の条件が成立して pc = 0x804915a になる.
+一方, 正常にできている b.c をビルドして b.out
+を作成し実行してみた
+
+(gdb) b symtab.c:3831
+(gdb) run -q -x gdbcom b.out
+
+成立していないので pc = 0x8049145 のまま.
+
+b.out のときは以下:
+
+(gdb) p/x start_sal.pc
+$53 = 0x8049145
+(gdb) p/x pc
+$54 = 0x8049145
+(gdb) 
+
+なので if の条件は成立しない. 一方 a.out 実行時
+
+(gdb) p/x start_sal.pc
+$56 = 0x8049142
+(gdb) p/x pc
+$57 = 0x8049145
+(gdb)
+
+のようになっている. ここが正常に動作している b.out と違う点.
