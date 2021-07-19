@@ -1,4 +1,5 @@
 #! /bin/csh -f
 
 gcc -g a.c -o a.out || exit 1
+objdump --dwarf=rawline --dwarf=decodedline -d a.out > a.objdump || exit 1
 gdb -q -x gdbcom a.out || exit 1
