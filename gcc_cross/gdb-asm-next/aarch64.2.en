@@ -1,0 +1,28 @@
+Example which AARCH64(ARM64) gdb `next' command does not work
+
+	.text
+start:
+	bl func
+end:
+	nop
+
+func:
+        ret
+
+Like above, `end' label is inserted. If you execute `next' command
+at `bl' instruction, not gdb stops at `nop' instruciton.
+
+This program has 2 frames
+
+(0x100, 0x7ffff00)
+(0x108, 0x7ffff00)
+
+But `end' is inserted, `aarch64_prologue_this_id' returns wrong frame ID
+
+(0x100, 0x7ffff00)
+(0x108, 0x7ffff00)
+(0x104, 0x7ffff00)   (*) wrong one
+
+where, `aarch64_prologue_this_id' is defined at
+
+gdb-10.2.aarch64-elf/gdb/aarch64-tdep.c

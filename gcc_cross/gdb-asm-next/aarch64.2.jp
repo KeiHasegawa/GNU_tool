@@ -1,0 +1,30 @@
+AARCH64(ARM64) の gdb でも期待通り動作しない例
+
+	.text
+start:
+	bl func
+end:
+	nop
+
+func:
+        ret
+
+このように end のラベルを入れると bl 命令で next を実行しても nop で
+停止してくれない.
+
+このプログラムのフレームは 2 つあって
+
+(0x100, 0x7ffff00)
+(0x108, 0x7ffff00)
+
+なのだが end が入ることで
+
+gdb-10.2.aarch64-elf/gdb/aarch64-tdep.c
+
+で定義されている  aarch64_prologue_this_id が
+
+(0x100, 0x7ffff00)
+(0x108, 0x7ffff00)
+(0x104, 0x7ffff00)
+
+の 3 つのフレームがあるとしてしまう. 最後の 1 つが誤り.
