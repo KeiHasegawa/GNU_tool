@@ -10,3 +10,94 @@
   Code alignment factor: 1
   Data alignment factor: -1
   Return address column: 132
+
+同じことを h8300-elf-gcc で試してみた.
+
+00000000 0010 ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: 2
+  Return address column: 12
+
+こっちは 12 らしい. コンパイルしたソースは以下:
+
+int f()
+{
+  return 0;
+}
+
+
+  return 0;
+123456789012
+
+column はこの 12 か?
+
+sh-elf-gcc でも試してみた.
+
+00000000 0000000c ffffffff CIE
+  Version:               1
+  Augmentation:          ""
+  Code alignment factor: 2
+  Data alignment factor: -4
+  Return address column: 17
+
+どうもカラム数とは無関係らしい.
+SH は lr レジスタに戻りアドレスを入れるが lr のレジスタ番号が 17 なのでこのようになっている.
+一方 H8 はスタックに戻りアドレスをプッシュして函数にジャンプするからこの限りではない.
+
+PRU の場合 r3 レジスタに戻りアドレスを 14 ビットシフトしたものが入る.
+
+sh-elf-gcc  により生成されたアセンブラソース
+pru-elf-gcc により生成されたアセンブラソース
+
+いずれも 17 や 132 に該当する部分を発見できない.
+
+h8300-elf-gcc により生成されたアセンブラソースは
+
+	.section	.debug_frame,"",@progbits
+.Lframe0:
+	.4byte	.LECIE0-.LSCIE0
+.LSCIE0:
+	.4byte	0xffffffff
+	.byte	0x3
+	.string	""
+	.uleb128 0x1
+	.sleb128 2
+	.uleb128 0xc
+	.byte	0xc
+
+のようになっている. これは 32 ビット intel のアセンブラ出力に近い. おそらく最初の 0xc
+が 12 に該当するということだろう.
+
+そして色々試してみたところ以下のことが判明した:
+
+	.text
+	.cfi_sections	.debug_frame
+f:
+	.cfi_startproc
+	ret
+	.cfi_endproc	
+
+このソースを pru-elf-as でアセンブルした結果を a.o とすると,
+
+
+a.o:     ファイル形式 elf32-pru
+
+.debug_frame セクションの内容:
+
+
+00000000 0000000c ffffffff CIE
+  Version:               1
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -1
+  Return address column: 132
+
+  DW_CFA_def_cfa: r16 ofs 0
+
+00000010 0000000c 00000000 FDE cie=00000000 pc=00000000..00000004
+
+のようになる. なのでアセンブラがこの問題の 132 を出している.
+さて一体これはどういうことだろう.
+
