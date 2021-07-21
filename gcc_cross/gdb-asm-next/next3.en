@@ -1,6 +1,6 @@
-PRU の gdb で next コマンドを条件付きで動作するようにしてみた.
+PRU gdb next command implementation
 
-以下のようなアセンブラのプログラムで
+I tried to execute `next' command like below program:
 
 	.text
 start:
@@ -32,28 +32,30 @@ func2:
 	add	r2, r2, 4
 	ret
 
-2 命令目と 3 命令目の call で next コマンドを実行してそれぞれ次の行まで
-実行するというものである.
+At 2nd and 3rd `call' instruction, execute `next' command and expected
+result is that the program goes to next line.
 
-当初これが期待通り動作するためには
+At first, I thought that this `next' worked if
 
-  o r3 レジスタがスタックにセーブされているのならば, そのアドレス
-  o r3 レジスタがスタックにセーブされていないのならば, されていないということ
+  o the stack address if `r3' is saved at stack.
+  o whether `r3' is saved or not at stack
 
-の 2 つを正しく判断できる必要があるかと思っていたが実際は違っていた.
+were judged correctly. But not. The sequence was below:
 
-0. フレーム ID を取得
-1. next コマンド
-2. single step
-3. 2 の完了後フレーム ID を取得
-4. 0 と 3 とが異なるので 1 を実行した call 命令の戻りアドレスに内部ブレークポイントをセット
-5. 命令数制限なしで実行
-6. 4 のブーレクポイントにヒット
+0. Get frame ID.
+1. `next' command
+2. Single step
+3. Get frame ID after "2. single step"
+4. gdb judges frame ID of 0 is different from frame ID of 3, so get
+   the return address for `call' instruction and set the internal break-point
+   to the address.
+5. Execute without instruction number restriction
+6. The break-point of 4 is hit
 
-という流れになっているからだった. だから実際は func1 や func2 の最初の 1 命令だけ
-実行しただけでは r3 がスタックに保存されることはないから, gdb 共通部分から
-戻りアドレスの問い合わせがあったときに r3 レジスタの値を返しておけば next はできることに
-なる.
+Just first instruction of `func1' or `func2' was executed and then
+frame IDs were queried, which meaned that `r3' was not saved at stack.
+When gdb queried return address, just answered the value of `r3', so that
+next command worked well as far as this program.
 
-勿論不完全だがこの時点での pru-tdep.c を pru-tdep.c.003 としてこのページにアップロード
-しておく.
+Of cause, this is not complete. `pru-tdep.c' is up-loaded on this web page
+as `pru-tdep.c.003'.
