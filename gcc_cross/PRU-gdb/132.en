@@ -1,0 +1,53 @@
+Investigation about register number 132
+
+Contents of the .debug_frame section:
+
+
+00000000 0000000c ffffffff CIE
+  Version:               1
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -1
+  Return address column: 132
+
+  DW_CFA_def_cfa: r16 ofs 0
+
+00000010 0000000c 00000000 FDE cie=00000000 pc=00000000..00000004
+
+I tried the same thing with `h8300-elf-gcc'
+
+00000000 0010 ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: 2
+  Return address column: 12
+
+I also tried with `sh-elf-gcc'
+
+00000000 0000000c ffffffff CIE
+  Version:               1
+  Augmentation:          ""
+  Code alignment factor: 2
+  Data alignment factor: -4
+  Return address column: 17
+
+SH architecutre has `lr' register for saving return address, and
+its register number is 17. On the other hand, H8 architecture
+pushes the return address and jumps to the function address.
+
+PRU archtecture has `r3' register and it contains return adress 14 bit
+left-shift value.
+
+At last, I found below:
+
+binutils-2.36.1.pru-elf/gas/config/tc-pru.h
+
+/* Program Counter register number is not defined by TI documents.
+   Pick the virtual number used by GCC.  */
+#define DWARF2_DEFAULT_RETURN_COLUMN 132
+
+If gdb queries 132th register, how about just answering the `r3' register
+value with 14 bit right-shift?
+
+

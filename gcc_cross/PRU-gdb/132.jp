@@ -101,3 +101,88 @@ a.o:     ファイル形式 elf32-pru
 のようになる. なのでアセンブラがこの問題の 132 を出している.
 さて一体これはどういうことだろう.
 
+
+問題のソースをアセンブルさせた結果 132 = 0x84 なので 
+
+a.o:     ファイル形式 elf32-pru
+
+セクション .text の内容:
+ 0000 0000c320                             ...             
+セクション .debug_frame の内容:
+ 0000 0c000000 ffffffff 0100017f 840c1000  ................
+ 0010 0c000000 00000000 00000000 04000000  ................
+
+確かに出ている.
+
+pru-elf-as を調べてみる. .debug_frame セクションのオフセット 0xc を 0x84
+にしている理由を調べるには...
+
+_bfd_set_section_contents
+
+だろうか? しかしこれは根拠がない. 単純にまずは write で調べるべき.
+
+binutils-2.36.1.pru-elf/bfd/section.c:1526
+
+  if (BFD_SEND (abfd, _bfd_set_section_contents,
+		(abfd, section, location, offset, count)))
+    {
+
+ここにきていた. 1 回目は ".text" 2 回目は ".debug_frame"
+
+(gdb) p section->name
+$3 = 0x80efb62 ".debug_frame"
+(gdb) p count
+$4 = 16
+(gdb) x/16bx location
+0x817c458:	0x0c	0x00	0x00	0x00	0xff	0xff	0xff	0xff
+0x817c460:	0x01	0x00	0x01	0x7f	0x84	0x0c	0x10	0x00
+(gdb)
+
+確かに 0x84 がきている.
+
+(gdb) p/x *(char*)(0x817c460 + 4)
+$5 = 0x84
+(gdb) watch *(char*)(0x817c460 + 4)
+Hardware watchpoint 3: *(char*)(0x817c460 + 4)
+(gdb) run
+
+
+  obstack_1grow (&frchain_now->frch_obstack, datum);
+
+ここだった.
+
+(gdb) p datum
+$7 = 132
+(gdb)
+
+ということは何故ここに daum = 132 でくるか調べることになる.
+スタックをさかのぼってみると
+
+      out_one (cie->return_column);
+
+なるほどそれっぽい.
+
+(gdb) up
+#2  output_cie (align=2, eh_frame=0, cie=0x817b260) at dw2gencfi.c:1885
+(gdb) p cie->return_column
+$9 = 132
+(gdb)
+
+  cie->return_column = fde->return_column;
+
+セットしていたのはここ. そして
+
+  fde->return_column = DWARF2_DEFAULT_RETURN_COLUMN;
+
+セットしていたのはここ. なるほどそれっぽい.
+
+binutils-2.36.1.pru-elf/gas/config/tc-pru.h
+
+/* Program Counter register number is not defined by TI documents.
+   Pick the virtual number used by GCC.  */
+#define DWARF2_DEFAULT_RETURN_COLUMN 132
+
+なるほど, これは意図してこうしているように思える.
+
+132 番のレジスタを gdb がアクセスした場合に r3 レジスタを 14 ビット右にシフトしたものを
+返すことにすると帳尻は合うように思えるがどうだろうか?
