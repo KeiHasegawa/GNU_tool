@@ -1,0 +1,132 @@
+Investigation the reason why pru-elf-gdb cannot show the function parameter.
+
+Breakpoint 4, f (
+    a=<error reading variable: Cannot access memory at address 0xfff8>)
+    at test008.c:3
+3	}
+
+Like above, when the C function break-point is hit,
+pru-elf-gdb cannot show the function parameter.
+
+This program uses address 0x1000 and around there as stack area.
+
+When program stops at `main'
+
+Breakpoint 3, main () at test008.c:7
+7	  f(123);
+(pru-elf-gdb) p/x $pc
+$1 = 0x140
+(pru-elf-gdb)
+
+On the other hand
+
+00000134 <main>:
+ 134:	0506e2e2 	sub	r2, r2, 6
+ 138:	e10042c3 	sbbo	r3.b2, r2, 0, 6
+ 13c:	0106e2e4 	add	r4, r2, 6
+ 140:	24007bee 	ldi	r14, 123
+ 144:	230043c3 	call	10c <f>
+
+OK. This is expected result.
+
+(pru-elf-gdb) x/6bx $sp
+0xffa:	0x42	0x00	0x00	0x00	0x00	0x00
+(pru-elf-gdb)
+
+OK. This is expected result.
+
+0xffa   +--------------------+ + r2_{new}
+	|      hi(r3_{old})  |
+	+--------------------+ +2
+	|                    |
+	|      r4_{old}      |
+	+--------------------+ <- r2_{old}, r4_{new}
+
+
+When program stops at `f'
+
+(pru-elf-gdb) p/x $pc
+$1 = 0x120
+(pru-elf-gdb)
+
+On the other hand
+
+0000010c <f>:
+ 10c:	0508e2e2 	sub	r2, r2, 8
+ 110:	e1042284 	sbbo	r4.b0, r2, 4, 4
+ 114:	0108e2e4 	add	r4, r2, 8
+ 118:	0508e4e0 	sub	r0, r4, 8
+ 11c:	e100208e 	sbbo	r14.b0, r0, 0, 4
+ 120:	12e0e0e0 	nop
+
+OK. This program stops at the expected address .
+
+(pru-elf-gdb) p $r14
+$2 = 123
+(pru-elf-gdb)
+
+OK. Because `f' is leaf function, so `r3' is not saved to stack.
+
+(pru-elf-gdb) x/4wx $sp
+0xff2:	0x0000007b	0x00001000	0x00000042	0x00000000
+(pru-elf-gdb)
+
+OK. This is expected result.
+
+0xff2   +--------------------+ + r2_{new}
+	|                    |
+	|     r14_{old}      |
+	+--------------------+ +4
+	|                    |
+	|      r4_{old}      |
+	+--------------------+ <- r2_{old}
+
+`a' is 1st parameter of `f' and it's located at address 0xff2.
+So, pruu-elf-gdb should access 0xff2 when the program stop at `f'.
+
+I noticed that pru-elf-gdb queried `r16' value at the situation
+where `r4' should be queried.
+
+When `sim_fetch_register(rn=16)' is called
+
+(gdb) where
+#0  sim_fetch_register (sd=0x8c33f38, rn=16, buf=0x8c41770 "", length=4) at ./../common/sim-reg.c:32
+#1  0x083099e7 in gdbsim_target::fetch_registers (this=0x8abb44c <gdbsim_ops>, regcache=0x8c0abd0, regno=16) at remote-sim.c:474
+#2  0x08395ada in target_fetch_registers (regcache=0x8c0abd0, regno=16) at target.c:3399
+#3  0x08302632 in regcache::raw_update (regnum=16, this=0x8c0abd0) at regcache.c:583
+#4  regcache::raw_update (this=0x8c0abd0, regnum=16) at regcache.c:572
+#5  0x0830267d in readable_regcache::raw_read (this=0x8c0abd0, regnum=16, buf=0x8c345d0 "") at regcache.c:597
+#6  0x083027c0 in readable_regcache::cooked_read (this=<optimized out>, regnum=<optimized out>, buf=<optimized out>) at regcache.c:689
+#7  0x08302966 in readable_regcache::cooked_read_value (this=0x8c0abd0, regnum=16) at regcache.c:747
+--Type <RET> for more, q to quit, c to continue without paging--c
+#8  0x083365e5 in sentinel_frame_prev_register (this_frame=0x8b8cda0, this_prologue_cache=0x8b8cdac, regnum=16) at sentinel-frame.c:53
+#9  0x082145b2 in frame_unwind_register_value (next_frame=0x8b8cda0, regnum=16) at frame.c:1279
+#10 0x08214850 in get_frame_register_value (frame=<optimized out>, regnum=16) at frame.c:1327
+#11 0x082108a0 in read_frame_register_value (value=0x8c41650, frame=0x8b8ce1c) at findvar.c:889
+#12 0x0821156e in address_from_register (regnum=16, frame=0x8b8ce1c) at findvar.c:1000
+#13 0x0816aea7 in read_addr_from_reg (this_frame=0x8b8ce1c, reg=16) at dwarf2/frame.c:204
+#14 0x0816ca35 in dwarf2_frame_cache (this_frame=0x8b8ce1c, this_cache=0x8b8ce28
+
+
+
+(gdb) up 14
+#14 0x0816ca35 in dwarf2_frame_cache (this_frame=0x8b8ce1c, this_cache=0x8b8ce28) at dwarf2/frame.c:1070
+(gdb) p fs.regs.cfa_reg
+$75 = 16
+(gdb)
+
+That's it.
+
+f:
+.LFB0:
+.LM1:
+	.cfi_startproc
+	sub	r2, r2, 8
+	.cfi_def_cfa_offset 8
+	sbbo	r4.b0, r2, 4, 4
+	.cfi_offset 4, -4          ; Fix 16 -> 4
+	add	r4, r2, 8
+	.cfi_def_cfa 16, 0
+
+Now pru-elf-gdb becomes to work well.
+
