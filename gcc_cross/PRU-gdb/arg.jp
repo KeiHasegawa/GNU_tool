@@ -1,0 +1,486 @@
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_pru.008
+
+を実行して
+
+Breakpoint 4, f (
+    a=<error reading variable: Cannot access memory at address 0xfff8>)
+    at test008.c:3
+3	}
+
+のように期待しない結果になる.
+
+このプログラムは 0x1000 番地近辺をスタックとして使用している.
+
+main で停止したとき
+
+
+Breakpoint 3, main () at test008.c:7
+7	  f(123);
+(pru-elf-gdb) p/x $pc
+$1 = 0x140
+(pru-elf-gdb)
+
+一方
+
+00000134 <main>:
+ 134:	0506e2e2 	sub	r2, r2, 6
+ 138:	e10042c3 	sbbo	r3.b2, r2, 0, 6
+ 13c:	0106e2e4 	add	r4, r2, 6
+ 140:	24007bee 	ldi	r14, 123
+ 144:	230043c3 	call	10c <f>
+
+だからここは正しい.
+
+(pru-elf-gdb) x/6bx $sp
+0xffa:	0x42	0x00	0x00	0x00	0x00	0x00
+(pru-elf-gdb)
+
+なのでここも期待通り.
+
+0xffa   +--------------------+ + r2_{new}
+	|      hi(r3_{old})  |
+	+--------------------+ +2
+	|                    |
+	|      r4_{old}      |
+	+--------------------+ <- r2_{old}, r4_{new}
+
+
+プログラムが f で停止したとき
+
+(pru-elf-gdb) p/x $pc
+$1 = 0x120
+(pru-elf-gdb)
+
+一方
+
+0000010c <f>:
+ 10c:	0508e2e2 	sub	r2, r2, 8
+ 110:	e1042284 	sbbo	r4.b0, r2, 4, 4
+ 114:	0108e2e4 	add	r4, r2, 8
+ 118:	0508e4e0 	sub	r0, r4, 8
+ 11c:	e100208e 	sbbo	r14.b0, r0, 0, 4
+ 120:	12e0e0e0 	nop
+
+なので停止しているアドレスは正しい.
+
+(pru-elf-gdb) p $r14
+$2 = 123
+(pru-elf-gdb)
+
+これも正しい. f は葉の函数だから r3 をスタックに保存しない.
+
+(pru-elf-gdb) x/4wx $sp
+0xff2:	0x0000007b	0x00001000	0x00000042	0x00000000
+(pru-elf-gdb)
+
+ここも正しい.
+
+0xff2   +--------------------+ + r2_{new}
+	|                    |
+	|     r14_{old}      |
+	+--------------------+ +4
+	|                    |
+	|      r4_{old}      |
+	+--------------------+ <- r2_{old}
+
+f の引数の a は 0xff2 番地にある. ここをアクセスするのが正しい.
+
+
+sim_read が以下のように 0xfffffff8 を引数に呼ばれている.
+
+Thread 1 "gdb" hit Breakpoint 2, sim_read (sd=0x8c2cf38, mem=4294967288, buf=0x8c3cea8 "", length=4) at ./../common/sim-hrw.c:29
+(gdb) p/x mem
+$10 = 0xfffffff8
+(gdb)
+
+なので何故このアドレスにアクセスしているのか調査する.
+# おそらくだが r3 の問い合わせに対して 0 を返していて, そこから 8 を引いた値をアクセスしている
+# 可能性は高い.
+
+(gdb) where
+#0  sim_read (sd=0x8c2cf38, mem=4294967232, buf=0x8c3ce0c "P\332J\b`\026˷\320\070˷", length=64) at ./../common/sim-hrw.c:29
+#1  0x0830aeb9 in gdbsim_xfer_memory (target=0x8ab444c <gdbsim_ops>, readbuf=0x8c3ce0c "P\332J\b`\026˷\320\070˷", writebuf=0x0, memaddr=4294967232, len=64, xfered_len=0xbfffeac8) at remote-sim.c:1065
+#2  0x0830af6a in gdbsim_target::xfer_partial (this=0x8ab444c <gdbsim_ops>, object=TARGET_OBJECT_MEMORY, annex=0x0, readbuf=0x8c3ce0c "P\332J\b`\026˷\320\070˷", writebuf=0x0, offset=4294967232, len=64, xfered_len=0xbfffeac8) at remote-sim.c:1091
+#3  0x083935ef in raw_memory_xfer_partial (ops=0x8ab444c <gdbsim_ops>, readbuf=0x8c3ce0c "P\332J\b`\026˷\320\070˷", writebuf=0x0, memaddr=4294967232, len=64, xfered_len=0xbfffeac8) at target.c:918
+#4  0x08397082 in target_xfer_partial (ops=0x8ab444c <gdbsim_ops>, object=TARGET_OBJECT_RAW_MEMORY, annex=0x0, readbuf=0x8c3ce0c "P\332J\b`\026˷\320\070˷", writebuf=0x0, offset=4294967232, len=<optimized out>, xfered_len=0xbfffeac8) at target.c:1156
+#5  0x08397264 in target_read_partial (xfered_len=0xbfffeac8, len=64, offset=4294967232, buf=0x8c3ce0c "P\332J\b`\026˷\320\070˷", annex=0x0, object=TARGET_OBJECT_RAW_MEMORY, ops=0x8ab444c <gdbsim_ops>) at target.c:1387
+#6  target_read (ops=0x8ab444c <gdbsim_ops>, object=TARGET_OBJECT_RAW_MEMORY, annex=0x0, buf=0x8c3ce0c "P\332J\b`\026˷\320\070˷", offset=4294967232, len=64) at target.c:1427
+#7  0x08397358 in target_read_raw_memory (memaddr=4294967232, myaddr=0x8c3ce0c "P\332J\b`\026˷\320\070˷", len=64) at target.c:1260
+--Type <RET> for more, q to quit, c to continue without paging--c
+#8  0x0815a03d in dcache_read_line (db=0x8c3cdf8, dcache=0x8c03bd0) at dcache.c:336
+#9  dcache_peek_byte (ptr=0x8c3cea8 "", addr=4294967288, dcache=0x8c03bd0) at dcache.c:403
+#10 dcache_read_memory_partial (ops=0x8ab444c <gdbsim_ops>, dcache=0x8c03bd0, memaddr=4294967288, myaddr=0x8c3cea8 "", len=4, xfered_len=0xbfffece8) at dcache.c:484
+#11 0x08393903 in memory_xfer_partial_1 (ops=ops@entry=0x8ab444c <gdbsim_ops>, object=object@entry=TARGET_OBJECT_STACK_MEMORY, readbuf=readbuf@entry=0x8c3cea8 "", writebuf=0x0, memaddr=4294967288, len=4, xfered_len=0xbfffece8) at target.c:1041
+#12 0x08396d82 in memory_xfer_partial (xfered_len=0xbfffece8, len=4, memaddr=<optimized out>, writebuf=0x0, readbuf=0x8c3cea8 "", object=TARGET_OBJECT_STACK_MEMORY, ops=0x8ab444c <gdbsim_ops>) at target.c:1084
+#13 target_xfer_partial (ops=0x8ab444c <gdbsim_ops>, object=TARGET_OBJECT_STACK_MEMORY, annex=0x0, readbuf=0x8c3cea8 "", writebuf=0x0, offset=4294967288, len=<optimized out>, xfered_len=0xbfffece8) at target.c:1141
+#14 0x083d8451 in read_value_memory (val=0x8c42418, bit_offset=0, stack=1, memaddr=4294967288, buffer=0x8c3cea8 "", length=4) at valops.c:956
+#15 0x083e90fd in value_fetch_lazy_memory (val=0x8c42418) at value.c:3784
+#16 value_fetch_lazy (val=0x8c42418) at value.c:3930
+#17 0x083e9431 in value_entirely_covered_by_range_vector (ranges=..., value=0x8c42418) at value.c:418
+#18 value_entirely_optimized_out (value=0x8c42418) at value.c:442
+#19 0x083dfcfe in value_check_printable (val=val@entry=0x8c42418, stream=stream@entry=0xbfffee94, options=options@entry=0xbfffeeb4) at valprint.c:1023
+#20 0x083e00aa in common_val_print_checked (val=0x8c42418, stream=0xbfffee94, recurse=2, options=0xbfffeeb4, language=0x8ad83e0 <c_language_defn>) at valprint.c:1096
+#21 0x0834cf38 in print_frame_arg (fp_opts=..., arg=0xbfffef30) at stack.c:489
+#22 0x0834d96b in print_frame_args (fp_opts=..., func=<optimized out>, frame=0x8b85e1c, num=-1, stream=0x8c03ba0) at stack.c:893
+#23 0x0834f574 in print_frame (sal=..., print_args=<optimized out>, print_what=<optimized out>, print_level=<optimized out>, frame=0x8b85e1c, fp_opts=...) at stack.c:1394
+#24 print_frame_info (fp_opts=..., frame=<optimized out>, print_level=<optimized out>, print_what=<optimized out>, print_args=<optimized out>, set_current_sal=<optimized out>) at stack.c:1119
+#25 0x0834fbfe in print_stack_frame (frame=0x8b85e1c, print_level=0, print_what=SRC_AND_LOC, set_current_sal=1) at stack.c:366
+#26 0x08256e63 in print_stop_location (ws=0xbffff224) at infrun.c:8113
+#27 0x08256eb3 in print_stop_event (uiout=0x8c00b48, displays=true) at infrun.c:8129
+#28 0x083b9906 in tui_on_normal_stop (bs=0x8c2d7a8, print_frame=1) at tui/tui-interp.c:98
+#29 0x0825c228 in std::function<void (bpstats*, int)>::operator()(bpstats*, int) const (this=0x8b2fc40, __args#0=0x8c2d7a8, __args#1=1) at /usr/local/include/c++/10.2.0/bits/std_function.h:622
+#30 0x0825b1c3 in gdb::observers::observable<bpstats*, int>::notify (this=0x8ae8384 <gdb::observers::normal_stop>, args#0=0x8c2d7a8, args#1=1) at ./../gdbsupport/observable.h:106
+#31 0x082575e9 in normal_stop () at infrun.c:8407
+#32 0x0824d9e2 in fetch_inferior_event () at infrun.c:3967
+#33 0x0823adb9 in inferior_event_handler (event_type=INF_REG_EVENT) at inf-loop.c:42
+#34 0x08258b45 in infrun_async_inferior_event_handler (data=0x0) at infrun.c:9207
+#35 0x080a498c in check_async_event_handlers () at async-event.c:295
+#36 0x084b041b in gdb_do_one_event () at event-loop.cc:194
+#37 0x082805c5 in start_event_loop () at main.c:356
+#38 captured_command_loop () at main.c:416
+#39 0x08282665 in captured_main (data=0xbffff554) at main.c:1253
+#40 gdb_main (args=0xbffff554) at main.c:1268
+#41 0x0806cf1c in main (argc=5, argv=0xbffff624) at gdb.c:32
+(gdb) 
+
+ところどころ最適化の影響で変数の値を表示できていない. しかし
+
+#14 0x083d8451 in read_value_memory (val=0x8c42418, bit_offset=0, stack=1, memaddr=4294967288, buffer=0x8c3cea8 "", length=4) at valops.c:956
+#15 0x083e90fd in value_fetch_lazy_memory (val=0x8c42418) at value.c:3784
+
+#15 で計算したアドレスが memaddr=4294967288=0xfffffff8
+
+ということなので #14 の結果になっているといえる.
+
+(gdb) up 15
+#15 0x083e90fd in value_fetch_lazy_memory (val=0x8c42418) at value.c:3784
+(gdb) p/x addr
+$13 = 0xfffffff8
+(gdb) p/x *val
+$14 = {lval = 0x1, modifiable = 0x1, lazy = 0x1, initialized = 0x1, 
+  stack = 0x1, location = {address = 0xfffffff8, reg = {regnum = 0xfffffff8, 
+      next_frame_id = {stack_addr = 0x0, code_addr = 0x0, special_addr = 0x0, 
+        stack_status = 0x0, code_addr_p = 0x0, special_addr_p = 0x0, 
+
+なるほどそれっぽい.
+
+(gdb) p/x val->location.address
+$15 = 0xfffffff8
+(gdb) p/x &val->location.address
+$16 = 0x8c42420
+(gdb) watch *(int*)0x8c42420
+
+書き込む瞬間をとらえてみる. しかし期待通りヒットせず.
+
+(gdb) p/x val->location.address
+$20 = 0xfffffff8
+(gdb) p/x &val->location.address
+$21 = 0x8c1a8b0
+(gdb) info b
+Num     Type           Disp Enb Address    What
+2       breakpoint     keep y   0x083f5b87 in sim_read at ./../common/sim-hrw.c:29
+	breakpoint already hit 23 times
+        if (mem!=4294967232)
+          c
+        end
+3       hw watchpoint  keep y              *(int*)0x8c42420
+	breakpoint already hit 7 times
+(gdb)
+
+なるほど. ずれている.
+
+0x8c42420  前回
+0x8c1a8b0  今回
+
+毎回同じとは限らないらしい.
+
+value::value
+
+にブレークポイントをセットしてみたが思いの他きていて絞り切れていない.
+
+
+(gdb) b read_frame_arg
+
+
+これらしい. ここでアドレスを計算している.
+
+
+	  val = read_var_value (sym, NULL, frame);
+
+(gdb) p *sym
+$35 = {<general_symbol_info> = {m_name = 0x8c1abc1 "a", value = {ivalue = 0, 
+      block = 0x0, bytes = 0x0, address = 0, common_block = 0x0, 
+      chain = 0x0}, language_specific = {obstack = 0x0, 
+      demangled_name = 0x0}, m_language = language_c, ada_mangled = 0, 
+    section = -1}, <allocate_on_obstack> = {<No data fields>}, 
+  type = 0x8c18320, owner = {symtab = 0x8c18308, arch = 0x8c18308}, 
+  domain = VAR_DOMAIN, aclass_index = 17, is_objfile_owned = 1, 
+  is_argument = 1, is_inlined = 0, maybe_copied = 0, subclass = SYMBOL_NONE, 
+  line = 1, aux_value = 0x8c18bb0, hash_next = 0x0}
+(gdb)
+
+これっぽい.
+
+(gdb) n
+(gdb) p val->location.address
+$36 = 4294967288
+(gdb)
+
+ということで計算しているのは
+
+(gdb) b read_var_value
+
+
+ここにきている.
+	case DWARF_VALUE_MEMORY:
+
+
+そしてこっちが期待値
+	case DWARF_VALUE_STACK:
+
+
+ということは, ... コンパイラのデバッグ情報に誤りがあるということか?
+
+pru-elf-objdump の結果は以下:
+
+ <2><78>: 省略番号: 5 (DW_TAG_formal_parameter)
+    <79>   DW_AT_name        : a
+    <7b>   DW_AT_decl_file   : 1
+    <7c>   DW_AT_decl_line   : 1
+    <7d>   DW_AT_decl_column : 12
+    <7e>   DW_AT_type        : <0x61>
+    <82>   DW_AT_location    : 2 byte block: 91 78 	(DW_OP_fbreg: -8)
+ <2><85>: Abbrev Number: 0
+ <1><86>: Abbrev Number: 0
+
+これはできていそうだが.
+
+p (int)ctx.location
+$39 = 0
+(gdb) p 
+$40 = DWARF_VALUE_STACK
+(gdb) p (int)DWARF_VALUE_STACK
+$41 = 2
+(gdb)
+
+ctx.location がなぜ DWARF_VALUE_STACK ではなくて DWARF_VALUE_MEMORY になるのか
+調べてみる.
+
+ctx の構築時 DWARF_VALUE_MEMORY にセットはされているがその後の eval メンバで
+
+
+	case DW_OP_fbreg:
+	  {
+	    const gdb_byte *datastart;
+	    size_t datalen;
+
+	    op_ptr = safe_read_sleb128 (op_ptr, op_end, &offset);
+
+のようにそれっぽい.
+そして offset = -8
+がセットされている.
+
+
+しかしこのすぐ後で
+
+	    /* FIXME: cagney/2003-03-26: This code should be using
+               get_frame_base_address(), and then implement a dwarf2
+               specific this_base method.  */
+	    this->get_frame_base (&datastart, &datalen);
+	    eval (datastart, datalen);
+	    if (this->location == DWARF_VALUE_MEMORY)
+	      result = fetch_address (0);
+	    else if (this->location == DWARF_VALUE_REGISTER)
+	      result = this->read_addr_from_reg (value_as_long (fetch (0)));
+	    else
+	      error (_("Not implemented: computing frame "
+		       "base using explicit value operator"));
+
+だとすると location は DWARF_VALUE_MEMORY で正しいということなのか.
+
+
+同じことを h8300-elf-*** で試してみた:
+
+    <47>   DW_AT_name        : a
+    <49>   DW_AT_decl_file   : 1
+    <4a>   DW_AT_decl_line   : 1
+    <4b>   DW_AT_decl_column : 12
+    <4c>   DW_AT_type        : <0x33>
+    <50>   DW_AT_location    : 2 byte block: 91 7a 	(DW_OP_fbreg: -6)
+
+オフセットに違いはあるが
+
+    <7e>   DW_AT_type        : <0x61>  PRU
+
+    <4c>   DW_AT_type        : <0x33>  H8
+
+これは正解なのか. h8300-elf-*** でこれと同じテストをしてみると, 当然だができている.
+
+h8300-elf-gdb と動きを比較してみる.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_h8300.004
+
+がこれのための環境. f で停止したとき
+
+(h8300-elf-gdb) x/4hd $sp
+0xff6:	123	4092	296	0
+(h8300-elf-gdb)
+
+つまり 0xff6 番地に引数 a があってそれを表示している.
+
+h8300-elf-gdb では
+	    address = value_as_address (value_from_pointer (ptr_type, address));
+
+ここで address = 0xff6 になっている.
+
+pru-elf-gdb は address = 0xfffffff8 だからこの現象が起っている.
+
+と思ったが, このポイントにくるまでに
+
+h8300-elf-gdb なら 0xff6
+pru-elf-gdb なら 0xfffffff8
+
+にすでになっていて, この函数の戻り値はこの address が結果的にそのまま返っている.
+
+	case DWARF_VALUE_MEMORY:
+	  {
+	    struct type *ptr_type;
+	    CORE_ADDR address = ctx.fetch_address (0);
+
+ここで計算されている.
+
+  result = extract_unsigned_integer (value_contents (result_val),
+				     TYPE_LENGTH (value_type (result_val)),
+				     byte_order);
+ここで計算されている.
+
+以下は h8300-elf-gdb をデバッグしている結果:
+(gdb) p/x *result_val
+$4 = {lval = 0x0, modifiable = 0x1, lazy = 0x0, initialized = 0x1, 
+  stack = 0x0, location = {address = 0x0, reg = {regnum = 0x0, 
+      next_frame_id = {stack_addr = 0x0, code_addr = 0x0, special_addr = 0x0, 
+        stack_status = 0x0, code_addr_p = 0x0, special_addr_p = 0x0, 
+        artificial_depth = 0x0}}, internalvar = 0x0, xm_worker = 0x0, 
+    computed = {funcs = 0x0, closure = 0x0}}, offset = 0x0, bitsize = 0x0, 
+  bitpos = 0x0, reference_count = 0x1, parent = {m_obj = 0x0}, 
+  type = 0x90ac47c, enclosing_type = 0x90ac47c, embedded_offset = 0x0, 
+  pointed_to_offset = 0x0, contents = {
+    _M_t = {<std::__uniq_ptr_impl<unsigned char, gdb::xfree_deleter<unsigned char> >> = {
+        _M_t = {<std::_Tuple_impl<0, unsigned char*, gdb::xfree_deleter<unsigned char> >> = {<std::_Tuple_impl<1, gdb::xfree_deleter<unsigned char> >> = {<std::_Head_base<1, gdb::xfree_deleter<unsigned char>, true>> = {<gdb::xfree_deleter<unsigned char>> = {<No data fields>}, <No data fields>}, <No data fields>}, <std::_Head_base<0, unsigned char*, false>> = {
+_M_head_impl = 0x9060de8}, <No da--Type <RET> for more, q to quit, c to continue without paging--c
+ta fields>}, <No data fields>}}, <No data fields>}}, unavailable = {<std::_Vector_base<range, std::allocator<range> >> = {_M_impl = {<std::allocator<range>> = {<__gnu_cxx::new_allocator<range>> = {<No data fields>}, <No data fields>}, <std::_Vector_base<range, std::allocator<range> >::_Vector_impl_data> = {_M_start = 0x0, _M_finish = 0x0, _M_end_of_storage = 0x0}, <No data fields>}}, <No data fields>}, optimized_out = {<std::_Vector_base<range, std::allocator<range> >> = {_M_impl = {<std::allocator<range>> = {<__gnu_cxx::new_allocator<range>> = {<No data fields>}, <No data fields>}, <std::_Vector_base<range, std::allocator<range> >::_Vector_impl_data> = {_M_start = 0x0, _M_finish = 0x0, _M_end_of_storage = 0x0}, <No data fields>}}, <No data fields>}}
+(gdb)
+
+以下は pru-elf-gdb をデバッグしている結果:
+(gdb) p/x *result_val
+$58 = {lval = 0x0, modifiable = 0x1, lazy = 0x0, initialized = 0x1, 
+  stack = 0x0, location = {address = 0x0, reg = {regnum = 0x0, 
+      next_frame_id = {stack_addr = 0x0, code_addr = 0x0, special_addr = 0x0, 
+        stack_status = 0x0, code_addr_p = 0x0, special_addr_p = 0x0, 
+        artificial_depth = 0x0}}, internalvar = 0x0, xm_worker = 0x0, 
+    computed = {funcs = 0x0, closure = 0x0}}, offset = 0x0, bitsize = 0x0, 
+  bitpos = 0x0, reference_count = 0x1, parent = {m_obj = 0x0}, 
+  type = 0x8c273a8, enclosing_type = 0x8c273a8, embedded_offset = 0x0, 
+  pointed_to_offset = 0x0, contents = {
+    _M_t = {<std::__uniq_ptr_impl<unsigned char, gdb::xfree_deleter<unsigned char> >> = {
+        _M_t = {<std::_Tuple_impl<0, unsigned char*, gdb::xfree_deleter<unsigned char> >> = {<std::_Tuple_impl<1, gdb::xfree_deleter<unsigned char> >> = {<std::_Head_base<1, gdb::xfree_deleter<unsigned char>, true>> = {<gdb::xfree_deleter<unsigned char>> = {<No data fields>}, <No data fields>}, <No data fields>}, <std::_Head_base<0, unsigned char*, false>> = {
+_M_head_impl = 0x8c3a640}, <No da--Type <RET> for more, q to quit, c to continue without paging--c
+ta fields>}, <No data fields>}}, <No data fields>}}, unavailable = {<std::_Vector_base<range, std::allocator<range> >> = {_M_impl = {<std::allocator<range>> = {<__gnu_cxx::new_allocator<range>> = {<No data fields>}, <No data fields>}, <std::_Vector_base<range, std::allocator<range> >::_Vector_impl_data> = {_M_start = 0x0, _M_finish = 0x0, _M_end_of_storage = 0x0}, <No data fields>}}, <No data fields>}, optimized_out = {<std::_Vector_base<range, std::allocator<range> >> = {_M_impl = {<std::allocator<range>> = {<__gnu_cxx::new_allocator<range>> = {<No data fields>}, <No data fields>}, <std::_Vector_base<range, std::allocator<range> >::_Vector_impl_data> = {_M_start = 0x0, _M_finish = 0x0, _M_end_of_storage = 0x0}, <No data fields>}}, <No data fields>}}
+(gdb)
+
+
+  result = extract_unsigned_integer (value_contents (result_val),
+				     TYPE_LENGTH (value_type (result_val)),
+				     byte_order);
+
+value_contents で戻ってきたアドレスが
+
+
+0x8c3a640:	0xf8	0xff	0xff	0xff
+
+のように期待値と違っている.
+
+
+以下は h8300-elf-gdb の fetch を呼ぶ前での結果
+
+(gdb) x/4bx ctx.stack._M_impl._M_start->value->contents._M_t._M_t._M_head_impl
+0x9060de8:	0x0f	0xf6	0x00	0x00
+(gdb)
+
+以下は pru-elf-gdb の fetch を呼ぶ前での結果
+
+(gdb) x/4bx ctx.stack._M_impl._M_start->value->contents._M_t._M_t._M_head_impl
+0x8c41640:	0xf8	0xff	0xff	0xff
+(gdb)
+
+h8300-elf-gdb で 0x9060de8 の 2 バイトをどこでセットしているか確認する.
+
+  try
+    {
+      ctx.eval (data, size);
+    }
+
+ここだった.
+
+
+見方を変えた. h8300-elf-gdb で sim_fetch_register で問い合わせがあるのは
+
+PC_REGNUM = 9 が 2 回
+6 が 1 回
+
+r6 は H8 のフレームポインタ.
+
+一方 pru-elf-gdb で sim_fetch_register で問い合わせがあるのは
+
+PC 32 が 2 回
+16 が 1 回
+132 が 1 回
+
+ということは本来 r4 レジスタを問い合わせるところを r16 を問い合わせている可能性がある.
+
+gdb で変数の書き代えを行なったところ期待通り a を表示できている.
+さて, このフレームポインタは一体どこで決まっているのか.
+
+sim_fetch_register(rn=16) のときのスタックは以下:
+
+(gdb) where
+#0  sim_fetch_register (sd=0x8c33f38, rn=16, buf=0x8c41770 "", length=4) at ./../common/sim-reg.c:32
+#1  0x083099e7 in gdbsim_target::fetch_registers (this=0x8abb44c <gdbsim_ops>, regcache=0x8c0abd0, regno=16) at remote-sim.c:474
+#2  0x08395ada in target_fetch_registers (regcache=0x8c0abd0, regno=16) at target.c:3399
+#3  0x08302632 in regcache::raw_update (regnum=16, this=0x8c0abd0) at regcache.c:583
+#4  regcache::raw_update (this=0x8c0abd0, regnum=16) at regcache.c:572
+#5  0x0830267d in readable_regcache::raw_read (this=0x8c0abd0, regnum=16, buf=0x8c345d0 "") at regcache.c:597
+#6  0x083027c0 in readable_regcache::cooked_read (this=<optimized out>, regnum=<optimized out>, buf=<optimized out>) at regcache.c:689
+#7  0x08302966 in readable_regcache::cooked_read_value (this=0x8c0abd0, regnum=16) at regcache.c:747
+--Type <RET> for more, q to quit, c to continue without paging--c
+#8  0x083365e5 in sentinel_frame_prev_register (this_frame=0x8b8cda0, this_prologue_cache=0x8b8cdac, regnum=16) at sentinel-frame.c:53
+#9  0x082145b2 in frame_unwind_register_value (next_frame=0x8b8cda0, regnum=16) at frame.c:1279
+#10 0x08214850 in get_frame_register_value (frame=<optimized out>, regnum=16) at frame.c:1327
+#11 0x082108a0 in read_frame_register_value (value=0x8c41650, frame=0x8b8ce1c) at findvar.c:889
+#12 0x0821156e in address_from_register (regnum=16, frame=0x8b8ce1c) at findvar.c:1000
+#13 0x0816aea7 in read_addr_from_reg (this_frame=0x8b8ce1c, reg=16) at dwarf2/frame.c:204
+#14 0x0816ca35 in dwarf2_frame_cache (this_frame=0x8b8ce1c, this_cache=0x8b8ce28
+
+
+
+(gdb) up 14
+#14 0x0816ca35 in dwarf2_frame_cache (this_frame=0x8b8ce1c, this_cache=0x8b8ce28) at dwarf2/frame.c:1070
+(gdb) p fs.regs.cfa_reg
+$75 = 16
+(gdb)
+
+これっぽい.
+
+f:
+.LFB0:
+.LM1:
+	.cfi_startproc
+	sub	r2, r2, 8
+	.cfi_def_cfa_offset 8
+	sbbo	r4.b0, r2, 4, 4
+	.cfi_offset 4, -4          ; 16 -> 4 と修正
+	add	r4, r2, 8
+	.cfi_def_cfa 4, 0          ; 16 -> 4 と修正
+
+これで期待通り動作している.
+
