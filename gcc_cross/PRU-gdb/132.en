@@ -50,4 +50,10 @@ binutils-2.36.1.pru-elf/gas/config/tc-pru.h
 If gdb queries 132th register, how about just answering the `r3' register
 value with 14 bit right-shift?
 
+Ont the other hand, as described at "PRU gcc" -> "Fix register number of FP"
+It might work if just return 32(PC register number) for 132 like below:
 
+static int pru_dbg_reg_to_regnum(gdbarch*, int regnum)
+{
+  if (regnum == 132)
+    return 32;

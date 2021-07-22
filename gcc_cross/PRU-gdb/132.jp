@@ -186,3 +186,12 @@ binutils-2.36.1.pru-elf/gas/config/tc-pru.h
 
 132 番のレジスタを gdb がアクセスした場合に r3 レジスタを 14 ビット右にシフトしたものを
 返すことにすると帳尻は合うように思えるがどうだろうか?
+
+これとは別に「PRU の gcc」で「フレームポインタのレジスタ番号修正」で 132 番の
+レジスタについてふれている. これからすると単純に PC のレジスタ番号 32 に以下のように
+変換するのが良さそうである:
+
+static int pru_dbg_reg_to_regnum(gdbarch*, int regnum)
+{
+  if (regnum == 132)
+    return 32;
