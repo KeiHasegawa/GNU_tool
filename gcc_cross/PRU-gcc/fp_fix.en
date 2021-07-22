@@ -1,10 +1,12 @@
-pru-elf-gcc の修正メモ
+Fix register number of FP
+
+For the below code:
 
 void f(int a)
 {
 }
 
-をコンパイルすると
+pru-elf-gcc generates like below:
 
 f:
 .LFB0:
@@ -16,83 +18,13 @@ f:
 	.cfi_offset 16, -4
 	add	r4, r2, 8
 
-のようになるが
+But above is not correct.
 
 	.cfi_offset 4, -4
 
-が正しい.
-
-例によって生成しているところは final_1
-
-(gdb) b final_1
-(gdb) command
-> set asm_out_file=stdout
-> end
-(gdb)
-
-これで rtx_insn を特定する. 
-
-(gdb) p debug_insn_slim(insn)
-   25: NOTE_INSN_CFI
-$6 = void
-(gdb) n
-	.cfi_offset 16, -4
-(gdb)
-
-これだった.
-
-
-    case DW_CFA_offset_extended_sf:
-      r = DWARF2_FRAME_REG_OUT (cfi->dw_cfi_oprnd1.dw_cfi_reg_num, 1);
-      fprintf (f, "\t.cfi_offset %lu, " HOST_WIDE_INT_PRINT_DEC"\n",
-	       r, cfi->dw_cfi_oprnd2.dw_cfi_offset);
-      break;
-
-ここで出している. r が 16 になるのがまずい. r の期待値は 4.
-マクロ展開は以下のようになっていた.
-
-      r = (cfi->dw_cfi_oprnd1.dw_cfi_reg_num);
-
-実際値を確認:
-
-(gdb) p cfi->dw_cfi_oprnd1.dw_cfi_reg_num
-$12 = 16
-(gdb) p &cfi->dw_cfi_oprnd1.dw_cfi_reg_num
-$13 = (unsigned int *) 0xb78e1b08
-(gdb) watch *(unsigned int *) 0xb78e1b08
-Hardware watchpoint 4: *(unsigned int *) 0xb78e1b08
-(gdb) run
-...
-
-static void
-reg_save (unsigned int reg, unsigned int sreg, poly_int64 offset)
-{
-...
-  cfi->dw_cfi_oprnd1.dw_cfi_reg_num = reg;
-
-ここで 16 をセットしていた.
-
+is expected result.
 
 gcc-10.2.0.pru-elf/gcc/config/pru/pru.md:
-
-  for (i = 0; i < count; i++)
-    XVECEXP (operands[3], 0, i)
-      = gen_rtx_SET (change_address (operands[0], mode,
-		       plus_constant (Pmode, base_reg,
-				      base_offs + i * GET_MODE_SIZE (mode))),
-		     gen_rtx_REG (mode, regno + i));
-
-ここで gen_rtx_REG の第 2 引数が 16 であることが原因らしい.
-さてこの pru.md だが行番号情報は今は必要ないので
-
-insn-recog.c から
-
-#line 264 "../.././gcc/config/pru/pru.md"
-
-のような行を削除した.
-
-
-pru.md から以下を発見
 
    (FIRST_ARG_REGNUM		56) ; Argument registers.
    (LAST_ARG_REGNUM		119) ;
@@ -119,9 +51,6 @@ pru.md から以下を発見
    (ARG_POINTER_REGNUM		140)
    (FIRST_PSEUDO_REGISTER	144)
 
-なるほどフレームポインタが 16 として宣言(?)されているらしい.
-また PC_REGNUM は 132 らしい.
-
-他にも修正したいところがあるが今回はこれだけにした:
+At this time, just fixed like below:
 
    (FP_REGNUM			4) ; Frame pointer register.
