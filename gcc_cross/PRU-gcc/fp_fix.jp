@@ -125,3 +125,30 @@ pru.md から以下を発見
 他にも修正したいところがあるが今回はこれだけにした:
 
    (FP_REGNUM			4) ; Frame pointer register.
+
+
+残念ながら上の修正だと
+
+f:
+.LFB0:
+.LM1:
+	.cfi_startproc
+	sub	r2, r2, 8
+	.cfi_def_cfa_offset 8
+	sbbo	r1.b0, r2, 4, 4
+	.cfi_offset 4, -4
+	add	r1, r2, 8
+	.cfi_def_cfa 4, 0
+	sub	r0, r1, 8
+	sbbo	r14.b0, r0, 0, 4
+
+のように
+
+	.cfi_offset 4, -4
+
+となるが
+
+
+	sbbo	r1.b0, r2, 4, 4
+
+のように r4 であるべきところが r1 になってしまう.
