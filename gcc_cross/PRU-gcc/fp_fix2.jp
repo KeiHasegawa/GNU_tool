@@ -1,0 +1,389 @@
+現状の問題点
+
+gcc-10.2.0.pru-elf/gcc/config/pru/pru.md
+
+を
+
+   (FP_REGNUM			4) ; Frame pointer register.
+
+のように修正したら
+
+
+sbbo	r1.b0, r2, 4, 4
+
+のように r1 になってしまった. この命令を生成するための insn は
+
+
+(gdb) p debug_insn_slim(insn)
+   13: {[r2.b0:SI+0x4]=r1.b0:QI;[r2.b0:SI+0x5]=r1.b1:QI;[r2.b0:SI+0x6]=r1.b2:QI;[r2.b0:SI+0x7]=r1.b3:QI;}
+
+
+
+(gdb) p &((rtx_insn *) 0xb785e3f0)->code
+$48 = (rtx_code *) 0xb785e3f0
+(gdb)
+
+だからこのアドレスにウォッチポイントを指定した.
+
+(gdb) info b
+Num     Type           Disp Enb Address    What
+2       breakpoint     keep y   0x086ac1e9 in final_1(rtx_insn*, FILE*, int, int) at ../.././gcc/final.c:1956
+	breakpoint already hit 1 time
+        set asm_out_file=stdout
+3       breakpoint     keep y   0x086ac3b3 in final_1(rtx_insn*, FILE*, int, int) at ../.././gcc/final.c:2020
+	breakpoint already hit 5 times
+4       hw watchpoint  keep y              *(int*)0xb785e3f0   これ
+	breakpoint already hit 3 times
+(gdb) run
+...
+ヒットした
+(gdb) up
+...
+
+gen_store_multiple
+
+で
+
+(gdb) p *operand1
+$49 = {code = REG, mode = E_QImode, jump = 0, call = 0, unchanging = 0, 
+  volatil = 0, in_struct = 0, used = 0, frame_related = 0, return_val = 0, 
+  u2 = {original_regno = 4, insn_uid = 4, symbol_ref_flags = 4, 
+    var_location_status = (unknown: 0x4), num_elem = 4, const_vector = {
+      npatterns = 4, nelts_per_pattern = 0, unused = 0}}, u = {fld = {{
+        rt_int = 4, rt_uint = 4, rt_subreg = {coeffs = {4}}, 
+        rt_str = 0x4 <error: Cannot access memory at address 0x4>, 
+        rt_rtx = 0x4, rt_rtvec = 0x4, rt_type = E_QImode, 
+        rt_addr_diff_vec_flags = {min_align = 4, base_after_vec = 0, 
+          min_after_vec = 0, max_after_vec = 0, min_after_base = 0, 
+          max_after_base = 0, offset_unsigned = 0, scale = 0}, 
+        rt_cselib = 0x4, rt_tree = 0x4, rt_bb = 0x4, rt_mem = 0x4, 
+        rt_constant = 0x4, rt_cfi = 0x4}}, hwint = {4294967300}, reg = {
+      regno = 4, nregs = 1, unused = 0, attrs = 0x0}, block_sym = {fld = {{
+          rt_int = 4, rt_uint = 4, rt_subreg = {coeffs = {4}}, 
+          rt_str = 0x4 <error: Cannot access memory at address 0x4>, 
+rt_rtx = 0--Type <RET> for more, q to quit, c to continue without paging--
+x4, rt_rtvec = 0x4, rt_type = E_QImode, rt_addr_diff_vec_flags = {
+            min_align = 4, base_after_vec = 0, min_after_vec = 0, 
+            max_after_vec = 0, min_after_base = 0, max_after_base = 0, 
+            offset_unsigned = 0, scale = 0}, rt_cselib = 0x4, rt_tree = 0x4, 
+          rt_bb = 0x4, rt_mem = 0x4, rt_constant = 0x4, rt_cfi = 0x4}, {
+          rt_int = 1, rt_uint = 1, rt_subreg = {coeffs = {1}}, 
+          rt_str = 0x1 <error: Cannot access memory at address 0x1>, 
+          rt_rtx = 0x1, rt_rtvec = 0x1, rt_type = E_BLKmode, 
+          rt_addr_diff_vec_flags = {min_align = 1, base_after_vec = 0, 
+            min_after_vec = 0, max_after_vec = 0, min_after_base = 0, 
+            max_after_base = 0, offset_unsigned = 0, scale = 0}, 
+          rt_cselib = 0x1, rt_tree = 0x1, rt_bb = 0x1, rt_mem = 0x1, 
+          rt_constant = 0x1, rt_cfi = 0x1}}, block = 0x0, 
+      offset = -5219841499071512572}, rv = {cl = 0, decimal = 1, sign = 0, 
+      signalling = 0, canonical = 0, uexp = 0, sig = {1, 0, 4, 3079628240, 
+        3079628288}}, fv = {data = {low = 4294967300, high = 17179869184}, 
+mode--Type <RET> for more, q to quit, c to continue without paging--
+ = {m_mode = 3079628240}}, hwiv = {elem = {4294967300}}, cpi = {coeffs = {
+        m_precision = 4, m_max_len = 0 '\000', m_len = "", m_val = {1}}}}}
+(gdb) 
+
+これを見るかぎり r4 が出そうな気がする.
+
+(gdb) p *operand2
+$50 = {code = CONST_INT, mode = E_VOIDmode, jump = 0, call = 0, 
+  unchanging = 0, volatil = 0, in_struct = 0, used = 0, frame_related = 0, 
+  return_val = 0, u2 = {original_regno = 0, insn_uid = 0, 
+    symbol_ref_flags = 0, var_location_status = VAR_INIT_STATUS_UNKNOWN, 
+    num_elem = 0, const_vector = {npatterns = 0, nelts_per_pattern = 0, 
+      unused = 0}}, u = {fld = {{rt_int = 4, rt_uint = 4, rt_subreg = {
+          coeffs = {4}}, 
+        rt_str = 0x4 <error: Cannot access memory at address 0x4>, 
+        rt_rtx = 0x4, rt_rtvec = 0x4, rt_type = E_QImode, 
+        rt_addr_diff_vec_flags = {min_align = 4, base_after_vec = 0, 
+          min_after_vec = 0, max_after_vec = 0, min_after_base = 0, 
+          max_after_base = 0, offset_unsigned = 0, scale = 0}, 
+        rt_cselib = 0x4, rt_tree = 0x4, rt_bb = 0x4, rt_mem = 0x4, 
+        rt_constant = 0x4, rt_cfi = 0x4}}, hwint = {4}, reg = {regno = 4, 
+      nregs = 0, unused = 0, attrs = 0x21}, block_sym = {fld = {{rt_int = 4, 
+          rt_uint = 4, rt_subreg = {coeffs = {4}}, 
+          rt_str = 0x4 <error: Cannot access memory at address 0x4>, 
+          rt_rtx = 0x4, rt_rtvec = 0x4, rt_type = E_QImode, 
+          rt_addr_diff_vec_flags = {min_align = 4, base_after_vec = 0, 
+            min_after_vec = 0, max_after_vec = 0, min_after_base = 0, 
+            max_after_base = 0, offset_unsigned = 0, scale = 0}, 
+          rt_cselib = 0x4, rt_tree = 0x4, rt_bb = 0x4, rt_mem = 0x4, 
+          rt_constant = 0x4, rt_cfi = 0x4}, {rt_int = 0, rt_uint = 0, 
+          rt_subreg = {coeffs = {0}}, rt_str = 0x0, rt_rtx = 0x0, 
+          rt_rtvec = 0x0, rt_type = E_VOIDmode, rt_addr_diff_vec_flags = {
+            min_align = 0, base_after_vec = 0, min_after_vec = 0, 
+            max_after_vec = 0, min_after_base = 0, max_after_base = 0, 
+            offset_unsigned = 0, scale = 0}, rt_cselib = 0x0, rt_tree = 0x0, 
+          rt_bb = 0x0, rt_mem = 0x0, rt_constant = 0x0, rt_cfi = 0x0}}, 
+      block = 0x21, offset = 21474836480}, rv = {cl = 0, decimal = 1, 
+      sign = 0, signalling = 0, canonical = 0, uexp = 0, sig = {0, 33, 0, 5, 
+        0}}, fv = {data = {low = 4, high = 33}, mode = {m_mode = E_HImode}}, 
+    hwiv = {elem = {4}}, cpi = {coeffs = {m_precision = 4, 
+m_max_len = 0 '\000'--Type <RET> for more, q to quit, c to continue without paging--
+, m_len = "", m_val = {141733920768}}}}}
+(gdb) p *operand3
+$51 = {code = PARALLEL, mode = E_VOIDmode, jump = 0, call = 0, 
+  unchanging = 0, volatil = 0, in_struct = 0, used = 0, frame_related = 0, 
+  return_val = 0, u2 = {original_regno = 0, insn_uid = 0, 
+    symbol_ref_flags = 0, var_location_status = VAR_INIT_STATUS_UNKNOWN, 
+    num_elem = 0, const_vector = {npatterns = 0, nelts_per_pattern = 0, 
+      unused = 0}}, u = {fld = {{rt_int = -1215424180, rt_uint = 3079543116, 
+        rt_subreg = {coeffs = {6476}}, rt_str = 0xb78e194c "\004", 
+        rt_rtx = 0xb78e194c, rt_rtvec = 0xb78e194c, rt_type = 3079543116, 
+        rt_addr_diff_vec_flags = {min_align = 76, base_after_vec = 1, 
+          min_after_vec = 0, max_after_vec = 0, min_after_base = 1, 
+          max_after_base = 1, offset_unsigned = 0, scale = 142}, 
+        rt_cselib = 0xb78e194c, rt_tree = 0xb78e194c, rt_bb = 0xb78e194c, 
+        rt_mem = 0xb78e194c, rt_constant = 0xb78e194c, rt_cfi = 0xb78e194c}}, 
+    hwint = {3079543116}, reg = {regno = 3079543116, nregs = 0, unused = 0, 
+      attrs = 0x0}, block_sym = {fld = {{rt_int = -1215424180, 
+          rt_uint = 3079543116, rt_subreg = {coeffs = {6476}}, 
+          rt_str = 0xb78e194c "\004", rt_rtx = 0xb78e194c, 
+          rt_rtvec = 0xb78e194c, rt_type = 3079543116, 
+          rt_addr_diff_vec_flags = {min_align = 76, base_after_vec = 1, 
+            min_after_vec = 0, max_after_vec = 0, min_after_base = 1, 
+            max_after_base = 1, offset_unsigned = 0, scale = 142}, 
+          rt_cselib = 0xb78e194c, rt_tree = 0xb78e194c, rt_bb = 0xb78e194c, 
+          rt_mem = 0xb78e194c, rt_constant = 0xb78e194c, 
+          rt_cfi = 0xb78e194c}, {rt_int = 0, rt_uint = 0, rt_subreg = {
+            coeffs = {0}}, rt_str = 0x0, rt_rtx = 0x0, rt_rtvec = 0x0, 
+          rt_type = E_VOIDmode, rt_addr_diff_vec_flags = {min_align = 0, 
+            base_after_vec = 0, min_after_vec = 0, max_after_vec = 0, 
+            min_after_base = 0, max_after_base = 0, offset_unsigned = 0, 
+            scale = 0}, rt_cselib = 0x0, rt_tree = 0x0, rt_bb = 0x0, 
+          rt_mem = 0x0, rt_constant = 0x0, rt_cfi = 0x0}}, block = 0x0, 
+      offset = 0}, rv = {cl = 0, decimal = 1, sign = 1, signalling = 0, 
+      canonical = 0, uexp = 48117861, sig = {0, 0, 0, 0, 0}}, fv = {data = {
+        low = 3079543116, high = 0}, mode = {m_mode = E_VOIDmode}}, hwiv = {
+ele--Type <RET> for more, q to quit, c to continue without paging--
+m = {3079543116}}, cpi = {coeffs = {m_precision = 6476, 
+        m_max_len = 142 '\216', m_len = "\267", m_val = {0}}}}}
+(gdb)
+
+どこかで operand1->u が変更されるのかと推測した:
+
+(gdb) p &operand1->u
+$55 = (rtx_def::u *) 0xb78e1940
+(gdb) p *(int*)0xb78e1940
+$56 = 4
+(gdb) watch *(int*)0xb78e1940
+Hardware watchpoint 5: *(int*)0xb78e1940
+(gdb)
+
+そうではないらしい.
+
+作成された直後を見てみた.
+
+(gdb) p debug_insn_slim((rtx_insn *) 0xb785e3f0)
+{[r2.b0:SI+0x4]=r1.b0:QI;[r2.b0:SI+0x5]=r1.b1:QI;[r2.b0:SI+0x6]=r1.b2:QI;[r2.b0:SI+0x7]=r1.b3:QI;}
+(gdb)
+
+r4 ではなくて r1 になっている.
+
+
+rtx_insn *
+make_insn_raw (rtx pattern)
+{
+  rtx_insn *insn;
+
+  insn = as_a <rtx_insn *> (rtx_alloc (INSN));
+
+  INSN_UID (insn) = cur_insn_uid++;
+  PATTERN (insn) = pattern;            この行を実行した直後に
+
+
+(gdb) p debug_insn_slim((rtx_insn *) 0xb785e3f0)
+により上のように r4 ではなく r1 になっている.
+
+通常通りビルドして
+
+gen_store_multiple
+
+にブレークポイントをセットすると pru.md のソースが表示される.
+函数の定義や参照が以下のファイルにある.
+
+insn-emit.c:8828:gen_store_multiple (rtx operand0,
+insn-output.c:20525:    { (insn_gen_fn::stored_funcptr) gen_store_multiple },
+
+この 2 つのファイルには
+
+#line 125 "../.././gcc/config/pru/pru.md"
+
+のような行番号ファイル指定のプリプロセッサのディレクティブがあるためである.
+ひとまずこれを削除した形でコンパイルするべきなので
+
+% cat a.pl
+while (<>) {
+    chop;
+    if (/#line .* \"\.\.\/\.\.\/\.\/gcc\/config\/pru\/pru\.md\"/) {
+	next;
+    }
+    print $_, "\n";
+}
+% perl a.pl insn-emit.c > insn-emit.c.x
+% mv insn-emit.c.x  insn-emit.c
+% perl a.pl insn-output.c > insn-output.c.x
+% mv insn-output.c.x insn-output.c
+
+としてからコンパイルしなおした.
+
+ところで gen_store_multiple で停止したとき
+
+(gdb) up
+
+としたところここでも pru.md が表示されている. 上の 2 つでは十分ではなかったらしい.
+
+(gdb) up
+#1  0x08942654 in target_gen_store_multiple (x0=0xb78f65a0, x1=0xb78e1938, x2=0xb7857480) at ../.././gcc/config/pru/pru.md:752
+(gdb) ptype target_gen_store_multiple
+type = struct rtx_insn : public rtx_def {
+  public:
+    bool deleted(void) const;
+    void set_deleted(void);
+    void set_undeleted(void);
+} *(rtx, rtx, rtx)
+(gdb)
+
+
+そこで
+
+rtx_insn* target_gen_store_multiple(rtx, rtx, rtx){ return 0; }
+
+この函数の定義を例えば
+
+insn-output.c
+
+の最後に追加して再びコンパイルリンクしてみた.
+リンクエラーするのが期待値だったが, しなかった. ということは
+
+static rtx_insn* target_gen_store_multiple(rtx, rtx, rtx)
+{
+...
+
+のようにどこかで定義されている可能性がある.
+
+% grep target_gen_store_multiple *.o
+バイナリー・ファイルinsn-output.oは一致しました
+バイナリー・ファイルpru.oは一致しました
+%
+
+なるほど, pru.c だったらしい.
+
+ところで pru.c に本来定義されている target_gen_store_multiple を
+実行しているときに pru.md が表示されるとしたらやはり
+
+#line 125 "../.././gcc/config/pru/pru.md"
+
+のような行番号ファイル指定のプリプロセッサのディレクティブがあるのかもしれない.
+これを発見するために
+
+% g++ -fno-PIE -E   -g3   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H -I. -I. -I../.././gcc -I../.././gcc/. -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber -I../.././gcc/../libbacktrace   -o pru.i -MT pru.o -MMD -MP -MF ./.deps/pru.TPo ../.././gcc/config/pru/pru.c
+
+のようにして pru.i を生成してみた.
+
+static bool
+target_have_doloop_begin (void)
+{
+  return
+# 903 "../.././gcc/config/pru/pru.md"
+(((global_options.x_target_flags & (1U << 1)) != 0));
+}
+
+こんなふうになっている. pru.c には直接書かれていないが
+
+% grep pru.md *.h
+insn-target-def.h:#line 903 "../.././gcc/config/pru/pru.md"
+insn-target-def.h:#line 222 "../.././gcc/config/pru/pru.md"
+insn-target-def.h:#line 616 "../.././gcc/config/pru/pru.md"
+tm-constrs.h:   from the machine description file '../.././gcc/config/pru/pru.md'.  */
+tm-preds.h:   from the machine description file '../.././gcc/config/pru/pru.md'.  */
+%
+
+そこで以下のようにした:
+
+% perl a.pl insn-target-def.h > insn-target-def.h.x
+% mv insn-target-def.h.x insn-target-def.h
+
+そして pru.c をコンパイルしなおしてリンクした.
+期待通り insn-target-def.h に書かれたインライン函数のレベルでデバッグできている.
+
+さて快適にデバッグできるようになったところで問題点について考えてみる.
+
+そもそもどこが間違っているかだが,
+
+sbbo	r1.b0, r2, 4, 4
+
+のように r4 になるべきところが r1 になっているということ.
+そしてそれは
+
+(rtx_insn *) 0xb785e3f0
+
+に配置された rtx_insn が関係していて
+
+(gdb) p debug_insn_slim((rtx_insn *) 0xb785e3f0)
+{[r2.b0:SI+0x4]=r1.b0:QI;[r2.b0:SI+0x5]=r1.b1:QI;[r2.b0:SI+0x6]=r1.b2:QI;[r2.b0:SI+0x7]=r1.b3:QI;}
+(gdb)
+
+r4 ではなくて r1 になっている.
+
+この命令を作っているのが以下のように gen_store_multiple
+
+(gdb) where
+#0  gen_store_multiple (operand0=0xb78f65a0, operand1=0xb78e1938, operand2=0xb7857480) at insn-emit.c:8817
+#1  0x08940fea in target_gen_store_multiple (x0=0xb78f65a0, x1=0xb78e1938, x2=0xb7857480) at ./insn-target-def.h:623
+#2  0x08941498 in xbbo_next_reg_cluster (regno_start=4, sp_offset=0xbffff228, do_store=true) at ../.././gcc/config/pru/pru.c:247
+#3  0x0894169e in pru_expand_prologue () at ../.././gcc/config/pru/pru.c:311
+#4  0x08b3ddb6 in gen_prologue () at insn-emit.c:9585
+
+なのだが, gen_store_multiple が呼び出されたポイントで
+
+(gdb) p *(int*)&operand1->u
+$126 = 4
+(gdb)
+
+なのでここまでは合っている.
+
+  for (i = 0; i < count; i++)
+    XVECEXP (operands[3], 0, i)
+      = gen_rtx_SET (change_address (operands[0], mode,
+		       plus_constant (Pmode, base_reg,
+				      base_offs + i * GET_MODE_SIZE (mode))),
+		     gen_rtx_REG (mode, regno + i));
+
+ここが問題ありそう.
+かと思ったが,
+
+4 番のレジスタを 4, 5, 6, 7 のようにバイト単位で分割して考えているらしい.
+その結果
+
+(gdb) p debug_insn_slim((rtx_insn *) 0xb785e3f0)
+{[r2.b0:SI+0x4]=r1.b0:QI;[r2.b0:SI+0x5]=r1.b1:QI;[r2.b0:SI+0x6]=r1.b2:QI;[r2.b0:SI+0x7]=r1.b3:QI;}
+(gdb)
+
+のようになっている. だとすると
+
+   (FP_REGNUM			4) ; Frame pointer register.
+
+この修正自体が間違えていたということ.
+そして
+
+(RA_REGNUM			14)
+
+だがこれは r2 レジスタの上位ハーフワードを指しているのかもしれない.
+
+だとすれば
+
+   (FP_REGNUM			16) ; Frame pointer register.
+
+の状態で
+
+	.cfi_offset 4, -4
+
+をどのように出すかを考えたほうが楽なのかも.
+もしくはコンパイラはこれで整合性がとれていると考えればデバッガ側で
+
+
+	.cfi_offset 16, -4
+
+
+はフレームポインタ r4 からオフセット -4 だと解釈するのが正しいかもしれない.
