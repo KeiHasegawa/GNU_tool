@@ -1,46 +1,46 @@
-RX の ABI
+RX ABI
 
-(*1) 函数呼び出し
-(*2) 函数復帰
-(*3) プロローグ
-(*4) エピローグ
-(*5) 通常の函数の引数と戻り値
-(*6) long long を引数にとる函数, 返す函数
-(*7) 浮動少数点数を引数にとる函数, 返す函数
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long long' argument and return value
+(*7) Floating point number argument and return value
+(*8) Structure argument and return value
 
 
-(*1) 函数呼び出し
+(*1) Function call
 
 	bsr	func
 
-	疑似コード
+	Pseudo code
 
 	r0 -= 4
-	memory[r0] = (bsr 命令の次のアドレス)
+	memory[r0] = (`bsr' instruction next address)
 	pc = func
 
-	r0 レジスタがスタックポインタの役割りをしている.
+	`r0' works as stack pointer.
 
-(*2) 函数復帰
+(*2) Return from function
 
 	rts
 
-	疑似コード
+	Pseudo code
 
 	pc = memory[r0]
 	r0 += 4
 
-	しかしコンパイラは大抵 rtsd 命令を生成する. (*4) を参照.
+	But compiler may generates `rtsd' instruction. Refer to (*4).
 
-(*3) プロローグ
+(*3) Prologue
 
 	pushm	r7-r10
 	add	#-128, r0
 
-	上は 128 バイトのローカル領域を使用する函数のプロローグである. pushm 命令
-	はオプショナルであり, どのレジスタを保存するかはコンパイラ次第だが, r7 以降の
-	レジスタの値は函数の呼び出し前後で保存復元がされる.
+	Above is prologue for the function which uses 128 byes local area.
+	`pushm' instruction is optional. Compiler saves and restores
+	r7, r8, ... between before and after function call.
 
 	+--------------------+ <- r0_{new}
 	|                    |
@@ -50,7 +50,7 @@ RX の ABI
 	|                    |
 	|                    |
 	|                    |
-	+--------------------+
+	+--------------------+ +128
 	|      r7_{old}      |
 	+--------------------+
 	|      r8_{old}      |
@@ -63,36 +63,37 @@ RX の ABI
 	+--------------------+ 
 
 
-(*4) エピローグ
+(*4) Epilogue
 
 	rtsd	#148, r7-r10
 
-	上は 128 バイトのローカル領域を使用する函数のプロローグで, 但しエピローグで
-	r7, ..., r10 をスタックに保存した場合のものである.
-
+	Above is epilogue for the function which uses 128 bytes local area,
+	and especially r7, ..., r10 are saved at prologue of this function.
+	where,
+	
 	128 + 4 * 4 + 4 = 148
 
-	この命令の実行により r7, ..., r10 が復元され, プログラムの制御は呼び出しもと
-	に返る.
+	By executing this instruction, `r7', `r8', `r9' and `r10' are
+	restored and return to callee.
 
-(*5) 通常の函数の引数と戻り値
+(*5) Normal argument and return value
 
-        第 1 引数 : r1
-	第 2 引数 : r2
-	第 3 引数 : r3
-	第 4 引数 : r4
-	第 5 引数以降 : スタックに積む
+        1st : r1
+	2nd : r2
+	3rd : r3
+	4th : r4
+	5th : use stack
 	
-	例えば
+	For example,
 
 	int f(int a0, int a1, int a2, int a3, int a4);
 
 	f(10, 11, 12, 13, 14);
 
-	に対して f の先頭アドレスでは
+	At the start address of `f', registers and stacklayout become
+	like below:
 
 	r1 = 10, r2 = 11, r3 = 12, r4 = 13
-
 
 	+--------------------+ <- r0
 	|   return address   |
@@ -100,20 +101,22 @@ RX の ABI
 	|         14         |
 	+--------------------+
 
-	のようになっている. 函数の戻り値は r1 レジスタにセットされる.
+	Function return value is set to `r1'.
 
-(*6) long long を引数にとる函数, 返す函数
+(*6) `long long' argument and return value
 
 	sizeof(long long) = 8
 
-	引数に対して 2 つのレジスタが使用されて函数に渡されるが, r4 とスタックを
-	使用して渡すことはなくその場合はスタックに積まれる. 例えば
+	For a argument, 2 registers are used for passing the argument.
+	But `r' and stack is not used. In that case, use stack simply.
+	For example,
 
 	long long f(int a0, long long a1, long long a2);
 
 	f(10, 0x123456789abcdef0LL, 0x1122334455667788LL);
 
-	に対して f の先頭アドレスでは
+	At the start address of `f', registers and stack layout becomes
+	like below:
 
 	r1 = 10, r2 = 0x9abcdef0, r3 = 0x12345678
 
@@ -125,20 +128,19 @@ RX の ABI
 	|     0x11223344     |
 	+--------------------+
 
-	のようになっている. 函数の戻り値は r1, r2 レジスタにセットされる.
+	Function return value is set to  `r1' and `r2'.
 	
 
-(*7) 浮動少数点数を引数にとる函数, 返す函数
+(*7) Floating point number argument and return value
 
         sizeof(float) = sizeof(double) = sizeof(long double) = 4
 
-	RX には FPU があるがレジスタは r1, ..., r4 が (*5) の規則と同じように
-	使用される.
+	RX has FPU, but r1, ..., r4 are used samely with (*5).
 
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*8) Structure argument and return value
 
-        構造体を引数に取る函数を呼び出すとき, アドレスを (*5) の規則に従って渡す.
-	構造体を返す函数を呼び出すとき戻り値を格納するアドレスを r15 レジスタに
-	セットする.
-	
+        When calling function which takes structure argument, the address
+	is set to register or stack samely with (*5).
+	When calling function which returns structure type, `r15' is set
+	to theaddress for the return value.
 
