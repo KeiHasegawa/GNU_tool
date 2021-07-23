@@ -8,15 +8,17 @@
 #include "dwarf2/frame.h"
 #include "frame-base.h"
 #include "frame-unwind.h"
+#include "trad-frame.h"
+#include <iostream>
+#include <numeric>
+#include <algorithm>
 
-static int
-pru_register_sim_regno(gdbarch*, int regnum)
+static int pru_register_sim_regno(gdbarch*, int regnum)
 {
   return regnum;
 }
 
-static int
-pru_dbg_reg_to_regnum(gdbarch*, int regnum)
+static int pru_dbg_reg_to_regnum(gdbarch*, int regnum)
 {
   return regnum;
 }
@@ -24,8 +26,7 @@ pru_dbg_reg_to_regnum(gdbarch*, int regnum)
 const int pc_regno = 32;
 const int sp_regno = 2;
 
-static const char*
-pru_register_name(gdbarch*, int regno)
+static const char* pru_register_name(gdbarch*, int regno)
 {
   if (regno == pc_regno)
     return "pc";
@@ -44,17 +45,15 @@ pru_register_name(gdbarch*, int regno)
   return 0;
 }
 
-static enum return_value_convention
-pru_return_value (struct gdbarch *gdbarch, struct value *function,
-		    struct type *type, struct regcache *regcache,
-		    gdb_byte *readbuf, const gdb_byte *writebuf)
+static return_value_convention
+pru_return_value(gdbarch*, value* function, type* type, regcache* regcache,
+		 gdb_byte *readbuf, const gdb_byte *writebuf)
 {
   asm("int3");
   return return_value_convention(0);
 }
 
-static struct type*
-pru_register_type(gdbarch* gdbarch, int regno)
+static type* pru_register_type(gdbarch* gdbarch, int regno)
 {
   switch (regno) {
   case pc_regno: return builtin_type(gdbarch)->builtin_func_ptr;
@@ -63,76 +62,181 @@ pru_register_type(gdbarch* gdbarch, int regno)
   }
 }
 
-static void
-pru_print_registers_info(gdbarch* , ui_file* file,
-			 frame_info* frame, int regno, int cpregs)
+inline void
+register_info(gdbarch* gdbarch,ui_file* file, frame_info* frame, int regno)
 {
-  fprintf_filtered (file, "%s at %s:%d called\n", __func__, __FILE__, __LINE__);
+  const char* name = pru_register_name(gdbarch, regno);
+  uint32_t value = frame_unwind_register_unsigned(frame, regno);
+  fprintf_filtered (file, "%s\t0x%08x\t%d\n", name, value, value);
 }
 
-static CORE_ADDR
-pru_skip_prologue(gdbarch*, CORE_ADDR pc)
+static void
+pru_print_registers_info(gdbarch* gdbarch,ui_file* file,
+			 frame_info* frame, int regno, int cpregs)
+{
+  if (regno >= 0)
+    return register_info(gdbarch, file, frame, regno);
+
+  int N = gdbarch_num_regs(gdbarch);
+  for (int i = 0 ; i != N ; ++i)
+    register_info(gdbarch, file, frame, i);
+}
+
+static CORE_ADDR pru_skip_prologue(gdbarch*, CORE_ADDR pc)
 {
   CORE_ADDR func_addr, func_end;
   if (!find_pc_partial_function (pc, nullptr, &func_addr, &func_end))
     return pc;
   
-  symtab_and_line sal = find_pc_line (func_addr, 0);
+  symtab_and_line sal = find_pc_line(func_addr, 0);
   if (sal.end && sal.end < func_end)
     return sal.end;
 
   return pc;
 }
 
-struct pru_prologue_cache {
-  bool available_p;
-  CORE_ADDR func;
+struct pru_frame {
+  bool available;
+  CORE_ADDR pc;
   CORE_ADDR prev_sp;
+  struct prologue_t {
+    CORE_ADDR start;
+    CORE_ADDR end;
+  } prologue;
+  int size;
+  trad_frame_saved_reg saved_reg[32];
 };
 
-static pru_prologue_cache*
-pru_make_prologue_cache (frame_info *this_frame, void **this_cache)
+inline int init_saved_reg(int no, trad_frame_saved_reg& sr)
 {
-  if (void* p = *this_cache)
-    return (pru_prologue_cache*)p;
-
-  pru_prologue_cache* cache = new pru_prologue_cache;
-  cache->available_p = true;
-  static int cnt;
-  switch (++cnt) {
-  case 1: case 2:
-    cache->func = 0x100;
-    cache->prev_sp = 0x1000;
-    break;
-  case 3:
-    cache->func = 0x10c;
-    cache->prev_sp = 0xffc;
-    break;
-  default:
-    cache->func = 0x100;
-    cache->prev_sp = 0x1000;
-    break;
-  }
-  *this_cache = cache;
-  return cache;
+  sr.addr = -1;
+  sr.realreg = no;
+  return no + 1;
 }
 
-static void
-pru_frame_this_id(frame_info *this_frame, void **this_cache, frame_id *this_id)
+inline bool canbe_prologue_start(uint32_t insn, int* size)
 {
-  pru_prologue_cache *cache = pru_make_prologue_cache(this_frame, this_cache);
+  if (insn == 0x20c30000) { // ret
+    *size = 0;
+    return true;
+  }
+  uint32_t mask = 0x0500e2e2;
+  if ((insn & mask) == mask) { // sub	sp, sp, ???
+    insn >>= 16;
+    *size = insn & 0xff;
+    return true;
+  }
+  return false;
+}
 
-  if (!cache->available_p)
-    *this_id = frame_id_build_unavailable_stack(cache->func);
+inline void search_r3r4_save_position(uint32_t insn)
+{
+  if (insn == 0xe18042c3) { //	sbbo	r3.b2, r2, 128, 6
+    asm("int3");
+  }
+
+  if (insn == 0xe1002284) { //  130:	sbbo	r3.b0, sp, 0, 4
+    asm("int3");
+  }
+}
+
+
+extern "C" const struct pru_opcode *
+pru_find_opcode (unsigned long opcode);
+
+inline bool instruction(uint32_t insn)
+{
+  if (!pru_find_opcode(insn))
+    return false;
+  if (!insn)
+    return false;  // WA
+  return true;
+}
+
+static void debug1(const trad_frame_saved_reg& sr)
+{
+  using namespace std;
+  if (sr.addr == -1)
+    return;
+  cerr << dec << sr.realreg << " : 0x" << hex << sr.addr << '\n';
+}
+
+void debug(pru_frame* p);
+void debug(pru_frame* p)
+{
+  using namespace std;
+  cerr << "available : " << p->available << '\n';
+  cerr << "pc : 0x" << hex << p->pc << '\n';
+  cerr << "prev_sp : 0x" << hex << p->prev_sp << '\n';
+  cerr << "prologue.start : 0x" << hex << p->prologue.start << '\n';
+  cerr << "prologue.end : 0x" << hex << p->prologue.start << '\n';
+  cerr << "size : " << dec << p->size << '\n';
+  int N = sizeof p->saved_reg/sizeof p->saved_reg[0];
+  for_each(&p->saved_reg[0], &p->saved_reg[N], debug1);
+}
+
+static pru_frame* pru_frame_create(frame_info* frame)
+{
+  using namespace std;
+  pru_frame* ret = new pru_frame;
+  int N = sizeof ret->saved_reg/sizeof ret->saved_reg[0];
+  accumulate(&ret->saved_reg[0], &ret->saved_reg[N], 0, init_saved_reg);
+  ret->size = 0;
+  ret->pc = get_frame_pc(frame);
+  ret->prev_sp = get_frame_sp(frame);
+  auto block_addr = get_frame_address_in_block(frame);  
+  bool found = find_pc_partial_function(block_addr, nullptr,
+					&ret->prologue.start,
+					&ret->prologue.end);
+  if (!found) {
+    ret->available = false;    
+    ret->prologue.start = ret->prologue.end = ret->pc;
+    return ret;
+  }
+  ret->available = true;
+  for (auto addr = ret->prologue.start ; ; addr -= 4) {
+    uint32_t insn = read_memory_unsigned_integer(addr, 4, BFD_ENDIAN_LITTLE);
+    if (canbe_prologue_start(insn, &ret->size)) {
+      ret->prologue.start = addr;
+      return ret;
+    }
+    search_r3r4_save_position(insn);
+    if (!instruction(insn)) {
+      ret->prologue.start = addr + 4;
+      return ret;
+    }
+  }
+}
+
+static void pru_frame_this_id(frame_info* frame, void** ptr, frame_id* id)
+{
+  auto pf = reinterpret_cast<pru_frame*>(*ptr);
+  if (!pf)
+    *ptr = pf =  pru_frame_create(frame);
+  
+  if (!pf->available)
+    *id = frame_id_build_unavailable_stack(pf->prologue.start);
   else
-    *this_id = frame_id_build(cache->prev_sp, cache->func);
+    *id = frame_id_build(pf->prev_sp, pf->prologue.start);
 }
 
 static value*
-pru_frame_prev_register(frame_info* this_frame, void** this_cache, int regnum)
+pru_frame_prev_register(frame_info* frame, void** ptr, int regno)
 {
-  asm("int3");
-  return frame_unwind_got_constant(this_frame, regnum, 0x108);
+  if (regno == sp_regno) {
+    auto sp = get_frame_sp(frame);
+    return frame_unwind_got_constant(frame, regno, sp);
+  }
+  
+  if (regno == pc_regno) {
+    auto r3 = frame_unwind_register_unsigned(frame, 3);
+    return frame_unwind_got_constant(frame, regno, r3 >> 14);
+  }
+
+  auto pf = reinterpret_cast<pru_frame*>(*ptr);
+  if (!pf)
+    *ptr = pf =  pru_frame_create(frame);
+  return trad_frame_get_prev_register(frame, &pf->saved_reg[0], regno);
 }
 
 static struct frame_unwind pru_frame_unwind = {
@@ -144,8 +248,7 @@ static struct frame_unwind pru_frame_unwind = {
   default_frame_sniffer
 };
 
-static CORE_ADDR
-pru_frame_base_address (struct frame_info *this_frame, void **this_cache)
+static CORE_ADDR pru_frame_base_address(frame_info* frame, void** cache)
 {
   asm("int3");
   return 0;
@@ -158,14 +261,12 @@ static struct frame_base pru_frame_base = {
   pru_frame_base_address
 };
 
-static
-int pru_kind_from_pc(struct gdbarch* gdbarch, CORE_ADDR* addr)
+static int pru_kind_from_pc(gdbarch*, CORE_ADDR* addr)
 {
   return 0;
 }
 
-static
-const unsigned char* pru_from_kind(gdbarch* handle, int kind, int* size)
+static const unsigned char* pru_from_kind(gdbarch*, int kind, int* size)
 {
   static unsigned char break_inst[] = { 0xee, 0xdb, 0xba, 0x26 };
   *size = sizeof break_inst;
@@ -173,20 +274,20 @@ const unsigned char* pru_from_kind(gdbarch* handle, int kind, int* size)
 }
 
 static CORE_ADDR
-pru_push_dummy_call(struct gdbarch *gdbarch, struct value *function,
-		      struct regcache *regcache, CORE_ADDR bp_addr,
-		      int nargs, struct value **args, CORE_ADDR sp,
-		      function_call_return_method return_method,
-		      CORE_ADDR struct_addr)
+pru_push_dummy_call(gdbarch*, value* function,
+		    regcache* regcache, CORE_ADDR bp_addr,
+		    int nargs, value **args, CORE_ADDR sp,
+		    function_call_return_method return_method,
+		    CORE_ADDR struct_addr)
 {
   asm("int3");
   return 0;
 }
 
 static struct gdbarch*
-pru_gdbarch_init(struct gdbarch_info info, struct gdbarch_list *arches)
+pru_gdbarch_init(gdbarch_info info, gdbarch_list* arches)
 {
-  struct gdbarch *gdbarch = gdbarch_alloc (&info, 0);
+  gdbarch* gdbarch = gdbarch_alloc(&info, 0);
 
   set_gdbarch_num_regs(gdbarch, pc_regno+1);
   set_gdbarch_register_type(gdbarch, pru_register_type);
@@ -236,4 +337,32 @@ void
 _initialize_pru_tdep()
 {
   register_gdbarch_init(bfd_arch_pru, pru_gdbarch_init);
+}
+
+
+void debug(frame_info* frame);
+void debug(frame_info* frame)
+{
+  using namespace std;
+  cerr << "pc : 0x" << hex << get_frame_pc(frame) << '\n';
+  cerr << "block : 0x" << hex << get_frame_address_in_block(frame) << '\n';
+  cerr << "sp : 0x" << hex << get_frame_sp(frame) << '\n';
+  cerr << "func : 0x" << hex << get_frame_func(frame) << '\n';
+#if 0  
+  cerr << "base : " << get_frame_base(frame) << '\n';
+#endif  
+#if 0
+  cerr << "base addr : 0x" << hex << get_frame_base_address(frame) << '\n';
+  cerr << "local : 0x" << hex << get_frame_locals_address(frame) << '\n';
+  cerr << "args : 0x" << hex << get_frame_args_address(frame) << '\n';
+  cerr << "type : " << get_frame_type(frame) << '\n';
+#endif  
+  cerr << "program space : (program_space*)"
+       << get_frame_program_space(frame) << '\n';
+  cerr << "address space : (address_space*)"
+       << get_frame_address_space(frame) << '\n';
+  cerr << "next : (frame_info*)" << get_next_frame(frame) << '\n';
+#if 0  
+  cerr << "prev : (frame_info*)" << get_prev_frame(frame) << '\n';
+#endif  
 }
