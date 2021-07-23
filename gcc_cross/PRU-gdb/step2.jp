@@ -1,9 +1,14 @@
-pru-elf-as が pru-elf-gcc の生成したアセンブラソースに対して
+pru-elf-gdb で step コマンドが期待した動作をしない件についての調査(2) 
+
+話しが少し横道にそれるかもしれないが pru-elf-as が pru-elf-gcc の生成
+したアセンブラソースに対して
 
   DW_CFA_def_cfa: r16 ofs 0
 
-のようなオブジェクトコードを .debug_frame セクションに生成しているが該当箇所は
-以下:
+のようなオブジェクトコードを .debug_frame セクションに生成しているたの
+で気になって調査した.
+
+該当箇所は以下:
 
 binutils-2.36.1.pru-elf/gas/dw2gencfi.c:1649
 
@@ -20,3 +25,6 @@ pru_frame_initial_instructions (void)
   const unsigned fp_regno = 4 * 4;
   cfi_add_CFA_def_cfa (fp_regno, 0);
 }
+
+これは step コマンドが期待した動作にならないこととは現時点ではあまり関
+係はなさそう.
