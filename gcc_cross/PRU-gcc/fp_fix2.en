@@ -1,0 +1,36 @@
+I noticed that the fix
+
+   (FP_REGNUM			4) ; Frame pointer register.
+
+of
+
+gcc-10.2.0.pru-elf/gcc/config/pru/pru.md
+
+descriebed at "Fix register number of FP" did not work.
+
+New pru-elf-gcc generates like below code:
+
+f:
+.LFB0:
+.LM1:
+	.cfi_startproc
+	sub	r2, r2, 8
+	.cfi_def_cfa_offset 8
+	sbbo	r1.b0, r2, 4, 4
+	.cfi_offset 16, -4
+	add	r4, r2, 8
+
+where,
+
+	sbbo	r1.b0, r2, 4, 4
+
+is not correct. The expected code is
+
+	sbbo	r4.b0, r2, 4, 4
+
+I guess that pru-elf-gcc is consistent within itself.
+So I guess that pru-elf-gdb should recognize
+
+	.cfi_offset 16, -4
+
+as offset -4 from frame pointer `r4'.
