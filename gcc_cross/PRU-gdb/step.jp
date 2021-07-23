@@ -1,0 +1,313 @@
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_pru.008
+
+で main 函数から f にステップ実行すると
+
+f (a=4325376) at test008.c:2
+2	{
+
+のように中途半端なところで停止してしまう.
+
+pru_skip_prologue
+
+に問題があるのかと思ったがそうではないらしい. 函数にステップインしたとき
+
+pru_skip_prologue
+
+は呼び出されていない. そして現状では f の先頭アドレスで停止している.
+同じことを h8300-elf-gdb で試すと期待通り動作している.
+
+(gdb) b step_command
+
+とすればこのときの実行を確認できる.
+ステップコマンドの実行で 2 回フレーム ID の問い合わせがある.
+
+1 回目
+available : 1
+pc : 0x10c
+prev_sp : 0x1000
+prologue.start : 0x100
+prologue.end : 0x100
+size : 0
+
+2 回目
+available : 1
+pc : 0x10c
+prev_sp : 0x1000
+prologue.start : 0x100
+prologue.end : 0x100
+size : 0
+
+prev_sp や prologue.start が正しくない可能性がある. そして結果的に
+同じフレーム ID を返している. おそらくこれが問題なのかと(最初は)考えた.
+
+ところが, h8300-elf-gdb の場合 step コマンドに対して
+
+h8300_frame_this_id
+
+は呼び出されていない. そういうものなのか. しかし代りになのか
+
+h8300_skip_prologue
+
+が呼び出されて, これが f の先頭部分から始まるプロローグを正しく認識しているから
+プロローグを期待通りスキッップできている.
+
+aarch64-elf-gdb
+
+でも勿論正しく動作しているがやはりフレーム ID が問い合わされることなく
+プロローグのスキップ函数が呼び出されそれに対して正しく返しているだけである.
+
+これはフレーム ID をこの段階で問い合わせることになるのが pru-elf-gdb の場合の
+期待値ではないのでまずはこれを調査してみる.
+
+pru-elf-gdb では以下からフレーム ID が問い合わされていた: 
+
+  if (!frame_id_eq (get_stack_frame_id (frame),
+		    ecs->event_thread->control.step_stack_frame_id)
+      && (frame_id_eq (frame_unwind_caller_id (get_current_frame ()),
+		       ecs->event_thread->control.step_stack_frame_id)
+	  && (!frame_id_eq (ecs->event_thread->control.step_stack_frame_id,
+			    outer_frame_id)
+	      || (ecs->event_thread->control.step_start_function
+		  != find_pc_function (ecs->event_thread->suspend.stop_pc)))))
+
+step コマンド実行後 process_event_stop_test が呼ばれるところまでは pru-elf-gdb
+も aarch64-elf-gdb も同じ.
+
+      else
+	keep_going (ecs);  1 回目の呼び出しは両方ともここで戻っている.
+
+      return;
+
+2 回目は「pru-elf-gdb では以下からフレーム ID が問い合わされていた:」
+のところでフレーム ID が問い合わされている.
+
+一方 aarch64-elf-gdb の場合この if の条件は成立しているがフレーム ID が問い合わされる
+ことはなかった.
+ということは,
+
+frame_id_eq (get_stack_frame_id (frame), ecs->event_thread->control.step_stack_frame_id)
+
+が pru-elf-gdb では false. 一方 aarch64-elf-gdb でも false.
+
+pru-elf-gdb でフレームの問い合わせがあったときのスタックは以下:
+(gdb) where
+#0  pru_frame_create (frame=0x8b8d714) at pru-tdep.c:196
+#1  0x082ca1c6 in pru_frame_this_id (frame=0x8b8d714, ptr=0x8b8d720, id=0x8b8d750) at pru-tdep.c:230
+#2  0x08212fc9 in compute_frame_id (fi=0x8b8d714) at frame.c:590
+#3  0x082136cd in get_prev_frame_if_no_cycle (this_frame=0x8b8ce1c) at frame.c:1983
+#4  0x08215851 in get_prev_frame_always (this_frame=0x8b8ce1c) at frame.c:2183
+#5  0x0821595e in frame_unwind_caller_id (next_frame=<optimized out>) at frame.c:669
+#6  0x08253727 in process_event_stop_test (ecs=0xbffff0a0) at infrun.c:6750
+
+frame_unwind_caller_id が呼ばれるのは aarch64-elf-gdb も同じ.
+
+以下は aarch64-elf-gdb の結果.
+(gdb) where
+#0  frame_unwind_find_by_frame (this_frame=0x8d7bef8, this_cache=0x8d7bf04) at frame-unwind.c:174
+#1  0x081ce88e in compute_frame_id (fi=0x8d7bef8) at frame.c:585
+#2  0x081d1506 in get_prev_frame_if_no_cycle (this_frame=0x8cb43cc) at frame.c:1983
+#3  0x081d1b7e in get_prev_frame_always_1 (this_frame=0x8cb43cc) at frame.c:2167
+#4  0x081d1ba3 in get_prev_frame_always (this_frame=0x8cb43cc) at frame.c:2183
+#5  0x081cebef in frame_unwind_caller_id (next_frame=0x8cb43cc) at frame.c:669
+#6  0x082137a7 in process_event_stop_test (ecs=0xbffff030) at infrun.c:6750
+
+
+gdb-10.2.pru-elf/gdb/frame.c:590
+
+      fi->unwind->this_id (fi, &fi->prologue_cache, &fi->this_id.value);
+
+aarch64-elf-gdb の場合 fi->unwind->this_id はいつも
+
+dwarf2_frame_this_id(frame_info*, void**, frame_id*)
+
+一方 pru-elf-gdb の場合 step コマンドを実行したとき
+1 回目は
+
+dwarf2_frame_this_id(frame_info*, void**, frame_id*)
+
+だが 2 回目は
+
+pru_frame_this_id
+
+になっている.
+
+
+      if (fi->unwind == NULL)
+	frame_unwind_find_by_frame (fi, &fi->prologue_cache); ここで拾ってきたものを
+
+      /* Find THIS frame's ID.  */
+      /* Default to outermost if no ID is found.  */
+      fi->this_id.value = outer_frame_id;
+      fi->unwind->this_id (fi, &fi->prologue_cache, &fi->this_id.value);
+      ここで使用しているが,
+
+aarch64-elf-gdb の場合 dwarf2_frame_unwind だが
+pru-elf-gdb の場合 pru_frame_unwind になっているという違いがある.
+
+だから
+
+	frame_unwind_find_by_frame (fi, &fi->prologue_cache);
+
+でどのような違いがあるか調べる.
+
+
+  for (entry = table->list; entry != NULL; entry = entry->next)
+    if (frame_unwind_try_unwinder (this_frame, this_cache, entry->unwinder))
+      return;
+
+両方ともここで見つけている.
+
+
+以下は pru-elf-gdb の結果
+(gdb) p table->list->unwinder
+$74 = (const frame_unwind *) 0x86e4540 <dummy_frame_unwind>
+(gdb) p table->list->next->unwinder
+$75 = (const frame_unwind *) 0x86e5b00 <dwarf2_tailcall_frame_unwind>
+(gdb) p table->list->next->next->unwinder
+$76 = (const frame_unwind *) 0x8715180 <inline_frame_unwind>
+(gdb) p table->list->next->next->next->unwinder
+$77 = (const frame_unwind *) 0x8715f00 <jit_frame_unwind>
+(gdb) p table->list->next->next->next->next->unwinder
+$78 = (const frame_unwind *) 0x8c2a34c
+(gdb) p table->list->next->next->next->next->next->unwinder
+$79 = (const frame_unwind *) 0x86e60c0 <dwarf2_frame_unwind>
+(gdb) p table->list->next->next->next->next->next->next->unwinder
+$80 = (const frame_unwind *) 0x86e60e0 <dwarf2_signal_frame_unwind>
+(gdb) p table->list->next->next->next->next->next->next->next->unwinder
+$81 = (const frame_unwind *) 0x8ab8760 <pru_frame_unwind>
+(gdb)
+
+以下は aarch64-elf-gdb の結果
+
+(gdb) p table->list->unwinder
+$29 = (const frame_unwind *) 0x876a440 <dummy_frame_unwind>
+(gdb) p table->list->next->unwinder
+$30 = (const frame_unwind *) 0x876b8c0 <dwarf2_tailcall_frame_unwind>
+(gdb) p table->list->next->next->unwinder
+$31 = (const frame_unwind *) 0x879a080 <inline_frame_unwind>
+(gdb) p table->list->next->next->next->unwinder
+$32 = (const frame_unwind *) 0x879ae00 <jit_frame_unwind>
+(gdb) p table->list->next->next->next->next->unwinder
+$33 = (const frame_unwind *) 0x8d00e28
+(gdb) p table->list->next->next->next->next->next->unwinder
+$34 = (const frame_unwind *) 0x8b6ac00 <aarch64_stub_unwind>
+(gdb) p table->list->next->next->next->next->next->next->unwinder
+$35 = (const frame_unwind *) 0x876c220 <dwarf2_frame_unwind>
+(gdb) p table->list->next->next->next->next->next->next->next->unwinder
+$36 = (const frame_unwind *) 0x876c200 <dwarf2_signal_frame_unwind>
+(gdb) p table->list->next->next->next->next->next->next->next->next->unwinder
+$37 = (const frame_unwind *) 0x8b6abe0 <aarch64_prologue_unwind>
+(gdb) 
+
+順番は違ってはいるが両方とも dwarf2_frame_unwind はある.
+
+aarch64_stub_unwind に相当するものが pru-elf-gdb にはない. しかし
+リストの中から条件を満たす最初のものを検索しているという点で見れば pru-elf-gdb 
+のリストで
+
+dwarf2_frame_unwind
+
+が条件を満たさない原因を調べるべきかも.
+
+
+      dwarf2_fde_table *fde_table = &unit->fde_table;
+      if (fde_table->empty ())
+	continue;
+
+ここで fde_table->empty() が true なので結果的に dwarf2_frame_find_fde
+が nullptr を返している.
+
+一方で
+
+f:
+.LFB0:
+.LM1:
+	.cfi_startproc
+	sub	r2, r2, 8
+	.cfi_def_cfa_offset 8              これ?
+	sbbo	r4.b0, r2, 4, 4
+	.cfi_offset 16, -4
+	add	r4, r2, 8
+	.cfi_def_cfa 16, 0
+	sub	r0, r4, 8
+	sbbo	r14.b0, r0, 0, 4
+.LM2:
+	nop
+	sub	r2, r4, 4
+	.cfi_def_cfa 8, 4
+	lbbo	r4.b0, r2, 0, 4
+	.cfi_restore 19
+	.cfi_restore 18
+	.cfi_restore 17
+	.cfi_restore 16
+	add	r2, r2, 4
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+
+00000000 0000000c ffffffff CIE
+  Version:               1
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -1
+  Return address column: 132
+
+  DW_CFA_def_cfa: r16 ofs 0
+
+00000010 00000024 00000000 FDE cie=00000000 pc=0000010c..00000134
+  DW_CFA_advance_loc: 4 to 00000110
+  DW_CFA_def_cfa_offset: 8
+  DW_CFA_advance_loc: 4 to 00000114
+  DW_CFA_offset: r16 at cfa-4
+  DW_CFA_advance_loc: 4 to 00000118
+  DW_CFA_def_cfa: r16 ofs 0
+  DW_CFA_advance_loc: 16 to 00000128
+  DW_CFA_def_cfa: r8 ofs 4
+  DW_CFA_advance_loc: 4 to 0000012c
+  DW_CFA_restore: r19
+  DW_CFA_restore: r18
+  DW_CFA_restore: r17
+  DW_CFA_restore: r16
+  DW_CFA_advance_loc: 4 to 00000130
+  DW_CFA_def_cfa_offset: 0
+  DW_CFA_nop
+  DW_CFA_nop
+
+のようになっている.  fde_table->empty () は実は期待しない結果.
+
+同じ調査を aarch64-elf-*** でやると
+
+f:
+.LFB0:
+	.file 1 "test011.c"
+	.loc 1 2 1
+	.cfi_startproc
+	sub	sp, sp, #16
+	.cfi_def_cfa_offset 16
+	str	w0, [sp, 12]
+	.loc 1 3 1
+	nop
+	add	sp, sp, 16
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+
+
+00000000 000000000000000c ffffffff CIE
+  Version:               1
+  Augmentation:          ""
+  Code alignment factor: 4
+  Data alignment factor: -8
+  Return address column: 30
+
+  DW_CFA_def_cfa: r31 (sp) ofs 0
+
+00000010 000000000000001c 00000000 FDE cie=00000000 pc=0000000000000118..000000000000012c
+  DW_CFA_advance_loc: 4 to 000000000000011c
+  DW_CFA_def_cfa_offset: 16
+  DW_CFA_advance_loc: 12 to 0000000000000128
+  DW_CFA_def_cfa_offset: 0
+  DW_CFA_nop
+  DW_CFA_nop
+
+さてどこに問題があると見るべきか.
