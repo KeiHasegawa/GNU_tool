@@ -1,0 +1,119 @@
+pru-elf-gdb で
+
+dwarf2_frame_unwind
+
+に対して
+
+      dwarf2_fde_table *fde_table = &unit->fde_table;
+      if (fde_table->empty ())
+	continue;
+
+で
+
+fde_table->empty ()
+
+となる原因を調査する.
+
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_pru.008/test008.elf
+
+は
+
+00000100 <start>:
+
+0000010c <f>:
+
+00000134 <main>:
+
+のような配置になっている.
+
+
+一方
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_aarch64.011/test011.elf
+
+は
+
+0000000000000100 <_start>:
+
+0000000000000118 <f>:
+
+000000000000012c <main>:
+
+のような配置になっている.
+
+
+pru-elf-gdb で
+
+dwarf2_frame_find_fde (&block_addr, NULL);
+
+の呼び出しで 0 が返る理由は
+
+
+      if (*pc < offset + (*fde_table)[0]->initial_location)
+        continue;
+
+この条件が成立しているのが直接の原因.
+
+(gdb) p/x *pc
+$16 = 0x10b
+(gdb) p/x offset
+$17 = 0x0
+(gdb) p/x (*fde_table)[0]->initial_location
+$18 = 0x10c
+(gdb)
+
+こんな感じだった. 一方期待通り動作する aarch64-elf-gdb では
+
+(gdb) p/x *pc
+$53 = 0x13b
+(gdb) p/x offset
+$54 = 0x0
+(gdb) p/x (*fde_table)[0]->initial_location
+$55 = 0x118
+(gdb)
+
+のようになっていた.
+
+
+pru-elf-gdb
+
+00000100 <start>:
+                       <- *pc
+0000010c <f>:          <- (*fde_table)[0]->initial_location
+
+00000134 <main>:
+
+aarch64-elf-gdb
+
+0000000000000100 <_start>:
+
+0000000000000118 <f>:   <- (*fde_table)[0]->initial_location
+
+000000000000012c <main>:
+
+ 138:	97fffff8 	bl	118 <f>
+                                             <- *pc = 0x13b
+ 13c:	52800000 	mov	w0, #0x0                   	// #0
+
+だから *pc の値が違っている.
+
+pru-elf-gdb での *pc の期待値は 0x10b ではなくて
+
+00000134 <main>:
+
+ 140:	24007bee 	ldi	r14, 123
+ 144:	230043c3 	call	10c <f>
+                                             <- *pc = 0x147
+ 148:	240000e0 	ldi	r0, 0
+
+ということになる.
+
+0x10b がセットされるのは
+
+  CORE_ADDR block_addr = get_frame_address_in_block (this_frame);
+
+ここ. これは this_frame が start のものになっている.
+一方正常に動作している aarch64-elf-gdb では main のものになっている.
+
+さてどうしてか.

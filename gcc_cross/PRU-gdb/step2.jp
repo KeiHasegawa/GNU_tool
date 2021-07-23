@@ -1,0 +1,22 @@
+pru-elf-as が pru-elf-gcc の生成したアセンブラソースに対して
+
+  DW_CFA_def_cfa: r16 ofs 0
+
+のようなオブジェクトコードを .debug_frame セクションに生成しているが該当箇所は
+以下:
+
+binutils-2.36.1.pru-elf/gas/dw2gencfi.c:1649
+
+	  out_one (DW_CFA_def_cfa);       // DW_CFA_def_cfa = 0xc
+	  out_uleb128 (insn->u.ri.reg);   // insn->u.ri.reg = 16
+	  out_uleb128 (offset);
+
+
+insn->u.ri.reg を 16 にセットしているのは以下:
+
+void
+pru_frame_initial_instructions (void)
+{
+  const unsigned fp_regno = 4 * 4;
+  cfi_add_CFA_def_cfa (fp_regno, 0);
+}
