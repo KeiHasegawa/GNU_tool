@@ -1,0 +1,29 @@
+	.text
+start:
+	nop
+	nop
+	nop
+end:
+	nop
+
+
+のようにすれば期待した動きをするが
+
+start:
+	bsr	func
+	nop
+	nop
+end:
+	nop
+
+func:
+	rts
+
+とすると step コマンドが期待した動作にはなっていない.
+
+例えば ../test_rx.001 の hello world だがこれは開始アドレスが
+
+0x01000000
+
+になっているがここからステップ実行してみても全く予期しない動きをしている.
+
