@@ -1,40 +1,40 @@
-Blackfin の ABI
+Blackfin ABI
 
-(*1) 函数呼び出し
-(*2) 函数復帰
-(*3) プロローグ
-(*4) エピローグ
-(*5) 通常の函数の引数と戻り値
-(*6) long long を引数にとる函数, 返す函数
-(*7) 浮動少数点数を引数にとる函数, 返す函数
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long long' argument and return value
+(*7) Floating point number argument and return value
+(*8) Structure argument and return value
 
 
-(*1) 函数呼び出し
+(*1) Function call
 
 	call func;
 
-	疑似コード
+	Pseudo code
 
-	rets = (call 命令の次のアドレス)
+	rets = (`call' instruction next address)
 	pc = func
 
-	rets はリンクレジスタの名前
+	where, `rets' is link registero f Blackfin.
 
-(*2) 函数復帰
+(*2) Return from function
 
 	rts;
 
-	疑似コード
+	Pseudo code
 
 	pc = rets
 
 
-(*3) プロローグ
+(*3) Prologue
 
 	LINK 128;
 
-	上は 128 バイトのローカルエリアを使用する函数のプロローグである.
+	Above if prologue of the function which uses 128 bytes local area.
 
 	+----------------+ <- sp_{new}
 	|                |
@@ -48,26 +48,30 @@ Blackfin の ABI
 	|   rets_{old}   |
 	+----------------+ <- sp_{old}
 
-(*4) エピローグ
+(*4) Epilogue
 
 	UNLINK;
 	rts;
 
-	上は使用するローカルエリアのバイト数に依存しない函数のエピローグである.
-	fp, sp,  rets が復元され呼び出しもとに戻る.
+	Above is epilogue of the function, and it does not depend on its
+	number of loca area bytes.
+	`fp', `sp' and `rets' were recovered and return to callee.
 
-(*5) 通常の函数の引数と戻り値
+(*5) Normal argument and return value
 
-        第 1 引数 : R0
-        第 2 引数 : R1
-        第 3 引数 : R2
-        第 4 引数以降 : オフセット 12 を開けてスタックを使用する.
+        1st : R0
+        2nd : R1
+        3rd : R2
+        4th : use stack with offset 12
+
+	For example,
 
 	int f(int a0, int a1, int a2, int a3);
 
 	f(10, 11, 12, 13);
 
-	に対して f の先頭アドレスでは
+	At the start address of `f', registers and stack layout become
+	like below:
 
 	R0 = 10, R1 = 11, R2 = 12
 
@@ -81,20 +85,20 @@ Blackfin の ABI
 	|       13       |
 	+----------------+
 
-	のようになっている.
-	函数の戻り値は R0 にセットされる.
+	Function return value is set to R0.
 
-(*6) long long を引数にとる函数, 返す函数
+(*6) `long long' argument and return value
 
         sizeof(long long) = 8
 
-        long long の引数を渡すのに 2 つのレジスタが使用される. 例えば
+        For `long long' argument, 2 registers are used. For example,
 
 	long long f(long long a0, long long a1);
 
 	f(0x123456789abcdef0, 0x1122334455667788);
 
-	に対して f の先頭アドレスでは
+	At the start address of `f', registers and stack layout become
+	like below:
 
 	R0 = 0x9abcdef0, R1 = 0x12345678, R2 = 0x55667788
 
@@ -108,20 +112,22 @@ Blackfin の ABI
 	|   0x11223344   |
 	+----------------+
 
-	のようになっている.
-	函数の戻り値は R0, R1 にセットされる.
+	Function return value is set to `R0' and `R1'.
 
-(*7) 浮動少数点数を引数にとる函数, 返す函数
+(*7) Floating point number argument and return value
 
         sizeof(float) = 4
 	sizeof(double) = sizeof(long double) = 8
 
-	Blackfin には FPU がないのでソフトウェアで浮動少数点数演算を行なう.
-	float に対しては (*5) の規則が, double, long double に対しては
-	(*6) の規則が適用される.
+	Blackfin does not have FPU, so software calculates floating point
+	number operation.
+	For `float' same with (*5). For `doulbe' or `long double' same with
+	(*6).
 
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*8) Structure argument and return value
 
-        構造体を引数に取る函数を呼び出すとき先頭の 12 バイトは R0, R1, R2 で残りは
-	スタックを使って引数を渡す.
-	構造体を返す函数を呼び出すとき戻り値を格納するアドレスガ R0 にセットされる.
+        When calling the function which takes structure type argument,
+	first 12 bytes are set to `R0', `R1' and `R2' and the rest is
+	set to stack.
+	When calling the function which returns structure type, the addres
+	for the return value is set to `R0'.
