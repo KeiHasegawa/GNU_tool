@@ -1,0 +1,688 @@
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_pru.008/test008.elf
+
+のフレームは 3 つある.
+
+start
+
+f
+
+main
+
+のもの.
+
+「step コマンド(3)」では
+
+  CORE_ADDR block_addr = get_frame_address_in_block (this_frame);
+
+で期待した値が返されていないことが判明したがそのもととなっているのが引数の
+
+struct frame_info* this_frame
+
+なわけだ. だからどの frame_info が作られているかをまずは確認する.
+
+(gdb) p this_frame->pspace
+$4 = (program_space *) 0x8bd5630
+(gdb) p &this_frame->pspace
+$5 = (program_space **) 0x8b8ee20
+(gdb) watch *(int*)0x8b8ee20
+Hardware watchpoint 2: *(int*)0x8b8ee20
+(gdb) run
+
+このウォッチポイントは以下でヒットした.
+
+static struct frame_info *
+get_prev_frame_raw (struct frame_info *this_frame)
+{
+  struct frame_info *prev_frame;
+
+ということはこのフレームとは別に既に this_frame が作成されているということ.
+
+
+(gdb) p this_frame->pspace
+$6 = (program_space *) 0x8bd5630
+(gdb) p &this_frame->pspace
+$7 = (program_space **) 0x8b8eda4
+(gdb) watch *(int*)0x8b8eda4
+Hardware watchpoint 3: *(int*)0x8b8eda4
+(gdb) run
+
+このウォッチポイントは以下でヒットした:
+
+static struct frame_info *
+create_sentinel_frame (struct program_space *pspace, struct regcache *regcache)
+{
+
+どうやらこの 2 つの函数でフレームが作られるらしい.
+フレームをデバッグする函数を作成しておく
+
+void debug(frame_info* fi)
+{
+...
+
+(gdb) run
+...
+Thread 1 "gdb" hit Breakpoint 4, create_sentinel_frame (pspace=0x8bd5648, regcache=0x8c0cbe8) at frame.c:1603
+(gdb) fin
+Run till exit from #0  create_sentinel_frame (pspace=0x8bd5648, regcache=0x8c0cbe8) at frame.c:1603
+0x08214fab in get_current_frame () at frame.c:1668
+Value returned is $18 = (frame_info *) 0x8b8eda0
+(gdb) p debug($18)
+level : -1
+pspace : (program_space*)0x8bd5648
+aspace : (address_space*)0x8bd5af0
+prologue_cache : (void*)0x8b8ee18
+unwind : (frame_unwind*)0x8748200
+prev_pc : 0x0
+prev_func : 0x0
+this_id : (0,0)
+base : (frame_base*)0
+base_cache : (void*)0
+next : (frame_info*)0x8b8eda0
+prev : (frame_info*)0
+$19 = void
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 5, get_prev_frame_raw (this_frame=0x8b8eda0) at frame.c:2231
+(gdb) fin
+Run till exit from #0  get_prev_frame_raw (this_frame=0x8b8eda0) at frame.c:2231
+0x0821563c in get_prev_frame_if_no_cycle (this_frame=0x8b8eda0) at frame.c:1965
+Value returned is $20 = (frame_info *) 0x8b8ee1c
+(gdb) p debug($20)
+level : 0
+pspace : (program_space*)0x8bd5648
+aspace : (address_space*)0x8bd5af0
+prologue_cache : (void*)0
+unwind : (frame_unwind*)0
+prev_pc : 0x0
+prev_func : 0x0
+this_id : (0,0)
+base : (frame_base*)0
+base_cache : (void*)0
+next : (frame_info*)0x8b8eda0
+prev : (frame_info*)0
+$21 = void
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 4, create_sentinel_frame (pspace=0x8bd5648, regcache=0x8c0cbe8) at frame.c:1603
+(gdb) fin
+Run till exit from #0  create_sentinel_frame (pspace=0x8bd5648, regcache=0x8c0cbe8) at frame.c:1603
+0x08214fab in get_current_frame () at frame.c:1668
+Value returned is $22 = (frame_info *) 0x8b8eda0
+(gdb) p debug($22)
+level : -1
+pspace : (program_space*)0x8bd5648
+aspace : (address_space*)0x8bd5af0
+prologue_cache : (void*)0x8b8ee18
+unwind : (frame_unwind*)0x8748200
+prev_pc : 0x0
+prev_func : 0x0
+this_id : (0,0)
+base : (frame_base*)0
+base_cache : (void*)0
+next : (frame_info*)0x8b8eda0
+prev : (frame_info*)0
+$23 = void
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 5, get_prev_frame_raw (this_frame=0x8b8eda0) at frame.c:2231
+(gdb) fin
+Run till exit from #0  get_prev_frame_raw (this_frame=0x8b8eda0) at frame.c:2231
+0x0821563c in get_prev_frame_if_no_cycle (this_frame=0x8b8eda0) at frame.c:1965
+Value returned is $24 = (frame_info *) 0x8b8ee1c
+(gdb) p debug($24)
+level : 0
+pspace : (program_space*)0x8bd5648
+aspace : (address_space*)0x8bd5af0
+prologue_cache : (void*)0
+unwind : (frame_unwind*)0
+prev_pc : 0x0
+prev_func : 0x0
+this_id : (0,0)
+base : (frame_base*)0
+base_cache : (void*)0
+next : (frame_info*)0x8b8eda0
+prev : (frame_info*)0
+$25 = void
+(gdb) c
+Continuing.
+
+
+Thread 1 "gdb" received signal SIGTRAP, Trace/breakpoint trap.
+pru_dbg_reg_to_regnum (regnum=8) at pru-tdep.c:31
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" received signal SIGTRAP, Trace/breakpoint trap.
+pru_dbg_reg_to_regnum (regnum=14) at pru-tdep.c:35
+(gdb) c
+Continuing.
+Breakpoint 1, main () at test008.c:7
+7	  f(123);
+
+Thread 1 "gdb" hit Breakpoint 4, create_sentinel_frame (pspace=0x8bd5648, regcache=0x8c443b0) at frame.c:1603
+(gdb) fin
+Run till exit from #0  create_sentinel_frame (pspace=0x8bd5648, regcache=0x8c443b0) at frame.c:1603
+0x08214fab in get_current_frame () at frame.c:1668
+Value returned is $26 = (frame_info *) 0x8b8eda0
+(gdb) p debug($26)
+level : -1
+pspace : (program_space*)0x8bd5648
+aspace : (address_space*)0x8bd5af0
+prologue_cache : (void*)0x8b8ee18
+unwind : (frame_unwind*)0x8748200
+prev_pc : 0x0
+prev_func : 0x0
+this_id : (0,0)
+base : (frame_base*)0
+base_cache : (void*)0
+next : (frame_info*)0x8b8eda0
+prev : (frame_info*)0
+$27 = void
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 5, get_prev_frame_raw (this_frame=0x8b8eda0) at frame.c:2231
+(gdb) fin
+Run till exit from #0  get_prev_frame_raw (this_frame=0x8b8eda0) at frame.c:2231
+0x0821563c in get_prev_frame_if_no_cycle (this_frame=0x8b8eda0) at frame.c:1965
+Value returned is $28 = (frame_info *) 0x8b8ee1c
+(gdb) p debug($28)
+level : 0
+pspace : (program_space*)0x8bd5648
+aspace : (address_space*)0x8bd5af0
+prologue_cache : (void*)0
+unwind : (frame_unwind*)0
+prev_pc : 0x0
+prev_func : 0x0
+this_id : (0,0)
+base : (frame_base*)0
+base_cache : (void*)0
+next : (frame_info*)0x8b8eda0
+prev : (frame_info*)0
+$29 = void
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 4, create_sentinel_frame (pspace=0x8bd5648, regcache=0x8c443b0) at frame.c:1603
+(gdb) fin
+Run till exit from #0  create_sentinel_frame (pspace=0x8bd5648, regcache=0x8c443b0) at frame.c:1603
+0x08214fab in get_current_frame () at frame.c:1668
+Value returned is $30 = (frame_info *) 0x8b8eda0
+(gdb) p debug($30)
+level : -1
+pspace : (program_space*)0x8bd5648
+aspace : (address_space*)0x8bd5af0
+prologue_cache : (void*)0x8b8ee18
+unwind : (frame_unwind*)0x8748200
+prev_pc : 0x0
+prev_func : 0x0
+this_id : (0,0)
+base : (frame_base*)0
+base_cache : (void*)0
+next : (frame_info*)0x8b8eda0
+prev : (frame_info*)0
+$31 = void
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 5, get_prev_frame_raw (this_frame=0x8b8eda0) at frame.c:2231
+(gdb) fin
+Run till exit from #0  get_prev_frame_raw (this_frame=0x8b8eda0) at frame.c:2231
+0x0821563c in get_prev_frame_if_no_cycle (this_frame=0x8b8eda0) at frame.c:1965
+Value returned is $32 = (frame_info *) 0x8b8ee1c
+(gdb) p debug($32)
+level : 0
+pspace : (program_space*)0x8bd5648
+aspace : (address_space*)0x8bd5af0
+prologue_cache : (void*)0
+unwind : (frame_unwind*)0
+prev_pc : 0x0
+prev_func : 0x0
+this_id : (0,0)
+base : (frame_base*)0
+base_cache : (void*)0
+next : (frame_info*)0x8b8eda0
+prev : (frame_info*)0
+$33 = void
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 5, get_prev_frame_raw (this_frame=0x8b8ee1c) at frame.c:2231
+(gdb) fin
+Run till exit from #0  get_prev_frame_raw (this_frame=0x8b8ee1c) at frame.c:2231
+0x0821563c in get_prev_frame_if_no_cycle (this_frame=0x8b8ee1c) at frame.c:1965
+Value returned is $34 = (frame_info *) 0x8b8f0d4
+(gdb) p debug($34)
+level : 1
+pspace : (program_space*)0x8bd5648
+aspace : (address_space*)0x8bd5af0
+prologue_cache : (void*)0
+unwind : (frame_unwind*)0
+prev_pc : 0x0
+prev_func : 0x0
+this_id : (0,0)
+base : (frame_base*)0
+base_cache : (void*)0
+next : (frame_info*)0x8b8ee1c
+prev : (frame_info*)0
+$35 = void
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 4, create_sentinel_frame (pspace=0x8bd5648, regcache=0x8c443b0) at frame.c:1603
+(gdb) fin
+Run till exit from #0  create_sentinel_frame (pspace=0x8bd5648, regcache=0x8c443b0) at frame.c:1603
+0x08214fab in get_current_frame () at frame.c:1668
+Value returned is $36 = (frame_info *) 0x8b8eda0
+(gdb) p debug($36)
+level : -1
+pspace : (program_space*)0x8bd5648
+aspace : (address_space*)0x8bd5af0
+prologue_cache : (void*)0x8b8ee18
+unwind : (frame_unwind*)0x8748200
+prev_pc : 0x0
+prev_func : 0x0
+this_id : (0,0)
+base : (frame_base*)0
+base_cache : (void*)0
+next : (frame_info*)0x8b8eda0
+prev : (frame_info*)0
+$37 = void
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 5, get_prev_frame_raw (this_frame=0x8b8eda0) at frame.c:2231
+(gdb) fin
+Run till exit from #0  get_prev_frame_raw (this_frame=0x8b8eda0) at frame.c:2231
+0x0821563c in get_prev_frame_if_no_cycle (this_frame=0x8b8eda0) at frame.c:1965
+Value returned is $38 = (frame_info *) 0x8b8ee1c
+(gdb) n
+(gdb) p debug(prev_frame)
+level : 0
+pspace : (program_space*)0x8bd5648
+aspace : (address_space*)0x8bd5af0
+prologue_cache : (void*)0
+unwind : (frame_unwind*)0
+prev_pc : 0x0
+prev_func : 0x0
+this_id : (0,0)
+base : (frame_base*)0
+base_cache : (void*)0
+next : (frame_info*)0x8b8eda0
+prev : (frame_info*)0
+$39 = void
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 5, get_prev_frame_raw (this_frame=0x8b8ee1c) at frame.c:2231
+(gdb) fin
+Run till exit from #0  get_prev_frame_raw (this_frame=0x8b8ee1c) at frame.c:2231
+0x0821563c in get_prev_frame_if_no_cycle (this_frame=0x8b8ee1c) at frame.c:1965
+Value returned is $40 = (frame_info *) 0x8b8f0d4
+(gdb) p debug($40)
+f (level : 1
+pspace : (program_space*)0x8bd5648
+aspace : (address_space*)0x8bd5af0
+prologue_cache : (void*)0
+unwind : (frame_unwind*)0
+prev_pc : 0x0
+prev_func : 0x0
+this_id : (0,0)
+base : (frame_base*)0
+base_cache : (void*)0
+next : (frame_info*)0x8b8ee1c
+prev : (frame_info*)0
+$41 = void
+(gdb) c
+Continuing.
+a=4325376) at test008.c:2
+2	{
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
+[Thread 0xb6f03b70 (LWP 524) exited]
+[Thread 0xb7704b70 (LWP 523) exited]
+[Inferior 1 (process 451) exited normally]
+(gdb)
+
+
+これと同じことを aarch64-elf-gdb で試したところ, f (level : 1 のようになる前に
+それぞれ 1 回ずつ
+
+create_sentinel_frame  level : -1
+get_prev_frame_raw     level : 0
+
+が呼び出されている. (*A)
+
+aarch64-elf-gdb でこの動作になるが pru-elf-gdb でこの動作にならない理由を調べて
+みたくなる.
+
+しかしその前に
+
+  CORE_ADDR block_addr = get_frame_address_in_block (this_frame);
+
+で期待値 0x147 が返るべきところで 0x10b が返っているがそもそもこの函数が何を
+計算しているのか調べるてみた.
+
+pru-elf-gdb の一連の実行での戻り値は以下
+
+Breakpoint 1, main () at test008.c:7
+$99 =  0x140  main のプロローグの後
+7	  f(123);
+$100 = 0x10c  f の先頭   (*3)
+$101 = 0x10b  ???????   (*4)
+$102 = 0x10c  f の先頭
+$103 = 0x10c  f の先頭
+$104 = 0x10b  ???????
+$105 = 0x10c  f の先頭
+f (a=4325376) at test008.c:2
+2	{
+
+
+一方 aarch64-elf-gdb は以下
+$38 = 0x134  main のプロローグの後
+7	  f(123);
+$39 = 0x118  f の先頭                   (*1)
+$40 = 0x13b  bl 命令の次のアドレス - 1    (*2)
+$41 = 0x120  f のプロローグの後
+$42 = 0x13b  bl 命令の次のアドレス - 1
+$43 = 0x120  f のプロローグの後
+$44 = 0x13b  bl 命令の次のアドレス - 1
+f (a=123) at test011.c:3
+3	}
+
+ということは
+
+  CORE_ADDR block_addr = get_frame_address_in_block (this_frame);
+
+が 3 回目に呼び出されたとき main に対応するフレームが指定されるのが正しいが
+pru-elf-gdb の場合 start に対するフレームが指定されているということなのだろうか.
+
+いずれにしても 3 回目の呼び出しが期待したものではない.
+おそらく (*A) で作られるはずだったフレームがそれなのかもしれない.
+
+正しく動作している aarch64-elf-gdb では
+
+(*1) の this_frame : 0x8cc03cc
+(*2) の this_frame : 0x8d87ef8
+
+(gdb) p ((frame_info*)0x8cc03cc)->prev
+$68 = (frame_info *) 0x8d87ef8
+p/x get_frame_pc((frame_info*)0x8cc03cc)
+$146 = 0x120                                        f のプロローグの後のアドレス
+(gdb) p/x get_frame_pc((frame_info*)0x8d87ef8)
+$145 = 0x13c                                        bl 命令の次のアドレス.
+(gdb)
+
+
+というように f の前のフレームが main のフレームになっている.
+
+一方 pru-elf-gdb では
+
+(*3) の this_frame : 0x8b8ee1c
+(*4) の this_frame : 0x8b8f0d4
+
+(gdb) p ((frame_info *)0x8b8ee1c )->prev
+$26 = (frame_info *) 0x8b8f0d4
+(gdb)
+
+というように f の前のフレームが
+
+(gdb) p/x get_frame_pc((frame_info *)0x8b8ee1c )
+$28 = 0x10c
+(gdb)
+
+のように main のフレームになっていない.
+
+
+実際 (*3) のフレームが作成された後は prev メンバは 0 だがこれがセットされるのが
+
+get_prev_frame_raw(struct frame_info *this_frame)
+
+の直後に get_frame_pc(this_frame) を実行した結果
+
+
+pru-elf-gdb の場合
+
+$9  = 0x140   main のプロローグ後
+$10 = 0x140   main のプロローグ後
+
+Breakpoint 1, main () at test008.c:7
+7	  f(123);
+$11 = 0x144   call 命令
+$12 = 0x10c   f の先頭
+$13 = 0x10c   f の先頭
+$14 = 0x10c   f の先頭
+$15 = 0x10c   f の先頭
+
+f (a=4325376) at test008.c:2
+2	{
+
+
+aarch64-elf-gdb の場合
+
+$130 = 0x134  main のプロローグ後
+$131 = 0x134  main のプロローグ後
+
+Breakpoint 1, main () at test011.c:7
+7	  f(123);
+$132 = 0x138  bl 命令
+$133 = 0x118  f の先頭
+$134 = 0x118  f の先頭
+$135 = 0x120  f プロローグ後
+$136 = 0x120  f プロローグ後
+$137 = 0x120  f プロローグ後
+$138 = 0x120  f プロローグ後
+f (a=123) at test011.c:3
+3	}
+
+しかし普通に考えたら f のプロローグ後のアドレスを計算しているのは skip_prologue なのだから
+これがバグ修正の手掛りになるわけではないか.
+
+これは正解から遠のいている.
+
+こうなるとますます (*A) が pru-elf-gdb でなぜ来ないのかが問題.
+
+Start address 0x100
+Transfer rate: 768 bits in <1 sec.
+Breakpoint 1 at 0x140: file test008.c, line 7.
+--Type <RET> for more, q to quit, c to continue without paging--c
+0x08214fab in get_current_frame () at frame.c:1668
+Value returned is $29 = (frame_info *) 0x8b8eda0
+(gdb) c
+Continuing.
+0x0821563c in get_prev_frame_if_no_cycle (this_frame=0x8b8eda0) at frame.c:1965
+Value returned is $30 = (frame_info *) 0x8b8ee1c
+(gdb) p get_frame_pc($30)
+$31 = 320
+(gdb) p/x get_frame_pc($30)
+$32 = 0x140                       main のプロローグ後
+(gdb) c
+Continuing.
+0x08214fab in get_current_frame () at frame.c:1668
+Value returned is $33 = (frame_info *) 0x8b8eda0
+(gdb) c
+Continuing.
+0x0821563c in get_prev_frame_if_no_cycle (this_frame=0x8b8eda0) at frame.c:1965
+Value returned is $34 = (frame_info *) 0x8b8ee1c
+(gdb) p/x get_frame_pc($30)
+$35 = 0x140                       main のプロローグ後
+(gdb) 
+$36 = 0x140
+(gdb) c
+Continuing.
+
+Breakpoint 1, main () at test008.c:7
+7	  f(123);
+0x08214fab in get_current_frame () at frame.c:1668
+Value returned is $37 = (frame_info *) 0x8b8eda0
+(gdb) 
+Continuing.
+0x0821563c in get_prev_frame_if_no_cycle (this_frame=0x8b8eda0) at frame.c:1965
+Value returned is $38 = (frame_info *) 0x8b8ee1c
+(gdb) p/x get_frame_pc($38)
+$39 = 0x144                         call 命令のアドレス
+(gdb) c
+Continuing.
+0x08214fab in get_current_frame () at frame.c:1668
+Value returned is $40 = (frame_info *) 0x8b8eda0
+(gdb) c
+Continuing.
+0x0821563c in get_prev_frame_if_no_cycle (this_frame=0x8b8eda0) at frame.c:1965
+Value returned is $41 = (frame_info *) 0x8b8ee1c
+(gdb) p/x get_frame_pc($41)
+$42 = 0x10c                         f の先頭アドレス
+(gdb) c
+Continuing.
+0x0821563c in get_prev_frame_if_no_cycle (this_frame=0x8b8ee1c) at frame.c:1965
+Value returned is $43 = (frame_info *) 0x8b8f0d4
+(gdb) c
+Continuing.
+0x08214fab in get_current_frame () at frame.c:1668
+Value returned is $44 = (frame_info *) 0x8b8eda0
+(gdb) p/x get_frame_pc($44)
+$45 = 0x10c                         f の先頭アドレス
+(gdb)
+
+ここで aarch64-elf-gdb との違いが出ている. aarch64-elf-gdb では $45 に相当するものが
+f のプロローグの後のアドレスになっていた.
+
+当然だがこれは aarch64_skip_prologue が呼ばれたからなのだが,
+
+(gdb) where
+#0  aarch64_skip_prologue (gdbarch=0x8d0c760, pc=280) at aarch64-tdep.c:885
+#1  0x080ac541 in gdbarch_skip_prologue_noexcept (gdbarch=0x8d0c760, pc=280) at arch-utils.c:1007
+#2  0x08219608 in handle_step_into_function (gdbarch=0x8d0c760, ecs=0xbffff030) at infrun.c:7394
+#3  0x08218253 in process_event_stop_test (ecs=0xbffff030) at infrun.c:6868
+#4  0x08216be7 in handle_signal_stop (ecs=0xbffff030) at infrun.c:6298
+#5  0x08215279 in handle_inferior_event (ecs=0xbffff030) at infrun.c:5549
+#6  0x08211b94 in fetch_inferior_event () at infrun.c:3931
+#7  0x081fcbf9 in inferior_event_handler (event_type=INF_REG_EVENT) at inf-loop.c:42
+--Type <RET> for more, q to quit, c to continue without paging--q
+Quit
+(gdb)
+
+のようになっている.
+pru-elf-gdb で handle_step_into_function を呼び出さない理由を調査してみる.
+
+(gdb) b handle_step_into_function
+(gdb) run
+...
+
+単純に呼び出されていないらしい.
+
+aarch640-elf-gdb でどのように呼び出されているか調べてみた.
+
+(gdb) delete
+(gdb) b step_command
+(gdb) run
+...
+(gdb) b process_event_stop_test
+(gdb) b aarch64_skip_prologue
+(gdb) c
+...
+
+process_event_stop_test で停止
+(gdb) c
+...
+
+process_event_stop_test で停止 (2 回目)
+(gdb)
+
+
+  if (!frame_id_eq (get_stack_frame_id (frame),
+		    ecs->event_thread->control.step_stack_frame_id)
+      && (frame_id_eq (frame_unwind_caller_id (get_current_frame ()),
+		       ecs->event_thread->control.step_stack_frame_id)
+	  && (!frame_id_eq (ecs->event_thread->control.step_stack_frame_id,
+			    outer_frame_id)
+	      || (ecs->event_thread->control.step_start_function
+		  != find_pc_function (ecs->event_thread->suspend.stop_pc)))))
+    {
+
+2 回目停止したときこの上の条件が成立しているのが aarch64-elf-gdb
+成立していないのが pru-elf-gdb
+
+2 個目の条件
+(gdb) p frame_id_eq (frame_unwind_caller_id (get_current_frame ()),ecs->event_thread->control.step_stack_frame_id)
+false
+
+となっている. aarch64-elf-gdb では true. なのでここで違いが出ていると見て
+良さそう.
+
+以下は aarch64-elf-gdb での結果.
+
+(gdb) p/x frame_unwind_caller_id (get_current_frame ())
+$209 = {stack_addr = 0x1000, code_addr = 0x12c, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) p/x ecs->event_thread->control.step_stack_frame_id
+$210 = {stack_addr = 0x1000, code_addr = 0x12c, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb)
+
+以下は pru-elf-gdb での結果
+
+(gdb) p/x frame_unwind_caller_id (get_current_frame ())
+$70 = {stack_addr = 0x1000, code_addr = 0x100, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) p/x ecs->event_thread->control.step_stack_frame_id
+$71 = {stack_addr = 0x1000, code_addr = 0x134, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb)
+
+code_addr が異なっている.
+
+0x12c は test011.elf の main の先頭アドレス.
+0x134 は test008.elf の main の先頭アドレス.
+
+ということは, get_current_frame () で start のフレームを返していることに問題がある.
+かと思ったが get_current_frame() では aarch64-elf-gdb も pru-elf-objdump も
+返しているのは
+
+f のフレーム
+
+でこれに
+
+frame_unwind_caller_id
+
+を呼び出した結果が main のフレームになっていないということ.
+
+pru-elf-gdb で
+
+(gdb) p frame_unwind_caller_id((frame_info *) 0x8b8ee1c)
+
+としたところ pru_frame_this_id のブレークポイントにヒットした.
+一方 aarch64-elf-gdb で
+
+(gdb) p/x frame_unwind_caller_id((frame_info *) 0x8cc03cc)
+
+のようにしても aarch64_prologue_this_id のブレークポイントにはヒットしない.
+
+この違いに問題があるらしい.
+
+pru_frame_this_id
+
+は以下から呼び出されている.
+
+      /* Find the unwinder.  */
+      if (fi->unwind == NULL)
+	frame_unwind_find_by_frame (fi, &fi->prologue_cache);
+
+      /* Find THIS frame's ID.  */
+      /* Default to outermost if no ID is found.  */
+      fi->this_id.value = outer_frame_id;
+      fi->unwind->this_id (fi, &fi->prologue_cache, &fi->this_id.value);
+
+これは, すでに「step コマンド」調査していた話でリストの中から条件を見たすものを
+検索し, そしてそれを呼び出すというもの.
+
+さてどうしたものか.

@@ -1,0 +1,249 @@
+step コマンドに対して
+
+  if (!frame_id_eq (get_stack_frame_id (frame),
+		    ecs->event_thread->control.step_stack_frame_id)
+      && (frame_id_eq (frame_unwind_caller_id (get_current_frame ()),
+		       ecs->event_thread->control.step_stack_frame_id)
+	  && (!frame_id_eq (ecs->event_thread->control.step_stack_frame_id,
+			    outer_frame_id)
+	      || (ecs->event_thread->control.step_start_function
+		  != find_pc_function (ecs->event_thread->suspend.stop_pc)))))
+    {
+
+の部分にくるところまでは期待した動作で, なおかつ get_current_frame() までは期待通り動作して
+いて, `f' のフレームが返されている.
+
+frame_unwind_caller_id(`f' のフレーム)
+
+で期待せず pru_frame_this_id が呼び出されているというわけだ.
+
+
+(gdb) p table->list->unwinder
+$93 = (const frame_unwind *) 0x86e4540 <dummy_frame_unwind>
+(gdb) p table->list->next->unwinder
+$94 = (const frame_unwind *) 0x86e5b00 <dwarf2_tailcall_frame_unwind>
+(gdb) p table->list->next->next->unwinder
+$95 = (const frame_unwind *) 0x8715280 <inline_frame_unwind>
+(gdb) p table->list->next->next->next->unwinder
+$96 = (const frame_unwind *) 0x8716000 <jit_frame_unwind>
+(gdb) p table->list->next->next->next->next->unwinder
+$97 = (const frame_unwind *) 0x8c2a364
+(gdb) p table->list->next->next->next->next->next->unwinder
+$98 = (const frame_unwind *) 0x86e60c0 <dwarf2_frame_unwind>
+(gdb)
+
+
+static struct frame_info *
+get_prev_frame_if_no_cycle (struct frame_info *this_frame)
+{
+  struct frame_info *prev_frame;
+
+  prev_frame = get_prev_frame_raw (this_frame);
+  if (this_frame == (frame_info *) 0x8b8ee1c) {
+    asm("int3");
+    auto x = get_frame_pc(this_frame);
+    auto y = get_frame_pc(prev_frame);
+    if (x == y)
+      asm("int3");
+  }
+
+今問題となっているのは `f' のフレームの前のフレームを取得しても main のフレームを
+取得できていないとうこと.
+
+prev, next をセットしているのは
+
+static struct frame_info *
+get_prev_frame_raw (struct frame_info *this_frame)
+{
+
+
+ここ
+
+
+aarch64-elf-gdb でも試してみたが以下のブレークポイントの両方にヒットする
+
+static struct frame_info *
+get_prev_frame_if_no_cycle (struct frame_info *this_frame)
+{
+  struct frame_info *prev_frame;
+
+  prev_frame = get_prev_frame_raw (this_frame);
+  {
+    auto x = get_frame_pc(this_frame);
+    if (x == 0x118)
+      asm("int3");      
+    auto y = get_frame_pc(prev_frame);
+    if (x == y)
+      asm("int3");  こっちは必ずヒットする.
+  }
+
+つまり frame_info::prev がセットされると get_frame_pc により返る値も
+変わるということで
+
+get_frame_pc(frame) == get_frame_pc(frame->prev)
+
+であっても何の問題もないということ. frame->prev->prev が更新されていなければ
+このようになる.
+
+そうなるとますます「step コマンド(4)」の
+
+"これと同じことを aarch64-elf-gdb で試したところ, f (level : 1 のようになる前に
+それぞれ 1 回ずつ
+
+create_sentinel_frame  level : -1
+get_prev_frame_raw     level : 0
+
+が呼び出されている. (*A)"
+
+の原因を究明したい.
+
+pru-elf-gdb で
+
+static struct frame_info *
+get_prev_frame_if_no_cycle (struct frame_info *this_frame)
+{
+  struct frame_info *prev_frame;
+
+  prev_frame = get_prev_frame_raw (this_frame);
+  auto x = get_frame_pc(this_frame);
+  if (x == 0x10c) {
+    auto y = get_frame_pc(prev_frame);
+    asm("int3");                            (*A)
+    if (x == y)
+      asm("int3");
+  }
+
+(*A)に 1 回目ヒットしたとき 
+(gdb) p/x x
+$137 = 0x10c
+(gdb) p/x y
+$138 = 0x10c
+(gdb) p this_frame
+$139 = (frame_info *) 0x8b8eda0
+(gdb) p prev_frame
+$140 = (frame_info *) 0x8b8ee1c
+(gdb) c
+
+(*A)に 2 回目ヒットしたとき 
+(gdb) p/x x
+$141 = 0x10c
+(gdb) p/x y
+$142 = 0x10c
+(gdb) p this_frame
+$143 = (frame_info *) 0x8b8ee1c
+(gdb) p prev_frame
+$144 = (frame_info *) 0x8b8f0d4
+(gdb)
+
+のようになっている.
+同じように aarch64-elf-gdb で
+
+static struct frame_info *
+get_prev_frame_if_no_cycle (struct frame_info *this_frame)
+{
+  struct frame_info *prev_frame;
+
+  prev_frame = get_prev_frame_raw (this_frame);
+  auto x = get_frame_pc(this_frame);
+  if (x == 0x118) {
+    auto y = get_frame_pc(prev_frame);
+    asm("int3");                            (*B)
+    if (x == y)
+      asm("int3");
+  }
+
+のようにして
+
+(*B) に 1 回目ヒットしたとき
+
+(gdb) p/x x
+$248 = 0x118
+(gdb) p/x y
+$249 = 0x118
+(gdb) p this_frame
+$250 = (frame_info *) 0x8cc0350
+(gdb) p prev_frame
+$251 = (frame_info *) 0x8cc03cc
+(gdb)
+
+(*B) に 2 回目ヒットしたとき
+
+(gdb) p/x x
+$252 = 0x118
+(gdb) p/x y
+$253 = 0x13c
+(gdb) p this_frame
+$254 = (frame_info *) 0x8cc03cc
+(gdb) p prev_frame
+$255 = (frame_info *) 0x8d87ef8
+(gdb)
+
+のようになっている. ということは pru-elf-gdb で 2 回目が期待値と異なるということ.
+
+以下のようにより分かりやすくしてみた:
+
+pru-elf-gdb で
+
+static struct frame_info *
+get_prev_frame_if_no_cycle (struct frame_info *this_frame)
+{
+  struct frame_info *prev_frame;
+
+  auto x = get_frame_pc(this_frame);
+  if (x == 0x10c)
+    asm("int3");
+  if (this_frame == (frame_info *) 0x8b8ee1c)
+    asm("int3");
+  prev_frame = get_prev_frame_raw (this_frame);
+  auto y = get_frame_pc(prev_frame);
+
+1 回目は x = y = 0x10c でこれは問題なし.
+2 回目が x = 0x10c, y = 0x148 となるのが期待値
+
+aarch64-elf-gdb では
+
+static struct frame_info *
+get_prev_frame_if_no_cycle (struct frame_info *this_frame)
+{
+  struct frame_info *prev_frame;
+
+  auto x = get_frame_pc(this_frame);
+  if (x == 0x118)
+    asm("int3");
+  prev_frame = get_prev_frame_raw (this_frame);
+  auto y = get_frame_pc(prev_frame);
+
+のようにしているが
+
+1 回目は x = y = 0x118
+2 回目は x = 0x118, y = 0x13c となっている.
+
+
+aarch64-elf-gdb はこれが呼び出されていた.
+
+static struct value *
+aarch64_dwarf2_prev_register (struct frame_info *this_frame,
+			      void **this_cache, int regnum)
+{
+...
+
+static void
+aarch64_dwarf2_frame_init_reg (struct gdbarch *gdbarch, int regnum,
+			       struct dwarf2_frame_state_reg *reg,
+			       struct frame_info *this_frame)
+{
+  struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
+
+  switch (regnum)
+    {
+    case AARCH64_PC_REGNUM:
+      reg->how = DWARF2_FRAME_REG_FN;
+      reg->loc.fn = aarch64_dwarf2_prev_register;
+      return;
+...
+  dwarf2_frame_set_init_reg (gdbarch, aarch64_dwarf2_frame_init_reg);
+
+これが aarch64-elf-gdb でうまく動作していたカラクリだった.
+
+pru-elf-gdb でも同様にしたところ期待通り動作した. この時点での pru-tdep.c を
+このウェブページに pru-tdep.c.004 としてアップロードしておいた.
