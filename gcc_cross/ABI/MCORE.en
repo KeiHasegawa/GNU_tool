@@ -1,30 +1,30 @@
-MCORE の ABI
+MCORE ABI
 
-(*1) 函数呼び出し
-(*2) 函数復帰
-(*3) プロローグ
-(*4) エピローグ
-(*5) 通常の函数の引数と戻り値
-(*6) long long を引数にとる函数, 返す函数
-(*7) 浮動少数点数を引数にとる函数, 返す函数
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long long' argument and return value
+(*7) Floating point number argument and return value
+(*8) Structure argument and return value
 
 
-(*1) 函数呼び出し
+(*1) Function call
 
 	jbsr	func
 
-	疑似コード
+	Pseudo code
 
-	r15 = (jbsr 命令の次のアドレス)
+	r15 = (`jbsr' instruction next address)
 	pc = func
 
-(*2) 函数復帰
+(*2) Return from function
 
 	jmp	r15
 
 
-(*3) プロローグ
+(*3) Prologue
 
 	subi	sp,8
 	stw	r15,(sp)
@@ -33,7 +33,7 @@ MCORE の ABI
 	subu	sp,r1
 	mov	r8,sp
 
-	上は 128 バイトのローカルエリアを使用する函数のプロローグである.
+	Above is prologue for the function which uses 128 byte local area.
 
 	+------------+ <- sp_{new}
 	|            |
@@ -47,7 +47,7 @@ MCORE の ABI
 	+------------+ <- sp_{old}
 
 
-(*4) エピローグ
+(*4) Epilogue
 
 	mov	sp,r8
 	bgeni	r1,7	// 128 0x80
@@ -57,26 +57,27 @@ MCORE の ABI
 	addi	sp,8
 	jmp	r15
 
-	上は 128 バイトのローカルエリアを使用する函数のエピローグである.
-	r8, r15, sp が復元され呼び出し元に復帰する.
+	Above is epilogue for the function which uses 128 bytes local area.
+	r8, r15 and sp are recovered and return to callee.
 
-(*5) 通常の函数の引数と戻り値
+(*5) Normal argument and return value
 
-	第 1 引数 : r2
-	第 2 引数 : r3
-	第 3 引数 : r4
-	第 4 引数 : r5
-	第 5 引数 : r6
-	第 6 引数 : r7
-	第 7 引数以降 : スタックに積む.
+	1st : r2
+	2nd : r3
+	3rd : r4
+	4th : r5
+	5th : r6
+	6th : r7
+	7th : use stack
 
-	例えば,
+	For example,
 	
 	int f(int a0, int a1, int a2, int a3, int a4, int a5, int a6, int a7);
 
 	f(10, 11, 12, 13, 14, 15, 16, 17);
 
-	に対して f の先頭アドレスでは
+	At the start address of `f', registers and stack layout become
+	like below:
 
 	r2 = 10, r3 = 11, r4 = 12, r5 = 13, r6 = 14, r7 = 15
 
@@ -86,53 +87,56 @@ MCORE の ABI
 	|     17     |
 	+------------+
 
-	のようになっている.
-	函数の戻り値は r2 レジスタにセットされる.
+	Function return value is set to `r2'.
 
-(*6) long long を引数にとる函数, 返す函数
+(*6) `long long' argument and return value
 
         sizeof(long long) = 8
 
-        なんかコンパイラができていないっぽい.
+        I noticed that compiler did not work.
+
+	For example,
 
 	long long f(long long a0, long long a1, long long a2);
 
 	f(0x123456789abcdef0LL, 0x1122334455667788LL, 0x99aabbccddeeff00);
 
-	に対して f の先頭アドレスで
+	At the start address of `f', below was expected.
 
 	r2 = 0x9abcdef0, r3 = 0x12345678, r4 = 0x55667788, r5 = 0x11223344
 	r6 = 0xddeeff00, r7 = 0x99aabbcc
 
-	となるのが期待値だが, r6 と r7 に違う値がセットされている.
+	But different values are set to r6 and r7.
 
 	long long g(int b, long long a0, long long a1, long long a2);
 
 	g(10, 0x123456789abcdef0LL, 0x1122334455667788LL, 0x99aabbccddeeff00);
 
-	に対しても g の先頭アドレスで
+	At the start address of `g'
 
 	r2 = 10, r3 = 0x9abcdef0, r4 = 0x12345678, ...
 
-	もしくは
+	or
 
 	r2 = 10, r4 = 0x9abcdef0, r5 = 0x12345678, ...
 
-	のようになるのが期待値だがいずれでもない.
+	was expected, but not.
 
 
-(*7) 浮動少数点数を引数にとる函数, 返す函数
+(*7) Floating point number argument and return value
 
         sizeof(float) = 4
+	sizeof(double) = sizeof(long double) = 8
 
-	MCORE には FPU がないので浮動少数点数演算はソフトウェアで行なう.
-	
-	float に対しては (*5) の規則が適用される. double, long double に対しては
-	(*6) と同じになると予測される.
+	MCORE doesn't have FPU so software calculates floating point number
+	operation. For `float' same with (*5). For `double' and `long double'
+	same with (*6).
 
-(*8) 構造体を引数にとる函数, 構造体を返す函数
 
-	構造体を引数にとる函数を呼び出すとき先頭の 24 バイトが r2, ..., r7 レジスタ
-	にセットされ残りはスタックにセットされる.
-	構造体を返す函数を呼び出すとき戻り値を格納するアドレスが r2 にセットされる.
+(*8) Structure argument and return value
+
+	When calling function which takes structure type arguemnt, first
+	24 bytes are set to r2, ..., r7 and the rest is set to stack.
+	When calling function which returns structur type, the address
+	for the return value is set to `r2'.
 	
