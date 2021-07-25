@@ -18,9 +18,9 @@ hello.elf:start.o hello.o dummy.o hello.x
 	-L$(DIR1) -lc -L$(DIR2) -lgcc -T hello.x -Map hello.map
 
 hello.objdump:hello.elf
-	pru-elf-objdump -x -t -d hello.elf > hello.objdump
+	pru-elf-objdump -x -t -d -g hello.elf > hello.objdump
 
 clean:
-	rm -f *.o *.elf *.map *.objdump *~
+	rm -f *.o *.elf *.objdump *~
 
 
