@@ -1,9 +1,5 @@
-hello world のサンプル
-
-現状での問題点
-
-puts で停止したとき以下のように s = 0x10 となっている. 
-
+While debugging hello world program, I noticed that
+`puts' parameter was displayed incorrectly like below:
 
 Breakpoint 1 at 0x330: file ../../../.././newlib/libc/stdio/puts.c, line 129.
 
@@ -13,140 +9,21 @@ A debugging session is active.
 
 	Inferior 1 [process 42000] will be killed.
 
-s = 0x2010 "hello world" となるのが
-期待する結果.  ../test_pru.00{6,7} は char* の引数をとる函数を呼び出しているが
-こっちは期待通り動作している. s の値が 0x2010 のように大きいと問題が発生している.
+The expected result was
 
-しかし一方で ../test_pru.010 は s=0x2060 のように s の値が大きくても期
-待通り動作している. test010.x で 0x2000 番地に置くようにしていた.
-../test_pru.011 は 0x100 番地コードを置いてたくさん nop 命令を配置する
-ことにより文字列のアドレスを高くしてみたがこれでも再現していない.
+s = 0x2010 "hello world"
 
-そもそもだが引数を表示する仕組みについて調べてみる.
-../test_pru.010 は期待通り動作している. これでとりあえず調べてみる.
+After investigation, I got rid of this bug by rebuild newlib with -g -O0
+option.
 
-函数 f は 0x200c 番地から 0x2030 番地に配置されている.
-そして以下が test010.objdump の結果は
+Again the expected result was
 
-00000010 00000024 00000000 FDE cie=00000000 pc=0000200c..00002030
-  DW_CFA_advance_loc: 4 to 00002010
-  DW_CFA_def_cfa_offset: 8
-  DW_CFA_advance_loc: 4 to 00002014
-  DW_CFA_offset: r16 at cfa-4
-  DW_CFA_advance_loc: 4 to 00002018
-  DW_CFA_def_cfa: r16 ofs 0
-  DW_CFA_advance_loc: 16 to 00002028
-  DW_CFA_def_cfa: r8 ofs 4
-  DW_CFA_advance_loc: 4 to 0000202c
-  DW_CFA_restore: r19
-  DW_CFA_restore: r18
-  DW_CFA_restore: r17
-  DW_CFA_restore: r16
-  DW_CFA_advance_loc: 4 to 00002030
-  DW_CFA_def_cfa_offset: 0
-  DW_CFA_nop
-  DW_CFA_nop
+s=<optimize out>
 
-
-対応するアセンブラの生成は以下
-
-f:
-.LFB0:
-.LM1:
-	.cfi_startproc
-	sub	r2, r2, 8
-	.cfi_def_cfa_offset 8
-	sbbo	r4.b0, r2, 4, 4
-	.cfi_offset 16, -4
-	add	r4, r2, 8
-	.cfi_def_cfa 16, 0
-	sub	r0, r4, 8
-	sbbo	r14.b0, r0, 0, 4
-.LM2:
-	nop
-	sub	r2, r4, 4
-	.cfi_def_cfa 8, 4
-	lbbo	r4.b0, r2, 0, 4
-	.cfi_restore 19
-	.cfi_restore 18
-	.cfi_restore 17
-	.cfi_restore 16
-	add	r2, r2, 4
-	.cfi_def_cfa_offset 0
-	ret
-	.cfi_endproc
-
-
-f が呼び出されたとき r14 が保存されている r4 - 8 をアクセスすることに
-なる. f は葉の函数だから r3 は保存されない
-
-
-0x2ff2  +--------------------+ <- r2
-	|                    |
-        |      r14_{old}     |
-	+--------------------+ +4
-	|                    |
-	|      r4_{old}      |
-0x2ffa	+--------------------+ <- r2_{old}, r4_{new}
-	| hi(r3_{old}_{old}) |
-	+--------------------+ +2
-	|                    |
-	|   r4_{old}_{old}   |
-0x3000	+--------------------+ +6	
-
-s の値を表示するのに 0x2ff2 番地を見ているのかと思ったが sim_read がこ
-のアドレスで呼ばれることはなかった. しかし
-
-sim_read (sd=0x8c35f50, mem=12224, buf=0x8c435ec "", length=64)
-
-のように呼び出されていた.
-
-mem = 0x2fc0
-mem+64 = 0x3000
-
-なのでまとめて読み出している. 結局保存された r14 を見ているわけだ.
-
-ここで思い出したが, hello は 56, 57, 58, 59 のレジスタが
-
-pru_dbg_reg_to_regnum
-
-にきている. 一方 test_pru.010 test_pru.011 はこれがきていない. だから
-再現していないのだろう.
-
-
-hello.elf の objdump の結果は
-
-00000330 <puts>:
-     330:	242082e0 	ldi	r0, 8322
-     334:	1300eeef 	mov	r15, r14
-     338:	f100208e 	lbbo	r14.b0, r0, 0, 4
-     33c:	21008a00 	jmp	228 <_puts_r>
-
-
-0000019c 0000000c 00000160 FDE cie=00000160 pc=00000330..00000334
-
-000001ac 0000000c ffffffff CIE
-  Version:               1
-  Augmentation:          ""
-  Code alignment factor: 1
-  Data alignment factor: -1
-  Return address column: 132
-
-  DW_CFA_def_cfa: r16 ofs 0
-
-000001bc 0000000c 000001ac FDE cie=000001ac pc=00000340..00000368
-
-なるほどこれは, 最適化でデバッグ情報がない可能性がある. しかしそれであ
-れば s=<optimize out> のような形で表示されるべきである. 少くとも
+At least, 
 
 s=0x10
 
-は間違い.
-
-newlib を -g -O0 でビルドし直したところ期待通り
-
-Breakpoint 4, puts (s=0x3b18 "hello world") at ../../../.././newlib/libc/stdio/puts.c:129
-
-のように表示できている.
+was not correct.
 
 
