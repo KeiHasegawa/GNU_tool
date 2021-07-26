@@ -1,42 +1,44 @@
-Compact RISC の ABI
+Compact RISC ABI
 
-(*1) 函数呼び出し
-(*2) 函数復帰
-(*3) プロローグ
-(*4) エピローグ
-(*5) 通常の函数の引数と戻り値
-(*6) long, long long を引数にとる函数, 返す函数
-(*7) 浮動少数点数を引数にとる函数, 返す函数
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long' and `long long' argument and return value
+(*7) Floating point number argument and return value
+(*8) Structure argument and return value
 
 
-(*1) 函数呼び出し
+(*1) Function call
 
 	bal (ra), func@c
 
-	疑似コード
-	ra = (bal 命令の次のアドレス) >> 1
+	Pseudo code
+	
+	ra = (`bal' instruction next address) >> 1
 	pc = func
 
-	ra は r14 レジスタの別名
+	ra is alias of `r14'.
 
-(*2) 函数復帰
+(*2) Return from function
 
 	jump	 (ra)
 
-	疑似コード
+	Pseudo code
 
 	pc = (ra << 1)
 
-	葉の函数でなければ popret 命令を使用する. (*4) も参照.
+	Compiler generates `popret' instruction for none-leaf function.
+	See also (*4).
 
-(*3) プロローグ
+(*3) Prologue
 
 	push	$2, r13, ra
 	addd	$-128, (sp)
 	movd	(sp), (r13)
 
-	上は 128 バイトのローカルエリアを使用する函数のプロローグである.
+	Above is prologue for the function which uses 128 bytes local area.
 
 	+----------------+ <- sp_{new}, r13_{new}
 	|                |
@@ -50,31 +52,34 @@ Compact RISC の ABI
 	|     ra_{old}   |
 	+----------------+ <- sp_{old}
 
-(*4) エピローグ
+(*4) Epilogue
 
 	movd	(r13), (sp)
 	addd	$128, (sp)
 	popret	$2, r13, ra
 
-	上は 128 バイトのローカルエリアを使用する函数のエピローグである.
-	r13, sp, ra が復元され呼び出し元に復帰する.
+	Above is epilogue for the function which uses 128 bytes local area.
+	`r13', `sp' and `ra' are restored and return to callee.
 
-(*5) 通常の函数の引数と戻り値
+(*5) Normal argument and return value
 
         sizeof(int) = 2
 
-	第 1 引数 : r2
-	第 2 引数 : r3
-	第 3 引数 : r4
-	第 4 引数 : r5
-	第 5 引数 : r6
-	第 6 引数以降 : スタックに積む
+	1st : r2
+	2nd : r3
+	3rd : r4
+	4th : r5
+	5th : r6
+	6th : use stack
+
+	For example,
 
 	int f(int a0, int a1, int a2, int a3, int a4, int a5, int a6, int a7);
 
 	f(10,11,12,13,14,15,16,17);
 
-	に対して f の先頭では
+	At start address of `f', registers and stack layout become
+	like below:   
 
 	r2 = 10, r3 = 11, r4 = 12, r5 = 13, r6 = 14
 
@@ -86,23 +91,25 @@ Compact RISC の ABI
 	|       17       |
 	+----------------+ +6
 
-	のようになっている.
-	函数の戻り値は r0 にセットされる.	
-
-(*6) long, long long を引数にとる函数, 返す函数
+	Function return value is set to `r0'.
+	
+(*6) `long' and `long long' argument and return value
 
         sizeof(long) = 4
         sizeof(long long) = 8
 
 
-	long に対してはレジスタが 2 つ使用され, 残りはスタックで渡す. r6 とスタック
-	をまたぐ場合は r6 は使用されない.
+	For `long' type argument, 2 registers are used and the rest is
+	set to stack. Especailly `long' type argument is set to stack
+	except for `r6' and stack .
+	For example,
 
 	long f(int a0, long a1, int a2, long a3);
 
 	f(10,0x12345678L,11, 0x9abcdef0L);
 
-	に対して f の先頭アドレスでは
+	At the start address of `f' registers and stack layout become
+	like belw:
 
 	r2 = 10, r3 = 0x5678, r4 = 0x1234, r5 = 11
 
@@ -112,23 +119,24 @@ Compact RISC の ABI
 	|     0x9abc     |
 	+----------------+ +4
 
-	のようになる.
-	函数の戻り値は r0 と r1 にセットされる.
+	Function return value is set to `r0'and `r1'.
 
-	long long に対しては第 1 引数であってもレジスタが使用されず, スタックで渡す.
-	函数の戻り値は r0, r1, r2, r3 にセットされる.
+	For `long long' type argument, registers are not used
+	and it is set to stack.
+	Function return value is set to `r0', `r1', `r2' and `r3'.
 	
-(*7) 浮動少数点数を引数にとる函数, 返す函数
+(*7) Floating point number argument and return value
 
         sizeof(float) = 4
 	sizeof(double) = sizeof(long double) = 8
 
-	Compact Risc には FPU がないのでソフトウェアで浮動少数点数演算を行なう.
-	float に対しては long と同じ規則が使用される. doube, long double
-	に対しては long long と同じ規則が使用される.
+	Compact RISC doesn't have FPU so software calculates floating point
+	number operation. For `float' same with `long'. For `double' or
+	`long double'  same with `long long'.
 
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*8) Structure argument and return value
 
-        構造体を引数に取る函数を呼び出すときレジスタは使用されず, スタックが使用される.
-	構造体を返す函数を呼び出すとき, 戻りアドレスを格納するアドレスを r0, r1 に
-	セットする.
+	When calling function which takes structure type, no register is
+	used and stack is used.
+	When calling function which returns structure type, the adddress
+	for the return value is set to `r0' and `r1'.
