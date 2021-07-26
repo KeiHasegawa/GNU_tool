@@ -1,0 +1,335 @@
+#include "defs.h"
+#include "value.h"
+#include "arch-utils.h"
+#include "regcache.h"
+#include "gdbcore.h"
+#include "objfiles.h"
+#include "dis-asm.h"
+#include "dwarf2/frame.h"
+#include "frame-base.h"
+#include "frame-unwind.h"
+#include "trad-frame.h"
+#include "opcodes/mcore-opc.h"
+#include <numeric>
+
+static int mcore_register_sim_regno(gdbarch*, int regno)
+{
+  return regno;
+}
+
+static int mcore_dbg_reg_to_regno(gdbarch*, int regno)
+{
+  return regno;
+}
+
+const int pc_regno = 64;
+const int sp_regno = 0;
+
+static const char* mcore_register_name(gdbarch*, int regno)
+{
+  if (regno == pc_regno)
+    return "pc";
+  if (regno == sp_regno)
+    return "sp";
+
+  if (regno < 16) {
+    static const char* name[] = {
+      "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7",
+      "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"};
+    return name[regno];
+  }
+
+  if (regno < 32) {
+    static const char* name[] = {
+      "alt0", "alt1", "alt2", "alt3", "alt4", "alt5", "alt6", "alt7",
+      "alt8", "alt9", "alt10", "alt11", "alt12", "alt13", "alt14", "alt15"};
+    return name[regno-16];
+  }
+
+  int n = regno - 32;
+  static const char* name[] = {
+    "sr", "ver", "esr", "fsr", "epc", "efp",
+    "ss0", "ss1", "ss2", "ss3", "ss4", "gcr", "gsr"
+  };
+  if (n < sizeof name/sizeof name[0])
+    return name[n];
+  return 0;
+}
+
+static return_value_convention
+mcore_return_value(gdbarch*, value*, type*, regcache*,
+		   gdb_byte*, const gdb_byte *)
+{
+  asm("int3");
+  return return_value_convention(0);
+}
+
+static type* mcore_register_type(gdbarch* gdbarch, int regno)
+{
+  switch (regno) {
+  case pc_regno: return builtin_type(gdbarch)->builtin_func_ptr;
+  case sp_regno: return builtin_type(gdbarch)->builtin_data_ptr;
+  default:       return builtin_type(gdbarch)->builtin_int32;
+  }
+}
+
+inline void
+register_info(gdbarch* gdbarch,ui_file* file, frame_info* frame, int regno)
+{
+  const char* name = mcore_register_name(gdbarch, regno);
+  if (!name)
+    return;
+  uint32_t value = frame_unwind_register_unsigned(frame, regno);
+  fprintf_filtered (file, "%s\t0x%08x\t%d\n", name, value, value);
+}
+
+static void
+mcore_print_registers_info(gdbarch* gdbarch, ui_file* file,
+			   frame_info* frame, int regno, int cpregs)
+{
+  if (regno >= 0)
+    return register_info(gdbarch, file, frame, regno);
+
+  int N = gdbarch_num_regs(gdbarch);
+  for (int i = 0 ; i != N ; ++i)
+    register_info(gdbarch, file, frame, i);
+}
+
+static CORE_ADDR mcore_skip_prologue(gdbarch*, CORE_ADDR pc)
+{
+  CORE_ADDR func_addr, func_end;
+  if (!find_pc_partial_function (pc, nullptr, &func_addr, &func_end))
+    return pc;
+  
+  symtab_and_line sal = find_pc_line (func_addr, 0);
+  if (sal.end && sal.end < func_end)
+    return sal.end;
+
+  return pc;
+}
+
+struct mcore_frame {
+  bool available;
+  CORE_ADDR pc;
+  CORE_ADDR prev_sp;
+  struct prologue_t {
+    CORE_ADDR start;
+    CORE_ADDR end;
+  } prologue;
+  trad_frame_saved_reg saved_reg[64];
+};
+
+inline int init_saved_reg(int no, trad_frame_saved_reg& sr)
+{
+  sr.addr = -1;
+  sr.realreg = no;
+  return no + 1;
+}
+
+inline bool canbe_prologue_start(uint32_t insn)
+{
+  if (insn == 0x00cf) { // jmp	r15
+    return true;
+  }
+
+  if (insn == 0x2470) { // subi	r0, 8
+    return true;
+  }
+
+  if (insn == 0x24f0) { // subi	r0, 16
+    return true;
+  }
+
+  if (insn == 0x2570) { // subi	r0, 24
+    return true;
+  }
+
+  if (insn == 0x25f0) { // subi	r0, 32
+    return true;
+  }
+
+  return false;
+}
+
+extern const struct inst mcore_table[140];
+extern const unsigned short imsk[]; /*
+modify opcodes/mcore-dis.c
+//static
+const unsigned short imsk[] = {
+				    */
+
+inline bool instruction(uint32_t inst)
+{
+  if (!inst)
+    return false;  // WA
+
+  int N = sizeof mcore_table/sizeof mcore_table[0];
+  for (int i = 0; i != N; ++i) {
+    if (mcore_table[i].inst == (inst & imsk[mcore_table[i].opclass]))
+      return true;
+  }
+
+  return false;
+}
+
+static mcore_frame* mcore_frame_create(frame_info *frame)
+{
+  using namespace std;
+  auto ret = new mcore_frame;
+  int N = sizeof ret->saved_reg/sizeof ret->saved_reg[0];
+  accumulate(&ret->saved_reg[0], &ret->saved_reg[N], 0, init_saved_reg);
+  ret->pc = get_frame_pc(frame);
+  ret->prev_sp = get_frame_sp(frame);
+  auto block_addr = get_frame_address_in_block(frame);  
+  bool found = find_pc_partial_function(block_addr, nullptr,
+					&ret->prologue.start,
+					&ret->prologue.end);
+  if (!found) {
+    ret->available = false;    
+    ret->prologue.start = ret->prologue.end = ret->pc;
+    return ret;
+  }
+  ret->available = true;
+  for (auto addr = ret->prologue.start ; ; addr -= 2) {
+    uint32_t insn = read_memory_unsigned_integer(addr, 2, BFD_ENDIAN_LITTLE);
+    if (canbe_prologue_start(insn)) {
+      ret->prologue.start = addr;
+      return ret;
+    }
+    if (!instruction(insn)) {
+      ret->prologue.start = addr + 4;
+      return ret;
+    }
+  }
+}
+
+static void mcore_frame_this_id(frame_info *frame, void **ptr, frame_id *id)
+{
+  auto pf = reinterpret_cast<mcore_frame*>(*ptr);
+  if (!pf)
+    *ptr = pf = mcore_frame_create(frame);
+  
+  if (!pf->available)
+    *id = frame_id_build_unavailable_stack(pf->prologue.start);
+  else
+    *id = frame_id_build(pf->prev_sp, pf->prologue.start);
+}
+
+static value*
+mcore_frame_prev_register(frame_info *frame, void **ptr, int regno)
+{
+  if (regno == sp_regno) {
+    auto sp = get_frame_sp(frame);
+    return frame_unwind_got_constant(frame, regno, sp);
+  }
+
+  if (regno == pc_regno) {
+    auto r15 = frame_unwind_register_unsigned(frame, 15);
+    return frame_unwind_got_constant(frame, regno, r15);
+  }
+
+  auto pf = reinterpret_cast<mcore_frame*>(*ptr);
+  if (!pf)
+    *ptr = pf = mcore_frame_create(frame);
+  return trad_frame_get_prev_register(frame, &pf->saved_reg[0], regno);
+}
+
+static frame_unwind mcore_frame_unwind = {
+  NORMAL_FRAME,
+  default_frame_unwind_stop_reason,
+  mcore_frame_this_id,
+  mcore_frame_prev_register,
+  nullptr,
+  default_frame_sniffer
+};
+
+static CORE_ADDR mcore_frame_base_address(frame_info *frame, void **ptr)
+{
+  asm("int3");
+  return 0;
+}
+
+static frame_base mcore_frame_base = {
+  &mcore_frame_unwind,
+  mcore_frame_base_address,
+  mcore_frame_base_address,
+  mcore_frame_base_address
+};
+
+static int mcore_kind_from_pc(gdbarch*, CORE_ADDR* addr)
+{
+  return 0;
+}
+
+static const unsigned char* mcore_from_kind(gdbarch*, int kind, int* size)
+{
+  static unsigned char bkpt[] = { 0, 0 };
+  *size = sizeof bkpt;
+  return &bkpt[0];
+}
+
+static CORE_ADDR
+mcore_push_dummy_call(gdbarch*, value*,
+		      regcache*, CORE_ADDR,
+		      int nargs, value **args, CORE_ADDR sp,
+		      function_call_return_method return_method,
+		      CORE_ADDR struct_addr)
+{
+  asm("int3");
+  return 0;
+}
+
+static struct gdbarch* mcore_gdbarch_init(gdbarch_info info, gdbarch_list*)
+{
+  struct gdbarch *gdbarch = gdbarch_alloc (&info, 0);
+
+  set_gdbarch_num_regs(gdbarch, pc_regno+1);
+  set_gdbarch_register_type(gdbarch, mcore_register_type);
+  set_gdbarch_register_sim_regno(gdbarch, mcore_register_sim_regno);
+  set_gdbarch_dwarf2_reg_to_regnum(gdbarch, mcore_dbg_reg_to_regno);
+  set_gdbarch_stab_reg_to_regnum(gdbarch, mcore_dbg_reg_to_regno);
+  set_gdbarch_register_name(gdbarch, mcore_register_name);
+
+  set_gdbarch_pc_regnum(gdbarch, pc_regno);
+  set_gdbarch_sp_regnum(gdbarch, sp_regno);
+  set_gdbarch_print_registers_info(gdbarch, mcore_print_registers_info);
+
+  set_gdbarch_ptr_bit(gdbarch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_addr_bit(gdbarch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_return_value(gdbarch, mcore_return_value);
+
+  set_gdbarch_skip_prologue (gdbarch, mcore_skip_prologue);
+  frame_base_set_default (gdbarch, &mcore_frame_base);
+  dwarf2_append_unwinders(gdbarch);
+  frame_unwind_append_unwinder(gdbarch, &mcore_frame_unwind);
+
+  set_gdbarch_inner_than (gdbarch, core_addr_lessthan);
+  set_gdbarch_breakpoint_kind_from_pc(gdbarch, mcore_kind_from_pc);
+  set_gdbarch_sw_breakpoint_from_kind(gdbarch, mcore_from_kind);
+  set_gdbarch_push_dummy_call(gdbarch, mcore_push_dummy_call);
+
+  set_gdbarch_char_signed(gdbarch, 0);
+  set_gdbarch_int_bit(gdbarch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_long_bit(gdbarch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_long_long_bit (gdbarch, 8 * TARGET_CHAR_BIT);
+
+  set_gdbarch_wchar_signed(gdbarch, 0);
+  set_gdbarch_wchar_bit(gdbarch, 2 * TARGET_CHAR_BIT);
+
+  set_gdbarch_double_bit(gdbarch, 8 * TARGET_CHAR_BIT);
+  set_gdbarch_double_format(gdbarch, floatformats_ieee_double);
+  set_gdbarch_long_double_bit(gdbarch, 8 * TARGET_CHAR_BIT);
+  set_gdbarch_long_double_format(gdbarch, floatformats_ieee_double);
+
+  set_gdbarch_believe_pcc_promotion(gdbarch, 1);
+ 
+  return gdbarch;
+}
+
+void _initialize_mcore_tdep();
+void
+_initialize_mcore_tdep()
+{
+  register_gdbarch_init(bfd_arch_mcore, mcore_gdbarch_init);
+}
+
