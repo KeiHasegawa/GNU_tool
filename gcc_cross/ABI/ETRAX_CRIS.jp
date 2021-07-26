@@ -1,36 +1,36 @@
-ETRAX CRIS ABI
+ETRAX CRIS の ABI
 
-(*1) Function call
-(*2) Return from function
-(*3) Prologue
-(*4) Epilogue
-(*5) Normal argument and return value
-(*6) `long long' argument and return value
-(*7) Floating point number argument and return value
-(*8) Structure argument and return value
+(*1) 函数呼び出し
+(*2) 函数復帰
+(*3) プロローグ
+(*4) エピローグ
+(*5) 通常の函数の引数と戻り値
+(*6) long long を引数にとる函数, 返す函数
+(*7) 浮動少数点数を引数にとる函数, 返す函数
+(*8) 構造体を引数にとる函数, 構造体を返す函数
 
 
-(*1) Function call
+(*1) 函数呼び出し
 
 	Jsr func
 
-	Pseudo code
+	疑似コード
 
-	srp = (`Jsr' instruction next address)
+	srp = (Jsr 命令の次のアドレス)
 	pc = func
 
-	`srp' is alias of `p11'
+	srp は p11 の別名
 
-(*2) Return from function
+(*2) 函数復帰
 
 	ret
 
-	Pseoudo code
+	疑似コード
 
 	pc = srp
 
 
-(*3) Prologue
+(*3) プロローグ
 
 	subq 4,$sp
 	move $srp,[$sp]
@@ -39,7 +39,7 @@ ETRAX CRIS ABI
 	move.d $sp,$r8
 	subu.b 128,$sp
 
-	Above is prologue of the funciton which uses 128 bytes local area.
+	上は 128 バイトのローカルエリアを使用する函数のプロローグである.
 
 
 	+------------------+ <- sp_{new}
@@ -54,31 +54,28 @@ ETRAX CRIS ABI
 	|     srp_{old}    |
 	+------------------+ <- sp_{old}
 
-(*4) Epilogue
+(*4) エピローグ
 
 	move.d $r8,$sp
 	move.d [$sp+],$r8
 	jump [$sp+]
 
-	Above is epilogue and it doesn't depend on the mount of local area.
-	`r8', `srp' and `sp' are recovered and return to callee.
+	上は使用するローカルエリアのバイト数に依存しない函数のエピローグである.
+	r8, srp, sp が復元され呼び出し元に復帰する.
 
-(*5) Normal argument and return value
+(*5) 通常の函数の引数と戻り値
 
-	1st : r10
-	2nd : r11
-	3rd : r12
-	4th : r13
-	5th : use stack
-
-	For example,
+	第 1 引数 : r10
+	第 2 引数 : r11
+	第 3 引数 : r12
+	第 4 引数 : r13
+	第 5 引数以降 : スタックを使用する
 
 	int f(int a0, int a1, int a2, int a3, int a4, int a5, int a6, int a7);
 
 	f(10, 11, 12, 13, 14, 15, 16, 17);
 
-	At the start address of `f', registers and stack layout become
-	like below:
+	に対して f の先頭アドレスでは
 
 	r10 = 10, r11 = 11, r12 = 12, r13 = 13
 	
@@ -92,22 +89,21 @@ ETRAX CRIS ABI
 	|        17        |
 	+------------------+ +16
 
-	Fuction return value is set to `r10'.
+	函数の戻り値は r10 にセットされる.
 	
 
-(*6) `long long' argument and return value
+(*6) long long を引数にとる函数, 返す函数
 
         sizeof(long long) = 8
 
-	For `long long' type argument, 2 registers are used and, for the rest
-	stack is used. For example,
+	long long の引数に対して 2 つのレジスタが使用され, 残りはスタックが使用される.
+	例えば
 
 	long long f(int a0, long long a1, long long a2);
 
 	f(10, 0x123456789abcdef0LL, 0x1122334455667788LL);
 
-	At the start address of `f', registers and stack layout become
-	like below:
+	に対して f の先頭アドレスでは
 
 	r10 = 10, r11 = 0x9abcdef0, r12 = 0x12345678, r13 = 0x55667788
 	
@@ -115,21 +111,20 @@ ETRAX CRIS ABI
 	|    0x11223344    |
 	+------------------+ +4
 
-	Function return value is set to `r10' and `r11'.
+	のようになっている.
+	函数の戻り値は r10, r11 にセットされる.
 	
-(*7) Floating point number argument and return value
+	
+(*7) 浮動少数点数を引数にとる函数, 返す函数
 
         sizeof(float) = 4
 	sizeof(double) = sizeof(long double) = 8
 
-	ETRAX CRIS doesn't hav FPU so software calculates floating point
-	number operation. For `float' same with (*5), for `double' or
-	`long double' wame with (*6).
+	ETRAX CRIS には FPU がないのでソフトウェアで浮動少数点数演算が行なわれる.
+	float に対しては (*5) の規則が, double, long double に対しては (*6)
+	の規則が適用される.
 
-(*8) Structure argument and return value
+(*8) 構造体を引数にとる函数, 構造体を返す函数
 
         構造体を引数に取る函数を呼び出すときレジスタは使用せず, スタックが使用される.
-	When calling function which takes structure type, no register
-	is used, stack is used.
-	When calling function which returns struct type, the address of
-	return value is set to `r10'.
+	構造体を返す函数を呼び出すとき戻り値を格納するアドレスが r10 にセットされる.
