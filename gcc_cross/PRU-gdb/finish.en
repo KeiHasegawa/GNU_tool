@@ -1,31 +1,25 @@
-pru-elf-gdb の finish コマンド
+Implement pru-elf-gdb finish command
 
-現状
+I did not impelement below function at this point:
 
 static return_value_convention
 pru_return_value(gdbarch*, value* function, type* valtype, regcache* regcache,
 		 gdb_byte *readbuf, const gdb_byte *writebuf)
 {
 
-この函数が未実装なので期待する動作をしていない.
-例えば
+This function have to work for `finish' command.
+
+For example,
 
 int f(int a, int b)
 {
   return a + b;
 }
 
-のような f から戻るときに f の戻り値の型によって戻り値が呼び出し元にどのように返るかを
-pru_return_value で指定する必要がある.
+When executing `finish' command at function `f', pru-elf-gdb have to know
+how to get the return value and that have to be done by `pru_return_value'.
 
-PRU では上の f の場合 r14 に戻り値をセットする.
+At PRU architecture, the return value of `f' is set to `r14'.
 
-pru_return_value が 2 回呼び出されて 1 回目は readubf に nullptr が 
-2 回目が readubf に値がセットされている. ここに戻り値をセットすることになる.
-
-PRU の ABI は long long を返す函数では r14 と r15 に値をセットする. また
-構造体を返す函数は r14 に返り値をコピーすればよい. PRU の ABI については
-「ABI」->「PRU」を参照.
-
-この時点での pru-tdep.c を pru-tdep.c.005 としてこのページにアップロードしておいた.
-finish コマンドが期待通り動作している.
+I up-loaded `pru-tdep.c' at this point as `pru-tdep.c.005' on this web
+page. `finish' command became to work well.
