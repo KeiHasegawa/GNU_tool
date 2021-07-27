@@ -1,0 +1,17 @@
+`finish' command at function which returns structure type. 
+
+I noticed that some `gdb's `finish' command did not work
+when I implemented pru-elf-gdb `finish' command.
+
+(aarch64-elf-gdb) finish
+Run till exit from #0  f () at test014.c:7
+main () at test014.c:14
+Value returned has type: struct S. Cannot determine contents
+(aarch64-elf-gdb)
+
+
+
+aarch64-elf-gdb : NG (OK if less than or equal to 16 bytes)
+h8300-elf-gdb   : NG
+pru-elf-gdb     : OK (implemented)
+

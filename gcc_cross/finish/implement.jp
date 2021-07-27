@@ -1,0 +1,17 @@
+構造体を返す函数で finish コマンド
+
+PRU の gdb で finish コマンドを実装しているときに他の finish コマンドを
+参考にしたが, どうやら構造体を返す函数で finish コマンドをしても期待した
+結果にならないようである.
+
+(aarch64-elf-gdb) finish
+Run till exit from #0  f () at test014.c:7
+main () at test014.c:14
+Value returned has type: struct S. Cannot determine contents
+(aarch64-elf-gdb)
+
+
+
+aarch64-elf-gdb : NG (16 バイト未満ならば OK)
+h8300-elf-gdb   : NG
+pru-elf-gdb     : 実装したので OK
