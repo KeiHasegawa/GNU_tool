@@ -1,30 +1,30 @@
-LatticeMico32 の ABI
+LatticeMico32 ABI
 
-(*1) 函数呼び出し
-(*2) 函数復帰
-(*3) プロローグ
-(*4) エピローグ
-(*5) 通常の函数の引数と戻り値
-(*6) long long を引数にとる函数, 返す函数
-(*7) 浮動少数点数を引数にとる函数, 返す函数
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long long' argument and return value
+(*7) Floating point number argument and return value
+(*8) Structure argument and return value
 
 
-(*1) 函数呼び出し
+(*1) Function call
 
 	calli    func
 
-	疑似コード
+	Pseudo code
 	
-	ra = (calli 命令の次のアドレス)
+	ra = (`calli' instruction next address)
 	pc = func
 
 
-(*2) 函数復帰
+(*2) Return from function
 
 	b        ra
 
-(*3) プロローグ
+(*3) Prologue
 
 	addi     sp, sp, -140
 	sw       (sp+8), fp
@@ -46,33 +46,34 @@ LatticeMico32 の ABI
 	|                  |
 	+------------------+ <- sp_{old}, fp_{new}
 
-        上は 128 バイトのローカルエリアを使用する函数のプロローグである.
+        Above is prologue of function which uses 128 bytes local area.
 
-(*4) エピローグ
-
+(*4) Epilogue
 
 	lw       fp, (sp+8)
 	lw       ra, (sp+4)
 	addi     sp, sp, 140
 	b        ra
 
-	上は 128 バイトのローカルエリアを使用する函数のエピローグである.
-	fp, ra, sp が復元され呼び出し元に復帰する.
+	Above is epilogue for the function which uses 128 bytes loca area.
+	`fp', `ra' and `sp' are recovered and return to callee.
 
-(*5) 通常の函数の引数と戻り値
+(*5) Normal argument and return value
 
-        第 1 引数 : r1
+        1st : r1
 	...
-        第 8 引数 : r8
-	第 9 引数 : スタックを使用
+        8th : r8
+	9th : use stack
 
+	For example,
 
 	int f(int a0, int a1, int a2, int a3, int a4, int a5, int a6, int a7,
 	      int a8, int a9);
 
         f(10, 11, 12, 13, 14, 15, 16, 17, 18, 19);
 
-	に対して f の先頭アドレスでは
+	At the start address of `f', registers and stack layout become
+	like below:
 
 	r1 = 10, r2 = 11, ..., r8 = 17
 
@@ -85,26 +86,28 @@ LatticeMico32 の ABI
 	|     ra_{old}     |
 	+------------------+ +12
 
-	ra_{old} は f を呼び出した函数の戻りアドレス.
+	where, ra_{old} is return address of the function, which call `f'.
 
-	のようになっている.
-	函数の戻り値は r1 にセットされる.
+	Function return value is set to `r1'.
 	
-(*6) long long を引数にとる函数, 返す函数
+(*6) `long long' argument and return value
 
 
 	sizeof(long long) = 8
 
-	long long の引数に対してレジスタが 2 つ使用され残りはスタックを使用する. 但し
-	r8 レジスタとスタックをまたいで使用することはなく, その場合はスタックを使用する.
-	例えば
+	For `long long' type argument, 2 registers are used and for the
+	rest stack is used. However, `r8' and stack are not used for
+	a `long long' type argumet. In that case, just stack is used.
+	
+	For example,
 
 	long long
 	f(int a0, long long a1, long long a2, long long a3, long long a4);
 
 	f(10, 11LL, 12LL, 0x123456789abcdef0LL, 0x1122334455667788LL);
 
-	に対して f の先頭アドレスでは
+	At the start address of `f', registers and stack layout become
+	like below:
 
 	r1 = 10, r2 = 0, r3 = 11, r4 = 0, r5 = 12,
 	r6 = 0x12345678, r7 = 0x9abcdef0
@@ -118,26 +121,25 @@ LatticeMico32 の ABI
 	|     ra_{old}     |
 	+------------------+ +12
 
-	ra_{old} は f を呼び出した函数の戻りアドレス.
+	where, ra_{old} is return address of the function, which call `f'.
 
-	のようになっている.
-	函数の戻り値は r1 と r2 にセットされる.
+	Function return value is set to `r1' and  `r2'.
 
-(*7) 浮動少数点数を引数にとる函数, 返す函数
+(*7) Floating point number argument and return value
 
 	sizeof(float) = 4
 	sizeof(double) = sizeof(long double) = 8
 
-	LatticeMico32 には FPU がないのでソフトウェアで浮動少数点数演算を行なう.
-	float に対しては (*5) の規則が, double, long double に対しては
-	(*6) の規則が適用される.
+	LatticeMico32 doesn't have FPU so software calculates floating point
+	number operation. For `float', same with (*5). For `double' or
+	`long doublue', same with (*6).
 
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*8) Structure argument and return value
 
-        構造体を引数に取る函数を呼び出すときレジスタは使用せずスタックがオフセット 4
-	を開けて使用される.
+        When calling function which takes structure type argument,
+	registers are not used, just stack is used with offset 4.
 
-	例えば
+	For example,
 
 	struct S { int i[9]; };
 	void f(struct S s);
@@ -145,7 +147,7 @@ LatticeMico32 の ABI
 	struct S s = { 1, 2, 3, 4, 5, 6, 7, 8, 9 };
 	f(s);
 
-	に対して f の先頭アドレスでは
+	At the start address of `f', stack layout becomes like below:
 
 	+------------------+ <- sp
 	|                  |
@@ -163,9 +165,8 @@ LatticeMico32 の ABI
 	|     ra_{old}     |
 	+------------------+ +44
 
-	ra_{old} は f を呼び出した函数の戻りアドレス.
+	where, ra_{old} is return address of the function, which call `f'.
 
-        のようになっている.
-
-	構造体を返す函数を呼び出すとき r1 レジスタに戻り値を格納するアドレスがセットされる.
+	When calling fucntion which returns structure type, the address of
+	return value is set to `r1'.
 	
