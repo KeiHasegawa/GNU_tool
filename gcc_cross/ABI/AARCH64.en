@@ -119,5 +119,10 @@ AARCH64(ARM64) ABI
 
 (*8) Structure argument and return value
 
-        For the structure type argument, its address is set to r0, ..., r7.
-        Return value is set to the address indicated by `r8'.
+        When calling function which takes structure type argument,
+	make copy of the argument and pass its address as a argument.
+	with the rule (*6).
+	When calling function which returns structure type argument,
+	if the structure size is less than or equal to 16 bytes,
+	the return value is set to `x0' and `x1'.
+	Otherwise the address for the return value is set to `x8'.
