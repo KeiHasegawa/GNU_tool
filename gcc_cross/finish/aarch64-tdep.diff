@@ -1,0 +1,23 @@
+*** gdb-10.2.h8300-elf/gdb/aarch64-tdep.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.aarch64-elf/gdb/aarch64-tdep.c	2021-07-27 16:03:20.000000000 +0900
+***************
+*** 2441,2447 ****
+  	{
+  	  if (aarch64_debug)
+  	    debug_printf ("return value in memory\n");
+! 	  return RETURN_VALUE_STRUCT_CONVENTION;
+  	}
+      }
+  
+--- 2441,2451 ----
+  	{
+  	  if (aarch64_debug)
+  	    debug_printf ("return value in memory\n");
+! 	  if (readbuf) {
+! 	    ULONGEST addr;
+! 	    regcache_raw_read_unsigned (regcache, AARCH64_X0_REGNUM+8, &addr);
+! 	    read_memory (addr, readbuf, TYPE_LENGTH(valtype));
+! 	  }
+! 	  return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+  	}
+      }
