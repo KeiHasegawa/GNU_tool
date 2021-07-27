@@ -1,4 +1,4 @@
-all:a.out a.i b.out b.i TAGS
+all:a.out a.i b.out b.i c.out c.i TAGS
 
 
 INCLUDE=-I/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/glibc-2.33/install/include
@@ -24,13 +24,15 @@ $(LIB)/crtn.o
 %.i:%.c
 	gcc -g3 -o $@ -E $< $(INCLUDE)
 
-TAGS:a.out b.out
-	mktags.exe -e -o $@ a.out b.out
+TAGS:a.out b.out c.out
+	mktags.exe -e -o $@ a.out b.out c.out
 
 a.out:Makefile
 b.out:Makefile
+c.out:Makefile
 a.out:a.o
 b.out:b.o
+c.out:c.o
 
 clean:
 	rm -f *.o *.out *~ TAGS *.i *.j
