@@ -1,0 +1,82 @@
+*** gdb-10.2.aarch64-elf/gdb/cris-tdep.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.cris-elf/gdb/cris-tdep.c	2021-07-28 08:32:44.000000000 +0900
+***************
+*** 1567,1574 ****
+--- 1567,1578 ----
+    else if (regno >= P0_REGNUM && regno <= VR_REGNUM)
+        return builtin_type (gdbarch)->builtin_uint8;
+    else
++ #if 0    
+        /* Invalid (unimplemented) register.  */
+        return builtin_type (gdbarch)->builtin_int0;
++ #else
++       return builtin_type (gdbarch)->builtin_uint32;;
++ #endif
+  }
+  
+  static struct type *
+***************
+*** 1642,1648 ****
+    /* Special register (R16 - R31).  cris_spec_regs is zero-based. 
+       Adjust regno accordingly.  */
+    spec_regno = regno - NUM_GENREGS;
+!   
+    /* Assume nothing about the layout of the cris_spec_regs struct
+       when searching.  */
+    for (i = 0; cris_spec_regs[i].name != NULL; i++)
+--- 1646,1653 ----
+    /* Special register (R16 - R31).  cris_spec_regs is zero-based. 
+       Adjust regno accordingly.  */
+    spec_regno = regno - NUM_GENREGS;
+! 
+! #if 0 
+    /* Assume nothing about the layout of the cris_spec_regs struct
+       when searching.  */
+    for (i = 0; cris_spec_regs[i].name != NULL; i++)
+***************
+*** 1653,1658 ****
+--- 1658,1672 ----
+  	return cris_spec_regs[i].name;
+      }
+    /* Special register not applicable to this CRIS version.  */
++ #else
++   if (spec_regno < 16) {
++     static const char* name[] = {
++       "p0", "p1", "p2", "p3", "p4", "p5", "p6", "p7",
++       "p8", "p9", "p10", "p11", "p12", "p13", "p14", "p15",
++     };
++     return name[spec_regno];
++   }
++ #endif  
+    return NULL;
+  }
+  
+***************
+*** 1807,1816 ****
+  {
+    if (type->code () == TYPE_CODE_STRUCT
+        || type->code () == TYPE_CODE_UNION
+!       || TYPE_LENGTH (type) > 8)
+      /* Structs, unions, and anything larger than 8 bytes (2 registers)
+         goes on the stack.  */
+!     return RETURN_VALUE_STRUCT_CONVENTION;
+  
+    if (readbuf)
+      cris_extract_return_value (type, regcache, readbuf);
+--- 1821,1836 ----
+  {
+    if (type->code () == TYPE_CODE_STRUCT
+        || type->code () == TYPE_CODE_UNION
+!       || TYPE_LENGTH (type) > 8) {
+      /* Structs, unions, and anything larger than 8 bytes (2 registers)
+         goes on the stack.  */
+!     if (readbuf) {
+!       ULONGEST addr;
+!       regcache_raw_read_unsigned (regcache, ARG1_REGNUM, &addr);
+!       read_memory (addr, readbuf, TYPE_LENGTH(type));
+!     }
+!     return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+!   }
+  
+    if (readbuf)
+      cris_extract_return_value (type, regcache, readbuf);
