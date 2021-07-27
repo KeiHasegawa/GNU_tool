@@ -1,0 +1,27 @@
+*** gdb-10.2.aarch64-elf/gdb/arm-tdep.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.arm-elf/gdb/arm-tdep.c	2021-07-28 05:56:21.000000000 +0900
+***************
+*** 8260,8267 ****
+        || valtype->code () == TYPE_CODE_ARRAY)
+      {
+        if (tdep->struct_return == pcc_struct_return
+! 	  || arm_return_in_memory (gdbarch, valtype))
+! 	return RETURN_VALUE_STRUCT_CONVENTION;
+      }
+    else if (valtype->code () == TYPE_CODE_COMPLEX)
+      {
+--- 8260,8273 ----
+        || valtype->code () == TYPE_CODE_ARRAY)
+      {
+        if (tdep->struct_return == pcc_struct_return
+! 	  || arm_return_in_memory (gdbarch, valtype)) {
+! 	if (readbuf) {
+! 	  ULONGEST addr;
+! 	  regcache_raw_read_unsigned (regcache, ARM_A1_REGNUM, &addr);
+! 	  read_memory (addr, readbuf, TYPE_LENGTH(valtype));
+! 	}
+! 	return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+!       }
+      }
+    else if (valtype->code () == TYPE_CODE_COMPLEX)
+      {
