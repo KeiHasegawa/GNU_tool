@@ -1,0 +1,30 @@
+*** gdb-10.2.aarch64-elf/gdb/avr-tdep.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.avr-elf/gdb/avr-tdep.c	2021-07-28 07:04:20.000000000 +0900
+***************
+*** 941,948 ****
+    if ((valtype->code () == TYPE_CODE_STRUCT
+         || valtype->code () == TYPE_CODE_UNION
+         || valtype->code () == TYPE_CODE_ARRAY)
+!       && TYPE_LENGTH (valtype) > 8)
+!     return RETURN_VALUE_STRUCT_CONVENTION;
+  
+    if (TYPE_LENGTH (valtype) <= 2)
+      lsb_reg = 24;
+--- 941,957 ----
+    if ((valtype->code () == TYPE_CODE_STRUCT
+         || valtype->code () == TYPE_CODE_UNION
+         || valtype->code () == TYPE_CODE_ARRAY)
+!       && TYPE_LENGTH (valtype) > 8) {
+!     if (readbuf) {
+!       ULONGEST r24;
+!       regcache_raw_read_unsigned (regcache, 24, &r24);
+!       ULONGEST r25;
+!       regcache_raw_read_unsigned (regcache, 25, &r25);
+!       ULONGEST addr = 0x800000 | (r25 << 8) | r24;
+!       read_memory (addr, readbuf, TYPE_LENGTH(valtype));
+!     }
+!     return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+!   }
+  
+    if (TYPE_LENGTH (valtype) <= 2)
+      lsb_reg = 24;
