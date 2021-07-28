@@ -1,40 +1,40 @@
-M32C の ABI
+M32C ABI
 
-(*1) 函数呼び出し
-(*2) 函数復帰
-(*3) プロローグ
-(*4) エピローグ
-(*5) 通常の函数の引数と戻り値
-(*6) long, long long を引数にとる函数, 返す函数
-(*7) 浮動少数点数を引数にとる函数, 返す函数
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long' and `long long' argument and return value
+(*7) Floating point number argument and return value
+(*8) Structure argument and return value
 
 
-(*1) 函数呼び出し
+(*1) Function call
 
 	jsr.a	func
 
-	疑似コード
+	Pseudo code
 
 	sp -= 3
-	memory[sp] = (jsr 命令の次のアドレス(24 ビット))
+	memory[sp] = (`jsr' instruction next address (24 bit))
 	pc = func
 
-(*2) 函数復帰
+(*2) Return from function
 
 	rts
 
-	疑似コード
+	Pseudo code
 
-	pc = memory[sp] (24 ビット)
+	pc = memory[sp] (24 bit)
 	sp += 3
 	
-(*3) プロローグ
+(*3) Prologue
 
 
 	enter	#128
 
-	上は 128 バイトのローカルエリアを使用する函数のプロローグである.
+	Above is prologue for function which uses 128 bytes local area.
 
 	+----------------------+ <- sp_{new}
 	|                      |
@@ -49,27 +49,31 @@ M32C の ABI
 	+----------------------+ +133
 	
 
-(*4) エピローグ
+(*4) Epilogue
 
         exitd
 
-	上は使用するローカルエリアのバイト数に依存しない函数のエピローグである.
-	fb, sp が復元され呼び出し元に復帰する.
+	Above is epilogue of function, and it doesn't depened on the mount
+	of local area of the function.
+	`fb' and `sp' are recovered and return to callee.
 	
 
-(*5) 通常の函数の引数と戻り値
+(*5) Normal argument and return value
 
         sizeof(int) = 2
 
-        第 1 引数 : r1
-	第 2 引数： r2
-	第 3 引数以降 : スタックに積む.
+        1st : r1
+	2nd : r2
+	3rd : use stack
+
+	For example,
 
 	int f(int a0, int a1, int a2, int a3);
 	
 	f(10,11,12,13);
 
-	に対して f の先頭アドレスでは
+	At start address of `f', registers and stack layout become
+	like below:
 
 	r1 = 10, r2 = 11
 
@@ -81,37 +85,36 @@ M32C の ABI
 	|          13          |
 	+----------------------+ +7
 
-        のようになっている.
-	函数の戻り値は r0 にセットされる.
+	Function return value is set to `r0'.
 
-(*6) long, long long を引数にとる函数, 返す函数
+(*6) `long' and `long long' argument and return value
 
         sizeof(long) = 4
 	sizeof(long long) = 8
 
-	long 型, long long 型の引数に対してはレジスタは使用せず, スタックで渡す.
-	long 型, long long 型の戻り値はメモリの特定のアドレスに値がセットされる.
+	For `long' or `long long' type argument, no register is used, just
+	stack is used.
+	`long' or `long long' type return value is set to special area.
 
-	long 型 : mem0, mem2
-	long long 型 : mem0, mem2, mem4, mem6
+	long : mem0, mem2
+	long long : mem0, mem2, mem4, mem6
 
 
-(*7) 浮動少数点数を引数にとる函数, 返す函数
+(*7) Floating point number argument and return value
 
         sizeof(float) = 4
 	sizeof(double) = sizeof(long double) = 8
 
-        M32C には FPU がないのでソフトウェアで浮動少数点数演算を行なう.
-	通常通りのインストール方法では libgcc.a に浮動少数点演算ライブラリが
-	含まれていないようである.
+        M32C doesn't have FPU so software calculates floating point
+	number operation.
+	For `float', same with `long'. For `double' or `long double', same
+	with `long long'.
 
-	float には long と同じ規則が, double, long double には long long と
-	同じ規則が適用される.
+(*8) Structure argument and return value
 
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+	When calling function which takes structure type, make the copy
+	for the argument, and pass its address according to (*5) rule.
 
-        構造体を引数に取る函数を呼び出すとき, コピーが作成され, コピーのアドレスが
-	(*5) の規則に従って函数に渡される.
+	When calling function which returns strucutre type, the address
+	of the return value is passed via stack, not `r0'.
 
-	構造体を返す函数を呼び出すとき, 戻り値を格納するアドレスをスタックに積む.
-	r0 をこのためには使用しない.
