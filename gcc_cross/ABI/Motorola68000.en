@@ -1,38 +1,39 @@
-Motorola 68000 の ABI
+Motorola 68000 ABI
 
-(*1) 函数呼び出し
-(*2) 函数復帰
-(*3) プロローグ
-(*4) エピローグ
-(*5) 通常の函数の引数と戻り値
-(*6) long long を引数にとる函数, 返す函数
-(*7) 浮動少数点数を引数にとる函数, 返す函数
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long' and `long long' argument and return value
+(*7) Floating point number argument and return value
+(*8) Structure argument and return value
 
 
-(*1) 函数呼び出し
+(*1) Function call
 
 	bsr	func
 
-	疑似コード
+	Pseudo code
 
-	memory[sp-1] = (bsr 命令の次のアドレス)
+	memory[sp-1] = (`bsr' instruction next address)
 	sp -= 2	
 	pc = func
 
-(*2) 函数復帰
+(*2) Return from function
 
 	rts
 
-	疑似コード
+	Pseudo code
 
 	sp += 2
 	pc = memory[sp-1]
 	
 
-(*3) プロローグ
+(*3) Prologue
 
-				疑似コード
+				Pseudo code
+				
 	ldx	*_.frame	x = _.frame
 	pshx			memory[sp-1] = x
 				sp -= 2
@@ -43,7 +44,7 @@ Motorola 68000 の ABI
 	txs			sp = x - 1
 	sts	*_.frame	_.frame = sp
 
-	上は 128 バイトのローカルエリアを使用する函数のプロローグである.
+	Above is prologue for function which uses 128 bytes local area.
 
 	+------------------+ 
 	|     sp_{new}     | _.frame
@@ -63,8 +64,9 @@ Motorola 68000 の ABI
 	+------------------+ +133
 
 
-(*4) エピローグ
-				疑似コード
+(*4) Epilogue
+				Pseudo code
+				
 	tsy			y = sp + 1
 	xgdy			y <-> d
 	addd	#128		d += 128
@@ -75,21 +77,24 @@ Motorola 68000 の ABI
 	sty	*_.frame	_.frame = y
 	rts
 
-	上は 128 バイトのローカルエリアを使用する函数のエピローグである.
-	_.frame, sp が復元され呼び出し元に復帰する.
+	Above is epilogue for function which uses 128 bytes local area.
+	`_.frame' and `sp' are recovered and return to callee.
 	
-(*5) 通常の函数の引数と戻り値
+(*5) Normal argument and return value
 
         sizeof(int) = 4
 
-	第 1 引数 : d レジスタ
-	第 2 引数以降 : スタックに積む
+	1st : `d' register
+	2nd : use stack
+
+	For example
 
 	int f(int a0, int a1, int a2, int a3);
 
 	f(10, 11, 12, 13);
 
-	に対して f の先頭アドレスでは以下のようになっている.
+	At the start address of `f', `d' register and stack layout become
+	like below:
 
 	d = 10
 
@@ -108,18 +113,24 @@ Motorola 68000 の ABI
 	|        13        |
 	+------------------+ +15
 
-        函数の戻り値は d レジスタにセットされる.
+        Function return value is set to `d' register.
 
-(*6) long long を引数にとる函数, 返す函数
+(*6) `long' and `long long' argument and return value
 
-        long long 型の引数はスタックで渡される.
-	long long 型の戻り値は d レジスタに戻り値を格納するためのアドレスがセットされる.
+        When calling function which takes `long long' type argument,
+	stack is used.
+	When calling function which returns `long long' type, the address
+	for the return value is set to `d' register.
+	For example,
 
 	long long f(int a0, long long a1);
 
 	f(10, 0x123456789abcdef0LL);
 
-	に対して f の先頭アドレスでは以下のようになっている.
+	At the start address of `f', `d' register and stack layout become
+	like below
+
+	d = (the address for the return value)
 
 	+------------------+ -1
 	|                  | <- sp
@@ -136,22 +147,22 @@ Motorola 68000 の ABI
 	|    0x9abcdef0    |
 	+------------------+ +15
 
-(*7) 浮動少数点数を引数にとる函数, 返す函数
+(*7) Floating point number argument and return value
 
         sizeof(float) = 4
 	sizeof(double) = sizeof(long double) = 8
 
-        Motorola 68000 には FPU がないのでソフトウェアで浮動少数点数演算を行なう.
-	float の第 1 引数に対して X, Y レジスタが使用される. 残りはスタックに
-	積まれる.
-	float を返す函数は X, Y レジスタに値がセットされる.
+        Motorola 68000 doesn't have FPU so software calculates floating point
+	number operation. For `float', 1st argument is set to `X' and `Y'
+	register, and for the rest of the argument, stack is used.
+	Function return value is set to `X' and `Y' register.
 
-	double, long double の引き数はスタックに積んで渡される.
-	double, long double の戻り値の函数を呼び出すとき d レジスタに戻り値を
-	格納するアドレスをセットする.
+	For `double' or `long double' argument, stack is used.
+	When calling  function which returns `double' or `long double' type,
+	the address for the return value is set to `d' register.
 
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*8) Structure argument and return value
 
-	構造体を引数に取る函数を呼び出すときスタックに引数の値をセットする.
-	構造体を返す函数を呼び出すとき, 戻り値を格納するアドレスを d レジスタにセットする.
-	
+	When calling function which takes structure type, stack is used.
+	When calling function which returns structure type, the address for
+	the return value is set to `d' register.
