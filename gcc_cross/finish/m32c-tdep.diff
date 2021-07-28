@@ -1,0 +1,30 @@
+*** gdb-10.2.aarch64-elf/gdb/m32c-tdep.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.m32c-elf/gdb/m32c-tdep.c	2021-07-28 13:28:43.000000000 +0900
+***************
+*** 2172,2179 ****
+    enum return_value_convention conv;
+    ULONGEST valtype_len = TYPE_LENGTH (valtype);
+  
+!   if (m32c_return_by_passed_buf (valtype))
+!     conv = RETURN_VALUE_STRUCT_CONVENTION;
+    else
+      conv = RETURN_VALUE_REGISTER_CONVENTION;
+  
+--- 2172,2188 ----
+    enum return_value_convention conv;
+    ULONGEST valtype_len = TYPE_LENGTH (valtype);
+  
+!   if (m32c_return_by_passed_buf (valtype)) {
+!     if (readbuf) {
+!       ULONGEST fb;
+!       regcache_raw_read_unsigned (regcache, 8, &fb);
+!       gdb_byte tmp[2];
+!       read_memory (fb+6, &tmp[0], sizeof tmp);
+!       ULONGEST addr = (tmp[1] << 8) | tmp[0];
+!       read_memory (addr, readbuf, TYPE_LENGTH(valtype));
+!     }
+!     return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+!   }
+    else
+      conv = RETURN_VALUE_REGISTER_CONVENTION;
+  
