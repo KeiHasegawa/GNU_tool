@@ -1,0 +1,19 @@
+*** gdb-10.2.aarch64-elf/gdb/frv-tdep.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.frv-elf/gdb/frv-tdep.c	2021-07-28 09:09:44.000000000 +0900
+***************
+*** 1348,1353 ****
+--- 1348,1361 ----
+    int struct_return = valtype->code () == TYPE_CODE_STRUCT
+  		      || valtype->code () == TYPE_CODE_UNION
+  		      || valtype->code () == TYPE_CODE_ARRAY;
++   if (struct_return) {
++     if (readbuf) {
++       ULONGEST addr;
++       regcache_raw_read_unsigned (regcache, 3, &addr);
++       read_memory (addr, readbuf, TYPE_LENGTH(valtype));
++     }
++     return RETURN_VALUE_ABI_RETURNS_ADDRESS;
++   }
+  
+    if (writebuf != NULL)
+      {
