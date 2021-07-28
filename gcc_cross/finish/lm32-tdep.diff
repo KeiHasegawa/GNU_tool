@@ -1,0 +1,27 @@
+*** gdb-10.2.aarch64-elf/gdb/lm32-tdep.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.lm32-elf/gdb/lm32-tdep.c	2021-07-28 09:53:59.000000000 +0900
+***************
+*** 372,379 ****
+  
+    if (code == TYPE_CODE_STRUCT
+        || code == TYPE_CODE_UNION
+!       || code == TYPE_CODE_ARRAY || TYPE_LENGTH (valtype) > 8)
+!     return RETURN_VALUE_STRUCT_CONVENTION;
+  
+    if (readbuf)
+      lm32_extract_return_value (valtype, regcache, readbuf);
+--- 372,385 ----
+  
+    if (code == TYPE_CODE_STRUCT
+        || code == TYPE_CODE_UNION
+!       || code == TYPE_CODE_ARRAY || TYPE_LENGTH (valtype) > 8) {
+!     if (readbuf) {
+!       ULONGEST addr;
+!       regcache_raw_read_unsigned (regcache, SIM_LM32_R1_REGNUM, &addr);
+!       read_memory (addr, readbuf, TYPE_LENGTH(valtype));
+!     }
+!     return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+!   }
+  
+    if (readbuf)
+      lm32_extract_return_value (valtype, regcache, readbuf);
