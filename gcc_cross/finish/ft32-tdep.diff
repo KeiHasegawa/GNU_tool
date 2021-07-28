@@ -1,0 +1,28 @@
+*** gdb-10.2.aarch64-elf/gdb/ft32-tdep.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.ft32-elf/gdb/ft32-tdep.c	2021-07-28 09:43:57.000000000 +0900
+***************
+*** 417,424 ****
+  		   struct type *valtype, struct regcache *regcache,
+  		   gdb_byte *readbuf, const gdb_byte *writebuf)
+  {
+!   if (TYPE_LENGTH (valtype) > 8)
+!     return RETURN_VALUE_STRUCT_CONVENTION;
+    else
+      {
+        if (readbuf != NULL)
+--- 417,431 ----
+  		   struct type *valtype, struct regcache *regcache,
+  		   gdb_byte *readbuf, const gdb_byte *writebuf)
+  {
+!   if (TYPE_LENGTH (valtype) > 8) {
+!     if (readbuf) {
+!       ULONGEST addr;
+!       regcache_raw_read_unsigned (regcache, FT32_R0_REGNUM, &addr);
+!       addr |= 0x00800000;
+!       read_memory (addr, readbuf, TYPE_LENGTH(valtype));
+!     }
+!     return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+!   }
+    else
+      {
+        if (readbuf != NULL)
