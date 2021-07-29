@@ -1,0 +1,32 @@
+*** gdb-10.2.aarch64-elf/gdb/microblaze-tdep.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.microblaze-elf/gdb/microblaze-tdep.c	2021-07-29 17:04:43.000000000 +0900
+***************
+*** 38,43 ****
+--- 38,44 ----
+  #include "opcodes/microblaze-dis.h"
+  #include "microblaze-tdep.h"
+  #include "remote.h"
++ #include "gdbcore.h"
+  
+  #include "features/microblaze-with-stack-protect.c"
+  #include "features/microblaze.c"
+***************
+*** 588,593 ****
+--- 589,605 ----
+  			 struct type *type, struct regcache *regcache,
+  			 gdb_byte *readbuf, const gdb_byte *writebuf)
+  {
++   auto code = type->code();
++   switch (code) {
++   case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
++     if (readbuf) {
++       ULONGEST addr;
++       regcache_raw_read_unsigned(regcache, MICROBLAZE_RETVAL_REGNUM, &addr);
++       read_memory(addr, readbuf, TYPE_LENGTH(type));
++     }
++     return RETURN_VALUE_ABI_RETURNS_ADDRESS;
++   }
++   
+    if (readbuf)
+      microblaze_extract_return_value (type, regcache, readbuf);
+    if (writebuf)
