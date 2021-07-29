@@ -1,36 +1,33 @@
-Moxie の ABI
+Moxie ABI
 
-(*1) 函数呼び出し
-(*2) 函数復帰
-(*3) プロローグ
-(*4) エピローグ
-(*5) 通常の函数の引数と戻り値
-(*6) long long を引数にとる函数, 返す函数
-(*7) 浮動少数点数を引数にとる函数, 返す函数
-(*8) 構造体を引数にとる函数, 構造体を返す函数
-
-調査していて気付いたが, アセンブラのプログラムでのステップ実行がおかしい.
-1 命令実行するべきところで 3 命令実行していたりする.
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long long' argument and return value
+(*7) Floating point number argument and return value
+(*8) Structure argument and return value
 
 
-(*1) 函数呼び出し
+(*1) Function call
 
 	jsra	func
 
-	疑似コード
+	Pseudo code
 
 	sp -= 8
-	memory[sp] = (jsra 命令の次のアドレス)
+	memory[sp] = (`jsra' instruction next address)
 	sp -= 4
 	memory[sp] = fp
 	fp = sp
 	pc = func
 
-(*2) 函数復帰
+(*2) Return from function
 
 	ret
 
-	疑似コード
+	Pseudo code
 
 	fp = memory[fp]
 	fp += 4
@@ -39,12 +36,13 @@ Moxie の ABI
 	sp = fp
 
 
-(*3) プロローグ
+(*3) Prologue
 
 	dec	$sp, 128
 
-	上は 128 バイトのローカルエリアを使用する函数のプロローグである. jsra 命令で
-	sp と戻りアドレスが保存されているので単に sp をずらすだけになっている.
+	Above is prologue for function which uses 128 bytes local area.
+	`jsra' instruction saves `fp' and return address, so just decrement
+	sp.
 
 	+----------------------+ <- sp_{new}
 	|                      |	
@@ -61,29 +59,31 @@ Moxie の ABI
 	+----------------------+ +140
 
 
-(*4) エピローグ
+(*4) Epilogue
 
 	ret
 
-	上は使用するローカルエリアのバイト数に依存しない函数のエピローグである.
-	fp, sp が復元され呼び出し元に復帰する.
+	Above is epilogue and it doesn't depend on its the mount of local area.
+	`fp' and `sp' are restored and return to callee.
 
-(*5) 通常の函数の引数と戻り値
+(*5) Normal argument and return value
 
-	第 1 引数 : r0
+	1st : r0
 	...
-	第 6 引数 : r5
-	第 7 引数以降 : スタックを 24 バイト開けて使用する
+	6th : r5
+	7th : use stack with offset 24
+
+	For example,
 
 	int f(int a0, int a1, int a2, int a3, int a4, int a5,
 	      int a6, int a7, int a8);
 
         f(10, 11, 12, 13, 14, 15, 16, 17, 18);
 
-	に対して f の先頭アドレスでは
+	At the start address of `f', registers and stack layout become
+	like below:
 
 	r0 = 10, ..., r5 = 15
-	
 
 	+----------------------+ <- sp, fp
 	|          fp          |
@@ -111,21 +111,23 @@ Moxie の ABI
 	|          18          |
 	+----------------------+ +48
 
-	のようになっている.
-	函数の戻り値は r0 にセットされる.
+	Function return value is set to `r0'.
 
-(*6) long long を引数にとる函数, 返す函数
+(*6) `long long' argument and return value
 
 	sizeof(long long) = 8
 
-	long long の引数に対してレジスタが 2 つ使用される.
-	long long の戻り値は r0 と r1 にセットされる.
+	For `long long' type argument, 2 registers are used.
+	For `long long' return value, `r0' and `r1' are used.
+
+	For example,
 
 	long long f(int a0, long long a1, long long a2, long long a3);
 
 	f(10, 11LL, 12LL, 0x123456789abcdef0LL);
 
-	に対して f の先頭アドレスでは
+	At the start address of `f', registers and stack layout become
+	like below:
 
 	r0 = 10, r1 = 0, r2 = 11, r3 = 0, r4 = 12, r5 = 0x12345678
 
@@ -151,19 +153,19 @@ Moxie の ABI
 	|      0x9abcdef0      |
 	+----------------------+ +40
 
-	のようになっている.
-	
-(*7) 浮動少数点数を引数にとる函数, 返す函数
+(*7) Floating point number argument and return value
 
         sizeof(float) = 4
 	sizeof(double) = sizeof(long double) = 8
 
-        Moxie には FPU がないのでソフトウェアで浮動少数点数演算を行なう.
-	float に対しては (*5) の規則が, double, long double に対しては (*6) の
-	規則が適用される.
+        Moxie doesn't have FPU so software calculates floating point
+	number operation.
+	For `float', same with (*5). For `double', `long double' same
+	with (*6).
 
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*8) Structure argument and return value
 
-        構造体を引数に取る函数を呼び出すとき, コピーが作成されそのアドレスが引数として渡さ
-	れる.
-	構造体を返す函数を呼び出すとき, 戻り値を格納するアドレスを r0 にセットする.
+	When calling function which takes structure type argument,
+	make copy and pass its address.
+	When calliing function which returns structure type, the address
+	of the return vallue is set to `r0'.
