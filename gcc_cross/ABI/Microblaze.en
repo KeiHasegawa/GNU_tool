@@ -1,37 +1,37 @@
-Microblaze の ABI
+Microblaze ABI
 
-(*1) 函数呼び出し
-(*2) 函数復帰
-(*3) プロローグ
-(*4) エピローグ
-(*5) 通常の函数の引数と戻り値
-(*6) long long を引数にとる函数, 返す函数
-(*7) 浮動少数点数を引数にとる函数, 返す函数
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long long' argument and return value
+(*7) Floating point number argument and return value
+(*8) Structure argument and return value
 
 
-(*1) 函数呼び出し
+(*1) Function call
 
       	brlid	r15, main
 
-	疑似コード
+	Pseudo code
 
-	r15 = (brlid 命令の次のアドレス)
+	r15 = (`brlid' instruction next address)
 	pc = main
 
-	この命令は遅延分岐である.
+	`brlid' is a delayed branch instruction.
 
-(*2) 函数復帰
+(*2) Return from function
 
 	rtsd	r15,8 
 
-	疑似コード
+	Pseudo cdoe
 
 	pc = r15 + 8
 
-	この命令は遅延分岐である.
+	`rtsd' is a delayed branch instruction.
 
-(*3) プロローグ
+(*3) Prologue
 
 	addik	r1,r1,-136
 	swi	r15,r1,0
@@ -50,9 +50,9 @@ Microblaze の ABI
 	|     r19_{old}    |
 	+------------------+ <- r1_{old}
 
-	上は 128 バイトのローカルエリアを使用する函数のプロローグである.
+	Above is prologue for function which uses 128 bytes local area.
 
-(*4) エピローグ
+(*4) Epilogue
 
 	lwi	r15,r1,0
 	addk	r1,r19,r0
@@ -61,24 +61,27 @@ Microblaze の ABI
 	rtsd	r15,8 
 	nop
 
-	上は 128 バイトのローカルエリアを使用する函数のエピローグである.
-	r15, r19, r1 が復元され呼び出し元に復帰する.
+	Above is epilogue for function which uses 128 bytes local area.
+	`r15', `r19' and `r1' are restored and return to callee.
 
-(*5) 通常の函数の引数と戻り値
+(*5) Normal argument and return value
 
-        第 1 引数 : r5
-        第 2 引数 : r6
-        第 3 引数 : r7
-        第 4 引数 : r8
-	第 5 引数 : r9
-	第 6 引数 : r10
-	第 7 引数 : オフセット 28 を開けてスタックを使用
+        1st : r5
+        2nd : r6
+        3rd : r7
+        4th : r8
+	5th : r9
+	6th : r10
+	7th : use stack with offset 28
+
+	For exmaple,
 
 	int f(int a0, int a1, int a2, int a3, int a4, int a5, int a6, int a7);
 
 	f(10, 11, 12, 13, 14, 15, 16, 17);
 
-	に対して f の先頭アドレスでは
+	At the start address of `f', registers and stack layout become
+	like below:
 
 	r5 = 10, r6 = 11, r7 = 12, r8 = 13, r9 = 14, r10 = 15
 
@@ -103,19 +106,22 @@ Microblaze の ABI
 	|        17        |
 	+------------------+ +36
 
-	のようになっている. ここで r15_{old} は f を呼び出した函数の戻りアドレスである.
-	函数の戻り値は r3 レジスタにセットされる.
+	where, r15_{old} is return address of the function which challs `f'.
+	Function return value is set to `r3'.
 
-(*6) long long を引数にとる函数, 返す函数
+(*6) `long long' argument and return value
 
-        long long 型の引数に対して 2 つのレジスタが使用される.
-	long long 型の戻り値は r3, r4 にセットされる.
+        For `long long' type argument, 2 registers is used.
+	For `long long' type return value, `r3' and `r4' is used .
+
+	For example,
 
 	long long f(int a0, long long a1, long long a2, long long a3)
 
 	f(10, 11LL, 12LL, 0x123456789abcdef0LL);
 
-	に対して f の先頭アドレスでは
+	At the start address of `f', registers and stack layout become
+	like below:
 
 	r5 = 10, r6 = 0, r7 = 11, r8 = 0, r9 = 12, r10 = 0x12345678 
 
@@ -137,21 +143,20 @@ Microblaze の ABI
 	|    0x9abcdef0    |
 	+------------------+ +32
 
-	のようになっている. ここで r15_{old} は f を呼び出した函数の戻りアドレスである.
+	where, r15_{old} is return address of the function which challs `f'.
 
-(*7) 浮動少数点数を引数にとる函数, 返す函数
+(*7) Floating point number argument and return value
 
 	sizeof(float) = 4
 	sizoef(double) = sizeof(long double) = 8
 
-	Microblaze には FPU がないのでソフトウェアで浮動少数点演算を行なう.
-	float に対しては (*5) の規則が, double, long double に対しては (*6) の
-	規則が適用される.
+	Microblaze doesn't have FPU so software calculates floating point
+	number operation. For `float' same with (*5). For `double' or
+	`long dobule' same with (*6).
 
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*8) Structure argument and return value
 
-        構造体を引数に取る函数を呼び出すとき, 先頭の 24 バイトが r5, ..., r10 に
-	セットされ残りはスタックにセットされる.
-	構造体を返す函数を呼び出すとき, 戻り値を格納するアドレスを r3 レジスタにセット
-	する.
-	
+	When calling function which takes structure type argument, first
+	24 bytes are set to `r5', ..., `r10' and the rest is set to stack.
+	When calling function which returns structure type, the address
+	of the return value is set to `r3'.
