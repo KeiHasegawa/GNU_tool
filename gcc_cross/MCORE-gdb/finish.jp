@@ -1,0 +1,546 @@
+MCORE の gdb で finish コマンドしても期待したアドレスで停止しない件の調査
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_mcore.007
+
+finish コマンドを実行すると期待したアドレスで停止していない.
+
+函数 f で finish コマンドを実行したとき, どこかのタイミングで
+
+mcore_frame_prev_register(..., int regno=64)
+
+が呼び出され
+
+00000138 <main>:
+...
+ 146:	7f04      	jsri	0x118	// 118 <f>
+ 148:	1227      	mov	r7, r2
+
+0x148 が返るのが期待値. と思ったがそもそもここがきていない.
+
+mcore_frame_this_id
+
+は少なくとも呼び出されている.
+
+f で停止しているとき
+
+(gdb) p/x fi->this_id.value
+$1 = {stack_addr = 0x1000, code_addr = 0x100, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) 
+
+stack_addr : 0x1000 ではなく 0x0ff8 か 0x0fe0 が期待値
+code_addr : 0x100 ではなく 0x118 が期待値
+
+stack_addr ができていないくても code_addr ができていれば期待通り動作するはずだが, ここ
+もできていないからこういう動作になる.
+
+mcore_frame_create では
+
+(gdb) p/x ret->pc
+$2 = 0x10a
+(gdb) 
+
+このアドレスは
+
+00000100 <start>:
+ 100:	7804      	lrw	r8, 0x1000
+ 102:	1280      	mov	r0, r8
+ 104:	7f04      	jsri	0x138	// 138 <main>
+ 106:	1200      	mov	r0, r0
+ 108:	1200      	mov	r0, r0
+
+0000010a <end>:
+ 10a:	1200      	mov	r0, r0   ここだった.
+
+なので最初のフレーム ID は実は正解だった.
+プログラムが f にいるときに f のフレームを問い合わせていると勘違いしたのが今の間違い.
+あくまで
+
+mcore_frame* mcore_frame_create(frame_info *frame)
+
+引数の frame に対して mcore_frame を作ると考えるのが正しい.
+
+そしてフレーム ID が問い合わせられたのは, それだけ.
+
+finish コマンドでシミュレーション再開前になぜ 0x148 に内部ブレークポイントが
+セットされないのかが問題.
+
+期待通り動いている pru-elf-gdb と動作を比較してみるのがよい.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_pru.015
+
+に finish コマンドのテスト環境がある.
+
+(gdb) b finish_command
+
+勿論だが pru-elf-gdb も mcore-elf-gdb もこのブレークポイントにヒットする.
+
+finish_command          ヒット
+mcore_frame_this_id     ヒット
+mcore_frame_prev_register  ヒットしない
+
+
+pru-elf-gdb は以下
+
+finish_command          ヒット 
+pru_frame_create        ヒットしない
+pru_frame_prev_register ヒットしない
+
+ということは xxx_frame_prev_register が呼ばれると決め付けていたのが間違った考え.
+思い込みだった.
+
+mcore-elf-gdb で以下を試してみた
+
+(gdb) b sim_write
+(gdb) info b
+...
+(gdb) disa 4  # sim_write のブレークポイント番号
+(gdb) run
+...
+Thread 1 "gdb" hit Breakpoint 3, finish_command (arg=0x0, from_tty=0) at infcmd.c:1766
+(gdb) enable 4
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 4, sim_write (sd=0x8dcef60, mem=266, buf=0x8c89488 <mcore_from_kind(gdbarch*, int, int*)::bkpt> "", length=2) at ./../common/sim-hrw.c:37
+(gdb) p/x mem
+$6 = 0x10a
+(gdb) 
+
+0x10a にはブレークポイントをセットしている. これは end のアドレス.
+0x140, 0x148 にもブレークポイントをセットしている. ということは
+ここまでは正しいということ.
+
+00000138 <main>:
+...
+ 140:	60c4      	movi	r4, 12
+ 142:	60b3      	movi	r3, 11
+ 144:	60a2      	movi	r2, 10
+ 146:	7f04      	jsri	0x118	// 118 <f>
+ 148:	1227      	mov	r7, r2
+
+
+同じことを pru-elf-gdb で行なってみた. 0x194, 0x19c にブレークポイントがセット
+されている.
+
+00000188 <main>:
+...
+ 194:	0516e4ee 	sub	r14, fp, 22
+ 198:	230043c3 	call	10c <f>
+ 19c:	0516e4e0 	sub	r0, fp, 22
+
+自分が想像していたよりも mcore-elf-gdb はそれなりに動作していたということ.
+
+以下 pru-elf-gdb でやってみた:
+
+(gdb) b sim_engine_halt
+(gdb) disa 5 # sim_engine_halt のブレークポイント番号
+(gdb) run
+...
+finish_command のブレークポイントにヒット
+(gdb) enable 5
+(gdb) c
+...
+sim_engine_halt(..., cia=412=0x19c, ...) のブレークポイントにヒット
+(gdb) b sim_stop_reason
+(gdb) c
+...
+sim_stop_reason のブレークポイントにヒット
+(gdb)
+
+ここで *reason = sim_stopped, *sigrc = 5 であることを確認した.
+
+同じことを mcore-elf-gdb でやってみた
+
+sim_engine_halt が cia = 0x148 で呼び出され
+
+*reason = sim_stopped, *srgc = 5
+
+になっている. つまりここまではできている. ここから実行が再開されるのが期待していない動作.
+この後おそらく mcore-elf-gdb では sim_resume が呼ばれるが pru-elf-gdb では
+sim_resume が呼ばれない.
+
+以下 mcore-elf-gdb の sim_resume の呼び出し.
+
+sim_resume (sd=0x8dcef60, step=1, siggnal=0) at ./../common/sim-resume.c:41
+
+いずれにしても内部ブレークポイントにヒットして sim_engine_halt, sim_stop_reason
+が呼び出されるところまでは mcore-elf-gdb でできている.
+
+だから何故 sim_resume がこの後呼び出されてしまうのかを調査する.
+
+pru-elf-gdb が finish_command の後 sim_stop_reason から連続で finish コマンド
+で戻った場合 8 回目で
+
+static void
+infrun_async_inferior_event_handler (gdb_client_data data)
+{
+  inferior_event_handler (INF_REG_EVENT);
+}
+
+に戻ったが, mcore-elf-gdb では
+
+void
+inferior_event_handler (enum inferior_event_type event_type)
+{
+  switch (event_type)
+    {
+    case INF_REG_EVENT:
+      fetch_inferior_event ();
+      break;
+
+ここに戻っている. つまり呼び出し元が異なるということ. しかしこれは -O2 オプションが
+影響していると考えられる. と思たが違った. pru-elf-gdb の infrun.o は -g3 -O0.
+mcore-elf-gdb の infrun.o は -g -O0. 違いは少しあるが -O2 オプションではない.
+
+そしてもっと重要なことはここまで finish コマンドを連続で実行した結果
+pru-elf-gdb の pru_return_value は呼び出されていたのに対して
+mcore-elf-gdb の mcore_return_value は呼び出されていなかったということ.
+
+finish_command -> sim_stop_reason から連続で finish コマンドを実行したとき
+
+pru-elf-gdb ではここで finish コマンドを発行したとき
+
+    if (!do_target_wait (minus_one_ptid, ecs, TARGET_WNOHANG))
+      return;
+
+pru_return_value が呼び出されている. そしてそのときのスタックは
+
+(gdb) where
+#0  pru_return_value (function=0x8c44990, valtype=0x8c221cc, regcache=0x0, readbuf=0x0, writebuf=0x0) at pru-tdep.c:83
+#1  0x08242608 in get_return_value (function=0x8c44990, value_type=0x8c221cc) at infcmd.c:1454
+#2  0x08242756 in finish_command_fsm::should_stop (tp=0x8c37af8, this=0x8c378b8) at infcmd.c:1605
+#3  finish_command_fsm::should_stop (this=0x8c378b8, tp=0x8c37af8) at infcmd.c:1584
+#4  0x0824f594 in fetch_inferior_event () at infrun.c:3946
+#5  0x0823c9f9 in inferior_event_handler (event_type=INF_REG_EVENT) at inf-loop.c:42
+#6  0x0825a785 in infrun_async_inferior_event_handler (data=0x0) at infrun.c:9207
+#7  0x080a43ac in check_async_event_handlers () at async-event.c:295
+--Type <RET> for more, q to quit, c to continue without paging--c
+#8  0x084b64cb in gdb_do_one_event () at event-loop.cc:194
+#9  0x083a341c in wait_sync_command_done () at top.c:526
+#10 maybe_wait_sync_command_done (was_sync=<optimized out>) at top.c:543
+#11 0x083a5151 in execute_command (p=<optimized out>, from_tty=<optimized out>) at top.c:670
+#12 0x0820314c in command_handler (command=0x8c24ff0 "finish") at event-top.c:588
+#13 0x083a3cdc in read_command_file (stream=0x8c24170) at top.c:447
+#14 0x0811b8f1 in script_from_file (stream=0x8c24170, file=0xbffff84f "x") at cli/cli-script.c:1622
+#15 0x0810b4e1 in source_script_from_stream (stream=0x8c24170, file=0xbffff84f "x", file_to_open=0xbffff84f "x") at cli/cli-cmds.c:700
+#16 0x0810b5ba in source_script_with_search (file=0xbffff84f "x", from_tty=1, search_path=0) at cli/cli-cmds.c:736
+#17 0x0810b60d in source_script (file=0xbffff84f "x", file@entry=<error reading variable: value has been optimized out>, from_tty=1, from_tty@entry=<error reading variable: value has been optimized out>) at cli/cli-cmds.c:746
+#18 0x08281efa in catch_command_errors (command=<optimized out>, arg=<optimized out>, from_tty=<optimized out>) at main.c:457
+#19 0x08283be0 in captured_main_1 (context=<optimized out>) at main.c:1214
+#20 0x08283fdd in captured_main (data=0xbffff554) at main.c:1243
+#21 gdb_main (args=0xbffff554) at main.c:1268
+#22 0x0806ca7c in main (argc=5, argv=0xbffff624) at gdb.c:32
+(gdb)
+
+
+pru-elf-gdb は以下の部分から should_stop メンバ函数の呼び出しがある.
+
+	if (thr != NULL)
+	  {
+	    struct thread_fsm *thread_fsm = thr->thread_fsm;
+
+	    if (thread_fsm != NULL)
+	      should_stop = thread_fsm->should_stop (thr);
+	  }
+
+mcore-elf-gdb でなぜこの呼び出しがないのか確認する.
+
+infrun.c:3933
+    if (!ecs->wait_some_more)
+      {
+
+mcore-elf-gdb では 1. 一方 pru-elf-gdb では 0. これが直接の原因.
+
+これを mcore-elf-gdb で書き変えているのは以下と判明:
+
+infrun.c:7913:
+  ecs->wait_some_more = 1;
+
+Old value = 0
+New value = 1
+prepare_to_wait (ecs=0xbfffef30) at infrun.c:7913
+(gdb)
+
+
+    /* Now figure out what to do with the result of the result.  */
+    handle_inferior_event (ecs);  ここの動作が pru-elf-gdb と mcore-elf-gdb とで
+                                  異なっている.
+
+    if (!ecs->wait_some_more)     その結果この条件の成立するかに影響している.
+
+
+    case TARGET_WAITKIND_STOPPED:
+      handle_signal_stop (ecs);   ここまでの動作は合致しているがこの中で動作が違っている
+      return;
+
+
+process_event_stop_test の
+
+  switch (what.main_action)
+
+ここで動作に違いが出ている
+
+
+mcore-elf-gdb
+    case BPSTAT_WHAT_SINGLE:
+
+
+pru-elf-gdb
+    case BPSTAT_WHAT_STOP_NOISY:
+
+ということは
+
+  what = bpstat_what (ecs->event_thread->control.stop_bpstat);
+
+なぜこの違いが出るのかを確認する.
+
+	  if (bs->stop)
+	    {
+	      if (bs->print)
+
+
+pru-elf-gdb ではこの 1 つ目の if の条件が成立しているが
+mcore-elf-gdb では成立していない.
+
+試しに gdb で bs->stop に 1 をセットしてみたところ
+
+mcore_return_value
+
+が期待通り呼び出されている. ということは何故 bs->stop が 0 のままなのか.
+あるいはどこかで 0 に書き変えられているのかを確認する.
+
+確認したところ, あるクラスのコンストラクタで 0 に初期化されその後 1 がセット
+されている. しかし
+
+breakpoint.c:5162
+  if (frame_id_p (b->frame_id)
+      && !frame_id_eq (b->frame_id, get_stack_frame_id (get_current_frame ())))
+    {
+      bs->stop = 0;
+      return;
+    }
+
+ここで 0 にされている.
+なんだかこれは...
+
+mcore-elf-gdb では pru-elf-gdb で必要だった函数へのステップインの動作の対応が必要
+なかったのだ. しかしここでそれが影響しているように想像できるコード.
+
+試しに
+
+static value*
+mcore_dwarf2_prev_register(frame_info* frame, void**, int regno)
+{
+  assert(regno == pc_regno);
+  auto r15 = frame_unwind_register_unsigned(frame, 15);
+  return frame_unwind_got_constant(frame, regno, r15);
+}
+
+static void
+mcore_dwarf2_frame_init_reg(gdbarch*, int regno,
+			    dwarf2_frame_state_reg *reg, frame_info*)
+{
+...
+  dwarf2_frame_set_init_reg(gdbarch, mcore_dwarf2_frame_init_reg);
+
+のように pru-elf-gdb と同じ対応を行なってみた.
+mcore_dwarf2_prev_register が必要な箇所で呼び出されているらしいが,
+
+breakpoint.c:5162
+  if (frame_id_p (b->frame_id)
+      && !frame_id_eq (b->frame_id, get_stack_frame_id (get_current_frame ())))
+    {
+      bs->stop = 0;
+      return;
+    }
+
+ここで 0 にされている状況は同じ.
+
+
+(gdb) p/x b->frame_id
+$68 = {stack_addr = 0xfe0, code_addr = 0x138, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) p/x get_stack_frame_id (get_current_frame ())
+$69 = {stack_addr = 0xff8, code_addr = 0x138, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb)
+
+なるほど stack_addr が違っているから違うと判定されて bs->stop = 0 とされているわけだ.
+
+同じことを pru-elf-gdb でやってみた.
+
+
+(gdb) p/x b->frame_id
+$41 = {stack_addr = 0x1000, code_addr = 0x188, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) p/x get_stack_frame_id (get_current_frame ())
+$42 = {stack_addr = 0x1000, code_addr = 0x188, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) p frame_id_p (b->frame_id)
+$43 = true
+(gdb)
+
+両方とも stack_addr = 0x1000 になっている. 0x188 は main  
+のアドレス.
+
+ということは mcore-elf-gdb で
+
+b->frame_id.stack_addr = 0xfe0
+
+になっていることや
+
+get_stack_frame_id (get_current_frame ()).stack_addr = 0xff8
+
+になっていることがそもそも間違い.
+まずはこの原因を調査する.
+
+
+breakpoint.c:8463:
+  b->frame_id = frame_id;
+
+ここで frame_id がセットされている.
+
+static void
+dwarf2_frame_this_id (struct frame_info *this_frame, void **this_cache,
+		      struct frame_id *this_id)
+{
+  struct dwarf2_frame_cache *cache =
+    dwarf2_frame_cache (this_frame, this_cache);
+
+...
+    (*this_id) = frame_id_build (cache->cfa, get_frame_func (this_frame));
+
+ここで計算しているらしい.
+
+1 回目 : cache->cfa = 0xff8
+2 回目 : cache->cfa = 0xfe0
+
+そしてこれらは finish_command に先立って計算されている.
+同様のことを pru-elf-gdb でも確認したところ
+
+1 回目 : cache->cfa = 0x1000
+2 回目 : cache->cfa = 0x1000
+
+のようになっていた.
+
+ということはこの函数の先頭で dwarf2_frame_cache の呼び出しを確認する.
+
+dwarf2/frame.c:1070
+	case CFA_REG_OFFSET:
+	  cache->cfa = read_addr_from_reg (this_frame, fs.regs.cfa_reg); (*A)
+	  if (fs.armcc_cfa_offsets_reversed)
+
+mcore-elf-gdb も pru-elf-gdb も (*A) で計算している.
+
+pru-elf-gdb では
+
+16 番のレジスタ -> 4 番のレジスタ(フレームポインタ) -> sim_read
+
+のように 0x1000 を計算している. 函数の名前から想像するとそのレジスタのアドレス
+から値を読み出すと思ったが違っていた.
+
+そこで
+
+static int mcore_dbg_reg_to_regno(gdbarch*, int regno)
+{
+  if (regno == sp_regno)
+    return 8;
+  return regno;
+}
+
+のように MCORE でも変更してみた. スタックポインタ(r0)に対してフレームポインタ(r8)
+の値を代りに返すというもの.
+
+breakpoint.c:5162
+  if (frame_id_p (b->frame_id)
+      && !frame_id_eq (b->frame_id, get_stack_frame_id (get_current_frame ())))
+    {
+      bs->stop = 0;
+      return;
+    }
+
+ここで bs->stop = 0 になるのが期待しない動作なのだが 1 回目は
+stack_addr = 0xff8 code_addr = 0x138 で frame_id_eq() が true になる.
+
+しかし 2 回目は
+
+(gdb) p/x b->frame_id
+$182 = {stack_addr = 0xfe0, code_addr = 0x138, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) p/x get_stack_frame_id (get_current_frame ())
+$183 = {stack_addr = 0xff8, code_addr = 0x138, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+
+のようになり bs->stop = 0 となってしまう.
+
+pru-elf-gdb を参考にするのも間違いではないと思うのだが
+
+16 番のレジスタ -> 4 番のレジスタ(フレームポインタ)
+
+としているのが気になる.
+
+この函数は
+
+  set_gdbarch_dwarf2_reg_to_regnum(gdbarch, mcore_dbg_reg_to_regno);
+  set_gdbarch_stab_reg_to_regnum(gdbarch, mcore_dbg_reg_to_regno);
+
+のように指定されているので他の状況も少し見てみる.
+
+aarch64-elf-gdb : r31 がスタックポインタで番号の変更なしにそのまま
+
+b dwarf2/frame.c:1071
+command
+p/x cache->cfa
+p/x cache->cfa + fs.regs.cfa_offset
+c
+end
+
+のようにして得た結果が以下
+
+1   0xfd0 0x1000
+2   0xfd0 0xfd0
+3   0xfd0 0x1000
+------------------------
+4   0xfb0 0xfd0
+5   0xfd0 0x1000
+6   0xfb0 0xfd0
+7   0xfd0 0x1000
+8   0xfd0 0x1000
+9   0xfd0 0x1000
+
+
+arm-elf-gdb  11 番のレジスタ(fp)を問い合わせている. 変更なし.
+
+1 0xffc 0x1000
+2 0xfdc 0xfdc
+3 0xffc 0x1000
+4 0xfd8 0xfdc
+5 0xffc 0x1000
+6 0xfd8 0xfdc
+7 0xffc 0x1000
+8 0xffc 0x1000
+9 0xffc 0x1000
+
+ここまで調べると結果的に 1, 3, 5, 7, 8, 9 回目に cache->cfa = 0x1000
+になるのが期待値で 2, 4, 6 回目に 0x1000 よりも少し小さい値になる.
+aarch64-elf-gdb も arm-elf-gdb も構造体を返す函数での finish で試している.
+
+さて一旦
+
+mcore_dbg_reg_to_regno
+
+の修正と
+
+dwarf2_frame_set_init_reg(gdbarch, mcore_dwarf2_frame_init_reg);
+
+としていたのは元に戻しておく.
+
+
