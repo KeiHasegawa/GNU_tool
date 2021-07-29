@@ -1,0 +1,27 @@
+*** gdb-10.2.aarch64-elf/gdb/msp430-tdep.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.msp430-elf/gdb/msp430-tdep.c	2021-07-30 08:10:26.000000000 +0900
+***************
+*** 571,578 ****
+  
+    if (TYPE_LENGTH (valtype) > 8
+        || valtype->code () == TYPE_CODE_STRUCT
+!       || valtype->code () == TYPE_CODE_UNION)
+!     return RETURN_VALUE_STRUCT_CONVENTION;
+  
+    if (readbuf)
+      {
+--- 571,584 ----
+  
+    if (TYPE_LENGTH (valtype) > 8
+        || valtype->code () == TYPE_CODE_STRUCT
+!       || valtype->code () == TYPE_CODE_UNION) {
+!     if (readbuf) {
+!       ULONGEST addr;
+!       regcache_cooked_read_unsigned (regcache, MSP430_R12_REGNUM, &addr);
+!       read_memory(addr, readbuf, TYPE_LENGTH(valtype));
+!     }
+!     return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+!   }
+  
+    if (readbuf)
+      {
