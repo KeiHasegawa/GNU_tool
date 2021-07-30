@@ -1,0 +1,27 @@
+*** gdb-10.2.aarch64-elf/gdb/rx-tdep.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.rx-elf/gdb/rx-tdep.c	2021-07-30 12:25:20.000000000 +0900
+***************
+*** 876,883 ****
+    if (TYPE_LENGTH (valtype) > 16
+        || ((valtype->code () == TYPE_CODE_STRUCT
+  	   || valtype->code () == TYPE_CODE_UNION)
+! 	  && TYPE_LENGTH (valtype) % 4 != 0))
+!     return RETURN_VALUE_STRUCT_CONVENTION;
+  
+    if (readbuf)
+      {
+--- 876,889 ----
+    if (TYPE_LENGTH (valtype) > 16
+        || ((valtype->code () == TYPE_CODE_STRUCT
+  	   || valtype->code () == TYPE_CODE_UNION)
+! 	  && TYPE_LENGTH (valtype) % 4 != 0)) {
+!     if (readbuf) {
+!       ULONGEST addr;
+!       regcache_cooked_read_unsigned (regcache, RX_R15_REGNUM, &addr);
+!       read_memory(addr, readbuf, TYPE_LENGTH(valtype));
+!     }
+!     return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+!   }
+  
+    if (readbuf)
+      {
