@@ -1,0 +1,44 @@
+*** gdb-10.2.aarch64-elf/gdb/ppc-sysv-tdep.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.ppc-elf/gdb/ppc-sysv-tdep.c	2021-07-30 11:31:06.000000000 +0900
+***************
+*** 997,1003 ****
+  	}
+        return RETURN_VALUE_REGISTER_CONVENTION;
+      }
+!   return RETURN_VALUE_STRUCT_CONVENTION;
+  }
+  
+  enum return_value_convention
+--- 997,1008 ----
+  	}
+        return RETURN_VALUE_REGISTER_CONVENTION;
+      }
+!   if (readbuf) {
+!     ULONGEST addr;
+!     regcache_cooked_read_unsigned (regcache, tdep->ppc_gp0_regnum + 3, &addr);
+!     read_memory(addr, readbuf, TYPE_LENGTH(type));
+!   }
+!   return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+  }
+  
+  enum return_value_convention
+***************
+*** 2068,2073 ****
+  					readbuf, writebuf, 0))
+      return RETURN_VALUE_REGISTER_CONVENTION;
+  
+!   return RETURN_VALUE_STRUCT_CONVENTION;
+  }
+  
+--- 2073,2083 ----
+  					readbuf, writebuf, 0))
+      return RETURN_VALUE_REGISTER_CONVENTION;
+  
+!   if (readbuf) {
+!     ULONGEST addr;
+!     regcache_cooked_read_unsigned (regcache, tdep->ppc_gp0_regnum + 3, &addr);
+!     read_memory(addr, readbuf, TYPE_LENGTH(valtype));
+!   }
+!   return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+  }
+  
