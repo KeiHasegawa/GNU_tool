@@ -1,5 +1,3 @@
-mcore-elf-as で .debug_frame 情報をどのように生成しているか調査
-
 % cat a.c
 int f(int a, int b)
 {
@@ -12,63 +10,4 @@ int f(int a, int b)
 % arm-elf-as -o b.o b.s
 % arm-elf-objdump  --dwarf=frames b.o > b.objdump
 
-a.s と b.s は勿論違うコンパイラが生成したコードだから違いはあるが, 函数の
-コードの最後に出ているものはものすごく似ている.
-
-しかし a.objdump と b.objdump とに違いがある. mcore-elf-as は何か
-重要な仕事をスキップしたかのようになっている.
-
-% mcore-elf-objdump -s -g a.o > a.objdump2
-% arm-elf-objdump -s -g b.o > b.objdump2
-
-a.o の .debug_frame は 0x24 バイトでであるのに対して
-b.o の .debug_frame は 0x30 バイト
-
-この違いが a.objdump と b.objdump の違いとなって現われている.
-
-arm-elf-as で b.s をアセンブルさせてみたところ:
-
-Breakpoint 3, bfd_set_section_contents (abfd=0x82062d8, section=0x82079e0, location=0x8223bd4, offset=0, count=16) at section.c:1523
-(gdb) p section->name
-$5 = 0x8223af8 ".debug_frame"
-(gdb) c
-Continuing.
-
-Breakpoint 3, bfd_set_section_contents (abfd=0x82062d8, section=0x82079e0, location=0x8223c2c, offset=16, count=30) at section.c:1523
-(gdb) p section->name
-$6 = 0x8223af8 ".debug_frame"
-(gdb) p/x count
-$7 = 0x1e
-(gdb) c
-Continuing.
-
-Breakpoint 3, bfd_set_section_contents (abfd=0x82062d8, section=0x82079e0, location=0xbffff260, offset=46, count=2) at section.c:1523
-(gdb) p section->name
-$8 = 0x8223af8 ".debug_frame"
-(gdb) c
-Continuing.
-
-のように 16 + 30 + 2 = 0x30 バイトになっている.
-
-一方 a.s を mcore-elf-as にアセンブルさせてみたところ:
-
-Breakpoint 1, bfd_set_section_contents (abfd=0x8158448, section=0x816c568, location=0x8176160, offset=0, count=19) at section.c:1523
-(gdb) p section->name
-$3 = 0x81760d0 ".debug_frame"
-(gdb) c
-Continuing.
-
-Breakpoint 1, bfd_set_section_contents (abfd=0x8158448, section=0x816c568, location=0xbffff250, offset=19, count=1) at section.c:1523
-(gdb) p section->name
-$4 = 0x81760d0 ".debug_frame"
-(gdb) c
-Continuing.
-
-Breakpoint 1, bfd_set_section_contents (abfd=0x8158448, section=0x816c568, location=0x81761ac, offset=20, count=16) at section.c:1523
-(gdb) p section->name
-$5 = 0x81760d0 ".debug_frame"
-(gdb)
-
-19 + 1 + 16 = 0x24
-
-のようになっている. arm-elf-as とはかなり違っている.
+Finally, I noticed that mcore-elf-gcc did not generate .debug_frame correctly.
