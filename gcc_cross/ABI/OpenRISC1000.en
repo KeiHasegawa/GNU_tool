@@ -1,38 +1,40 @@
-OpenRISC 1000 の ABI
+OpenRISC 1000 ABI
 
-(*1) 函数呼び出し
-(*2) 函数復帰
-(*3) プロローグ
-(*4) エピローグ
-(*5) 通常の函数の引数と戻り値
-(*6) long, long long を引数にとる函数, 返す函数
-(*7) 浮動少数点数を引数にとる函数, 返す函数
-(*8) 構造体を引数にとる函数, 構造体を返す函数
+(*1) Function call
+(*2) Return from function
+(*3) Prologue
+(*4) Epilogue
+(*5) Normal argument and return value
+(*6) `long long' argument and return value
+(*7) Floating point number argument and return value
+(*8) Structure argument and return value
 
 
-(*1) 函数呼び出し
+(*1) Function call
 
 	l.jal	func
 
-	疑似コード
+	Pseudo code
 
-	r9 = (func 命令の次の次のアドレス)
+	r9 = (`l.jal' instruction next next address)
 	pc = func
 
-	この命令は遅延分岐である.
+	`l.jal' is a delayed brach instruction.
 
-(*2) 函数復帰
+(*2) Return from function
 
 	l.jr	r9
 
-	この命令は遅延分岐である.
+	`l.jr' is a delayed brach instruction.
 	
-(*3) プロローグ
+(*3) Prologue
 
 	l.addi	r1, r1, -136
 	l.sw	128(r1), r2
 	l.addi	r2, r1, 136
 	l.sw	132(r1), r9
+
+	Above is prologue for function which uses 128 bytes local area.
 	
 	+----------------------+ <- r1_{new}
         |                      |
@@ -46,9 +48,8 @@ OpenRISC 1000 の ABI
 	|        r9_{old}      |
 	+----------------------+ <- r1_{old}, r2_{new}
 
-	上は 128 バイトのローカルエリアを使用する函数のプロローグである.
 
-(*4) エピローグ
+(*4) Epilogue
 
 	l.lwz	r2, 128(r1)
 	l.lwz	r9, 132(r1)
@@ -56,21 +57,24 @@ OpenRISC 1000 の ABI
 	l.jr	r9
 	l.nop
 
-	上は 128 バイトのローカルエリアを使用する函数のエピローグである.
-	r2, r9, r1 が復元されて呼び出し元に復帰する.
+	Above is epilogue for function which uses 128 bytes local area.
+	`r2', `r9' and `r1' are restored and return to callee.
 
-(*5) 通常の函数の引数と戻り値
+(*5) Normal argument and return value
 
-	第 1 引数 : r3
+	1st : r3
 	...
-	第 5 引数 : r8
-	第 6 引数以降 : スタックを使用する
+	5th : r8
+	6th : use stack
 
+	For example,
+	
 	int f(int a0, int a1, int a2, int a3, int a4, int a5, int a6, int a7);
 
 	f(10, 11, 12, 13, 14, 15, 16, 17);
 
-	に対して f の先頭アドレスでは
+	At the start address of `f', registers and stack layout become
+	like below:
 
 	r3 = 10, r4 = 11, r5 = 12, r6 = 13, r7 = 14, r8 = 15
 
@@ -80,22 +84,24 @@ OpenRISC 1000 の ABI
 	|           17         |
 	+----------------------+ +8
 
-	のようになっている.
-	函数の戻り値は r11 にセットされる.
+	Function return value is set to `r11'.
 
-(*6) long, long long を引数にとる函数, 返す函数
+(*6) `long long' argument and return value
 
         sizeof(long long) = 8
 
-	long long 型の引数に対して 2 つのレジスタが使用される. 但し, r8 とスタックに
-	跨って使用されることはなく, この場合はスタックが使用される.
-	long long 型の戻り値は r11, r12 にセットされる.
+	For `long long' type argument, 2 registers are used. Howerver `r8'
+	and stack are not used for 1 `long long' type argument. In that case,
+	just stack is used.
+	For `long long' type return value, `r11' and `r12' are used.
+	For example,
 
 	long long f(int a0, long long a1, long long a2, long long a3);
 
 	f(10, 11LL, 12LL, 0x123456789abcdef0LL);
 
-	に対して, f の先頭アドレスでは
+	At the start address of `f', registers and stack layout become
+	like below:
 
 	r3 = 10, r4 = 0, r5 = 11, r6 = 0, r7 = 12
 
@@ -105,19 +111,18 @@ OpenRISC 1000 の ABI
 	|      0x9abcdef0      |
 	+----------------------+ +8
 
-	のようになっている.
-
-(*7) 浮動少数点数を引数にとる函数, 返す函数
+(*7) Floating point number argument and return value
 
 	sizeof(float) = 4
 	sizeof(double) = 8
 
-	OpenRISC 1000 には FPU がないのでソフトウェアで浮動少数点数演算を行なう.
-	float に対しては (*5) の規則が, double, long double に対しては (*6)
-	の規則が適用される.
+	OpenRISC 1000 doens't have FPU so software calculates floating
+	point number operation. For `float' same with (*5). For `double'
+	or `long double' same with (*6).
+	
+(*8) Structure argument and return value
 
-(*8) 構造体を引数にとる函数, 構造体を返す函数
-
-        構造体を引数に取る函数を呼び出すとき, レジスタは使用されずに, スタックが使用される.
-	構造体を返す函数を呼び出すとき, 戻り値を格納するためのアドレスを r3 レジスタに
-	セットする.
+	When calling function which takes structure type argument,
+	registers are not used, just stack is used.
+	When calling function which returns structure type, the address
+	for the return value is set to `r3'.
