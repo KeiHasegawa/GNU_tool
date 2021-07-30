@@ -72,3 +72,80 @@ $5 = 0x81760d0 ".debug_frame"
 19 + 1 + 16 = 0x24
 
 のようになっている. arm-elf-as とはかなり違っている.
+
+以下は a.s の抜粋(27 行):
+	.section .debug_frame
+.Lframe0:
+	.long	.LECIE0-.LSCIE0
+.LSCIE0:
+	.long	0xffffffff
+	.byte	0x3
+	.string	""
+	.uleb128 0x1
+	.sleb128 -4
+	.uleb128 0x14
+	.byte	0xc
+	.uleb128 0
+	.uleb128 0
+	.byte	0x9
+	.uleb128 0x14
+	.uleb128 0xf
+	.align	2
+.LECIE0:
+.LSFDE0:
+	.long	.LEFDE0-.LASFDE0
+.LASFDE0:
+	.long	.Lframe0
+	.long	.LFB0
+	.long	.LFE0-.LFB0
+	.align	2
+.LEFDE0:
+
+以下は b.s の抜粋(41 行):
+	.section	.debug_frame,"",%progbits
+.Lframe0:
+	.4byte	.LECIE0-.LSCIE0
+.LSCIE0:
+	.4byte	0xffffffff
+	.byte	0x1
+	.ascii	"\000"
+	.uleb128 0x1
+	.sleb128 -4
+	.byte	0xe
+	.byte	0xc
+	.uleb128 0xd
+	.uleb128 0x0
+	.align	2
+.LECIE0:
+.LSFDE0:
+	.4byte	.LEFDE0-.LASFDE0
+.LASFDE0:
+	.4byte	.Lframe0
+	.4byte	.LFB2
+	.4byte	.LFE2-.LFB2
+	.byte	0x4
+	.4byte	.LCFI0-.LFB2
+	.byte	0xd
+	.uleb128 0xc
+	.byte	0x4
+	.4byte	.LCFI1-.LCFI0
+	.byte	0x8e
+	.uleb128 0x2
+	.byte	0x8d
+	.uleb128 0x3
+	.byte	0x8b
+	.uleb128 0x4
+	.byte	0x4
+	.4byte	.LCFI2-.LCFI1
+	.byte	0xc
+	.uleb128 0xb
+	.uleb128 0x4
+	.align	2
+.LEFDE0:
+
+そもそも出ているものが違っているから arm-elf-as の生成したオブジェクトファイル
+の .debug_frame の内容がそれなりであるのに対して
+mcore-elf-as の生成したオブジェクトファイルの .debug_frame の内容が足りていないの
+はそういうこと.
+
+なのでこれはアセンブラの問題とは言えない. むしろコンパイラの問題.
