@@ -1,0 +1,56 @@
+*** gdb-10.2.aarch64-elf/gdb/sh-tdep.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.sh-elf/gdb/sh-tdep.c	2021-07-30 13:02:09.000000000 +0900
+***************
+*** 1399,1404 ****
+--- 1399,1415 ----
+      sh_store_return_value_nofpu (type, regcache, valbuf);
+  }
+  
++ inline return_value_convention
++ struct_convention(gdb_byte* readbuf, regcache *regcache, type *valtype)
++ {
++   if (readbuf) {
++     ULONGEST addr;
++     regcache_cooked_read_unsigned (regcache, 3, &addr);
++     read_memory(addr, readbuf, TYPE_LENGTH(valtype));
++   }
++   return RETURN_VALUE_ABI_RETURNS_ADDRESS;
++ }
++ 
+  static enum return_value_convention
+  sh_return_value_nofpu (struct gdbarch *gdbarch, struct value *function,
+  		       struct type *type, struct regcache *regcache,
+***************
+*** 1408,1414 ****
+  
+    if (sh_use_struct_convention_nofpu (
+    	sh_is_renesas_calling_convention (func_type), type))
+!     return RETURN_VALUE_STRUCT_CONVENTION;
+    if (writebuf)
+      sh_store_return_value_nofpu (type, regcache, writebuf);
+    else if (readbuf)
+--- 1419,1425 ----
+  
+    if (sh_use_struct_convention_nofpu (
+    	sh_is_renesas_calling_convention (func_type), type))
+!     return struct_convention(readbuf, regcache, type);
+    if (writebuf)
+      sh_store_return_value_nofpu (type, regcache, writebuf);
+    else if (readbuf)
+***************
+*** 1425,1431 ****
+  
+    if (sh_use_struct_convention (
+  	sh_is_renesas_calling_convention (func_type), type))
+!     return RETURN_VALUE_STRUCT_CONVENTION;
+    if (writebuf)
+      sh_store_return_value_fpu (type, regcache, writebuf);
+    else if (readbuf)
+--- 1436,1442 ----
+  
+    if (sh_use_struct_convention (
+  	sh_is_renesas_calling_convention (func_type), type))
+!     return struct_convention(readbuf, regcache, type);    
+    if (writebuf)
+      sh_store_return_value_fpu (type, regcache, writebuf);
+    else if (readbuf)
