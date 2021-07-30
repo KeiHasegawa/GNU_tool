@@ -1,0 +1,27 @@
+*** gdb-10.2.aarch64-elf/gdb/v850-tdep.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.v850-elf/gdb/v850-tdep.c	2021-07-30 13:12:29.000000000 +0900
+***************
+*** 1159,1166 ****
+  		   struct type *type, struct regcache *regcache,
+  		   gdb_byte *readbuf, const gdb_byte *writebuf)
+  {
+!   if (v850_use_struct_convention (gdbarch, type))
+!     return RETURN_VALUE_STRUCT_CONVENTION;
+    if (writebuf)
+      v850_store_return_value (type, regcache, writebuf);
+    else if (readbuf)
+--- 1159,1172 ----
+  		   struct type *type, struct regcache *regcache,
+  		   gdb_byte *readbuf, const gdb_byte *writebuf)
+  {
+!   if (v850_use_struct_convention (gdbarch, type)) {
+!     if (readbuf) {
+!       ULONGEST addr;
+!       regcache_cooked_read_unsigned (regcache, E_R6_REGNUM, &addr);
+!       read_memory(addr, readbuf, TYPE_LENGTH(type));
+!     }
+!     return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+!   }
+    if (writebuf)
+      v850_store_return_value (type, regcache, writebuf);
+    else if (readbuf)
