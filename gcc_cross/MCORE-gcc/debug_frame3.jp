@@ -285,42 +285,7 @@ gcc-10.2.0.cris-elf/gcc/config/cris/cris.c:3217
 
 だから, 同じことを mcore-elf-gcc でもやってあげれば良さそう.
 
-gcc-10.2.0.mcore-elf/gcc/config/mcore/mcore.c:302
+gcc-10.2.0.mcore-elf/gcc/config/mcore/mcore.c
 
-      if (direction > 0)
-	insn = gen_addsi3 (stack_pointer_rtx, stack_pointer_rtx, val);
-      else
-	insn = gen_subsi3 (stack_pointer_rtx, stack_pointer_rtx, val);
+に対するパッチをこのページに mcore.diff としてアップロードした.
 
-+     RTX_FRAME_RELATED_P (insn) = 1;
-      emit_insn (insn);
-
-
-これでビルドをやり直したが libgcc.a でコンパイラの内部エラーが発生してしまった.
-明らかに今回の修正が影響していそうだ.
-
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.mcore-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.mcore-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mcore-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mcore-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mcore-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mcore-elf/sys-include    -g -O2 -mbig-endian -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include  -O3 -DNO_FLOATLIB_FIXUNSDFSI  -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc -O3 -DNO_FLOATLIB_FIXUNSDFSI  -I. -I. -I../../../host-i686-pc-linux-gnu/gcc -I../../.././libgcc -I../../.././libgcc/. -I../../.././libgcc/../gcc -I../../.././libgcc/../include  -DHAVE_CC_TLS -DUSE_EMUTLS -o _muldc3.o -MT _muldc3.o -MD -MP -MF _muldc3.dep -DL_muldc3 -c ../../.././libgcc/libgcc2.c -fvisibility=hidden -DHIDE_EXPORTS
-during RTL pass: dwarf2
-../../.././libgcc/libgcc2.c: 関数 ‘__muldc3’ 内:
-../../.././libgcc/libgcc2.c:2030:1: コンパイラ内部エラー: dwarf2out_frame_debug_expr 内、位置 dwarf2cfi.c:1717
- 2030 | }
-      | ^
-0x8319657 dwarf2out_frame_debug_expr
-	../.././gcc/dwarf2cfi.c:1717
-0x831a9ec dwarf2out_frame_debug
-	../.././gcc/dwarf2cfi.c:2189
-0x831b53f scan_insn_after
-	../.././gcc/dwarf2cfi.c:2549
-0x831ba02 scan_trace
-	../.././gcc/dwarf2cfi.c:2716
-0x831bb0f create_cfi_notes
-	../.././gcc/dwarf2cfi.c:2760
-0x831c752 execute_dwarf2_frame
-	../.././gcc/dwarf2cfi.c:3124
-0x831d300 execute
-	../.././gcc/dwarf2cfi.c:3612
-Please submit a full bug report,
-with preprocessed source if appropriate.
-Please include the complete backtrace with any bug report.
-See <https://gcc.gnu.org/bugs/> for instructions.
-make[4]: *** [Makefile:501: _muldc3.o] エラー 1

@@ -1,0 +1,71 @@
+*** /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.aarch64-elf/gcc/config/mcore/mcore.c	2020-07-23 15:35:17.000000000 +0900
+--- /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.mcore-elf/gcc/config/mcore/mcore.c	2021-08-01 07:15:23.000000000 +0900
+***************
+*** 298,305 ****
+  	insn = gen_addsi3 (stack_pointer_rtx, stack_pointer_rtx, val);
+        else
+  	insn = gen_subsi3 (stack_pointer_rtx, stack_pointer_rtx, val);
+!       
+!       emit_insn (insn);
+      }
+  }
+  
+--- 298,309 ----
+  	insn = gen_addsi3 (stack_pointer_rtx, stack_pointer_rtx, val);
+        else
+  	insn = gen_subsi3 (stack_pointer_rtx, stack_pointer_rtx, val);
+! 
+!       auto ret = emit_insn (insn);
+!       if (direction <= 0) {
+! 	if (!REG_P(val))
+! 	  RTX_FRAME_RELATED_P (ret) = 1;
+!       }
+      }
+  }
+  
+***************
+*** 2067,2077 ****
+  	    }
+            else if (fi.reg_mask & (1 << i))
+  	    {
+! 	      emit_insn (gen_movsi
+  		         (gen_rtx_MEM (SImode,
+  				       plus_constant (Pmode, stack_pointer_rtx,
+  						      offs)),
+  		          gen_rtx_REG (SImode, i)));
+  	      offs += 4;
+  	    }
+          }
+--- 2071,2082 ----
+  	    }
+            else if (fi.reg_mask & (1 << i))
+  	    {
+! 	      auto ret = emit_insn (gen_movsi
+  		         (gen_rtx_MEM (SImode,
+  				       plus_constant (Pmode, stack_pointer_rtx,
+  						      offs)),
+  		          gen_rtx_REG (SImode, i)));
++ 	      RTX_FRAME_RELATED_P (ret) = 1;
+  	      offs += 4;
+  	    }
+          }
+***************
+*** 2083,2090 ****
+        /* If we haven't already purchased to 'fp'.  */
+        if (growth < fi.local_growth)
+          output_stack_adjust (-1, fi.growth[growth++]);		/* Grows it.  */
+!       
+!       emit_insn (gen_movsi (frame_pointer_rtx, stack_pointer_rtx));
+  
+        /* ... and then go any remaining distance for outbounds, etc.  */
+        if (fi.growth[growth])
+--- 2088,2096 ----
+        /* If we haven't already purchased to 'fp'.  */
+        if (growth < fi.local_growth)
+          output_stack_adjust (-1, fi.growth[growth++]);		/* Grows it.  */
+!      
+!       auto ret = emit_insn (gen_movsi (frame_pointer_rtx, stack_pointer_rtx));
+!       RTX_FRAME_RELATED_P (ret) = 1;
+  
+        /* ... and then go any remaining distance for outbounds, etc.  */
+        if (fi.growth[growth])
