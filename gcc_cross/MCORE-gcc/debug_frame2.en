@@ -1,95 +1,21 @@
-mcore-elf-gcc の .debug_frame の期待値を作成してみる.
+Expected .debug_frame
 
-現状では mcore-elf-gcc の出力では
+I tried to make expected .debug_frame of mcore-elf-gcc.
 
-00000014 0000000c 00000000 FDE cie=00000000 pc=00000118..00000132
+I was inspired by cris-elf-gcc, iq2000-elf-gcc and v850-elf-gcc.
 
-00000024 0000000c 00000000 FDE cie=00000000 pc=00000132..0000014e
+                 link register    frame pointer
+cris-elf-gcc        srp                r8
+iq2000-elf-gcc      r31                r8
+v850-elf-gcc        r31                r29
 
-のように .debug_frame が完全ではない.
+These proluge are very similar to that of mcore-elf-gcc.
+And .debug_frame are also very similar.
 
-まずは 0x118 ... 0x132 の函数 f の .debug_frame の期待値.
-b.S に f のコンパイル結果で .text と .debug_frame のみを抜き出してみた.
+First, I created .debug_frame of `f' and it is `f.S' on this web page.
+Second, created .debug_frame of `main' and it is `main.S' on this web page.
 
+Now I created expected compile result of test008.c as test008.S.
 
-    +---------------+ <- sp_{new}, r8_{new}
-    |    r2_{old}   |
-    +---------------+
-    |    r3_{old}   |
-    +---------------+
-    |    r8_{old}   |
-    +---------------+
-    |               |
-    +---------------+ <- sp_{old}
+And I could confirmed that `finis' command at `f' worked well at mcore-elf-gdb.
 
-
-f は葉の函数なので r15 をスタックに保存していない.
-
-1. sp を更新する                               subi	sp,16
-2. フレームポインタの r8 をスタックに保存する       stw	r8,(sp,8)
-3. フレームポインタの r8 を更新する.              mov	r8,sp
-4. 引数の r2, r3 をスタックに保存する.           stw	r2,(r8)
-                                            stw	r3,(r8,4)
-
-5. 計算する
-
-6. フレームポインタ r8 を復元する.               ldw	r8,(sp,8)
-7. sp を復元する.                             addi	sp,16
-
-ということをしている. これを .debug_frame で表現できればいいわけだ.
-そして 4, 5, 6, 7 は必要ない.
-
-cris-elf-gcc がリンクレジスタ(srp)とフレームポインタ(r8)をもっていて,
-プロローグの部分が似ていし, .debug_frame の部分も似ている.
-
-iq2000-elf-gcc もリンクレジタ(r31)とフレームポインタ(r27)をもっていて
-プロローグの部分が似ていし, .debug_frame の部分も似ている.
-
-v850-elf-gcc もリンクレジスタ(r31)とフレームポインタ(r29)をもっていて
-プロローグの部分が似ていし, .debug_frame の部分も似ている.
-
-aarch64-elf-gcc もリンクレジタ(x30)とフレームポインタ(x29)をもっていて
-or1k-elf-gcc もリンクレジタ(r9)とフレームポインタ(r2)をもっているが,
-.debug_frame の出し方が
-
-	     .cfi_def_cfa_offset 16
-
-のような形式になっている. こちらに完全以降するなら mcore-elf-gcc も
-こうすることはできるかもしれない.
-
-とりあえずは cris-elf-gcc, iq2000-elf-gcc, v850-elf-gcc を参考に
-してやってみる.
-
-cris.S に抜粋した.
-% cris-elf-as -o cris.o cris.S && cris-elf-objdump -g -d cris.o > cris.objdump
-
-やはり f は葉の函数なので srp の保存はなし.
-1. sp -= 4
-2. memory[sp] = r8
-3. r8 = sp
-
-iq2000.S に抜粋した.
-% iq2000-elf-as -o iq2000.o iq2000.S && iq2000-elf-objdump -g -d iq2000.o > iq2000.objdump
-
-1. r29 -= 16
-2. memory[r29+8] = r27
-3. r27 = r29
-
-v850.S に抜粋した.
-% v850-elf-as -o v850.o v850.S && v850-elf-objdump -g -d v850.o > v850.objdump
-
-1. sp -= 4
-2. memory[sp] = r29
-   sp -= 8
-3. r29 = sp
-
-% mcore-elf-as -o mcore.o mcore.S && mcore-elf-objdump -g -d mcore.o > mcore.objdump
-
-他を参考にして f の .debug_frame の期待値を作成できた. このページの f.S である.
-同様に main の .debug_frame の期待値を作成できた. このページの main.S である.
-
-これをもとに test008.c のコンパイル結果の期待値を test008.S として作成
-できた.
-
-test008.elf をリンクして mcore-elf-gdb で実行してみたところ期待通り動
-作している.
