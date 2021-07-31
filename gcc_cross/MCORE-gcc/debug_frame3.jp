@@ -1,0 +1,326 @@
+mcore-elf-gcc で .debug_frame が生成されるように修正する.
+
+M-x gdb
+gdb --annotate ./cc11
+(gdb) run -quiet a.c -funsigned-bitfields -quiet -dumpbase a.c -auxbase a -g -o a.s
+
+これで gdb からも再現することを確認した.
+
+(gdb) b final_1
+(gdb) command
+>set asm_out_file=stdout
+>end
+(gdb) run
+
+一旦 final.o を -g3 -O0 でビルドしなおした.
+
+(gdb) b final.c:2020
+(gdb) command
+>p debug_insn_slim(insn)
+>end
+(gdb) run
+
+これで各 rtx_insn に対して何が生成されるかが確認できる.
+同様のことを cr16-elf-gcc に対して行なったところ
+cr16-elf-gcc では .debug_frame を出すためのラベル
+
+.LCFI0:
+
+の出力に対する rtx_insn
+
+   33: NOTE_INSN_CFI_LABEL
+
+があるのに対して mcore-elf-gcc ではないことに気付いた. 当然と言えば当然なのかも.
+
+そこで cris-elf-gcc でこの rtx_insn が作成される箇所を調査した.
+
+(gdb) where
+#0  0x086459c1 in rtx_init (code=NOTE, rt=0xb78e3e60) at ../.././gcc/rtl.h:2966
+#1  rtx_alloc_stat_v (extra=0, code=NOTE) at ../.././gcc/rtl.c:222
+#2  rtx_alloc (code=NOTE) at ../.././gcc/rtl.c:239
+#3  0x08361f3c in make_note_raw (subtype=NOTE_INSN_CFI_LABEL) at ../.././gcc/emit-rtl.c:4104
+#4  0x08367442 in emit_note_before (subtype=NOTE_INSN_CFI_LABEL, before=0xb78e3e00) at ../.././gcc/emit-rtl.c:4810
+#5  0x083114cc in add_cfis_to_fde () at ../.././gcc/dwarf2cfi.c:2334
+#6  execute_dwarf2_frame () at ../.././gcc/dwarf2cfi.c:3124
+#7  (anonymous namespace)::pass_dwarf2_frame::execute (this=0x9283f48) at ../.././gcc/dwarf2cfi.c:3610
+--Type <RET> for more, q to quit, c to continue without paging--c
+#8  0x085d95c2 in execute_one_pass (pass=0x9283f48) at ../.././gcc/passes.c:2502
+#9  0x085d9ef2 in execute_pass_list_1 (pass=0x9283f48) at ../.././gcc/passes.c:2590
+#10 0x085d9f05 in execute_pass_list_1 (pass=0x9283c88) at ../.././gcc/passes.c:2591
+#11 0x085d9f05 in execute_pass_list_1 (pass=0x9282a88) at ../.././gcc/passes.c:2591
+#12 0x085d9f3d in execute_pass_list (fn=0xb78ed000, pass=0x92802b8) at ../.././gcc/passes.c:2601
+#13 0x082d337b in cgraph_node::expand (this=0xb78f0000) at ../.././gcc/context.h:48
+#14 0x082d4537 in output_in_order () at ../.././gcc/cgraphunit.c:2578
+#15 symbol_table::compile (this=0xb7859000) at ../.././gcc/cgraphunit.c:2819
+#16 0x082d638e in symbol_table::compile (this=0xb7859000) at ../.././gcc/cgraphunit.c:2735
+#17 symbol_table::finalize_compilation_unit (this=0xb7859000) at ../.././gcc/cgraphunit.c:3002
+#18 0x08679762 in compile_file () at ../.././gcc/toplev.c:483
+#19 0x0818d0a2 in do_compile () at ../.././gcc/toplev.c:2278
+#20 toplev::main (this=0xbffff4ae, argc=12, argv=0xbffff584) at ../.././gcc/toplev.c:2417
+#21 0x0818f841 in main (argc=12, argv=0xbffff584) at ../.././gcc/main.c:39
+(gdb) 
+
+#8 の execute_one_pass は mcore-elf-gcc でも呼び出されるものだと予測した.
+しかし mcore-elf-gcc で問題の rtx_insn
+
+   33: NOTE_INSN_CFI_LABEL
+
+が生成されないのは #7 の (anonymous namespace)::pass_dwarf2_frame::execute
+が呼び出されないからだとも予測した.
+pass_dwarf2_frame::execute の函数呼び出しは以下の仮想函数呼び出しだった.
+
+  todo_after = pass->execute (cfun);
+
+
+(gdb) b dwarf2cfi.c:3610
+(gdb) run
+
+としたら実は mcore-elf-gcc でもちゃんときていた. それでは何故問題の rtx_insn が
+生成されないか.
+
+とはいえ, ターゲットコンパイラによって dwarf デバッグ情報を出すとか, stab デバッグ
+情報を出すかは選択できないといけないからこれだけからは何ともいえない.
+
+一旦ここで dwarf2cfi.o を -g3 -O0 ビルドしなおした.
+
+dwarf2cfi.c:3124
+  add_cfis_to_fde ();
+
+この函数の呼び出しで cris-elf-gcc は問題の rtx_insn を生成している.
+cris-elf-gcc であればこの函数の呼び出しが rtx_init の呼び出しを引き起こしているが
+mcore-elf-gcc では rtx_init が呼ばれていない.
+
+なので何故 2 つに違いが出るかを調べる.
+
+以下は add_cfis_to_fde での cris-elf-gcc の結果
+
+(gdb) p debug_insn_slim(insn)
+    1: NOTE_INSN_DELETED
+$14 = void
+(gdb) p debug_insn_slim(NEXT_INSN(insn))
+    5: NOTE_INSN_BASIC_BLOCK 2
+$15 = void
+(gdb) p debug_insn_slim(NEXT_INSN(NEXT_INSN(insn)))
+   19: sp:SI=sp:SI-0x4
+$16 = void
+(gdb) p debug_insn_slim(NEXT_INSN(NEXT_INSN(NEXT_INSN(insn))))
+   30: NOTE_INSN_CFI
+$17 = void
+(gdb)
+
+なるほど, もうすでにこの時点で 30: NOTE_INSN_CFI が存在する.
+
+以下は add_cfis_to_fde での  mcore-elf-gcc の結果
+
+(gdb) p debug_insn_slim(insn)
+    1: NOTE_INSN_DELETED
+$9 = void
+(gdb) p debug_insn_slim(NEXT_INSN(insn))
+    5: NOTE_INSN_BASIC_BLOCK 2
+$10 = void
+(gdb) p debug_insn_slim(NEXT_INSN(NEXT_INSN(insn)))
+   18: sp:SI=sp:SI-0x10
+$11 = void
+(gdb) p debug_insn_slim(NEXT_INSN(NEXT_INSN(NEXT_INSN(insn))))
+   19: [sp:SI+0x8]=r8:SI
+$12 = void
+(gdb)
+
+当然だがない.
+
+cris-elf-gcc で問題の rtx_insn を作成しているのは以下だった:
+
+(gdb) where
+#0  0x0864d0c1 in rtx_init (code=NOTE, rt=0xb78e3e00) at ../.././gcc/rtl.h:2966
+#1  rtx_alloc_stat_v (extra=0, code=NOTE) at ../.././gcc/rtl.c:222
+#2  rtx_alloc (code=NOTE) at ../.././gcc/rtl.c:239
+#3  0x08369b1c in make_note_raw (subtype=NOTE_INSN_CFI) at ../.././gcc/emit-rtl.c:4104
+#4  0x0836efa2 in emit_note_after (subtype=NOTE_INSN_CFI, after=0xb785e558) at ../.././gcc/emit-rtl.c:4794
+#5  0x0831092a in add_cfi (cfi=0xb78f417c) at ../.././gcc/dwarf2cfi.c:483
+#6  0x083113fd in def_cfa_1 (new_cfa=0xbffff244) at ../.././gcc/dwarf2cfi.c:883
+#7  0x08314b7d in scan_trace (trace=0x93d0ed8, entry=true) at ../.././gcc/dwarf2cfi.c:2720
+--Type <RET> for more, q to quit, c to continue without paging--
+#8  0x08314c39 in create_cfi_notes () at ../.././gcc/dwarf2cfi.c:2753
+#9  0x083158bb in execute_dwarf2_frame () at ../.././gcc/dwarf2cfi.c:3122
+#10 0x08316469 in (anonymous namespace)::pass_dwarf2_frame::execute (this=0x928df48) at ../.././gcc/dwarf2cfi.c:3610
+#11 0x085e0cc2 in execute_one_pass (pass=0x928df48) at ../.././gcc/passes.c:2502
+#12 0x085e15f2 in execute_pass_list_1 (pass=0x928df48) at ../.././gcc/passes.c:2590
+#13 0x085e1605 in execute_pass_list_1 (pass=0x928dc88) at ../.././gcc/passes.c:2591
+
+
+dwarf2cfi.c:3122
+  create_cfi_notes ();    ここで最初に作った rtx_insn が
+  connect_traces ();
+  add_cfis_to_fde ();     ここで final_1 で処理される rtx_insn に変換されるということ.
+
+何故 cris-elf-gcc で create_cfi_notes で rtx_insn が作られるが
+mcore-elf-gdb で作成されないかを調べる.
+
+cris-elf-gcc では函数 scan_trace で以下の rtx_insn に対して
+
+   19: sp:SI=sp:SI-0x4
+   
+
+      def_cfa_1 (&this_cfa);
+
+の呼び出しがあり, 問題の rtx_insn が生成されている.
+一方 mcore-elf-gcc では以下の rtx_insn に対して
+
+   18: sp:SI=sp:SI-0x10
+
+      def_cfa_1 (&this_cfa);
+
+の呼び出しはある.
+
+
+  cfi = def_cfa_0 (&cur_row->cfa, new_cfa);
+  if (cfi)
+    {
+
+しかしこの条件が成立しないので mcore-elf-gcc では問題の rtx_insn が生成
+されず, 一方 cris-elf-gcc では成立するから問題の rtx_insn が生成されるというわけだ.
+
+
+mcore-elf-gcc では以下の条件が成立しているので 0 が返るが cris-elf-gcc では
+成立しないので 0 でない何かが返っている.
+
+dwarf2cfi.c:794
+  if (cfa_equal_p (old_cfa, new_cfa))
+    return NULL;
+
+
+cris-elf-gcc では
+(gdb) p loc1->offset
+$34 = {coeffs = {0}}
+(gdb) p loc2->offset
+$35 = {coeffs = {4}}
+(gdb)
+
+なので
+
+known_eq (loc1->offset, loc2->offset)
+
+が false になる
+
+一方 mcore-elf-gcc では
+
+(gdb) p loc1->offset
+$23 = {coeffs = {0}}
+(gdb) p loc2->offset
+$24 = {coeffs = {0}}
+(gdb)
+
+なので
+
+known_eq (loc1->offset, loc2->offset)
+
+が true になるということ.
+
+それでは何故,
+
+loc2->offset.coeffs[0] = 0         mcore-elf-gcc
+loc2->offset.coeffs[0] = 4         cris-elf-gcc
+
+という違いが出るのかを調べる.
+
+cris-elfg-gcc で書き変えられていたのは以下.
+
+(gdb) where
+#0  0x08317362 in poly_int_pod<1u, long long>::operator+=<long long> (this=0xbffff244, a=...) at ../.././gcc/poly-int.h:414
+#1  0x08312924 in dwarf2out_frame_debug_expr (expr=0xb78e1ca0) at ../.././gcc/dwarf2cfi.c:1739
+#2  0x08313b8a in dwarf2out_frame_debug (insn=0xb785e558) at ../.././gcc/dwarf2cfi.c:2189
+#3  0x083146dd in scan_insn_after (insn=0xb785e558) at ../.././gcc/dwarf2cfi.c:2549
+#4  0x08314ba0 in scan_trace (trace=0x93d0ed8, entry=true) at ../.././gcc/dwarf2cfi.c:2716
+#5  0x08314c71 in create_cfi_notes () at ../.././gcc/dwarf2cfi.c:2755
+#6  0x083158f3 in execute_dwarf2_frame () at ../.././gcc/dwarf2cfi.c:3124
+#7  0x083164a1 in (anonymous namespace)::pass_dwarf2_frame::execute (this=0x928df48) at ../.././gcc/dwarf2cfi.c:3612
+--Type <RET> for more, q to quit, c to continue without paging--q
+Quit
+(gdb) up 2
+(gdb) p debug_insn_slim(insn)
+   19: sp:SI=sp:SI-0x4
+$40 = void
+(gdb)
+
+こんな感じだった. mcore-elf-gcc では 
+
+  18: sp:SI=sp:SI-0x10
+
+に対して同じことが行なわれるのが期待値だが, dwarf2out_frame_debug がそもそも呼び出されて
+いない.
+
+
+mcore-elf-gcc では以下の条件が成立しないで, cris-elf-gcc では成立するから
+
+  if (RTX_FRAME_RELATED_P (insn))
+    dwarf2out_frame_debug (insn);
+
+dwarf2out_frame_debug は一方では呼び出されず, 他方では呼び出される.
+
+RTX_FRAME_RELATED_P の定義場所は
+
+gcc/rtl.h:1555
+
+#define RTX_FRAME_RELATED_P(RTX)					\
+  (RTL_FLAG_CHECK6 ("RTX_FRAME_RELATED_P", (RTX), DEBUG_INSN, INSN,	\
+		    CALL_INSN, JUMP_INSN, BARRIER, SET)->frame_related)
+
+マクロ展開の結果は
+
+  if ((((insn))->frame_related))
+    dwarf2out_frame_debug (insn);
+
+このマクロ展開の結果は mcore-elf-gcc も cris-elf-gcc も変わらない.
+ということは cris-elf-gcc で
+
+   19: sp:SI=sp:SI-0x4
+
+を作るときに frame_related メンバを 1 にセットしているはずだからそれを
+どうやっているか調べる. 以下でやっていた:
+
+gcc-10.2.0.cris-elf/gcc/config/cris/cris.c:3217
+
+      pretend = 0;
+      RTX_FRAME_RELATED_P (insn) = 1;
+
+だから, 同じことを mcore-elf-gcc でもやってあげれば良さそう.
+
+gcc-10.2.0.mcore-elf/gcc/config/mcore/mcore.c:302
+
+      if (direction > 0)
+	insn = gen_addsi3 (stack_pointer_rtx, stack_pointer_rtx, val);
+      else
+	insn = gen_subsi3 (stack_pointer_rtx, stack_pointer_rtx, val);
+
++     RTX_FRAME_RELATED_P (insn) = 1;
+      emit_insn (insn);
+
+
+これでビルドをやり直したが libgcc.a でコンパイラの内部エラーが発生してしまった.
+明らかに今回の修正が影響していそうだ.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.mcore-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.mcore-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mcore-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mcore-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mcore-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mcore-elf/sys-include    -g -O2 -mbig-endian -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include  -O3 -DNO_FLOATLIB_FIXUNSDFSI  -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc -O3 -DNO_FLOATLIB_FIXUNSDFSI  -I. -I. -I../../../host-i686-pc-linux-gnu/gcc -I../../.././libgcc -I../../.././libgcc/. -I../../.././libgcc/../gcc -I../../.././libgcc/../include  -DHAVE_CC_TLS -DUSE_EMUTLS -o _muldc3.o -MT _muldc3.o -MD -MP -MF _muldc3.dep -DL_muldc3 -c ../../.././libgcc/libgcc2.c -fvisibility=hidden -DHIDE_EXPORTS
+during RTL pass: dwarf2
+../../.././libgcc/libgcc2.c: 関数 ‘__muldc3’ 内:
+../../.././libgcc/libgcc2.c:2030:1: コンパイラ内部エラー: dwarf2out_frame_debug_expr 内、位置 dwarf2cfi.c:1717
+ 2030 | }
+      | ^
+0x8319657 dwarf2out_frame_debug_expr
+	../.././gcc/dwarf2cfi.c:1717
+0x831a9ec dwarf2out_frame_debug
+	../.././gcc/dwarf2cfi.c:2189
+0x831b53f scan_insn_after
+	../.././gcc/dwarf2cfi.c:2549
+0x831ba02 scan_trace
+	../.././gcc/dwarf2cfi.c:2716
+0x831bb0f create_cfi_notes
+	../.././gcc/dwarf2cfi.c:2760
+0x831c752 execute_dwarf2_frame
+	../.././gcc/dwarf2cfi.c:3124
+0x831d300 execute
+	../.././gcc/dwarf2cfi.c:3612
+Please submit a full bug report,
+with preprocessed source if appropriate.
+Please include the complete backtrace with any bug report.
+See <https://gcc.gnu.org/bugs/> for instructions.
+make[4]: *** [Makefile:501: _muldc3.o] エラー 1
