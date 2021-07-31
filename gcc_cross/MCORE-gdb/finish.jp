@@ -842,3 +842,14 @@ mcore_dbg_reg_to_regno
 dwarf2_frame_set_init_reg(gdbarch, mcore_dwarf2_frame_init_reg);
 
 としていたのは元に戻しておく.
+
+この後 mcore-elf-gcc で .debug_frame セクションが期待した形で生成され
+ていないことが判明し, そして期待値を作成した状態で finish コマンドを
+実行したところ
+
+mcore_return_value
+
+が呼び出されるようになり, 正常に動作するようになった. この時点での
+mcore-tdep.c を mcore-tdep.c.003 としてアップロードしておく.
+
+
