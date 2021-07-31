@@ -1,0 +1,118 @@
+今回の修正を入れて改めて libgcc のビルドを行なったところコンパイラの内部エラーが
+発生している.
+
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.mcore-elf/mcore-elf/big/libgcc
+(gdb) run -quiet -I . -I . -I ../../../host-i686-pc-linux-gnu/gcc -I ../../.././libgcc -I ../../.././libgcc/. -I ../../.././libgcc/../gcc -I ../../.././libgcc/../include -imultilib big -iprefix /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.mcore-elf/host-i686-pc-linux-gnu/gcc/../lib/gcc/mcore-elf/10.2.0/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.mcore-elf/host-i686-pc-linux-gnu/gcc/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.mcore-elf/host-i686-pc-linux-gnu/gcc/include-fixed -MD _muldc3.d -MF _muldc3.dep -MP -MT _muldc3.o -D IN_GCC -D CROSS_DIRECTORY_STRUCTURE -D NO_FLOATLIB_FIXUNSDFSI -D IN_LIBGCC2 -D inhibit_libc -D NO_FLOATLIB_FIXUNSDFSI -D HAVE_CC_TLS -D USE_EMUTLS -D L_muldc3 -D HIDE_EXPORTS -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mcore-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/mcore-elf/sys-include -isystem ./include ../../.././libgcc/libgcc2.c -funsigned-bitfields -quiet -dumpbase libgcc2.c -mbig-endian -auxbase-strip _muldc3.o -g -g -g -O2 -O2 -O2 -O3 -O3 -Wextra -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual "-Wno-error=format-diag" -Wstrict-prototypes -Wmissing-prototypes "-Wno-error=format-diag" -Wold-style-definition -fbuilding-libgcc -fno-stack-protector "-fvisibility=hidden" -o /tmp/a.s
+
+とすれば gdb からでも再現する.
+プリプロセス済みのソースを
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.mcore-elf/host-i686-pc-linux-gnu/gcc/bug.c
+
+に保存した. これを
+
+(gdb) run -quiet bug.c -funsigned-bitfields -quiet -dumpbase bug.c -auxbase a -g -o bug.s
+
+とすると再現する. つまり最適化は関係ないらしい.
+
+(gdb) b dwarf2cfi.c:1717
+
+
+		  gcc_assert (dwf_regno (XEXP (src, 1))
+			      == cur_trace->cfa_temp.reg);
+
+この行でエラーしている.
+
+(gdb) p dwf_regno (XEXP (src, 1))
+$1 = 1
+(gdb) p/x cur_trace->cfa_temp.reg
+$3 = 0xffffffff
+
+確かに違っている.
+
+(gdb) up
+#1  0x0831a6fd in dwarf2out_frame_debug (insn=0xb7a05b88) at ../.././gcc/dwarf2cfi.c:2189
+(gdb) p debug_insn_slim(insn)
+ 1263: sp:SI=sp:SI-r1:SI
+$4 = void
+(gdb)
+
+一旦今回入れた修正を元に戻して同じところで, 同じ確認をしてみた.
+
+dwarf2cfi.c:1717
+
+のブレークポイントにはヒットしない.
+ということは, 今回の修正で単に
+
+   33: NOTE_INSN_CFI_LABEL
+
+のような rtx_insn が追加される以外の影響が出ているらしい.
+
+一旦今回の修正を入れないでビルドした cc1 を cc1.no_fix として保存した.
+改めて今回の修正を入れた cc1 をビルドした.
+この 2 つで比較を行なう.
+
+cc1 を改めて gdb から同様に実行し, 問題のブレークポイントにヒットし, 内部エラーが発生する
+ことを確認した.
+
+cc1.no_fix を gdb から同様に実行し, 内部エラーが発生しないことを確認した.
+
+
+cc1 がブレークポイントにヒットしたときのスタックは以下
+(gdb) where
+#0  dwarf2out_frame_debug_expr (expr=0xb7a04f10) at ../.././gcc/dwarf2cfi.c:1717
+#1  0x0831a6fd in dwarf2out_frame_debug (insn=0xb7a05b88) at ../.././gcc/dwarf2cfi.c:2189
+#2  0x0831b250 in scan_insn_after (insn=0xb7a05b88) at ../.././gcc/dwarf2cfi.c:2549
+#3  0x0831b713 in scan_trace (trace=0x9413138, entry=true) at ../.././gcc/dwarf2cfi.c:2716
+#4  0x0831b7e4 in create_cfi_notes () at ../.././gcc/dwarf2cfi.c:2755
+#5  0x0831c463 in execute_dwarf2_frame () at ../.././gcc/dwarf2cfi.c:3124
+#6  0x0831d011 in (anonymous namespace)::pass_dwarf2_frame::execute (this=0x92c7ef0) at ../.././gcc/dwarf2cfi.c:3612
+#7  0x085e8152 in execute_one_pass (pass=0x92c7ef0) at ../.././gcc/passes.c:2502
+--Type <RET> for more, q to quit, c to continue without paging--q
+Quit
+(gdb)
+
+これは今回修正した frame_related の修正がはっきりと影響している:
+
+(gdb) up 2
+(gdb) p insn->frame_related
+$5 = 1
+
+この命令はすでに言及しているように
+
+(gdb) p debug_insn_slim(insn)
+ 1263: sp:SI=sp:SI-r1:SI
+
+だが本来
+
+   18: sp:SI=sp:SI-0x10
+
+のように第 2 オペランドが定数のものを想定していた. 逆に定数でないのならばどうやって
+スタックポインタの情報を出すのか...
+
+cc1.no_fix の実行結果生成されたソースの抜粋は以下:
+
+__muldc3:
+.LFB0:
+.LM1:
+	subi	sp,32
+	stm	r10-r15,(sp)
+	stw	r8,(sp,24)
+	movi	r1,64
+	bseti	r1,7	// 192 0x0
+	subu	sp,r1
+...
+
+なるほど, 最初の subi 命令は今回の修正対象だが,  subu 命令は今回の対象ではない.
+
+mcore.c を以下のように修正して正常動作を確認した.
+
+#if 1
+      auto ret = emit_insn (insn);
+      if (direction <= 0) {
+	if (!REG_P(val))
+	  RTX_FRAME_RELATED_P (ret) = 1;
+      }
+#else
+      emit_insn (insn);
+#endif
