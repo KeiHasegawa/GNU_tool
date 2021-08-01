@@ -1,0 +1,47 @@
+cr16-elf-gcc の debug_frame の修正
+
+(gdb) run -quiet a.c -quiet -dumpbase a.c -auxbase a -g -o a.s
+
+_f:
+.LFB0:
+	.file 1 "a.c"
+	.loc 1 2 1
+	push	$2, r13
+.LCFI0:
+	addd	$-8, (sp)
+.LCFI1:
+	movd	(sp), (r13)
+	storw	r2, 0(r13)
+	storw	r3, 2(r13)
+	.loc 1 3 12
+	loadw	0(r13), r1
+	loadw	2(r13), r0
+	addw	r1, r0
+	storw	r0, 4(r13)
+	.loc 1 4 1
+	loadw	4(r13), r0
+	movd	(r13), (sp)
+	addd	$8, (sp)
+.LCFI2:
+	pop	$2, r13
+	jump	 (ra)
+
+.LCFI3:
+
+のようになっている. .LCFI2 の位置が正しくないのと .LCFI3 が必要ないのがバグ.
+「MCORE の gcc」=>「debug_frame の修正」ですでに調査済みで
+
+dwarf2cfi.c:2546
+  if (RTX_FRAME_RELATED_P (insn))
+    dwarf2out_frame_debug (insn);
+
+ここが問題の箇所.
+
+(gdb) b dwarf2cfi.c:2546
+
+そしてここから cr16 のターゲット固有部分にたどり着いた.
+このときについでだが long long 型の値を fprintf に指定している部分で
+%lx や %ld になっていたので long にキャストしておいた. リトルエンディアンの
+ホストならば問題にはならないがビッグエンディアンのホストで発火するバグなので.
+
+

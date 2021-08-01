@@ -1,0 +1,120 @@
+*** gcc-10.2.0.aarch64-elf/gcc/config/cr16/cr16.c	2020-07-23 15:35:17.000000000 +0900
+--- gcc-10.2.0.cr16-elf/gcc/config/cr16/cr16.c	2021-08-01 10:17:51.000000000 +0900
+***************
+*** 1497,1503 ****
+--- 1497,1507 ----
+           the GO_IF_LEGITIMATE_ADDRESS which cannot
+           perform checks on const_int code addresses as it
+           assumes all const_int are data addresses.  */
++ #if 0      
+        fprintf (file, "0x%lx", INTVAL (x));
++ #else
++       fprintf (file, "0x%lx", (long)INTVAL (x));
++ #endif
+        return;
+  
+      case 'r':
+***************
+*** 1546,1552 ****
+--- 1550,1560 ----
+  	  }
+  	case CONST_INT:
+  	  {
++ #if 0	    
+  	    fprintf (file, "$%ld", INTVAL (x));
++ #else
++ 	    fprintf (file, "$%ld", (long)INTVAL (x));
++ #endif	    
+  	    return;
+  	  }
+  	case UNSPEC:
+***************
+*** 1970,1977 ****
+--- 1978,1991 ----
+  
+    if (current_frame_info.total_size > 0)
+      {
++ #if 0
+        insn = emit_insn (gen_addsi3 (stack_pointer_rtx, stack_pointer_rtx,
+  				    GEN_INT (-current_frame_info.total_size)));
++ #else      
++       long long int n = current_frame_info.total_size;
++       insn = emit_insn (gen_addsi3 (stack_pointer_rtx, stack_pointer_rtx,
++ 				    GEN_INT (-n)));
++ #endif      
+        RTX_FRAME_RELATED_P (insn) = 1;
+      }
+  
+***************
+*** 1980,1985 ****
+--- 1994,2000 ----
+        /* Initialize the frame pointer with the value of the stack pointer
+           pointing now to the locals.  */
+        insn = emit_move_insn (frame_pointer_rtx, stack_pointer_rtx);
++       RTX_FRAME_RELATED_P (insn) = 1;
+      }
+  }
+  
+***************
+*** 2007,2013 ****
+--- 2022,2032 ----
+      {
+        insn = emit_insn (gen_addsi3 (stack_pointer_rtx, stack_pointer_rtx,
+  				    GEN_INT (current_frame_info.total_size)));
++ #if 0      
+        RTX_FRAME_RELATED_P (insn) = 1;
++ #else
++       (void)insn;
++ #endif      
+      }
+  
+    if (crtl->calls_eh_return)
+***************
+*** 2023,2036 ****
+--- 2042,2063 ----
+    if (cr16_interrupt_function_p ())
+      {
+        insn = emit_jump_insn (gen_interrupt_return ());
++ #if 0      
+        RTX_FRAME_RELATED_P (insn) = 1;
++ #else
++       (void)insn;
++ #endif      
+      }
+    else if (crtl->calls_eh_return)
+      {
+        /* Special case, pop what's necessary, adjust SP and jump to (RA).  */
+        insn = emit_jump_insn (gen_pop_and_popret_return 
+  			     (GEN_INT (current_frame_info.reg_size)));
++ #if 0      
+        RTX_FRAME_RELATED_P (insn) = 1;
++ #else
++       (void)insn;
++ #endif      
+      }
+    else if (current_frame_info.last_reg_to_save == -1)
+      /* Nothing to pop.  */
+***************
+*** 2039,2051 ****
+--- 2066,2086 ----
+    else if (only_popret_RA)
+      {
+        insn = emit_jump_insn (gen_popret_RA_return ());
++ #if 0      
+        RTX_FRAME_RELATED_P (insn) = 1;
++ #else
++       (void)insn;
++ #endif      
+      }
+    else
+      {
+        insn = emit_jump_insn (gen_pop_and_popret_return 
+  			     (GEN_INT (current_frame_info.reg_size)));
++ #if 0      
+        RTX_FRAME_RELATED_P (insn) = 1;
++ #else
++       (void)insn;
++ #endif      
+      }
+  }
+  
