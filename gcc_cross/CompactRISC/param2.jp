@@ -1,0 +1,46 @@
+hello world のサンプルで _isatty での行番号がずれる問題
+
+% cat a.c
+char* _sbrk_r(int size)
+{
+  extern char heap;
+  static int delta;
+  char* ret = &heap + delta;
+  delta += size;
+  return ret;
+}
+% cat batch
+#! /bin/sh -v
+
+cr16-elf-gcc -S -g a.c || exit 1
+cr16-elf-as -o a.o a.s || exit 1
+cr16-elf-objdump -d --dwarf=rawline,decodedline a.o > a.o.objdump || exit 1
+cr16-elf-ld -o a.elf a.o --defsym _heap=0x1000 || exit 1
+cr16-elf-objdump -d --dwarf=rawline,decodedline a.elf > a.elf.objdump || exit 1
+%
+
+アセンブラの生成
+
+  12:	72 00 00 00 	movd	$0x0:l,(r3,r2)               5 行目
+  16:	00 00 
+  18:	20 61       	addd	(r3,r2),(r1,r0)
+  1a:	0d e0       	stord	(r1,r0),0x0:s(r13)
+  1c:	12 00 10 f0 	loadw	0x0 <__sbrk_r>:l,r1          6 行目
+
+リンカの生成
+
+  16:	20 05 00 10 	movd	$0x1000:m,(r3,r2)            5 行目
+  1a:	20 61       	addd	(r3,r2),(r1,r0)
+  1c:	0d e0       	stord	(r1,r0),0x0:s(r13)
+  1e:	12 00 14 f0 	loadw	0x400000 <__DATA_END>:l,r1
+  22:	00 00                                                0x20 がない!
+
+
+これは
+
+	movd	$_heap@l, (r3,r2)
+
+命令がアセンブル時 6 バイトの予定であったがリンクしたときに 4 バイトで済んだからずれて
+しまったということ.
+
+だから 4 バイトに切り詰めたリンカに問題がある.
