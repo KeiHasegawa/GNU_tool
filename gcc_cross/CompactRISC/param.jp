@@ -1,0 +1,222 @@
+cr16-elf-gdb で函数のパラメータが期待した値で表示できないことについて調査
+
+M-x gdb
+gdb --anntate=3 ./gdb
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_cr16.001
+(gdb) run -q -x x hello.elf
+...
+Transfer rate: 93248 bits in <1 sec.
+Breakpoint 1 at 0x1a8: file dummy.c, line 25.
+
+Breakpoint 1, _isatty (fd=25058) at dummy.c:25
+25	{
+A debugging session is active.
+
+
+のようになる fd=1 が期待値. また単純な環境では再現しない. これは当初
+
+cr16_skip_prologue
+
+に問題があるのかと思っていた
+
+000001a6 <__isatty>:
+     1a6:	1d 01       	push	$0x2,r13
+     1a8:	bf 60 fc ff 	addd	$0xfffc:m,(sp)
+     1ac:	fd 55       	movd	(sp),(r13)
+     1ae:	2d d0       	storw	r2,0x0:s(r13)
+     1b0:	00 5a       	movw	$0x0:s,r0
+     1b2:	0d d1       	storw	r0,0x2:s(r13)
+     1b4:	0d 91       	loadw	0x2:s(r13),r0
+     1b6:	df 55       	movd	(r13),(sp)
+     1b8:	4f 60       	addd	$0x4:s,(sp)
+     1ba:	1d 02       	pop	$0x2,r13
+     1bc:	ee 0a       	jump	(ra)
+
+0x1a6 に対しては 0x1b0 を返すのが期待値かと思っていた.
+しかし見てみると _isatty のブレークポイントは 0x1b0 ではなくて 0x1a8 にセットされている.
+
+これが原因らしい.
+
+再現しない場合はどうなっているのか調べてみた.
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_cr16.011
+(gdb) run -q -x x test011.elf
+...
+Breakpoint 1 at 0x116: file test011_sub.c, line 3.
+
+Breakpoint 1, _isatty (fd=1) at test011_sub.c:3
+3	  return 1;
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+
+0000010c <__isatty>:
+ 10c:	1d 01       	push	$0x2,r13
+ 10e:	bf 60 fc ff 	addd	$0xfffc:m,(sp)
+ 112:	fd 55       	movd	(sp),(r13)
+ 114:	2d d0       	storw	r2,0x0:s(r13)
+ 116:	10 5a       	movw	$0x1:s,r0
+ 118:	0d d1       	storw	r0,0x2:s(r13)
+ 11a:	0d 91       	loadw	0x2:s(r13),r0
+ 11c:	df 55       	movd	(r13),(sp)
+ 11e:	4f 60       	addd	$0x4:s,(sp)
+ 120:	1d 02       	pop	$0x2,r13
+ 122:	ee 0a       	jump	(ra)
+
+0x10c に対して cr16_skip_prologue が 0x116 を返しているのでこの結果になっている.
+しかしこの 2 つはいずれも
+
+static CORE_ADDR cr16_skip_prologue(gdbarch*, CORE_ADDR pc)
+{
+  CORE_ADDR func_addr, func_end;
+  if (!find_pc_partial_function (pc, nullptr, &func_addr, &func_end))
+    return pc;
+  
+  symtab_and_line sal = find_pc_line (func_addr, 0);
+  if (sal.end && sal.end < func_end)
+    return sal.end;                      ここで返っている.
+
+  return pc;
+}
+
+一方は期待する動作だが他方はそうでない状況になっている. これは一体?
+
+問題があるのがどのツールかは不明だがひとまず gdb がこのような動作になっている
+ので gdb から調べる必要がある.
+
+test_cr16.001 の hello.elf の場合に cr16_skip_prologue(pc=0x1a6)
+が 0x1b0 を返すのが期待値.
+
+まずは期待通り動作する test_cr16.011 の test011.elf に対して
+cr16_skip_prologue(pc=0x10c) が 0x116 を返すメカニズムを調査する.
+
+symtab.c:3237
+
+      struct linetable_entry *first = item;
+      struct linetable_entry *last = item + len;
+      item = std::upper_bound (first, last, pc, pc_compare);
+      if (item != first)
+
+これは以前調査したことのある内容.
+
+(gdb) p len
+$13 = 7
+(gdb) p/x *(first+0)
+$18 = {line = 0x2, is_stmt = 0x1, pc = 0x10c}
+(gdb) p/x *(first+1)
+$19 = {line = 0x3, is_stmt = 0x1, pc = 0x116}
+(gdb) p/x *(first+2)
+$20 = {line = 0x4, is_stmt = 0x1, pc = 0x11a}
+(gdb) p/x *(first+3)
+$21 = {line = 0x7, is_stmt = 0x1, pc = 0x124}
+(gdb) p/x *(first+4)
+$22 = {line = 0x8, is_stmt = 0x1, pc = 0x132}
+(gdb) p/x *(first+5)
+$23 = {line = 0x9, is_stmt = 0x1, pc = 0x136}
+(gdb) p/x *(first+6)
+$24 = {line = 0x0, is_stmt = 0x1, pc = 0x140}
+(gdb)
+
+0000010c <__isatty>:
+ 10c:	1d 01       	push	$0x2,r13              *(first+0)
+ 10e:	bf 60 fc ff 	addd	$0xfffc:m,(sp)
+ 112:	fd 55       	movd	(sp),(r13)
+ 114:	2d d0       	storw	r2,0x0:s(r13)
+ 116:	10 5a       	movw	$0x1:s,r0             *(first+1)
+ 118:	0d d1       	storw	r0,0x2:s(r13)
+ 11a:	0d 91       	loadw	0x2:s(r13),r0         *(first+2)
+ 11c:	df 55       	movd	(r13),(sp)
+ 11e:	4f 60       	addd	$0x4:s,(sp)
+ 120:	1d 02       	pop	$0x2,r13
+ 122:	ee 0a       	jump	(ra)
+
+
+なるほどなのか. この後ベストマッチを探しておそらく *(first+1) がそれだと判明するから
+0x116 が返るというカラクリだ.
+
+それでは test_cr16.001 の hello.elf の場合に cr16_skip_prologue(pc=0x1a6)
+に対してはどうか?
+
+(gdb) p len
+$25 = 26
+(gdb) p/x *(first+0)
+$26 = {line = 0x5, is_stmt = 0x1, pc = 0x12c}
+(gdb) p/x *(first+1)
+$27 = {line = 0x6, is_stmt = 0x1, pc = 0x138}
+(gdb) p/x *(first+2)
+$28 = {line = 0x7, is_stmt = 0x1, pc = 0x148}
+(gdb) p/x *(first+3)
+$29 = {line = 0x8, is_stmt = 0x1, pc = 0x150}
+(gdb) p/x *(first+4)
+$30 = {line = 0x9, is_stmt = 0x1, pc = 0x154}
+(gdb) p/x *(first+5)
+$31 = {line = 0xc, is_stmt = 0x1, pc = 0x15c}
+(gdb) p/x *(first+6)
+$32 = {line = 0xf, is_stmt = 0x1, pc = 0x166}
+(gdb) p/x *(first+7)
+$33 = {line = 0xf, is_stmt = 0x1, pc = 0x16e}
+(gdb) p/x *(first+8)
+$34 = {line = 0x10, is_stmt = 0x1, pc = 0x178}
+(gdb) p/x *(first+9)
+$35 = {line = 0x11, is_stmt = 0x1, pc = 0x188}
+(gdb) p/x *(first+10)
+$36 = {line = 0x12, is_stmt = 0x1, pc = 0x18a}
+(gdb) p/x *(first+11)
+$37 = {line = 0x15, is_stmt = 0x1, pc = 0x194}
+(gdb) p/x *(first+12)
+$38 = {line = 0x16, is_stmt = 0x1, pc = 0x19e}
+(gdb) p/x *(first+13)
+$39 = {line = 0x19, is_stmt = 0x1, pc = 0x1a8}
+(gdb) p/x *(first+14)
+$40 = {line = 0x1a, is_stmt = 0x1, pc = 0x1b2}
+(gdb) p/x *(first+15)
+$41 = {line = 0x1b, is_stmt = 0x1, pc = 0x1b6}
+(gdb) p/x *(first+16)
+$42 = {line = 0x1e, is_stmt = 0x1, pc = 0x1c0}
+(gdb) p/x *(first+17)
+$43 = {line = 0x1f, is_stmt = 0x1, pc = 0x1ce}
+(gdb) p/x *(first+18)
+$44 = {line = 0x20, is_stmt = 0x1, pc = 0x1d2}
+(gdb) p/x *(first+19)
+$45 = {line = 0x22, is_stmt = 0x1, pc = 0x1dc}
+(gdb) p/x *(first+20)
+$46 = {line = 0x22, is_stmt = 0x1, pc = 0x1e0}
+(gdb) p/x *(first+21)
+$47 = {line = 0x24, is_stmt = 0x1, pc = 0x1e8}
+(gdb) p/x *(first+22)
+$48 = {line = 0x24, is_stmt = 0x1, pc = 0x1ec}
+(gdb) p/x *(first+23)
+$49 = {line = 0x25, is_stmt = 0x1, pc = 0x1f4}
+(gdb) p/x *(first+24)
+$50 = {line = 0x25, is_stmt = 0x1, pc = 0x1f8}
+(gdb) p/x *(first+25)
+$51 = {line = 0x0, is_stmt = 0x1, pc = 0x200}
+(gdb) 
+
+hello.elf の場合 dummy.c に複数の函数を書いているからこのようになる. 問題は
+この 3 つ
+(gdb) p/x *(first+13)
+$39 = {line = 0x19, is_stmt = 0x1, pc = 0x1a8}
+(gdb) p/x *(first+14)
+$40 = {line = 0x1a, is_stmt = 0x1, pc = 0x1b2}
+(gdb) p/x *(first+15)
+$41 = {line = 0x1b, is_stmt = 0x1, pc = 0x1b6}
+
+(first+13)->pc の期待値が 0x1a6 なのだが 0x1a8 になっているのでこのようになる.
+
+000001a6 <__isatty>:
+     1a6:	1d 01       	push	$0x2,r13
+     1a8:	bf 60 fc ff 	addd	$0xfffc:m,(sp)           *(first+13)
+     1ac:	fd 55       	movd	(sp),(r13)
+     1ae:	2d d0       	storw	r2,0x0:s(r13)
+     1b0:	00 5a       	movw	$0x0:s,r0
+     1b2:	0d d1       	storw	r0,0x2:s(r13)            *(first+14)
+     1b4:	0d 91       	loadw	0x2:s(r13),r0
+     1b6:	df 55       	movd	(r13),(sp)               *(first+15)
+     1b8:	4f 60       	addd	$0x4:s,(sp)
+     1ba:	1d 02       	pop	$0x2,r13
+     1bc:	ee 0a       	jump	(ra)
+
+(first+14) や (first+15) もそういう意味では違っているのだが, おそらく (first+13)
+がずれたからというのが自然な理由. まずは *(first+13) がなぜ push 命令を指していないのか
+を調査するべき.
