@@ -24,5 +24,50 @@ $7 = 0
 $8 = 6
 (gdb)
 
-のようになっている. しかしこの時点ではこれ以上調査することは難しかったので中断.
+のようになっている.
+
+(gdb) b dwarf2cfi.c:1189
+(gdb) run -quiet a.c -quiet -dumpbase a.c -auxbase a -o a.s -g
+...
+(gdb) up
+#1  0x0831a3c9 in dwarf2out_frame_debug (insn=0xb785e5c4) at ../.././gcc/dwarf2cfi.c:2098
+(gdb) p debug_insn_slim(insn)
+   27: {r6:SI=[r0:SI];r0:SI=r0:SI+0x4;}
+      REG_CFA_RESTORE r6:SI
+      REG_CFA_ADJUST_CFA r0:SI=r0:SI+0x4
+$1 = void
+(gdb) 
+
+これはエピローグの部分で debug_frame を出そうとしているらしい.
+
+gcc-10.2.0.rx-elf/gcc/config/rx/rx.c
+
+void
+rx_expand_epilogue (bool is_sibcall)
+{
+...
+
+
+(gdb) b rx_expand_epilogue
+(gdb) run
+...
+
+
+static void
+add_pop_cfi_notes (rtx_insn *insn, unsigned int high, unsigned int low)
+{
+  rtx t = plus_constant (Pmode, stack_pointer_rtx,
+                        (high - low + 1) * UNITS_PER_WORD);
+  t = gen_rtx_SET (stack_pointer_rtx, t);
+  add_reg_note (insn, REG_CFA_ADJUST_CFA, t);
+  RTX_FRAME_RELATED_P (insn) = 1;                      これ
+
+函数名から察すると意図的にやっているのは間違いないが, これが原因.
+この修正パッチを rx.diff としてアップロードしておいた.
+
+この修正には fprintf の long が期待される引数に long long が指定されている修正も
+含まれている.
+
+
+
 

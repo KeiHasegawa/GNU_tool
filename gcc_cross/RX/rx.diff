@@ -1,0 +1,31 @@
+*** gcc-10.2.0.aarch64-elf/gcc/config/rx/rx.c	2020-07-23 15:35:17.000000000 +0900
+--- gcc-10.2.0.rx-elf/gcc/config/rx/rx.c	2021-08-01 11:35:36.000000000 +0900
+***************
+*** 772,778 ****
+  	      offset = INTVAL (displacement);
+  	      gcc_assert (offset >= 0);
+  
+! 	      fprintf (file, "%ld", offset);
+  	    }
+  	  else
+  	    gcc_unreachable ();
+--- 772,778 ----
+  	      offset = INTVAL (displacement);
+  	      gcc_assert (offset >= 0);
+  
+! 	      fprintf (file, "%ld", (long)offset);
+  	    }
+  	  else
+  	    gcc_unreachable ();
+***************
+*** 1650,1656 ****
+--- 1650,1658 ----
+                          (high - low + 1) * UNITS_PER_WORD);
+    t = gen_rtx_SET (stack_pointer_rtx, t);
+    add_reg_note (insn, REG_CFA_ADJUST_CFA, t);
++ #if 0  
+    RTX_FRAME_RELATED_P (insn) = 1;
++ #endif  
+    for (unsigned int i = low; i <= high; i++)
+      add_reg_note (insn, REG_CFA_RESTORE, gen_rtx_REG (word_mode, i));
+  }
