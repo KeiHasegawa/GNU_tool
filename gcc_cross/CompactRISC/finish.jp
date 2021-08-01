@@ -1,0 +1,160 @@
+cr16-elf-gdb の finish コマンド
+
+cr16-elf-gcc の debug_frame を修正した. このもとで以下を試してみた.
+
+% cat finish.com
+b dwarf2/frame.c:1071
+command
+silent
+p/x cache->cfa
+p/x cache->cfa + fs.regs.cfa_offset
+c
+end
+cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_cr16.007
+run -q -x x test007.elf
+quit
+% gdb ./gdb -q -x finish.com
+
+この結果
+
+ $1 = 0xff4  $2 = 0x1000
+ $3 = 0xff4  $4 = 0xff4
+ $5 = 0xff4  $6 = 0x1000
+ $7 = 0xfe8  $8 = 0xff4
+ $9 = 0xff4 $10 = 0x1000
+$11 = 0xfe8 $12 = 0xff4
+$13 = 0xff4 $14 = 0x1000
+
+のようになっている. $15 以降がきていないが相当正解に近付いている.
+
+ここで finish コマンドが停止しない理由を調べてみる.
+
+0000012c <_main>:
+...
+ 138:	ff c0 d5 ff 	bal	(ra),*-0x10c <_f>:m
+ 13c:	0d d0       	storw	r0,0x0:s(r13)
+
+期待する動作は finish コマンドの後 0x13c 番地で sim_engine_halt が
+呼び出されその後は sim_resume により実行が再開されないことである.
+
+まずは sim_engine_halt が期待したように呼び出されていることを確認する.
+
+(gdb) b sim_engine_halt
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_cr16.007
+(gdb) run -q -x x test007.elf
+...
+Thread 1 "gdb" hit Breakpoint 1, sim_engine_halt (sd=0x8d47f70, last_cpu=0x8d48338, next_cpu=0x0, cia=308, reason=sim_stopped, sigrc=66) at ./../common/sim-engine.c:62
+(gdb) p/x cia
+$1 = 0x134
+(gdb) c
+Continuing.
+
+Breakpoint 1, main () at test007.c:8
+8	  return f(5, 6);
+
+Thread 1 "gdb" hit Breakpoint 1, sim_engine_halt (sd=0x8d47f70, last_cpu=0x0, next_cpu=0x0, cia=0, reason=sim_stopped, sigrc=66) at ./../common/sim-engine.c:62
+(gdb) 
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 1, sim_engine_halt (sd=0x8d47f70, last_cpu=0x0, next_cpu=0x0, cia=0, reason=sim_stopped, sigrc=66) at ./../common/sim-engine.c:62
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 1, sim_engine_halt (sd=0x8d47f70, last_cpu=0x0, next_cpu=0x0, cia=0, reason=sim_stopped, sigrc=66) at ./../common/sim-engine.c:62
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 1, sim_engine_halt (sd=0x8d47f70, last_cpu=0x8d48338, next_cpu=0x0, cia=280, reason=sim_stopped, sigrc=66) at ./../common/sim-engine.c:62
+(gdb) p/x cia
+$2 = 0x118
+(gdb) c
+Continuing.
+f (a=5, b=6) at test007.c:3
+3	  return a + b;  C-c C-c
+
+Thread 1 "gdb" received signal SIGINT, Interrupt.
+0x084b2a8a in lookup_hash (sd=0x8d47f70, cpu=0x8d48338, ins=18702527, size=1) at interp.c:95
+(gdb) 
+
+呼び出されていない. ということは自分が想像していたよりも前に予期しない動作になっている.
+
+(gdb) delete
+(gdb) b finish_command
+(gdb) command
+>b sim_engine_halt
+>c
+>end
+(gdb) run
+
+sim_engine_halt のブレークポイントにヒットしないことを確認した.
+
+finish コマンドで 0x13c 番地に内部ブレークポイントをセットするはずであるからこれを確認する.
+
+(gdb) delete
+(gdb) b finish_command
+(gdb) command
+>b sim_write
+>c
+>end
+(gdb) run
+...
+Thread 1 "gdb" hit Breakpoint 2, sim_write (sd=0x8d47f70, mem=308, buf=0x8bc28f0 <cr16_from_kind(gdbarch*, int, int*)::break_inst> <incomplete sequence \310>, length=2) at ./../common/sim-hrw.c:37
+(gdb) p/x mem
+$1 = 0x134
+(gdb) c
+...
+Thread 1 "gdb" hit Breakpoint 2, sim_write (sd=0x8d47f70, mem=316, buf=0x8bc28f0 <cr16_from_kind(gdbarch*, int, int*)::break_inst> <incomplete sequence \310>, length=2) at ./../common/sim-hrw.c:37
+(gdb) p/x mem
+$2 = 0x13c
+(gdb) 
+
+ということは 0x13c にはブレーク命令が書き込まれている. ここまでは期待した動作.
+
+(gdb) b sim_resume
+(gdb) c
+...
+Thread 1 "gdb" hit Breakpoint 3, sim_resume (sd=0x8d47f70, step=0, siggnal=0) at ./../common/sim-resume.c:41
+(gdb)
+
+これから数命令後 0x13c を実行するがそのときに sim_engine_halt がなぜ呼び出されないのか
+を確認する.
+
+0x13c を実行したとき通常のブレークポイントと少し異なるオペコードを実行していたことが判明した.
+
+しかしそもそも cr16-tdep.c は自分が作成したしいつも固定のブレーク命令
+を返すようにしていた:
+
+static const unsigned char* cr16_from_kind(gdbarch*, int, int* size)
+{
+  static unsigned char break_inst[] = { 0xc8, 0x00 };
+  *size = sizeof break_inst;
+  return &break_inst[0];
+}
+
+
+
+   switch (FUNC) {
+
+=>
+
+   switch (State.regs[(0)]) {
+
+これに問題があったらしい. r0 レジスタの内容でシステムコールを発行するような動作をしていたのだが
+r0 がたまたま 11 だったのでブレーク命令にはなっていなかったということ.
+
+以下のように修正した:
+
+#if 0	
+	switch (FUNC)
+#else
+	switch (7777)
+#endif	  
+	  {
+この修正はシミュレータを作った人の意図に反するかもしれないがこれでブレーク命令が他の用途に使用
+されることがなくなる.
+
+この修正を入れれば
+
+cr16_return_value
+
+が呼び出されるようになる.
