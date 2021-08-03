@@ -1,0 +1,258 @@
+cr16-elf-ld の修正
+
+% cat a.c
+char* _sbrk_r(int size)
+{
+  extern char heap;
+  static int delta;
+  char* ret = &heap + delta;
+  delta += size;
+  return ret;
+}
+% cr16-elf-gcc -o a.o -c -g a.c
+% ./ld-new -o a.elf a.o --defsym _heap=0x1000
+% cr16-elf-objdump --dwarf=decodedline -d a.elf > a.objdump
+
+a.objdump の抜粋
+
+
+a.c                                            5                0x16       2       x
+a.c                                            6                0x20       3    
+
+   e:	12 00 04 f0 	loadw	0x400000 <__DATA_END>:l,r0
+  12:	00 00 
+  14:	00 5e       	movxw	r0,(r1,r0)
+  16:	20 05 00 10 	movd	$0x1000:m,(r3,r2)
+  1a:	20 61       	addd	(r3,r2),(r1,r0)
+  1c:	0d e0       	stord	(r1,r0),0x0:s(r13)
+  1e:	12 00 14 f0 	loadw	0x400000 <__DATA_END>:l,r1
+  22:	00 00 
+
+再現している.
+
+(gdb) run -o a.elf a.o --defsym _heap=0x1000
+
+gdb から実行しても再現していることを確認した.
+
+.text セクションを読み込んで
+
+	movd	$_heap@l, (r3,r2)
+
+で _heap を 0x1000 にシンボル解決する部分を調査する. そこで 6 バイトの命令を
+4 バイトにしているはず.
+
+普通に考えれば .text セクションを読み込んでシンボル解決後, そのバイトを修正しているはず
+だからまずは .text セクションを読み込んでいるところを確認する.
+
+section.c:1523
+
+  if (BFD_SEND (abfd, _bfd_set_section_contents,
+		(abfd, section, location, offset, count)))
+    {
+
+これは以前も見た.
+
+Breakpoint 3, bfd_set_section_contents (abfd=0x818f200, section=0x8190488, location=0x81c13b8, offset=0, count=52) at section.c:1523
+(gdb) p section->name
+$9 = 0x818b520 ".text"
+(gdb) x/52bx location
+0x81ca3b8:	0x1d	0x01	0xbf	0x60	0xf8	0xff	0xfd	0x55
+0x81ca3c0:	0x2d	0xd2	0x12	0x00	0x04	0xf0	0x00	0x00
+0x81ca3c8:	0x00	0x5e	0x20	0x05	0x00	0x10	0x20	0x61
+0x81ca3d0:	0x0d	0xe0	0x12	0x00	0x14	0xf0	0x00	0x00
+0x81ca3d8:	0x0d	0x92	0x10	0x33	0x13	0x00	0x04	0xf0
+0x81ca3e0:	0x00	0x00	0x0d	0xa0	0xdf	0x55	0x8f	0x60
+0x81ca3e8:	0x1d	0x02	0xee	0x0a
+(gdb)
+
+a.objdump の抜粋
+
+16:	20 05 00 10 	movd	$0x1000:m,(r3,r2)
+
+(gdb) p/x *(char*)(0x81ca3c8+2)
+$11 = 0x20
+(gdb) p/x *(char*)(0x81ca3c8+3)
+$12 = 0x5
+(gdb) p/x *(char*)(0x81ca3c8+4)
+$13 = 0x0
+(gdb) p/x *(char*)(0x81ca3c8+5)
+$14 = 0x10
+(gdb) watch *(int*)(0x81ca3c8+2)
+(gdb) watch *(int*)(0x81ca3c8+6)
+(gdb) run
+...
+(gdb) x/10bx 0x81ca3c8+2
+0x81ca3ca:	0x72	0x00	0x00	0x00	0x00	0x00	0x20	0x61
+0x81ca3d2:	0x0d	0xe0
+(gdb)
+
+ここはアセンブラの .text セクションを読み込んだところ.
+
+
+  12:	72 00 00 00 	movd	$0x0:l,(r3,r2)
+  16:	00 00 
+  18:	20 61       	addd	(r3,r2),(r1,r0)
+
+以下の部分で検出:
+
+(gdb) x/10bx 0x81ca3c8+2
+0x81ca3ca:	0x20	0x05	0x00	0x00	0x20	0x61	0x20	0x61
+0x81ca3d2:	0x0d	0xe0
+(gdb) 
+
+binutils-2.36.1.cr16-elf/bfd/elf32-cr16.c:1948
+
+		  /* Fix the opcode.  */
+		  if ((code & 0xfff0) == 0x0070) /* For movd.  */
+		    bfd_put_8 (abfd, 0x05, contents + irel->r_offset + 1);
+		  else				 /* code == 0x0020 for addd.  */
+		    bfd_put_8 (abfd, 0x04, contents + irel->r_offset + 1);
+
+		  bfd_put_8 (abfd, (code & 0xf) << 4, contents + irel->r_offset);
+
+		  /* If existing value is nagavive adjust approriately
+		     place the 16-20bits (ie 4 bit) in new opcode,
+		     as the 0xffffxxxx, the higher 2 byte values removed. */
+		  if (value1 & 0x80000000)
+		    bfd_put_8 (abfd,
+			       (0x0f | (bfd_get_8 (abfd,
+						   contents + irel->r_offset))),
+			       contents + irel->r_offset);
+		  else
+		    bfd_put_8 (abfd,
+			       (((value1 >> 16) & 0xf)
+				| (bfd_get_8 (abfd,
+					      contents + irel->r_offset))),
+			       contents + irel->r_offset);
+
+		  /* Fix the relocation's type.  */
+		  irel->r_info = ELF32_R_INFO (ELF32_R_SYM (irel->r_info),
+					       R_CR16_IMM20);
+
+		  /* Delete two bytes of data.  */
+		  if (!elf32_cr16_relax_delete_bytes (link_info, abfd, sec,
+						      irel->r_offset + 2, 2))
+		    goto error_return;
+
+なるほど. 最後の部分が切り詰めているところなわけだ.
+
+一方 debug_line セクションはどうなっているか.
+
+Breakpoint 3, bfd_set_section_contents (abfd=0x8198200, section=0x8199ec4, location=0x81d4a60, offset=0, count=90) at section.c:1523
+(gdb) p section->name
+$31 = 0x8196498 ".debug_line"
+(gdb) x/90bx location
+0x81d4a60:	0x56	0x00	0x00	0x00	0x03	0x00	0x1a	0x00
+0x81d4a68:	0x00	0x00	0x02	0x01	0xfb	0x0e	0x0d	0x00
+0x81d4a70:	0x01	0x01	0x01	0x01	0x00	0x00	0x00	0x01
+0x81d4a78:	0x00	0x00	0x01	0x00	0x61	0x2e	0x63	0x00
+0x81d4a80:	0x00	0x00	0x00	0x00	0x05	0x01	0x00	0x05
+0x81d4a88:	0x02	0x04	0x00	0x00	0x00	0x13	0x05	0x15
+0x81d4a90:	0x03	0x03	0x09	0x0a	0x00	0x01	0x05	0x09
+0x81d4a98:	0x03	0x00	0x09	0x08	0x00	0x01	0x03	0x01
+0x81d4aa0:	0x09	0x0a	0x00	0x01	0x05	0x0a	0x03	0x01
+0x81d4aa8:	0x09	0x10	0x00	0x01	0x05	0x01	0x03	0x01
+0x81d4ab0:	0x09	0x02	0x00	0x01	0x09	0x08	0x00	0x00
+0x81d4ab8:	0x01	0x01
+(gdb) p *(char*)(0x81d4a90+3)
+$32 = 10 '\n'
+(gdb) set *(char*)(0x81d4a90+3)=8
+(gdb) c
+Continuing.
+[Inferior 1 (process 8130) exited normally]
+(gdb)
+
+a.objdump の抜粋
+
+a.c                                            6                0x1e       3       x
+...
+  1e:	12 00 14 f0 	loadw	0x400000 <__DATA_END>:l,r1
+  22:	00 00 
+
+できている.
+
+つまり問題の切り詰める状況が発生した場合 .debug_line セクションの問題の箇所を
+10 -> 8 に修正すれば辻褄が合うということである.
+
+
+.debug_line セクションはここで読み込まれている.
+
+      if (!bfd_get_section_contents (abfd, sec, p, 0, sz))
+
+そして問題の 10 はすでにアセンブル時に決定されている.
+
+そこで修正方針だが elf32_cr16_relax_delete_bytes が呼び出されたとき
+そのときの bfd_section* sec, bfd_vma addr, int count を記録しておいて
+後で .debug_line セクションを読み込んだときに調整するということにする.
+
+
+binutils-2.36.1.cr16-elf/bfd/elf32-cr16.c
+
++void record_delete(asection*, bfd_vma, int);
+
+static bfd_boolean
+elf32_cr16_relax_delete_bytes (struct bfd_link_info *link_info, bfd *abfd,
+			       asection *sec, bfd_vma addr, int count)
+{
+...
++ record_delete(sec, addr, count);
+
+
++void modify_deleted(bfd*, asection*);
+
+static bfd_boolean
+elf32_cr16_relax_section (bfd *abfd, asection *sec,
+			  struct bfd_link_info *link_info, bfd_boolean *again)
+{
+...
++ if (strcmp(sec->name,".debug_line")==0)
++   modify_deleted(abfd, sec);
+  /* We don't have to do anything for a relocatable link, if
+     this section does not have relocs, or if this is not a
+     code section.  */
+  if (bfd_link_relocatable (link_info)
+      || (sec->flags & SEC_RELOC) == 0
+      || sec->reloc_count == 0
+      || (sec->flags & SEC_CODE) == 0)
+    return TRUE;
+
+
+そして record_delete, modify_deleted は新規のファイル cr16_delete.cpp に定義した:
+
+#include "config.h"
+#include "bfd.h"
+
+extern "C" void record_delete(bfd_section* code, bfd_vma addr, int count)
+{
+...
+
+extern "C" void modify_deleted(bfd* abfd, bfd_section* debug_line)
+{
+...
+
+Makefile を以下のように修正した:
+
+bfd_backends =  elf32-cr16.lo cr16_delete.lo elf32.lo elf.lo elflink.lo elf-attrs.lo elf-strtab.lo elf-eh-frame.lo dwarf1.lo dwarf2.lo elf32-gen.lo plugin.lo
+...
+	elf32-cr16.lo \
+	cr16_delete.lo \
+...
+	elf32-cr16.c \
+	cr16_delete.c \
+...
+BFD_BACKENDS =  elf32-cr16.lo cr16_delete.lo elf32.lo elf.lo elflink.lo elf-attrs.lo elf-strtab.lo elf-eh-frame.lo dwarf1.lo dwarf2.lo elf32-gen.lo plugin.lo
+...
+
+cr16_delete.lo:cr16_delete.cpp
+	/bin/sh ./libtool  --tag=CC   --mode=compile gcc -DHAVE_CONFIG_H -I.  -DBINDIR='"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin"' -DLIBDIR='"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib"' -I. -I. -I./../include  -DHAVE_cr16_elf32_vec -DHAVE_elf32_le_vec -DHAVE_elf32_be_vec   -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g3 -O0 -MT cr16_delete.lo -MD -MP -MF .deps/cr16_delete.Tpo -c -o cr16_delete.lo -DDEFAULT_VECTOR=cr16_elf32_vec -DSELECT_VECS='&cr16_elf32_vec,&elf32_le_vec,&elf32_be_vec' -DSELECT_ARCHITECTURES='&bfd_cr16_arch' ./cr16_delete.cpp
+	mv -f .deps/cr16_delete.Tpo .deps/cr16_delete.Plo
+
+別に Makefile を修正しなくても別の方法で libbfd.a をビルドできれば問題なし.
+
+elf32-cr16.c の修正部分を elf32-cr16.diff として
+cr16_delete.cpp についてはそのままこのページにアップロードした.
+
+この修正を行なうことでプロローグが適切に進められることを確認したが, 別のバグが
+明かになっている.
+
+

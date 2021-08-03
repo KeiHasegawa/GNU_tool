@@ -1,0 +1,47 @@
+*** binutils-2.36.1.aarch64-elf/bfd/elf32-cr16.c	2021-01-09 19:47:33.000000000 +0900
+--- binutils-2.36.1.cr16-elf/bfd/elf32-cr16.c	2021-08-03 14:17:09.000000000 +0900
+***************
+*** 1204,1209 ****
+--- 1204,1211 ----
+    return bfd_reloc_ok;
+  }
+  
++ void record_delete(asection*, bfd_vma, int);
++ 
+  /* Delete some bytes from a section while relaxing.  */
+  
+  static bfd_boolean
+***************
+*** 1222,1227 ****
+--- 1224,1231 ----
+    struct elf_link_hash_entry **start_hashes;
+    unsigned int symcount;
+  
++   record_delete(sec, addr, count);
++ 
+    sec_shndx = _bfd_elf_section_from_bfd_section (abfd, sec);
+  
+    contents = elf_section_data (sec)->this_hdr.contents;
+***************
+*** 1333,1338 ****
+--- 1337,1344 ----
+    return TRUE;
+  }
+  
++ void modify_deleted(bfd*, bfd_byte*);
++ 
+  /* Relocate a CR16 ELF section.  */
+  
+  static bfd_boolean
+***************
+*** 1346,1351 ****
+--- 1352,1360 ----
+    struct elf_link_hash_entry **sym_hashes;
+    Elf_Internal_Rela *rel, *relend;
+  
++   if (strcmp(input_section->name,".debug_line")==0)
++     modify_deleted(input_bfd, contents);
++ 
+    symtab_hdr = &elf_tdata (input_bfd)->symtab_hdr;
+    sym_hashes = elf_sym_hashes (input_bfd);
+  
