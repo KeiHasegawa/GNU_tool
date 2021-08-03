@@ -47,8 +47,8 @@ read_debug_line(bfd* abfd, bfd_byte* p, int opc_base, int* addr)
   auto code = *p++;
   switch (code) {
   case 1: return p;    // Opcode 1 has 0 args
-  case 2: return p+1;  //  Opcode 2 has 1 arg
-  case 3:      // Opcode 3 has 1 arg
+  case 2: return p+1;  // Opcode 2 has 1 arg
+  case 3:              // Opcode 3 has 1 arg
     {
       /* Advance Line by */
       auto line = bfd_get_8(abfd, p); p += 1;
@@ -56,7 +56,7 @@ read_debug_line(bfd* abfd, bfd_byte* p, int opc_base, int* addr)
       return p;
     }
   case 4: return p+1;  // Opcode 4 has 1 arg
-  case 5: // Opcode 5 has 1 arg
+  case 5:              // Opcode 5 has 1 arg
     {
       /* Set column to */
       auto column = bfd_get_8(abfd, p); p += 1;
@@ -66,7 +66,7 @@ read_debug_line(bfd* abfd, bfd_byte* p, int opc_base, int* addr)
   case 6: return p; // Opcode 6 has 0 args
   case 7: return p; // Opcode 7 has 0 args
   case 8: return p; // Opcode 8 has 0 args
-  case 9:  // Opcode 9 has 1 arg
+  case 9:           // Opcode 9 has 1 arg
     {
       /* Advance PC by fixed size amount */
       auto amount = bfd_get_8(abfd,p);
@@ -78,8 +78,8 @@ read_debug_line(bfd* abfd, bfd_byte* p, int opc_base, int* addr)
       *addr += amount;
       return p;
     }
-  case 10: return p; // Opcode 10 has 0 args
-  case 11: return p; // Opcode 11 has 0 args
+  case 10: return p;   // Opcode 10 has 0 args
+  case 11: return p;   // Opcode 11 has 0 args
   case 12: return p+1; // Opcode 12 has 1 arg
   case 0:
     {
@@ -96,15 +96,18 @@ read_debug_line(bfd* abfd, bfd_byte* p, int opc_base, int* addr)
       case 2:
 	{      
 	  /* Set address */
-	  assert(narg == 5);
-	  *addr = bfd_get_32(abfd, p); p += 4;
+	  auto tmp = bfd_get_32(abfd, p);
+	  p += narg;
+	  *addr = tmp;
 	  return p;
 	}
       case 3:
 	{
-	  /* Copy view */
+	  /* Copy view `x' */
 	  assert(narg == 1);
-	  return p + 1;
+	  auto x = bfd_get_8(abfd, p); p += 1;
+	  (void)x;
+	  return p;
 	}
       default:
 	{
@@ -115,16 +118,11 @@ read_debug_line(bfd* abfd, bfd_byte* p, int opc_base, int* addr)
     }
   default:
     {
-      int special = code - opc_base;
-      switch (special) {
-      case 6:
-	// Special opcode 6: advance Address by 0 to 0x0 and Line by 1 to 2
-	return p;
-      default:
-	assert(special == 7);
-	// Special opcode 7: advance Address by 0 to 0x0 and Line by 2 to 3
-	return p;
-      }
+      int x = code - opc_base;
+      // Special opcode `x': advance Address by 0 to 0x0 and Line by `y' to 'z'
+      // where, `y' is equal to `x' - 1
+      (void)x;
+      return p;
     }
   }
 }
@@ -156,10 +154,32 @@ extern "C" void modify_deleted(bfd* abfd, bfd_byte* buf)
     narg[i] = bfd_get_8(abfd, buf); buf += 1;
   }
   (void)narg;
-  auto dir = bfd_get_8(abfd, buf); buf += 1;
-  (void)dir;
+  char* dir = 0;
+  for ( ; bfd_get_8(abfd, buf) ; ++buf) {
+    dir = (char*)buf;
+    while(*buf++)
+      ;
+    (void)dir;
+  }
+  if (dir) {
+    while (!*++buf)
+      ;
+  }
+  else
+    ++buf;
   char* fn = (char*)buf; while(*buf++);
   (void)fn;
+  while (buf < line_stmt) {
+    while (!*++buf)
+      ;
+    if (buf >= line_stmt)
+      break;
+    char* other = (char*)buf;
+    while(*buf++)
+      ;
+    (void)other;
+  }
+
   int addr = 0xbadbeef;
   while (line_stmt < end)
     line_stmt = read_debug_line(abfd, line_stmt, opc_base, &addr);
