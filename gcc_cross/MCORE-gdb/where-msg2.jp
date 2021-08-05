@@ -1,0 +1,130 @@
+mcore-elf-gdb の where コマンド
+
+pru-elf-gdb の where コマンドと同様に
+
+#0  f (a=5, b=6) at test008.c:3
+#1  0x00000140 in main () at test008.c:8
+Backtrace stopped: frame did not save the PC
+
+上のようなエラーメッセージらしきものが表示されるのが期待しない動作なのでこのメッセージ
+が何故表示されるのかを調査する. しかしここで気付いたがメッセージの内容が少し異なっている
+pru-elf-gdb では
+
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+
+であった.
+
+pru-elf-gdb の where コマンドでは mcore_dbg_reg_to_regno に相当する
+函数の修正でこのエラーメッセージが表示されなくなったことは事実だが全く釈然とはしていない.
+詳しくは「PRU の gdb」=>「where コマンド」を参照.
+
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_mcore.008
+(gdb) run -q -x y test008.elf
+
+で再現している.
+メッセージが出る直接の原因は判明していて
+
+(gdb) b stack.c:2112
+(gdb) run
+
+	  reason = get_frame_unwind_stop_reason (trailing);
+	  if (reason >= UNWIND_FIRST_ERROR)
+	    printf_filtered (_("Backtrace stopped: %s\n"),
+			     frame_stop_reason_string (trailing));
+
+やはり上の部分が実行されている.
+
+reson = UNWIND_NO_SAVED_PC
+
+になっていた.
+
+(gdb) delete
+(gdb) b mcore_frame_this_id
+(gdb) run
+...
+
+やはり mcore_frame_this_id はこのコマンドの動作には関係ない.
+
+(gdb) delete
+(gdb) b backtrace_command
+(gdb) run
+...
+(gdb) b mcore_dbg_reg_to_regno
+(gdb) c
+...
+
+
+mcore_db_reg_to_regno は引数 regno が
+15
+0
+8
+0, 1, ..., 15, 16, 17, 18, 19, 20
+15
+8
+8
+
+のように呼び出されている. MCORE では
+
+r0  : スタックポインタ
+r8  : フレームポインタ
+r15 : リンクレジスタ
+
+である. 問題は 16, ..., 20 に対して問い合わせがあるということ.
+
+gcc-10.2.0.mcore-elf/gcc/config/mcore/mcore.{c,h,md}
+
+に何かヒントがあるのかもしれないが, 全く根拠のない推測なのでやめておこう.
+さて pru-elf-gdb と同様にまずは
+
+reason = UNWIND_NO_SAVED_PC
+
+になる原因を調査してみる.
+
+(gdb) delete
+(gdb) b stack.c:2112
+(gdb) run
+
+
+      if ((lval == lval_memory && lval == nlval && addr == naddr)
+	  || (lval == lval_register && lval == nlval && realnum == nrealnum))
+	{
+
+
+この条件が成立していた. そして今思い出したがこれは以前調査したことだった.
+いずれにしても pru-elf-gdb で調査した状況とは異なっている.
+
+そして改めて以前の調査結果を見たが H8 との比較を行なっている. H8 はスタックに
+戻りアドレスを保存しているので lval = lval_memory が期待値で
+問題なし.
+
+一方 MCORE だがリンクレジスタを持っている. なので H8 と比較するよりも例えば
+PRU と比較したほうがよい.
+
+PRU では lval = not_lval になっていた.
+
+そして pru-elf-gdb に続き今回も論理の逸脱だが以下の修正を入れてみたら期待通り
+動作している.
+
+#if 1
+static value*
+mcore_dwarf2_prev_register(frame_info* frame, void**, int regno)
+{
+...
+
+static void
+mcore_dwarf2_frame_init_reg(gdbarch*, int regno,
+			    dwarf2_frame_state_reg *reg, frame_info*)
+{
+...
+#endif
+
+
+
+static struct gdbarch* mcore_gdbarch_init(gdbarch_info info, gdbarch_list*)
+{
+...
+#if 1
+  dwarf2_frame_set_init_reg(gdbarch, mcore_dwarf2_frame_init_reg);
+#endif
+
+この時点での mcore-tdep.c を mcore-tdep.c.004 としてアップロードしておいた.

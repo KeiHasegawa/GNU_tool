@@ -1,0 +1,26 @@
+Omitted precisely, I found that the below fix is necessary for `where'
+command to work:
+
+#if 1
+static value*
+mcore_dwarf2_prev_register(frame_info* frame, void**, int regno)
+{
+...
+
+static void
+mcore_dwarf2_frame_init_reg(gdbarch*, int regno,
+			    dwarf2_frame_state_reg *reg, frame_info*)
+{
+...
+#endif
+
+
+
+static struct gdbarch* mcore_gdbarch_init(gdbarch_info info, gdbarch_list*)
+{
+...
+#if 1
+  dwarf2_frame_set_init_reg(gdbarch, mcore_dwarf2_frame_init_reg);
+#endif
+
+I up-loaded mcore-tdep.c at this point as `mcore-tdep.c.004' on this web page.
