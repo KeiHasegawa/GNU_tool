@@ -1,5 +1,7 @@
 #include "config.h"
 #include "bfd.h"
+#include <cstring>
+#include "elf-bfd.h"
 #include <vector>
 #include <iostream>
 #include <cassert>
@@ -9,13 +11,46 @@ struct deleted_info {
   bfd_section* section;
   bfd_vma addr;
   int count;
+  int org;
+  int count2;
 };
 
 std::vector<deleted_info> deleted;
 
+inline int org_len(bfd_byte* contents, bfd_vma addr)
+{
+  auto b1 = contents[addr-1];
+  switch (b1) {
+  case 0x05:     // movd : 6 bytes -> 4 bytes
+  case 0x04:     // addd : 6 bytes -> 4 bytes
+  case 0x56:     // cmpd : 6 bytes -> 4 bytes
+  case 0x18:     // beq, bne, blt, ble, bgt, bge, br : 6 bytes -> 4 bytes
+    return 6;
+  default:
+    assert(b1 == 0x10);
+    // beq, bne, blt, ble, bgt, bge, br : 4 bytes -> 2 bytes
+    return 4;
+  }
+}
+
+inline bool comp(const deleted_info& info, bfd_section* section, bfd_vma addr)
+{
+  return info.section == section && info.addr == addr;
+}
+
 extern "C" void record_delete(bfd_section* section, bfd_vma addr, int count)
 {
-  deleted.push_back(deleted_info{section, addr, count});
+  auto contents = elf_section_data(section)->this_hdr.contents;
+  auto org = org_len(contents, addr);
+  auto p = find_if(begin(deleted), end(deleted),
+		   [section, addr](const deleted_info& info)
+		   { return comp(info, section, addr); });
+  if (p == end(deleted)) {
+    deleted.push_back(deleted_info{section, addr, count, org, 0});
+    return;
+  }
+  p->count += count;
+  p->count2 = count;
 }
 
 inline bool match(const deleted_info& info, bfd* abfd, int addr, int amount)
@@ -24,16 +59,18 @@ inline bool match(const deleted_info& info, bfd* abfd, int addr, int amount)
   auto owner = section->owner;
   if (owner != abfd)
     return false;
-  int x = info.addr - info.count;
-  int y = addr + amount + 6 + info.count;
-  return x == y;
+  int inst_end = info.addr + 2 * (info.count - info.count2);
+  int inst_start = inst_end - info.org;
+  if (inst_start == addr)
+    return true;
+  return addr < inst_start && inst_start < addr + amount;
 }
 
 inline int should_shrink(bfd* abfd, int addr, int amount)
 {
   auto p = find_if(begin(deleted), end(deleted),
-		   [abfd, addr, amount](const deleted_info& info){
-		     return match(info, abfd, addr, amount); });
+		   [abfd, addr, amount](const deleted_info& info)
+		   { return match(info, abfd, addr, amount); });
   if (p == end(deleted))
     return 0;
   int ret = p->count;
@@ -74,7 +111,7 @@ read_debug_line(bfd* abfd, bfd_byte* p, int opc_base, int* addr)
 	amount -= delta;
 	*p = amount;
       }
-       p += 1;
+      p += 1;
       *addr += amount;
       return p;
     }
@@ -179,8 +216,31 @@ extern "C" void modify_deleted(bfd* abfd, bfd_byte* buf)
       ;
     (void)other;
   }
-
   int addr = 0xbadbeef;
   while (line_stmt < end)
     line_stmt = read_debug_line(abfd, line_stmt, opc_base, &addr);
+}
+
+struct check {
+  ~check()
+  {
+    assert(deleted.empty());
+  }
+} check;
+
+void debug(const deleted_info& info)
+{
+  using namespace std;
+  auto sec = info.section;
+  auto owner = sec->owner;
+  cerr << owner->filename << ' ';
+  cerr << hex << "0x" << info.addr << ' ';
+  cerr << dec << info.count << ' ' ;
+  cerr << dec << info.org << ' ' << info.count2 << '\n'; 
+}
+
+void debug()
+{
+  for (const auto& x : deleted)
+    debug(x);
 }
