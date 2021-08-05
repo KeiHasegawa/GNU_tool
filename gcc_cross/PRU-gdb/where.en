@@ -1,0 +1,22 @@
+Omitted precisely, I found that the below fix is necessary for `where'
+command to work:
+
+static int pru_dbg_reg_to_regnum(gdbarch*, int regno)
+{
+  /* Refer gcc-10.2.0.pru-elf/gcc/config/pru/pru.md */
+  if (regno == 132)
+    return 32;
+  if (regno == 16)
+    return 4;
+#if 1                       // Fix like this
+  if (regno == 8)
+    return 2;
+  if (regno == 14)
+    return 3;
+#endif
+  if (56 <= regno && regno < 56 + 16)
+    return 14 + regno - 56;
+  return regno;
+}
+
+I up-loaded pru-tdep.c at this point as `pru-tdep.c.006' on this web page.

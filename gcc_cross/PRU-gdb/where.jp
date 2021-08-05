@@ -1,0 +1,256 @@
+pru-elf-gdb の where コマンド
+
+現状
+
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+
+のような予期しないメッセージが出る.
+また 1 つ前のフレームまでしかたどれていない.
+この状況は mcore-elf-gdb でも同じである.
+
+そして cr16-elf-gdb では再帰呼び出しした函数に対して where コマンドができていないが
+単純な例では 2 つ前のフレームまでたどることができている. 3 つは試してはいない.
+
+最初の目標はこのエラーメッセージが何故出ているかの原因を調査することである.
+
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_pru.016
+(gdb) run -q -x y test016.elf
+...
+Breakpoint 1 at 0x128: file test016.c, line 3.
+
+Breakpoint 1, f (a=5, b=6) at test016.c:3
+3	  return a + b;
+#0  f (a=5, b=6) at test016.c:3
+#1  0x00000168 in main () at test016.c:8
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+...
+
+のように再現させることができる.
+
+このメッセージを素直に解釈すれば
+
+pru_frame_this_id
+
+が 2 つの異なるフレームに対して同じ ID を返したと推測するのは的はずれではないかもしれない.
+なのでここを確認する手はある.
+
+問題のテストプログラム test016.elf だが
+
+スタートアップルーチン
+
+start:                      0x100
+...
+	call	main
+
+
+f:                          0x10c
+...
+
+
+main:                       0x150
+...
+	call	f
+
+のようになっている. だからフレーム ID は以下の 3 つ:
+
+(0x100, 0x1000)
+(0x150, 0x0ffa)
+(0x10c, 0x0ff8)
+
+ここで start ではスタックポインタを 0x1000 にセットし, main ではスタックポインタを
+6 減算し, f では 2 減算している.
+
+さてこれが適切に回答できているか pru_frame_this_id で調べてみる.
+
+(gdb) b pru_frame_this_id
+(gdb) run
+...
+[Inferior 1 (process 14124) exited normally]
+(gdb)
+
+ブレークポイントにヒットすることなく終了した. つまり pru_frame_this_id は全く無関係
+だった.
+だとすれば推測ははずれたから直接原因を調べる必要がある. where コマンドは以下の函数で処理
+されている:
+
+static void
+backtrace_command (const char *arg, int from_tty)
+{
+  frame_print_options fp_opts = user_frame_print_options;
+
+(gdb) delete
+(gdb) b backtrace_command
+(gdb) run
+...
+(gdb) b write
+(gdb) c
+...
+(gdb) c
+...
+(gdb) c
+...
+
+
+何度かブレークポイントにヒットし continue コマンドを実行した結果最初の結果が表示されている:
+
+#0  f (a=5, b=6) at test016.c:3
+
+そしてこれを繰り返して以下が表示されている.
+
+#1  0x00000168 in main () at test016.c:8
+
+(gdb) c
+...
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+
+問題のエラーメッセージらしきものも表示された.
+
+gdb-10.2.pru-elf/gdb/stack.c:2112
+
+      if (fi == NULL && trailing != NULL)
+	{
+	  enum unwind_stop_reason reason;
+
+	  reason = get_frame_unwind_stop_reason (trailing);
+	  if (reason >= UNWIND_FIRST_ERROR)
+	    printf_filtered (_("Backtrace stopped: %s\n"),
+			     frame_stop_reason_string (trailing));
+	}
+
+そういえば思いだしたが, ここは以前 mcore-elf-gdb で調査したところだった.
+
+現状できている cr16-elf-gdb と動作比較を行なってみる.
+
+
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_cr16.010/
+(gdb) run -q -x y test010.elf
+...
+3	  return a + b;
+#0  f (a=5, b=6) at test010.c:3
+#1  0x00000144 in main () at test010.c:8
+A debugging session is active.
+
+できている. そこで以下を確認した.
+
+(gdb) delete
+(gdb) b stack.c:2112
+(gdb) run
+
+cr16-elf-gdb では以下の条件が成立していないが
+
+	  if (reason >= UNWIND_FIRST_ERROR)
+
+pru-elf-gdb では条件が成立しているから, pru-elf-gdb ではメッセージが表示されるという
+現象だということは判明した.
+
+pru-elf-gdb  は reason = UNWIND_SAME_ID
+cr16-elf-gdb は reason = UNWIND_NO_REASON
+
+だった. だとすれば戻り値に何故違いが出るのかを調査することになる.
+以下の函数が呼び出されるところまではどちらも同じ動作 
+
+  return get_prev_frame_if_no_cycle (this_frame);
+
+そしてこの函数が呼び出されるとき
+
+(gdb) p this_frame->stop_reason
+$3 = UNWIND_NO_REASON
+
+これはどちらも同じ. しかし pru-elf-gdb では以下の条件が成立しているのに対して
+cr16-elf-gdb では成立していない. ここで動作の差が出ている.
+
+gdb-10.2.pru-elf/gdb/frame.c:1984
+
+      if (!frame_stash_add (prev_frame))
+
+(gdb) delete
+(gdb) b frame.c:1984
+(gdb) run
+...
+
+2 回このブレークポイントにヒットする. そして 1 回目はどちらも条件が成立しないで
+2 回目に pru-elf-gdb のみ条件が成立する. だから 2 回目になぜ条件が成立するかを確認する.
+
+gdb-10.2.pru-elf/gdb/frame.c:278
+  frame_info **slot = (struct frame_info **) htab_find_slot (frame_stash,
+							     frame, INSERT);
+...
+  if (*slot != nullptr)
+    return false;
+
+ここで false が返るのが pru-elf-gdb で cr16-elf-gdb この後 true が返るのが直接の
+原因. だとすればこの直前の htab_find_slot の呼び出しを調査する必要がある.
+
+(gdb) delete
+(gdb) b frame.c:278
+(gdb) run
+...
+
+pru-elf-gdb も cr16-elf-gdb も 3 回呼び出しがあり 1, 2 回目は true が返されている.
+しかし pru-elf-gdb は 3 回目に false が返っている. cr16-elf-gdb は true が返っている.
+
+gdb-10.2.pru-elf/libiberty/hashtab.c:659
+  else if ((*htab->eq_f) (entry, element))
+    return &htab->entries[index];              pru-elf-gdb はここで返っている.
+                                               cr16-elf-gdb はそうではない.
+
+ということは (*htab->eq_f) (entry, element) の呼び出しで非零が返る原因を
+調査することになる.
+
+(gdb) delete
+(gdb) b hashtab.c:659
+(gdb) run
+...
+
+pru-elf-gdb では 3 回呼び出され 1, 2 回目は零が返るので条件は成立せず. しかし 3 回目に
+非零が返り条件が成立している.
+
+一方 cr16-elf-gdb では
+
+1 回目成立
+2 回目成立せず
+3 回目成立せず
+4 回目成立
+5 回目成立
+
+と動作に大きく違いが出ている.
+
+全く同じことを where コマンドができている aarch64-elf-gdb で確認してみた
+
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_aarch64.015
+(gdb) run -q -x y test015.elf
+
+正常に動作することを確認した.
+
+(gdb) b hashtab.c:659
+(gdb) run
+
+20 回以上ここが呼び出されている, そして成立したり成立しなかったりしている.
+
+さてどうしたものか.
+
+pru-tdep.c の以下の函数を修正してみた.
+
+static int pru_dbg_reg_to_regnum(gdbarch*, int regno)
+{
+  /* Refer gcc-10.2.0.pru-elf/gcc/config/pru/pru.md */
+  if (regno == 132)
+    return 32;
+  if (regno == 16)
+    return 4;
+#if 1                       この if 0 を if 1 に修正した.
+  if (regno == 8)
+    return 2;
+  if (regno == 14)
+    return 3;
+#endif
+  if (56 <= regno && regno < 56 + 16)
+    return 14 + regno - 56;
+  return regno;
+}
+
+すると例のエラーメッセージは表示されなくなった. うーむ. これは論理を逸脱して正解にたどり着いて
+しまった例である.
+この部分の修正はやはり必要だったが理由は釈然とはしていない.
+
+この時点での pru-tdep.c を pru-tdep.c.006 としてこのページにアップロードしておいた.
