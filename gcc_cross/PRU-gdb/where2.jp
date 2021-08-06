@@ -1,0 +1,345 @@
+pru-elf-gdb の where コマンド(その2)
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_pru.016
+% pru-elf-gdb -q -x y test016.elf
+
+これは OK
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_pru.018
+% pru-elf-gdb -q -x x test018.elf
+
+これで
+
+#0  f (a=4, b=5) at test018.c:3
+#1  0x00000190 in g (a=5, b=6) at test018.c:8
+#2  0x00004000 in ?? ()
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+
+のように表示される. まず Backtrace ... のエラーメッセージの前に
+
+#2  0x00004000 in ?? ()
+
+の部分が正しくない.
+
+cr16-elf-gdb や mcore-elf-gdb は現状できている.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_cr16.030
+% cr16-elf-gdb -q -x x test030.elf
+
+#0  f (a=4, b=5) at test030.c:3
+#1  0x0000014a in g (a=5, b=6) at test030.c:8
+#2  0x00000168 in main () at test030.c:13
+
+00000158 <_main>:
+...
+ 164:	ff c0 c9 ff 	bal	(ra),*-0x12c <_g>:m
+ 168:	0d d0       	storw	r0,0x0:s(r13)
+
+0x168 は g の呼び出しの次のアドレスということ.
+
+以下 mcore-elf-gdb でも同じことを調べてみた.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_mcore.011
+% mcore-elf-gdb -q -x x test011.elf
+
+#0  f (a=4, b=5) at test011.c:3
+#1  0x0000014e in g (a=5, b=6) at test011.c:8
+#2  0x0000016a in main () at test011.c:13
+
+0000015c <main>:
+...
+ 168:	7f05      	jsri	0x132	// 132 <g>
+ 16a:	1227      	mov	r7, r2
+
+0x16a は g の呼び出しの次のアドレスということ.
+
+pru-elf-gdb の test018.elf では
+
+00000150 <g>:
+...
+ 18c:	230043c3 	call	10c <f>
+ 190:	1300eee0 	mov	r0, r14
+
+なのでここはできているが
+
+000001a8 <main>:
+...
+ 1bc:	230054c3 	call	150 <g>
+ 1c0:	1300eee0 	mov	r0, r14
+
+なので
+
+#2  0x00004000 in ?? ()
+
+の部分の期待値は
+
+#2  0x000001c0 in main () at test018.c:13
+
+のようになること PRU の場合 r3 がリンクレジスタのような役割をしている
+のだが 14 ビットシフトした値を保持しているところが通常と異なっている.
+CompactRISC の場合も 1 ビットシフトした値を保持していて cr16-elf-gdb
+が期待通り動作しているのだから, これが正しく動作しない決定的な理由には
+ならない. とはいえバグとなる可能性はある.
+
+ともあれなぜ 0x4000 が計算されたかをまずは調査する.
+
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_pru.018
+(gdb) run  -q -x x test018.elf
+...
+再現している.
+
+(gdb) b print_frame_info
+(gdb) run
+...
+(gdb) fin
+(gdb) c
+...
+
+これを繰り返したところ 4 回呼び出された.
+
+1 回目
+
+Breakpoint 1, f (a=4, b=5) at test018.c:3
+
+2 回目
+
+#0  f (a=4, b=5) at test018.c:3
+
+3 回目
+
+#1  0x00000190 in g (a=5, b=6) at test018.c:8
+
+4 回目
+
+#2  0x00004000 in ?? ()
+
+のようになっている. だから 4 回目でなぜ 0x4000 が計算されるかを確認す
+る.
+
+  if (location_print || !sal.symtab)
+    print_frame (fp_opts, frame, print_level, print_what, print_args, sal);
+
+この行が実行され結果的に 
+
+#2  0x00004000 in ?? ()
+
+が表示されている.
+
+(gdb) delete
+(gdb) b stack.c:1119
+(gdb) run
+
+4 回このブレークポイントにヒットしそれぞれ上と同じ結果が表示されている.
+
+(gdb) p/x get_frame_pc(frame)
+$2 = 0x190
+(gdb) p/x get_frame_pc(frame)
+$3 = 0x4000
+
+3 回目は 0x190, 4 回目は 0x4000 のこの値はここから計算されたものらしい.
+
+(gdb) p/x frame->this_id.value.code_addr
+$22 = 0x4000
+
+ということはどこかでこの値を入れている.
+
+(gdb) p &frame->this_id.value.code_addr
+$23 = (CORE_ADDR *) 0x8b933d0
+(gdb) watch *(int*)0x8b933d0
+(gdb) run
+
+なるほど, ここで pru_frame_this_id がセットしていた.
+
+同じことを mcore-elf-gdb でやってみた.
+
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_mcore.011
+(gdb) run -q -x x test011.elf
+期待通り動作している.
+
+(gdb) b mcore_frame_this_id
+(gdb) run
+
+このブレークポイントにヒットした. mcore-elf-gdb でもここが動作してその
+結果正しく動いていたということ.
+
+ということは pru-elf-gdb では pru_frame_this_id が正しく動いていないの
+で期待しない結果になっていると考えるべきだろう(最初はそう思った).
+
+static pru_frame* pru_frame_create(frame_info* frame)
+{
+...
+  ret->pc = get_frame_pc(frame);
+
+ここですでに get_frame_pc から 0x4000 が返っている.
+
+
+static value*
+pru_frame_prev_register(frame_info* frame, void** ptr, int regno)
+{
+...
+  if (regno == pc_regno) {
+    auto r3 = frame_unwind_register_unsigned(frame, 3);
+    return frame_unwind_got_constant(frame, regno, r3 >> 14);
+  }
+
+ここだった(と最初は思った).
+
+(gdb) p/x r3
+$32 = 0x10000070
+(gdb) p/x r3 >> 14
+$33 = 0x4000
+(gdb) 
+
+と思ったが, ここにきているときにすでに
+
+#2  0x00004000 in ?? ()
+
+は表示されている. だから無関係とは言えないが直接の原因ではない.
+
+mcore-elf-gdb の場合も mcore_frame_this_id が呼び出されているがこのと
+きすでに
+
+3	  return a + b;
+#0  f (a=4, b=5) at test011.c:3
+#1  0x0000014e in g (a=5, b=6) at test011.c:8
+#2  0x0000016a in main () at test011.c:13
+
+は表示されている. 一方 pru_frame_this_id が呼び出されたときは
+
+3	  return a + b;
+#0  f (a=4, b=5) at test018.c:3
+
+のようになっている. 表示が少し異なっている.
+
+(gdb) p fflush(stdout)
+#1  0x00000190 in g ($34 = 0
+(gdb)
+
+なるほどこういうことだった. 表示の内容が違うことは気にはなるがとりあえず置いておく.
+
+また backtrace_commmand が呼び出されてそれが完了するまで mcore-elf-gdb の場合
+は sim_read が数回呼び出されているようである.
+
+そして驚くことかもしれないが pru-elf-gdb の場合は sim_read が呼び出さ
+れていない.
+
+以下は test018.elf の objdump の結果の抜粋で main 函数の debug_frame
+である
+
+00000060 00000024 00000000 FDE cie=00000000 pc=000001a8..000001d8
+  DW_CFA_advance_loc: 4 to 000001ac
+  DW_CFA_def_cfa_offset: 6
+  DW_CFA_advance_loc: 8 to 000001b4
+  DW_CFA_def_cfa: r16 ofs 0
+  DW_CFA_offset: r14 at cfa-6                   これ
+  DW_CFA_advance_loc: 24 to 000001cc
+  DW_CFA_def_cfa: r8 ofs 6
+  DW_CFA_advance_loc: 4 to 000001d0
+  DW_CFA_restore: r19
+  DW_CFA_restore: r18
+  DW_CFA_restore: r17
+  DW_CFA_restore: r16
+  DW_CFA_restore: r15
+  DW_CFA_restore: r14
+  DW_CFA_advance_loc: 4 to 000001d4
+  DW_CFA_def_cfa_offset: 0
+  DW_CFA_nop
+
+「r14 はスタックポインタ相対 6 のところにある」ということらしい. これ
+がヒントになりそうな気がする.
+
+同じことを cr16-elf-*** で調べてみた. main 函数の debug_frame は以下
+
+00000064 00000028 00000000 FDE cie=00000000 pc=00000158..00000176
+  DW_CFA_advance_loc4: 2 to 0000015a
+  DW_CFA_def_cfa_offset: 8
+  DW_CFA_offset: r13 at cfa-8
+  DW_CFA_offset: r14 at cfa-4
+  DW_CFA_advance_loc4: 4 to 0000015e
+  DW_CFA_def_cfa_offset: 12
+  DW_CFA_advance_loc4: 2 to 00000160
+  DW_CFA_def_cfa_register: r13
+  DW_CFA_nop
+  DW_CFA_nop
+  DW_CFA_nop
+
+「r14(ra) がスタックポインタ相対 4 のところにある」といったところか.
+
+ここで重要な事実に気付く. PRU のスタックフレームは以下のように
+r3 の上位 2 バイトのみを保持するようになっている. 
+
+	+--------------------+ <- r2_{new}
+	|                    |
+	|                    |
+	|                    |
+	|                    |
+	|     local area     |
+	|                    |
+	|                    |
+	|                    |
+	|                    |
+	+--------------------+ +128
+	|      hi(r3_{old})  |
+	+--------------------+ +130
+	|                    |
+	|      r4_{old}      |
+	+--------------------+ <- r2_{old}, r4_{new}
+
+だからこの値を gdb の共通ルーチンから問い合わせられたときは少し工夫す
+る必要がある.
+
+試しに以下の状態をコンパイルして期待通り動作していない test018.elf を
+動かしてみた.
+
+static value*
+pru_dwarf2_prev_register(frame_info* frame, void**, int regno)
+{
+  assert(regno == pc_regno);
+  auto r3 = frame_unwind_register_unsigned(frame, 3);
+  if (r3 == 0x10000070)
+    r3 = 0x1c0 << 14;            強制的に期待値に書き替える
+  return frame_unwind_got_constant(frame, regno, r3 >> 14);
+
+この結果エラーメッセージは出るものの期待した結果になっている.
+
+#0  f (a=4, b=5) at test018.c:3
+#1  0x00000190 in g (a=5, b=6) at test018.c:8
+#2  0x000001c0 in main () at test018.c:13
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+
+つまり PRU の場合は CompactRISC のように単純にリンクレジスタを参照して
+はいけないということ.
+
+cr16-elf-*** の場合
+
+00000000 0000000c ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -2
+  Return address column: 14
+
+  DW_CFA_def_cfa: r15 ofs 0
+
+のように 14 番は ra の番号と一致しているし, 15 番は sp のレジスタ番号
+と一致しているから問題が発生しないわけだ.
+
+一方 pru-elf-*** の場合
+
+00000000 0000000c ffffffff CIE
+  Version:               1
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -1
+  Return address column: 132
+
+  DW_CFA_def_cfa: r16 ofs 0
+
+まず 132 だがこれは以前の結論では PC のレジスタ番号に変換するのが正し
+いとしていた.
+そして 16 だがこれはどうするべきなのか...
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_cr16.xxx
+
+は全部テストできるようになっているからせっかくだから思い切って直したほ
+うが良さそう.
