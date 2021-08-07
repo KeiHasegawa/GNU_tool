@@ -134,3 +134,20 @@ g の戻りアドレスは
 0xff4:	0x70	0x00	0x00	0x10
 
 のようになっている.
+
+そこでスタックに保存された r3 の上位 2 バイトを取り出すことが必要になるのだが
+残念ながら共通ソースを修正するのが一番簡単なのでそうしてしまった. この
+修正を frame.diff としてアップロードしておく. またこの時点での pru-tdep.c
+を pru-tdep.c.007 としてアップロードしておく.
+
+現状はスタックを 2 つ分巻きもどすことはできているのだが
+
+
+3	  return a + b;
+#0  f (a=4, b=5) at test018.c:3
+#1  0x00000190 in g (a=5, b=6) at test018.c:8
+#2  0x000001c0 in main () at test018.c:13
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+
+のようにエラーメッセージが出てしまっている. また再帰呼び出しの函数もこれと同じバグがある.
+
