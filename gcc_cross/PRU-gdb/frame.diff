@@ -1,0 +1,19 @@
+*** gdb-10.2.aarch64-elf/gdb/dwarf2/frame.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.pru-elf/gdb/dwarf2/frame.c	2021-08-07 16:29:25.000000000 +0900
+***************
+*** 1268,1273 ****
+--- 1268,1281 ----
+  
+      case DWARF2_FRAME_REG_SAVED_OFFSET:
+        addr = cache->cfa + cache->reg[regnum].loc.offset;
++       if (regnum == 3) {
++ 	auto ret = frame_unwind_got_memory (this_frame, regnum, addr);
++ 	ULONGEST r3 = extract_unsigned_integer(value_contents_all(ret),
++ 					       2,
++ 					       BFD_ENDIAN_LITTLE);
++ 	release_value(ret);
++ 	return frame_unwind_got_constant(this_frame, regnum, r3 << 16);
++       }
+        return frame_unwind_got_memory (this_frame, regnum, addr);
+  
+      case DWARF2_FRAME_REG_SAVED_REG:

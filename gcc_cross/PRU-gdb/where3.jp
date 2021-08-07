@@ -1,0 +1,136 @@
+pru-elf-gdb の where コマンド(その 3)
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_pru.018
+
+は where コマンドのテストプログラムで以下は test018.elf の objdump の結果の抜粋
+
+
+00000000 0000000c ffffffff CIE
+  Version:               1
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -1
+  Return address column: 132
+
+  DW_CFA_def_cfa: r16 ofs 0
+...
+00000060 00000024 00000000 FDE cie=00000000 pc=000001a8..000001d8
+  DW_CFA_advance_loc: 4 to 000001ac
+  DW_CFA_def_cfa_offset: 6
+  DW_CFA_advance_loc: 8 to 000001b4
+  DW_CFA_def_cfa: r16 ofs 0
+  DW_CFA_offset: r14 at cfa-6
+  DW_CFA_advance_loc: 24 to 000001cc
+  DW_CFA_def_cfa: r8 ofs 6
+  DW_CFA_advance_loc: 4 to 000001d0
+  DW_CFA_restore: r19
+  DW_CFA_restore: r18
+  DW_CFA_restore: r17
+  DW_CFA_restore: r16
+  DW_CFA_restore: r15
+  DW_CFA_restore: r14
+  DW_CFA_advance_loc: 4 to 000001d4
+  DW_CFA_def_cfa_offset: 0
+  DW_CFA_nop
+
+1. run コマンドを契機にプログラムカウンタが問い合わされこの結果 sim_fetch_regiser(rn=32)
+   の呼び出しが発生する. この時点でまだ pru_dwarf2_frame_init_reg は呼び出されていない.
+
+2. sim_resume(step=0) が呼び出される.
+
+3. シミュレータがブレークポイントまで実行する.
+
+4. sim_stop_reason が呼び出される. ここでブレークポイントにヒットしたと判定される.
+
+5. もう一度プログラムカウンタが問い合わされやはり sim_fetch_regiser(rn=32) の呼び
+   出しが発生する.
+
+6. そしてここでフレーム ID を計算しようとするが, pru_frame_this_id ではなく
+   dwarf2_frame_this_id により計算しようとする. このとき
+
+   DW_CFA_def_cfa: r16 ofs 0
+
+   なので 16 番のレジスタを問い合わせる. そしてこの時点でもまだ pru_dwarf2_frame_init_reg
+   は呼び出されていない. 16 に対して pru_dbg_reg_to_regnum(regno=16) の呼び出しが
+   あるのでここで 4 に変換する. この結果 sim_fetch_register(rn=4) の呼び出しが発生する.
+
+7. ようやくここで pru_dwarf2_frame_init_reg が 0 ... 132 に対して呼び出される.
+   132 まで問い合わされるためには以下のようにしておく必要がある.
+
+   set_gdbarch_num_regs(gdbarch, 133);
+
+8. ここでフレーム ID を計算しようとするが, やはり pru_frame_this_id ではなく
+   dwarf2_frame_this_id により計算しようとする. このとき 14 番のレジスタが
+   問い合わされる. おそらくその理由は
+
+   DW_CFA_offset: r14 at cfa-6
+
+   だからなのだと考えられる. 14 に対して pru_dbg_reg_to_regnum(regno=14) の呼び出し
+   があるのでここで 3 に変換する. この結果 sim_fetch_register(rn=3) の呼び出しが発生
+   する.
+
+9. ここで再び pru_dwarf2_frame_init_reg の呼び出しが 0 ... 132 に対して起こる.
+   この理由は不明だが, gdb の実装がそうなっているということなのだろう.
+
+10. そしてブレークポイントにヒットした結果
+
+Continuing.
+Breakpoint 1, f (a=4, b=5) at test018.c:3
+3	  return a + b;
+
+    が表示される.
+
+11. ここで where コマンドに対して backtrace_command が呼び出される.
+
+   
+0xff4
+
+  auto r3 = frame_unwind_register_unsigned(frame, 3);
+
+で r3 = 0x10000070 となるのは 0xff4 からメモリを読み出しているから.
+
+(pru-elf-gdb) x/4bx 0xff4
+0xff4:	0x70	0x00	0x00	0x10
+(pru-elf-gdb)
+
+このアドレス 0xff4 だが
+
+main 函数が呼び出されたときは r2 = 0x1000 で
+
+main のプロローグで r2 = 0x1000 - 6 = 0xffa, r4 = 0x1000 になる.
+
+g のプロローグで sp = 0xffa - 14 = 0xfec, fp = 0xff4 になる.
+
+図にすると以下:
+
+ 0x0fec +------------------------------+ <- r2_{g で更新された}
+        |                              |
+        |                              |
+        |                              |
+        |                              |
+ 0x0ff4 +------------------------------+
+        | hi(r3_{g が呼び出された直後})   | 
+ 0x0ff6 +------------------------------+
+        | r4_{g が呼び出された直後}       |
+        |                              |
+ 0x0ffa +------------------------------+ <- r2_{main で更新された}
+        | hi(r3_{main が呼び出された直後})|    r2_{g が呼び出された直後} 
+ 0x0ffc +------------------------------+   r3_{g で更新された}
+        | r4_{main が呼び出された直後}    |
+        |                              |
+ 0x1000 +------------------------------+  <- r2_{main が呼び出された直後}
+                                             r3_{main で更新された}
+
+g の戻りアドレスは
+
+000001a8 <main>:
+...
+ 1bc:	230054c3 	call	150 <g>
+ 1c0:	1300eee0 	mov	r0, r14
+
+だから 0x1c0 なので 0x1c0 << 14 = 0x700000
+また 0xff6 には 0x1000 が入っているので
+
+0xff4:	0x70	0x00	0x00	0x10
+
+のようになっている.
