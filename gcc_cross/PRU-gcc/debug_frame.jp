@@ -1,0 +1,315 @@
+pru-elf-gcc のデバッグ情報の修正
+
+現状葉でない函数ではリンクレジスタ r3 の上位 2 バイトとフレームポイン
+タ r4 を保存しているが, デバッグ情報には
+
+	.cfi_offset 14, -6
+
+しか出ていないので
+
+	.cfi_offset 14, -6
+	.cfi_offset 16, -4
+
+となるように修正する. ここで 14 番はデバッガによって 3 番に, 16 番は 4
+番に変換される. objdump の結果が以下のようになるのが期待値.
+
+  DW_CFA_def_cfa: r16 ofs 0
+...
+  DW_CFA_offset: r14 at cfa-6
+  DW_CFA_offset: r16 at cfa-4        これが追加される
+
+
+        +----------------+ <- r2_{new}
+        |                |
+        ~                ~
+        ~                ~
+        |                |
+        +----------------+ -6
+        |  hi(r3_{old}   |
+        +----------------+ -4
+        |                |
+        |    r4_{old}    |
+        +----------------+ <- r4_{new}
+
+% cat a.c
+void f(int);
+
+void g()
+{
+  f(123);
+}
+%
+
+g の函数のデバッグ情報が変更されるのが期待値.
+
+(gdb) run -quiet -D__PRU_EABI_GNU__ a.c -quiet -dumpbase a.c -auxbase a -g -o a.s
+
+とすれば生成された a.s に
+
+	.cfi_offset 14, -6
+
+しか出ていないことを確認できる.
+また葉の函数では
+
+	.cfi_offset 16, -4
+
+が生成されていることを以下のように確認できる.
+% cat b.c
+void f(int a)
+{
+}
+%
+
+(gdb) run -quiet -D__PRU_EABI_GNU__ b.c -quiet -dumpbase b.c -auxbase b -g -o b.s
+
+	.cfi_offset 16, -4
+
+	sbbo	r3.b2, r2, 0, 6   # 6 は可変
+
+ならば両方生成し
+
+	sbbo	r4.b0, r2, 4, 4 # 4 は可変
+
+ならばこれまで通りということ.
+
+調査済みの方法
+
+% cat x
+b final_1
+command
+set asm_out_file=stdout
+c
+end
+%
+
+(gdb) so x
+
+これでアセンブラの生成がファイルではなくて標準出力に出るようになるはず.
+問題のデバッグ情報を生成する rtx_insn を確認する.
+
+(gdb) b final.c:2020
+(gdb) run
+...
+(gdb) p debug_insn_slim(insn)
+   25: NOTE_INSN_CFI
+(gdb) n
+	.cfi_offset 16, -4
+(gdb)
+
+これらしい. (rtx_insn *) 0xb78e7ee0 だった. これが作成されるタイミング
+をとらえる.
+
+ここで生成していた.
+rtx_note *
+emit_note_after (enum insn_note subtype, rtx_insn *after)
+{
+  rtx_note *note = make_note_raw (subtype);
+  basic_block bb = BARRIER_P (after) ? NULL : BLOCK_FOR_INSN (after);
+  bool on_bb_boundary_p = (bb != NULL && BB_END (bb) == after);
+
+  if (note_outside_basic_block_p (subtype, on_bb_boundary_p))
+    add_insn_after_nobb (note, after);
+  else
+    add_insn_after (note, after, bb);
+  return note;
+}
+
+しかし実際 16 番の指定は以下
+
+static void
+reg_save (unsigned int reg, unsigned int sreg, poly_int64 offset)
+{
+  dw_fde_ref fde = cfun ? cfun->fde : NULL;
+  dw_cfi_ref cfi = new_cfi ();
+
+  cfi->dw_cfi_oprnd1.dw_cfi_reg_num = reg;  ここで指定.
+
+  if (sreg == INVALID_REGNUM)
+
+これは
+
+gcc/dwarf2cfi.c:1064
+queue_reg_save(rtx, rtx, poly_int64)
+
+が呼び出されてコンテナに入れられて出されるという仕組みらしい.
+
+gcc/config/pru/pru.c:247
+    insn = targetm.gen_store_multiple (gen_frame_mem (BLKmode, addr),
+				       gen_rtx_REG (QImode, regno_start),
+				       GEN_INT (nregs));
+
+で生成されたコードが関係しているらしい.
+
+(gdb) p debug_insn_slim(insn)
+   13: {[r2.b0:SI+0x4]=r4.b0:QI;[r2.b0:SI+0x5]=r4.b1:QI;[r2.b0:SI+0x6]=r4.b2:QI;[r2.b0:SI+0x7]=r4.b3:QI;}
+$46 = void
+(gdb)
+
+1 つ前の rtx_insn がこれだったら
+
+	.cfi_offset 16, -4
+
+が生成されるということ.
+
+(gdb) run -quiet -D__PRU_EABI_GNU__ a.c -quiet -dumpbase a.c -auxbase a -g -o a.s
+(gdb) p debug_insn_slim(insn)
+   13: {[r2.b0:SI]=r3.b2:QI;[r2.b0:SI+0x1]=r3.b3:QI;[r2.b0:SI+0x2]=r4.b0:QI;[r2.b0:SI+0x3]=r4.b1:QI;[r2.b0:SI+0x4]=r4.b2:QI;[r2.b0:SI+0x5]=r4.b3:QI;}
+$47 = void
+(gdb)
+
+これだったら現状は
+
+	.cfi_offset 14, -6
+
+だけが出ているということ.
+
+static void
+scan_insn_after (rtx_insn *insn)
+{
+  if (RTX_FRAME_RELATED_P (insn))
+    dwarf2out_frame_debug (insn);    前に見たここが関係している.
+  notice_args_size (insn);
+}
+
+aarch64-elf-gcc が参考になるかもしれない. 1 命令に対して 3 つの
+.cfi_*** を生成している.
+
+	stp	x29, x30, [sp, -32]!
+	.cfi_def_cfa_offset 32
+	.cfi_offset 29, -32
+	.cfi_offset 30, -24
+
+同じことを aarch64-elf-gcc でやってみた:
+
+(gdb) b dwarf2out_frame_debug
+(gdb) run -quiet a.c -quiet -dumpbase a.c -mlittle-endian "-mabi=lp64" -auxbase a -g -o a.s
+(gdb) p debug_insn_slim(insn)
+   12: {sp:DI=sp:DI-0x10;[sp:DI-0x10]=x29:DI;[sp:DI-0x8]=x30:DI;}
+$14 = void
+(gdb)
+
+ここで気付いたが, .cfi_*** を実際に生成するのは dwarf2out_frame_debug の呼び出しの
+だいぶ後だが, この函数内で .cfi_*** のパラメータが決められているということ.
+
+
+  for (note = REG_NOTES (insn); note; note = XEXP (note, 1))
+
+aarch64-elf-gcc はこの for ループを実行することはなく
+
+  if (!handled_one)
+    {
+      pat = PATTERN (insn);
+    do_frame_expr:
+      dwarf2out_frame_debug_expr (pat);
+
+いきなりここを実行する. そういう意味では pru-elf-gcc と作りは同じ.
+
+
+static void
+dwarf2out_frame_debug_expr (rtx expr)
+{
+...
+  if (GET_CODE (expr) == PARALLEL || GET_CODE (expr) == SEQUENCE)
+    {
+      int par_index;
+      int limit = XVECLEN (expr, 0);
+
+                  GET_CODE(expr)    limit
+aarch64-elf-gcc   PARALLEL            3
+pru-elf-gcc       PARALLEL            6
+
+のようになっている.
+
+      if (GET_CODE (expr) == PARALLEL)
+	for (par_index = 0; par_index < limit; par_index++)
+	  {
+	    elem = XVECEXP (expr, 0, par_index);
+	    if (GET_CODE (elem) == SET
+		&& MEM_P (SET_DEST (elem))
+		&& (RTX_FRAME_RELATED_P (elem) || par_index == 0))
+	      dwarf2out_frame_debug_expr (elem);     (*A)
+	  }
+
+      for (par_index = 0; par_index < limit; par_index++)
+	{
+	  elem = XVECEXP (expr, 0, par_index);
+	  if (GET_CODE (elem) == SET
+	      && (!MEM_P (SET_DEST (elem)) || GET_CODE (expr) == SEQUENCE)
+	      && (RTX_FRAME_RELATED_P (elem) || par_index == 0))
+	    dwarf2out_frame_debug_expr (elem);        (*B)
+	}
+      return;
+
+                    (*A)          (*B)
+aarch64-elf-gcc     1, 2           0
+pru-elf-gcc         0
+
+のような実行状況になっている. つまり
+
+aarch64-efl-gcc の場合
+
+sp:DI=sp:DI-0x10;[sp:DI-0x10]=x29:DI;[sp:DI-0x8]=x30:DI;
+(0)              (1)                 (2)
+
+のようになっているから 1, 2 に対して
+
+	.cfi_offset 29, -32
+	.cfi_offset 30, -24
+
+が生成されるというカラクリ.
+
+一方 pru-elf-gcc の場合
+
+[r2.b0:SI]=r3.b2:QI;[r2.b0:SI+0x1]=r3.b3:QI;[r2.b0:SI+0x2]=r4.b0:QI;
+(0)                 (1)                     (2)
+
+[r2.b0:SI+0x3]=r4.b1:QI;[r2.b0:SI+0x4]=r4.b2:QI;[r2.b0:SI+0x5]=r4.b3:QI;
+(3)                     (4)                     (5)
+
+だが 0 に対して
+
+	.cfi_offset 14, -6
+
+が生成されている. だから 2 に対しても (*A) が実行されるような状況を作れれば良い.
+そしてその結果
+
+	.cfi_offset 16, -4
+
+が生成されれば良いわけだ.
+
+
+	    if (GET_CODE (elem) == SET
+		&& MEM_P (SET_DEST (elem))
+		&& (RTX_FRAME_RELATED_P (elem) || par_index == 0))
+
+この条件だが 0 に対しては
+
+GET_CODE (elem) == SET
+MEM_P (SET_DEST (elem))
+par_index == 0
+
+が成立しているから (*A) が実行される. RTX_FRAME_RELATED_P (elem) = false だった.
+
+だから 2 に対して RTX_FRAME_RELATED_P (elem) = 1 になるようにすれば良い.
+以下のように
+
+gcc-10.2.0.pru-elf/gcc/config/pru/pru.c
+
+を修正した
+
+  if (do_store) {
+    insn = targetm.gen_store_multiple (gen_frame_mem (BLKmode, addr),
+				       gen_rtx_REG (QImode, regno_start),
+				       GEN_INT (nregs));
+    if (regno_start == RA_REGNUM) {
+      rtx pat = PATTERN(insn);
+      int limit = XVECLEN(pat, 0);
+      if (limit == 6) {
+	rtx elem = XVECEXP(pat, 0, 2);
+	RTX_FRAME_RELATED_P(elem) = 1;
+      }
+    }
+  }
+  else
+
+例によって libgcc.a や newlib のリビルドと再インストールが必要になる.

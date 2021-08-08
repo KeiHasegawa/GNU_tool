@@ -1,0 +1,55 @@
+pru-elf-gcc debug_frame fix
+
+For a non-leaf function, pru-elf-gcc generates code
+which saves high 2 bytes of link register `r3' and frame pointer
+`r4' but just generates
+
+	.cfi_offset 14, -6
+
+then I fixed like
+
+	.cfi_offset 14, -6
+	.cfi_offset 16, -4
+
+where, 14 is recognized as 3 and 16 is recognized as 4.
+The result of pru-elf-objdump becomes like below:
+
+  DW_CFA_def_cfa: r16 ofs 0
+...
+  DW_CFA_offset: r14 at cfa-6
+  DW_CFA_offset: r16 at cfa-4        <- Add this one
+
+
+        +----------------+ <- r2_{new}
+        |                |
+        ~                ~
+        ~                ~
+        |                |
+        +----------------+ -6
+        |  hi(r3_{old}   |
+        +----------------+ -4
+        |                |
+        |    r4_{old}    |
+        +----------------+ <- r4_{new}
+
+Omitted precisely,
+
+gcc-10.2.0.pru-elf/gcc/config/pru/pru.c
+
+is fixed like below:
+
+  if (do_store) {
+    insn = targetm.gen_store_multiple (gen_frame_mem (BLKmode, addr),
+				       gen_rtx_REG (QImode, regno_start),
+				       GEN_INT (nregs));
+    if (regno_start == RA_REGNUM) {
+      rtx pat = PATTERN(insn);
+      int limit = XVECLEN(pat, 0);
+      if (limit == 6) {
+	rtx elem = XVECEXP(pat, 0, 2);
+	RTX_FRAME_RELATED_P(elem) = 1;
+      }
+    }
+  }
+  else
+
