@@ -1,0 +1,512 @@
+pru-elf-gdb の where コマンド(その4)
+
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_pru.018
+(gdb) run -q -x x test018.elf
+
+3	  return a + b;
+#0  f (a=4, b=5) at test018.c:3
+#1  0x00000190 in g (a=5, b=6) at test018.c:8
+#2  0x000001c0 in main () at test018.c:13
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+
+のようにエラーメッセージらしきものが出てしまう. またこれが原因なのかはまだ不明だが再帰呼び
+出しした函数で where コマンドがスタックを 2 つ巻き戻したところで停止してしまう.
+
+ 0x0fe0 +------------------------------+ <- r2_{f で更新された}
+        |                              |
+        |                              |
+        |                              |
+        |                              |
+ 0x0fe8 +------------------------------+
+        | r4_{f が呼び出された直後}       |
+        |                              |
+ 0x0fec +------------------------------+ <- r2_{g で更新された}
+        |                              |    r2_{f が呼び出された直後}
+        |                              |    r4_{f で更新された}
+        |                              |
+        |                              |
+ 0x0ff4 +------------------------------+
+        | hi(r3_{g が呼び出された直後})   | 
+ 0x0ff6 +------------------------------+
+        | r4_{g が呼び出された直後}       |
+        |                              |
+ 0x0ffa +------------------------------+ <- r2_{main で更新された}
+        | hi(r3_{main が呼び出された直後})|    r2_{g が呼び出された直後} 
+ 0x0ffc +------------------------------+   r4_{g で更新された}
+        | r4_{main が呼び出された直後}    |
+        |                              |
+ 0x1000 +------------------------------+  <- r2_{main が呼び出された直後}
+                                             r4_{main で更新された}
+
+
+まずはこのバグの直接の原因だが過去の調査結果から
+
+(gdb) b stack.c:2112
+(gdb) run
+
+      if (fi == NULL && trailing != NULL)
+	{
+	  enum unwind_stop_reason reason;
+
+	  reason = get_frame_unwind_stop_reason (trailing);
+	  if (reason >= UNWIND_FIRST_ERROR)
+	    printf_filtered (_("Backtrace stopped: %s\n"),
+			     frame_stop_reason_string (trailing));
+	}
+
+この場所で reason = UNWIND_SAME_ID となるのが原因だった.
+そしてやはり事前の調査だがこの場合のフレーム ID は dwarf2_frame_this_id によって
+作られていることが判明している.
+
+(gdb) delete
+(gdb) b dwarf2_frame_this_id
+(gdb) run
+
+最初に作成されたのは
+
+(gdb) finish
+(gdb) p/x fi->this_id.value
+$3 = {stack_addr = 0xfec, code_addr = 0x10c, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+
+0x10c は f の先頭アドレスで 0xfec は函数 f で更新されたフレームポインタ r4 の値.
+
+2 つ目は
+
+$4 = {stack_addr = 0xffa, code_addr = 0x150, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+
+0x150 は g の先頭アドレスで 0xffa は函数 g で更新された r4 の値.
+
+3 つ目は
+
+$5 = {stack_addr = 0xffa, code_addr = 0x1a8, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+
+0x1a8 は main の先頭アドレスで 0xffa はおそらく 0x1000 の間違いで
+ここには main で更新された r4 の値がくるのが正しい.
+
+4 つ目は
+
+$6 = {stack_addr = 0xffa, code_addr = 0x1a8, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+
+でこれが 3 つ目と同じ.
+だとすれば 3 つ目と 4 つ目が同じだからこの現象になっていると考えるのが普通.
+
+ひとまず同じことを cr16-elf-gdb でも行なってみた
+
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_cr16.030
+(gdb) run -q -x x test030.elf
+...
+3	  return a + b;
+#0  f (a=4, b=5) at test030.c:3
+#1  0x0000014a in g (a=5, b=6) at test030.c:8
+#2  0x00000168 in main () at test030.c:13
+
+エラーメッセージは出ない. 正常にできている.
+
+
+0x0fd8 +---------------------------+ <- sp_{f で更新された}
+       |                           |    r13_{f で更新された}
+       |                           |
+0x0fe0 +---------------------------+
+       | r13_{f 函数が呼ばれた直後}   |
+0x0fe4 +---------------------------+ <- sp_{g で更新された}
+       |                           |    r13_{g で更新された}
+       |                           |
+0x0fec +---------------------------+
+       | r13_{g 函数が呼ばれた直後}   |
+0x0ff0 +---------------------------+
+       | ra_{g 函数が呼ばれた直後}    |
+0x0ff4 +---------------------------+ <- sp_{main で更新された}
+       |                           |    r13_{main で更新された}
+0x0ff8 +---------------------------+
+       | r13_{main 函数が呼ばれた直後}|
+0x0ffc +---------------------------+
+       | ra_{main 函数が呼ばれた直後} |
+0x1000 +---------------------------+ <- sp_{main 函数が呼ばれた直後}
+
+
+(gdb) b dwarf2_frame_this_id
+(gdb) run
+
+1 回目
+
+$17 = {stack_addr = 0xfe4, code_addr = 0x10c, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+
+0x10c は f の先頭アドレス. 0xfe4 は f で更新された r13 の値に 0xc を加算したもの 
+
+
+2 回目
+
+$18 = {stack_addr = 0xff4, code_addr = 0x12c, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+
+0x12c は g の先頭アドレス. 0xff4 は g で更新された r13 の値に 0x10 を加算したもの.
+
+3 回目
+
+$19 = {stack_addr = 0x1000, code_addr = 0x158, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+
+0x158 は main の先頭アドレス. 0x1000 は main で更新された r13 の値に 0xc を加算したもの
+
+で 3 回しかきていない. ということはもしかすると pru-elf-gdb で 4 回目がくるのが
+そもそも期待しない動作かもしれない.
+
+pru-elf-gdb で期待しない動作は以下の 2 点:
+
+(1) 3 回目のフレーム ID の stack_addr が 0x1000 が期待値だが 0xffa になっている
+(2) 4 回目が計算されている
+
+ということだが, まずは (1) から調べるのが筋というものだろう.
+
+pru-elf-***
+
+  DW_CFA_def_cfa: r16 ofs 0
+
+cr16-elf-***
+
+  DW_CFA_def_cfa: r15 ofs 0
+
+CompactRISC では 15 番のレジスタがスタックポインタでそれがそのまま debug_frame
+の情報として最終的なリンカの出力となって現れている.
+
+一方 PRU では 16 番のレジスタは pru_dbg_reg_to_regnum で 4 番に変更されて
+しかもこれはフレームポインタのレジスタ番号である. PRU ではスタックポインタは 2 番である.
+ともあれ PRU はフレームポインタ相対で debug_frame を構成している作りだから
+これ自体が間違いというわけではない. 実際 r3 の上位 2 バイトを保存している領域を
+アクセスできている.
+
+それではまず (1) の問題から調べてみる.
+
+まず dwarf2_frame_this_id のブレークポイントにヒットしたとき 1 回目.
+
+  struct dwarf2_frame_cache *cache =
+    dwarf2_frame_cache (this_frame, this_cache);
+
+cache->cfa がフレーム ID の stack_addr の値になっているからこの値がどのように計算され
+ているかを調べるべき.
+
+gdb-10.2.pru-elf/gdb/dwarf2/frame.c:1069
+	case CFA_REG_OFFSET:
+	  cache->cfa = read_addr_from_reg (this_frame, fs.regs.cfa_reg);
+	  if (fs.armcc_cfa_offsets_reversed)
+	    cache->cfa -= fs.regs.cfa_offset;
+	  else
+	    cache->cfa += fs.regs.cfa_offset;
+	  break;
+
+ここで計算されている. fs.regs.cfa_reg = 16 である. なるほどやはり PRU では
+スタックポインタではなくて 16 番のレジスタを基準にしているらしい.
+そして fs.regs.cfa_offset はいずれの場合も 0 であった.
+
+しかしこの部分は以前調査したことのある場所. これは
+
+「MCORE の gdb」=>「finish コマンドの調査」
+
+でやったもの. 今改めて見直してみると他のどれとも違うのが
+
+ $1 = 0x1000  $2 = 0x1000
+ $3 = 0x1000  $4 = 0x1000  <- これ
+ $5 = 0x1000  $6 = 0x1000
+ $7 = 0xffa   $8 = 0xffa
+ $9 = 0x1000 $10 = 0x1000
+$11 = 0xffa  $12 = 0xffa
+$13 = 0x1000 $14 = 0x1000
+$15 = 0x1000 $16 = 0x1000
+$17 = 0x1000 $18 = 0x1000
+
+$3, $4 は $7, $8 のようになるのが期待値だったが finish 自体動作したからそこまで
+追求しなかった. $1 と $2 に差分がないのは or1k-elf-*** もそうなので問題はなさそう.
+
+or1k-elf-***
+
+  DW_CFA_def_cfa_register: r1
+
+r1 はスタックポインタ. r2 がフレームポインタ. OpenRISC 1000 もやはりスタックポインタ
+を指定している. 差分がないのと指定がスタックポインタかフレームポインタかは関係がないらしい.
+改めて ABI を確認すると
+
+LaticeMicro32
+OpenRISC 1000
+PRU
+
+はフレームポインタを函数が呼び出された時点でのスタックポインタと同じ値になるようにしている.
+lm32-elf-gdb は avr-elf-gdb, ft32-elf-gdb, frv-efl-gdb と似た形式で
+finish コマンドを実現していたので差分云々には気付かなかった.
+
+ともあれ今やるべき調査は pru-elf-*** で
+
+	  read_addr_from_reg(this_frame, 16)
+
+の呼び出しで現状何が返っているかとうことで, さらには期待値が何かを考えること.
+
+(gdb) delete
+(gdb) b read_addr_from_reg
+(gdb) run
+
+この函数は 4 回呼び出される. それは上で調査した箇所と一致している.
+
+1 回目は結果的に sim_fetch_register(rn=4) の呼び出しになる. つまり r4 の値を
+読み出しているということ.
+
+この時点でプログラムは f のプロローグが終わったところで停止しているから
+
+「0x10c は f の先頭アドレスで 0xfec は函数 f で更新されたフレームポインタ r4 の値」
+
+と解釈しているのは問題なさそう.
+
+だとすると 2 回目は
+
+「0x150 は g の先頭アドレスで 0xffa は函数 g で更新された r4 の値」
+
+なのだから 0x0fe8 番地に保存されているメモリを参照するのが正しい.
+2 回目の呼び出しが結果的に sim_read(mem=0x0xfc0,length=0x40) の呼
+び出しになっている.
+
+そしてこの呼び出しは
+
+dcache_peek_byte(addr=0xfe8) at dcache.c:407
+
+からきている. ということはこのアドレスは正しいということ.
+
+3 回目は
+
+「0x1a8 は main の先頭アドレスで 0x1000 は main で更新された r4 の値」
+
+となるのが正しい. そして 0x1000 は 0xff6 番地に保存されているメモリを参照する
+のが正しい. しかし 3 回目は
+
+dcache_peek_byte(addr=0xfe8)
+
+の呼び出しを引き起している. つまりこのアドレスが間違いで 0xff6 が正しい.
+おそらく g のフレームを参照するべきところで f のフレームを参照しているからこういう現象
+が発生しているということなのだろう.
+
+結局 3 回目が
+
+dcache_peek_byte(addr=0xfe8)
+
+の呼び出しを引き起こすことが間違いなのだからこの addr を計算している部分を調べてみる.
+この addr は以下で計算されていることが判明した:
+
+static void
+value_fetch_lazy_memory (struct value *val)
+{
+  gdb_assert (VALUE_LVAL (val) == lval_memory);
+
+  CORE_ADDR addr = value_address (val);
+
+とはいえ val から計算されているわけで, だからこの val がどこで計算されているかを調べる.
+
+static void
+value_fetch_lazy_register (struct value *val)
+{
+
+ここで new_val を計算してそれが結果的に value_fetch_lazy_memory への引数となっている.
+
+      new_val = frame_unwind_register_value (next_frame, regnum);
+
+この行を実行した後
+
+(gdb) p/x value_address (new_val)
+$71 = 0xfe8
+(gdb)
+
+のようになっている. ここに問題があるらしい.
+
+  while (VALUE_LVAL (new_val) == lval_register && value_lazy (new_val))
+    {
+      struct frame_id next_frame_id = VALUE_NEXT_FRAME_ID (new_val);
+
+このループは 1 回だけ実行され, しかも
+
+(gdb) p/x next_frame_id
+$75 = {stack_addr = 0xfec, code_addr = 0x10c, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+
+なのでやはりフレーム違いもしくはもう一度ループに入るかのいずれかが期待値.
+
+
+(gdb) set next_frame_id.stack_addr = 0xffa
+(gdb) set next_frame_id.code_addr = 0x150
+(gdb) n 5
+(gdb) p/x value_address (new_val)
+$76 = 0x0
+
+これは変数を書き替えてみたが期待した結果にはなっていないようだ.
+
+ここで cr16-elf-gdb との動作を比較してみる.
+
+1 回目は結果的に sim_fetch_register(rn=13) の呼び出しになる. つまり r13 の値を
+読み出しているということ. そこで 0x0fd8 が返りさらにオフセット 0xc が加算され
+0x0fe4 を算出している.
+
+2 回目はメモリの 0x0fe0 を参照するのが期待される動作でやはり cr16-elf-gdb でも
+sim_read(mem=0xfc0, length=0x40) の呼び出しがある. そしてこの呼び出しは
+
+dcache_read_memory_partial(memaddr=0xfe0, len=4)
+
+からでここも期待する動作になっている.
+
+3 回目はメモリの 0x0fec を参照するのが期待される動作で
+
+dcache_read_memory_partial(memaddr=0xfec, len=4)
+
+の呼び出しがある. ここまでは OK. このときのスタックの状態は以下:
+
+(gdb) where
+#0  dcache_read_memory_partial (ops=0x8bca84c <gdbsim_ops>, dcache=0x8d4f3f0, memaddr=4076, myaddr=0x8d1dbc0 "", len=4, xfered_len=0xbfffea70) at dcache.c:476
+#1  0x08410d5c in memory_xfer_partial_1 (ops=0x8bca84c <gdbsim_ops>, object=TARGET_OBJECT_STACK_MEMORY, readbuf=0x8d1dbc0 "", writebuf=0x0, memaddr=4076, len=4, xfered_len=0xbfffea70) at target.c:1041
+#2  0x08410e19 in memory_xfer_partial (ops=0x8bca84c <gdbsim_ops>, object=TARGET_OBJECT_STACK_MEMORY, readbuf=0x8d1dbc0 "", writebuf=0x0, memaddr=4076, len=4, xfered_len=0xbfffea70) at target.c:1084
+#3  0x0841109d in target_xfer_partial (ops=0x8bca84c <gdbsim_ops>, object=TARGET_OBJECT_STACK_MEMORY, annex=0x0, readbuf=0x8d1dbc0 "", writebuf=0x0, offset=4076, len=4, xfered_len=0xbfffea70) at target.c:1141
+#4  0x0847b1b3 in read_value_memory (val=0x8d4f660, bit_offset=0, stack=1, memaddr=4076, buffer=0x8d1dbc0 "", length=4) at valops.c:956
+#5  0x0849204c in value_fetch_lazy_memory (val=0x8d4f660) at value.c:3784
+#6  0x08492735 in value_fetch_lazy (val=0x8d4f660) at value.c:3930
+#7  0x0848d304 in value_contents_copy (dst=0x8d4f5d8, dst_offset=0, src=0x8d4f66
+一方間違ったアドレスが計算されて呼び出された pru-elf-gdb の場合は
+
+(gdb) where
+#0  dcache_read_memory_partial (ops=0x8ac144c <gdbsim_ops>, dcache=0x8c3ae40, memaddr=4072, myaddr=0x8c4f6c8 "", len=4, xfered_len=0xbfffe198) at dcache.c:476
+#1  0x08396a23 in memory_xfer_partial_1 (ops=ops@entry=0x8ac144c <gdbsim_ops>, object=object@entry=TARGET_OBJECT_STACK_MEMORY, readbuf=readbuf@entry=0x8c4f6c8 "", writebuf=0x0, memaddr=4072, len=4, xfered_len=0xbfffe198) at target.c:1041
+#2  0x08399ea2 in memory_xfer_partial (xfered_len=0xbfffe198, len=4, memaddr=<optimized out>, writebuf=0x0, readbuf=0x8c4f6c8 "", object=TARGET_OBJECT_STACK_MEMORY, ops=0x8ac144c <gdbsim_ops>) at target.c:1084
+#3  target_xfer_partial (ops=0x8ac144c <gdbsim_ops>, object=TARGET_OBJECT_STACK_MEMORY, annex=0x0, readbuf=0x8c4f6c8 "", writebuf=0x0, offset=4072, len=<optimized out>, xfered_len=0xbfffe198) at target.c:1141
+#4  0x083db571 in read_value_memory (val=0x8c4f640, bit_offset=0, stack=1, memaddr=4072, buffer=0x8c4f6c8 "", length=4) at valops.c:956
+#5  0x083edc40 in value_fetch_lazy_memory (val=0x8c4f640) at value.c:3784
+#6  0x083ee329 in value_fetch_lazy (val=0x8c4f640) at value.c:3930
+#7  0x083edee0 in value_fetch_lazy_register (val=0x8c4f5a8) at value.c:3848
+#8  0x083ee356 in value_fetch_lazy (val=0x8c4f5a8) at value.c:3932
+#9  0x083e8ef8 in value_contents_copy (dst=0x8c47bc0, dst_offset=0, src=0x8c4f5a8, src_offset=0, length=4) at value.c:1356
+
+なんだかスタックの深さが全然違っている.
+
+これからすると value_fetch_lazy_register が pru-elf-gdb で呼び出しているが
+cr16-elf-gdb では呼び出しておらず, なおかつ呼び出して計算したアドレスが間違えている
+という状況.
+
+だとすればこの函数が呼び出されることがそもそも間違いかもしれない.
+
+
+  else if (VALUE_LVAL (val) == lval_register)
+    value_fetch_lazy_register (val);
+
+この条件が成立している. ということは val そのものが間違えだった可能性もある. 2 つ目の
+フレーム ID の計算の方法はスタックに保存されたフレームポインタ r4 の値を参照しているが,
+3 つ目もこれと同じことがされているわけだから, 2 つ目の計算は現状正解だがこれが
+上のように計算しているかを確認してみる.
+
+しかし予想ははずれて 2 つ目のフレーム ID の計算でも確かに呼び出されている. ついでに言うと
+1 つ目のフレーム ID の計算でも呼び出されている. だからここは cr16-elf-gdb の動作は
+参考にならないかもしれない.
+
+1 つ目のフレーム ID の計算で 2 回 value_fetch_lazy_register は呼び出されいずれも
+
+(gdb) p/x next_frame_id
+$84 = {stack_addr = 0x0, code_addr = 0x0, special_addr = 0x0, 
+  stack_status = 0x2, code_addr_p = 0x0, special_addr_p = 0x1, 
+  artificial_depth = 0x0}
+
+であった.
+
+2 つ目のフレーム ID の計算で 1 回呼び出され
+
+(gdb) p/x next_frame_id
+$91 = {stack_addr = 0x0, code_addr = 0x0, special_addr = 0x0, 
+  stack_status = 0x2, code_addr_p = 0x0, special_addr_p = 0x1, 
+  artificial_depth = 0x0}
+
+であった. 3 つ目のフレーム ID の計算での next_frame_id については上で述べた通りであるが
+これは予測した結果とは違っていた.
+
+  if (value_lazy (new_val))
+    value_fetch_lazy (new_val); ここが 3 回目のときに実行される. 2 回目は実行されていない.
+
+そしてこの行にきたときに
+
+(gdb) p/x new_val->location.address
+$1 = 0xfe8
+となっているので以下のように書き替えれば
+
+(gdb) b value.c:3848
+(gdb) command
+Type commands for breakpoint(s) 3, one per line.
+End with a line saying just "end".
+>set new_val->location.address=0xff6
+>end
+(gdb)
+
+期待通り動作している. 3 回だけ dwarf2_frame_this_id が呼び出される. また
+
+$5 = {stack_addr = 0x1000, code_addr = 0x1a8, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+
+のように 0xffa ではなくて 0x1000 になる.
+
+だから問題の new_val->location.address がなぜ 0xff6 ではなくて 0xfe8
+になるかを調査する.
+
+これは
+
+value_from_contents_and_address (address=0xfe8)
+
+のように呼び出されていたのが直接的な原因.
+
+    case DWARF2_FRAME_REG_SAVED_OFFSET:
+      addr = cache->cfa + cache->reg[regnum].loc.offset;
+      if (regnum == 3) {
+	auto ret = frame_unwind_got_memory (this_frame, regnum, addr);
+	ULONGEST r3 = extract_unsigned_integer(value_contents_all(ret),
+					       2,
+					       BFD_ENDIAN_LITTLE);
+	release_value(ret);
+	return frame_unwind_got_constant(this_frame, regnum, r3 << 16);
+      }
+      return frame_unwind_got_memory (this_frame, regnum, addr);  ここだった.
+
+cache->cfa = 0xfec
+cache->reg[regnum].loc.offset = -4
+
+つまり cache->cfa が誤っている. 期待値は cache->cfa = 0xffa
+しかし chace->cfa = 0xfe8 をセットしているのは結局
+
+	case CFA_REG_OFFSET:
+	  cache->cfa = read_addr_from_reg (this_frame, fs.regs.cfa_reg); ここ
+	  if (fs.armcc_cfa_offsets_reversed)
+	    cache->cfa -= fs.regs.cfa_offset;
+	  else
+	    cache->cfa += fs.regs.cfa_offset;
+	  break;
+
+この部分だった. ということは...
+
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_pru.019
+
+を作成した. これはコンパイラの生成するデバッグ情報を少し書き変えている.
+
+% diff -c test019.s test019.S
+
+g:
+...
+  	.cfi_offset 14, -6
++ 	.cfi_offset 16, -4
+...
+main:
+...
+  	.cfi_offset 14, -6
++ 	.cfi_offset 16, -4
+...
+
+g や main でフレームポインタをスタックに保存しているという情報が抜けている.
