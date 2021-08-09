@@ -1,0 +1,190 @@
+moxie-elf-gcc の debug_info の修正
+
+% cat a.c
+int f(int a, int b)
+{
+  return a + b;
+}
+%
+
+(gdb) run -quiet a.c -quiet -dumpbase a.c -auxbase-strip a.s -g -o a.s
+
+再現している:
+
+	.string	"a"
+	.byte	0x1
+	.byte	0x1
+	.byte	0xb
+	.4byte	0x58
+	.uleb128 0x2
+	.byte	0x91
+	.sleb128 0          <- 12 の間違い
+	.uleb128 0x3
+	.string	"b"
+	.byte	0x1
+	.byte	0x1
+	.byte	0x12
+	.4byte	0x58
+	.uleb128 0x2
+	.byte	0x91
+	.sleb128 4          <- 16 の間違い
+
+単純に最初のパラメータのオフセット位置に 12 加算するのを忘れているだけ
+なのだと考えた.
+
+gcc-10.2.0.moxie-elf/gcc/config/moxie/moxie.h
+
+#define FIRST_PARM_OFFSET(F) 12
+
+定義はある.
+
+まずはこれを直接生成している箇所を知りたいがどうすればよいか.
+事前に final_1 で命令を生成していることは知っているので
+そこで生成されているかどうかをまずは確認する. 生成されていないとすれば
+その後なので.
+
+% cat x
+b final_1
+command
+set asm_out_file=stdout
+end
+b final.c:2020
+%
+
+(gdb) so x
+(gdb) run
+...
+(gdb) disa
+(gdb) fin
+.LM3:
+	ret
+(gdb)
+
+ということは final_1 では debug_info が生成されていない. この後で生成
+されるらしい.
+
+      dwarf2out_frame_finish ();
+
+この行を next 実行したところで問題の箇所の前の部分が生成されていること
+に気付いた.
+
+
+      (*debug_hooks->finish) (main_input_filename);
+
+そしてこの行を実行したところ問題の箇所を生成していることに気付いた.
+
+  output_comp_unit (comp_unit_die (), have_macinfo,
+		    dwarf_split_debug_info ? checksum : NULL);
+
+さらにこの行を実行したところ問題の箇所を生成していることに気付いた.
+
+  output_die (die);
+
+さらにこの行を実行したところ問題の箇所を生成していることに気付いた.
+そしてこの時点でようやっと write にもブレークポイントをセットすれば
+よいことに気付いた. しかし write のブレークポイントがヒットしすぎてこ
+れはこれで不便であることにも気付いた.
+
+
+	.uleb128 0x2
+	.byte	0x91
+	.sleb128 0
+	.uleb128 0x3
+
+この 4 つが一緒に出ている.
+
+	  output_loc_sequence (AT_loc (a), -1);
+
+これを next 実行したとき
+
+	.byte	0x91
+	.sleb128 4
+
+が出ている.
+
+(gdb) b dwarf2out.c:10643
+(gdb) run
+...
+
+3 回きているが 2 回目が a, 3 回目が b だった. 
+
+これは 2 回目の a のもの
+(gdb) p *a
+$28 = {dw_attr = DW_AT_location, dw_attr_val = {val_class = dw_val_class_loc, 
+    val_entry = 0x0, v = {val_addr = 0xb78f0258, val_offset = 3079602776, 
+      val_loc_list = 0xb78f0258, val_view_list = 0xb78f0258, 
+      val_loc = 0xb78f0258, val_int = 3079602776, val_unsigned = 3079602776, 
+      val_double = {low = 3079602776, high = 0}, val_wide = 0xb78f0258, 
+      val_vec = {array = 0xb78f0258, length = 0, elt_size = 0}, 
+      val_die_ref = {die = 0xb78f0258, external = 0}, 
+      val_fde_index = 3079602776, val_str = 0xb78f0258, 
+      val_lbl_id = 0xb78f0258 "", val_flag = 88 'X', val_file = 0xb78f0258, 
+      val_file_implicit = 0xb78f0258, 
+      val_data8 = "X\002\217\267\000\000\000", val_decl_ref = 0xb78f0258, 
+      val_vms_delta = {lbl1 = 0xb78f0258 "", lbl2 = 0x0}, val_discr_value = {
+        pos = -1215364520, v = {sval = 0, uval = 0}}, 
+      val_discr_list = 0xb78f0258, val_symbolic_view = 0xb78f0258 ""}}}
+
+これは 3 回目の b のもの
+(gdb)p *a
+$29 = {dw_attr = DW_AT_location, dw_attr_val = {val_class = dw_val_class_loc, 
+    val_entry = 0x0, v = {val_addr = 0xb78f0294, val_offset = 3079602836, 
+      val_loc_list = 0xb78f0294, val_view_list = 0xb78f0294, 
+      val_loc = 0xb78f0294, val_int = 3079602836, val_unsigned = 3079602836, 
+      val_double = {low = 3079602836, high = 0}, val_wide = 0xb78f0294, 
+      val_vec = {array = 0xb78f0294, length = 0, elt_size = 0}, 
+      val_die_ref = {die = 0xb78f0294, external = 0}, 
+      val_fde_index = 3079602836, val_str = 0xb78f0294, 
+      val_lbl_id = 0xb78f0294 "", val_flag = 148 '\224', 
+      val_file = 0xb78f0294, val_file_implicit = 0xb78f0294, 
+      val_data8 = "\224\002\217\267\000\000\000", val_decl_ref = 0xb78f0294, 
+      val_vms_delta = {lbl1 = 0xb78f0294 "", lbl2 = 0x0}, val_discr_value = {
+        pos = -1215364460, v = {sval = 0, uval = 0}}, 
+      val_discr_list = 0xb78f0294, val_symbolic_view = 0xb78f0294 ""}}}
+
+いまひとつ 0 や 4 はどこを参照しているかこれからは分からないが
+
+      dw2_asm_output_data_sleb128 (val1->v.val_int, NULL);
+
+これだった. val1->v.val_int が 0 や 4 にセットされている.
+
+
+static inline dw_loc_descr_ref
+new_loc_descr (enum dwarf_location_atom op, unsigned HOST_WIDE_INT oprnd1,
+	       unsigned HOST_WIDE_INT oprnd2)
+{
+  dw_loc_descr_ref descr = ggc_cleared_alloc<dw_loc_descr_node> ();
+
+  descr->dw_loc_opc = op;
+  descr->dw_loc_oprnd1.val_class = dw_val_class_unsigned_const;
+  descr->dw_loc_oprnd1.val_entry = NULL;
+  descr->dw_loc_oprnd1.v.val_unsigned = oprnd1;
+
+4 がセットされたのはここだった. ということは oprnd1 がどのように計算さ
+れたかを調べればよい.
+
+  reg = arg_pointer_rtx;
+  offset += ARG_POINTER_CFA_OFFSET (current_function_decl);
+
+ここはそれっぽいのだが以下のようにすれば回避できている.
+
+#define ARG_POINTER_CFA_OFFSET(X) 0
+
+ここで起こっていたことはパラメータのオフセット自体は 12, 16, ... のように
+適切(?)に計算されていたのだが上の部分により offset が 12 になり
+さらにそれが計算したオフセットから引かれていたということである.
+
+この修正をする前は
+
+/* On most machines, the CFA coincides with the first incoming parm.  */
+#ifndef ARG_POINTER_CFA_OFFSET
+#define ARG_POINTER_CFA_OFFSET(FNDECL) \
+  (FIRST_PARM_OFFSET (FNDECL) + crtl->args.pretend_args_size)
+#endif
+
+これを参照していた.
+
+本来この修正をどこに入れるべきなのかは不明だが config.h が作成される
+タイミングが不明なのでとりあえず config.h にそのまま修正を残しておく.
+修正の方法は正しくないが, 期待した動作にはなる. そのうちより良い方法が判明するかもしれない.
+

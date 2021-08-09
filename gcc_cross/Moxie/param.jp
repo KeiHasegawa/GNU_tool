@@ -1,0 +1,118 @@
+moxie-elf-gdb でパラメータの表示が正しくない件の調査
+
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_moxie.003
+(gdb) run -q -x x2 test003.elf
+...
+Breakpoint 1, main () at test003.c:8
+8	  return f(5, 6);
+f (a=4084, b=316) at test003.c:3
+3	  return a + b;
+A debugging session is active.
+
+
+f (a= 5, b=6)
+
+となるのが期待値. test003.objdump を見てみると以下のようになっていた.
+
+  DW_CFA_def_cfa: r1 ofs 0
+  DW_CFA_offset_extended_sf: r20 at cfa+4
+  DW_CFA_nop
+
+00000014 0000000c 00000000 FDE cie=00000000 pc=00000114..00000128
+
+00000024 00000014 00000000 FDE cie=00000000 pc=00000128..0000013e
+  DW_CFA_advance_loc4: 2 to 0000012a
+  DW_CFA_def_cfa_offset: 24
+  DW_CFA_nop
+
+ここで 0x114 は f のアドレス, 0x128 は main のアドレス.
+
+f:
+.LFB0:
+.LM1:
+	sto.l	12($fp), $r0
+	sto.l	16($fp), $r1
+.LM2:
+	ldo.l	$r0, 12($fp)
+	ldo.l	$r1, 16($fp)
+	add	$r0, $r1
+.LM3:
+	ret
+.LFE0:
+...
+
+f が葉の函数だからフレームの情報は空ということでこれは問題はなさそうだが.
+
+f にステップインした後の $pc は
+
+(moxie-elf-gdb) p/x $pc
+$1 = 0x11c
+
+00000114 <f>:
+ 114:	0d 02 00 0c 	sto.l	0xc($fp), $r0
+ 118:	0d 03 00 10 	sto.l	0x10($fp), $r1
+ 11c:	0c 20 00 0c 	ldo.l	$r0, 0xc($fp)
+ 120:	0c 30 00 10 	ldo.l	$r1, 0x10($fp)
+ 124:	05 23       	add	$r0, $r1
+ 126:	04 00       	ret
+
+ということで, おそらく moxie_skip_prologue はできている.
+5 や 6 を表示するのに $fp + 0xc, $fp + 0x10 を参照するのが正しい.
+
+(moxie-elf-gdb) x/wx $fp + 12
+0xfdc:	0x00000005
+(moxie-elf-gdb) x/wx $fp + 16
+0xfe0:	0x00000006
+(moxie-elf-gdb)
+
+もちろん, デバッガの表示が誤っているだけで, プログラムとしては正しく動作はしている.
+
+test003.objdump の結果
+
+ <2><7c>: 省略番号: 5 (DW_TAG_formal_parameter)
+    <7d>   DW_AT_name        : a
+    <7f>   DW_AT_decl_file   : 1
+    <80>   DW_AT_decl_line   : 1
+    <81>   DW_AT_decl_column : 11
+    <82>   DW_AT_type        : <0x61>
+    <86>   DW_AT_location    : 2 byte block: 91 0 	(DW_OP_fbreg: 0)
+ <2><89>: 省略番号: 5 (DW_TAG_formal_parameter)
+    <8a>   DW_AT_name        : b
+    <8c>   DW_AT_decl_file   : 1
+    <8d>   DW_AT_decl_line   : 1
+    <8e>   DW_AT_decl_column : 18
+    <8f>   DW_AT_type        : <0x61>
+    <93>   DW_AT_location    : 2 byte block: 91 4 	(DW_OP_fbreg: 4)
+
+(moxie-elf-gdb) x/2w $fp
+0xfd0:	4084	316
+
+おそらくデバッグ情報にフレームポインタもしくはスタックポインタからオフセット 0 とオフセ
+ット 4 に a と b がそれぞれあるとされているのでこのような結果になっている.
+
+試しに
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_moxie.006
+
+に moxie-elf-gcc の生成した test006.s を以下のように修正した test006.S
+でビルドしたところ期待する結果になっている.
+
+	.string	"a"
+	.byte	0x1
+	.byte	0x1
+	.byte	0xb
+	.4byte	0x3b
+	.uleb128 0x2
+	.byte	0x91
+	.sleb128 12        ここを 0 から 12 に修正した
+	.uleb128 0x5
+	.string	"b"
+	.byte	0x1
+	.byte	0x1
+	.byte	0x12
+	.4byte	0x3b
+	.uleb128 0x2
+	.byte	0x91
+	.sleb128 16        ここを 4 から 16 に修正した
+
+とうわけでこれは moxie-elf-gcc の生成結果に誤りがあったということ.
