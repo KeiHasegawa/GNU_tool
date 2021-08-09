@@ -1,0 +1,22 @@
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_microblaze
+
+を試してみたところ... bss の初期化を行なっているところで
+プログラムの制御がいきなりベクタ付近 (0 番地)くらいにジャンプしている.
+そして以下のメッセージが出ている.
+
+Program received signal SIGTRAP, Trace/breakpoint trap.
+
+これは AARCH64 で見た現象とすごく良く似ているが, 原因は不明
+
+
+  random_signal
+    = !bpstat_explains_signal (ecs->event_thread->control.stop_bpstat,
+			       ecs->event_thread->suspend.stop_signal);
+
+ここには 2 回くる. 1 回目は _start = 0x0 にセットしたブレークポイントにヒットしたから.
+2 回目には
+
+ecs->event_thread->suspend.stop_pc = 0x80
+
+だった. そもそもここがおかしい.
+
