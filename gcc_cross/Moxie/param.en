@@ -5,7 +5,7 @@ gcc-10.2.0.moxie-elf/gcc/config/moxie/moxie.h
 
 #define FIRST_PARM_OFFSET(F) 12
 
-+#define ARG_POINTER_CFA_OFFSET(FNDECL) \
-+  (crtl->is_leaf ? 0 : FIRST_PARM_OFFSET(FNDECL))
+#define ARG_POINTER_CFA_OFFSET(FNDECL) 0
 
-By this fix, moxie-elf-gdb can display parameter variable correctly.
+But there still some bug which prevents displaying parameter.
+

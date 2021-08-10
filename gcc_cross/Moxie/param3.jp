@@ -1,0 +1,279 @@
+パラメータの表示(gdb から見えているもの)
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_moxie.008
+
+は moxie-elf-gcc の生成したアセンブラのソースを修正したもので期待値を
+作成して実行しているが函数 g でのパラメータ a, b の表示が期待したものではない.
+
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_moxie.008
+(gdb) run -q -x x2 test008.elf
+...
+13	  return g(5, 6);
+g (a=0, b=0) at test008.c:8
+8	  return f(a-1, b+2);
+...
+正しくない
+
+g (a=5, b=6) at test008.c:8
+
+が期待する結果. a, b はそれぞれ $fp+12, $fp+16 に配置されている. 
+
+moxie-tdep.c を見たが
+
+  set_gdbarch_dwarf2_reg_to_regnum
+
+は呼び出されていない. つまりレジスタ番号の変換はないらしい.
+
+main で step 実行して g で停止する.
+
+00000128 <g>:
+ 128:	91 18       	dec	$sp, 0x18
+ 12a:	0d 02 00 0c 	sto.l	0xc($fp), $r0
+ 12e:	0d 03 00 10 	sto.l	0x10($fp), $r1
+ 132:	0c 20 00 0c 	ldo.l	$r0, 0xc($fp)
+
+だから停止アドレスは 0x132 が期待値. まずはこれを確認する. ここで停止するためには
+
+moxie_skip_prologue (pc=0x128)
+
+が 0x132 で返る必要がある.
+
+(gdb) b moxie_skip_prologue
+(gdb) run
+...
+数回目に 0x128 で呼び出されそして確かに 0x132 が返っているこのアドレスは合っている.
+
+次の期待する動作はシミュレーションの結果このアドレスで停止すること.
+
+(gdb) delete
+(gdb) b sim_engine_halt
+(gdb) c
+...
+
+sim_engine_halt (cia=0x132)
+
+の呼び出しがあることは確認できた.
+そこで次に期待される動作だが $fp 相対 12 と 16 のところ読み出すことなので, まずは
+ズバリのアドレスを算出しておく. 以下が期待値で実際にこれはすでにできている. 
+
+0x0fb8 +----------------+ <- sp_{updated at g} 
+       |                |
+       |                |
+       |                |
+       |                |
+       |                |
+       |                |
+       |                |
+0x0fd0 +----------------+ <- sp_{after calling g}
+       |     0x0ff4     |    fp_{after calling g}
+0x0fd4 +----------------+
+       |     0x160      |
+       |                |
+0x0fdc +----------------+ <- sp_{updated at main} 
+       |       a        |
+0x0fe0 +----------------+
+       |       b        |
+       +----------------+
+       |                |
+       |                |
+       |                |
+0x0ff4 +----------------+ <- sp_{after calling main}
+       |       0        |    fp_{after calling main}
+0x0ff8 +----------------+
+       |     0x10e      |
+       |                |
+0x1000 +----------------+
+
+
+0x10e : main の戻りアドレス
+0x160 : g の戻りアドレス
+
+ステップ実行の完了に伴なってメモリが変更される可能性はあるし, 実際変更されているのだから
+sim_read が呼び出され, そこには a と b がある [0x0fdc, 0xfe4) が含まれているはずである.
+
+(gdb) delete
+(gdb) b sim_read
+(gdb) c
+...
+
+内部ブレークポイントの解除もあるので g の先頭アドレスも読み出されたが数回後
+
+sim_read(mem=0xfc0,length=0x40)
+
+の呼び出しを確認できた. そしてメモリの内容も合っていることは確認できている.
+この sim_read の呼び出しは
+
+dcache_read_memory_partial(memaddr=0xfd4, len=4)
+
+から結果的に呼び出されていた. これはおそらくそのアドレスからソースの位置を特定するための
+ものであるから問題なし.
+
+(gdb) delete
+(gdb) b dcache_read_memory_partial
+(gdb) c
+...
+
+dcache_read_memory_partial(memaddr=0xfd0, len=4)
+
+の呼び出し. これは main 函数における fp の値を読み出しているが, ...
+
+(gdb) c
+...
+dcache_read_memory_partial(memaddr=0xfd4, len=4)
+
+の呼び出し. これは g の戻りアドレスを読み出しているが, ...
+
+(gdb) c
+...
+dcache_read_memory_partial(memaddr=0xfd0, len=4)
+
+の呼び出し.
+
+(gdb) c
+...
+dcache_read_memory_partial(memaddr=0xfc4, len=4)
+
+の呼び出し. これは一体? 0x0fb8 + 12 = 0xfc4 = sp_{g で更新} + 12 ということか.
+
+(gdb) c
+...
+dcache_read_memory_partial(memaddr=0xfc8, len=4)
+
+の呼び出し. 0x0fb8 + 16 = 0xfc8 = sp_{g で更新} + 16
+
+そして問題の
+
+(gdb) c
+g (a=0, b=0) at test008.c:8
+8	  return f(a-1, b+2);
+A debugging session is active.
+
+という現象が起こる. これは葉の函数ならば $fp = $sp になるわけでたまたま
+表示できていたということ.
+
+つまりこれはコンパイラは fp 相対で変数を見てもらうつもりでコード生成しているのだが
+デバッガがなぜか sp 相対で変数を見ているということ.
+
+それでは何故 sp 相対になってしまっているのか調べる.
+
+(gdb) command
+>if (memaddr!=0xfc4)
+ >c
+ >end
+>end
+(gdb) run
+
+結果的にだが以下にたどり着いた:
+
+    address = TYPE_DATA_LOCATION_ADDR (resolved_type_no_typedef);
+
+ここで address = 0xfc4 になっている.
+
+さらにその理由は
+loc.c:2340
+	    CORE_ADDR address = ctx.fetch_address (0);
+
+ここだった. address = 0xfc4 になっている.
+このアドレスを算出するのにおそらく sim_fetch_register(rn=1) の呼び出しがあるはずである.
+
+(gdb) delete
+(gdb) b sim_engine_halt
+(gdb) run
+...
+(gdb) c
+...
+sim_engine_halt (cia=0x132) の呼び出しを確認
+
+(gdb) b sim_fetch_register
+...
+sim_fetch_register(rn=0)
+
+きている. しかも 1 (sp) じゃなくて 0 (fp) になっている. 返している値は 0xfd0
+
+0xfd0 - 12 = 0xfc0 で 0xfc0 をアクセスしているということか?
+それならば f で期待した値を表示しているのは一体?
+
+ともかく参照しているレジスタは sp ではなくて期待する fp だが g ではオフセットを加算せず
+減算しているからこの結果になっている.
+
+そして何とこれは以下の函数から呼び出されている:
+
+static struct moxie_frame_cache *
+moxie_frame_cache (struct frame_info *this_frame, void **this_cache)
+{
+
+
+なるほど. これが他のプロセッサと異なる点で
+
+  set_gdbarch_dwarf2_reg_to_regnum
+
+が使用されずフレームを計算するのを自力でやっていたということ.
+
+ということは他と同じようにシミュレータへのレジスタ番号の変換や DWARF のレジスタ
+番号の変換をしたり DWARF のフレーム ID を計算するのは dwarf_frame_this_id に
+すればよいということなのだろうか.
+
+しかしやはり f で期待通り変数が表示できている理由がそうなるとサッパり理解できない.
+
+ならば f で停止したときになぜできているのか調べてみる.
+
+(gdb) run -q -x x3 test008.elf
+
+sim_engine_halt(cia=0x11c)
+
+で 0x11c は f のプロローグを進めた分のアドレス
+
+00000114 <f>:
+ 114:	0d 02 00 0c 	sto.l	0xc($fp), $r0
+ 118:	0d 03 00 10 	sto.l	0x10($fp), $r1
+ 11c:	0c 20 00 0c 	ldo.l	$r0, 0xc($fp)
+
+そしてこの後
+
+sim_fetch_register(rn=0)
+
+の呼び出しがあり 0xfac を返している.
+
+0xfac = 0x0fb8 - 8 - 4 = sp_{updated at g} - 8 - 4
+
+だからこれはこれで正しい. 問題はここから 0xfac + 12 = 0xfb8 や
+0xfac + 16 = 0xfbc をどのようにアクセスしているかということ.
+
+dcache_read_memory_partial
+
+は確かにこのアドレス 0xfb8 や 0xfbc で呼び出されている. だからこそ表示が正しいのだが...
+
+以下は objdump の抜粋 1 つ目は f のもの.
+
+00000014 0000000c 00000000 FDE cie=00000000 pc=00000114..00000128
+
+00000024 00000014 00000000 FDE cie=00000000 pc=00000128..0000014c
+  DW_CFA_advance_loc4: 2 to 0000012a
+  DW_CFA_def_cfa_offset: 24
+  DW_CFA_nop
+
+そして 2 つ目が g のもの 24 が r1 = sp をスタックが成長する方向に進めた, すなわち
+減算したことを表わすがここが問題となっているらしい.
+
+g で a を表示するときにデバッガが行なっていることは g のフレームポインタ
+が 0xfd0 であることをシミュレータから取得しそれに 24 を減算しさらに 12 を
+加算しているということ. だから sp 相対のように見えているが
+
+0xfd0 - 24 + 12 = 0xfc4
+
+この 24 は本当は fp が成長した分ではなくて sp が成長した分なのだが
+すべてのフレーム ID を moxie_frame_this_id で作成しているからこういうことになってしまう.
+
+f で正しく動作しているのは f が葉の函数で sp = fp だから.
+
+修正の方法
+
+   o DWARF のフレーム ID は dwarf_cache_this_id に計算させる.
+
+   o コンパイラの DWARF 生成だが, Moxie の jsra 命令の仕様から考えると
+     現状スタックポインタが基準になっているがフレームポインタを基準にする.
+     だからプロローグでスタックポインタを更新しているのに対して
+
+  DW_CFA_def_cfa_offset: 24
+
+     ではなくて fp から -24 のところにあるという内容にする.
