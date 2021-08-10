@@ -1,0 +1,101 @@
+moxie-elf-gcc のデバッグ情報の修正
+
+gcc-10.2.0.moxie-elf/gcc/config/moxie/moxie.h
+
++#define ARG_POINTER_CFA_OFFSET(FNDECL) 0
+
+これを追加することで
+
+	.string	"a"
+	.byte	0x1
+	.byte	0x1
+	.byte	0xb
+	.4byte	0x58
+	.uleb128 0x2
+	.byte	0x91
+	.sleb128 12         ここ
+	.uleb128 0x3
+	.string	"b"
+	.byte	0x1
+	.byte	0x1
+	.byte	0x12
+	.4byte	0x58
+	.uleb128 0x2
+	.byte	0x91
+	.sleb128 16         ここ
+
+最初のパラメータが fp 相対 12, 次のパラメータが fp 相対 16 になる.
+実際はこの修正のままだとまだ sp 相対なのでこの sp を fp に修正する.
+
+	.section	.debug_frame,"",@progbits
+.Lframe0:
+	.4byte	.LECIE0-.LSCIE0
+.LSCIE0:
+	.4byte	0xffffffff
+	.byte	0x3
+	.string	""
+	.uleb128 0x1
+	.sleb128 -4
+	.uleb128 0x14
+	.byte	0xc
+	.uleb128 0x1        これが 1 なので sp だが 0 にすれば fp
+	.uleb128 0
+	.byte	0x11
+	.uleb128 0x14
+	.sleb128 -1
+
+
+static void
+create_cie_data (void)
+{
+  dw_cfa_location loc;
+  dw_trace_info cie_trace;
+
+  dw_stack_pointer_regnum = DWARF_FRAME_REGNUM (STACK_POINTER_REGNUM);
+
+ここで出しているから
+
+gcc-10.2.0.moxie-elf/gcc/config/moxie/moxie.h
+
++#define DWARF_FRAME_REGNUM(REG) 0
+
+これを追加する. これで sp 相対だったものが fp 相対になった.
+
+そして最後に
+
+00000014 00000014 00000000 FDE cie=00000000 pc=00000000..0000001a
+  DW_CFA_advance_loc4: 2 to 00000002
+  DW_CFA_def_cfa_offset: 24
+  DW_CFA_nop
+
+と現状なっているのを sp の値は fp - 24 であるという情報に変更する
+と思ったが, 必要ないので以下の修正を行なった.
+
+void
+moxie_expand_prologue (void)
+{
+...
+#if 0
+	  RTX_FRAME_RELATED_P (insn) = 1;
+#endif
+...
+#if 0
+	  RTX_FRAME_RELATED_P (insn) = 1;
+#endif
+...
+#if 0
+	  RTX_FRAME_RELATED_P (insn) = 1;
+#endif
+...
+#if 0
+	  RTX_FRAME_RELATED_P (insn) = 1;
+#endif
+...
+#if 0
+	  RTX_FRAME_RELATED_P (insn) = 1;
+#endif
+
+つまり, sp は変更しているがこれを DWARF に出さないということ.
+
+
+

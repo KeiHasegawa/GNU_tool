@@ -1,0 +1,96 @@
+moxie-elf-gcc を修正した後 moxie-elf-gdb が期待通り動作するか
+確認したが動作していない.
+
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_moxie.007
+(gdb) run  -q -x x2 test007.elf
+...
+Breakpoint 1, main () at test007.c:13
+13	  return g(5, 6);
+g (a=0, b=0) at test007.c:8
+8	  return f(a-1, b+2);
+...
+
+
+(gdb) b dcache_read_memory_partial
+(gdb) run
+
+これで確認すると
+
+dcache_read_memory_partial(memaddr=0xfc4)
+dcache_read_memory_partial(memaddr=0xfc8)
+
+にまだアクセスしている. ということは moxie-elf-gcc を修正したが状況は変わっていないという
+こと.
+
+(gdb) b sim_engine_halt
+(gdb) run
+...
+
+sim_engine_halt(cia=0x14e) で停止. 0x14e は main+2 で期待値.
+
+(gdb) b sim_fetch_register
+(gdb) c
+...
+
+sim_fetch_register(rn=16) : PC の問い合わせ. 0x14e
+(gdb) c
+...
+
+sim_fetch_register(rn=0)  : fp の問い合わせ. 0xff4 で期待値.
+(gdb) c
+...
+(gdb) c
+...
+
+sim_engine_halt(cia=0x154) で停止. 0x154 は jsra 命令の 1 つ前の命令のアドレス
+
+(gdb) c
+
+sim_engine_halt(cia=0x15a) で停止. 0x15a は jsra 命令
+
+(gdb) c
+...
+sim_engine_halt(cia=0x128) で停止. 0x128 は g の先頭アドレス
+
+(gdb) c
+
+sim_fetch_register(rn=0)  : fp の問い合わせ. 0xfd0 で期待値.
+
+(gdb) c
+
+sim_engine_halt(cia=0x132) で停止. 0x132 は g のプロローグ後のアドレス
+
+00000128 <g>:
+ 128:	91 18       	dec	$sp, 0x18
+ 12a:	0d 02 00 0c 	sto.l	0xc($fp), $r0
+ 12e:	0d 03 00 10 	sto.l	0x10($fp), $r1
+ 132:	0c 20 00 0c 	ldo.l	$r0, 0xc($fp)
+
+(gdb) c
+
+sim_fetch_register(rn=0)  : fp の問い合わせ. 0xfd0 で期待値.
+
+そして問題の 0xfc4, 0xfc8 番地の参照.
+
+以下の修正を行なった.
+
+static void
+moxie_frame_this_id (struct frame_info *this_frame,
+		    void **this_prologue_cache, struct frame_id *this_id)
+{
+  struct moxie_frame_cache *cache = moxie_frame_cache (this_frame,
+						   this_prologue_cache);
+
+  /* This marks the outermost frame.  */
+  if (cache->base == 0)
+    return;
+
+#if 0
+  *this_id = frame_id_build (cache->saved_sp, cache->pc);
+#else
+  *this_id = frame_id_build (cache->base, cache->pc);
+#endif
+}
+
+これで期待した動作になっている.
+l
