@@ -187,8 +187,118 @@ new_loc_descr (enum dwarf_location_atom op, unsigned HOST_WIDE_INT oprnd1,
 本来この修正をどこに入れるべきなのかは不明だが config.h が作成される
 タイミングが不明なのでとりあえず config.h にそのまま修正を残しておく.
 修正の方法は正しくないが, 期待した動作にはなる. そのうちより良い方法が判明するかもしれない.
+=> 入れるのならば moxie.h の中らしい.
 
-追記:
+残念ながらこの修正は正しくなかった. この修正を入れた後, 再帰呼び出しの函数で where コマンド
+を実行したときパラメータの値が正しく表示できない問題が発生している.
 
-この修正を入れた後, 再帰呼び出しの函数で where コマンドを実行したときパラメータの値が
-正しく表示できない問題が発生している.
+この修正は葉の函数には正しく動作しているが, 葉でない函数には正しく動作していない.
+
+
+AVR, Blackfin, MIPS, MN10300, Microblaze が引数を渡すときにスタックにオフセットを
+持たせるやりかたになっている.
+
+avr-elf-gcc は DWARF を採用していないので参考にはならなかった.
+
+bfin-elf-gcc では葉か葉でないかに関わらず
+
+  offset += ARG_POINTER_CFA_OFFSET (current_function_decl);
+
+ここで offset は 0 から 0. つまり ARG_POINTER_CFA_OFFSET (current_function_decl)
+は 0 を常に返しているらしい. そして以下がその定義:
+
+#define ARG_POINTER_CFA_OFFSET(FNDECL) \
+  (FIRST_PARM_OFFSET (FNDECL) + crtl->args.pretend_args_size)
+
+/* We define a dummy ARGP register; the parameters start at offset 0 from
+   it. */
+#define FIRST_PARM_OFFSET(DECL) 0
+
+bfin.h にそれっぽいコメントがある. だからこの場合は 0 に define しているということ.
+結果的に moxie-elf-gcc はできていないのだが, これが 12 だから誤りということはなさそう
+ではある.
+
+一応以下も調べた:
+(gdb) p crtl->args.pretend_args_size
+$7 = 0
+(gdb)
+
+mips-elf-gcc は gcc-3.4.4 からコンパイルしたもので勝手が少し違っている.
+ARG_POINTER_CFA_OFFSET というマクロは dwarf2out.c の中には出現しない.
+
+しかし mips.h の中には以下の宣言がある.
+
+/* The argument pointer always points to the first argument.  */
+#define FIRST_PARM_OFFSET(FNDECL) 0
+
+やはり特殊な DWARF 用のレジスタが用意されているようだ.
+
+mn10300-elf-gcc で試してみたところ bfin-elf-gcc と同じ動作であった.
+そして以下の定義:
+
+mn10300.h
+
+#define FIRST_PARM_OFFSET(FNDECL) 4
+
+/* But the CFA is at the arg pointer directly, not at the first argument.  */
+#define ARG_POINTER_CFA_OFFSET(FNDECL) 0
+
+これからすると arg pointer もしくは argument pointer なるものを moxie でも導入した
+くなる気はする. というよりもうすでにあるのだろうが, それが機能していないのだろう.
+少し横道にそれるかもしれないが MN10300 の ABI からすると 4 ではなくて
+8 になりそうな気がするがあくまでも根拠のない推測である. 実際 mn10300-elf-gcc に問題は
+見つかっていない.
+
+microblaze-elf-gcc の場合も bfin-elf-gcc, mn10300-elf-gcc と同じ動作.
+そして
+
+microblaze.h
+
+#define UNITS_PER_WORD          4
+...
+#define FIRST_PARM_OFFSET(FNDECL)		(UNITS_PER_WORD)
+
+#define ARG_POINTER_CFA_OFFSET(FNDECL)		0
+
+これも Microblaze の ABI からすると 4 ではなくて 24 になりそうだが, やはり
+microblaze-elf-gcc に問題はないからこれはこれで正しいのだろう.
+
+さてこんなところだが, 共通しているのは offset の値はいずれも 0 から 0 で
+ARG_POINER_CFA_OFFSET(x) は 0 に結果的になる.
+
+ところで AVR, Blackfin, MIPS, MN10300, Microblaze を参考にしようとしたが
+これらのプロセッサはレジスタで渡しされない引数をスタックに置くときオフセットを
+開けて置くタイプのものであったが結局これが影響しているかどうかは不明である.
+
+crtl->args.pretend_args_size
+
+という名前からそのように判断したのだが, そもそもこれは 0 だから関係ない.
+
+さて修正方針だが
+
+(1) ARG_POINTER_CFA_OFFSET(FNDECL) を 0 に define するのならば葉でない函数の
+    オフセットを修正する必要がある.
+
+(2) ARG_POINTER_CFA_OFFSET(FNDECL) の定義はこれまで通りにするのならば葉の函数
+    のオフセットを修正する必要がある.
+
+ということでこれだと手間が変わらないことになる. いずれにしても函数が葉か葉でないかは
+判断することが要求されている.
+
+int
+leaf_function_p (void)
+{
+
+このような函数がある. これは勿論だが函数の中を処理しているときに rtx_insn の列を
+順番に見ていくということをしているものである.
+
+crtl->is_leaf
+
+にこの値をセットしているようだからこれを参照することにすればよい.
+
+結局 config.h の修正は取り消して moxie.h に以下を入れることにした.
+
+#define FIRST_PARM_OFFSET(F) 12
+
++#define ARG_POINTER_CFA_OFFSET(FNDECL) \
++ (crtl->is_leaf ? 0 : FIRST_PARM_OFFSET(FNDECL))

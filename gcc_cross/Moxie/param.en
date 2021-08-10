@@ -1,7 +1,11 @@
 Omitted precisely, I fixed like below:
 
-gcc-10.2.0.moxie-elf/host-i686-pc-linux-gnu/gcc/config.h
+gcc-10.2.0.moxie-elf/gcc/config/moxie/moxie.h
 
-#define ARG_POINTER_CFA_OFFSET(X) 0    // Add this line
+
+#define FIRST_PARM_OFFSET(F) 12
+
++#define ARG_POINTER_CFA_OFFSET(FNDECL) \
++  (crtl->is_leaf ? 0 : FIRST_PARM_OFFSET(FNDECL))
 
 By this fix, moxie-elf-gdb can display parameter variable correctly.
