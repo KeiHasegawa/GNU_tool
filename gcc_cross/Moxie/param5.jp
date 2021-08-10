@@ -72,7 +72,7 @@ sim_fetch_register(rn=0)  : fp の問い合わせ. 0xfd0 で期待値.
 
 そして問題の 0xfc4, 0xfc8 番地の参照.
 
-以下の修正を行なった.
+以下の修正が必要なことに気付いた.
 
 static void
 moxie_frame_this_id (struct frame_info *this_frame,
@@ -92,5 +92,6 @@ moxie_frame_this_id (struct frame_info *this_frame,
 #endif
 }
 
-これで期待した動作になっている.
-l
+これで期待した動作になっている. 「パラメータの表示(gdb からの見えているもの)」での
+修正方針とは少し違うができているのでこれでしばらく様子を見てみる.
+

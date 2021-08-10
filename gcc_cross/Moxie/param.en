@@ -2,10 +2,56 @@ Omitted precisely, I fixed like below:
 
 gcc-10.2.0.moxie-elf/gcc/config/moxie/moxie.h
 
++#define FIRST_PARM_OFFSET(F) 12
 
-#define FIRST_PARM_OFFSET(F) 12
++#define ARG_POINTER_CFA_OFFSET(FNDECL) 0
 
-#define ARG_POINTER_CFA_OFFSET(FNDECL) 0
+gcc-10.2.0.moxie-elf/gcc/config/moxie/moxie.c
 
-But there still some bug which prevents displaying parameter.
+void
+moxie_expand_prologue (void)
+{
+...
++#if 0
+	  RTX_FRAME_RELATED_P (insn) = 1;
++#endif
+...
++#if 0
+	  RTX_FRAME_RELATED_P (insn) = 1;
++#endif
+...
++#if 0
+	  RTX_FRAME_RELATED_P (insn) = 1;
++#endif
+...
++#if 0
+	  RTX_FRAME_RELATED_P (insn) = 1;
++#endif
+...
++#if 0
+	  RTX_FRAME_RELATED_P (insn) = 1;
++#endif
+
+
+gdb-10.2.moxie-elf/gdb/moxie-tdep.c
+
+static void
+moxie_frame_this_id (struct frame_info *this_frame,
+		    void **this_prologue_cache, struct frame_id *this_id)
+{
+  struct moxie_frame_cache *cache = moxie_frame_cache (this_frame,
+						   this_prologue_cache);
+
+  /* This marks the outermost frame.  */
+  if (cache->base == 0)
+    return;
+
++#if 0
+  *this_id = frame_id_build (cache->saved_sp, cache->pc);
++#else
+  *this_id = frame_id_build (cache->base, cache->pc);
++#endif
+}
+
+By this fix, moxie-elf-gdb can display local variables correctly.
 
