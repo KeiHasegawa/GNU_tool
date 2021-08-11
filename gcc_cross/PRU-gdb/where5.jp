@@ -1,22 +1,333 @@
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_microblaze
+pru-elf-gdb の where コマンド(その5)
 
-を試してみたところ... bss の初期化を行なっているところで
-プログラムの制御がいきなりベクタ付近 (0 番地)くらいにジャンプしている.
-そして以下のメッセージが出ている.
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_pru.001/hello.elf
 
-Program received signal SIGTRAP, Trace/breakpoint trap.
+_sbrk_r のブレークポイントで停止したときに where コマンドを実行すると
 
-これは AARCH64 で見た現象とすごく良く似ているが, 原因は不明
+(pru-elf-gdb) where
+#0  _sbrk (inc=0) at dummy.c:8
+#1  0x000022f4 in _sbrk_r (ptr=0x3c32 <impure_data>, incr=0) at ../../../.././newlib/libc/reent/sbrkr.c:51
+#2  0x00001d80 in sbrk_aligned (reent_ptr=0x3c32 <impure_data>, s=436) at ../../../.././newlib/libc/stdlib/nano-mallocr.c:211
+#3  0x00002064 in _malloc_r (reent_ptr=0x3c32 <impure_data>, s=428) at ../../../.././newlib/libc/stdlib/nano-mallocr.c:295
+#4  0x00000890 in __sfmoreglue (d=0x3c32 <impure_data>, n=<error reading variable: Unable to access DWARF register number 20>) at ../../../.././newlib/libc/stdio/findfp.c:132
+#5  0x00000a0c in __sfp (d=0x283) at ../../../.././newlib/libc/stdio/findfp.c:163
+#6  0x00000000 in ?? ()
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+(pru-elf-gdb)
+
+のようになってしまう.
+
+static int pru_dbg_reg_to_regnum(gdbarch*, int regno)
+{
+...
+#if 1
+  return regno;
+#else
+  return -1;
+#endif
+}
+
+のように修正したがそれでも以下のようになる.
+
+Breakpoint 2, _sbrk_r (ptr=0x3c32 <impure_data>, incr=0)
+    at ../../../.././newlib/libc/reent/sbrkr.c:50
+50	  errno = 0;
+#0  _sbrk_r (ptr=0x3c32 <impure_data>, incr=0)
+    at ../../../.././newlib/libc/reent/sbrkr.c:50
+#1  0x00001d80 in sbrk_aligned (reent_ptr=0x3c32 <impure_data>, s=436)
+    at ../../../.././newlib/libc/stdlib/nano-mallocr.c:211
+#2  0x00002064 in _malloc_r (reent_ptr=0x3c32 <impure_data>, s=428)
+    at ../../../.././newlib/libc/stdlib/nano-mallocr.c:295
+#3  0x00000890 in __sfmoreglue (d=0x3c32 <impure_data>, n=0)
+    at ../../../.././newlib/libc/stdio/findfp.c:132
+#4  0x00000a0c in __sfp (d=0x283)
+    at ../../../.././newlib/libc/stdio/findfp.c:163
+#5  0x00000000 in ?? ()
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+
+単純に比較できないかもしれないが他プロセッサの状況も調べてみた.
+
+aarch64-elf-gdb    : OK
+arm-elf-gdb        : OK
+avr-elf-gdb        : sbrk, sbrk_r, malloc_r 等が呼ばれないので該当なし
+bfin-elf-gdb       : NG
+cr16-elf-gdb       : OK
+cris-elf-gdb       : OK
+frv-elf-gdb        : OK
+ft32-elf-gdb       : OK
+h8300-elf-gdb      : OK
+iq2000-elf-gdb     : OK
+lm32-elf-gdb       : OK
+m32c-elf-gdb       : OK
+m32r-elf-gdb       : NG
+m68hc11-elf-gdb    : OK
+mcore-elf-gdb      : NG (where コマンドで無限ループ)
+microblaze-elf-gdb : OK
+mips-elf-gdb       : おしいけど NG
+mn10300-elf-gdb    : OK
+moxie-elf-gdb      : OK
+msp430-elf-gdb     : OK
+or1k-elf-gdb       : OK
+ppc-elf-gdb        : OK
+pru-elf-gdb        : NG
+rl78-elf-gdb       : OK
+rx-elf-gdb         : OK
+sh-elf-gdb         : OK
+v850-elf-gdb       : OK
+
+findfp.c:297 にブレークポイントをセットしてそこまで実行し next コマン
+ドを実行すると main を通り越してスタートアップルーチンの end ラベルま
+で実行してしまっている. これと関係があるのかも.
 
 
-  random_signal
-    = !bpstat_explains_signal (ecs->event_thread->control.stop_bpstat,
-			       ecs->event_thread->suspend.stop_signal);
+  s->__sdidinit = 1;             この行を next 実行すると
 
-ここには 2 回くる. 1 回目は _start = 0x0 にセットしたブレークポイントにヒットしたから.
-2 回目には
+  __sinit_lock_release ();       この行で停止するのが期待値だがそうはなっていない
+}
 
-ecs->event_thread->suspend.stop_pc = 0x80
 
-だった. そもそもここがおかしい.
+where コマンドが期待した動作をしていないのも関係しているかもしれないの
+でまず簡単そうなこっちから原因を調査してみる.
+
+一応 pru-elf-gcc の修正が反映されるかを確認した:
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.pru-elf/pru-elf/newlib/libc/stdio/lib_a-findfp.o.objdump
+
+000005ac <__sinit>:
+ 5ac:	050ae2e2 	sub	sp, sp, 10
+...
+
+00000170 00000028 00000000 FDE cie=00000000 pc=000005ac..000006f8
+  DW_CFA_advance_loc: 4 to 000005b0
+  DW_CFA_def_cfa_offset: 10
+  DW_CFA_advance_loc: 4 to 000005b4
+  DW_CFA_offset: r14 at cfa-6
+  DW_CFA_offset: r16 at cfa-4           (*) これ
+  DW_CFA_advance_loc: 4 to 000005b8
+  DW_CFA_def_cfa: r16 ofs 0
+  DW_CFA_advance_loc2: 308 to 000006ec
+  DW_CFA_def_cfa: r8 ofs 6
+  DW_CFA_advance_loc: 4 to 000006f0
+  DW_CFA_restore: r19
+  DW_CFA_restore: r18
+  DW_CFA_restore: r17
+  DW_CFA_restore: r16
+  DW_CFA_restore: r15
+  DW_CFA_restore: r14
+  DW_CFA_advance_loc: 4 to 000006f4
+  DW_CFA_def_cfa_offset: 0
+
+ちゃんと反映されている. 問題の箇所で逆アセンブルしてみた:
+
+(pru-elf-gdb) disassemble
+Dump of assembler code for function __sinit:
+   0x00000bec <+0>:	sub	sp, sp, 10
+...
+
+
+   0x00000d0c <+288>:	call	0x808 <stderr_init>
+=> 0x00000d10 <+292>:	sub	r0, fp, 10
+   0x00000d14 <+296>:	lbbo	r0.b0, r0, 0, 4
+   0x00000d18 <+300>:	ldi	r1, 1
+End of assembler dump.
+(pru-elf-gdb) x/10i 0xd18
+   0xd18 <__sinit+300>:	ldi	r1, 1
+   0xd1c <__sinit+304>:	sbbo	r1.b0, r0, 24, 4
+   0xd20 <__sinit+308>:	call	0xd94 <__sinit_lock_release>
+   0xd24 <__sinit+312>:	sub	sp, fp, 6
+   0xd28 <__sinit+316>:	lbbo	ra.b2, sp, 0, 6
+   0xd2c <__sinit+320>:	add	sp, sp, 6
+   0xd30 <__sinit+324>:	ret
+   0xd34 <__sfp_lock_acquire>:	sub	sp, sp, 4
+   0xd38 <__sfp_lock_acquire+4>:	sbbo	fp.b0, sp, 0, 4
+   0xd3c <__sfp_lock_acquire+8>:	add	fp, sp, 4
+(pru-elf-gdb)
+
+逆アセンブルが不自然なところで停止したので残りも確認した.
+0xd10 から next 実行したら 0xd20 で停止するのが期待する動作.
+
+まずは行番号情報が正しいか確認する.
+
+findfp.c                                     297               0xd10               x
+findfp.c                                     299               0xd20               x
+
+合っている. next コマンド実行で何故アドレス 0xd20 で停止しないのかを確
+認する.
+
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_pru.001/hello.elf
+(gdb) run -q -x x5 hello.elf
+...
+    at ../../../.././newlib/libc/stdio/findfp.c:297
+297	  s->__sdidinit = 1;
+
+Breakpoint 1, end () at start.S:8
+8		nop
+A debugging session is active.
+...
+再現している.
+
+(gdb) b next_command
+(gdb) run
+...
+(gdb) b sim_write
+(gdb) b sim_resume
+(gdb) b sim_engine_halt
+(gdb) c
+...
+sim_write(mem=0x110, buf=<pru_from_kind(gdbarch*, int, int*)::break_inst>)
+の呼び出しを確認. end=0x110.
+(gdb) c
+...
+sim_resume(step=1) の呼び出し. 1 命令のみ実行.
+(gdb) c
+...
+sim_engine_halt (cia=0, reason=sim_stopped, sigrc=66) の呼び出し.
+(gdb) c
+sim_write(mem=0xd10, buf=<pru_from_kind(gdbarch*, int, int*)::break_inst>)
+の呼び出しを確認
+(gdb) c
+...
+sim_resume(step=1) の呼び出し. 1 命令のみの実行.
+(gdb) c
+...
+sim_engine_halt(cia=0, reason=sim_stopped, sigrc=66) の呼び出し.
+(gdb) c
+...
+sim_resume(step=1) の呼び出し. 1 命令のみの実行.
+(gdb) c
+...
+sim_engine_halt(cia=0, reason=sim_stopped, sigrc=66) の呼び出し.
+(gdb) c
+...
+sim_resume(step=1) の呼び出し. 1 命令のみの実行.
+(gdb) c
+...
+sim_engine_halt(cia=0, reason=sim_stopped, sigrc=66) の呼び出し.
+(gdb) b sim_fetch_register
+(gdb) c
+...
+sim_fetch_register(rn=32) の呼び出し. 0xd20 を返している.
+(gdb) c
+...
+sim_fetch_register(rn=2) の呼び出し. スタックポインタの参照. 0x5fac を
+返している.
+(gdb) c
+...
+sim_fetch_register(rn=3) の呼び出し. 0x3440000 を返している.
+(gdb) c
+...
+sim_fetch_register(rn=4) の呼び出し. 0x5fb6 を返している.
+(gdb) c
+...
+sim_resume(step=0) の呼び出し.
+
+
+これまでの話からすると
+
+   0xd1c <__sinit+304>:	sbbo	r1.b0, r0, 24, 4
+   0xd20 <__sinit+308>:	call	0xd94 <__sinit_lock_release>
+
+
+0xd1c 番地の命令でスタックポインタを少しずらしていることが原因になって
+いる可能性があると推測した.
+
+__sinit_lock_release の宣言は
+
+void __sinit_lock_release (void);
+
+であるから普通の函数の呼び出し.
+
+  s->__sdidinit = 1;
+
+だが
+
+0xd10:	sub	r0, fp, 10             r0 <- 0x5fac
+0xd14:	lbbo	r0.b0, r0, 0, 4        r0 <- memory[0x5fac] = 0x3c32 (4 bytes)
+0xd18:	ldi	r1, 1                  r1 <- 1
+0xd1c:	sbbo	r1.b0, r0, 24, 4       memory[r0+24] <- r1
+
+のようにしている. この命令ではスタックポインタがずれたりすることはない
+が, 誤って debug_frame 情報を出してしまうことはありそう.
+
+000003b0 00000028 00000240 FDE cie=00000240 pc=00000bec..00000d1c
+  DW_CFA_advance_loc: 4 to 00000bf0
+  DW_CFA_def_cfa_offset: 10
+  DW_CFA_advance_loc: 4 to 00000bf4
+  DW_CFA_offset: r14 at cfa-6
+  DW_CFA_offset: r16 at cfa-4
+  DW_CFA_advance_loc: 4 to 00000bf8
+  DW_CFA_def_cfa: r16 ofs 0
+  DW_CFA_advance_loc2: 308 to 00000d2c
+  DW_CFA_def_cfa: r8 ofs 6
+  DW_CFA_advance_loc: 4 to 00000d30
+  DW_CFA_restore: r19
+  DW_CFA_restore: r18
+  DW_CFA_restore: r17
+  DW_CFA_restore: r16
+  DW_CFA_restore: r15
+  DW_CFA_restore: r14
+  DW_CFA_advance_loc: 4 to 00000d34
+  DW_CFA_def_cfa_offset: 0
+
+そういうわけではなかった. しかし明らかにおかしいのは
+
+00000bec <__sinit>:
+     bec:	050ae2e2 	sub	sp, sp, 10
+...
+     d24:	0506e4e2 	sub	sp, fp, 6       ここからエピローグ 
+     d28:	f10042c3 	lbbo	ra.b2, sp, 0, 6
+     d2c:	0106e2e2 	add	sp, sp, 6
+     d30:	20c30000 	ret
+
+00000d34 <__sfp_lock_acquire>:
+
+となっているから __sinit の debug_frame は少なくとも 0xbec ... 0xd30
+のアドレスについてのものでないといけないが
+
+  DW_CFA_advance_loc: 4 to 00000d30
+  DW_CFA_restore: r19
+  DW_CFA_restore: r18
+  DW_CFA_restore: r17
+  DW_CFA_restore: r16
+  DW_CFA_restore: r15
+  DW_CFA_restore: r14
+  DW_CFA_advance_loc: 4 to 00000d34
+  DW_CFA_def_cfa_offset: 0
+
+なんだかこれはおかしい.
+
+000003b0 00000028 00000240 FDE cie=00000240 pc=00000bec..00000d1c
+                                                         ^^^^^^^^^
+
+おかしいのはここのアドレス. 0xd30 が正しい.
+
+
+アセンブル時は
+
+00000170 00000028 00000000 FDE cie=00000000 pc=000005ac..000006f8
+  DW_CFA_advance_loc: 4 to 000005b0
+  DW_CFA_def_cfa_offset: 10
+  DW_CFA_advance_loc: 4 to 000005b4
+  DW_CFA_offset: r14 at cfa-6
+  DW_CFA_offset: r16 at cfa-4
+  DW_CFA_advance_loc: 4 to 000005b8
+  DW_CFA_def_cfa: r16 ofs 0
+  DW_CFA_advance_loc2: 308 to 000006ec
+  DW_CFA_def_cfa: r8 ofs 6
+  DW_CFA_advance_loc: 4 to 000006f0
+  DW_CFA_restore: r19
+  DW_CFA_restore: r18
+  DW_CFA_restore: r17
+  DW_CFA_restore: r16
+  DW_CFA_restore: r15
+  DW_CFA_restore: r14
+  DW_CFA_advance_loc: 4 to 000006f4
+  DW_CFA_def_cfa_offset: 0
+
+なので問題なし. とここまで書いてこれは ldi 命令の対応がまずいということ. 
+
+改めて逆アセンブルが不自然なところで停止したのも納得. 現時点での
+pru-tdep.c を pru-tdep.c.008 としてアップロードしておく. 余計と思われ
+ていた部分はざっくりと削除した.
+
 
