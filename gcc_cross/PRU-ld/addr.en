@@ -1,0 +1,258 @@
+Investigation the way of refering to variable address.
+
+Backgorund : pru-elf-ld converts `movsd' instruction into the equivalent
+`mov?' instruction which causes bug about .debug_line or .debug_frame
+section.
+
+I investigated it like below:
+
+% cat test.c
+int* f()
+{
+  extern int var;
+  return &var;
+}
+% aarch64-elf-gcc -g -S test.c
+% aarch64-elf-as test.s -o test.o
+% aarch64-elf-ld -o test.elf test.o --defsym var=0x100
+
+(*) aarch64-elf-***
+
+	adrp	x0, var
+	add	x0, x0, :lo12:var
+
+`aarch64-elf-gcc' generates above code. `aarch64-elf-ld' doesn't have to
+do special operation.
+
+(*) arm-elf-***
+
+	ldr	r3, .L2
+...
+.L2:
+	.word	var
+
+`arm-elf-gcc' generates above code. `arm-elf-ld' doesn't have to do
+special operation.
+
+(*) avr-elf-***
+
+	ldi r24,lo8(var)
+	ldi r25,hi8(var)
+
+`avr-elf-gcc' generates above code. `avr-elf-ld' doesn't have to do
+special operation.
+
+
+(*) bfin-elf-***
+
+	R0.H = _var;
+	R0.L = _var;
+
+`bfin-elf-gcc' generates above code. `bfin-elf-ld' doesn't have to do
+special operation.
+
+(*) cr16-elf-***
+
+	movd	$_var@l, (r1,r0)
+
+`cr16-elf-gcc' generates above code. According to `_var' value,
+movd instruction lenght becomes like below:
+
+0 ... 0xf             : 2 bytes
+0x10 ...  0xfff       : 4 bytes
+0x1000 ... 0xffffffff : 6 bytes
+
+(*) cris-elf-***
+
+	move.d _var,$r9
+
+`cris-elf-gcc' generates above code. This instruction length is always
+6 bytes. `cris-elf-ld' doesn't have to do special operation.
+
+(*) frv-elf-***
+
+	addi gr16,#gprel12(var),gr4
+
+`frv-elf-gcc' generates above code. In FR-V architecture, global pointer
+register is used for access variable at memory (not stack).
+Finally this instruction becomes 
+
+	addi gr16,-2048,gr4
+
+where, `var=0x00010130' is specified (with default linker script).
+
+(*) ft32-elf-***
+
+	ldk.l  $r0,var
+
+`ft32-elf-gcc' generates above code. `var' value have to be 20 bits.
+But `ft32-elf-ld' doesn't check it.
+
+(*) h8300-elf-***
+
+	mov.w	#_var,r2
+
+`h8300-elf-gcc' generates above code. `var' value have to be 16 bits.
+But `h8300-elf-ld' doesn't check it.
+
+(*) iq2000-elf-***
+
+	lui	%2,%hi(var) # high
+	addiu	%2,%2,%lo(var) # low
+
+`iq2000-elf-gcc' generates above code. `iq2000-elf-ld' doesn't have to do
+special operation.
+
+
+(*) lm32-elf-***
+
+	orhi     r1, r0, hi(var)
+	ori      r1, r1, lo(var)
+
+`lm32-elf-gcc' generates above code. `lm32-elf-ld' doesn't have to do
+special operation.
+
+
+(*) m32c-elf-***
+
+	mov.w	#_var,r0
+
+`m32c-elf-gcc' generates above code. `_var' value have to be
+16 bits, but m32c-elf-ld doesn't check it. 
+
+(*) m32r-elf-***
+
+	ld24 r4,#var
+
+`m32r-elf-gcc' generates above code. `var' value have to be
+24 bits, and m32r-elf-ld checks it.
+
+(*) m68hc11-elf-***
+
+	ldd	#var
+
+`m68hc11-elf-gcc' generates above code. The value of `var' have to be
+16 bits, but `m68hc11-elf-ld' doesn't check it. 
+
+(*) mcore-elf-***
+
+	lrw	r7, var
+
+`mcore-elf-gcc' generates above code, where `var' value
+can be 32 bits and it is located at the address
+specified implicitly. On the other hand `arm-elf-gcc' and `sh-elf-gcc'
+generates similar code but they specifies `var' address explicitly.
+
+(*) microblaze-elf-***
+
+	addik	r3,r0,var
+
+`microblaze-elf-gcc' generates above code. For this code, `microblaze-elf-ld'
+converts like below:
+
+ 	imm	0
+ 	addik	r3, r0, 256
+
+`microblaze-elf-ld' can delete `imm' instuction in this case and it should.
+
+(*) mips-elf-***
+
+	la	$2,var
+
+`mips-elf-gcc' generates above code. In MIPS architecture, global pointer
+register is used for access variable at memory (not stack).
+Finaly `mips-elf-ld' converts like below:
+
+ 	addiu	v0,gp,-56
+
+`mips-elf-ld' just checks `var' address can be accessed via `gp'.
+
+(*) mn10300-elf-***
+
+	mov _var,d0
+
+`mn10300-elf-gcc' generates above code. This instruction length is always
+6 bytes. `mn10300-elf-ld' doesn't have to do special operation.
+
+(*) moxie-elf-***
+
+	ldi.l	$r0, var
+
+`moxie-elf-gcc' generates above code. This instruction length is always
+6 bytes. `moxie-elf-ld' doesn't have to do special operation.
+
+(*) msp430-elf-***
+
+	MOV.W	#var, R12
+
+`msp430-elf-gcc' generates above code. `var' value have to be
+16 bits, and msp430-elf-ld checks it.
+
+(*) or1k-elf-***
+
+	l.movhi	r17, ha(var)
+	l.addi	r17, r17, lo(var)
+
+`or1k-elf-gcc' generates above code. `or1k-elf-ld' doesn't have to do
+special operation.
+
+(*) ppc-elf-***
+
+	lis 9,var@ha
+	la 9,var@l(9)
+
+`ppc-elf-gcc' generates above code. `ppc-elf-ld' doesn't have to do
+special operation.
+
+(*) pru-elf-***
+
+	ldi32	r1, var
+
+`pru-elf-gcc' generates above code. If the  value of `var' is 16 bits
+or less than, `pru-elf-ld' generates 1 instruction. Otherwise,
+genereates 2 instructions.
+
+(*) rl78-elf-***
+
+	movw	r8, #_var
+
+`rl78-elf-gcc' generates above code. The value of `_var' have to be
+16 bits, but `rl78-elf-ld' doesn't check it. 
+
+(*) rx-elf-***
+
+	mov.L	#_var, r10
+
+`rx-elf-gcc' generates above code. This instruction length is always
+6 bytes. `rx-elf-ld' doesn't have to do special operation.
+
+(*) sh-elf-***
+
+	mov.l	.L3,r1
+
+.L3:
+	.long	_var
+
+`sh-elf-gcc' generates above code. `sh-elf-ld' doesn't have to do
+special operation.
+
+(*) v850-elf-***
+
+	movhi hi(_var),r0,r10
+	movea lo(_var),r10,r10
+
+`v850-elf-gcc' generates above code. `v850-elf-ld' doesn't have to do
+special operation.
+
+(*) Classfication
+
+2 instructions : aarch64, avr, bfin, iq2000, lm32, or1k, ppc, v850
+Refer indirectly : arm, mcore, sh
+6 bytes : cris, mn10300, moxie, rx
+Global pointer : frv, mips
+24 bit : m32r
+20 bit : ft32(*x)
+16 bit : h8300(*x), m32c(*x), m68hc11(*x), msp430, rl78(*x)
+`ld' shurinks instruction : cr16, pru
+`ld' generates 2 insructions : microblaze
+
