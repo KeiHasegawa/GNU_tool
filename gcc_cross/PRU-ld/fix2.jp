@@ -1,0 +1,561 @@
+pru-elf-ld で debug_frame がずれるバグの修正
+
+% cat b.c
+int* f()
+{
+  extern int var;
+  return &var;
+}
+% pru-elf-gcc -g -S b.c
+% pru-elf-as -o b.o b.s
+% pru-elf-ld -o b.elf b.o --defsym var=0x100
+% pru-elf-objdump -d --dwarf b.o > b.o.objdump
+% pru-elf-objdump -d --dwarf b.elf > b.objdump
+
+b.o.objdump の抜粋
+
+00000010 00000024 00000000 FDE cie=00000000 pc=00000000..00000028
+  DW_CFA_advance_loc: 4 to 00000004
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_advance_loc: 4 to 00000008
+  DW_CFA_offset: r16 at cfa-4
+  DW_CFA_advance_loc: 4 to 0000000c
+  DW_CFA_def_cfa: r16 ofs 0
+  DW_CFA_advance_loc: 16 to 0000001c
+  DW_CFA_def_cfa: r8 ofs 4
+  DW_CFA_advance_loc: 4 to 00000020
+  DW_CFA_restore: r19
+  DW_CFA_restore: r18
+  DW_CFA_restore: r17
+  DW_CFA_restore: r16
+  DW_CFA_advance_loc: 4 to 00000024
+  DW_CFA_def_cfa_offset: 0
+  DW_CFA_nop
+  DW_CFA_nop
+
+b.objdump の抜粋
+
+00000010 00000024 00000000 FDE cie=00000000 pc=20000000..20000024
+  DW_CFA_advance_loc: 4 to 20000004
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_advance_loc: 4 to 20000008
+  DW_CFA_offset: r16 at cfa-4
+  DW_CFA_advance_loc: 4 to 2000000c
+  DW_CFA_def_cfa: r16 ofs 0
+  DW_CFA_advance_loc: 16 to 2000001c  (*) 16 ではなくて 12 の間違い 20000018 になる
+  DW_CFA_def_cfa: r8 ofs 4
+  DW_CFA_advance_loc: 4 to 20000020   (*) 2000001c の間違い
+  DW_CFA_restore: r19
+  DW_CFA_restore: r18
+  DW_CFA_restore: r17
+  DW_CFA_restore: r16
+  DW_CFA_advance_loc: 4 to 20000024   (*) 20000020 の間違い
+  DW_CFA_def_cfa_offset: 0
+  DW_CFA_nop
+  DW_CFA_nop
+
+コンパイルされた函数内に
+
+	ldi32	r0, var
+
+のような命令が生成されかつ, var が 20 ビットにおさまる場合
+
+2000000c:	240100e0 	ldi	r0, 256
+
+のように 1 命令になるのでずれることになる.
+
+
+% pru-elf-ld -o b.2.elf b.o --defsym var=0x10000
+% pru-elf-objdump -d --dwarf b.2.elf > b.2.objdump
+
+b.2.objdump はずれていないことを確認できる.
+
+(gdb) run -o b.elf b.o --defsym var=0x100
+
+gdb から実行しても再現することを確認した.
+
+ldi32 命令で行番号がずれるバグの修正を行なったが debug_frame も修正が必要になるということ.
+
+「ld の修正」を参考にすれば次の 2 つの函数がポイントになりそう.
+
+(gdb) b pru_elf_relax_delete_bytes
+(gdb) b elf32_pru_adjust_diff_reloc_value
+(gdb) run
+
+pru_elf_relax_delete_bytes のブレークポイントにヒット
+
+(gdb) fin
+
+pru_elf_relax_delete_bytes から復帰する前に elf32_pru_adjust_diff_reloc_value
+のブレークポイントにヒット
+(gdb) p isec->name
+$6 = 0x819dec2 ".debug_info"
+(gdb) fin
+(gdb) fin
+
+pru_elf_relax_delete_bytes から復帰する前に elf32_pru_adjust_diff_reloc_value
+のブレークポイントにヒット
+(gdb) p isec->name
+$7 = 0x819dec2 ".debug_info"
+(gdb) fin
+(gdb) fin
+pru_elf_relax_delete_bytes から復帰する前に elf32_pru_adjust_diff_reloc_value
+のブレークポイントにヒット
+(gdb) p isec->name
+$8 = 0x819dee1 ".debug_aranges"
+(gdb) fin
+(gdb) fin
+pru_elf_relax_delete_bytes から復帰する前に elf32_pru_adjust_diff_reloc_value
+のブレークポイントにヒット
+(gdb) p isec->name
+$9 = 0x819df1a ".debug_frame"
+(gdb) fin
+(gdb) fin
+
+ここで pru_elf_relax_delete_bytes から復帰
+(gdb) c
+...
+[Inferior 1 (process 21558) exited normally]
+(gdb) 
+
+このような動作になっていた. さて「ld の修正」で入れた修正が影響しているかもしれない:
+
+#if 0
+  if (shrinked_insn_address >= start_address
+      && shrinked_insn_address <= end_address)
+#else
+  if (shrinked_insn_address == start_address || 
+      end_address - start_address > 4)
+#endif    
+
+今回は .debug_info, .debug_aranges, .debug_frame の内容を
+変更する必要がある. 試しに修正を元に戻してみた:
+
+#if 1
+  if (shrinked_insn_address >= start_address
+      && shrinked_insn_address <= end_address)
+#else
+  if (shrinked_insn_address == start_address || 
+      end_address - start_address > 4)
+#endif    
+
+(gdb) disa
+(gdb) run
+
+pru-elf-objdump の結果を比較してみたが一致していた. おそらくこの判定条件
+を正しく修正できていなかったのかもしれない.
+
+.debug_aranges:
+    アドレス   長さ
+    20000000 00000024    <- 現状のままで OK
+
+.debug_info
+
+    <1d>   DW_AT_high_pc     : 0x24  <- 現状のままで OK
+...
+    <33>   DW_AT_high_pc     : 0x24  <- 現状のままで OK
+
+
+
+.debug_frame
+
+00000010 00000024 00000000 FDE cie=00000000 pc=20000000..20000024 <- 現状のままで OK
+
+  DW_CFA_advance_loc: 16 to 2000001c  <- 12 to 20000018 になるべき
+  
+3 つのそれぞれのセクションで対応が必要だった.
+調べてみると 4 回のすべての elf32_pru_adjust_diff_reloc_value の呼び出しで
+
+      end_address - start_address > 4
+
+が成立しているので get して put するということは行なわれていた. だから
+単純に 4 回の書き変えは問題ないのだが, debug_frame セクションの 16 が 12 に
+修正されていなかったということ.
+
+セクション .debug_frame の内容:
+ 0000 0c000000 ffffffff 0100017f 840c1000  ................
+ 0010 24000000 00000000 00000020 24000000  $.......... $...
+ 0020 440e0444 9004440c 1000500c 080444d3  D..D..D...P...D.
+ 0030 d2d1d044 0e000000                    ...D....        
+
+おそらくだがオフセット 0x28 なので以下を試してみた.
+
+(gdb) disa
+(gdb) b bfd_get_section_contents
+(gdb) run
+...
+count = 12 でないか section->name が .debug_frame でなければ continue
+...
+(gdb) fin
+(gdb) p sz
+$1 = 56
+(gdb) x/56bx p
+0x81c6d10:	0x0c	0x00	0x00	0x00	0xff	0xff	0xff	0xff
+0x81c6d18:	0x01	0x00	0x01	0x7f	0x84	0x0c	0x10	0x00
+0x81c6d20:	0x24	0x00	0x00	0x00	0x00	0x00	0x00	0x00
+0x81c6d28:	0x00	0x00	0x00	0x00	0x28	0x00	0x00	0x00
+0x81c6d30:	0x44	0x0e	0x04	0x44	0x90	0x04	0x44	0x0c
+0x81c6d38:	0x10	0x00	0x50	0x0c	0x08	0x04	0x44	0xd3
+0x81c6d40:	0xd2	0xd1	0xd0	0x44	0x0e	0x00	0x00	0x00
+(gdb) p/x *((char*)p+0x28)
+$42 = 0x10
+(gdb) set *((char*)p+0x28)=12
+(gdb) c
+...
+[Inferior 1 (process 25075) exited normally]
+(gdb) 
+
+変更できていない. 何か勘違いしている.
+
+  DW_CFA_def_cfa: r12 ofs 0           <- ここが r16 から r12 になった
+  DW_CFA_advance_loc: 16 to 2000001c
+
+自分が思っているところと違うらしい. ここは pru-elf-objdump を gdb の制御のもと
+で動作させてどのバイトなのかを確認するべき.
+
+
+DW_CFA_advance_loc = 0x40
+
+
+		printf ("  DW_CFA_advance_loc: %d to %s\n",
+			opa * fc->code_factor,
+			dwarf_vmatoa_1 (NULL,
+					fc->pc_begin + opa * fc->code_factor,
+					fc->ptr_size));
+
+opa = 16 になっている.
+
+もう少し先の 0x50 = 0x40 | 0x10 が正体だった. これを 0x4c にすれば期待した結果.
+
+(gdb) p/x *(p+0x2a)
+$51 = 0x50
+(gdb) set *(p+0x2a) = 0x4c
+(gdb) c
+...
+[Inferior 1 (process 25075) exited normally]
+(gdb)
+
+変更できている.
+
+  DW_CFA_advance_loc: 12 to 20000018
+  DW_CFA_def_cfa: r8 ofs 4
+
+だから debug_frame セクションの DW_CFA_advance_loc (= 0x40) で
+該当するものを 4 バイト引くということが必要になる. この例では debug_frame セクション
+のオフセット 0x2a を 0x50 から 0x4c にすれば正解ということ.
+
+ところでアセンブラの行番号や, .debug_info, .debug_aranges, .debug_frame の
+0x28 -> 0x24 の書き変えの判定は以下で行なっている.
+
+		   if (elf32_pru_is_diff_reloc (irel))
+		     {
+		       elf32_pru_adjust_diff_reloc_value (abfd, isec, irel,
+
+問題の 0x50 -> 0x4c への書き替えはここで条件が成立していないから書き変えが
+発生しないのだがここで条件が成立すれば期待通り動作するものなのだろうか. そこを
+調べてみたが無理で結局新規で対応することが必要になった:
+
+		   if (elf32_pru_is_diff_reloc (irel))
+		     {
+		       elf32_pru_adjust_diff_reloc_value (abfd, isec, irel,
+							  symval,
+							  shrinked_insn_address,
+							  count);
++		       if (strcmp(isec->name, ".debug_frame") == 0)
++			 change_DW_CFA_advance_loc(abfd, isec, irel, symval,
++						   shrinked_insn_address,
++						   count);
+		     }
+
+これで動作確認したができていない.
+よくよく見てみるとこのバグは
+
+函数1
+00000010 00000024 00000000 FDE cie=00000000 pc=00000000..00000028
+...
+  DW_CFA_advance_loc: 16 to 0000001c
+...
+
+函数2
+00000038 00000024 00000000 FDE cie=00000000 pc=00000028..00000050
+...
+  DW_CFA_advance_loc: 16 to 0000001c
+...
+
+のようなアセンブル結果に対して
+
+函数1
+00000010 00000024 00000000 FDE cie=00000000 pc=20000000..20000020 <- (*A)
+...
+  DW_CFA_advance_loc: 16 to 2000001c <- (*B)
+...
+
+函数2
+00000038 00000024 00000000 FDE cie=00000000 pc=20000024..20000044 <- (*C)
+...
+  DW_CFA_advance_loc: 16 to 20000040 <- (*D)
+...
+
+のように間違いがあったわけだ.
+
+(*A) は 20000000..20000024
+(*B) は 12 to 20000018
+(*C) は 20000024..20000048
+(*D) は 12 to 200000XX
+
+がそれぞれ正しい.
+
+(gdb) run -o c.elf c.o --defsym var=0x100
+
+で再現する. まずは (*A) と (*C) を修正するべき.
+
+% cat z
+b elf32_pru_adjust_diff_reloc_value
+command
+silent
+if (isec->name[7]!='f')
+c
+end
+p isec->name
+p/x symval
+p/x shrinked_insn_address
+p/x *irel
+c
+end
+%
+
+(gdb) so z
+(gdb) run
+...
+$156 = 0x81a2922 ".debug_frame"
+$157 = 0x20000000
+$158 = 0x2000000c
+$159 = {r_offset = 0x1c, r_info = 0x243, r_addend = 0x28}
+$160 = 0x81a2922 ".debug_frame"
+$161 = 0x20000000
+$162 = 0x2000000c
+$163 = {r_offset = 0x44, r_info = 0x243, r_addend = 0x50}
+$164 = 0x81a2922 ".debug_frame"
+$165 = 0x20000000
+$166 = 0x20000030
+$167 = {r_offset = 0x1c, r_info = 0x243, r_addend = 0x24}
+$168 = 0x81a2922 ".debug_frame"
+$169 = 0x20000000
+$170 = 0x20000030
+$171 = {r_offset = 0x44, r_info = 0x243, r_addend = 0x4c}
+...
+[Inferior 1 (process 11100) exited normally]
+(gdb)
+
+c.o は函数を 2 つ書いてあるサンプルだが函数を 1 つしか書いていない b.o についても
+やってみた.
+
+(gdb) run -o b.elf b.o --defsym var=0x100
+...
+$172 = 0x81a2922 ".debug_frame"
+$173 = 0x20000000
+$174 = 0x2000000c
+$175 = {r_offset = 0x1c, r_info = 0x243, r_addend = 0x28}
+...
+[Inferior 1 (process 11100) exited normally]
+(gdb)
+
+1 回分のログしか出ていない. .debug_frame のオフセット 0x1c だが
+
+b.o.objdump の抜粋
+
+セクション .debug_frame の内容:
+ 0000 0c000000 ffffffff 0100017f 840c1000  ................
+ 0010 24000000 00000000 00000000 28000000  $...........(...
+ 0020 440e0444 9004440c 1000500c 080444d3  D..D..D...P...D.
+ 0030 d2d1d044 0e000000                    ...D....        
+
+なので 0x28 を 0x24 に変更しているということで間違いなさそうである.
+一方 c.o の場合 0x44 だが c.o.objdump の抜粋
+
+セクション .debug_frame の内容:
+ 0000 0c000000 ffffffff 0100017f 840c1000  ................
+ 0010 24000000 00000000 00000000 28000000  $...........(...
+ 0020 440e0444 9004440c 1000500c 080444d3  D..D..D...P...D.
+ 0030 d2d1d044 0e000000 24000000 00000000  ...D....$.......
+ 0040 00000000 28000000 440e0444 9004440c  ....(...D..D..D.
+ 0050 1000500c 080444d3 d2d1d044 0e000000  ..P...D....D....
+
+やはりこれも 0x28 -> 0x24 の書き替えで問題なさそうである.
+c.o から c.elf 生成の場合にこの部分を書き替えればよいが
+
+オフセット 0x1c を 0x28 -> 0x24 -> 0x20
+オフセット 0x44 を 0x28 -> 0x24 -> 0x20
+
+のように必要以上に書き替えていることがそもそもの問題らしい.
+これはそもそも同じオフセットに対して 2 回きているのがまずい. 
+
+ファイル z で指定したブレークポイントだが debug_frame に関するもので
+他の debug_info セクションや debug_arange セクションも必要以上に
+修正されている可能性はある.
+
+b.o から b.elf を生成するときは .debug_frame の 2 箇所,
+.debug_aranges の 1 箇所, .debug_frame の 1 箇所.
+
+なので c.o から c.elf を生成するときは単純にこの 2 倍になるのが期待する動作.
+
+% cat u
+b elf32_pru_adjust_diff_reloc_value
+command
+silent
+if (isec->name[7]!='i')
+c
+end
+p isec->name
+p/x symval
+p/x shrinked_insn_address
+p/x *irel
+end
+%
+
+(gdb) delete
+(gdb) so u
+(gdb) run -o b.elf b.o --defsym var=0x100
+...
+$202 = 0x81a28ca ".debug_info"
+$203 = 0x20000000
+$204 = 0x2000000c
+$205 = {r_offset = 0x1d, r_info = 0x243, r_addend = 0x28}
+(gdb) c
+Continuing.
+
+Breakpoint 9, elf32_pru_adjust_diff_reloc_value (abfd=0x81a1a68, isec=0x81a3f5c, irel=0x81a9394, symval=536870912, shrinked_insn_address=536870924, count=4) at elf32-pru.c:1002
+$206 = 0x81a28ca ".debug_info"
+$207 = 0x20000000
+$208 = 0x2000000c
+$209 = {r_offset = 0x33, r_info = 0x243, r_addend = 0x28}
+(gdb) c
+...
+[Inferior 1 (process 11100) exited normally]
+(gdb)
+
+期待通り 2 回きている.
+
+(gdb) run -o c.elf c.o --defsym var=0x100
+...
+$210 = 0x81a28ca ".debug_info"
+$211 = 0x20000000
+$212 = 0x2000000c
+$213 = {r_offset = 0x1d, r_info = 0x243, r_addend = 0x50}
+(gdb) c
+Continuing.
+...
+$214 = 0x81a28ca ".debug_info"
+$215 = 0x20000000
+$216 = 0x2000000c
+$217 = {r_offset = 0x34, r_info = 0x243, r_addend = 0x50}
+(gdb) 
+Continuing.
+
+...
+$218 = 0x81a28ca ".debug_info"
+$219 = 0x20000000
+$220 = 0x2000000c
+$221 = {r_offset = 0x67, r_info = 0x243, r_addend = 0x28}
+(gdb) 
+Continuing.
+...
+$222 = 0x81a28ca ".debug_info"
+$223 = 0x20000000
+$224 = 0x20000030
+$225 = {r_offset = 0x1d, r_info = 0x243, r_addend = 0x4c}
+(gdb) c
+Continuing.
+
+$226 = 0x81a28ca ".debug_info"
+$227 = 0x20000000
+$228 = 0x20000030
+$229 = {r_offset = 0x34, r_info = 0x243, r_addend = 0x4c}
+(gdb) c
+Continuing.
+
+$230 = 0x81a28ca ".debug_info"
+$231 = 0x20000000
+$232 = 0x20000030
+$233 = {r_offset = 0x67, r_info = 0x243, r_addend = 0x24}
+(gdb) c
+Continuing.
+
+[Inferior 1 (process 15022) exited normally]
+(gdb)
+
+「なので c.o から c.elf を生成するときは単純にこの 2 倍になるのが期待する動作.」
+
+としていたが, 0x1d, 0x34, 0x67 の 3 回くるのが期待値ということになる.
+c.o.objdump を見れば
+
+    <1d>   DW_AT_high_pc     : 0x50
+...
+    <34>   DW_AT_high_pc     : 0x28
+...
+    <67>   DW_AT_high_pc     : 0x28
+
+なのでこれは 3 回で納得. だとしても 4 回くるのが間違い. 4 回目をとらえてみる.
+
+% cat v
+b elf32_pru_adjust_diff_reloc_value
+command
+if (isec->name[7]!='i')
+c
+end
+if (irel->r_offset!=0x1d)
+c
+end
+end
+%
+
+(gdb) delete
+(gdb) so v
+(gdb) run -o c.elf c.o --defsym var=0x100
+
+2 回目にブレークポイントにヒットしたときが問題.
+
+(gdb) up 2
+
+当然だが pru_elf_relax_delete_bytes から呼び出されている.
+
+(gdb) b pru_elf_relax_delete_bytes
+(gdb) run
+
+pru_elf_relax_delete_bytes のブレークポイントにヒット
+
+(gdb) c
+...
+
+elf32_pru_adjust_diff_reloc_value のブレークポイントにヒット
+(gdb) c
+
+pru_elf_relax_delete_bytes のブレークポイントにヒット
+
+(gdb) c
+...
+
+elf32_pru_adjust_diff_reloc_value のブレークポイントにヒット
+(gdb) c
+
+[Inferior 1 (process 15022) exited normally]
+(gdb)
+
+のような動作になっている. これはこれで正しい.
+ということは, ...
+
+.debug_frame だが
+
+#if 0
+  if (shrinked_insn_address >= start_address
+      && shrinked_insn_address <= end_address)
+#else
+  if (shrinked_insn_address == start_address || 
+      end_address - start_address > 4)
+#endif
+
+ここの条件が正しくないとういこと.
+
+これはセクションによって条件を変更するべきだと考えられる.
+
+elf32-pru.c を修正した結果 elf32-pru.diff のような修正になった.

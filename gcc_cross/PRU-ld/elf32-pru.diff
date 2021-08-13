@@ -1,0 +1,133 @@
+*** binutils-2.36.1.aarch64-elf/bfd/elf32-pru.c	2021-01-09 19:47:33.000000000 +0900
+--- binutils-2.36.1.pru-elf/bfd/elf32-pru.c	2021-08-13 13:09:50.000000000 +0900
+***************
+*** 987,992 ****
+--- 987,1006 ----
+  	  || ELF32_R_TYPE (irel->r_info) == R_PRU_GNU_DIFF32_PMEM);
+  }
+  
++ static int
++ should_modify(struct bfd_section *isec,
++ 	      bfd_vma shrinked_insn_address,
++ 	      bfd_vma start_address,
++ 	      bfd_vma end_address)
++ {
++   if (strcmp(isec->name, ".debug_line") == 0) {
++     return shrinked_insn_address == start_address || 
++       end_address - start_address > 4;
++   }
++   return shrinked_insn_address >= start_address
++     && shrinked_insn_address <= end_address;
++ }
++ 
+  /* Reduce the diff value written in the section by count if the shrinked
+     insn address happens to fall between the two symbols for which this
+     diff reloc was emitted.  */
+***************
+*** 1069,1077 ****
+  
+    /* Reduce the diff value by count bytes and write it back into section
+      contents.  */
+! 
+    if (shrinked_insn_address >= start_address
+        && shrinked_insn_address <= end_address)
+    {
+      switch (ELF32_R_TYPE (irel->r_info))
+      {
+--- 1083,1094 ----
+  
+    /* Reduce the diff value by count bytes and write it back into section
+      contents.  */
+! #if 0
+    if (shrinked_insn_address >= start_address
+        && shrinked_insn_address <= end_address)
++ #else
++   if (should_modify(isec, shrinked_insn_address, start_address, end_address))
++ #endif    
+    {
+      switch (ELF32_R_TYPE (irel->r_info))
+      {
+***************
+*** 1109,1114 ****
+--- 1126,1190 ----
+    }
+  }
+  
++ static unsigned char*
++ change_DW_CFA_advance_loc1(Elf_Internal_Rela *irel, bfd_vma symval,
++ 			   unsigned char* p,
++ 			   bfd_vma shrinked_insn_address, int count)
++ {
++   unsigned char op = *p;
++   unsigned char opa = op & 0x3f;
++   if (op & 0xc0)
++     op &= 0xc0;
++ 
++   switch (op) {
++   case 0x40: // DW_CFA_advance_loc
++     {
++       bfd_vma end_address = symval + irel->r_addend;
++       bfd_vma start_address = end_address - opa;
++       if (shrinked_insn_address == start_address || 
++ 	  end_address - start_address > 4) {
++ 	opa -= count;
++ 	*p = op | opa;
++       }
++       return p + 1;
++     }
++   case 0x0c: // DW_CFA_def_cfa:
++     // skip uleb128
++     while (*++p & 0x80)
++       ;
++     // fall through
++   case 0x0e: // DW_CFA_def_cfa_offset
++   case 0x80: // DW_CFA_offset:
++     // skip uleb128
++     while (*++p & 0x80)
++       ;
++     return p + 1;
++   case 0xc0: // DW_CFA_restore
++   default:
++     return p + 1;
++   }
++ }
++ 
++ static void
++ change_DW_CFA_advance_loc(bfd* abfd, asection* isec, Elf_Internal_Rela *irel,
++ 			  bfd_vma symval,
++ 			  bfd_vma shrinked_insn_address, int count)
++ {
++   unsigned char* p = elf_section_data(isec)->this_hdr.contents;
++   int length1 = bfd_get_32(abfd, p);
++   int initial_length_size = 4;
++   unsigned char* block_end1 = p + length1 + initial_length_size;
++   int length2 = bfd_get_32(abfd, block_end1);
++   unsigned char* block_end2 = block_end1 + length2;
++   
++   unsigned long offset = irel->r_offset;
++   unsigned char* start = p + offset + 4;
++   while (start < block_end2) {
++     start = change_DW_CFA_advance_loc1(irel, symval, start,
++ 				       shrinked_insn_address, count);
++   }
++ }
++ 
+  /* Delete some bytes from a section while changing the size of an instruction.
+     The parameter "addr" denotes the section-relative offset pointing just
+     behind the shrinked instruction. "addr+count" point at the first
+***************
+*** 1252,1257 ****
+--- 1328,1340 ----
+  							  symval,
+  							  shrinked_insn_address,
+  							  count);
++ #if 1
++ 		       if (strcmp(isec->name, ".debug_frame") == 0) {
++ 			 change_DW_CFA_advance_loc(abfd, isec, irel, symval,
++ 						   shrinked_insn_address,
++ 						   count);
++ 		       }
++ #endif		       
+  		     }
+  
+  		   /* Fix the addend, if it is affected.  */
