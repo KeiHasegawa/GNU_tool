@@ -1,0 +1,213 @@
+pru-elf-gdb の where コマンド(その6)
+
+hello.elf で __sfp という函数から __sfmoreglue という函数にステップイ
+ンしたところで where コマンドを実行すると問題のバグが再現していること
+に気付いた.
+
+ステップインする前に where コマンドを実行しても期待通り動作している.
+
+
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_pru.001
+(gdb) run  -q -x x6 hello.elf
+...
+#0  __sfmoreglue (d=0x3c32 <impure_data>, n=0)
+    at ../../../.././newlib/libc/stdio/findfp.c:132
+#1  0x00000a0c in __sfp (d=0x283)
+    at ../../../.././newlib/libc/stdio/findfp.c:163
+#2  0x00000000 in ?? ()
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+...
+
+gdb からも再現している. ステップインする前に where コマンドを実行する
+のを gdb からやってみた.
+
+(gdb) run -q -x x7 hello.elf
+...
+#0  __sfp (d=0x3c32 <impure_data>)
+    at ../../../.././newlib/libc/stdio/findfp.c:163
+#1  0x00000c8c in __sinit (s=0x3c32 <impure_data>)
+    at ../../../.././newlib/libc/stdio/findfp.c:273
+#2  0x00000418 in _puts_r (ptr=0x3c32 <impure_data>, s=0x3bc0 "hello world")
+    at ../../../.././newlib/libc/stdio/puts.c:86
+#3  0x000005c4 in puts (s=0x3bc0 "hello world")
+    at ../../../.././newlib/libc/stdio/puts.c:129
+#4  0x00000130 in main () at hello.c:5
+...
+
+できている. これまでの調査から, おそらく原因はフレーム ID が本来異なる
+べきところで同じになっているからこのエラーメッセージが出ていると考えら
+れる. またフレーム ID は
+
+dwarf2_frame_this_id
+
+で計算されていることもすでに判明している. まずは -x x7 を指定したとき
+の where コマンドで作成されるフレーム ID をピックアップしておく.
+
+(0x930, 0x5fac)        __sfp
+(0xbec, 0x5fb6)        __sinit
+(0x35c, 0x5ff0)        _puts_r
+(0x598, 0x5ffa)        puts
+(0x11c, 0x6000)        main
+
+の 5 つであった 0x11c は main の先頭アドレス. 0x598 は puts の先頭アド
+レス. 0x35c は _puts_r の先頭アドレス. 0xbec は  の先頭アドレス.
+0x930 は __sfp の先頭アドレス. である. このプログラムのリンカスクリプ
+トでスタックポインタの初期値を決めていてそれが 0x6000 である.
+
+0x6000 は main での更新前のスタックポインタと考えて問題なさそう.
+main でのスタックサイズは 6 なので 0x5ffa は puts での更新前のスタック
+ポインタの値で, これも上の結果と合っている. puts のスタックサイズは 10
+なので, 0x5ff0 はやはり _puts_r での更新前のスタックポインタの値で
+やはり上の結果と合っている. _puts_r のスタックサイズは 58 で
+
+0x5ff0 - 58 = 0x5fb6
+
+だから __sinit の更新前のスタックポインタの値で, これも合っている.
+__sinit のスタックサイズは 10 で 0x5fac は __sfp の更新前のスタックポ
+ンタの値でこれも合っている.
+
+__sfp のスタックサイズは 22 で 0x5fac - 22 = 0x5f96 であることと,
+__sfmoreglue の先頭アドレスが 0x844 であることから
+
+(0x844, 0x5f96) が __sfmoreglue で新たに計算されるフレーム ID であると
+予測できる.
+
+(gdb) run -q -x x6 hello.elf
+
+計算されたフレーム ID は以下
+
+(0x844, 0x5f96)
+(0x930, 0x5f96)  ここがすでに期待値と異なっている. 0x5fb6 が期待値
+
+結局 -x x6 を指定したときに計算されるフレーム ID はこの 2 つだけ.
+なので 2 回目の呼び出しで何故 0x5f96 が算出されたのかを調査してみる.
+
+しかしその前に人情というか論理の逸脱, 飛躍というか __sfmoreglue
+の .debug_frame を見てみたい.
+
+00000300 00000028 00000240 FDE cie=00000240 pc=00000844..00000930
+  DW_CFA_advance_loc: 4 to 00000848
+  DW_CFA_def_cfa_offset: 18
+  DW_CFA_advance_loc: 8 to 00000850
+  DW_CFA_def_cfa: r16 ofs 0
+  DW_CFA_offset: r14 at cfa-10
+  DW_CFA_advance_loc1: 212 to 00000924
+  DW_CFA_def_cfa: r8 ofs 10
+  DW_CFA_advance_loc: 4 to 00000928
+  DW_CFA_restore: r23
+  DW_CFA_restore: r22
+  DW_CFA_restore: r21
+  DW_CFA_restore: r20
+  DW_CFA_restore: r19
+  DW_CFA_restore: r18
+  DW_CFA_restore: r17
+  DW_CFA_restore: r16
+  DW_CFA_restore: r15
+  DW_CFA_restore: r14
+  DW_CFA_advance_loc: 4 to 0000092c
+  DW_CFA_def_cfa_offset: 0
+
+ここで気付くことはこれまで
+
+  DW_CFA_restore: r19
+  DW_CFA_restore: r18
+  DW_CFA_restore: r17
+  DW_CFA_restore: r16
+  DW_CFA_restore: r15
+  DW_CFA_restore: r14
+
+のみだったのが
+
+  DW_CFA_restore: r23
+  DW_CFA_restore: r22
+  DW_CFA_restore: r21
+  DW_CFA_restore: r20
+
+も追加されているということ. r14, r15 は r3 の上位 2 バイト
+r16, ..., r19 は r4 レジスタを表わすのだが
+r20, ..., r23 は r5 レジスタということか.
+
+00000844 <__sfmoreglue>:
+     844:	0512e2e2 	sub	sp, sp, 18
+     848:	e10882c3 	sbbo	ra.b2, sp, 8, 10
+     84c:	0112e2e4 	add	fp, sp, 18
+
+これはプロローグ部分だが通常のプロローグとは異なり r5 も保存している.
+
+	+--------------------+ <- r2_{new}
+	|                    |
+	|                    |
+	|                    |
+	|                    |
+	|     local area     |
+	|                    |
+	|                    |
+	|                    |
+	|                    |
+	+--------------------+ +18
+	|      hi(r3_{old})  |
+	+--------------------+ +20
+	|                    |
+	|      r4_{old}      |
+	+--------------------+ +24
+	|                    |
+	|      r5_{old}      |
+	+--------------------+ <- r2_{old}, r4_{new}
+
+	sp : r2
+	ra : r3
+	fp : r4
+
+	以下は main の .debug_frame
+
+00000010 00000028 00000000 FDE cie=00000000 pc=0000011c..00000148
+  DW_CFA_advance_loc: 4 to 00000120
+  DW_CFA_def_cfa_offset: 6
+  DW_CFA_advance_loc: 4 to 00000124
+  DW_CFA_offset: r14 at cfa-6
+  DW_CFA_offset: r16 at cfa-4
+  DW_CFA_advance_loc: 4 to 00000128
+  DW_CFA_def_cfa: r16 ofs 0
+  DW_CFA_advance_loc: 20 to 0000013c
+  DW_CFA_def_cfa: r8 ofs 6
+  DW_CFA_advance_loc: 4 to 00000140
+  DW_CFA_restore: r19
+  DW_CFA_restore: r18
+  DW_CFA_restore: r17
+  DW_CFA_restore: r16
+  DW_CFA_restore: r15
+  DW_CFA_restore: r14
+  DW_CFA_advance_loc: 4 to 00000144
+  DW_CFA_def_cfa_offset: 0
+  DW_CFA_nop
+  DW_CFA_nop
+
+	つまり __sfmoreglue の .debug_frame が間違っているということ
+
+00000300 00000028 00000240 FDE cie=00000240 pc=00000844..00000930
+  DW_CFA_advance_loc: 4 to 00000848
+  DW_CFA_def_cfa_offset: 18
+  DW_CFA_advance_loc: 8 to 00000850                     (*A)
+  DW_CFA_def_cfa: r16 ofs 0                             (*B)
+  DW_CFA_offset: r14 at cfa-10
+  DW_CFA_advance_loc1: 212 to 00000924                  (*C)
+  DW_CFA_def_cfa: r8 ofs 10
+  DW_CFA_advance_loc: 4 to 00000928
+
+
+
+  DW_CFA_advance_loc: 4 to 0000084c                     (*A 正)
+  DW_CFA_offset: r14 at cfa-10                          (*B 正)
+  DW_CFA_offset: r16 at cfa-8
+  DW_CFA_offset: r20 at cfa-4                           
+  DW_CFA_advance_loc: 4 to 00000850                     (*C 正)
+
+このように修正するべき. ところでこの __sfmoreglue だが通常のプロロー
+グと異なり r5 も保存しているがこの条件は何だろうか.
+
+簡単すぎると r5 を保存しなくなるが
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_pru.022/test022.c
+
+で再現できてる.
+
