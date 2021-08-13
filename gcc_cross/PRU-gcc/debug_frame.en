@@ -45,8 +45,8 @@ is fixed like below:
     if (regno_start == RA_REGNUM) {
       rtx pat = PATTERN(insn);
       int limit = XVECLEN(pat, 0);
-      if (limit == 6) {
-	rtx elem = XVECEXP(pat, 0, 2);
+      for (int i = 2 ; i < limit ; i += 4) {
+	rtx elem = XVECEXP(pat, 0, i);
 	RTX_FRAME_RELATED_P(elem) = 1;
       }
     }
