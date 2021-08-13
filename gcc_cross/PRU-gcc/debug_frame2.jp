@@ -1,0 +1,155 @@
+pru-elf-gcc の .debug_frame の修正(その 2)
+
+事前の調査「PRU の gdb」->「where コマンド(その6)」
+
+で再現環境ができている.
+
+(gdb) run -quiet -D__PRU_EABI_GNU__ d.c -quiet -dumpbase d.c -auxbase a -g -o d.s
+[Inferior 1 (process 30704) exited normally]
+(gdb)
+
+d.s の結果
+__sfmoreglue:
+.LFB3:
+.LM1:
+	.cfi_startproc
+	sub	r2, r2, 18
+	.cfi_def_cfa_offset 18
+	sbbo	r3.b2, r2, 8, 10
+	add	r4, r2, 18
+	.cfi_def_cfa 16, 0              間違い
+	.cfi_offset 14, -10
+
+
+
+この部分が
+
+	.cfi_offset 14, -10
+	.cfi_offset 16, -8
+	.cfi_offset 20, -4
+
+のようになるのが期待値. せっかくなのでこの機会に
+
+
+	.cfi_restore 23
+	.cfi_restore 22
+	.cfi_restore 21
+	.cfi_restore 20
+	.cfi_restore 19
+	.cfi_restore 18
+	.cfi_restore 17
+	.cfi_restore 16
+	.cfi_restore 15
+	.cfi_restore 14
+
+も
+
+	.cfi_restore 20
+	.cfi_restore 16
+	.cfi_restore 14
+
+に修正してしまうことにした. さてこれまでのノウハウで以下の函数がポイントに
+なっていることが判明している:
+
+static void
+scan_insn_after (rtx_insn *insn)
+{
+  if (RTX_FRAME_RELATED_P (insn))
+    dwarf2out_frame_debug (insn);  ここが関係している
+  notice_args_size (insn);
+}
+
+(gdb) b dwarf2out_frame_debug
+(gdb) run
+...
+(gdb) p debug_insn_slim(insn)
+   82: r2.b0:SI=r2.b0:SI-0x12
+$1 = void
+(gdb) c
+...
+(gdb) p debug_insn_slim(insn)
+   83: {[r2.b0:SI+0x8]=r3.b2:QI;[r2.b0:SI+0x9]=r3.b3:QI;[r2.b0:SI+0xa]=r4.b0:QI;[r2.b0:SI+0xb]=r4.b1:QI;[r2.b0:SI+0xc]=r4.b2:QI;[r2.b0:SI+0xd]=r4.b3:QI;[r2.b0:SI+0xe]=r5.b0:QI;[r2.b0:SI+0xf]=r5.b1:QI;[r2.b0:SI+0x10]=r5.b2:QI;[r2.b0:SI+0x11]=r5.b3:QI;}
+$2 = void
+(gdb) c
+...
+(gdb) p debug_insn_slim(insn)
+   84: r4.b0:SI=r2.b0:SI+0x12
+$3 = void
+(gdb) c
+...
+(gdb) p debug_insn_slim(insn)
+   89: {r3.b2:QI=[r2.b0:SI];r3.b3:QI=[r2.b0:SI+0x1];r4.b0:QI=[r2.b0:SI+0x2];r4.b1:QI=[r2.b0:SI+0x3];r4.b2:QI=[r2.b0:SI+0x4];r4.b3:QI=[r2.b0:SI+0x5];r5.b0:QI=[r2.b0:SI+0x6];r5.b1:QI=[r2.b0:SI+0x7];r5.b2:QI=[r2.b0:SI+0x8];r5.b3:QI=[r2.b0:SI+0x9];}
+      REG_CFA_RESTORE r5.b3:QI
+      REG_CFA_RESTORE r5.b2:QI
+      REG_CFA_RESTORE r5.b1:QI
+      REG_CFA_RESTORE r5.b0:QI
+      REG_CFA_RESTORE r4.b3:QI
+      REG_CFA_RESTORE r4.b2:QI
+      REG_CFA_RESTORE r4.b1:QI
+      REG_CFA_RESTORE r4.b0:QI
+      REG_CFA_RESTORE r3.b3:QI
+      REG_CFA_RESTORE r3.b2:QI
+$5 = void
+(gdb) p debug_insn_slim(insn)
+   91: r2.b0:SI=r2.b0:SI+0xa
+      REG_CFA_ADJUST_CFA r2.b0:SI=r2.b0:SI+0xa
+$6 = void
+(gdb) c
+[Inferior 1 (process 32702) exited normally]
+(gdb)
+
+このようになっている.
+
+1 つ目はスタックポインタ r2 に対する情報で
+
+	.cfi_def_cfa_offset 18
+
+が結果的に生成される.
+
+2 つ目は r3 の上位 2 バイト, r4, r5 を保存しているという情報で
+
+	.cfi_offset 14, -10
+	.cfi_offset 16, -8
+	.cfi_offset 20, -4
+
+が生成されるべきだが, 現状できていない.
+
+3 つ目は 1 つ目と同様スタックポインタ r2 に関する情報で
+
+	.cfi_def_cfa 8, 10
+
+が生成されている.
+
+4 つ目は r3 の上位 2 バイト, r4, r5 を復元しているという情報で
+
+
+	.cfi_restore 20
+	.cfi_restore 16
+	.cfi_restore 14
+
+を生成するようにするか, もしくは今回は修正を見送るかにしたい.
+
+5 つ目はスタックポインタ r2 を調整しているという情報で
+
+	.cfi_def_cfa_offset 0
+
+が生成されている.
+
+「debug_frame の修正」で行なったこの修正が不十分だったらしい.
+以下のように修正すれば期待通り動作する.
+
+  if (do_store) {
+    insn = targetm.gen_store_multiple (gen_frame_mem (BLKmode, addr),
+				       gen_rtx_REG (QImode, regno_start),
+				       GEN_INT (nregs));
+    if (regno_start == RA_REGNUM) {
+      rtx pat = PATTERN(insn);
+      int limit = XVECLEN(pat, 0);
+      for (int i = 2 ; i < limit ; i += 4) {
+	rtx elem = XVECEXP(pat, 0, i);
+	RTX_FRAME_RELATED_P(elem) = 1;
+      }
+    }
+  }
+  else
+
