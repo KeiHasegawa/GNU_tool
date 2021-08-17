@@ -1,0 +1,24 @@
+I found that `pru-elf-gdb' had been fixed becase it just shrunk some
+instruction but it didn't match addresses at `.debug_info'.
+
+And the same kind fix is requred for `cr16-elf-ld':
+
+Omitted precisely, elf32-cr16.diff, cr16_delete.cpp, my_dwarf.c and
+my_objdump.c are the sources for this fix.
+
+Build like below:
+
+$ cd binutils-2.36.1.cr16-elf/bfd
+$ /bin/sh ./libtool  --tag=CC   --mode=compile gcc -DHAVE_CONFIG_H -I.  -DBINDIR='"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin"' -DLIBDIR='"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib"' -I. -I. -I./../include  -DHAVE_cr16_elf32_vec -DHAVE_elf32_le_vec -DHAVE_elf32_be_vec   -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g3 -O0 -MT elf32-cr16.lo -MD -MP -MF .deps/elf32-cr16.Tpo -c -o elf32-cr16.lo elf32-cr16.c
+$ mv -f .deps/elf32-cr16.Tpo .deps/elf32-cr16.Plo
+$ /bin/sh ./libtool  --tag=CC   --mode=compile gcc -DHAVE_CONFIG_H -I.  -DBINDIR='"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin"' -DLIBDIR='"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib"' -I. -I. -I./../include  -DHAVE_cr16_elf32_vec -DHAVE_elf32_le_vec -DHAVE_elf32_be_vec   -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g3 -O0 -MT cr16_delete.lo -MD -MP -MF .deps/cr16_delete.Tpo -c -o cr16_delete.lo -DDEFAULT_VECTOR=cr16_elf32_vec -DSELECT_VECS='&cr16_elf32_vec,&elf32_le_vec,&elf32_be_vec' -DSELECT_ARCHITECTURES='&bfd_cr16_arch' ./cr16_delete.cpp
+$ mv -f .deps/elf32-cr16.Tpo .deps/elf32-cr16.Plo
+$ /bin/sh ./libtool  --tag=CC   --mode=compile gcc -DHAVE_CONFIG_H -I.  -DBINDIR='"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin"' -DLIBDIR='"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib"' -I. -I. -I./../include  -DHAVE_cr16_elf32_vec -DHAVE_elf32_le_vec -DHAVE_elf32_be_vec   -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g3 -O0 -MT cr16_delete.lo -MD -MP -MF .deps/cr16_delete.Tpo -c -o cr16_delete.lo -DDEFAULT_VECTOR=cr16_elf32_vec -DSELECT_VECS='&cr16_elf32_vec,&elf32_le_vec,&elf32_be_vec' -DSELECT_ARCHITECTURES='&bfd_cr16_arch' ./cr16_delete.cpp
+$ mv -f .deps/cr16_delete.Tpo .deps/cr16_delete.Plo
+$ /bin/sh ./libtool  --tag=CC   --mode=compile gcc -DHAVE_CONFIG_H -I.  -DBINDIR='"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin"' -DLIBDIR='"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib"' -I. -I. -I./../include  -DHAVE_cr16_elf32_vec -DHAVE_elf32_le_vec -DHAVE_elf32_be_vec   -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g3 -O0 -MT my_dwarf.lo -MD -MP -MF .deps/my_dwarf.Tpo -c -o my_dwarf.lo my_dwarf.c -I../binutils
+$ mv -f .deps/my_dwarf.Tpo .deps/my_dwarf.Plo
+$ /bin/sh ./libtool  --tag=CC   --mode=compile gcc -DHAVE_CONFIG_H -I.  -DBINDIR='"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin"' -DLIBDIR='"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib"' -I. -I. -I./../include  -DHAVE_cr16_elf32_vec -DHAVE_elf32_le_vec -DHAVE_elf32_be_vec   -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g3 -O0 -MT my_objdump.lo -MD -MP -MF .deps/my_objdump.Tpo -c -o my_objdump.lo my_objdump.c -I../binutils -DOBJDUMP_PRIVATE_VECTORS=""
+$ mv -f .deps/my_objdump.Tpo .deps/my_objdump.Plo
+$ /bin/sh ./libtool  --tag=CC   --mode=link gcc -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g3 -O0 -rpath /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i686-pc-linux-gnu/cr16-elf/lib -release `cat libtool-soversion`   -o libbfd.la  archive.lo archures.lo bfd.lo bfdio.lo bfdwin.lo cache.lo coff-bfd.lo compress.lo corefile.lo elf-properties.lo format.lo hash.lo init.lo libbfd.lo linker.lo merge.lo opncls.lo reloc.lo section.lo simple.lo stab-syms.lo stabs.lo syms.lo targets.lo binary.lo ihex.lo srec.lo tekhex.lo verilog.lo `cat ofiles`  -ldl -L./../zlib -lz -ldl
+$ cd binutils-2.36.1.cr16-elf/ld
+$ g++ -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -DELF_LIST_OPTIONS=TRUE -DELF_SHLIB_LIST_OPTIONS=FALSE -DELF_PLT_UNWIND_LIST_OPTIONS=FALSE -g3 -O0 -o ld-new ldgram.o ldlex-wrapper.o lexsup.o ldlang.o mri.o ldctor.o ldmain.o ldwrite.o ldexp.o ldemul.o ldver.o ldmisc.o ldfile.o ldcref.o plugin.o ldbuildid.o eelf32cr16.o ldelf.o ldelfgen.o  ../bfd/.libs/libbfd.a -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.cr16-elf/zlib ../libctf/.libs/libctf.a /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.cr16-elf/bfd/.libs/libbfd.a -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.cr16-elf/libctf/../libiberty -liberty ../libiberty/libiberty.a -lz -ldl ../binutils/elfcomm.o
