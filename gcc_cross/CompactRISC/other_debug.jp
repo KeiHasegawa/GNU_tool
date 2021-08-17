@@ -1,0 +1,200 @@
+cr16-elf-ld のデバッグ情報の修正.
+
+経緯 : pru-elf-ld でリンカが命令を縮めることにより .debug_info
+      の情報も修正する必要があるが対応していないため修正した. 同様の修正が
+      cr16-elf-ld でも必要になることが判明している.
+
+b.o.objdump
+.debug_info
+
+    <1d>   DW_AT_high_pc     : 0x10
+
+    <33>   DW_AT_high_pc     : 0x10
+
+.debug_aranges
+
+    アドレス   長さ
+    00000000 00000010 
+
+.debug_frame
+
+00000010 0000001c 00000000 FDE cie=00000000 pc=00000000..00000010
+  DW_CFA_advance_loc4: 2 to 00000002
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_offset: r13 at cfa-4
+  DW_CFA_advance_loc4: 2 to 00000004
+  DW_CFA_def_cfa_register: r13
+
+
+00000000 <_f>:
+   0:	1d 01       	push	$0x2,r13
+   2:	fd 55       	movd	(sp),(r13)
+   4:	70 00 00 00 	movd	$0x0:l,(r1,r0)
+   8:	00 00 
+   a:	df 55       	movd	(r13),(sp)
+   c:	1d 02       	pop	$0x2,r13
+   e:	ee 0a       	jump	(ra)
+
+b.objdump
+
+.debug_info
+
+    <1d>   DW_AT_high_pc     : 0x10       変更されていない
+
+    <33>   DW_AT_high_pc     : 0x10       変更されていない
+    
+.debug_aranges
+
+    アドレス   長さ
+    00000004 00000010                     変更されていない
+
+.debug_frame
+
+00000010 0000001c 00000000 FDE cie=00000000 pc=00000004..00000014 変更されていない
+  DW_CFA_advance_loc4: 2 to 00000006
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_offset: r13 at cfa-4
+  DW_CFA_advance_loc4: 2 to 00000008            ここは変更しなくても良い
+  DW_CFA_def_cfa_register: r13
+
+00000004 <_f>:
+   4:	1d 01       	push	$0x2,r13
+   6:	fd 55       	movd	(sp),(r13)
+   8:	00 05 0c 00 	movd	$0xc:m,(r1,r0)      ここは 6 -> 4 バイト
+   c:	df 55       	movd	(r13),(sp)
+   e:	1d 02       	pop	$0x2,r13
+  10:	ee 0a       	jump	(ra)
+
+「CompactRISC」->「ブレークポイントで停止したときのパラメータの表示(3)」ここの
+対応が十分ではなかった.
+
+(gdb) run -o b.elf b.o --defsym _var=0xc
+
+で再現できている
+
+(gdb) b modify_deleted
+(gdb) run
+
+ここで対処していた.
+
+とりあえず以下のように函数を追加した.
+
+
+binutils-2.36.1.cr16-elf/bfd/elf32-cr16.c
+
+- if (strcmp(input_section->name,".debug_line")==0)
+-   modify_deleted(input_bfd, contents);
++ if (strcmp(input_section->name,".debug_frame")==0)
++   modify_deleted_frame(input_bfd, contents);
++ if (strcmp(input_section->name,".debug_info")==0)
++   modify_deleted_info(input_bfd, contents);
++ if (strcmp(input_section->name,".debug_aranges")==0)
++   modify_deleted_aranges(input_bfd, contents);
++ if (strcmp(input_section->name,".debug_line")==0)
++   modify_deleted_line(input_bfd, contents);
+
+
+binutils-2.36.1.cr16-elf/bfd/cr16_delete.cpp
+
++extern "C" void modify_deleted_frame(bfd* abfd, bfd_byte* buf)
++{
+
++extern "C" void modify_deleted_info(bfd* abfd, bfd_byte* buf)
++{
+
++extern "C" void modify_deleted_aranges(bfd* abfd, bfd_byte* buf)
++{
+
+-extern "C" void modify_deleted(bfd* abfd, bfd_byte* buf)
++extern "C" void modify_deleted_line(bfd* abfd, bfd_byte* buf)
+{
+
+
+(gdb) b modify_deleted_frame
+(gdb) b modify_deleted_info
+(gdb) b modify_deleted_aranges
+(gdb) b modify_deleted_line
+(gdb) run
+
+.debug_frame, .debug_info, .debug_aranges, .debug_line の順番に処理さ
+れていることを確認した.
+
+modify_deleted_frame が呼び出されたとき
+
+(gdb) x/40bx buf
+0x81de398:	0x0c	0x00	0x00	0x00	0xff	0xff	0xff	0xff
+0x81de3a0:	0x03	0x00	0x01	0x7e	0x0e	0x0c	0x0f	0x00
+0x81de3a8:	0x1c	0x00	0x00	0x00	0x00	0x00	0x00	0x00
+0x81de3b0:	0x00	0x00	0x00	0x00	0x10	0x00	0x00	0x00
+0x81de3b8:	0x04	0x02	0x00	0x00	0x00	0x0e	0x04	0x8d
+(gdb) p/x *(char*)(0x81de3b0+4)
+$1 = 0x10
+(gdb) set *(char*)(0x81de3b0+4)=0xc
+(gdb) c
+Continuing.
+
+これで期待した結果になっている.
+
+.debug_info のほうはなんだか大変. もともと pru-elf-ld はできていたが
+その部分をまねてみたほうが良さそうに思えてきたが...
+
+mktags.exe を作成したときのように objdump.c と dwarf.c を取り込んでみた.
+メモリ破壊のバグで手間どったが修正できている. この修正を入れることで例えば
+
+
+extern int var;
+
+int* f0()
+{
+  return &var;
+}
+
+int* f1()
+{
+  return &var;
+}
+
+int* f2()
+{
+  return &var;
+}
+
+int* f3()
+{
+  return &var;
+}
+
+int main()
+{
+  f0();
+  f1();
+  f2();
+  f3();
+  return 0;
+}
+
+のようなプログラムを  --defsym _var=0xc のようにシンボル解決するとこれまで
+アドレスとデバッグ情報が合致していないためにステップ実行したときに意図しない形で
+ステップ実行されるバグが修正されることになる.
+
+ビルドの方法だが
+
+$ cd binutils-2.36.1.cr16-elf/bfd
+$ /bin/sh ./libtool  --tag=CC   --mode=compile gcc -DHAVE_CONFIG_H -I.  -DBINDIR='"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin"' -DLIBDIR='"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib"' -I. -I. -I./../include  -DHAVE_cr16_elf32_vec -DHAVE_elf32_le_vec -DHAVE_elf32_be_vec   -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g3 -O0 -MT elf32-cr16.lo -MD -MP -MF .deps/elf32-cr16.Tpo -c -o elf32-cr16.lo elf32-cr16.c
+$ mv -f .deps/elf32-cr16.Tpo .deps/elf32-cr16.Plo
+$ /bin/sh ./libtool  --tag=CC   --mode=compile gcc -DHAVE_CONFIG_H -I.  -DBINDIR='"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin"' -DLIBDIR='"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib"' -I. -I. -I./../include  -DHAVE_cr16_elf32_vec -DHAVE_elf32_le_vec -DHAVE_elf32_be_vec   -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g3 -O0 -MT cr16_delete.lo -MD -MP -MF .deps/cr16_delete.Tpo -c -o cr16_delete.lo -DDEFAULT_VECTOR=cr16_elf32_vec -DSELECT_VECS='&cr16_elf32_vec,&elf32_le_vec,&elf32_be_vec' -DSELECT_ARCHITECTURES='&bfd_cr16_arch' ./cr16_delete.cpp
+$ mv -f .deps/elf32-cr16.Tpo .deps/elf32-cr16.Plo
+$ /bin/sh ./libtool  --tag=CC   --mode=compile gcc -DHAVE_CONFIG_H -I.  -DBINDIR='"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin"' -DLIBDIR='"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib"' -I. -I. -I./../include  -DHAVE_cr16_elf32_vec -DHAVE_elf32_le_vec -DHAVE_elf32_be_vec   -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g3 -O0 -MT cr16_delete.lo -MD -MP -MF .deps/cr16_delete.Tpo -c -o cr16_delete.lo -DDEFAULT_VECTOR=cr16_elf32_vec -DSELECT_VECS='&cr16_elf32_vec,&elf32_le_vec,&elf32_be_vec' -DSELECT_ARCHITECTURES='&bfd_cr16_arch' ./cr16_delete.cpp
+$ mv -f .deps/cr16_delete.Tpo .deps/cr16_delete.Plo
+$ /bin/sh ./libtool  --tag=CC   --mode=compile gcc -DHAVE_CONFIG_H -I.  -DBINDIR='"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin"' -DLIBDIR='"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib"' -I. -I. -I./../include  -DHAVE_cr16_elf32_vec -DHAVE_elf32_le_vec -DHAVE_elf32_be_vec   -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g3 -O0 -MT my_dwarf.lo -MD -MP -MF .deps/my_dwarf.Tpo -c -o my_dwarf.lo my_dwarf.c -I../binutils
+$ mv -f .deps/my_dwarf.Tpo .deps/my_dwarf.Plo
+$ /bin/sh ./libtool  --tag=CC   --mode=compile gcc -DHAVE_CONFIG_H -I.  -DBINDIR='"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin"' -DLIBDIR='"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib"' -I. -I. -I./../include  -DHAVE_cr16_elf32_vec -DHAVE_elf32_le_vec -DHAVE_elf32_be_vec   -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g3 -O0 -MT my_objdump.lo -MD -MP -MF .deps/my_objdump.Tpo -c -o my_objdump.lo my_objdump.c -I../binutils -DOBJDUMP_PRIVATE_VECTORS=""
+$ mv -f .deps/my_objdump.Tpo .deps/my_objdump.Plo
+$ /bin/sh ./libtool  --tag=CC   --mode=link gcc -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g3 -O0 -rpath /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i686-pc-linux-gnu/cr16-elf/lib -release `cat libtool-soversion`   -o libbfd.la  archive.lo archures.lo bfd.lo bfdio.lo bfdwin.lo cache.lo coff-bfd.lo compress.lo corefile.lo elf-properties.lo format.lo hash.lo init.lo libbfd.lo linker.lo merge.lo opncls.lo reloc.lo section.lo simple.lo stab-syms.lo stabs.lo syms.lo targets.lo binary.lo ihex.lo srec.lo tekhex.lo verilog.lo `cat ofiles`  -ldl -L./../zlib -lz -ldl
+$ cd binutils-2.36.1.cr16-elf/ld
+$ g++ -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -DELF_LIST_OPTIONS=TRUE -DELF_SHLIB_LIST_OPTIONS=FALSE -DELF_PLT_UNWIND_LIST_OPTIONS=FALSE -g3 -O0 -o ld-new ldgram.o ldlex-wrapper.o lexsup.o ldlang.o mri.o ldctor.o ldmain.o ldwrite.o ldexp.o ldemul.o ldver.o ldmisc.o ldfile.o ldcref.o plugin.o ldbuildid.o eelf32cr16.o ldelf.o ldelfgen.o  ../bfd/.libs/libbfd.a -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.cr16-elf/zlib ../libctf/.libs/libctf.a /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.cr16-elf/bfd/.libs/libbfd.a -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.cr16-elf/libctf/../libiberty -liberty ../libiberty/libiberty.a -lz -ldl ../binutils/elfcomm.o
+
+のようなる. Makefile を修正できるのならばそれでもうまくいく.
+
+修正に使用した elf32-cr16.c の差分を elf32-cr16.diff として,
+他の cr16_delete.cpp, my_dwarf.c, my_objdump.c をこのページにアップロードしておいた.

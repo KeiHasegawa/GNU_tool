@@ -1,5 +1,5 @@
 *** binutils-2.36.1.aarch64-elf/bfd/elf32-cr16.c	2021-01-09 19:47:33.000000000 +0900
---- binutils-2.36.1.cr16-elf/bfd/elf32-cr16.c	2021-08-03 14:17:09.000000000 +0900
+--- binutils-2.36.1.cr16-elf/bfd/elf32-cr16.c	2021-08-17 14:34:12.000000000 +0900
 ***************
 *** 1204,1209 ****
 --- 1204,1211 ----
@@ -24,23 +24,32 @@
     contents = elf_section_data (sec)->this_hdr.contents;
 ***************
 *** 1333,1338 ****
---- 1337,1344 ----
+--- 1337,1347 ----
     return TRUE;
   }
   
-+ void modify_deleted(bfd*, bfd_byte*);
++ void modify_deleted_frame(bfd*, asection*, bfd_byte*);
++ void modify_deleted_info(bfd*, asection*, bfd_byte*);
++ void modify_deleted_aranges(bfd*, bfd_byte*);
++ void modify_deleted_line(bfd*, bfd_byte*);
 + 
   /* Relocate a CR16 ELF section.  */
   
   static bfd_boolean
 ***************
 *** 1346,1351 ****
---- 1352,1360 ----
+--- 1355,1369 ----
     struct elf_link_hash_entry **sym_hashes;
     Elf_Internal_Rela *rel, *relend;
   
++   if (strcmp(input_section->name,".debug_frame")==0)
++     modify_deleted_frame(input_bfd, input_section, contents);
++   if (strcmp(input_section->name,".debug_info")==0)
++     modify_deleted_info(input_bfd, input_section, contents);
++   if (strcmp(input_section->name,".debug_aranges")==0)
++     modify_deleted_aranges(input_bfd, contents);
 +   if (strcmp(input_section->name,".debug_line")==0)
-+     modify_deleted(input_bfd, contents);
++     modify_deleted_line(input_bfd, contents);
 + 
     symtab_hdr = &elf_tdata (input_bfd)->symtab_hdr;
     sym_hashes = elf_sym_hashes (input_bfd);

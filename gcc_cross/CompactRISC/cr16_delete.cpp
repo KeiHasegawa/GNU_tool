@@ -17,6 +17,195 @@ struct deleted_info {
 
 std::vector<deleted_info> deleted;
 
+inline bool match(const deleted_info& info, bfd* abfd, int addr, int amount)
+{
+  auto section = info.section;
+  auto owner = section->owner;
+  if (owner != abfd)
+    return false;
+  int inst_end = info.addr + 2 * (info.count - info.count2);
+  int inst_start = inst_end - info.org;
+  if (inst_start == addr)
+    return true;
+  return addr < inst_start && inst_start < addr + amount;
+}
+
+inline int should_modify_end(bfd* abfd, uint32_t b_addr, uint32_t e_addr)
+{
+  auto p = find_if(begin(deleted), end(deleted),
+		   [abfd, b_addr, e_addr](const deleted_info& info)
+		   { return match(info, abfd, b_addr, e_addr); });
+  if (p == end(deleted))
+    return 0;
+  return p->count;;
+}
+
+static inline bfd_boolean
+read_byte (bfd_byte **iter, bfd_byte *end, unsigned char *result)
+{
+  if (*iter >= end)
+    return FALSE;
+  *result = *((*iter)++);
+  return TRUE;
+}
+
+static bfd_boolean
+skip_leb128 (bfd_byte **iter, bfd_byte *end)
+{
+  unsigned char byte;
+  do
+    if (!read_byte (iter, end, &byte))
+      return FALSE;
+  while (byte & 0x80);
+  return TRUE;
+}
+
+static bfd_boolean
+read_uleb128 (bfd_byte **iter, bfd_byte *end, bfd_vma *value)
+{
+  bfd_byte *start, *p;
+
+  start = *iter;
+  if (!skip_leb128 (iter, end))
+    return FALSE;
+
+  p = *iter;
+  *value = *--p;
+  while (p > start)
+    *value = (*value << 7) | (*--p & 0x7f);
+
+  return TRUE;
+}
+
+static bfd_boolean
+read_sleb128 (bfd_byte **iter, bfd_byte *end, bfd_signed_vma *value)
+{
+  bfd_byte *start, *p;
+
+  start = *iter;
+  if (!skip_leb128 (iter, end))
+    return FALSE;
+
+  p = *iter;
+  *value = ((*--p & 0x7f) ^ 0x40) - 0x40;
+  while (p > start)
+    *value = (*value << 7) | (*--p & 0x7f);
+
+  return TRUE;
+}
+
+extern "C" void
+modify_deleted_frame(bfd* abfd, bfd_section* sec, bfd_byte* buf)
+{
+  auto start = buf;
+  (void)start;
+  auto end = buf + sec->size;
+  uint32_t length1 = bfd_get_32(abfd, buf); buf += 4;
+  (void)length1;
+  uint32_t cie_id1 = bfd_get_32(abfd, buf); buf += 4;
+  (void)cie_id1;
+  uint8_t ver = bfd_get_8(abfd, buf); buf += 1;
+  (void)ver;
+
+  // Augmentation
+  while (*buf++)
+    ;
+
+  // Code alignment factor.
+  bfd_vma caf;
+  read_uleb128(&buf, end, &caf);
+  (void)caf;
+  
+  // Data alignment factor.
+  bfd_signed_vma daf;
+  read_sleb128(&buf, end, &daf);
+  (void)daf;
+
+  // Return address column.
+  bfd_vma rac;
+  read_uleb128(&buf, end, &rac);
+  (void)rac;
+
+  // DW_CFA_def_cfa: r15 ofs 0
+  auto DW_CFA_def_cfa = bfd_get_8(abfd, buf);  buf += 1;
+  (void)DW_CFA_def_cfa;
+  auto r15 = bfd_get_8(abfd, buf);  buf += 1;
+  (void)r15;
+  auto ofs = bfd_get_8(abfd, buf);  buf += 1;
+  (void)ofs;
+
+  while (buf < end) {
+    auto length = bfd_get_32(abfd, buf); buf += 4;
+    auto block_end = buf + length;
+    
+    auto cie_id = bfd_get_32(abfd, buf); buf += 4; (void)cie_id;
+    auto b = bfd_get_32(abfd, buf); buf += 4; (void)b;
+    auto e = bfd_get_32(abfd, buf);
+    if (int delta = should_modify_end(abfd, b, e))
+      bfd_put_32(abfd, e - delta, buf);
+    buf += 4;	
+    buf = block_end;
+  }
+}
+
+extern "C" void my_process_debug_info(bfd_byte*, bfd_byte*, const char*,
+				      void*, void*,
+				      int, int, int);
+
+uint32_t g_lo;
+extern "C" void set_DW_AT_low_pc(uint32_t lo)
+{
+  g_lo = lo;
+}
+
+bfd* g_abfd;
+
+extern "C" void set_DW_AT_high_pc(bfd_byte* buf)
+{
+  uint32_t hi = bfd_get_32(g_abfd, buf);
+  if (int delta = should_modify_end(g_abfd, g_lo, hi))
+    bfd_put_32(g_abfd, hi - delta, buf);
+}
+
+extern "C" void modify_deleted_info(bfd* abfd, bfd_section* sec, bfd_byte* buf)
+{
+  auto end = buf + sec->size;
+  auto name = sec->name;
+  char dummy[128];
+  memset(&dummy[0], 0xc5, sizeof dummy);
+  g_abfd = abfd;
+  my_process_debug_info(buf, end, name, &dummy[0], abfd, 0, 1, 0);
+}
+
+bfd_byte* read_debug_aranges(bfd* abfd, bfd_byte* p)
+{
+  auto b = bfd_get_32(abfd, p); p += 4;
+  auto e = bfd_get_32(abfd, p);
+  if (int delta = should_modify_end(abfd, b, e))
+    bfd_put_32(abfd, e - delta, p);
+  p += 4;
+  return p;
+}
+
+extern "C" void modify_deleted_aranges(bfd* abfd, bfd_byte* buf)
+{
+  auto length = bfd_get_32(abfd, buf); buf += 4;
+  auto end = buf + length;
+  auto ver = bfd_get_16(abfd, buf); buf += 2;
+  (void)ver;
+  auto offset = bfd_get_32(abfd, buf); buf += 4;
+  (void)offset;
+  auto ptr_size = bfd_get_16(abfd, buf); buf += 2;
+  (void)ptr_size;
+  auto seg_size = bfd_get_32(abfd, buf); buf += 4;
+  (void)seg_size;
+  while (buf < end)
+    buf = read_debug_aranges(abfd, buf);
+#if 0  
+  *(buf+0x14) = 0xc;
+#endif  
+}
+
 inline int org_len(bfd_byte* contents, bfd_vma addr)
 {
   auto b1 = contents[addr-1];
@@ -51,19 +240,6 @@ extern "C" void record_delete(bfd_section* section, bfd_vma addr, int count)
   }
   p->count += count;
   p->count2 = count;
-}
-
-inline bool match(const deleted_info& info, bfd* abfd, int addr, int amount)
-{
-  auto section = info.section;
-  auto owner = section->owner;
-  if (owner != abfd)
-    return false;
-  int inst_end = info.addr + 2 * (info.count - info.count2);
-  int inst_start = inst_end - info.org;
-  if (inst_start == addr)
-    return true;
-  return addr < inst_start && inst_start < addr + amount;
 }
 
 inline int should_shrink(bfd* abfd, int addr, int amount)
@@ -164,7 +340,7 @@ read_debug_line(bfd* abfd, bfd_byte* p, int opc_base, int* addr)
   }
 }
 
-extern "C" void modify_deleted(bfd* abfd, bfd_byte* buf)
+extern "C" void modify_deleted_line(bfd* abfd, bfd_byte* buf)
 {
   using namespace std;
   auto start = buf;
@@ -244,3 +420,16 @@ void debug()
   for (const auto& x : deleted)
     debug(x);
 }
+
+extern "C" void bfd_fatal(){}
+extern "C" void bfd_nonfatal_message(){}
+extern "C" void disassemble_free_target(){}
+extern "C" void disassemble_init_for_target(){}
+extern "C" void disassembler(){}
+extern "C" void fatal(){}
+extern "C" void get_file_size(){}
+extern "C" void init_disassemble_info(){}
+extern "C" void list_matching_formats(){}
+extern "C" void print_arelt_descr(){}
+extern "C" void print_debugging_info(){}
+extern "C" void read_debugging_info(){}
