@@ -9,7 +9,7 @@ UNAME := $(shell uname)
 ifneq (,$(findstring CYGWIN,$(UNAME)))
 	BINUTILS_DIR = d:/home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1
 else
-	BINUTILS_DIR = /home/khasegawa/binutils-2.36.1-2.src/binutils-2.36.1
+	BINUTILS_DIR = /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/binutils-2.36.1-2.src/binutils-2.36.1
 endif
 
 LIB_BFD =  $(BINUTILS_DIR)/bfd/libbfd.a
