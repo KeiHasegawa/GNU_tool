@@ -1,0 +1,16 @@
+cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/coreutils-8.26-2.src/coreutils-8.26/src
+M-x gdb
+gdb --annotate=3 ./date
+(gdb) b gettime
+Breakpoint 1 at 0x804d570: file lib/gettime.c, line 36.
+(gdb) run
+Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/coreutils-8.26-2.src/coreutils-8.26/src/date 
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib/libthread_db.so.1".
+
+Breakpoint 1, gettime (ts=0xbffff500) at lib/gettime.c:36
+(gdb) n
+main (argc=1, argv=0xbffff614) at src/date.c:515
+(gdb) 
+
+next 実行が期待した動作になっていない.
