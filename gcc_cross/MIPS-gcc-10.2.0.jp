@@ -1,0 +1,78 @@
+MIPS gcc-10.2.0 のビルドのエラーの原因の調査
+
+「MIPS」を参照. gcc-10.2.0 のビルドでエラーしている.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.mips-elf/host-i686-pc-linux-gnu/gcc/build
+% ./genautomata ../../.././gcc/common.md ../../.././gcc/config/mips/mips.md ../insn-conditions.md
+強制終了
+%
+
+上のようにエラーが再現している.
+
+%
+
+以下のように回避してみた:
+
+% cp ../../.././gcc/config/mips/mips.md x.md
+
+x.md を以下のように一部をコンパイルアウト
+
+;(include "i6400.md")
+;(include "p5600.md")
+;(include "m5100.md")
+;(include "p6600.md")
+;(include "4k.md")
+;(include "5k.md")
+;(include "20kc.md")
+;(include "24k.md")
+;(include "74k.md")
+;(include "3000.md")
+;(include "4000.md")
+;(include "4100.md")
+;(include "4130.md")
+;(include "4300.md")
+;(include "4600.md")
+;(include "5000.md")
+;(include "5400.md")
+;(include "5500.md")
+;(include "6000.md")
+;(include "7000.md")
+;(include "9000.md")
+;(include "10000.md")
+;(include "loongson2ef.md")
+;(include "gs464.md")
+;(include "gs464e.md")
+;(include "gs264e.md")
+;(include "octeon.md")
+;(include "sb1.md")
+;(include "sr71k.md")
+;(include "xlr.md")
+;(include "xlp.md")
+(include "generic.md")
+
+% ./genautomata ../../.././gcc/common.md x.md ../insn-conditions.md -I../../.././gcc/config/mips
+
+これがおそらく期待した動作.
+この出力結果を
+
+../tmp-automata.c
+
+にリダイレクト.
+
+% cd ..
+% /bin/sh ../.././gcc/../move-if-change tmp-automata.c insn-automata.c
+% echo timestamp > s-automata
+% make
+
+サイズ 0 の配列を宣言しているエラーが発生しているので以下のように修正:
+
+insn-automata.c:
+
+  static struct name_code name_code_table [] =
+    {
++     0
+    };
+
+% make
+
+これで cc1 や cc1plus をビルドすることができている.
