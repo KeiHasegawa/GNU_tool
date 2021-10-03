@@ -1,0 +1,173 @@
+arm-elf-gcc
+
+gcc-3.4.4 はすでにビルドとインストールができている.
+
+gcc-3.4.6 : OK
+
+gcc-4.0.0 : NG => OK 
+
+エラーの症状:
+
+make[1]: *** 'regex.o' に必要なターゲット '../include/ansidecl.h' を make するルールがありません.  中止.
+
+=> Makefile に誤りがある
+
+INCDIR=../../include
+
+とすれば回避できている.
+
+さらにビルドを実行するとエラーするが
+
+cp install-sh build-i686-pc-linux-gnu
+cp config.sub build-i686-pc-linux-gnu
+
+とすれば回避できている.
+
+2021.10.01 18:00 gcc-4.0.0 でビルド & インストール完了.
+
+gcc-4.9.4 : NG
+
+エラーの症状
+*** Configuration arm-unknown-elf not supported
+
+gcc-4.0.1 : NG
+
+エラーの症状
+
+./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=arm-elf --with-newlib
+...
+configure: error: Building in the source directory is not supported in this release. See http://gcc.gnu.org/install/configure.html for more details.
+exit 1
+
+mkdir build
+cd build
+../configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=arm-elf --with-newlib
+
+とすれば回避できている.
+
+エラーの症状(その2)
+
+../../gcc/toplev.c:547:1: エラー: ‘floor_log2’ が再定義されました
+
+   => gcc-4.0.0 と同じ対処を行なう.
+   /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.0.1.arm-elf/gcc/toplev.c
+   から floor_log2 と exact_log2 の定義をコンパイルアウトする.
+         => これだとエラーするようである.
+   /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.0.1.arm-elf/gcc/toplev.h から floor_log2 と exact_log2 の定義をコンパイルアウトする.
+         => これでもエラーする.
+	 => 一度, *.o を削除してビルドすれば OK
+	 
+	 
+
+gcc-4.2.0 : OK
+
+gcc-4.2.4 : OK
+
+gcc-4.3.0 : NG => OK
+
+         一番の原因は 4.2.4 までの方法だと libgcc.a がビルドされていない.
+	 回避策はあるが, まだ確立していない.
+
+gcc-4.4.0 : NG => OK
+
+	 gcc-4.2.4 までの方法と同じ方法で
+
+	 make all-gcc
+
+	 まで行なう.
+
+	 libgcc/Makefile.in
+
+	 を 03_newer_batch と同じ修正を行なう.
+
+make maybe-configure-target-libgcc
+make maybe-all-target-libgcc
+make install-gcc
+make maybe-install-target-libgcc
+
+gcc-4.5.0 : NG  => OK
+
+	  gcc-4.4.0 の方法と
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.5.0.arm-elf/gcc/cp/cfns.gperf
+
+から以下のように isalpha をコメントアウトすることで成功する.
+
+#isalpha
+
+gcc-4.6.0 :
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf/host-i686-pc-linux-gnu/gcc/gtype-desc.c
+
+で
+
+sizeof ( xxxx[0])
+
+でエラーになるが回避できている. gypte-desc.c はおそらく md ファイルから生成されている.
+
+しかし gcc-4.5.0 では発生していなかった
+libgcc のビルドで以下のエラーが発生している.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/arm-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/arm-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/arm-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/arm-elf/sys-include    -g -O2 -mthumb -O2  -g -O2 -DIN_GCC -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wwrite-strings -Wcast-qual -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition  -isystem ./include  -fno-inline -Wno-missing-prototypes -g  -DIN_LIBGCC2 -D__GCC_FLOAT_NOT_NEEDED -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../../host-i686-pc-linux-gnu/gcc -I../../.././libgcc -I../../.././libgcc/. -I../../.././libgcc/../gcc -I../../.././libgcc/../include  -DHAVE_CC_TLS  -o _negdi2.o -MT _negdi2.o -MD -MP -MF _negdi2.dep -DL_negdi2 -c ../../.././libgcc/../gcc/libgcc2.c \
+
+
+../../.././libgcc/../gcc/libgcc2.c: In function ‘__negdi2’:
+../../.././libgcc/../gcc/libgcc2.c:72:1: internal compiler error: セグメンテーション違反です
+完全なバグ報告を送って下さい。
+適切ならばプリプロセス後のソースをつけてください。
+<http://gcc.gnu.org/bugs.html> を見れば方法が書いてあります。
+make[3]: *** [Makefile:377: _negdi2.o] エラー 1
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf/arm-elf/thumb/libgcc' から出ます
+make[2]: *** [Makefile:1007: multi-do] エラー 1
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf/arm-elf/libgcc' から出ます
+make[1]: *** [Makefile:110: all-multi] エラー 2
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf/arm-elf/libgcc' から出ます
+make: *** [Makefile:13045: all-target-libgcc] エラー 2
+
+gdb から cc1 を実行してバグを再現できている.
+
+M-x gdb
+gdb --annotate=3 cc1
+
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf/arm-elf/thumb/libgcc
+Working directory /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf/arm-elf/thumb/libgcc.
+(gdb) run  -quiet -I . -I . -I ../../../host-i686-pc-linux-gnu/gcc -I ../../.././libgcc -I ../../.././libgcc/. -I ../../.././libgcc/../gcc -I ../../.././libgcc/../include -imultilib thumb -iprefix /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf/host-i686-pc-linux-gnu/gcc/../lib/gcc/arm-elf/4.6.0/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf/host-i686-pc-linux-gnu/gcc/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf/host-i686-pc-linux-gnu/gcc/include-fixed -MD _negdi2.d -MF _negdi2.dep -MP -MT _negdi2.o -D__USES_INITFINI__ -D IN_GCC -D CROSS_DIRECTORY_STRUCTURE -D IN_LIBGCC2 -D __GCC_FLOAT_NOT_NEEDED -D inhibit_libc -D HAVE_CC_TLS -D L_negdi2 -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/arm-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/arm-elf/sys-include -isystem ./include ../../.././libgcc/../gcc/libgcc2.c -quiet -dumpbase libgcc2.c -mthumb -auxbase-strip _negdi2.o -g -g -g -O2 -O2 -O2 -Wextra -Wall -Wwrite-strings -Wcast-qual -Wstrict-prototypes -Wold-style-definition -Wno-missing-prototypes -fno-inline -fno-stack-protector -o /tmp/ccj6Pyug.s
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf/gcc/ira-conflicts.c
+
+を以下のように修正してみたが, 別のところでメモリアクセス違反が発生している.
+
+#if 0
+  SET_MINMAX_SET_BIT (conflicts[id1], id2, OBJECT_MIN (obj1),
+		      OBJECT_MAX (obj1));
+  SET_MINMAX_SET_BIT (conflicts[id2], id1, OBJECT_MIN (obj2),
+		      OBJECT_MAX (obj2));
+#else
+  if (id2 >= OBJECT_MIN (obj1))
+    SET_MINMAX_SET_BIT (conflicts[id1], id2, OBJECT_MIN (obj1),
+			OBJECT_MAX (obj1));
+  if (id1 >= OBJECT_MIN (obj2))
+    SET_MINMAX_SET_BIT (conflicts[id2], id1, OBJECT_MIN (obj2),
+			OBJECT_MAX (obj2));
+#endif  
+
+diff /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.{5,6}.0.arm-elf/gcc/config/arm/arm.md
+
+としてみたところかなりの差分が出ている.
+
+gcc-4.5.4 : OK
+
+	  gcc-4.5.0 と同じやり方で正常に動作している.
+
+
+gcc-4.7.0 : NG
+
+checking if mkdir takes one argument... no
+*** Configuration arm-unknown-elf is obsolete.
+*** Specify --enable-obsolete to build it anyway.
+*** Support will be REMOVED in the next major release of GCC,
+*** unless a maintainer comes forward.
+make: *** [Makefile:3801: configure-gcc] エラー 1
+exit 1
+
+make を実行したとき configure-gcc で上のようなエラーになる.
