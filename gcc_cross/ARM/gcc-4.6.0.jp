@@ -1,4 +1,93 @@
-arm-elf-gcc
+arm-elf-gcc gcc-4.6.0 のインストール
+
+% bunzip2 -c ../gcc-4.6.0.tar.bz2 | tar xf -
+% mv gcc-4.6.0 gcc-4.6.0.arm-elf
+% cd gcc-4.6.0.arm-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=arm-elf --with-newlib
+% sed -e 's/host_subdir = @host_subdir@/host_subdir = host-i686-pc-linux-gnu/' \
+ libgcc/Makefile.in > libgcc/Makefile.in.tmp
+% mv libgcc/Makefile.in.tmp libgcc/Makefile.in
+% sed -e '/^isalpha/d' gcc/cp/cfns.gperf > gcc/cp/cfns.gperf.tmp
+% mv gcc/cp/cfns.gperf.tmp gcc/cp/cfns.gperf
+% make all-gcc
+...
+gcc -c   -g -O2 -DIN_GCC -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wwrite-strings -Wcast-qual -Wstrict-prototypes -Wmissing-prototypes -Wmissing-format-attribute -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings -Wold-style-definition -Wc++-compat   -DHAVE_CONFIG_H -I. -I. -I../.././gcc -I../.././gcc/. -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber    gtype-desc.c -o gtype-desc.o
+...
+gtype-desc.c:8829:18: エラー: 添字が付けられた値が、配列、ポインタまたはベクトルではありません
+ 8829 |     sizeof (x_rtl[0]),
+ ...
+%
+
+のようにエラーになってしまう. gtype-desc.c は生成されるファイルらしいが, その生成方法が
+不明.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf/gcc/gengtype.c
+
+    gtype_desc_c = create_file ("GCC", "gtype-desc.c");
++   asm("int3");
+    for (ifp = ifiles; *ifp; ifp++)
+      oprintf (gtype_desc_c, "#include \"%s\"\n", *ifp);
+
+これを追加してもう一度ビルド.
+
+build/gengtype  \
+                    -r gtype.state
+
+このコマンドを実行したところで上の修正でトレース/ブレイクポイント トラップ
+が発生している.
+
+gcc-4.6.0 をネイティブコンパイラとしてインストールできるか確認してみる.
+
+% bunzip2 -c gcc-4.6.0.tar.bz | tar xf -
+% cd gcc-4.6.0
+% ./configure
+% make
+一部 .info ファイルの生成でエラーするが, この部分を
+
+doc/%.info:
+	touch $@
+
+のようにすることで回避は可能. で, 結果は OK.
+
+gtype-desc.c
+
+でコンパイルエラーは発生しない.
+
+diff /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/{gcc-4.6.0,GNU_LANG/gcc-4.6.0.arm-elf}/host-i686-pc-linux-gnu/gcc/gtype-desc.c > a
+
+とすることで差分を確認できている. どうやらターゲット依存の部分が例えば以下のようにある:
+
+3573,3576c3543,3554
+<       gt_pch_n_17stack_local_entry ((*x).stack_locals);
+<       gt_pch_n_S ((*x).some_ld_name);
+<       gt_pch_n_7rtx_def ((*x).split_stack_varargs_pointer);
+<       gt_pch_n_7rtx_def ((*x).fs.cfa_reg);
+---
+>       gt_pch_n_7rtx_def ((*x).eh_epilogue_sp_ofs);
+>       gt_pch_n_7rtx_def ((*x).pic_reg);
+>       {
+>         size_t i0;
+>         size_t l0 = (size_t)(14);
+>         for (i0 = 0; i0 != l0; i0++) {
+>           gt_pch_n_7rtx_def ((*x).call_via[i0]);
+>         }
+>       }
+>       gt_pch_n_7rtx_def ((*x).thumb1_cc_insn);
+>       gt_pch_n_7rtx_def ((*x).thumb1_cc_op0);
+>       gt_pch_n_7rtx_def ((*x).thumb1_cc_op1);
+
+
+gcc-4.6.0.arm-elf でエラーしている部分の差分は以下:
+
+8893c8829
+<     sizeof (x_rtl.eh.call_site_record[0]),
+---
+>     sizeof (x_rtl[0]),
+
+これはおそらく実装途中ということなのだろう.
+
+
+以下は他のバージョンでインストールを試してみた結果.
 
 gcc-3.4.4 はすでにビルドとインストールができている.
 
@@ -30,7 +119,7 @@ gcc-4.9.4 : NG
 エラーの症状
 *** Configuration arm-unknown-elf not supported
 
-gcc-4.0.1 : NG
+gcc-4.0.1 : NG => OK
 
 エラーの症状
 
@@ -56,8 +145,6 @@ cd build
    /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.0.1.arm-elf/gcc/toplev.h から floor_log2 と exact_log2 の定義をコンパイルアウトする.
          => これでもエラーする.
 	 => 一度, *.o を削除してビルドすれば OK
-	 
-	 
 
 gcc-4.2.0 : OK
 
