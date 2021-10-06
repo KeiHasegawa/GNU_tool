@@ -18,23 +18,21 @@ gtype-desc.c:8829:18: エラー: 添字が付けられた値が、配列、ポ�
  ...
 %
 
-のようにエラーになってしまう. gtype-desc.c は生成されるファイルらしいが, その生成方法が
-不明.
-
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf/gcc/gengtype.c
-
-    gtype_desc_c = create_file ("GCC", "gtype-desc.c");
-+   asm("int3");
-    for (ifp = ifiles; *ifp; ifp++)
-      oprintf (gtype_desc_c, "#include \"%s\"\n", *ifp);
-
-これを追加してもう一度ビルド.
+のようにエラーになってしまう. gtype-desc.c は生成されるファイルで, その生成方法は
+分かりにくいが
 
 build/gengtype  \
                     -r gtype.state
 
-このコマンドを実行したところで上の修正でトレース/ブレイクポイント トラップ
-が発生している.
+のようにして生成する.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf/gcc/gengtype.c
+
+    gtype_desc_c = create_file ("GCC", "gtype-desc.c");
+    for (ifp = ifiles; *ifp; ifp++)
+      oprintf (gtype_desc_c, "#include \"%s\"\n", *ifp);
+
+これを追加してもう一度ビルド.
 
 gcc-4.6.0 をネイティブコンパイラとしてインストールできるか確認してみる.
 
@@ -85,6 +83,357 @@ gcc-4.6.0.arm-elf でエラーしている部分の差分は以下:
 >     sizeof (x_rtl[0]),
 
 これはおそらく実装途中ということなのだろう.
+
+
+diff -r /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-{4.5.4,4.6.0}.arm-elf/gcc/config/arm > a
+
+とすればかなりの差分が出ていることが確認できる.
+
+             diff 合計
+aarch64       N/A
+arm         14623
+avr           754
+bfin          462
+cr16          N/A
+cris          479
+frv          1660
+ft32          N/A
+h8300         514
+iq2000        493
+lm32          230
+m32c         1167
+m32r          812
+mcore         411
+microblaze    N/a 
+mips         2638
+mn10300      8589
+moxie         225
+msp430        N/A
+or1k          N/A
+ppc           N/A
+pru           N/A
+rl78          N/A
+rx            951
+sh           1682
+v850         4716
+
+この結果からすると 4.5.4 と 4.6.0 との間で何らかの対応が必要だったらしい.
+lm32 の差分が最も少ない.
+
+% pwd
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf
+% cd gcc/config
+% ls -d arm*
+arm/  arm.4.5.4/
+% mv arm arm.org
+% ln -s arm.4.5.4 arm
+% ls -d arm*
+arm@  arm.4.5.4/  arm.org/
+
+これでビルドしてみたところ以下のエラーが発生:
+
+gcc -c   -g -O2 -DIN_GCC -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wwrite-strings -Wcast-qual -Wstrict-prototypes -Wmissing-prototypes -Wmissing-format-attribute -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings -Wold-style-definition -Wc++-compat   -DHAVE_CONFIG_H -DGENERATOR_FILE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber    \
+	-o build/genflags.o ../.././gcc/genflags.c
+In file included from ./tm.h:22,
+                 from ../.././gcc/genflags.c:27:
+../.././gcc/config/arm/arm.h:452:9: エラー: 汚染された 'CAN_DEBUG_WITHOUT_FP' 使おうとしています
+  452 | #define CAN_DEBUG_WITHOUT_FP
+
+
+arm.h から
+
+#pragma GCC poison
+
+の対象になっているマクロを削除した.
+
+さらにビルドを続行したところ以下のエラーが発生:
+
+
+gcc -c  -DIN_GCC_FRONTEND -DIN_GCC_FRONTEND -g -O2 -DIN_GCC -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wwrite-strings -Wcast-qual -Wstrict-prototypes -Wmissing-prototypes -Wmissing-format-attribute -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings -Wold-style-definition -Wc++-compat   -DHAVE_CONFIG_H -I. -I. -I../.././gcc -I../.././gcc/. -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber    -I. -I. -I../.././gcc -I../.././gcc/. -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber   \
+	../.././gcc/config/arm/arm-c.c
+...	
+../.././gcc/config/arm/arm-c.c:26:10: 致命的エラー: c-common.h: そのようなファイルやディレクトリはありません
+   26 | #include "c-common.h"
+      |          ^~~~~~~~~~~~
+コンパイルを停止しました。
+
+gcc-4.6.0.arm-elf/gcc/config/arm.4.5.4/arm-c.c
+
+を以下のように修正
+
+#include "c-family/c-common.h"
+
+さらにビルドを続行したところ以下のエラーが発生:
+
+gcc -c   -g -O2 -DIN_GCC -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wwrite-strings -Wcast-qual -Wstrict-prototypes -Wmissing-prototypes -Wmissing-format-attribute -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings -Wold-style-definition -Wc++-compat   -DHAVE_CONFIG_H -I. -I. -I../.././gcc -I../.././gcc/. -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber    insn-attrtab.c -o insn-attrtab.o
+...
+In file included from tm.h:14,
+                 from insn-attrtab.c:7:
+options.h:225:36: エラー: token "." is not valid in preprocessor expressions
+  225 | #define target_flags global_options.x_target_flags
+      |                                    ^
+options.h:3453:24: 備考: in expansion of macro ‘target_flags’
+ 3453 | #define TARGET_THUMB ((target_flags & MASK_THUMB) != 0)
+      |                        ^~~~~~~~~~~~
+../.././gcc/config/arm/arm.h:199:44: 備考: in expansion of macro ‘TARGET_THUMB’
+  199 | #define TARGET_ARM                      (! TARGET_THUMB)
+      |                                            ^~~~~~~~~~~~
+../.././gcc/config/arm/arm.h:826:4: 備考: in expansion of macro ‘TARGET_ARM’
+  826 |   (TARGET_ARM     \
+      |    ^~~~~~~~~~
+../.././gcc/rtl.h:2031:4: 備考: in expansion of macro ‘HARD_FRAME_POINTER_REGNUM’
+ 2031 |   (HARD_FRAME_POINTER_REGNUM == FRAME_POINTER_REGNUM)
+      |    ^~~~~~~~~~~~~~~~~~~~~~~~~
+../.././gcc/rtl.h:2052:5: 備考: in expansion of macro ‘HARD_FRAME_POINTER_IS_FRAME_POINTER’
+ 2052 | #if HARD_FRAME_POINTER_IS_FRAME_POINTER
+      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+...
+
+これは見なれないエラーだが
+
+#if ここ
+
+の部分にマクロ展開されているものが C の構造体の変数のメンバ参照になっているから
+このようなエラーになっている.
+
+gcc-4.6.0.arm-elf/gcc/config/arm.org/arm.h
+
+を参考にすれば
+
+#define HARD_FRAME_POINTER_IS_FRAME_POINTER 0
+#define HARD_FRAME_POINTER_IS_ARG_POINTER 0
+
+を
+
+gcc-4.6.0.arm-elf/gcc/config/arm.4.5.4/arm.h
+
+に追加するのが正しい.
+さらにビルドを続行:
+
+gcc -c   -g -O2 -DIN_GCC -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wwrite-strings -Wcast-qual -Wstrict-prototypes -Wmissing-prototypes -Wmissing-format-attribute -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings -Wold-style-definition -Wc++-compat   -DHAVE_CONFIG_H -I. -I. -I../.././gcc -I../.././gcc/. -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber    gtype-desc.c -o gtype-desc.o
+...
+gtype-desc.c: トップレベル:
+gtype-desc.c:8817:18: エラー: 添字が付けられた値が、配列、ポインタまたはベクトルではありません
+ 8817 |     sizeof (x_rtl[0]),
+      |                  ^
+gtype-desc.c:8936:36: エラー: 添字が付けられた値が、配列、ポインタまたはベクトルではありません
+ 8936 |     sizeof (default_target_libfuncs[0]),
+      |                                    ^
+gtype-desc.c:9020:31: エラー: 添字が付けられた値が、配列、ポインタまたはベクトルではありません
+ 9020 |     sizeof (default_target_rtl[0]),
+      |                               ^
+gtype-desc.c:9041:31: エラー: 添字が付けられた値が、配列、ポインタまたはベクトルではありません
+ 9041 |     sizeof (default_target_rtl[0]),
+      |                               ^
+gtype-desc.c:9048:31: エラー: 添字が付けられた値が、配列、ポインタまたはベクトルではありません
+ 9048 |     sizeof (default_target_rtl[0]),
+      |                               ^
+gtype-desc.c:9055:31: エラー: 添字が付けられた値が、配列、ポインタまたはベクトルではありません
+ 9055 |     sizeof (default_target_rtl[0]),
+      |                               ^
+
+
+これは...前のバージョンに戻したのだが arm.org と同じエラーが出ている.
+
+diff /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-{4.5.4,4.6.0}.arm-elf/host-i686-pc-linux-gnu/gcc/gtype-desc.c > a
+
+8362,8363c8816,8817
+<     1,
+<     sizeof (x_rtl),
+---
+>     1 * (2),
+>     sizeof (x_rtl[0]),
+...
+8475c8936
+<     sizeof (libfunc_table[0]),
+---
+>     sizeof (default_target_libfuncs[0]),
+
+
+    sizeof (default_target_rtl[0]),
+
+
+    sizeof (global_rtl[0]),
+...
+
+上のように修正してさらにビルドを続行:
+
+gcc -c   -g -O2 -DIN_GCC -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wwrite-strings -Wcast-qual -Wstrict-prototypes -Wmissing-prototypes -Wmissing-format-attribute -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings -Wold-style-definition -Wc++-compat   -DHAVE_CONFIG_H -I. -I. -I../.././gcc -I../.././gcc/. -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber    \
+	../.././gcc/config/arm/arm.c -o arm.o
+
+#include "c-pragma.h"
+
+インクルードできなくてエラー. 以下のように修正
+
+#include "c-family/c-pragma.h"
+
+さらにビルドを続行すると以下のエラー:
+
+
+gcc   -g -O2 -DIN_GCC -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wwrite-strings -Wcast-qual -Wstrict-prototypes -Wmissing-prototypes -Wmissing-format-attribute -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings -Wold-style-definition -Wc++-compat   -DHAVE_CONFIG_H  -o cc1 c-lang.o c-family/stub-objc.o attribs.o c-errors.o c-decl.o c-typeck.o c-convert.o c-aux-info.o c-objc-common.o c-parser.o tree-mudflap.o c-family/c-common.o c-family/c-cppbuiltin.o c-family/c-dump.o c-family/c-format.o c-family/c-gimplify.o c-family/c-lex.o c-family/c-omp.o c-family/c-opts.o c-family/c-pch.o c-family/c-ppoutput.o c-family/c-pragma.o c-family/c-pretty-print.o c-family/c-semantics.o c-family/c-ada-spec.o arm-c.o \
+  cc1-checksum.o main.o  libbackend.a ../libcpp/libcpp.a ../libdecnumber/libdecnumber.a ../libcpp/libcpp.a   ../libiberty/libiberty.a ../libdecnumber/libdecnumber.a    -lmpc -lmpfr -lgmp -rdynamic -ldl  -L../zlib -lz
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libbackend.a(arm.o): in function `thumb_pushpop':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf/host-i686-pc-linux-gnu/gcc/../.././gcc/config/arm/arm.c:18568: undefined reference to `arm_except_unwind_info'
+...
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf/gcc/config/arm.4.5.4/arm.c に以下を追加
+
+static enum unwind_info_type
+arm_except_unwind_info (struct gcc_options *opts)
+{
+...
+
+後は
+
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf/host-i686-pc-linux-gnu/gcc/Makefile
+
+を
+
+
+doc/%.info: %.texi
+#	if [ x$(BUILD_INFO) = xinfo ]; then \
+#		$(MAKEINFO) $(MAKEINFOFLAGS) -I . -I $(gcc_docdir) \
+#			-I $(gcc_docdir)/include -o $@ $<; \
+#	fi
+	touch $@
+
+のように修正すれば make all-gcc が正常終了する.
+
+make maybe-configure-target-libgcc
+
+エラーになる.
+
+configure:3028:  /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/arm-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/arm-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/arm-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/arm-elf/sys-include    -V >&5
+xgcc: error: unrecognized option '-V'
+xgcc: fatal error: no input files
+compilation terminated.
+configure:3039: $? = 1
+
+-V オプションが受け付けられないらしい.
+
+しかし
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/gcc-4.6.0/i686-pc-linux-gnu/libgcc/config.log
+
+でもやはり同じ結果. これが原因でエラーしているわけではないらしい.
+
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/arm-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/arm-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/arm-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/arm-elf/sys-include    -c -g -O2  a.c
+a.c:1:0: internal compiler error: セグメンテーション違反です
+完全なバグ報告を送って下さい。
+適切ならばプリプロセス後のソースをつけてください。
+<http://gcc.gnu.org/bugs.html> を見れば方法が書いてあります。
+%
+
+そもそもできていないらしい. configure でエラーしているから, 少なくとも gcc-4.6.0 で
+エラー回避したほうがむしろできていたように思える.
+
+gdb から cc1 を実行してみた:
+
+
+(gdb) run a.c
+Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf/host-i686-pc-linux-gnu/gcc/cc1 a.c
+
+Program received signal SIGSEGV, Segmentation fault.
+0x082d4c39 in init_reg_modes_target () at ../.././gcc/reginfo.c:572
+(gdb)
+
+以下の部分を実行して不正メモリアクセスが発生している:
+
+      hard_regno_nregs[i][j] = HARD_REGNO_NREGS(i, (enum machine_mode)j);
+
+この部分をプリプロセスした結果は以下.
+
+      ((&default_target_regs)->x_hard_regno_nregs)[i][j] = ((((! ((global_options.x_target_flags & (1 << 14)) != 0)) || arm_arch_thumb2) && i >= 16 && i != 25 && i != 26) && !(((i) >= 63) && ((i) <= (((arm_fpu_desc->model == ARM_FP_MODEL_VFP) && arm_fpu_desc->regs == VFP_REG_D32) ? 126 : 94))) ? 1 : (((((unsigned short) mode_size[(enum machine_mode)j])) + 4 - 1) / 4));
+
+HARD_REGNO_NREGS の定義は以下:
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf/gcc/config/arm/arm.h
+932: #define HARD_REGNO_NREGS(REGNO, MODE)  	\
+
+
+arm_fpu_desc が 0 で arm_fpu_desc->regs を参照して不正メモリアクセスエラーしているという
+こと.
+
+この変数は gcc-4.5.4 では arm_override_options で以下のようにセットされていた:
+
+Hardware watchpoint 2: arm_fpu_desc
+
+Old value = (const struct arm_fpu_desc *) 0x0
+New value = (const struct arm_fpu_desc *) 0x86cb518 <all_fpus+24>
+arm_override_options () at ../.././gcc/config/arm/arm.c:1650
+(gdb) where
+#0  arm_override_options () at ../.././gcc/config/arm/arm.c:1650
+#1  0x08320e25 in process_options () at ../.././gcc/toplev.c:1814
+#2  do_compile () at ../.././gcc/toplev.c:2401
+#3  toplev_main (argc=<optimized out>, argv=<optimized out>) at ../.././gcc/toplev.c:2459
+#4  0x080c3d0b in main (argc=2, argv=0xbffff5e4) at ../.././gcc/main.c:35
+(gdb)
+
+gcc-4.6.0 では単純に arm_override_options が呼び出されていない.
+
+呼び出す方法が変更されたらしい.
+
+gcc-4.5.4 では
+
+
+#define OVERRIDE_OPTIONS  arm_override_options ()
+...
+#ifdef OVERRIDE_OPTIONS
+  OVERRIDE_OPTIONS;
+#endif
+
+gcc-4.6.0 では
+
+  /* Some machines may reject certain combinations of options.  */
+  targetm.target_option.override ();
+
+これは C++ のメンバ函数呼び出しではなくて C のメンバ函数呼び出し.
+
+
+gcc-4.6.0 を通常通りビルドしたもので試すと
+
+  targetm.target_option.override は main 函数が呼び出された時点で既に
+
+  arm_option_override
+
+になっている. これは arm.c で初期化指定子で指定されている.
+
+struct gcc_target targetm = TARGET_INITIALIZER;
+
+そして TARGET_INITIALIZER は target-hooks-def.h で定義されていて, このファイルは
+自動生成されるファイル.
+
+これのカラクリは
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf/gcc/config/arm.4.5.4/arm.c
+
+に
+
+static void arm_option_override (void);
+...
+#undef  TARGET_OPTION_OVERRIDE
+#define TARGET_OPTION_OVERRIDE arm_option_override
+...
+static void
+arm_option_override (void)
+{
+...
+}
+
+とすることで回避できる. これで
+
+targetm.target_option.override ();
+
+の呼び出しが arm_option_override の呼び出しになる. これで改めて cc1 をビルドする.
+そして libgcc をビルドすると, gcc-4.6.0 と同じように _negdi2.o のビルドでエラーする.
+
+ということは...
+
+gcc-4.5.4 のときの _negdi2.o のビルドと gcc-4.6.0 + arm.4.5.4 とのビルドとを
+比較すればよいということになる.
+
+
 
 
 以下は他のバージョンでインストールを試してみた結果.
