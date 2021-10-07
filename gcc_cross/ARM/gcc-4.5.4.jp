@@ -1,6 +1,13 @@
-arm-elf-gcc gcc-4.5.4 のインストール
+arm-elf-gcc gcc-4.5.4 install
 
-% bunzip2 -c ../gcc-4.6.0.tar.bz2 | tar xf -
-% mv gcc-4.6.0 gcc-4.6.0.arm-elf
-% cd gcc-4.6.0.arm-elf
-% 
+% bunzip2 -c ../gcc-4.5.4.tar.bz2 | tar xf -
+% mv gcc-4.5.4 gcc-4.5.4.arm-elf
+% cd gcc-4.5.4.arm-elf
+% patch -p1 < ../gcc-4.5.4.arm-elf.diff
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=arm-elf --with-newlib
+% make all-gcc
+% make maybe-configure-target-libgcc
+% make install-gcc
+% make maybe-install-target-libgcc
+
+

@@ -1,0 +1,57 @@
+*** gcc-4.6.0.arm-elf/gcc/Makefile.in	2011-01-26 13:19:58.000000000 +0900
+--- gcc-4.6.0.arm-elf.org/gcc/Makefile.in	2021-10-06 10:50:46.000000000 +0900
+***************
+*** 4245,4254 ****
+  doc/cppinternals.info: $(TEXI_CPPINT_FILES)
+  
+  doc/%.info: %.texi
+! 	if [ x$(BUILD_INFO) = xinfo ]; then \
+! 		$(MAKEINFO) $(MAKEINFOFLAGS) -I . -I $(gcc_docdir) \
+! 			-I $(gcc_docdir)/include -o $@ $<; \
+! 	fi
+  
+  # Duplicate entry to handle renaming of gccinstall.info
+  doc/gccinstall.info: $(TEXI_GCCINSTALL_FILES)
+--- 4245,4255 ----
+  doc/cppinternals.info: $(TEXI_CPPINT_FILES)
+  
+  doc/%.info: %.texi
+! #	if [ x$(BUILD_INFO) = xinfo ]; then \
+! #		$(MAKEINFO) $(MAKEINFOFLAGS) -I . -I $(gcc_docdir) \
+! #			-I $(gcc_docdir)/include -o $@ $<; \
+! #	fi
+! 	touch $@
+  
+  # Duplicate entry to handle renaming of gccinstall.info
+  doc/gccinstall.info: $(TEXI_GCCINSTALL_FILES)
+*** gcc-4.6.0.arm-elf/libgcc/Makefile.in	2011-01-26 13:19:58.000000000 +0900
+--- gcc-4.6.0.arm-elf.org/libgcc/Makefile.in	2021-10-06 10:49:41.000000000 +0900
+***************
+*** 20,26 ****
+  #
+  
+  libgcc_topdir = @libgcc_topdir@
+! host_subdir = @host_subdir@
+  
+  gcc_srcdir = $(libgcc_topdir)/gcc
+  gcc_objdir = $(MULTIBUILDTOP)../../$(host_subdir)/gcc
+--- 20,26 ----
+  #
+  
+  libgcc_topdir = @libgcc_topdir@
+! host_subdir = host-i686-pc-linux-gnu
+  
+  gcc_srcdir = $(libgcc_topdir)/gcc
+  gcc_objdir = $(MULTIBUILDTOP)../../$(host_subdir)/gcc
+*** gcc-4.6.0.arm-elf/gcc/cp/cfns.gperf	2009-04-22 04:03:23.000000000 +0900
+--- gcc-4.6.0.arm-elf.org/gcc/cp/cfns.gperf	2021-10-06 10:50:17.000000000 +0900
+***************
+*** 98,104 ****
+  #getwchar		-- POSIX thread cancellation point
+  gmtime
+  isalnum
+- isalpha
+  iscntrl
+  isdigit
+  isgraph
+--- 98,103 ----
