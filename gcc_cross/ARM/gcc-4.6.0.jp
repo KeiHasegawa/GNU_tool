@@ -32,8 +32,6 @@ build/gengtype  \
     for (ifp = ifiles; *ifp; ifp++)
       oprintf (gtype_desc_c, "#include \"%s\"\n", *ifp);
 
-これを追加してもう一度ビルド.
-
 gcc-4.6.0 をネイティブコンパイラとしてインストールできるか確認してみる.
 
 % bunzip2 -c gcc-4.6.0.tar.bz | tar xf -
@@ -45,7 +43,7 @@ gcc-4.6.0 をネイティブコンパイラとしてインストールできる�
 doc/%.info:
 	touch $@
 
-のようにすることで回避は可能. で, 結果は OK.
+のようにすることで回避は可能. 結果は OK.
 
 gtype-desc.c
 
@@ -191,7 +189,7 @@ options.h:3453:24: 備考: in expansion of macro ‘target_flags’
 
 これは見なれないエラーだが
 
-#if ここ
+#if HARD_FRAME_POINTER_IS_FRAME_POINTER
 
 の部分にマクロ展開されているものが C の構造体の変数のメンバ参照になっているから
 このようなエラーになっている.
@@ -235,26 +233,55 @@ gtype-desc.c:9055:31: エラー: 添字が付けられた値が、配列、ポ�
 
 これは...前のバージョンに戻したのだが arm.org と同じエラーが出ている.
 
-diff /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-{4.5.4,4.6.0}.arm-elf/host-i686-pc-linux-gnu/gcc/gtype-desc.c > a
-
-8362,8363c8816,8817
-<     1,
-<     sizeof (x_rtl),
----
->     1 * (2),
->     sizeof (x_rtl[0]),
+おそらく以下が期待値:
+  {
+    &x_rtl.eh.call_site_record[0],
+    1 * (2),
++   sizeof (x_rtl.eh.call_site_record[0]),
+    &gt_ggc_mx_VEC_call_site_record_gc,
+    &gt_pch_nx_VEC_call_site_record_gc
+  },
 ...
-8475c8936
-<     sizeof (libfunc_table[0]),
----
->     sizeof (default_target_libfuncs[0]),
-
-
-    sizeof (default_target_rtl[0]),
-
-
-    sizeof (global_rtl[0]),
+  {
+    &default_target_libfuncs.x_libfunc_table[0],
+    1 * (LTI_MAX),
++   sizeof (default_target_libfuncs.x_libfunc_table[0]),
+    &gt_ggc_mx_rtx_def,
+    &gt_pch_nx_rtx_def
+  },
 ...
+  {
+    &default_target_rtl.x_global_rtl[0],
+    1 * (GR_MAX),
++   sizeof (default_target_rtl.x_global_rtl[0]),
+    &gt_ggc_mx_rtx_def,
+    &gt_pch_nx_rtx_def
+  },
+...
+  {
+    &default_target_rtl.x_initial_regno_reg_rtx[0],
+    1 * (FIRST_PSEUDO_REGISTER),
++   sizeof (default_target_rtl.x_initial_regno_reg_rtx[0]),
+    &gt_ggc_mx_rtx_def,
+    &gt_pch_nx_rtx_def
+  },
+...
+  {
+    &default_target_rtl.x_static_reg_base_value[0],
+    1 * (FIRST_PSEUDO_REGISTER),
++   sizeof (default_target_rtl.x_static_reg_base_value[0]),
+    &gt_ggc_mx_rtx_def,
+    &gt_pch_nx_rtx_def
+  },
+
+gengtype.o を以下のように -O2 なしでビルドしたところ期待通り動作している.
+
+gcc -c   -g3 -DIN_GCC -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wwrite-strings -Wcast-qual -Wstrict-prototypes -Wmissing-prototypes -Wmissing-format-attribute -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings -Wold-style-definition -Wc++-compat   -DHAVE_CONFIG_H -DGENERATOR_FILE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber    -o build/gengtype.o ../.././gcc/gengtype.c  || exit 1
+
+gcc   -g -O2 -DIN_GCC -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wwrite-strings -Wcast-qual -Wstrict-prototypes -Wmissing-prototypes -Wmissing-format-attribute -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings -Wold-style-definition -Wc++-compat   -DHAVE_CONFIG_H -DGENERATOR_FILE  -o build/gengtype \
+    build/gengtype.o build/errors.o build/gengtype-lex.o build/gengtype-parse.o build/gengtype-state.o build/version.o ../../build-i686-pc-linux-gnu/libiberty/libiberty.a || exit 1
+    
+
 
 上のように修正してさらにビルドを続行:
 
@@ -433,6 +460,83 @@ targetm.target_option.override ();
 gcc-4.5.4 のときの _negdi2.o のビルドと gcc-4.6.0 + arm.4.5.4 とのビルドとを
 比較すればよいということになる.
 
+gcc-4.5.4 の cc1 を gdb から動作して, _negdi2.o のビルドで正常終了している.
+
+gcc-4.6.0 は函数 record_object_conflict でエラーしているが, そもそも
+gcc-4.5.4 ではこの函数は定義されていない.
+
+しかし build_conflict_bit_table はどちらのバージョンでも定義されている.
+そしてこの函数は gcc-4.5.4 では 1 回だけ呼び出されている.
+
+問題の箇所は以下:
+
+gcc-4.5.4:
+	      if (ira_reg_classes_intersect_p
+		  [cover_class][ALLOCNO_COVER_CLASS (live_a)]
+		  /* Don't set up conflict for the allocno with itself.  */
+		  && num != (int) j)
+		{
+		  SET_ALLOCNO_SET_BIT (conflicts[num],
+				       ALLOCNO_CONFLICT_ID (live_a),
+				       ALLOCNO_MIN (allocno),
+				       ALLOCNO_MAX (allocno));
+		  SET_ALLOCNO_SET_BIT (conflicts[j], id,
+				       ALLOCNO_MIN (live_a),
+				       ALLOCNO_MAX (live_a));
+		}
+
+
+gcc-4.6.0:
+	      if (ira_reg_classes_intersect_p[cover_class][live_cover_class]
+		  /* Don't set up conflict for the allocno with itself.  */
+		  && live_a != allocno)
+		{
+		  record_object_conflict (obj, live_obj);
+		}
+
+
+struct ira_object という構造体が大幅に変更されているので簡単に 4.5.4 のものに
+戻すのが難しい.
+
+ところでこのループの先頭に来た時点で
+
+gcc-4.5.4 : ira_max_point = 23 -> 11
+gcc-4.6.0 : ira_max_point = 19 -> 8
+
+のように少し違っている. そういうものなのか.
+
+typedef int DItype __attribute__ ((mode (DI)));
+
+typedef unsigned int USItype __attribute__ ((mode (SI)));
+
+typedef int SItype __attribute__ ((mode (SI)));
+
+struct DWstruct {SItype low, high;};
+
+typedef union
+{
+  struct DWstruct s;
+  DItype ll;
+} DWunion;
+
+DItype
+__negdi2 (DItype u)
+{
+  const DWunion uu = {.ll = u};
+  const DWunion w = { {.low = -uu.s.low,
+         .high = -uu.s.high - ((USItype) -uu.s.low > 0) } };
+
+  return w.ll;
+}
+
+上のソースで再現する. 単純にオプションなしで実行すれば
+gcc-4.6.0 + arm.4.5.4 で正常終了する. しかし
+
+run -g -O2 a.c
+
+のように -g -O2 を指定すればバグが再現する. そもそも問題の箇所は -O2 を指定しないと
+来ない.
+ということは, ... 最適化のオプションの部分が関係している可能性はある.
 
 
 
