@@ -1,4 +1,9 @@
-arm-elf-gcc gcc-4.6.0 install
+(*1) arm-elf-gcc gcc-4.6.0 インストール
+(*2) そのまま -O2 ビルドした場合に発生するエラー
+(*3) gcc-4.6.0 をネイティブコンパイラとしてインストールできるか確認した結果 => OK
+(*4) gcc-4.5.4 と gcc-4.6.0 とのターゲット依存部分の差分
+
+(*1) arm-elf-gcc gcc-4.6.0 インストール
 
 % bunzip2 -c ../gcc-4.6.0.tar.bz2 | tar xf -
 % mv gcc-4.6.0 gcc-4.6.0.arm-elf
@@ -21,7 +26,9 @@ chmod +x $argv[1]
 % make install-gcc
 % make maybe-install-target-libgcc
 
+エラー回避のポイントは cc1 を -O2 ではなくて -O0 でビルドすること.
 
+(*2) そのまま -O2 ビルドした場合に発生するエラー
 
 ...
 gcc -c   -g -O2 -DIN_GCC -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wwrite-strings -Wcast-qual -Wstrict-prototypes -Wmissing-prototypes -Wmissing-format-attribute -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings -Wold-style-definition -Wc++-compat   -DHAVE_CONFIG_H -I. -I. -I../.././gcc -I../.././gcc/. -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber    gtype-desc.c -o gtype-desc.o
@@ -34,8 +41,7 @@ gtype-desc.c:8829:18: エラー: 添字が付けられた値が、配列、ポ�
 のようにエラーになってしまう. gtype-desc.c は生成されるファイルで, その生成方法は
 分かりにくいが
 
-build/gengtype  \
-                    -r gtype.state
+build/gengtype -r gtype.state
 
 のようにして生成する.
 
@@ -45,7 +51,12 @@ build/gengtype  \
     for (ifp = ifiles; *ifp; ifp++)
       oprintf (gtype_desc_c, "#include \"%s\"\n", *ifp);
 
-gcc-4.6.0 をネイティブコンパイラとしてインストールできるか確認してみる.
+
+gentype.c を -O2 ビルドしてしまうとこのように build/gentype が意図しない動作になってしまう.
+しかし残念ながらこの
+
+
+(*3) gcc-4.6.0 をネイティブコンパイラとしてインストールできるか確認した結果 => OK
 
 % bunzip2 -c gcc-4.6.0.tar.bz | tar xf -
 % cd gcc-4.6.0
@@ -62,39 +73,7 @@ gtype-desc.c
 
 でコンパイルエラーは発生しない.
 
-diff /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/{gcc-4.6.0,GNU_LANG/gcc-4.6.0.arm-elf}/host-i686-pc-linux-gnu/gcc/gtype-desc.c > a
-
-とすることで差分を確認できている. どうやらターゲット依存の部分が例えば以下のようにある:
-
-3573,3576c3543,3554
-<       gt_pch_n_17stack_local_entry ((*x).stack_locals);
-<       gt_pch_n_S ((*x).some_ld_name);
-<       gt_pch_n_7rtx_def ((*x).split_stack_varargs_pointer);
-<       gt_pch_n_7rtx_def ((*x).fs.cfa_reg);
----
->       gt_pch_n_7rtx_def ((*x).eh_epilogue_sp_ofs);
->       gt_pch_n_7rtx_def ((*x).pic_reg);
->       {
->         size_t i0;
->         size_t l0 = (size_t)(14);
->         for (i0 = 0; i0 != l0; i0++) {
->           gt_pch_n_7rtx_def ((*x).call_via[i0]);
->         }
->       }
->       gt_pch_n_7rtx_def ((*x).thumb1_cc_insn);
->       gt_pch_n_7rtx_def ((*x).thumb1_cc_op0);
->       gt_pch_n_7rtx_def ((*x).thumb1_cc_op1);
-
-
-gcc-4.6.0.arm-elf でエラーしている部分の差分は以下:
-
-8893c8829
-<     sizeof (x_rtl.eh.call_site_record[0]),
----
->     sizeof (x_rtl[0]),
-
-これはおそらく実装途中ということなのだろう.
-
+(*4) gcc-4.5.4 と gcc-4.6.0 とのターゲット依存部分の差分
 
 diff -r /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-{4.5.4,4.6.0}.arm-elf/gcc/config/arm > a
 
@@ -128,7 +107,7 @@ rx            951
 sh           1682
 v850         4716
 
-この結果からすると 4.5.4 と 4.6.0 との間で何らかの対応が必要だったらしい.
+この結果からすると 4.5.4 と 4.6.0 との間で何らかの対応が必要だったことが分かる.
 lm32 の差分が最も少ない.
 
 % pwd
@@ -295,7 +274,6 @@ gcc   -g -O2 -DIN_GCC -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wwrite-strings -Wca
     build/gengtype.o build/errors.o build/gengtype-lex.o build/gengtype-parse.o build/gengtype-state.o build/version.o ../../build-i686-pc-linux-gnu/libiberty/libiberty.a || exit 1
     
 
-
 上のように修正してさらにビルドを続行:
 
 gcc -c   -g -O2 -DIN_GCC -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wwrite-strings -Wcast-qual -Wstrict-prototypes -Wmissing-prototypes -Wmissing-format-attribute -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings -Wold-style-definition -Wc++-compat   -DHAVE_CONFIG_H -I. -I. -I../.././gcc -I../.././gcc/. -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber    \
@@ -322,21 +300,6 @@ static enum unwind_info_type
 arm_except_unwind_info (struct gcc_options *opts)
 {
 ...
-
-後は
-
-
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.6.0.arm-elf/host-i686-pc-linux-gnu/gcc/Makefile
-
-を
-
-
-doc/%.info: %.texi
-#	if [ x$(BUILD_INFO) = xinfo ]; then \
-#		$(MAKEINFO) $(MAKEINFOFLAGS) -I . -I $(gcc_docdir) \
-#			-I $(gcc_docdir)/include -o $@ $<; \
-#	fi
-	touch $@
 
 のように修正すれば make all-gcc が正常終了する.
 
@@ -550,7 +513,6 @@ run -g -O2 a.c
 のように -g -O2 を指定すればバグが再現する. そもそも問題の箇所は -O2 を指定しないと
 来ない.
 ということは, ... 最適化のオプションの部分が関係している可能性はある.
-
 
 
 以下は他のバージョンでインストールを試してみた結果.
