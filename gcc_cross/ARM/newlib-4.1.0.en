@@ -1,0 +1,38 @@
+newlib.4.1.0 install
+
+After installing arm-elf-gcc by using gcc-10.2.0
+
+% gunzip -c ../newlib-4.1.0.tar.gz | tar xf -
+% mv newlib-4.1.0 newlib-4.1.0.arm-elf
+% cd newlib-4.1.0.arm-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=arm-elf
+% make
+...
+arm-elf-ar rc ../libc.a *.o
+arm-elf-ar: ../argz/lib.a: no such file
+arm-elf-ar: ../stdlib/lib.a: no such file
+arm-elf-ar: ../ctype/lib.a: no such file
+arm-elf-ar: ../search/lib.a: no such file
+arm-elf-ar: ../stdio/lib.a: no such file
+arm-elf-ar: ../string/lib.a: no such file
+arm-elf-ar: ../signal/lib.a: no such file
+arm-elf-ar: ../time/lib.a: no such file
+arm-elf-ar: ../locale/lib.a: no such file
+arm-elf-ar: ../reent/lib.a: no such file
+arm-elf-ar: ../errno/lib.a: no such file
+arm-elf-ar: ../misc/lib.a: no such file
+arm-elf-ar: ../ssp/lib.a: no such file
+arm-elf-ar: ../syscalls/lib.a: no such file
+arm-elf-ar: ../machine/lib.a: no such file
+arm-elf-ar: ../sys/lib.a: no such file
+arm-elf-ar: *.o: no such file
+make[8]: *** [Makefile:1034: libc.a] Error 1
+make[8]: Leaving directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.arm-elf/arm-elf/arm/autofp/v5te/fpu/newlib/libc'
+...
+% cp ../Makefile.empty /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.arm-elf/arm-elf/arm/autofp/v5te/fpu/newlib/Makefile
+% cp ../Makefile.empty /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.arm-elf/arm-elf/thumb/autofp/v7/fpu/newlib/Makefile
+% make
+% cp ../Makefile.empty /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.arm-elf/arm-elf/arm/autofp/v5te/fpu/libgloss/Makefile
+% cp ../Makefile.empty /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.arm-elf/arm-elf/thumb/autofp/v7/fpu/libgloss/Makefile
+% make
+% make install
