@@ -1,0 +1,10 @@
+gcc-4.2.0 m68hc11-elf-gcc install
+
+% bunzip2 -c ../gcc-4.2.0.tar.bz2 | tar xf -
+% mv gcc-4.2.0 gcc-4.2.0.m68hc11-elf
+% cd gcc-4.2.0.m68hc11-elf
+% patch -p1 < ../gcc-4.2.0.m68hc11-elf.diff
+% ./configure --prefix=$PREFIX --target=m68hc11-elf --with-newlib
+% make all-gcc
+% make install-gcc
+

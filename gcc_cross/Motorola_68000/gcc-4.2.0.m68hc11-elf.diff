@@ -1,0 +1,64 @@
+*** gcc-4.5.4.org/gcc/config/m68hc11/larith.asm	2021-07-01 11:26:24.000000000 +0900
+--- gcc-4.5.4/gcc/config/m68hc11/larith.asm	2021-07-03 12:55:07.000000000 +0900
+***************
+*** 92,103 ****
+  
+  	.sect .text
+  	
+! 
+  #define REG(NAME)			\
+  NAME:	.dc.w	1;			\
+  	.type NAME,@object ;		\
+  	.size NAME,2
+! 
+  #ifdef L_regs_min
+  /* Pseudo hard registers used by gcc.
+     They should be located in page0.  */
+--- 92,108 ----
+  
+  	.sect .text
+  	
+! #if 0
+  #define REG(NAME)			\
+  NAME:	.dc.w	1;			\
+  	.type NAME,@object ;		\
+  	.size NAME,2
+! #else
+! #define REG(NAME)			\
+! NAME:					\
+! 	.space 2
+! #endif	
+! 	
+  #ifdef L_regs_min
+  /* Pseudo hard registers used by gcc.
+     They should be located in page0.  */
+*** org/gcc/toplev.h	2005-09-09 09:47:05.000000000 +0900
+--- new/gcc/toplev.h	2021-10-02 06:55:50.000000000 +0900
+***************
+*** 170,176 ****
+  #  define CLZ_HWI __builtin_clz
+  #  define CTZ_HWI __builtin_ctz
+  # endif
+! 
+  extern inline int
+  floor_log2 (unsigned HOST_WIDE_INT x)
+  {
+--- 170,176 ----
+  #  define CLZ_HWI __builtin_clz
+  #  define CTZ_HWI __builtin_ctz
+  # endif
+! #if 0
+  extern inline int
+  floor_log2 (unsigned HOST_WIDE_INT x)
+  {
+***************
+*** 182,187 ****
+--- 182,188 ----
+  {
+    return x == (x & -x) && x ? (int) CTZ_HWI (x) : -1;
+  }
++ #endif
+  #endif /* GCC_VERSION >= 3004 */
+  
+  /* Functions used to get and set GCC's notion of in what directory
+  

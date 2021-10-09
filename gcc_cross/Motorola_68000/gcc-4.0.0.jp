@@ -1,0 +1,17 @@
+m68hc11-elf-gcc install using gcc-4.0.0
+
+make[1]: *** 'regex.o' に必要なターゲット '../include/ansidecl.h' を make するルールがありません.  中止.
+
+gcc-4.0.0.m68hc11-elf/build-i686-pc-linux-gnu/libiberty/Makefile
+
+に誤りがある.
+
+INCDIR=../../include
+
+とすれば回避できる.
+
+config.status: executing default-1 commands
+./config.status: line 910: ./../../config-ml.in: No such file or directory
+make: *** [Makefile:6455: configure-zlib] エラー 1
+
+なんだかこれは, arm-elf-gcc のインストールと勝手が違っている.
