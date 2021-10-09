@@ -1,0 +1,115 @@
+*** gcc-4.6.0.arm-elf/libgcc/Makefile.in	2011-01-26 13:19:58.000000000 +0900
+--- gcc-4.6.0.arm-elf.org/libgcc/Makefile.in	2021-10-06 10:49:41.000000000 +0900
+***************
+*** 20,26 ****
+  #
+  
+  libgcc_topdir = @libgcc_topdir@
+! host_subdir = @host_subdir@
+  
+  gcc_srcdir = $(libgcc_topdir)/gcc
+  gcc_objdir = $(MULTIBUILDTOP)../../$(host_subdir)/gcc
+--- 20,26 ----
+  #
+  
+  libgcc_topdir = @libgcc_topdir@
+! host_subdir = host-i686-pc-linux-gnu
+  
+  gcc_srcdir = $(libgcc_topdir)/gcc
+  gcc_objdir = $(MULTIBUILDTOP)../../$(host_subdir)/gcc
+*** gcc-4.9.4/libgcc/config.host	2021-10-07 16:41:34.000000000 +0900
+--- gcc-4.9.4.arm-elf/libgcc/config.host	2021-10-07 16:43:07.000000000 +0900
+***************
+*** 1225,1230 ****
+--- 1225,1234 ----
+  	tmake_file="mep/t-mep t-fdpbit"
+  	extra_parts="crtbegin.o crtend.o"
+  	;;
++ arm*-*-elf)
++ 	tmake_file="$tmake_file arm/t-arm arm/t-elf t-softfp-sfdf t-softfp-excl arm/t-softfp t-softfp"
++ 	extra_parts="$extra_parts crti.o crtn.o"
++ 	;;
+  *)
+  	echo "*** Configuration ${host} not supported" 1>&2
+  	exit 1
+*** gcc-5.3.0/gcc/config.gcc	2021-10-08 13:35:23.000000000 +0900
+--- gcc-5.3.0.arm-elf/gcc/config.gcc	2021-10-08 13:40:17.000000000 +0900
+***************
+*** 258,264 ****
+  	;;
+     arm*-wince-pe*			\
+   | arm*-*-ecos-elf			\
+-  | arm*-*-elf				\
+   | arm*-*-linux*			\
+   | arm*-*-uclinux*			\
+   | i[34567]86-go32-*			\
+--- 258,263 ----
+***************
+*** 2972,2977 ****
+--- 2971,2980 ----
+  	c_target_objs="m32c-pragma.o"
+  	cxx_target_objs="m32c-pragma.o"
+   	;;
++ arm*-*-elf)
++ 	tm_file="dbxelf.h elfos.h newlib-stdint.h arm/unknown-elf.h arm/elf.h arm/aout.h arm/arm.h"
++ 	tmake_file="arm/t-arm arm/t-arm-elf"
++ 	;;
+  *)
+  	echo "*** Configuration ${target} not supported" 1>&2
+  	exit 1
+*** gcc-8.1.0/gcc/common/config/arm/arm-common.c	2018-03-10 00:42:10.000000000 +0900
+--- gcc-8.1.0.arm-elf/gcc/common/config/arm/arm-common.c	2021-10-09 05:50:24.000000000 +0900
+***************
+*** 871,876 ****
+--- 871,879 ----
+  const char *
+  arm_be8_option (int argc, const char **argv)
+  {
++ #ifndef TARGET_ENDIAN_DEFAULT
++ #define TARGET_ENDIAN_DEFAULT 0
++ #endif
+    int endian = TARGET_ENDIAN_DEFAULT;
+    const char *arch = NULL;
+    int arg;
+*** gcc-9.1.0/libgcc/config/arm/ieee754-df.S	2021-10-09 08:01:26.000000000 +0900
+--- gcc-9.1.0.arm-elf/libgcc/config/arm/ieee754-df.S	2021-10-09 08:04:28.000000000 +0900
+***************
+*** 626,633 ****
+  @ multiplication will pull _arm_muldivdf3.o from which both the multiplication
+  @ and division are taken thanks to the override.
+  #ifdef L_arm_muldf3
+! WEAK muldf3
+! WEAK aeabi_dmul
+  #endif
+  
+  ARM_FUNC_START muldf3
+--- 626,633 ----
+  @ multiplication will pull _arm_muldivdf3.o from which both the multiplication
+  @ and division are taken thanks to the override.
+  #ifdef L_arm_muldf3
+! .weak muldf3
+! .weak aeabi_dmul
+  #endif
+  
+  ARM_FUNC_START muldf3
+*** gcc-9.1.0/libgcc/config/arm/ieee754-sf.S	2021-10-09 08:06:01.000000000 +0900
+--- gcc-9.1.0.arm-elf/libgcc/config/arm/ieee754-sf.S	2021-10-09 08:06:20.000000000 +0900
+***************
+*** 437,444 ****
+  @ multiplication will pull _arm_muldivsf3.o from which both the multiplication
+  @ and division are taken thanks to the override.
+  #ifdef L_arm_mulsf3
+! WEAK mulsf3
+! WEAK aeabi_fmul
+  #endif
+  
+  ARM_FUNC_START mulsf3
+--- 437,444 ----
+  @ multiplication will pull _arm_muldivsf3.o from which both the multiplication
+  @ and division are taken thanks to the override.
+  #ifdef L_arm_mulsf3
+! .weak mulsf3
+! .weak aeabi_fmul
+  #endif
+  
+  ARM_FUNC_START mulsf3

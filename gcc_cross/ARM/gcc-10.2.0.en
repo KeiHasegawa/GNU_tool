@@ -1,0 +1,13 @@
+arm-elf-gcc gcc-10.2.0 install
+
+% xz -d -c ../gcc-10.2.0.tar.xz | tar xf -
+% mv gcc-10.2.0 gcc-10.2.0.arm-elf
+% cd gcc-10.2.0.arm-elf
+% patch -p1 < ../gcc-10.2.0.arm-elf.diff
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=arm-elf --with-newlib
+% make all-gcc
+% make maybe-configure-target-libgcc
+% cp ../Makefile.empty arm-elf/arm/autofp/v5te/fpu/libgcc/Makefile
+% make maybe-all-target-libgcc
+% make install-gcc
+% make maybe-install-target-libgcc
