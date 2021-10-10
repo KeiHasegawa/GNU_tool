@@ -1,0 +1,113 @@
+gcc-10.2.0 m68hc11-elf-gcc のインストール
+
+% xz -d -c ../gcc-10.2.0.tar.xz | tar xf -
+% mv gcc-10.2.0 gcc-10.2.0.m68hc11-elf
+% cp -r gcc-{4.6.4,10.2.0}.m68hc11-elf/gcc/config/m68hc11
+% cd gcc-10.2.0.m68hc11-elf
+% patch -p1 < ../gcc-10.2.0.m68hc11-elf.diff
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=m68hc11-elf
+% make all-gcc
+...
+g++ -c   -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/genpreds.o ../.././gcc/genpreds.c
+In file included from ./tm.h:22,
+                 from ../.././gcc/genpreds.c:26:
+../.././gcc/config/m68hc11/m68hc11.h:143:9: エラー: 汚染された 'TARGET_VERSION' 使おうとしています
+  143 | #define TARGET_VERSION fprintf (stderr, " (MC68HC11/MC68HC12/MC68HCS12)")
+      |         ^
+../.././gcc/config/m68hc11/m68hc11.h:387:9: エラー: 汚染された 'HARD_REGNO_NREGS' 使おうとしています
+  387 | #define HARD_REGNO_NREGS(REGNO, MODE) \
+      |         ^
+../.././gcc/config/m68hc11/m68hc11.h:399:9: エラー: 汚染された 'HARD_REGNO_MODE_OK' 使おうとしています
+  399 | #define HARD_REGNO_MODE_OK(REGNO, MODE) \
+      |         ^
+../.././gcc/config/m68hc11/m68hc11.h:408:9: エラー: 汚染された 'MODES_TIEABLE_P' 使おうとしています
+  408 | #define MODES_TIEABLE_P(MODE1, MODE2)                   \
+      |         ^
+../.././gcc/config/m68hc11/m68hc11.h:672:9: エラー: 汚染された 'REG_CLASS_FROM_LETTER' 使おうとしています
+  672 | #define REG_CLASS_FROM_LETTER(C) \
+      |         ^
+../.././gcc/config/m68hc11/m68hc11.h:721:9: エラー: 汚染された 'CONST_OK_FOR_LETTER_P' 使おうとしています
+  721 | #define CONST_OK_FOR_LETTER_P(VALUE, C) \
+      |         ^
+../.././gcc/config/m68hc11/m68hc11.h:733:9: エラー: 汚染された 'CONST_DOUBLE_OK_FOR_LETTER_P' 使おうとしています
+  733 | #define CONST_DOUBLE_OK_FOR_LETTER_P(VALUE, C) \
+      |         ^
+../.././gcc/config/m68hc11/m68hc11.h:741:9: エラー: 汚染された 'EXTRA_CONSTRAINT' 使おうとしています
+  741 | #define EXTRA_CONSTRAINT(OP, C)                         \
+      |         ^
+../.././gcc/config/m68hc11/m68hc11.h:772:9: エラー: 汚染された 'STARTING_FRAME_OFFSET' 使おうとしています
+  772 | #define STARTING_FRAME_OFFSET  0
+      |         ^
+../.././gcc/config/m68hc11/m68hc11.h:873:9: エラー: 汚染された 'FUNCTION_ARG_PADDING' 使おうとしています
+  873 | #define FUNCTION_ARG_PADDING(MODE, TYPE) \
+      |         ^
+../.././gcc/config/m68hc11/m68hc11.h:891:9: エラー: 汚染された 'CALLER_SAVE_PROFITABLE' 使おうとしています
+  891 | #define CALLER_SAVE_PROFITABLE(REFS,CALLS) 0
+      |         ^
+../.././gcc/config/m68hc11/m68hc11.h:1100:9: エラー: 汚染された 'LEGITIMATE_CONSTANT_P' 使おうとしています
+ 1100 | #define LEGITIMATE_CONSTANT_P(X) 1
+      |         ^
+../.././gcc/config/m68hc11/m68hc11.h:1345:9: エラー: 汚染された 'FIXUNS_TRUNC_LIKE_FIX_TRUNC' 使おうとしています
+ 1345 | #define FIXUNS_TRUNC_LIKE_FIX_TRUNC
+      |         ^
+../.././gcc/config/m68hc11/m68hc11.h:1362:9: エラー: 汚染された 'TRULY_NOOP_TRUNCATION' 使おうとしています
+ 1362 | #define TRULY_NOOP_TRUNCATION(OUTPREC, INPREC) 1
+      |         ^
+In file included from ./tm.h:31,
+                 from ../.././gcc/genpreds.c:26:
+../.././gcc/defaults.h:1222:25: エラー: #if with no expression
+ 1222 | #if STACK_GROWS_DOWNWARD
+      |                         ^
+make[1]: *** [Makefile:2722: build/genpreds.o] エラー 1
+
+上のように
+
+#pragma GCC poison
+
+の対象になっているマクロをコメントアウトしてみたが,
+
+g++ -c   -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  -o build/genpreds.o ../.././gcc/genpreds.c
+In file included from ./tm.h:31,
+                 from ../.././gcc/genpreds.c:26:
+../.././gcc/defaults.h:1222:25: エラー: #if with no expression
+ 1222 | #if STACK_GROWS_DOWNWARD
+
+のようにエラーになる.
+
+gcc-10.2.0.m68hc11-elf/gcc/config/m68hc11/m68hc11.h
+
+#define STACK_GROWS_DOWNWARD 1
+
+のように修正した.
+
+
+build/genpreds -h ../.././gcc/common.md ../.././gcc/config/m68hc11/m68hc11.md > tmp-preds.h
+../.././gcc/config/m68hc11/m68hc11.md:378:16: error: unrecognized flag: `*'
+../.././gcc/config/m68hc11/m68hc11.md:378:30: note: following context is ` "bitcmpqi" */'
+
+gcc-10.2.0.m68hc11-elf/gcc/config/m68hc11/m68hc11.md
+
+(define_split /* "bitcmpqi" */
+
+を
+
+(define_split
+
+のように修正した.
+
+(define_split /* "*addsi3_zero_extendqi" */
+(define_split /* "*subsi3" */
+(define_split /* "*subsi3" */
+(define_split /* "*subsi3" */
+(define_split /* "*one_cmplsi2" */
+(define_split /* "*one_cmplsi2" */
+(define_split /* "*rotrhi3_addr" */
+
+を
+
+(define_split
+
+のように修正した.
+
+

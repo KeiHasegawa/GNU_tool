@@ -1,0 +1,51 @@
+gcc-4.6.0 m68hc11-elf-gcc インストール
+
+checking for .preinit_array/.init_array/.fini_array support... yes
+checking if mkdir takes one argument... no
+*** Configuration m68hc11-unknown-none is obsolete.
+*** Specify --enable-obsolete to build it anyway.
+*** Support will be REMOVED in the next major release of GCC,
+*** unless a maintainer comes forward.
+make: *** [Makefile:5219: configure-gcc] エラー 1
+exit 1
+
+これは arm-elf-gcc と同じ状態.
+
+
+config.gcc を修正して回避可能
+
+
+
+make maybe-configure-target-libgcc
+
+でエラー. 原因は -g オプション付きで cc1 を起動するとエラーになる.
+
+
+#ifndef INCOMING_RETURN_ADDR_RTX
+#define INCOMING_RETURN_ADDR_RTX  (gcc_unreachable (), NULL_RTX)
+#endif
+
+
+  if (targetm.debug_unwind_info () == UI_DWARF2
+      || targetm.except_unwind_info (&global_options) == UI_DWARF2)
+    initial_return_save (INCOMING_RETURN_ADDR_RTX);
+
+上で gcc_unreachable() が呼び出されるのが原因.
+
+gcc-4.6.0 arm-elf-gcc では
+
+gcc-4.6.0.arm-elf/gcc/config/arm/arm.h
+
+#define INCOMING_RETURN_ADDR_RTX	gen_rtx_REG (Pmode, LR_REGNUM)
+
+のようになっていた.
+
+またこのリリース以降
+
+gcc-x.1.0/gcc/config/m68hc11
+
+が消えている.
+
+diff -r gcc-4.6.{0,4}.m68hc11-elf/gcc/config/m68hc11
+
+で差分なし. 
