@@ -11,10 +11,7 @@ exit 1
 
 これは arm-elf-gcc と同じ状態.
 
-
 config.gcc を修正して回避可能
-
-
 
 make maybe-configure-target-libgcc
 
@@ -49,3 +46,24 @@ gcc-x.1.0/gcc/config/m68hc11
 diff -r gcc-4.6.{0,4}.m68hc11-elf/gcc/config/m68hc11
 
 で差分なし.
+
+gcc-4.6.0.m68hc11-elf/gcc/config/m68hc11/m68hc11.h
+
+に
+
+#define INCOMING_RETURN_ADDR_RTX \
+  gen_rtx_MEM (VOIDmode, gen_rtx_REG (VOIDmode, STACK_POINTER_REGNUM))
+
+を加えれば cc1 等のビルドは成功する. しかし libgcc のビルドで
+
+../../.././libgcc/../gcc/libgcc2.c: In function ‘__negdi2’:
+../../.././libgcc/../gcc/libgcc2.c:72:1: internal compiler error: セグメンテーショ
+
+のエラーは発生する問題は解消していない.
+これは gcc-4.6.0 で arm-elf-gcc と同じ症状のように見えるが, arm-elf-gcc で
+有効だった回避策(-O2 ビルドを -O0 ビルドにする)でも回避できていない.
+
+4.2.0 => OK
+4.3.0 => NG
+4.5.4 => NG
+4.6.0 => NG
