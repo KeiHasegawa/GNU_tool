@@ -28,3 +28,20 @@ d10v はないが
 gcc-3.4.4/gcc/config/d30v
 
 というディレクトリはある.
+
+(*3) gdb のインストール
+
+% xz -d -c ../gdb-10.2-1.src/gdb-10.2.tar.xz
+% mv gdb-10.2 gdb-10.2.d10v-elf
+% cd gdb-10.2.d10v-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=d10v-elf
+% make all
+...
+checking for default auto-load safe-path... $debugdir:$datadir/auto-load
+*** Configuration d10v-unknown-elf is obsolete.
+*** Support has been REMOVED.
+make[1]: *** [Makefile:10038: configure-gdb] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d10v-elf' から出ます
+
+上のようにエラーになってしまう.
+
