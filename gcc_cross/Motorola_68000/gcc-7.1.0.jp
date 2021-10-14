@@ -1,0 +1,122 @@
+gcc-7.1.0 m68hc11-elf-gcc のインストール
+
+% bunzip2 -c ../gcc-7.1.0.tar.bz2 | tar xf -
+% mv gcc-7.1.0 gcc-7.1.0.m68hc11-elf
+% cp -r gcc-{4.6.0,7.1.0}.m68hc11-elf/gcc/config/m68hc11
+% cp constraints.md gcc-7.1.0.m68hc11-elf/gcc/config/m68hc11/constraints.md
+% mkdir gcc-7.1.0.m68hc11-elf/gcc/common/config/m68hc11
+% cp m68hc11-common.c gcc-7.1.0.m68hc11-elf/gcc/common/config/m68hc11/m68hc11-common.c
+% cd gcc-7.1.0.m68hc11-elf
+% patch -p1 < ../gcc-7.1.0.m68hc11-elf.diff
+% find . -name 'Makefile.*' -exec ../erase_O2 {} \;
+% find . -name 'configure' -exec ../erase_O2 {} \;
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=m68hc11-elf --with-newlib
+% make all-gcc
+% make maybe-configure-target-libgcc # error will occur but just ignore.
+% cp ../Makefile.empty m68hc11-elf/fshort-double/libgcc/Makefile
+% make maybe-all-target-libgcc
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-7.1.0.m68hc11-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-7.1.0.m68hc11-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include    -g -O0 -m68hc11 -O0  -g -O0 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../../host-i686-pc-linux-gnu/gcc -I../../.././libgcc -I../../.././libgcc/. -I../../.././libgcc/../gcc -I../../.././libgcc/../include  -DHAVE_CC_TLS -DUSE_EMUTLS -o _muldi3.o -MT _muldi3.o -MD -MP -MF _muldi3.dep -DL_muldi3 -c ../../.././libgcc/libgcc2.c -fvisibility=hidden -DHIDE_EXPORTS
+../../.././libgcc/libgcc2.c: 関数 ‘__muldi3’ 内:
+../../.././libgcc/libgcc2.c:557:1: エラー: 命令を分割できませんでした
+ }
+ ^
+(insn 32 166 532 (parallel [
+            (set (mem:SI (pre_dec:HI (reg/f:HI 0 x [209])) [0  S4 A8])
+                (mem/c:SI (plus:HI (reg/f:HI 2 y [210])
+                        (const_int 13 [0xd])) [1 __vl+0 S4 A8]))
+            (clobber (reg:HI 1 d [127]))
+        ]) "../../.././libgcc/libgcc2.c":551 20 {*pushsi_internal}
+     (expr_list:REG_INC (reg/f:HI 0 x [209])
+        (expr_list:REG_ARGS_SIZE (const_int 4 [0x4])
+            (nil))))
+../../.././libgcc/libgcc2.c:557:1: コンパイラ内部エラー: final_scan_insn 内、位置 final.c:3025
+0x87dfa2c _fatal_insn(char const*, rtx_def const*, char const*, int, char const*)
+	../.././gcc/rtl-error.c:108
+0x853519d final_scan_insn(rtx_insn*, _IO_FILE*, int, int, int*)
+	../.././gcc/final.c:3025
+0x853348f final(rtx_insn*, _IO_FILE*, int)
+	../.././gcc/final.c:2051
+0x853737e rest_of_handle_final
+	../.././gcc/final.c:4489
+0x853754e execute
+	../.././gcc/final.c:4562
+Please submit a full bug report,
+with preprocessed source if appropriate.
+Please include the complete backtrace with any bug report.
+See <https://gcc.gnu.org/bugs/> for instructions.
+make[3]: *** [Makefile:491: _muldi3.o] エラー 1
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-7.1.0.m68hc11-elf/m68hc11-elf/m68hc11/libgcc' から出ます
+
+
+M-x gdb
+gdb --annotate=3 ./cc1
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-7.1.0.m68hc11-elf/m68hc11-elf/m68hc11/libgcc
+(gdb) run -quiet -I . -I . -I ../../../host-i686-pc-linux-gnu/gcc -I ../../.././libgcc -I ../../.././libgcc/. -I ../../.././libgcc/../gcc -I ../../.././libgcc/../include -imultilib m68hc11 -iprefix /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-7.1.0.m68hc11-elf/host-i686-pc-linux-gnu/gcc/../lib/gcc/m68hc11-elf/7.1.0/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-7.1.0.m68hc11-elf/host-i686-pc-linux-gnu/gcc/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-7.1.0.m68hc11-elf/host-i686-pc-linux-gnu/gcc/include-fixed -MD _muldi3.d -MF _muldi3.dep -MP -MT _muldi3.o "-D__INT__=32" -Dmc6811 -DMC6811 -Dmc68hc11 -D IN_GCC -D CROSS_DIRECTORY_STRUCTURE -D IN_LIBGCC2 -D inhibit_libc -D HAVE_CC_TLS -D USE_EMUTLS -D L_muldi3 -D HIDE_EXPORTS -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include -isystem ./include ../../.././libgcc/libgcc2.c -quiet -dumpbase libgcc2.c -m68hc11 -auxbase-strip _muldi3.o -g -g -g -O0 -O0 -O0 -Wextra -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition -fbuilding-libgcc -fno-stack-protector "-fvisibility=hidden" -o /tmp/ccDN33am.s
+
+gdb から実行して再現している.
+
+
+(gdb) b final.c:3025
+(gdb) run
+...
+	    if (new_rtx == insn && PATTERN (new_rtx) == body)
+	      fatal_insn ("could not split insn", insn);
+
+if の条件が成立して fatal_insn が呼び出されているのが直接の原因.
+
+再現させる簡単なソースは以下
+
+typedef int DItype __attribute__ ((mode (DI)));
+
+typedef int SItype __attribute__ ((mode (SI)));
+
+struct DWstruct {SItype high, low;};
+
+typedef union
+{
+  struct DWstruct s;
+  DItype ll;
+} DWunion;
+
+typedef unsigned int USItype __attribute__ ((mode (SI)));
+
+DItype
+__muldi3 (DItype u, DItype v)
+{
+  const DWunion uu = {.ll = u};
+  const DWunion vv = {.ll = v};
+  DWunion w = {.ll = ({DWunion __w; do { USItype __x0, __x1, __x2, __x3; USItype __ul, __vl, __uh, __vh; __ul = ((USItype) (uu.s.low) & (((USItype) 1 << ((4 * 8) / 2)) - 1)); __uh = ((USItype) (uu.s.low) >> ((4 * 8) / 2)); __vl = ((USItype) (vv.s.low) & (((USItype) 1 << ((4 * 8) / 2)) - 1)); __vh = ((USItype) (vv.s.low) >> ((4 * 8) / 2)); __x0 = (USItype) __ul * __vl; __x1 = (USItype) __ul * __vh; __x2 = (USItype) __uh * __vl; __x3 = (USItype) __uh * __vh; __x1 += ((USItype) (__x0) >> ((4 * 8) / 2)); __x1 += __x2; if (__x1 < __x2) __x3 += ((USItype) 1 << ((4 * 8) / 2)); (__w.s.high) = __x3 + ((USItype) (__x1) >> ((4 * 8) / 2)); (__w.s.low) = ((USItype) (__x1) & (((USItype) 1 << ((4 * 8) / 2)) - 1)) * ((USItype) 1 << ((4 * 8) / 2)) + ((USItype) (__x0) & (((USItype) 1 << ((4 * 8) / 2)) - 1)); } while (0); __w.ll; })};
+
+  w.s.high += ((USItype) uu.s.low * (USItype) vv.s.high
+        + (USItype) uu.s.high * (USItype) vv.s.low);
+
+  return w.ll;
+}
+
+gcc-6.1.0 との動作を比較してみた. 全く同じソースで gcc-6.1.0 では勿論エラーとはならない.
+
+gcc-7.1.0 でエラーしている対象の命令は
+
+(gdb) p debug_insn_slim(insn)
+   32: {[--x:HI]=[y:HI+0xd];clobber d:HI;}
+      REG_INC x:HI
+      REG_ARGS_SIZE 0x4
+$2 = void
+
+のようになっている.
+
+(gdb) b final_scan_insn
+(gdb) command
+> p debug_insn_slim(insn)
+> c
+> end
+(gdb) run
+
+として gcc-7.1.0 と gcc-6.1.0 とで比較してみた.
+
+gcc-6.1.0 では
+
+--x:HI
+
+がきていない. ということは gcc-7.1.0 で行なった修正でどこか間違えている可能性がある.
