@@ -1,0 +1,2110 @@
+*** gcc-6.1.0.org/gcc/config.gcc	2021-10-14 16:04:57.000000000 +0900
+--- gcc-6.1.0.m68hc11-elf/gcc/config.gcc	2021-10-14 12:05:06.000000000 +0900
+***************
+*** 3044,3049 ****
+--- 3044,3057 ----
+  	c_target_objs="m32c-pragma.o"
+  	cxx_target_objs="m32c-pragma.o"
+   	;;
++ m68hc11-*-*|m6811-*-*)
++ 	tm_file="dbxelf.h elfos.h usegas.h newlib-stdint.h m68hc11/m68hc11.h"
++ 	tm_p_file="m68hc11/m68hc11-protos.h"
++ 	md_file="m68hc11/m68hc11.md"
++ 	out_file="m68hc11/m68hc11.c"
++ 	tmake_file="m68hc11/t-m68hc11"
++ 	use_gcc_stdint=wrap
++         ;;
+  *)
+  	echo "*** Configuration ${target} not supported" 1>&2
+  	exit 1
+*** gcc-4.6.0.m68hc11-elf/gcc/config/m68hc11/m68hc11.md	2009-05-12 18:43:48.000000000 +0900
+--- gcc-6.1.0.m68hc11-elf/gcc/config/m68hc11/m68hc11.md	2021-10-14 13:02:13.000000000 +0900
+***************
+*** 149,154 ****
+--- 149,155 ----
+  ])
+  
+  (include "predicates.md")
++ (include "constraints.md")
+  
+  ;;--------------------------------------------------------------------
+  ;;-  Test
+***************
+*** 810,816 ****
+      {
+        rtx insn;
+  
+!       insn = emit_insn (gen_rtx_SET (VOIDmode, operands[0], operands[1]));
+        REG_NOTES (insn) = alloc_EXPR_LIST (REG_INC,
+  					  stack_pointer_rtx,
+  					  REG_NOTES (insn));
+--- 811,817 ----
+      {
+        rtx insn;
+  
+!       insn = emit_insn (gen_rtx_SET (operands[0], operands[1]));
+        REG_NOTES (insn) = alloc_EXPR_LIST (REG_INC,
+  					  stack_pointer_rtx,
+  					  REG_NOTES (insn));
+***************
+*** 950,956 ****
+      {
+        rtx insn;
+  
+!       insn = emit_insn (gen_rtx_SET (VOIDmode, operands[0], operands[1]));
+        REG_NOTES (insn) = alloc_EXPR_LIST (REG_INC,
+  					  stack_pointer_rtx,
+  					  REG_NOTES (insn));
+--- 951,957 ----
+      {
+        rtx insn;
+  
+!       insn = emit_insn (gen_rtx_SET (operands[0], operands[1]));
+        REG_NOTES (insn) = alloc_EXPR_LIST (REG_INC,
+  					  stack_pointer_rtx,
+  					  REG_NOTES (insn));
+***************
+*** 1040,1046 ****
+  (define_split
+    [(set (match_operand:DI 0 "push_operand" "")
+  	(zero_extend:DI (match_operand:QI 1 "nonimmediate_operand" "")))
+!    (clobber (match_scratch:HI 2 "=&dB"))]
+    "z_replacement_completed == 2"
+    [(const_int 0)]
+    "
+--- 1041,1047 ----
+  (define_split
+    [(set (match_operand:DI 0 "push_operand" "")
+  	(zero_extend:DI (match_operand:QI 1 "nonimmediate_operand" "")))
+!    (clobber (match_scratch:HI 2))]
+    "z_replacement_completed == 2"
+    [(const_int 0)]
+    "
+***************
+*** 1098,1104 ****
+  (define_split
+    [(set (match_operand:DI 0 "nonimmediate_operand" "")
+  	(zero_extend:DI (match_operand:QI 1 "nonimmediate_operand" "")))
+!    (clobber (match_scratch:HI 2 "=&dB"))]
+    "z_replacement_completed == 2"
+    [(const_int 0)]
+    "
+--- 1099,1105 ----
+  (define_split
+    [(set (match_operand:DI 0 "nonimmediate_operand" "")
+  	(zero_extend:DI (match_operand:QI 1 "nonimmediate_operand" "")))
+!    (clobber (match_scratch:HI 2))]
+    "z_replacement_completed == 2"
+    [(const_int 0)]
+    "
+***************
+*** 1761,1767 ****
+  	(plus:SI (zero_extend:SI 
+  		   (match_operand:QI 1 "general_operand" ""))
+  		 (match_operand:SI 2 "memory_operand" "")))
+!    (clobber (match_scratch:HI 3 "=X,X"))]
+    "reload_completed"
+    [(set (reg:HI D_REGNUM) (zero_extend:HI (match_dup 1)))
+     (parallel [(set (match_dup 0) 
+--- 1762,1768 ----
+  	(plus:SI (zero_extend:SI 
+  		   (match_operand:QI 1 "general_operand" ""))
+  		 (match_operand:SI 2 "memory_operand" "")))
+!    (clobber (match_scratch:HI 3))]
+    "reload_completed"
+    [(set (reg:HI D_REGNUM) (zero_extend:HI (match_dup 1)))
+     (parallel [(set (match_dup 0) 
+***************
+*** 1968,1974 ****
+    [(set (match_operand:SI 0 "register_operand" "")
+  	(plus:SI (match_operand:SI 1 "register_operand" "")
+  		 (match_operand:SI 2 "general_operand" "")))
+!    (clobber (match_scratch:HI 3 "=X"))]
+    "reload_completed && z_replacement_completed == 2
+     && (GET_CODE (operands[2]) != CONST_INT || 
+          (!(INTVAL (operands[2]) >= -65536 && INTVAL (operands[2]) <= 65535)))"
+--- 1969,1975 ----
+    [(set (match_operand:SI 0 "register_operand" "")
+  	(plus:SI (match_operand:SI 1 "register_operand" "")
+  		 (match_operand:SI 2 "general_operand" "")))
+!    (clobber (match_scratch:HI 3))]
+    "reload_completed && z_replacement_completed == 2
+     && (GET_CODE (operands[2]) != CONST_INT || 
+          (!(INTVAL (operands[2]) >= -65536 && INTVAL (operands[2]) <= 65535)))"
+***************
+*** 2019,2025 ****
+    if (TARGET_M6811 && SP_REG_P (operands[0]))
+      {
+        emit_insn (gen_rtx_PARALLEL (VOIDmode, gen_rtvec (2,
+! 			 gen_rtx_SET (VOIDmode,
+  				  operand0,
+  				  gen_rtx_PLUS (HImode,
+  					   operand1, operand2)),
+--- 2020,2026 ----
+    if (TARGET_M6811 && SP_REG_P (operands[0]))
+      {
+        emit_insn (gen_rtx_PARALLEL (VOIDmode, gen_rtvec (2,
+! 			 gen_rtx_SET (
+  				  operand0,
+  				  gen_rtx_PLUS (HImode,
+  					   operand1, operand2)),
+***************
+*** 2159,2165 ****
+  
+    if (GET_CODE (operands[2]) == CONST_INT
+        && (val = INTVAL (operands[2])) != 0
+!       && (CONST_OK_FOR_LETTER_P (val, 'P')
+  	  || (val > 0 && val <= 8)))
+      {
+        while (val > 1 || val < -1)
+--- 2160,2166 ----
+  
+    if (GET_CODE (operands[2]) == CONST_INT
+        && (val = INTVAL (operands[2])) != 0
+!       && (satisfies_constraint_P (operands[2])
+  	  || (val > 0 && val <= 8)))
+      {
+        while (val > 1 || val < -1)
+***************
+*** 2519,2525 ****
+    [(set (match_operand:SI 0 "register_operand" "")
+  	(minus:SI (match_operand:SI 1 "register_operand" "")
+  		  (match_operand:SI 2 "general_operand" "")))
+!    (clobber (match_scratch:HI 3 "=X"))]
+    "reload_completed && z_replacement_completed == 2
+     && X_REG_P (operands[1])"
+    [(set (reg:HI D_REGNUM) (minus:HI (reg:HI D_REGNUM) (match_dup 3)))
+--- 2520,2526 ----
+    [(set (match_operand:SI 0 "register_operand" "")
+  	(minus:SI (match_operand:SI 1 "register_operand" "")
+  		  (match_operand:SI 2 "general_operand" "")))
+!    (clobber (match_scratch:HI 3))]
+    "reload_completed && z_replacement_completed == 2
+     && X_REG_P (operands[1])"
+    [(set (reg:HI D_REGNUM) (minus:HI (reg:HI D_REGNUM) (match_dup 3)))
+***************
+*** 2538,2544 ****
+    [(set (match_operand:SI 0 "register_operand" "")
+  	(minus:SI (match_operand:SI 1 "general_operand" "")
+  		  (match_operand:SI 2 "register_operand" "")))
+!    (clobber (match_scratch:HI 3 "=X"))]
+    "reload_completed && z_replacement_completed == 2
+     && X_REG_P (operands[2])"
+    [(set (reg:HI D_REGNUM) (minus:HI (reg:HI D_REGNUM) (match_dup 3)))
+--- 2539,2545 ----
+    [(set (match_operand:SI 0 "register_operand" "")
+  	(minus:SI (match_operand:SI 1 "general_operand" "")
+  		  (match_operand:SI 2 "register_operand" "")))
+!    (clobber (match_scratch:HI 3))]
+    "reload_completed && z_replacement_completed == 2
+     && X_REG_P (operands[2])"
+    [(set (reg:HI D_REGNUM) (minus:HI (reg:HI D_REGNUM) (match_dup 3)))
+***************
+*** 2558,2564 ****
+    [(set (match_operand:SI 0 "nonimmediate_operand" "")
+  	(minus:SI (match_operand:SI 1 "general_operand" "")
+  		  (match_operand:SI 2 "general_operand" "")))
+!    (clobber (match_scratch:HI 3 "=d"))]
+    "reload_completed && z_replacement_completed == 2
+     && !X_REG_P (operands[0])"
+    [(set (match_dup 3) (match_dup 4))
+--- 2559,2565 ----
+    [(set (match_operand:SI 0 "nonimmediate_operand" "")
+  	(minus:SI (match_operand:SI 1 "general_operand" "")
+  		  (match_operand:SI 2 "general_operand" "")))
+!    (clobber (match_scratch:HI 3))]
+    "reload_completed && z_replacement_completed == 2
+     && !X_REG_P (operands[0])"
+    [(set (match_dup 3) (match_dup 4))
+***************
+*** 4670,4676 ****
+        rtx scratch = gen_reg_rtx (HImode);
+        emit_move_insn (scratch, operands[2]);
+        emit_insn (gen_rtx_PARALLEL (VOIDmode,
+! 	 	 gen_rtvec (2, gen_rtx_SET (VOIDmode,
+  			    operand0,
+  			    gen_rtx_ASHIFT (HImode,
+  					operand1, scratch)),
+--- 4671,4677 ----
+        rtx scratch = gen_reg_rtx (HImode);
+        emit_move_insn (scratch, operands[2]);
+        emit_insn (gen_rtx_PARALLEL (VOIDmode,
+! 	 	 gen_rtvec (2, gen_rtx_SET (
+  			    operand0,
+  			    gen_rtx_ASHIFT (HImode,
+  					operand1, scratch)),
+***************
+*** 4704,4710 ****
+  (define_insn "*ashlhi3_2"
+    [(set (match_operand:HI 0 "register_operand" "=d,*x")
+  	(ashift:HI (match_operand:HI 1 "register_operand" "0,0")
+!                    (match_operand:HI 2 "register_operand" "+x,+d")))
+     (clobber (match_dup 2))]
+    ""
+    "*
+--- 4705,4711 ----
+  (define_insn "*ashlhi3_2"
+    [(set (match_operand:HI 0 "register_operand" "=d,*x")
+  	(ashift:HI (match_operand:HI 1 "register_operand" "0,0")
+!                    (match_operand:HI 2 "register_operand" "x,d")))
+     (clobber (match_dup 2))]
+    ""
+    "*
+***************
+*** 4883,4889 ****
+  
+        emit_move_insn (scratch, operands[2]);
+        emit_insn (gen_rtx_PARALLEL (VOIDmode,
+! 		 gen_rtvec (2, gen_rtx_SET (VOIDmode,
+  				operand0,
+  				gen_rtx_ASHIFTRT (HImode,
+  					operand1, scratch)),
+--- 4884,4890 ----
+  
+        emit_move_insn (scratch, operands[2]);
+        emit_insn (gen_rtx_PARALLEL (VOIDmode,
+! 		 gen_rtvec (2, gen_rtx_SET (
+  				operand0,
+  				gen_rtx_ASHIFTRT (HImode,
+  					operand1, scratch)),
+***************
+*** 4996,5002 ****
+  (define_insn "*ashrhi3"
+    [(set (match_operand:HI 0 "register_operand" "=d,*x")
+  	(ashiftrt:HI (match_operand:HI 1 "register_operand" "0,0")
+! 	             (match_operand:HI 2 "register_operand" "+x,+d")))
+     (clobber (match_dup 2))]
+    ""
+    "*
+--- 4997,5003 ----
+  (define_insn "*ashrhi3"
+    [(set (match_operand:HI 0 "register_operand" "=d,*x")
+  	(ashiftrt:HI (match_operand:HI 1 "register_operand" "0,0")
+! 	             (match_operand:HI 2 "register_operand" "x,d")))
+     (clobber (match_dup 2))]
+    ""
+    "*
+***************
+*** 5186,5192 ****
+    [(set (match_operand:DI 0 "nonimmediate_operand" "")
+  	(lshiftrt:DI (match_operand:DI 1 "general_operand" "")
+  		     (match_operand:DI 2 "const_int_operand" "")))
+!    (clobber (match_scratch:HI 3 "=d"))]
+     "z_replacement_completed && INTVAL (operands[2]) >= 56"
+     [(set (reg:QI D_REGNUM) (match_dup 9))
+      (set (reg:QI D_REGNUM) (lshiftrt:QI (reg:QI D_REGNUM) (match_dup 8)))
+--- 5187,5193 ----
+    [(set (match_operand:DI 0 "nonimmediate_operand" "")
+  	(lshiftrt:DI (match_operand:DI 1 "general_operand" "")
+  		     (match_operand:DI 2 "const_int_operand" "")))
+!    (clobber (match_scratch:HI 3))]
+     "z_replacement_completed && INTVAL (operands[2]) >= 56"
+     [(set (reg:QI D_REGNUM) (match_dup 9))
+      (set (reg:QI D_REGNUM) (lshiftrt:QI (reg:QI D_REGNUM) (match_dup 8)))
+***************
+*** 5213,5219 ****
+    [(set (match_operand:DI 0 "nonimmediate_operand" "")
+  	(lshiftrt:DI (match_operand:DI 1 "general_operand" "")
+  		     (match_operand:DI 2 "const_int_operand" "")))
+!    (clobber (match_scratch:HI 3 "=d"))]
+     "z_replacement_completed && INTVAL (operands[2]) >= 48 
+      && INTVAL (operands[2]) < 56"
+     [(set (reg:HI D_REGNUM) (match_dup 9))
+--- 5214,5220 ----
+    [(set (match_operand:DI 0 "nonimmediate_operand" "")
+  	(lshiftrt:DI (match_operand:DI 1 "general_operand" "")
+  		     (match_operand:DI 2 "const_int_operand" "")))
+!    (clobber (match_scratch:HI 3))]
+     "z_replacement_completed && INTVAL (operands[2]) >= 48 
+      && INTVAL (operands[2]) < 56"
+     [(set (reg:HI D_REGNUM) (match_dup 9))
+***************
+*** 5428,5434 ****
+  
+        emit_move_insn (scratch, operands[2]);
+        emit_insn (gen_rtx_PARALLEL (VOIDmode,
+! 		 gen_rtvec (2, gen_rtx_SET (VOIDmode,
+  					operand0,
+  					gen_rtx_LSHIFTRT (HImode,
+  						operand1, scratch)),
+--- 5429,5435 ----
+  
+        emit_move_insn (scratch, operands[2]);
+        emit_insn (gen_rtx_PARALLEL (VOIDmode,
+! 		 gen_rtvec (2, gen_rtx_SET (
+  					operand0,
+  					gen_rtx_LSHIFTRT (HImode,
+  						operand1, scratch)),
+***************
+*** 5541,5547 ****
+  (define_insn "*lshrhi3"
+    [(set (match_operand:HI 0 "register_operand" "=d,*x")
+  	(lshiftrt:HI (match_operand:HI 1 "register_operand" "0,0")
+! 		     (match_operand:HI 2 "register_operand" "+x,+d")))
+     (clobber (match_dup 2))]
+    ""
+    "*
+--- 5542,5548 ----
+  (define_insn "*lshrhi3"
+    [(set (match_operand:HI 0 "register_operand" "=d,*x")
+  	(lshiftrt:HI (match_operand:HI 1 "register_operand" "0,0")
+! 		     (match_operand:HI 2 "register_operand" "x,d")))
+     (clobber (match_dup 2))]
+    ""
+    "*
+***************
+*** 5747,5753 ****
+  
+        emit_move_insn (scratch, operands[2]);
+        emit_insn (gen_rtx_PARALLEL (VOIDmode,
+! 		 gen_rtvec (2, gen_rtx_SET (VOIDmode,
+  					operand0,
+  					gen_rtx_ROTATE (HImode,
+  						operand1, scratch)),
+--- 5748,5754 ----
+  
+        emit_move_insn (scratch, operands[2]);
+        emit_insn (gen_rtx_PARALLEL (VOIDmode,
+! 		 gen_rtvec (2, gen_rtx_SET (
+  					operand0,
+  					gen_rtx_ROTATE (HImode,
+  						operand1, scratch)),
+***************
+*** 5770,5776 ****
+  (define_insn "*rotlhi3"
+    [(set (match_operand:HI 0 "register_operand" "=d,*x")
+  	(rotate:HI (match_operand:HI 1 "register_operand" "0,0")
+! 		   (match_operand:HI 2 "general_operand" "+x,+d")))
+     (clobber (match_dup 2))]
+    ""
+    "*
+--- 5771,5777 ----
+  (define_insn "*rotlhi3"
+    [(set (match_operand:HI 0 "register_operand" "=d,*x")
+  	(rotate:HI (match_operand:HI 1 "register_operand" "0,0")
+! 		   (match_operand:HI 2 "general_operand" "x,d")))
+     (clobber (match_dup 2))]
+    ""
+    "*
+***************
+*** 5795,5801 ****
+  
+        emit_move_insn (scratch, operands[2]);
+        emit_insn (gen_rtx_PARALLEL (VOIDmode,
+! 		 gen_rtvec (2, gen_rtx_SET (VOIDmode,
+  					operand0,
+  					gen_rtx_ROTATERT (HImode,
+  						operand1, scratch)),
+--- 5796,5802 ----
+  
+        emit_move_insn (scratch, operands[2]);
+        emit_insn (gen_rtx_PARALLEL (VOIDmode,
+! 		 gen_rtvec (2, gen_rtx_SET (
+  					operand0,
+  					gen_rtx_ROTATERT (HImode,
+  						operand1, scratch)),
+***************
+*** 5818,5824 ****
+  (define_insn "*rotrhi3"
+    [(set (match_operand:HI 0 "register_operand" "=d,*x")
+  	(rotatert:HI (match_operand:HI 1 "register_operand" "0,0")
+! 		     (match_operand:HI 2 "general_operand" "+x,+d")))
+     (clobber (match_dup 2))]
+    ""
+    "*
+--- 5819,5825 ----
+  (define_insn "*rotrhi3"
+    [(set (match_operand:HI 0 "register_operand" "=d,*x")
+  	(rotatert:HI (match_operand:HI 1 "register_operand" "0,0")
+! 		     (match_operand:HI 2 "general_operand" "x,d")))
+     (clobber (match_dup 2))]
+    ""
+    "*
+***************
+*** 5873,5882 ****
+  
+  (define_expand "doloop_end"
+    [(use (match_operand 0 "" ""))	; loop pseudo
+!    (use (match_operand 1 "" ""))	; iterations; zero if unknown
+!    (use (match_operand 2 "" ""))	; max iterations
+!    (use (match_operand 3 "" ""))	; loop level
+!    (use (match_operand 4 "" ""))]	; label
+    "TARGET_M6812"
+    "
+  {
+--- 5874,5880 ----
+  
+  (define_expand "doloop_end"
+    [(use (match_operand 0 "" ""))	; loop pseudo
+!    (use (match_operand 1 "" ""))]	; iterations; zero if unknown
+    "TARGET_M6812"
+    "
+  {
+***************
+*** 5895,5902 ****
+        emit_jump_insn (gen_m68hc12_dbcc_dec_hi (operands[0],
+  					       gen_rtx_NE (HImode,
+  							   operands[0],
+! 							   const1_rtx),
+! 					       operands[4]));
+        DONE;
+      }
+    if (GET_MODE (operands[0]) == QImode)
+--- 5893,5899 ----
+        emit_jump_insn (gen_m68hc12_dbcc_dec_hi (operands[0],
+  					       gen_rtx_NE (HImode,
+  							   operands[0],
+! 							   const1_rtx),0));
+        DONE;
+      }
+    if (GET_MODE (operands[0]) == QImode)
+***************
+*** 5904,5911 ****
+        emit_jump_insn (gen_m68hc12_dbcc_dec_qi (operands[0],
+  					       gen_rtx_NE (QImode,
+  							   operands[0],
+! 							   const1_rtx),
+! 					       operands[4]));
+        DONE;
+      }
+  
+--- 5901,5907 ----
+        emit_jump_insn (gen_m68hc12_dbcc_dec_qi (operands[0],
+  					       gen_rtx_NE (QImode,
+  							   operands[0],
+! 							   const1_rtx),0));
+        DONE;
+      }
+  
+***************
+*** 6018,6024 ****
+    [(set (pc)
+  	(if_then_else
+  	  (match_operator 3 "m68hc11_eq_compare_operator"
+! 	     [(match_operand:HI 0 "general_operand" "")
+  	      (match_operand:HI 1 "const_int_operand" "")])
+  	 (label_ref (match_operand 4 "" ""))
+  	 (pc)))
+--- 6014,6020 ----
+    [(set (pc)
+  	(if_then_else
+  	  (match_operator 3 "m68hc11_eq_compare_operator"
+! 	     [(match_operand:HI 0 "nonimmediate_operand" "")
+  	      (match_operand:HI 1 "const_int_operand" "")])
+  	 (label_ref (match_operand 4 "" ""))
+  	 (pc)))
+***************
+*** 6041,6047 ****
+    [(set (pc)
+  	(if_then_else
+  	  (match_operator 3 "m68hc11_eq_compare_operator"
+! 	     [(match_operand:QI 0 "general_operand" "")
+  	      (match_operand:QI 1 "const_int_operand" "")])
+  	 (label_ref (match_operand 4 "" ""))
+  	 (pc)))
+--- 6037,6043 ----
+    [(set (pc)
+  	(if_then_else
+  	  (match_operator 3 "m68hc11_eq_compare_operator"
+! 	     [(match_operand:QI 0 "nonimmediate_operand" "")
+  	      (match_operand:QI 1 "const_int_operand" "")])
+  	 (label_ref (match_operand 4 "" ""))
+  	 (pc)))
+***************
+*** 6575,6592 ****
+--- 6571,6596 ----
+  
+    if (ret_size && ret_size <= 2)
+      {
++ #if 0
+        emit_jump_insn (gen_rtx_PARALLEL (VOIDmode,
+  		      gen_rtvec (2, gen_rtx_RETURN (VOIDmode),
+  			         gen_rtx_USE (VOIDmode,
+  					      gen_rtx_REG (HImode, 1)))));
++ #else
++       asm(\"int3\");
++ #endif
+        DONE;
+      }
+    if (ret_size)
+      {
++ #if 0
+        emit_jump_insn (gen_rtx_PARALLEL (VOIDmode,
+  		      gen_rtvec (2, gen_rtx_RETURN (VOIDmode),
+  			         gen_rtx_USE (VOIDmode,
+  					      gen_rtx_REG (SImode, 0)))));
++ #else
++       asm(\"int3\");
++ #endif
+        DONE;
+      }
+  }")
+*** gcc-4.6.0.m68hc11-elf/gcc/config/m68hc11/predicates.md	2009-06-25 15:16:11.000000000 +0900
+--- gcc-6.1.0.m68hc11-elf/gcc/config/m68hc11/predicates.md	2021-10-14 12:05:06.000000000 +0900
+***************
+*** 182,190 ****
+  
+        if (GET_CODE (op) == REG && reload_in_progress
+            && REGNO (op) >= FIRST_PSEUDO_REGISTER
+!           && reg_equiv_memory_loc[REGNO (op)])
+           {
+!             op = reg_equiv_memory_loc[REGNO (op)];
+              op = eliminate_regs (op, VOIDmode, NULL_RTX);
+           }
+        if (GET_CODE (op) != MEM)
+--- 182,190 ----
+  
+        if (GET_CODE (op) == REG && reload_in_progress
+            && REGNO (op) >= FIRST_PSEUDO_REGISTER
+!           && reg_equiv_memory_loc(REGNO (op)))
+           {
+!             op = reg_equiv_memory_loc(REGNO (op));
+              op = eliminate_regs (op, VOIDmode, NULL_RTX);
+           }
+        if (GET_CODE (op) != MEM)
+*** gcc-4.6.0.m68hc11-elf/gcc/config/m68hc11/m68hc11.c	2010-12-01 22:46:36.000000000 +0900
+--- gcc-6.1.0.m68hc11-elf/gcc/config/m68hc11/m68hc11.c	2021-10-14 16:09:43.000000000 +0900
+***************
+*** 35,45 ****
+  #include "config.h"
+  #include "system.h"
+  #include "coretypes.h"
+  #include "tm.h"
+  #include "rtl.h"
+  #include "tree.h"
+! #include "expr.h"
+! #include "tm_p.h"
+  #include "regs.h"
+  #include "hard-reg-set.h"
+  #include "insn-config.h"
+--- 35,59 ----
+  #include "config.h"
+  #include "system.h"
+  #include "coretypes.h"
++ #include "hash-table.h"
+  #include "tm.h"
+  #include "rtl.h"
++ #include "hash-set.h"
++ #include "machmode.h"
++ #include "vec.h"
++ #include "double-int.h"
++ #include "input.h"
++ #include "alias.h"
++ #include "symtab.h"
++ #include "wide-int.h"
++ #include "inchash.h"
+  #include "tree.h"
+! #include "fold-const.h"
+! #include "stringpool.h"
+! #include "stor-layout.h"
+! #include "calls.h"
+! #include "varasm.h"
+! #include "obstack.h"
+  #include "regs.h"
+  #include "hard-reg-set.h"
+  #include "insn-config.h"
+***************
+*** 47,63 ****
+  #include "output.h"
+  #include "insn-attr.h"
+  #include "flags.h"
+! #include "recog.h"
+  #include "expr.h"
+! #include "libfuncs.h"
+  #include "diagnostic-core.h"
+  #include "basic-block.h"
+! #include "function.h"
+  #include "ggc.h"
+! #include "reload.h"
+  #include "target.h"
+  #include "target-def.h"
+  #include "df.h"
+  
+  static void m68hc11_option_override (void);
+  static void emit_move_after_reload (rtx, rtx, rtx);
+--- 61,117 ----
+  #include "output.h"
+  #include "insn-attr.h"
+  #include "flags.h"
+! #include "reload.h"
+! #include "function.h"
+! #include "hashtab.h"
+! #include "statistics.h"
+! #include "real.h"
+! #include "fixed-value.h"
+! #include "expmed.h"
+! #include "dojump.h"
+! #include "explow.h"
+! #include "emit-rtl.h"
+! #include "stmt.h"
+  #include "expr.h"
+! #include "insn-codes.h"
+! #include "optabs.h"
+  #include "diagnostic-core.h"
++ #include "recog.h"
++ #include "predict.h"
++ #include "dominance.h"
++ #include "cfg.h"
++ #include "cfgrtl.h"
++ #include "cfganal.h"
++ #include "lcm.h"
++ #include "cfgbuild.h"
++ #include "cfgcleanup.h"
+  #include "basic-block.h"
+! #include "hash-map.h"
+! #include "is-a.h"
+! #include "plugin-api.h"
+! #include "ipa-ref.h"
+! #include "cgraph.h"
+  #include "ggc.h"
+! #include "except.h"
+! #include "tm_p.h"
+  #include "target.h"
++ #include "sched-int.h"
+  #include "target-def.h"
++ #include "debug.h"
++ #include "langhooks.h"
++ #include "bitmap.h"
+  #include "df.h"
++ #include "intl.h"
++ #include "libfuncs.h"
++ #include "params.h"
++ #include "opts.h"
++ #include "dumpfile.h"
++ #include "gimple-expr.h"
++ #include "builtins.h"
++ #include "tm-constrs.h"
++ #include "rtl-iter.h"
++ #include "sched-int.h"
++ #include <cassert>
+  
+  static void m68hc11_option_override (void);
+  static void emit_move_after_reload (rtx, rtx, rtx);
+***************
+*** 68,77 ****
+  static bool m68hc11_legitimate_address_p (enum machine_mode, rtx, bool);
+  static rtx m68hc11_expand_compare (enum rtx_code, rtx, rtx);
+  static int must_parenthesize (rtx);
+! static int m68hc11_address_cost (rtx, bool);
+  static int m68hc11_shift_cost (enum machine_mode, rtx, int);
+  static int m68hc11_rtx_costs_1 (rtx, enum rtx_code, enum rtx_code);
+! static bool m68hc11_rtx_costs (rtx, int, int, int *, bool);
+  static tree m68hc11_handle_fntype_attribute (tree *, tree, tree, int, bool *);
+  static tree m68hc11_handle_page0_attribute (tree *, tree, tree, int, bool *);
+  static bool m68hc11_class_likely_spilled_p (reg_class_t);
+--- 122,131 ----
+  static bool m68hc11_legitimate_address_p (enum machine_mode, rtx, bool);
+  static rtx m68hc11_expand_compare (enum rtx_code, rtx, rtx);
+  static int must_parenthesize (rtx);
+! static int m68hc11_address_cost (rtx, machine_mode, addr_space_t, bool);
+  static int m68hc11_shift_cost (enum machine_mode, rtx, int);
+  static int m68hc11_rtx_costs_1 (rtx, enum rtx_code, enum rtx_code);
+! static bool m68hc11_rtx_costs (rtx, enum machine_mode, int, int, int *, bool);
+  static tree m68hc11_handle_fntype_attribute (tree *, tree, tree, int, bool *);
+  static tree m68hc11_handle_page0_attribute (tree *, tree, tree, int, bool *);
+  static bool m68hc11_class_likely_spilled_p (reg_class_t);
+***************
+*** 80,86 ****
+  
+  static void asm_print_register (FILE *, int);
+  static void m68hc11_print_operand (FILE *, rtx, int);
+! static void m68hc11_print_operand_address (FILE *, rtx);
+  static void m68hc11_output_function_epilogue (FILE *, HOST_WIDE_INT);
+  static void m68hc11_asm_out_constructor (rtx, int);
+  static void m68hc11_asm_out_destructor (rtx, int);
+--- 134,140 ----
+  
+  static void asm_print_register (FILE *, int);
+  static void m68hc11_print_operand (FILE *, rtx, int);
+! static void m68hc11_print_operand_address (FILE *, machine_mode, rtx);
+  static void m68hc11_output_function_epilogue (FILE *, HOST_WIDE_INT);
+  static void m68hc11_asm_out_constructor (rtx, int);
+  static void m68hc11_asm_out_destructor (rtx, int);
+***************
+*** 97,105 ****
+  static void m68hc11_conditional_register_usage (void);
+  static void m68hc11_trampoline_init (rtx, tree, rtx);
+  
+! static rtx m68hc11_function_arg (CUMULATIVE_ARGS*, enum machine_mode,
+  				 const_tree, bool);
+! static void m68hc11_function_arg_advance (CUMULATIVE_ARGS*, enum machine_mode,
+  					  const_tree, bool);
+  
+  /* Must be set to 1 to produce debug messages.  */
+--- 151,159 ----
+  static void m68hc11_conditional_register_usage (void);
+  static void m68hc11_trampoline_init (rtx, tree, rtx);
+  
+! static rtx m68hc11_function_arg (cumulative_args_t, enum machine_mode,
+  				 const_tree, bool);
+! static void m68hc11_function_arg_advance (cumulative_args_t, enum machine_mode,
+  					  const_tree, bool);
+  
+  /* Must be set to 1 to produce debug messages.  */
+***************
+*** 727,735 ****
+  
+    if (GET_CODE (operand) == REG && reload_in_progress
+        && REGNO (operand) >= FIRST_PSEUDO_REGISTER
+!       && reg_equiv_memory_loc[REGNO (operand)])
+      {
+!       operand = reg_equiv_memory_loc[REGNO (operand)];
+        operand = eliminate_regs (operand, VOIDmode, NULL_RTX);
+      }
+  
+--- 781,789 ----
+  
+    if (GET_CODE (operand) == REG && reload_in_progress
+        && REGNO (operand) >= FIRST_PSEUDO_REGISTER
+!       && reg_equiv_memory_loc(REGNO (operand)))
+      {
+!       operand = reg_equiv_memory_loc(REGNO (operand));
+        operand = eliminate_regs (operand, VOIDmode, NULL_RTX);
+      }
+  
+***************
+*** 789,797 ****
+  
+    if (GET_CODE (operand) == REG && reload_in_progress
+        && REGNO (operand) >= FIRST_PSEUDO_REGISTER
+!       && reg_equiv_memory_loc[REGNO (operand)])
+      {
+!       operand = reg_equiv_memory_loc[REGNO (operand)];
+        operand = eliminate_regs (operand, VOIDmode, NULL_RTX);
+      }
+    if (GET_CODE (operand) != MEM)
+--- 843,851 ----
+  
+    if (GET_CODE (operand) == REG && reload_in_progress
+        && REGNO (operand) >= FIRST_PSEUDO_REGISTER
+!       && reg_equiv_memory_loc(REGNO (operand)))
+      {
+!       operand = reg_equiv_memory_loc(REGNO (operand));
+        operand = eliminate_regs (operand, VOIDmode, NULL_RTX);
+      }
+    if (GET_CODE (operand) != MEM)
+***************
+*** 941,953 ****
+  	  offset = GEN_INT (vl);
+  	  if (!VALID_CONSTANT_OFFSET_P (offset, mode))
+  	    {
+! 	      emit_insn (gen_rtx_SET (VOIDmode, reg,
+  				  gen_rtx_PLUS (HImode, reg, big_offset)));
+  	      offset = const0_rtx;
+  	    }
+  	  else
+  	    {
+! 	      emit_insn (gen_rtx_SET (VOIDmode, reg,
+  				  gen_rtx_PLUS (HImode, reg,
+  					   GEN_INT (vh << 8))));
+  	    }
+--- 995,1007 ----
+  	  offset = GEN_INT (vl);
+  	  if (!VALID_CONSTANT_OFFSET_P (offset, mode))
+  	    {
+! 	      emit_insn (gen_rtx_SET (reg,
+  				  gen_rtx_PLUS (HImode, reg, big_offset)));
+  	      offset = const0_rtx;
+  	    }
+  	  else
+  	    {
+! 	      emit_insn (gen_rtx_SET (reg,
+  				  gen_rtx_PLUS (HImode, reg,
+  					   GEN_INT (vh << 8))));
+  	    }
+***************
+*** 1190,1196 ****
+  
+    if (TREE_STATIC (decl) || DECL_EXTERNAL (decl))
+      {
+!       DECL_SECTION_NAME (decl) = build_string (6, ".page0");
+      }
+    else
+      {
+--- 1244,1252 ----
+  
+    if (TREE_STATIC (decl) || DECL_EXTERNAL (decl))
+      {
+!       symtab_node* x = symtab_node::get(decl);
+!       assert(x);
+!       x->set_section(".page0");      
+      }
+    else
+      {
+***************
+*** 1493,1501 ****
+     (TYPE is null for libcalls where that information may not be available.)  */
+  
+  static void
+! m68hc11_function_arg_advance (CUMULATIVE_ARGS *cum, enum machine_mode mode,
+                                const_tree type, bool named ATTRIBUTE_UNUSED)
+  {
+    if (mode != BLKmode)
+      {
+        if (cum->words == 0 && GET_MODE_SIZE (mode) == 4)
+--- 1549,1558 ----
+     (TYPE is null for libcalls where that information may not be available.)  */
+  
+  static void
+! m68hc11_function_arg_advance (cumulative_args_t x, enum machine_mode mode,
+                                const_tree type, bool named ATTRIBUTE_UNUSED)
+  {
++   CUMULATIVE_ARGS* cum = (CUMULATIVE_ARGS*)x.p;
+    if (mode != BLKmode)
+      {
+        if (cum->words == 0 && GET_MODE_SIZE (mode) == 4)
+***************
+*** 1531,1540 ****
+      (otherwise it is an extra parameter matching an ellipsis).  */
+  
+  static rtx
+! m68hc11_function_arg (CUMULATIVE_ARGS *cum, enum machine_mode mode,
+                        const_tree type ATTRIBUTE_UNUSED,
+  		      bool named ATTRIBUTE_UNUSED)
+  {
+    if (cum->words != 0)
+      {
+        return NULL_RTX;
+--- 1588,1598 ----
+      (otherwise it is an extra parameter matching an ellipsis).  */
+  
+  static rtx
+! m68hc11_function_arg (cumulative_args_t x, enum machine_mode mode,
+                        const_tree type ATTRIBUTE_UNUSED,
+  		      bool named ATTRIBUTE_UNUSED)
+  {
++   CUMULATIVE_ARGS* cum = (CUMULATIVE_ARGS*)x.p;
+    if (cum->words != 0)
+      {
+        return NULL_RTX;
+***************
+*** 1703,1709 ****
+        insn = gen_rtx_PARALLEL
+  	(VOIDmode,
+  	 gen_rtvec (2,
+! 		    gen_rtx_SET (VOIDmode,
+  				 stack_pointer_rtx,
+  				 gen_rtx_PLUS (HImode,
+  					       stack_pointer_rtx,
+--- 1761,1767 ----
+        insn = gen_rtx_PARALLEL
+  	(VOIDmode,
+  	 gen_rtvec (2,
+! 		    gen_rtx_SET (
+  				 stack_pointer_rtx,
+  				 gen_rtx_PLUS (HImode,
+  					       stack_pointer_rtx,
+***************
+*** 1790,1796 ****
+        insn = gen_rtx_PARALLEL
+  	(VOIDmode,
+  	 gen_rtvec (2,
+! 		    gen_rtx_SET (VOIDmode,
+  				 stack_pointer_rtx,
+  				 gen_rtx_PLUS (HImode,
+  					       stack_pointer_rtx,
+--- 1848,1854 ----
+        insn = gen_rtx_PARALLEL
+  	(VOIDmode,
+  	 gen_rtvec (2,
+! 		    gen_rtx_SET (
+  				 stack_pointer_rtx,
+  				 gen_rtx_PLUS (HImode,
+  					       stack_pointer_rtx,
+***************
+*** 1877,1884 ****
+  
+  	  if (GET_MODE (x) == SFmode)
+  	    {
+! 	      REAL_VALUE_FROM_CONST_DOUBLE (r, x);
+! 	      REAL_VALUE_TO_TARGET_SINGLE (r, l[0]);
+  	    }
+  	  else
+  	    {
+--- 1935,1943 ----
+  
+  	  if (GET_MODE (x) == SFmode)
+  	    {
+! 	      const struct real_value* rv = CONST_DOUBLE_REAL_VALUE (x);
+! 	      l[0] = real_to_target (NULL, rv,
+! 				     mode_for_size (32, MODE_FLOAT, 0));
+  	    }
+  	  else
+  	    {
+***************
+*** 1959,1966 ****
+  
+  	  if (GET_MODE (x) == SFmode)
+  	    {
+! 	      REAL_VALUE_FROM_CONST_DOUBLE (r, x);
+! 	      REAL_VALUE_TO_TARGET_SINGLE (r, l[1]);
+  	    }
+  	  else
+  	    {
+--- 2018,2026 ----
+  
+  	  if (GET_MODE (x) == SFmode)
+  	    {
+! 	      const struct real_value* rv = CONST_DOUBLE_REAL_VALUE (x);
+! 	      l[1] = real_to_target (NULL, rv,
+! 				     mode_for_size (32, MODE_FLOAT, 0));
+  	    }
+  	  else
+  	    {
+***************
+*** 2060,2069 ****
+     of code when we know that some register dies or can be clobbered.  */
+  
+  int
+! dead_register_here (rtx x, rtx reg)
+  {
+    rtx x_reg;
+!   rtx p;
+  
+    if (D_REG_P (reg))
+      x_reg = gen_rtx_REG (SImode, HARD_X_REGNUM);
+--- 2120,2130 ----
+     of code when we know that some register dies or can be clobbered.  */
+  
+  int
+! dead_register_here (rtx xx, rtx reg)
+  {
++   const rtx_insn* x = (rtx_insn*)xx;
+    rtx x_reg;
+!   const rtx_insn* p;
+  
+    if (D_REG_P (reg))
+      x_reg = gen_rtx_REG (SImode, HARD_X_REGNUM);
+***************
+*** 2277,2283 ****
+          case MEM:
+            gcc_assert (TARGET_M6812);
+  	  fprintf (file, "[");
+! 	  m68hc11_print_operand_address (file, XEXP (base, 0));
+  	  fprintf (file, "]");
+            break;
+  
+--- 2338,2344 ----
+          case MEM:
+            gcc_assert (TARGET_M6812);
+  	  fprintf (file, "[");
+! 	  m68hc11_print_operand_address (file, VOIDmode, XEXP (base, 0));
+  	  fprintf (file, "]");
+            break;
+  
+***************
+*** 2285,2291 ****
+            if (m68hc11_page0_symbol_p (base))
+              fprintf (file, "*");
+  
+! 	  output_address (base);
+  	  break;
+  	}
+      }
+--- 2346,2352 ----
+            if (m68hc11_page0_symbol_p (base))
+              fprintf (file, "*");
+  
+! 	  output_address (VOIDmode, base);
+  	  break;
+  	}
+      }
+***************
+*** 2293,2301 ****
+      {
+        REAL_VALUE_TYPE r;
+        long l;
+! 
+!       REAL_VALUE_FROM_CONST_DOUBLE (r, op);
+!       REAL_VALUE_TO_TARGET_SINGLE (r, l);
+        asm_fprintf (file, "%I0x%lx", l);
+      }
+    else if (GET_CODE (op) == CONST_DOUBLE && GET_MODE (op) == DFmode)
+--- 2354,2363 ----
+      {
+        REAL_VALUE_TYPE r;
+        long l;
+!      
+!       const struct real_value* rv = CONST_DOUBLE_REAL_VALUE (op);
+!       l = real_to_target (NULL, rv,
+! 			  mode_for_size (32, MODE_FLOAT, 0));
+        asm_fprintf (file, "%I0x%lx", l);
+      }
+    else if (GET_CODE (op) == CONST_DOUBLE && GET_MODE (op) == DFmode)
+***************
+*** 2374,2380 ****
+     reference whose address is ADDR.  ADDR is an RTL expression.  */
+  
+  static void
+! m68hc11_print_operand_address (FILE *file, rtx addr)
+  {
+    rtx base;
+    rtx offset;
+--- 2436,2442 ----
+     reference whose address is ADDR.  ADDR is an RTL expression.  */
+  
+  static void
+! m68hc11_print_operand_address (FILE *file, machine_mode, rtx addr)
+  {
+    rtx base;
+    rtx offset;
+***************
+*** 2507,2513 ****
+    rtx ret = 0;
+  
+    gcc_assert (GET_MODE_CLASS (GET_MODE (op0)) != MODE_FLOAT);
+!   emit_insn (gen_rtx_SET (VOIDmode, cc0_rtx,
+  			  gen_rtx_COMPARE (VOIDmode, op0, op1)));
+    ret = gen_rtx_fmt_ee (code, VOIDmode, cc0_rtx, const0_rtx);
+  
+--- 2569,2575 ----
+    rtx ret = 0;
+  
+    gcc_assert (GET_MODE_CLASS (GET_MODE (op0)) != MODE_FLOAT);
+!   emit_insn (gen_rtx_SET (cc0_rtx,
+  			  gen_rtx_COMPARE (VOIDmode, op0, op1)));
+    ret = gen_rtx_fmt_ee (code, VOIDmode, cc0_rtx, const0_rtx);
+  
+***************
+*** 2528,2534 ****
+        tmp = gen_rtx_IF_THEN_ELSE (VOIDmode, tmp,
+  				  gen_rtx_LABEL_REF (VOIDmode, label),
+  				  pc_rtx);
+!       emit_jump_insn (gen_rtx_SET (VOIDmode, pc_rtx, tmp));
+        return 0;
+  #if 0
+  
+--- 2590,2596 ----
+        tmp = gen_rtx_IF_THEN_ELSE (VOIDmode, tmp,
+  				  gen_rtx_LABEL_REF (VOIDmode, label),
+  				  pc_rtx);
+!       emit_jump_insn (gen_rtx_SET (pc_rtx, tmp));
+        return 0;
+  #if 0
+  
+***************
+*** 2549,2555 ****
+  	tmp = gen_rtx_IF_THEN_ELSE (VOIDmode, tmp,
+  				    gen_rtx_LABEL_REF (VOIDmode, label),
+  				    pc_rtx);
+! 	tmp = gen_rtx_SET (VOIDmode, pc_rtx, tmp);
+  
+  	use_fcomi = ix86_use_fcomi_compare (code);
+  	vec = rtvec_alloc (3 + !use_fcomi);
+--- 2611,2617 ----
+  	tmp = gen_rtx_IF_THEN_ELSE (VOIDmode, tmp,
+  				    gen_rtx_LABEL_REF (VOIDmode, label),
+  				    pc_rtx);
+! 	tmp = gen_rtx_SET (pc_rtx, tmp);
+  
+  	use_fcomi = ix86_use_fcomi_compare (code);
+  	vec = rtvec_alloc (3 + !use_fcomi);
+***************
+*** 2704,2709 ****
+--- 2766,2873 ----
+      }
+  }
+  
++ static int non_rtx_starting_operands[NUM_RTX_CODE];
++ 
++ static int
++ for_each_rtx_1 (rtx exp, int n, int (*f)(rtx *x, void *data), void *data)
++ {
++   int result, i, j;
++   const char *format = GET_RTX_FORMAT (GET_CODE (exp));
++   rtx *x;
++ 
++   for (; format[n] != '\0'; n++)
++     {
++       switch (format[n])
++ 	{
++ 	case 'e':
++ 	  /* Call F on X.  */
++ 	  x = &XEXP (exp, n);
++ 	  result = (*f) (x, data);
++ 	  if (result == -1)
++ 	    /* Do not traverse sub-expressions.  */
++ 	    continue;
++ 	  else if (result != 0)
++ 	    /* Stop the traversal.  */
++ 	    return result;
++ 
++ 	  if (*x == NULL_RTX)
++ 	    /* There are no sub-expressions.  */
++ 	    continue;
++ 
++ 	  i = non_rtx_starting_operands[GET_CODE (*x)];
++ 	  if (i >= 0)
++ 	    {
++ 	      result = for_each_rtx_1 (*x, i, f, data);
++ 	      if (result != 0)
++ 		return result;
++ 	    }
++ 	  break;
++ 
++ 	case 'V':
++ 	case 'E':
++ 	  if (XVEC (exp, n) == 0)
++ 	    continue;
++ 	  for (j = 0; j < XVECLEN (exp, n); ++j)
++ 	    {
++ 	      /* Call F on X.  */
++ 	      x = &XVECEXP (exp, n, j);
++ 	      result = (*f) (x, data);
++ 	      if (result == -1)
++ 		/* Do not traverse sub-expressions.  */
++ 		continue;
++ 	      else if (result != 0)
++ 		/* Stop the traversal.  */
++ 		return result;
++ 
++ 	      if (*x == NULL_RTX)
++ 		/* There are no sub-expressions.  */
++ 		continue;
++ 
++ 	      i = non_rtx_starting_operands[GET_CODE (*x)];
++ 	      if (i >= 0)
++ 		{
++ 		  result = for_each_rtx_1 (*x, i, f, data);
++ 		  if (result != 0)
++ 		    return result;
++ 	        }
++ 	    }
++ 	  break;
++ 
++ 	default:
++ 	  /* Nothing to do.  */
++ 	  break;
++ 	}
++     }
++ 
++   return 0;
++ }
++ 
++ inline int for_each_rtx (rtx *x, int (*f)(rtx *x, void *data), void* data)
++ {
++   int result;
++   int i;
++ 
++   /* Call F on X.  */
++   result = (*f) (x, data);
++   if (result == -1)
++     /* Do not traverse sub-expressions.  */
++     return 0;
++   else if (result != 0)
++     /* Stop the traversal.  */
++     return result;
++ 
++   if (*x == NULL_RTX)
++     /* There are no sub-expressions.  */
++     return 0;
++ 
++   i = non_rtx_starting_operands[GET_CODE (*x)];
++   if (i < 0)
++     return 0;
++ 
++   return for_each_rtx_1 (*x, i, f, data);
++ }
++ 
++ 
+  /* Split a DI, SI or HI move into several smaller move operations.
+     The scratch register 'scratch' is used as a temporary to load
+     store intermediate values.  It must be a hard register.  */
+***************
+*** 2975,2981 ****
+        if (!H_REG_P (operands[0]) && operands[3])
+  	{
+  	  emit_move_insn (operands[3], operands[1]);
+! 	  emit_insn (gen_rtx_SET (mode,
+  				  operands[3],
+  				  gen_rtx_fmt_ee (code, mode,
+  						  operands[3], operands[2])));
+--- 3139,3145 ----
+        if (!H_REG_P (operands[0]) && operands[3])
+  	{
+  	  emit_move_insn (operands[3], operands[1]);
+! 	  emit_insn (gen_rtx_SET (
+  				  operands[3],
+  				  gen_rtx_fmt_ee (code, mode,
+  						  operands[3], operands[2])));
+***************
+*** 2983,2989 ****
+  	}
+        else
+  	{
+! 	  emit_insn (gen_rtx_SET (mode, operands[0],
+  				  gen_rtx_fmt_ee (code, mode,
+  						  operands[0], operands[2])));
+  	}
+--- 3147,3153 ----
+  	}
+        else
+  	{
+! 	  emit_insn (gen_rtx_SET (operands[0],
+  				  gen_rtx_fmt_ee (code, mode,
+  						  operands[0], operands[2])));
+  	}
+***************
+*** 4093,4105 ****
+  
+  struct replace_info
+  {
+!   rtx first;
+    rtx replace_reg;
+    int need_save_z;
+    int must_load_z;
+    int must_save_reg;
+    int must_restore_reg;
+!   rtx last;
+    int regno;
+    int x_used;
+    int y_used;
+--- 4257,4269 ----
+  
+  struct replace_info
+  {
+!   rtx_insn* first;
+    rtx replace_reg;
+    int need_save_z;
+    int must_load_z;
+    int must_save_reg;
+    int must_restore_reg;
+!   rtx_insn* last;
+    int regno;
+    int x_used;
+    int y_used;
+***************
+*** 4113,4119 ****
+    int z_loaded_with_sp;
+  };
+  
+! static int m68hc11_check_z_replacement (rtx, struct replace_info *);
+  static void m68hc11_find_z_replacement (rtx, struct replace_info *);
+  static void m68hc11_z_replacement (rtx);
+  static void m68hc11_reassign_regs (rtx);
+--- 4277,4283 ----
+    int z_loaded_with_sp;
+  };
+  
+! static int m68hc11_check_z_replacement (const rtx_insn*, struct replace_info *);
+  static void m68hc11_find_z_replacement (rtx, struct replace_info *);
+  static void m68hc11_z_replacement (rtx);
+  static void m68hc11_reassign_regs (rtx);
+***************
+*** 4126,4132 ****
+     continue replacement in next insns.  */
+  
+  static int
+! m68hc11_check_z_replacement (rtx insn, struct replace_info *info)
+  {
+    int this_insn_uses_ix;
+    int this_insn_uses_iy;
+--- 4290,4296 ----
+     continue replacement in next insns.  */
+  
+  static int
+! m68hc11_check_z_replacement (rtx_insn* insn, struct replace_info *info)
+  {
+    int this_insn_uses_ix;
+    int this_insn_uses_iy;
+***************
+*** 4318,4324 ****
+  		  info->must_restore_reg = 0;
+  		  info->found_call = 1;
+  		  info->can_use_d = 0;
+! 		  SET_INSN_DELETED (insn);
+  		  info->last = NEXT_INSN (insn);
+  		  return 0;
+  		}
+--- 4482,4488 ----
+  		  info->must_restore_reg = 0;
+  		  info->found_call = 1;
+  		  info->can_use_d = 0;
+! 		  SET_INSN_DELETED ((rtx)insn);
+  		  info->last = NEXT_INSN (insn);
+  		  return 0;
+  		}
+***************
+*** 4399,4405 ****
+  		  info->must_restore_reg = 0;
+  		  info->found_call = 1;
+  		  info->can_use_d = 0;
+! 		  SET_INSN_DELETED (insn);
+  		  info->last = NEXT_INSN (insn);
+  		  return 0;
+  		}
+--- 4563,4569 ----
+  		  info->must_restore_reg = 0;
+  		  info->found_call = 1;
+  		  info->can_use_d = 0;
+! 		  SET_INSN_DELETED ((rtx)insn);
+  		  info->last = NEXT_INSN (insn);
+  		  return 0;
+  		}
+***************
+*** 4690,4697 ****
+    return 1;
+  }
+  
+  static void
+! m68hc11_find_z_replacement (rtx insn, struct replace_info *info)
+  {
+    int reg;
+  
+--- 4854,4900 ----
+    return 1;
+  }
+  
++ inline rtx
++ find_last_value(rtx x, const rtx_insn** pinsn, const rtx_insn* valid_to, int allow_hwreg)
++ {
++   rtx_insn* p;
++ 
++   for (p = PREV_INSN (*pinsn); p && !LABEL_P (p);
++        p = PREV_INSN (p))
++     if (INSN_P (p))
++       {
++ 	rtx set = single_set (p);
++ 	rtx note = find_reg_note (p, REG_EQUAL, NULL_RTX);
++ 
++ 	if (set && rtx_equal_p (x, SET_DEST (set)))
++ 	  {
++ 	    rtx src = SET_SRC (set);
++ 
++ 	    if (note && GET_CODE (XEXP (note, 0)) != EXPR_LIST)
++ 	      src = XEXP (note, 0);
++ 
++ 	    if ((valid_to == NULL_RTX
++ 		 || ! modified_between_p (src, PREV_INSN (p), valid_to))
++ 		/* Reject hard registers because we don't usually want
++ 		   to use them; we'd rather use a pseudo.  */
++ 		&& (! (REG_P (src)
++ 		      && REGNO (src) < FIRST_PSEUDO_REGISTER) || allow_hwreg))
++ 	      {
++ 		*pinsn = p;
++ 		return src;
++ 	      }
++ 	  }
++ 
++ 	/* If set in non-simple way, we don't have a value.  */
++ 	if (reg_set_p (x, p))
++ 	  break;
++       }
++ 
++   return x;
++ }
++ 
+  static void
+! m68hc11_find_z_replacement (rtx_insn* insn, struct replace_info *info)
+  {
+    int reg;
+  
+***************
+*** 4731,4737 ****
+       This happens very often after the reload.  */
+    if (info->z_set_count == 1)
+      {
+!       rtx p = info->first;
+        rtx v = 0;
+  
+        if (info->x_used)
+--- 4934,4940 ----
+       This happens very often after the reload.  */
+    if (info->z_set_count == 1)
+      {
+!       const rtx_insn* p = info->first;
+        rtx v = 0;
+  
+        if (info->x_used)
+***************
+*** 4802,4808 ****
+     Z and of the replacement register.  */
+  
+  static void
+! m68hc11_z_replacement (rtx insn)
+  {
+    rtx replace_reg_qi;
+    rtx replace_reg;
+--- 5005,5011 ----
+     Z and of the replacement register.  */
+  
+  static void
+! m68hc11_z_replacement (rtx_insn* insn)
+  {
+    rtx replace_reg_qi;
+    rtx replace_reg;
+***************
+*** 4952,4958 ****
+    /* Save Z before restoring the old value.  */
+    if (insn && info.need_save_z && !info.must_push_reg)
+      {
+!       rtx save_pos_insn = insn;
+  
+        /* If Z is clobber by the last insn, we have to save its value
+           before the last instruction.  */
+--- 5155,5161 ----
+    /* Save Z before restoring the old value.  */
+    if (insn && info.need_save_z && !info.must_push_reg)
+      {
+!       rtx_insn* save_pos_insn = insn;
+  
+        /* If Z is clobber by the last insn, we have to save its value
+           before the last instruction.  */
+***************
+*** 5012,5020 ****
+        on the instruction.  */
+  
+  static void
+! m68hc11_reassign_regs (rtx first)
+  {
+!   rtx insn;
+  
+    ix_reg = gen_rtx_REG (HImode, HARD_X_REGNUM);
+    iy_reg = gen_rtx_REG (HImode, HARD_Y_REGNUM);
+--- 5215,5223 ----
+        on the instruction.  */
+  
+  static void
+! m68hc11_reassign_regs (rtx_insn* first)
+  {
+!   rtx_insn* insn;
+  
+    ix_reg = gen_rtx_REG (HImode, HARD_X_REGNUM);
+    iy_reg = gen_rtx_REG (HImode, HARD_Y_REGNUM);
+***************
+*** 5066,5071 ****
+--- 5269,5365 ----
+      }
+  }
+  
++ #if 0
++ enum cselib_record_what
++ {
++   CSELIB_RECORD_MEMORY = 1,
++   CSELIB_PRESERVE_CONSTANTS = 2
++ };
++ 
++ void
++ cselib_init (int record_what)
++ {
++   elt_list_pool = create_alloc_pool ("elt_list",
++ 				     sizeof (struct elt_list), 10);
++   elt_loc_list_pool = create_alloc_pool ("elt_loc_list",
++ 				         sizeof (struct elt_loc_list), 10);
++   cselib_val_pool = create_alloc_pool ("cselib_val_list",
++ 				       sizeof (cselib_val), 10);
++   value_pool = create_alloc_pool ("value", RTX_CODE_SIZE (VALUE), 100);
++   cselib_record_memory = record_what & CSELIB_RECORD_MEMORY;
++   cselib_preserve_constants = record_what & CSELIB_PRESERVE_CONSTANTS;
++ 
++   /* (mem:BLK (scratch)) is a special mechanism to conflict with everything,
++      see canon_true_dependence.  This is only created once.  */
++   if (! callmem)
++     callmem = gen_rtx_MEM (BLKmode, gen_rtx_SCRATCH (VOIDmode));
++ 
++   cselib_nregs = max_reg_num ();
++ 
++   /* We preserve reg_values to allow expensive clearing of the whole thing.
++      Reallocate it however if it happens to be too large.  */
++   if (!reg_values || reg_values_size < cselib_nregs
++       || (reg_values_size > 10 && reg_values_size > cselib_nregs * 4))
++     {
++       if (reg_values)
++ 	free (reg_values);
++       /* Some space for newly emit instructions so we don't end up
++ 	 reallocating in between passes.  */
++       reg_values_size = cselib_nregs + (63 + cselib_nregs) / 16;
++       reg_values = XCNEWVEC (struct elt_list *, reg_values_size);
++     }
++   used_regs = XNEWVEC (unsigned int, cselib_nregs);
++   n_used_regs = 0;
++   cselib_hash_table = htab_create (31, get_value_hash,
++ 				   entry_and_rtx_equal_p, NULL);
++   next_uid = 1;
++ }
++ 
++ static void
++ reload_cse_regs_1 (rtx_insn* first)
++ {
++   rtx_insn* insn;
++   rtx testreg = gen_rtx_REG (VOIDmode, -1);
++ 
++   cselib_init (CSELIB_RECORD_MEMORY);
++   init_alias_analysis ();
++ 
++   for (insn = first; insn; insn = NEXT_INSN (insn))
++     {
++       if (INSN_P (insn))
++ 	reload_cse_simplify (insn, testreg);
++ 
++       cselib_process_insn (insn);
++     }
++ 
++   /* Clean up.  */
++   end_alias_analysis ();
++   cselib_finish ();
++ }
++ 
++ inline void reload_cse_regs(rtx_insn* first)
++ {
++   bool moves_converted;
++   reload_cse_regs_1 (first);
++   reload_combine ();
++   moves_converted = reload_cse_move2add (first);
++   if (flag_expensive_optimizations)
++     {
++       if (moves_converted)
++ 	reload_combine ();
++       reload_cse_regs_1 (first);
++     }
++ }
++ #else
++ inline void reload_cse_regs(rtx_insn* first)
++ {
++ }
++ #endif
++ 
++ inline bool INSN_DELETED_P(rtx_insn* insn)
++ {
++   return insn->volatil;
++ }
+  
+  /* Machine-dependent reorg pass.
+     Specific optimizations are defined here:
+***************
+*** 5079,5085 ****
+  m68hc11_reorg (void)
+  {
+    int split_done = 0;
+!   rtx first;
+  
+    z_replacement_completed = 0;
+    z_reg = gen_rtx_REG (HImode, HARD_Z_REGNUM);
+--- 5373,5379 ----
+  m68hc11_reorg (void)
+  {
+    int split_done = 0;
+!   rtx_insn* first;
+  
+    z_replacement_completed = 0;
+    z_reg = gen_rtx_REG (HImode, HARD_Z_REGNUM);
+***************
+*** 5133,5139 ****
+       Do a simple pass to eliminate the noop set that the final
+       split could generate (because it was easier for split definition).  */
+    {
+!     rtx insn;
+  
+      for (insn = first; insn; insn = NEXT_INSN (insn))
+        {
+--- 5427,5433 ----
+       Do a simple pass to eliminate the noop set that the final
+       split could generate (because it was easier for split definition).  */
+    {
+!     rtx_insn* insn;
+  
+      for (insn = first; insn; insn = NEXT_INSN (insn))
+        {
+***************
+*** 5220,5226 ****
+     If ADDR is not a valid address, its cost is irrelevant.  */
+  
+  static int
+! m68hc11_address_cost (rtx addr, bool speed ATTRIBUTE_UNUSED)
+  {
+    int cost = 4;
+  
+--- 5514,5520 ----
+     If ADDR is not a valid address, its cost is irrelevant.  */
+  
+  static int
+! m68hc11_address_cost (rtx addr, machine_mode, addr_space_t, bool speed ATTRIBUTE_UNUSED)
+  {
+    int cost = 4;
+  
+***************
+*** 5305,5311 ****
+  {
+    int total;
+  
+!   total = rtx_cost (x, SET, !optimize_size);
+    if (mode == QImode)
+      total += m68hc11_cost->shiftQI_const[shift % 8];
+    else if (mode == HImode)
+--- 5599,5605 ----
+  {
+    int total;
+  
+!   total = rtx_cost (x, mode, SET, 0, !optimize_size);
+    if (mode == QImode)
+      total += m68hc11_cost->shiftQI_const[shift % 8];
+    else if (mode == HImode)
+***************
+*** 5349,5362 ****
+            return m68hc11_shift_cost (mode, XEXP (x, 0), INTVAL (XEXP (x, 1)));
+  	}
+  
+!       total = rtx_cost (XEXP (x, 0), code, !optimize_size) + rtx_cost (XEXP (x, 1), code, !optimize_size);
+        total += m68hc11_cost->shift_var;
+        return total;
+  
+      case AND:
+      case XOR:
+      case IOR:
+!       total = rtx_cost (XEXP (x, 0), code, !optimize_size) + rtx_cost (XEXP (x, 1), code, !optimize_size);
+        total += m68hc11_cost->logical;
+  
+        /* Logical instructions are byte instructions only.  */
+--- 5643,5656 ----
+            return m68hc11_shift_cost (mode, XEXP (x, 0), INTVAL (XEXP (x, 1)));
+  	}
+  
+!       total = rtx_cost (XEXP (x, 0), mode, code, 0, !optimize_size) + rtx_cost (XEXP (x, 1), mode, code, 0, !optimize_size);
+        total += m68hc11_cost->shift_var;
+        return total;
+  
+      case AND:
+      case XOR:
+      case IOR:
+!       total = rtx_cost (XEXP (x, 0), mode, code, 0, !optimize_size) + rtx_cost (XEXP (x, 1), mode, code, 0, !optimize_size);
+        total += m68hc11_cost->logical;
+  
+        /* Logical instructions are byte instructions only.  */
+***************
+*** 5365,5371 ****
+  
+      case MINUS:
+      case PLUS:
+!       total = rtx_cost (XEXP (x, 0), code, !optimize_size) + rtx_cost (XEXP (x, 1), code, !optimize_size);
+        total += m68hc11_cost->add;
+        if (GET_MODE_SIZE (mode) > 2)
+  	{
+--- 5659,5665 ----
+  
+      case MINUS:
+      case PLUS:
+!       total = rtx_cost (XEXP (x, 0), mode, code, 0, !optimize_size) + rtx_cost (XEXP (x, 1), mode, code, 0, !optimize_size);
+        total += m68hc11_cost->add;
+        if (GET_MODE_SIZE (mode) > 2)
+  	{
+***************
+*** 5376,5382 ****
+      case UDIV:
+      case DIV:
+      case MOD:
+!       total = rtx_cost (XEXP (x, 0), code, !optimize_size) + rtx_cost (XEXP (x, 1), code, !optimize_size);
+        switch (mode)
+          {
+          case QImode:
+--- 5670,5676 ----
+      case UDIV:
+      case DIV:
+      case MOD:
+!       total = rtx_cost (XEXP (x, 0), mode, code, 0, !optimize_size) + rtx_cost (XEXP (x, 1), mode, code, 0, !optimize_size);
+        switch (mode)
+          {
+          case QImode:
+***************
+*** 5399,5417 ****
+        if (mode == HImode && GET_CODE (XEXP (x, 0)) == ZERO_EXTEND
+            && GET_CODE (XEXP (x, 1)) == ZERO_EXTEND)
+          return m68hc11_cost->multQI
+!           + rtx_cost (XEXP (XEXP (x, 0), 0), code, !optimize_size)
+!           + rtx_cost (XEXP (XEXP (x, 1), 0), code, !optimize_size);
+  
+        /* emul instruction produces 32-bit result for 68HC12.  */
+        if (TARGET_M6812 && mode == SImode
+            && GET_CODE (XEXP (x, 0)) == ZERO_EXTEND
+            && GET_CODE (XEXP (x, 1)) == ZERO_EXTEND)
+          return m68hc11_cost->multHI
+!           + rtx_cost (XEXP (XEXP (x, 0), 0), code, !optimize_size)
+!           + rtx_cost (XEXP (XEXP (x, 1), 0), code, !optimize_size);
+  
+!       total = rtx_cost (XEXP (x, 0), code, !optimize_size)
+!       	      + rtx_cost (XEXP (x, 1), code, !optimize_size);
+        switch (mode)
+          {
+          case QImode:
+--- 5693,5711 ----
+        if (mode == HImode && GET_CODE (XEXP (x, 0)) == ZERO_EXTEND
+            && GET_CODE (XEXP (x, 1)) == ZERO_EXTEND)
+          return m68hc11_cost->multQI
+!           + rtx_cost (XEXP (XEXP (x, 0), 0), mode, code, 0, !optimize_size)
+!           + rtx_cost (XEXP (XEXP (x, 1), 0), mode, code, 0, !optimize_size);
+  
+        /* emul instruction produces 32-bit result for 68HC12.  */
+        if (TARGET_M6812 && mode == SImode
+            && GET_CODE (XEXP (x, 0)) == ZERO_EXTEND
+            && GET_CODE (XEXP (x, 1)) == ZERO_EXTEND)
+          return m68hc11_cost->multHI
+!           + rtx_cost (XEXP (XEXP (x, 0), 0), mode, code, 0, !optimize_size)
+!           + rtx_cost (XEXP (XEXP (x, 1), 0), mode, code, 0, !optimize_size);
+  
+!       total = rtx_cost (XEXP (x, 0), mode, code, 0, !optimize_size)
+! 	+ rtx_cost (XEXP (x, 1), mode, code, 0, !optimize_size);
+        switch (mode)
+          {
+          case QImode:
+***************
+*** 5439,5445 ****
+      case ABS:
+      case ZERO_EXTEND:
+      case ZERO_EXTRACT:
+!       total = extra_cost + rtx_cost (XEXP (x, 0), code, !optimize_size);
+        if (mode == QImode)
+  	{
+  	  return total + COSTS_N_INSNS (1);
+--- 5733,5739 ----
+      case ABS:
+      case ZERO_EXTEND:
+      case ZERO_EXTRACT:
+!       total = extra_cost + rtx_cost (XEXP (x, 0), mode, code, 0, !optimize_size);
+        if (mode == QImode)
+  	{
+  	  return total + COSTS_N_INSNS (1);
+***************
+*** 5466,5472 ****
+  }
+  
+  static bool
+! m68hc11_rtx_costs (rtx x, int codearg, int outer_code_arg, int *total,
+  		   bool speed ATTRIBUTE_UNUSED)
+  {
+    enum rtx_code code = (enum rtx_code) codearg;
+--- 5760,5766 ----
+  }
+  
+  static bool
+! m68hc11_rtx_costs (rtx x, enum machine_mode codearg, int outer_code_arg, int, int *total,
+  		   bool speed ATTRIBUTE_UNUSED)
+  {
+    enum rtx_code code = (enum rtx_code) codearg;
+***************
+*** 5579,5582 ****
+--- 5873,5914 ----
+      return GET_MODE_SIZE (TYPE_MODE (type)) > 4;
+  }
+  
++ int m68hc11_memory_constraint(rtx op, char c)
++ {
++   if (c == 'Q') {
++     return m68hc11_symbolic_p(op, GET_MODE(op));
++   }
++   if (c == 'R') {
++     return m68hc11_indirect_p(op, GET_MODE(op));
++   }
++   assert(c == 'U');
++   return m68hc11_small_indexed_indirect_p(op, GET_MODE(op));
++ }
++ 
++ int m68hc11_int_constraint(HOST_WIDE_INT ival, char c)
++ {
++   if (c == 'P') {
++     return ival <= 2 && ival >= -8;
++   }
++   if (c == 'K') {
++     return ival == 0;
++   }
++   if (c == 'I') {
++     return ival >= -2 && ival <= 2;
++   }
++   if (c == 'L') {
++     return ival >= -65536 && ival <= 65535;
++   }
++   if (c == 'M') {
++     return (ival & 0x0ffffL) == 0;
++   }
++   assert(c == 'N');
++   return ival == 1 || ival == -1;
++ }
++ 
++ int m68hc11_double_constraint(rtx op)
++ {
++   return op == CONST0_RTX(SFmode);
++ }
++ 
+  #include "gt-m68hc11.h"
+*** gcc-4.6.0.m68hc11-elf/gcc/config/m68hc11/m68hc11.h	2021-10-11 07:34:17.000000000 +0900
+--- gcc-6.1.0.m68hc11-elf/gcc/config/m68hc11/m68hc11.h	2021-10-14 13:17:10.000000000 +0900
+***************
+*** 91,100 ****
+--- 91,102 ----
+      }						\
+    while (0)
+  
++ #if 0
+  /* As an embedded target, we have no libc.  */
+  #ifndef inhibit_libc
+  #  define inhibit_libc
+  #endif
++ #endif
+  
+  /* Forward type declaration for prototypes definitions.
+     rtx_ptr is equivalent to rtx. Can't use the same name.  */
+***************
+*** 140,146 ****
+--- 142,150 ----
+  #endif
+  
+  /* Print subsidiary information on the compiler version in use.  */
++ /*
+  #define TARGET_VERSION	fprintf (stderr, " (MC68HC11/MC68HC12/MC68HCS12)")
++ */
+  
+  
+  /* Define cost parameters for a given processor variant.  */
+***************
+*** 669,674 ****
+--- 673,679 ----
+  /* Get reg_class from a letter in the machine description.  */
+  
+  extern enum reg_class m68hc11_tmp_regs_class;
++ /*
+  #define REG_CLASS_FROM_LETTER(C) \
+     ((C) == 'a' ? DA_REGS : \
+      (C) == 'A' ? A_REGS : \
+***************
+*** 685,691 ****
+      (C) == 'x' ? X_REGS : \
+      (C) == 'y' ? Y_REGS : \
+      (C) == 'z' ? Z_REGS : NO_REGS)
+! 
+  #define PREFERRED_RELOAD_CLASS(X,CLASS)	preferred_reload_class(X,CLASS)
+  
+  #define TARGET_SMALL_REGISTER_CLASSES_FOR_MODE_P hook_bool_mode_true
+--- 690,696 ----
+      (C) == 'x' ? X_REGS : \
+      (C) == 'y' ? Y_REGS : \
+      (C) == 'z' ? Z_REGS : NO_REGS)
+! */
+  #define PREFERRED_RELOAD_CLASS(X,CLASS)	preferred_reload_class(X,CLASS)
+  
+  #define TARGET_SMALL_REGISTER_CLASSES_FOR_MODE_P hook_bool_mode_true
+***************
+*** 717,723 ****
+     'P' is for range -8 to 2 (used by addhi_sp)
+  
+     'I', 'J' are not used.  */
+! 
+  #define CONST_OK_FOR_LETTER_P(VALUE, C) \
+    ((C) == 'K' ? (VALUE) == 0 : \
+     (C) == 'L' ? ((VALUE) >= -65536 && (VALUE) <= 65535) : \
+--- 722,728 ----
+     'P' is for range -8 to 2 (used by addhi_sp)
+  
+     'I', 'J' are not used.  */
+! /*
+  #define CONST_OK_FOR_LETTER_P(VALUE, C) \
+    ((C) == 'K' ? (VALUE) == 0 : \
+     (C) == 'L' ? ((VALUE) >= -65536 && (VALUE) <= 65535) : \
+***************
+*** 726,756 ****
+     (C) == 'I' ? ((VALUE) >= -2 && (VALUE) <= 2) : \
+     (C) == 'O' ? (VALUE) == 16 : \
+     (C) == 'P' ? ((VALUE) <= 2 && (VALUE) >= -8) : 0)
+! 
+  /* Similar, but for floating constants, and defining letters G and H.
+  
+     `G' is for 0.0.  */
+! #define CONST_DOUBLE_OK_FOR_LETTER_P(VALUE, C) \
+    ((C) == 'G' ? (GET_MODE_CLASS (GET_MODE (VALUE)) == MODE_FLOAT \
+  		 && VALUE == CONST0_RTX (GET_MODE (VALUE))) : 0) 
+! 
+  /* 'U' represents certain kind of memory indexed operand for 68HC12.
+     and any memory operand for 68HC11.
+     'R' represents indexed addressing mode or access to page0 for 68HC11.
+     For 68HC12, it represents any memory operand.  */
+! #define EXTRA_CONSTRAINT(OP, C)                         \
+  ((C) == 'U' ? m68hc11_small_indexed_indirect_p (OP, GET_MODE (OP)) \
+   : (C) == 'Q' ? m68hc11_symbolic_p (OP, GET_MODE (OP)) \
+   : (C) == 'R' ? m68hc11_indirect_p (OP, GET_MODE (OP)) \
+   : (C) == 'S' ? (memory_operand (OP, GET_MODE (OP)) \
+  		 && non_push_operand (OP, GET_MODE (OP))) : 0)
+! 
+  
+  /* Stack layout; function entry, exit and calling.  */
+  
+  /* Define this if pushing a word on the stack
+     makes the stack pointer a smaller address.  */
+! #define STACK_GROWS_DOWNWARD
+  
+  /* Define this to nonzero if the nominal address of the stack frame
+     is at the high-address end of the local variables;
+--- 731,763 ----
+     (C) == 'I' ? ((VALUE) >= -2 && (VALUE) <= 2) : \
+     (C) == 'O' ? (VALUE) == 16 : \
+     (C) == 'P' ? ((VALUE) <= 2 && (VALUE) >= -8) : 0)
+! */
+  /* Similar, but for floating constants, and defining letters G and H.
+  
+     `G' is for 0.0.  */
+! /*
+! #define CONST_DOUBLE_OK_FOR_LETTER_P(VALUE, C)			 \
+    ((C) == 'G' ? (GET_MODE_CLASS (GET_MODE (VALUE)) == MODE_FLOAT \
+  		 && VALUE == CONST0_RTX (GET_MODE (VALUE))) : 0) 
+! */
+  /* 'U' represents certain kind of memory indexed operand for 68HC12.
+     and any memory operand for 68HC11.
+     'R' represents indexed addressing mode or access to page0 for 68HC11.
+     For 68HC12, it represents any memory operand.  */
+! /*
+! #define EXTRA_CONSTRAINT(OP, C)					   \
+  ((C) == 'U' ? m68hc11_small_indexed_indirect_p (OP, GET_MODE (OP)) \
+   : (C) == 'Q' ? m68hc11_symbolic_p (OP, GET_MODE (OP)) \
+   : (C) == 'R' ? m68hc11_indirect_p (OP, GET_MODE (OP)) \
+   : (C) == 'S' ? (memory_operand (OP, GET_MODE (OP)) \
+  		 && non_push_operand (OP, GET_MODE (OP))) : 0)
+! */
+  
+  /* Stack layout; function entry, exit and calling.  */
+  
+  /* Define this if pushing a word on the stack
+     makes the stack pointer a smaller address.  */
+! #define STACK_GROWS_DOWNWARD 1
+  
+  /* Define this to nonzero if the nominal address of the stack frame
+     is at the high-address end of the local variables;
+***************
+*** 888,895 ****
+     caller-save need a reload and the way it is implemented,
+     it forbids all spill registers at that point.  Enabling
+     caller saving results in spill failure.  */
+  #define CALLER_SAVE_PROFITABLE(REFS,CALLS) 0
+! 
+  /* 1 if N is a possible register number for function argument passing.
+     D is for 16-bit values, X is for 32-bit (X+D).  */
+  #define FUNCTION_ARG_REGNO_P(N)	\
+--- 895,903 ----
+     caller-save need a reload and the way it is implemented,
+     it forbids all spill registers at that point.  Enabling
+     caller saving results in spill failure.  */
++ /*
+  #define CALLER_SAVE_PROFITABLE(REFS,CALLS) 0
+! */
+  /* 1 if N is a possible register number for function argument passing.
+     D is for 16-bit values, X is for 32-bit (X+D).  */
+  #define FUNCTION_ARG_REGNO_P(N)	\
+***************
+*** 1096,1104 ****
+  
+  /* Nonzero if the constant value X is a legitimate general operand.
+     It is given that X satisfies CONSTANT_P or is a CONST_DOUBLE.  */
+! 
+  #define LEGITIMATE_CONSTANT_P(X)	1
+! 
+  
+  /* Tell final.c how to eliminate redundant test instructions.  */
+  
+--- 1104,1112 ----
+  
+  /* Nonzero if the constant value X is a legitimate general operand.
+     It is given that X satisfies CONSTANT_P or is a CONST_DOUBLE.  */
+! /*
+  #define LEGITIMATE_CONSTANT_P(X)	1
+! */
+  
+  /* Tell final.c how to eliminate redundant test instructions.  */
+  
+***************
+*** 1127,1133 ****
+  
+  /* It is as good to call a constant function address as to call an address
+     kept in a register.  */
+! #define NO_FUNCTION_CSE
+  
+  /* Try a machine-dependent way of reloading an illegitimate address
+     operand.  If we find one, push the reload and jump to WIN.  This
+--- 1135,1141 ----
+  
+  /* It is as good to call a constant function address as to call an address
+     kept in a register.  */
+! #define NO_FUNCTION_CSE 1
+  
+  /* Try a machine-dependent way of reloading an illegitimate address
+     operand.  If we find one, push the reload and jump to WIN.  This
+***************
+*** 1342,1349 ****
+  
+  /* This flag, if defined, says the same insns that convert to a signed fixnum
+     also convert validly to an unsigned one.  */
+  #define FIXUNS_TRUNC_LIKE_FIX_TRUNC
+! 
+  /* Max number of bytes we can move from memory to memory in one
+     reasonably fast instruction.  */
+  #define MOVE_MAX 		2
+--- 1350,1358 ----
+  
+  /* This flag, if defined, says the same insns that convert to a signed fixnum
+     also convert validly to an unsigned one.  */
++ /*
+  #define FIXUNS_TRUNC_LIKE_FIX_TRUNC
+! */
+  /* Max number of bytes we can move from memory to memory in one
+     reasonably fast instruction.  */
+  #define MOVE_MAX 		2
+***************
+*** 1383,1385 ****
+--- 1392,1403 ----
+  
+  #define INCOMING_RETURN_ADDR_RTX \
+    gen_rtx_MEM (VOIDmode, gen_rtx_REG (VOIDmode, STACK_POINTER_REGNUM))
++ 
++ #ifndef IN_LIBGCC2
++ extern int m68hc11_memory_constraint(rtx, char);
++ 
++ extern int m68hc11_int_constraint(HOST_WIDE_INT, char);
++ 
++ extern int m68hc11_double_constraint(rtx);
++ #endif // IN_LIBGCC2
++ 
+*** gcc-6.1.0.org/libgcc/config.host	2021-10-14 16:06:33.000000000 +0900
+--- gcc-6.1.0.m68hc11-elf/libgcc/config.host	2021-10-14 12:05:06.000000000 +0900
+***************
+*** 1333,1338 ****
+--- 1333,1340 ----
+  	tmake_file="$tmake_file nvptx/t-nvptx"
+  	extra_parts="crt0.o"
+  	;;
++ m68hc11-*-*|m6811-*-*)
++         ;;
+  *)
+  	echo "*** Configuration ${host} not supported" 1>&2
+  	exit 1
+*** gcc-6.1.0.org/libgcc/Makefile.in	2021-10-14 16:08:06.000000000 +0900
+--- gcc-6.1.0.m68hc11-elf/libgcc/Makefile.in	2021-10-14 12:11:19.000000000 +0900
+***************
+*** 20,26 ****
+  #
+  
+  libgcc_topdir = @libgcc_topdir@
+! host_subdir = @host_subdir@
+  
+  gcc_objdir = $(MULTIBUILDTOP)../../$(host_subdir)/gcc
+  
+--- 20,26 ----
+  #
+  
+  libgcc_topdir = @libgcc_topdir@
+! host_subdir = host-i686-pc-linux-gnu
+  
+  gcc_objdir = $(MULTIBUILDTOP)../../$(host_subdir)/gcc
+  
+*** gcc-6.1.0.org/gcc/ubsan.c	2021-10-08 15:39:13.000000000 +0900
+--- gcc-6.1.0.m68hc11-elf/gcc/ubsan.c	2021-10-14 13:35:26.000000000 +0900
+***************
+*** 1470,1476 ****
+  
+    expanded_location xloc = expand_location (loc);
+    if (xloc.file == NULL || strncmp (xloc.file, "\1", 2) == 0
+!       || xloc.file == '\0' || xloc.file[0] == '\xff'
+        || xloc.file[1] == '\xff')
+      return false;
+  
+--- 1470,1476 ----
+  
+    expanded_location xloc = expand_location (loc);
+    if (xloc.file == NULL || strncmp (xloc.file, "\1", 2) == 0
+!       || xloc.file == NULL || xloc.file[0] == '\xff'
+        || xloc.file[1] == '\xff')
+      return false;
+  
