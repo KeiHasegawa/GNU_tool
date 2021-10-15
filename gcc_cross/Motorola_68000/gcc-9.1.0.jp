@@ -1,0 +1,54 @@
+gcc-9.1.0 m68hc11-elf-gcc のインストール
+
+% xz -d -c ../gcc-9.1.0.tar.xz | tar xf -
+% mv gcc-9.1.0 gcc-9.1.0.m68hc11-elf
+% cp -r gcc-{4.6.0,9.1.0}.m68hc11-elf/gcc/config/m68hc11
+% cp constraints.md gcc-9.1.0.m68hc11-elf/gcc/config/m68hc11/constraints.md
+% mkdir gcc-9.1.0.m68hc11-elf/gcc/common/config/m68hc11
+% cp m68hc11-common.c gcc-9.1.0.m68hc11-elf/gcc/common/config/m68hc11/m68hc11-common.c
+% cd gcc-9.1.0.m68hc11-elf
+% patch -p1 < ../gcc-9.1.0.m68hc11-elf.diff
+% find . -name 'Makefile.*' -exec ../erase_O2 {} \;
+% find . -name 'configure' -exec ../erase_O2 {} \;
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=m68hc11-elf --with-newlib
+% make all-gcc
+% make maybe-configure-target-libgcc # error will occur but just ignore
+% cp ../Makefile.empty m68hc11-elf/fshort-double/libgcc/Makefile
+% make maybe-all-target-libgcc
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-9.1.0.m68hc11-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-9.1.0.m68hc11-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include    -g -O0 -m68hc11 -O0  -g -O0 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../../host-i686-pc-linux-gnu/gcc -I../../.././libgcc -I../../.././libgcc/. -I../../.././libgcc/../gcc -I../../.././libgcc/../include  -DHAVE_CC_TLS -DUSE_EMUTLS -o _muldi3.o -MT _muldi3.o -MD -MP -MF _muldi3.dep -DL_muldi3 -c ../../.././libgcc/libgcc2.c -fvisibility=hidden -DHIDE_EXPORTS
+In file included from ../../../host-i686-pc-linux-gnu/gcc/tm.h:22,
+                 from ../../.././libgcc/libgcc2.c:29:
+../../.././libgcc/../gcc/config/m68hc11/m68hc11.h:894:36: 警告: ‘enum machine_mode’ declared inside parameter list will not be visible outside of this definition or declaration
+  894 | m68hc11_function_arg_padding (enum machine_mode mode, const_tree type);
+      |                                    ^~~~~~~~~~~~
+../../.././libgcc/libgcc2.c: 関数 ‘__muldi3’ 内:
+../../.././libgcc/libgcc2.c:558:1: エラー: 命令を分割できませんでした
+  558 | }
+      | ^
+(insn 32 170 494 (parallel [
+            (set (mem:SI (pre_dec:HI (reg/f:HI 0 x [217])) [0  S4 A8])
+                (mem/c:SI (plus:HI (reg/f:HI 2 y [218])
+                        (const_int 13 [0xd])) [1 __vl+0 S4 A8]))
+            (clobber (reg:HI 1 d [127]))
+        ]) "../../.././libgcc/libgcc2.c":552:22 20 {*pushsi_internal}
+     (expr_list:REG_INC (reg/f:HI 0 x [217])
+        (expr_list:REG_ARGS_SIZE (const_int 4 [0x4])
+            (nil))))
+during RTL pass: final
+../../.././libgcc/libgcc2.c:558:1: コンパイラ内部エラー: final_scan_insn_1 内、位置 final.c:3074
+0x893a3e4 _fatal_insn(char const*, rtx_def const*, char const*, int, char const*)
+	../.././gcc/rtl-error.c:108
+0x86448f4 final_scan_insn_1
+	../.././gcc/final.c:3074
+0x8644b66 final_scan_insn(rtx_insn*, _IO_FILE*, int, int, int*)
+	../.././gcc/final.c:3153
+0x8642872 final_1
+	../.././gcc/final.c:2021
+0x8646ecc rest_of_handle_final
+	../.././gcc/final.c:4659
+0x86470fa execute
+	../.././gcc/final.c:4737
+
+
+これは gcc-7.1.0 と同じ, そして gcc-8.1.0 とは異なるエラーのように見える.
