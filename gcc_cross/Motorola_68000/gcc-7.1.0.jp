@@ -119,4 +119,359 @@ gcc-6.1.0 では
 
 --x:HI
 
-がきていない. ということは gcc-7.1.0 で行なった修正でどこか間違えている可能性がある.
+がきていない. ということは以下のことが考えられる.
+
+o gcc-7.1.0 で行なった修正でどこか間違えている可能性がある
+o gcc-6.1.0 でたまたま動作していた
+
+いずれにしても
+
+[--x:HI]=[y:HI+0xd];clobber d:HI
+
+の命令が生成される瞬間を捉えたい. 調べてみると以下の emit_insn であった:
+
+
+  if (IS_STACK_PUSH (operands[0]) || IS_STACK_POP (operands[1]))
+    {
+      rtx insn;
+
+      insn = emit_insn (gen_movsi_internal (operands[0], operands[1]));
+      REG_NOTES (insn) = alloc_EXPR_LIST (REG_INC,
+					  stack_pointer_rtx,
+					  REG_NOTES (insn));
+      DONE;
+
+
+ここで作成された insn は 0xb78ea804 で
+
+(gdb) p debug_insn_slim((rtx_insn*)0xb78ea804)
+   32: {[--sp:HI]=[r49:HI+0xc];clobber scratch;}
+      REG_INC sp:HI
+
+となっていてエラーしたときのものとは少し違っている:
+
+   32: {[--x:HI]=[y:HI+0xd];clobber d:HI;}
+      REG_INC x:HI
+      REG_ARGS_SIZE 0x4
+
+エラーしている rtx_insn* は上の部分が 2 度目に実行されたときに作成されたもの.
+
+gcc-6.1.0 の cc1 で同じことを試してみた:
+
+(gdb) b m68hc11.md:660
+(gdb) run
+...
+(gdb) c
+...
+(gdb) p debug_insn_slim((rtx_insn*)0xb78ea828)
+   32: {[--sp:HI]=[r49:HI+0xc];clobber scratch;}
+      REG_INC sp:HI
+
+つまり 2 回目 DONE にきたところでは動作は合致している.
+
+(gdb) delete
+(gdb) b final_scan_insn
+(gdb) command
+>if (insn!=0xb78ea828)
+ >c
+ >end
+>end
+(gdb) c
+...
+ブレークポイントにヒットせず. つまり gcc-6.1.0 では問題の rtx_insn* が
+final_scan_insn に渡されていない.
+
+gcc-7.1.0 で (rtx_insn*)0xb78ea804 が作成されてからエラーするまでどの
+ように変更されるかを調べてみる. 作成された直後は
+
+(gdb) p *(rtx_insn*)0xb78ea804
+$28 = {<rtx_def> = {code = INSN, mode = VOIDmode, jump = 0, call = 0, 
+    unchanging = 0, volatil = 0, in_struct = 0, used = 0, frame_related = 0, 
+    return_val = 0, u2 = {original_regno = 32, insn_uid = 32, 
+      symbol_ref_flags = 32, var_location_status = (unknown: 0x20), 
+      num_elem = 32}, u = {fld = {{rt_int = 0, rt_uint = 0, rt_str = 0x0, 
+          rt_rtx = 0x0, rt_rtvec = 0x0, rt_type = VOIDmode, 
+          rt_addr_diff_vec_flags = {min_align = 0, base_after_vec = 0, 
+            min_after_vec = 0, max_after_vec = 0, min_after_base = 0, 
+            max_after_base = 0, offset_unsigned = 0, scale = 0}, 
+          rt_cselib = 0x0, rt_tree = 0x0, rt_bb = 0x0, rt_mem = 0x0, 
+          rt_constant = 0x0, rt_cfi = 0x0}}, hwint = {0}, reg = {regno = 0, 
+        nregs = 0, unused = 0, attrs = 0x0}, block_sym = {fld = {{rt_int = 0, 
+            rt_uint = 0, rt_str = 0x0, rt_rtx = 0x0, rt_rtvec = 0x0, 
+            rt_type = VOIDmode, rt_addr_diff_vec_flags = {min_align = 0, 
+              base_after_vec = 0, min_after_vec = 0, max_after_vec = 0, 
+              min_after_base = 0, max_after_base = 0, offset_unsigned = 0, 
+              scale = 0}, rt_cselib = 0x0, rt_tree = 0x0, rt_bb = 0x0, 
+            rt_mem = 0x0, rt_constant = 0x0, rt_cfi = 0x0}, {rt_int = 0, 
+            rt_uint = 0, rt_str = 0x0, rt_rtx = 0x0, rt_rtvec = 0x0, 
+            rt_type = VOIDmode, rt_addr_diff_vec_flags = {min_align = 0, 
+              base_after_vec = 0, min_after_vec = 0, max_after_vec = 0, 
+              min_after_base = 0, max_after_base = 0, offset_unsigned = 0, 
+              scale = 0}, rt_cselib = 0x0, rt_tree = 0x0, rt_bb = 0x0, 
+            rt_mem = 0x0, rt_constant = 0x0, rt_cfi = 0x0}}, block = 0x0, 
+        offset = -9223371638637588228}, rv = {cl = 0, decimal = 0, sign = 0, 
+        signalling = 0, canonical = 0, uexp = 0, sig = {0, 0, 3080196348, 
+          2147483740, 4294967295}}, fv = {data = {low = 0, 
+          high = -5217401493790916608}, mode = 2147483740}, hwiv = {elem = {
+          0}}}}, <No data fields>}
+	  
+sizeof(rtx_insn) = 32
+
+なので 4 つの watch ポイントを 16 バイトにセットしようかと思ったが, そんなに単純でもなさそう.
+
+class GTY(()) rtx_insn : public rtx_def
+{
+...
+
+class GTY(()) rtx_debug_insn : public rtx_insn
+{
+...
+class GTY(()) rtx_nonjump_insn : public rtx_insn
+{
+...
+class GTY(()) rtx_jump_insn : public rtx_insn
+{
+...
+class GTY(()) rtx_call_insn : public rtx_insn
+{
+...
+class GTY(()) rtx_jump_table_data : public rtx_insn
+{
+...
+class GTY(()) rtx_barrier : public rtx_insn
+{
+...
+class GTY(()) rtx_code_label : public rtx_insn
+{
+...
+class GTY(()) rtx_note : public rtx_insn
+{
+...
+
+以下は fatal_insn が呼び出されたときの状態.
+
+(gdb) p *(rtx_insn*)0xb78ea804
+$31 = {<rtx_def> = {code = INSN, mode = VOIDmode, jump = 0, call = 0, 
+    unchanging = 0, volatil = 0, in_struct = 0, used = 0, frame_related = 0, 
+    return_val = 0, u2 = {original_regno = 32, insn_uid = 32, 
+      symbol_ref_flags = 32, var_location_status = (unknown: 0x20), 
+      num_elem = 32}, u = {fld = {{rt_int = -1214752764, 
+          rt_uint = 3080214532, rt_str = 0xb7985804 "\t", 
+          rt_rtx = 0xb7985804, rt_rtvec = 0xb7985804, rt_type = 3080214532, 
+          rt_addr_diff_vec_flags = {min_align = 4, base_after_vec = 0, 
+            min_after_vec = 0, max_after_vec = 0, min_after_base = 1, 
+            max_after_base = 1, offset_unsigned = 0, scale = 152}, 
+          rt_cselib = 0xb7985804, rt_tree = 0xb7985804, rt_bb = 0xb7985804, 
+          rt_mem = 0xb7985804, rt_constant = 0xb7985804, 
+          rt_cfi = 0xb7985804}}, hwint = {-5217323545644214268}, reg = {
+        regno = 3080214532, nregs = 224, unused = 12032087, attrs = 0x0}, 
+      block_sym = {fld = {{rt_int = -1214752764, rt_uint = 3080214532, 
+            rt_str = 0xb7985804 "\t", rt_rtx = 0xb7985804, 
+rt_rtvec = 0xb798580--Type <RET> for more, q to quit, c to continue without paging--c
+4, rt_type = 3080214532, rt_addr_diff_vec_flags = {min_align = 4, base_after_vec = 0, min_after_vec = 0, max_after_vec = 0, min_after_base = 1, max_after_base = 1, offset_unsigned = 0, scale = 152}, rt_cselib = 0xb7985804, rt_tree = 0xb7985804, rt_bb = 0xb7985804, rt_mem = 0xb7985804, rt_constant = 0xb7985804, rt_cfi = 0xb7985804}, {rt_int = -1214752800, rt_uint = 3080214496, rt_str = 0xb79857e0 "\t", rt_rtx = 0xb79857e0, rt_rtvec = 0xb79857e0, rt_type = 3080214496, rt_addr_diff_vec_flags = {min_align = 224, base_after_vec = 1, min_after_vec = 1, max_after_vec = 1, min_after_base = 0, max_after_base = 1, offset_unsigned = 0, scale = 152}, rt_cselib = 0xb79857e0, rt_tree = 0xb79857e0, rt_bb = 0xb79857e0, rt_mem = 0xb79857e0, rt_constant = 0xb79857e0, rt_cfi = 0xb79857e0}}, block = 0x0, offset = -9223371638637588228}, rv = {cl = 0, decimal = 1, sign = 0, signalling = 0, canonical = 0, uexp = 48128352, sig = {3080214496, 0, 3080196348, 2147483740, 20}}, fv = {data = {low = 13229420528065337348, high = -5217401493790916608}, mode = 2147483740}, hwiv = {elem = {-5217323545644214268}}}}, <No data fields>}
+(gdb)
+
+
+(gdb) p ((rtx_insn*)0xb78ea804)->u.fld.rt_int
+$34 = -1214752764
+
+とりあえずこの変数が変更されているらしい.
+
+(gdb) p &((rtx_insn*)0xb78ea804)->u.fld.rt_int
+$35 = (int *) 0xb78ea80c
+(gdb)
+
+このアドレスをウォッチしてみる.
+
+static inline void
+link_insn_into_chain (rtx_insn *insn, rtx_insn *prev, rtx_insn *next)
+{
+  SET_PREV_INSN (insn) = prev;
+  SET_NEXT_INSN (insn) = next;  ここでセットしているらしい.
+
+この時点では以下:
+
+(gdb) p debug_insn_slim((rtx_insn*)0xb78ea804)
+   32: {[--sp:HI]=[r49:HI+0xc];clobber scratch;}
+      REG_ARGS_SIZE 0x4
+      REG_INC sp:HI
+$42 = void
+(gdb) 
+
+同様のことを gcc-6.1.0 で試してみたところ同じような結果になっている.
+このことから
+
+o gcc-6.1.0 ではこの後問題の (rtx_insn*)0xb78ea828 が命令列から外される
+o gcc-7.1.0 ではこの後問題の (rtx_insn*)0xb78ea804 が命令列から外されない.
+  だから, エラーになる.
+
+と推測できる.
+
+gcc-6.1.0 で命令列から外されるところをまずは確認してみる.
+
+(gdb) info b
+6       breakpoint     keep y   0x08499c1a ../.././gcc/emit-rtl.c:4139
+	breakpoint already hit 37 times
+        if (insn != 0xb78ea828)
+          c
+        end
+(gdb) c
+...
+
+このブレークポイントにヒットしている.
+
+(gdb) where
+#0  remove_insn (uncast_insn=0xb78ea828) at ../.././gcc/emit-rtl.c:4139
+#1  0x083e9c8a in delete_insn (uncast_insn=0xb78ea828) at ../.././gcc/cfgrtl.c:169
+#2  0x084991b5 in try_split (pat=0xb797e0c0, trial=0xb78ea828, last=1) at ../.././gcc/emit-rtl.c:3817
+#3  0x087277e1 in split_insn (insn=0xb78ea828) at ../.././gcc/recog.c:2865
+#4  0x08727bbf in split_all_insns_noflow () at ../.././gcc/recog.c:3004
+#5  0x08a68586 in m68hc11_reorg () at ../.././gcc/config/m68hc11/m68hc11.c:5388
+
+つまり split_insn が問題の (rtx_insn*)0xb78ea828 に対して実行され, そして
+それに対して remove_insn が呼び出され命令列から外されているということ.
+
+gcc-7.1.0 でも split_insn((rtx_insn*)0xb78ea804) の呼び出しがあると推測される
+のでその瞬間を捉える.
+
+(gdb) b split_insn
+(gdb) command
+>if (insn!=0xb78ea804)
+ >c
+ >end
+>end
+(gdb) c
+...
+
+確かに呼び出されている. しかしこの後 gcc-6.1.0 と違う動作をしていることが
+バグの直接の原因.
+
+gcc-6.1.0 では split_insn が (rtx_insn*)0xb78ea828 に対して 2 回呼び出
+され, 1 回目に対しては remove_insn が呼び出されないが, 2 回目に remove_insn が
+呼び出されている.
+
+一方 gcc-7.1.0 では  split_insn が (rtx_insn*)0xb78ea804 に対して 2 回呼び出
+されていて, 2 回目は delete_insn が呼び出される前に
+
+rtx_insn *
+try_split (rtx pat, rtx_insn *trial, int last)
+{
+...
+  seq = split_insns (pat, trial);
+...
+  if (!seq)
+    return trial;   ここでリターンしている.
+
+gcc-6.1.0 では勿論上の箇所でリターンしていない. ということは seq がな
+ぜ 0 になるかを調査することになる.
+
+insn-recog.c に以下のように追加:
+
+rtx_insn *
+split_insns (rtx x1 ATTRIBUTE_UNUSED, rtx_insn *insn ATTRIBUTE_UNUSED)
+{
+  if (insn == (rtx_insn *) 0xb78ea804)
+    asm("int3");
+
+このブレークポイントは数度ヒットするがいずれも 0 が返されている.
+同様のことを gcc-6.1.0 でも試してみた:
+
+rtx_insn *
+split_insns (rtx x1 ATTRIBUTE_UNUSED, rtx_insn *insn ATTRIBUTE_UNUSED)
+{
+  if (insn == (rtx_insn*)0xb78ea828)
+    asm("int3");
+
+このブレークポイントに 2 回ヒットする. 1 回目は 0 が返され 2 回目に 0xb798df0c
+が返される.
+
+だから gcc-7.1.0 で 2 回目になぜ 0 が返されてしまうのか調べる.
+
+
+                  if (push_operand (operands[0], SImode)
+                      && 
+
+(reload_completed))
+                    return gen_split_17 (insn, operands);
+
+gcc-6.1.0 では 2 回目この条件が成立して gen_split_17 が呼び出されるのだが,
+gcc-7.1.0 では 2 回目この条件が成立していない.
+
+push_operand の戻り値が 0 になっているのが直接の原因.
+
+int
+push_operand (rtx op, machine_mode mode)
+{
+...
+  return XEXP (op, 0) == stack_pointer_rtx;  ここ
+
+gcc-6.1.0 では == が成立しているが, gcc-7.1.0 では成立していないのが直接の原因.
+
+(gdb) p debug_insn_slim((rtx_insn*)0xb78ea828)
+   32: {[--sp:HI]=[y:HI+0xd];clobber d:HI;}            gcc-6.1.0
+      REG_ARGS_SIZE 0x4
+$10 = void
+(gdb)
+
+(gdb) p debug_insn_slim((rtx_insn *) 0xb78ea804)
+   32: {[--x:HI]=[y:HI+0xd];clobber d:HI;}             gcc-7.1.0
+      REG_INC x:HI
+      REG_ARGS_SIZE 0x4
+$14 = void
+(gdb)
+
+つまり --x:HI が原因で --sp:HI が正解ということ.
+
+(rtx_insn *) 0xb78ea804 が生成された時点では
+
+(gdb) p debug_insn_slim((rtx_insn*)0xb78ea804)
+   32: {[--sp:HI]=[r49:HI+0xc];clobber scratch;}
+      REG_INC sp:HI
+
+であったわけだから, どこかで --sp:HI が --x:HI に変更されたことになる.
+
+
+static bool
+process_addr_reg (rtx *loc, bool check_only_p, rtx_insn **before, rtx_insn **after,
+		  enum reg_class cl)
+{
+...
+
+    }
+  *loc = new_reg;             ここで変更されている.
+  if (after != NULL)
+
+この函数は lra_constraints から呼び出されている.
+一方 gcc-6.1.0 でもこの函数はあるのだが, 呼び出されてはいない.
+
+つまり gcc-7.1.0 でこの函数が呼び出された結果 --sp:HI が --x:HI に変更されて意図しない
+動作になっている.
+
+lra_constraints が gcc-7.1.0 で呼び出されて, gcc-6.1.0 では呼び出されない原因を調査
+してみる.
+
+lra_constraints は lra から呼び出されているが gcc-6.1.0 ではこれが呼び出されていない.
+
+
+  if (ira_use_lra_p)
+
+gcc-7.1.0 では上の条件が成立して lra が呼び出されている. 一方 gcc-6.1.0 は成立していない
+ので lra が呼び出されていない.
+
+ira_use_lra_p がセットされているのは以下:
+
+  ira_use_lra_p = targetm.lra_p ();
+
+そしてこのときの函数の値は以下:
+
+(gdb) p targetm.lra_p
+$71 = (bool (*)(void)) 0x881d8fd <default_lra_p()>
+
+以下を m68hc11.c に追加して正常終了を確認した.
+
++static bool m68hc11_target_lar_p(){ return false; }
+
++#undef TARGET_LRA_P
++#define TARGET_LRA_P m68hc11_target_lar_p
+
+struct gcc_target targetm = TARGET_INITIALIZER;
