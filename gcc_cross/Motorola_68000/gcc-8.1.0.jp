@@ -15,41 +15,25 @@ gcc-8.1.0 m68hc11-elf-gcc のインストール
 % make maybe-configure-target-libgcc # error will occur but just ignore
 % cp ../Makefile.empty m68hc11-elf/fshort-double/libgcc/Makefile
 % make maybe-all-target-libgcc
-
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-8.1.0.m68hc11-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-8.1.0.m68hc11-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include    -g -O0 -m68hc11 -O0  -g -O0 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../../host-i686-pc-linux-gnu/gcc -I../../.././libgcc -I../../.././libgcc/. -I../../.././libgcc/../gcc -I../../.././libgcc/../include  -DHAVE_CC_TLS -DUSE_EMUTLS -o _muldi3.o -MT _muldi3.o -MD -MP -MF _muldi3.dep -DL_muldi3 -c ../../.././libgcc/libgcc2.c -fvisibility=hidden -DHIDE_EXPORTS
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-8.1.0.m68hc11-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-8.1.0.m68hc11-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include    -g -O0 -m68hc11 -O0  -g -O0 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../../host-i686-pc-linux-gnu/gcc -I../../.././libgcc -I../../.././libgcc/. -I../../.././libgcc/../gcc -I../../.././libgcc/../include  -DHAVE_CC_TLS -DUSE_EMUTLS -o _divdi3.o -MT _divdi3.o -MD -MP -MF _divdi3.dep -DL_divdi3 -c ../../.././libgcc/libgcc2.c \
+  -fexceptions -fnon-call-exceptions -fvisibility=hidden -DHIDE_EXPORTS
 In file included from ../../../host-i686-pc-linux-gnu/gcc/tm.h:22,
                  from ../../.././libgcc/libgcc2.c:29:
 ../../.././libgcc/../gcc/config/m68hc11/m68hc11.h:894:36: 警告: ‘enum machine_mode’ declared inside parameter list will not be visible outside of this definition or declaration
  m68hc11_function_arg_padding (enum machine_mode mode, const_tree type);
                                     ^~~~~~~~~~~~
-during RTL pass: reload
-../../.././libgcc/libgcc2.c: 関数 ‘__muldi3’ 内:
-../../.././libgcc/libgcc2.c:558:1: コンパイラ内部エラー: lra_set_insn_recog_data 内、位置 lra.c:996
+../../.././libgcc/libgcc2.c: 関数 ‘__divdi3’ 内:
+../../.././libgcc/libgcc2.c:1250:1: エラー: unable to find a register to spill in class ‘D_REGS’
  }
  ^
-0x8797b56 lra_set_insn_recog_data(rtx_insn*)
-	../.././gcc/lra.c:996
-0x87960fa lra_get_insn_recog_data
-	../.././gcc/lra-int.h:499
-0x879913d lra_update_insn_regno_info(rtx_insn*)
-	../.././gcc/lra.c:1626
-0x8799621 lra_push_insn_1
-	../.././gcc/lra.c:1777
-0x8799650 lra_push_insn(rtx_insn*)
-	../.././gcc/lra.c:1785
-0x8799746 push_insns
-	../.././gcc/lra.c:1828
-0x87999ed lra_process_new_insns(rtx_insn*, rtx_insn*, rtx_insn*, char const*)
-	../.././gcc/lra.c:1886
-0x87acd30 curr_insn_transform
-	../.././gcc/lra-constraints.c:4409
-0x87ae0fe lra_constraints(bool)
-	../.././gcc/lra-constraints.c:4898
-0x879aba7 lra(_IO_FILE*)
-	../.././gcc/lra.c:2420
-0x8752a5a do_reload
-	../.././gcc/ira.c:5465
-0x8752ea2 execute
-	../.././gcc/ira.c:5649
-
-これは gcc-7.1.0 とは異なるエラー.
+../../.././libgcc/libgcc2.c:1250:1: エラー: this is the insn:
+(insn 209 208 210 31 (parallel [
+            (set (reg:SI 0 x)
+                (reg:SI 1 d [223]))
+            (clobber (scratch:HI))
+        ]) "../../.././libgcc/libgcc2.c":1082 21 {movsi_internal}
+     (expr_list:REG_DEAD (reg:SI 1 d [223])
+        (nil)))
+../../.././libgcc/libgcc2.c:1250: 前のエラーにより混乱していますので、脱出します
+make[3]: *** [Makefile:535: _divdi3.o] エラー 1
