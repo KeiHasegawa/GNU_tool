@@ -15,6 +15,19 @@ gcc-7.1.0 m68hc11-elf-gcc のインストール
 % make maybe-configure-target-libgcc # error will occur but just ignore.
 % cp ../Makefile.empty m68hc11-elf/fshort-double/libgcc/Makefile
 % make maybe-all-target-libgcc
+% make install-gcc
+% make maybe-install-target-libgcc
+
+gcc-6.1.0 から gcc-7.1.0 で m68hc11.c に以下を追加した.
+
++static bool m68hc11_target_lar_p(){ return false; }
+
++#undef TARGET_LRA_P
++#define TARGET_LRA_P m68hc11_target_lar_p
+
+struct gcc_target targetm = TARGET_INITIALIZER;
+
+この修正なしで libgcc をインストールすると以下のエラーが発生してしまう:
 
 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-7.1.0.m68hc11-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-7.1.0.m68hc11-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include    -g -O0 -m68hc11 -O0  -g -O0 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../../host-i686-pc-linux-gnu/gcc -I../../.././libgcc -I../../.././libgcc/. -I../../.././libgcc/../gcc -I../../.././libgcc/../include  -DHAVE_CC_TLS -DUSE_EMUTLS -o _muldi3.o -MT _muldi3.o -MD -MP -MF _muldi3.dep -DL_muldi3 -c ../../.././libgcc/libgcc2.c -fvisibility=hidden -DHIDE_EXPORTS
 ../../.././libgcc/libgcc2.c: 関数 ‘__muldi3’ 内:
