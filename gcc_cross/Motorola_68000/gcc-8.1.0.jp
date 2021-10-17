@@ -300,3 +300,51 @@ $1 = void
 (gdb)
 
 のようになっているので単純に比較することができない.
+
+(gdb) b find_reload_regs
+(gdb) command
+> p debug_insn_slim(chain->insn)
+> end
+(gdb) run
+
+のように find_reload_regs を観測ポイントにしてみた
+
+% diff a.log /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-7.1.0.m68hc11-elf/host-i686-pc-linux-gnu/gcc/a.log
+
+最初の意味のある差分は以下:
+
+> $22 = void
+> 
+> Breakpoint 1, find_reload_regs (chain=0x93fb4e8) at ../.././gcc/reload1.c:1958
+>    32: {[*sframe:HI+0xcc]=[*sframe:HI+0x4];clobber scratch;}
+> $23 = void
+> 
+> Breakpoint 1, find_reload_regs (chain=0x93fb498) at ../.././gcc/reload1.c:1958
+>    34: cc0=cmp([*sframe:HI+0xcc],0)
+84,85c92,93
+< Breakpoint 1, find_reload_regs (chain=0x965c218) at ../.././gcc/reload1.c:1958
+<    32: {[*sframe:HI+0x68]=[*sframe:HI+0x4];clobber scratch;}
+
+できている gcc-7.1.0 は
+
+>    32: {[*sframe:HI+0xcc]=[*sframe:HI+0x4];clobber scratch;}
+>    34: cc0=cmp([*sframe:HI+0xcc],0)
+
+gcc-8.1.0 は
+
+<    32: {[*sframe:HI+0x68]=[*sframe:HI+0x4];clobber scratch;}
+<    34: cc0=cmp([*sframe:HI+0x68],0)
+
+のように違いがでているが, 意味的に違いはなさそう.
+しかし, オフセット 0xcc と 0x68 のように違いが出る理由が不明ではある.
+
+この違いが出る理由を調べる価値はありそう.
+
+gcc-8.1.0 では
+
+(gdb) p debug_insn_slim((rtx_insn *) 0xb7999fc0)
+   32: {[r49:HI+0x68]=[r49:HI+0x4];clobber scratch;}
+$84 = void
+(gdb)
+
+のように生成される.
