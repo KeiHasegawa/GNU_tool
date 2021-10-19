@@ -839,3 +839,377 @@ __d0_161 = d1_155 & 65535;
 >    34: cc0=cmp([*sframe:HI+0xcc],0)
 
 はとりあえず無視して良さそう.
+gcc-8.1.0.jp の続き
+
+% cat xx
+b find_reload_regs
+command
+silent
+p debug_insn_slim(chain->insn)
+c
+end
+%
+
+(gdb) source xx
+(gdb) run -quiet a.c
+
+ここで a.c は再現させる簡単なソース(gcc-8.1.0.jp 参照)
+
+gcc-7.1.0 との差分
+
+<    82: {d:SI=[*sframe:HI+0x68];clobber scratch;}         gcc-8.1.0
+---
+>    82: {*_.d1:SI=[*sframe:HI+0xcc];clobber scratch;}     gcc-7.1.0
+
+がなぜ出るのか調査する. ここで 0x68 と 0xcc との差分は無視して
+
+d:SI           gcc-8.1.0
+*_.d1:SI       gcc-7.1.0
+
+の差分に着目する.
+まず gcc-8.1.0 で (rtx_insn *) 0xb79ac1d4 がどのタイミングで生成されているかを調べ
+てみる.
+
+insn-emit.c から #line の行を削除することでデバッグしやすくなる.
+
+
+/* ../.././gcc/config/m68hc11/m68hc11.md:5280 */
+rtx
+gen_lshrsi3 (rtx operand0,
+	rtx operand1,
+	rtx operand2)
+{
+  rtx_insn *_val = 0;
+  start_sequence ();
+  emit (gen_rtx_PARALLEL (VOIDmode,              ここで生成されていた
+	gen_rtvec (2,
+		gen_rtx_SET (operand0,
+	operand1),
+		gen_rtx_CLOBBER (VOIDmode,
+	gen_rtx_SCRATCH (HImode)))), true);
+
+生成された直後は
+
+(gdb) p debug_insn_slim((rtx_insn *) 0xb79ac1d4)
+   82: {r60:SI=[r49:HI+0x68];clobber scratch;}
+
+のようになっていた.
+
+同様のことを gcc-7.1.0 で調べてみた. (rtx_insn *) 0xb79a61b0 がどこで
+生成されるか調べたところ gcc-8.1.0 と同じで, 生成された直後は
+
+(gdb) p debug_insn_slim((rtx_insn *) 0xb79a61b0)
+   82: {r60:SI=[r49:HI+0xcc];clobber scratch;}
+
+のようになっている. r60 の 60 は以下のようにしてアクセスできる
+
+(gdb) p REGNO(SET_DEST(XVECEXP(PATTERN((rtx_insn*)0xb79ac1d4),0,0)))
+$324 = 60
+
+(gdb) p &REG_CHECK(SET_DEST(XVECEXP(PATTERN((rtx_insn*)0xb79ac1d4),0,0)))->regno
+$20 = (unsigned int *) 0xb79a72d8
+
+なのでここにウォッチポイントを置いてみる. 60 -> 1 に書き替えられていた:
+
+static void
+alter_reg (int i, int from_reg, bool dont_share_p)
+{
+...
+  /* Modify the reg-rtx to contain the new hard reg
+     number or else to contain its pseudo reg number.  */
+  SET_REGNO (regno_reg_rtx[i],
+	     reg_renumber[i] >= 0 ? reg_renumber[i] : i);
+
+同じことを gcc-7.1.0 でも確かめてみた
+
+(gdb) p REGNO(SET_DEST(XVECEXP(PATTERN((rtx_insn*)0xb79a61b0),0,0)))
+$5796 = 60
+(gdb) p &REG_CHECK(SET_DEST(XVECEXP(PATTERN((rtx_insn*)0xb79a61b0),0,0)))->regno
+$5797 = (unsigned int *) 0xb799f274
+
+そしてここをウォッチしてみたところ 60 -> 14 に書き替えられていた.
+
+D_REGS = 1
+A_REGS = 14 /* 16-bit address register (X, Y, Z) */
+
+というわけだ. なので明らかにまずそう.
+
+reg_renumber[60] の期待値が 14 にならない原因を調査する.
+
+(gdb) p &reg_renumber[60]
+$23 = (short *) 0x95cccc0
+
+なのでここをウォッチしてみる.
+
+
+static void
+setup_reg_renumber (void)
+{
+...
+      hard_regno = ALLOCNO_HARD_REGNO (a);
+      regno = ALLOCNO_REGNO (a);
+      reg_renumber[regno] = (hard_regno < 0 ? -1 : hard_regno);
+
+ここで reg_renumber[60] を 1 にセットしている.
+同じことを gcc-7.1.0 でも試してみる. 動作は同じだが reg_renumber[60]
+を 14 にセットしている.
+
+ということは... ALLOCNO_HARD_REGNO が問題. これはマクロで単純に
+ALLOCNO_HARD_REGNO (a) は a->hard_regno に展開される.
+
+&a->hard_regno のアドレスをウォッチしてみたところ
+
+ira-color.c:
+
+static void
+fast_allocation (void)
+{
+...
+	  ALLOCNO_HARD_REGNO (a) = hard_regno;  ここでセットしている.
+
+
+この函数の最初の呼び出しで gcc-8.1.0 では hard_regno = 1 として
+gcc-7.1.0 では hard_regno = 14 として書き込んでいる.
+
+
+gcc-8.1.0 ではこうすることでその書き替えの瞬間を捉えられている:
+	  if (a == (ira_allocno_t) 0x95d6c78)
+	    asm("int3");
+	  ALLOCNO_HARD_REGNO (a) = hard_regno;  ここでセットしている.
+
+
+gcc-7.1.0 では以下:
+	  if (a == (ira_allocno_t) 0x93861d8)
+	    asm("int3");
+	  ALLOCNO_HARD_REGNO (a) = hard_regno;
+
+
+hard_regno はこのすぐ上の行で計算されていて short [36][48] の型をもつ
+
+default_target_ira.x_ira_class_hard_regs[][]
+
+から計算されている.
+
+gcc-8.1.0 で aclass = G_REGS j = 0 で hard_regno = 1  と算出されている.
+gcc-7.1.0 で aclass = S_REGS j = 0 で hard_regno = 14 と算出されている.
+
+ggcc-8.1.0 で 
+default_target_ira.x_ira_class_hard_regs[S_REGS][0] = 14
+になっているから aclass の計算を間違えているらしい. 期待値は S_REGS.
+
+
+aclass = ALLOCNO_CLASS (a);  // aclass = a->aclass
+
+のように計算されるようである. だから
+
+gcc-8.1.0 ならば
+((ira_allocno_t) 0x95d6c78)->aclass
+がどこで計算されているかを調査する. 現状は G_REGS だが S_REGS が期待値.
+gcc-7.1.0 ならば
+((ira_allocno_t) 0x93861d8)->aclass
+
+
+
+void
+ira_set_allocno_class (ira_allocno_t a, enum reg_class aclass)
+{
+  ira_allocno_object_iterator oi;
+  ira_object_t obj;
+
+  ALLOCNO_CLASS (a) = aclass;  ここで gcc-8.1.0 では G_REGS をセットしていた.
+
+そして上は以下から呼び出されていた:
+
+  FOR_EACH_ALLOCNO (a, ai)
+    {
+      i = ALLOCNO_NUM (a);
+      regno = ALLOCNO_REGNO (a);
+      aclass = regno_aclass[regno];                         ここで aclass を計算
+      cost_classes_ptr = regno_cost_classes[regno];
+      ira_assert (pref[i] == NO_REGS || aclass != NO_REGS);
+      ALLOCNO_MEMORY_COST (a) = COSTS (costs, i)->mem_cost;
+      ira_set_allocno_class (a, aclass);
+
+上の regno は 60 だった. これは期待通り.
+
+regno_aclass[60] に値をセットしているのは以下:
+
+	  if ((new_class
+	       = (reg_class) (targetm.ira_change_pseudo_allocno_class
+			      (i, regno_aclass[i], best))) != regno_aclass[i])
+
+
+(gdb) p targetm.ira_change_pseudo_allocno_class
+$31 = (reg_class_t (*)(int, reg_class_t, reg_class_t)) 0x891df1b
+     <default_ira_change_pseudo_allocno_class(int, int, int)>
+
+これは gcc-8.1.0 でも gcc-7.1.0 でも同じ. しかし戻り値が異なっているということか.
+同様のことを gcc-7.1.0 で行なってみたところ
+
+regno_aclass[60] に値をセットしているのは以下:
+
+	    regno_aclass[i] = ira_allocno_class_translate[best];
+
+gcc-8.1.0 と動作が明らかに異なっている.
+
+gcc-7.1.0 では
+
+	  else if (!optimize && !targetm.class_likely_spilled_p (best))
+
+の条件が成立していた. best = S_REGS で呼び出されている. 一方 gcc-8.1.0 では
+best = D_OR_X_REGS で呼び出されている. これが動作の違いが出ている原因.
+
+ira-costs.c:
+
+static void
+find_costs_and_classes (FILE *dump_file)
+{
+...
+	  for (k = 0; k < cost_classes_ptr->num; k++)
+
+gcc-8.1.0 では cost_classes_ptr->num = 12 であるのに対して
+gcc-7.1.0 では cost_classes_ptr->num = 3
+
+
+	  cost_classes_t cost_classes_ptr = regno_cost_classes[i];
+	  if (i == 60)
+	    asm("int3");
+
+ここで停止して
+
+gcc-8.1.0 
+(gdb) p *cost_classes_ptr
+$41 = {num = 12, classes = {D_REGS, X_REGS, D_OR_X_REGS, A_REGS, A_OR_D_REGS, 
+    S_REGS, D_OR_S_REGS, X_OR_S_REGS, Z_OR_S_REGS, D_OR_X_OR_S_REGS, 
+    A_OR_S_REGS, G_REGS, NO_REGS <repeats 24 times>}, index = {-1, -1, -1, 
+    -1, -1, -1, -1, -1, -1, -1, 2, 0, 0, 1, 3, 1, -1, 2, 4, 3, 4, 5, 6, 7, 5, 
+    8, 5, 9, 6, 6, 10, 11, -1, 4, 11, 11}, hard_regno_index = {1, 0, 3, -1, 
+    -1, -1, -1, -1, 3, -1, -1, -1, -1, -1, 5, 5, 5, 5, -1 <repeats 30 times>}}
+
+gcc-7.1.0
+(gdb) p *cost_classes_ptr
+$21 = {num = 3, classes = {X_REGS, S_REGS, X_OR_S_REGS, 153851272, 153851336, 
+    153851408, 153918936, 153919016, 153919064, 153919136, 153919208, 
+    153127200, 153127144, 153851480, 153918440, 153126976, 153918520, 
+    153126864, 153918568, 153918616, 153918664, 153850264, 153933840, 
+    153933800, 153126528, 1032, 1032, NO_REGS, NO_REGS, NO_REGS, NO_REGS, 
+    NO_REGS, NO_REGS, NO_REGS, NO_REGS, NO_REGS}, index = {-1, -1, -1, -1, 
+    -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, 0, 0, -1, 0, 0, 0, 0, 1, 1, 2, 1, 
+    1, 1, 2, 1, 1, 2, 2, -1, 0, 2, 2}, hard_regno_index = {0, 
+    -1 <repeats 13 times>, 1, 1, 1, 1, -1 <repeats 30 times>}}
+
+このように違いが出ている.
+
+(gdb) p &regno_cost_classes[60]->num
+$43 = (int *) 0x9612660
+
+このアドレスをウォッチしてみた:
+
+static cost_classes_t
+setup_cost_classes (cost_classes_t from)
+{
+  cost_classes_t classes_ptr;
+
+  classes_ptr = (cost_classes_t) ira_allocate (sizeof (struct cost_classes));
+  classes_ptr->num = from->num;
+  for (int i = 0; i < from->num; i++)
+    classes_ptr->classes[i] = from->classes[i];  ここでセットしている.
+  complete_cost_classes (classes_ptr);
+  return classes_ptr;
+}
+
+セットしているのは gcc-7.1.0 でも同じ場所.
+
+(gdb) b ira-costs.c:307
+(gdb) run -quiet a.c
+...
+(gdb) p narrow
+(gdb) c
+...
+(gdb) p narrow
+
+
+この結果を gcc-8.1.0 と gcc-7.1.0 と比較してみたところ 1 回目の narrow は同じだが
+2 回目は
+
+gcc-8.1.0
+$53 = {num = 12, classes = {D_REGS, X_REGS, D_OR_X_REGS, A_REGS, A_OR_D_REGS, 
+    S_REGS, D_OR_S_REGS, X_OR_S_REGS, Z_OR_S_REGS, D_OR_X_OR_S_REGS, 
+    A_OR_S_REGS, G_REGS, X_OR_S_REGS, Y_OR_S_REGS, Z_OR_S_REGS, 
+    D_OR_X_OR_S_REGS, D_OR_Y_OR_S_REGS, A_OR_S_REGS, G_REGS, 
+    NO_REGS <repeats 17 times>}, index = {0 <repeats 36 times>}, 
+  hard_regno_index = {0 <repeats 48 times>}}
+
+gcc-7.1.0
+$36 = {num = 3, classes = {X_REGS, S_REGS, X_OR_S_REGS, Z_REGS, D_OR_X_REGS, 
+    D_OR_Y_REGS, X_OR_Y_REGS, A_REGS, X_OR_Y_OR_D_REGS, A_OR_D_REGS, S_REGS, 
+    D_OR_S_REGS, X_OR_S_REGS, Y_OR_S_REGS, Z_OR_S_REGS, D_OR_X_OR_S_REGS, 
+    D_OR_Y_OR_S_REGS, A_OR_S_REGS, G_REGS, NO_REGS <repeats 17 times>}, 
+  index = {0 <repeats 36 times>}, hard_regno_index = {0 <repeats 48 times>}}
+
+のように違いが出ている.
+
+
+cl = D_OR_SP_REGS = 12, mode == E_SImode = 6
+
+で
+
+gcc-8.1.0 で contains_reg_of_mode[cl][mode] = 1
+gcc-7.1.0 で contains_reg_of_mode[cl][mode] = 0
+
+      if (!contains_reg_of_mode[cl][mode])
+	continue;
+
+ここで動作に違いが出ている.
+
+      for (i = 0; i < N_REG_CLASSES; i++)
+	if ((targetm.class_max_nregs ((reg_class_t) i, (machine_mode) m)
+	     <= reg_class_size[i])
+	    && hard_reg_set_intersect_p (ok_regs, reg_class_contents[i]))
+	  {
+	     contains_reg_of_mode[i][m] = 1;  ここでセットされている.
+
+gcc-7.1.0 では hard_reg_set_intersect_p (ok_regs, reg_class_contents[i]) が
+false なので 1 がセットされていない.
+
+gcc-8.1.0 では
+(gdb) p/x ok_regs
+$18 = {0x3c107, 0}
+(gdb) p reg_class_contents[i]
+$19 = {10, 0}
+(gdb) 
+
+gcc-7.1.0 では
+(gdb) p/x ok_regs
+$16 = {0x3c001, 0}
+(gdb) p reg_class_contents[i]
+$17 = {10, 0}
+(gdb)
+
+
+gcc-8.1.0 の ok_regs[0] の値が異なっているのが原因.
+(gdb) set ok_regs[0]=245761
+(gdb) p hard_reg_set_intersect_p (ok_regs, reg_class_contents[i])
+$21 = false
+(gdb)
+を確認した.
+
+だから ok_regs[0] = 246023 になっている原因を調査する.
+
+
+gcc-8.1.0
+	if (!TEST_HARD_REG_BIT (fixed_nonglobal_reg_set, j)
+	    && targetm.hard_regno_mode_ok (j, (machine_mode) m))
+
+gcc-7.1.0
+	if (!TEST_HARD_REG_BIT (fixed_nonglobal_reg_set, j)
+	    && HARD_REGNO_MODE_OK (j, (machine_mode) m))
+
+ここで違いが出ていた.
+
+m68hc11.c に以下を追加することで回避することができる.
+
++#undef TARGET_HARD_REGNO_MODE_OK
++#define TARGET_HARD_REGNO_MODE_OK hard_regno_mode_ok
+
+struct gcc_target targetm = TARGET_INITIALIZER;
