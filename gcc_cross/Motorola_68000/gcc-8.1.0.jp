@@ -231,28 +231,6 @@ __udivmoddi4 (UDItype n, UDItype d, UDItype *rp)
   return ww.ll;
 }
 
-DItype
-__divdi3 (DItype u, DItype v)
-{
-  SItype c = 0;
-  DWunion uu = {.ll = u};
-  DWunion vv = {.ll = v};
-  DItype w;
-
-  if (uu.s.high < 0)
-    c = ~c,
-    uu.ll = -uu.ll;
-  if (vv.s.high < 0)
-    c = ~c,
-    vv.ll = -vv.ll;
-
-  w = __udivmoddi4 (uu.ll, vv.ll, (UDItype *) 0);
-  if (c)
-    w = -w;
-
-  return w;
-}
-
 gdb から実行してエラーを再現できている.
 
 M-x gdb
@@ -301,50 +279,563 @@ $1 = void
 
 のようになっているので単純に比較することができない.
 
-(gdb) b find_reload_regs
-(gdb) command
-> p debug_insn_slim(chain->insn)
-> end
-(gdb) run
+% cat xx
+b find_reload_regs
+command
+silent
+p debug_insn_slim(chain->insn)
+c
+end
+%
+
+(gdb) source xx
+(gdb) run -quiet a.c
 
 のように find_reload_regs を観測ポイントにしてみた
 
-% diff a.log /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-7.1.0.m68hc11-elf/host-i686-pc-linux-gnu/gcc/a.log
+% diff /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-{8,7}.1.0.m68hc11-elf/host-i686-pc-linux-gnu/gcc/b.log
 
 最初の意味のある差分は以下:
 
-> $22 = void
-> 
-> Breakpoint 1, find_reload_regs (chain=0x93fb4e8) at ../.././gcc/reload1.c:1958
->    32: {[*sframe:HI+0xcc]=[*sframe:HI+0x4];clobber scratch;}
-> $23 = void
-> 
-> Breakpoint 1, find_reload_regs (chain=0x93fb498) at ../.././gcc/reload1.c:1958
->    34: cc0=cmp([*sframe:HI+0xcc],0)
-84,85c92,93
-< Breakpoint 1, find_reload_regs (chain=0x965c218) at ../.././gcc/reload1.c:1958
 <    32: {[*sframe:HI+0x68]=[*sframe:HI+0x4];clobber scratch;}
-
-できている gcc-7.1.0 は
-
+---
 >    32: {[*sframe:HI+0xcc]=[*sframe:HI+0x4];clobber scratch;}
->    34: cc0=cmp([*sframe:HI+0xcc],0)
-
-gcc-8.1.0 は
-
-<    32: {[*sframe:HI+0x68]=[*sframe:HI+0x4];clobber scratch;}
+49c49
 <    34: cc0=cmp([*sframe:HI+0x68],0)
+---
+>    34: cc0=cmp([*sframe:HI+0xcc],0)
 
-のように違いがでているが, 意味的に違いはなさそう.
-しかし, オフセット 0xcc と 0x68 のように違いが出る理由が不明ではある.
+gcc-8.1.0 ではオフセット 0x68 だが
+gcc-7.1.0 ではオフセット 0xcc になっている.
+これ自体はオフセットが異なっているだけだから問題なさそうだが, なぜ差分が出ているかは不明.
 
-この違いが出る理由を調べる価値はありそう.
+また以下のように差分が出ている.
+
+<    82: {d:SI=[*sframe:HI+0x68];clobber scratch;}
+---
+>    82: {*_.d1:SI=[*sframe:HI+0xcc];clobber scratch;}
+
+gcc-8.1.0 では d:SI だが
+gcc-7.1.0 では *_.d1:SI なので
+おそらくこれは何かが異なっている.
+
+まずは最初のオフセットでなぜ違いが出るのかを確認したい. もしそれが問題ないならば
+2 つ目の d:SI と *_.d1:SI との違いがなぜ出るかを確認したい.
+
+gcc-8.1.0 で
+32: {[*sframe:HI+0x68]=[*sframe:HI+0x4];clobber scratch;}
+が生成される瞬間を捉える. この命令は
+
+(rtx_insn *) 0xb7997dec
+
+に配置されている. このアドレスにウォッチポイントをセットしてみた.
+
+insn-emit.c
+rtx
+gen_movsi (rtx operand0,
+	rtx operand1)
+{
+...
+  emit (gen_rtx_PARALLEL (VOIDmode,
+	gen_rtvec (2,
+		gen_rtx_SET (operand0,
+	operand1),
+		gen_rtx_CLOBBER (VOIDmode,
+	gen_rtx_SCRATCH (HImode)))), false);  ここで生成していた
+
+おそらく operand0 が [*sframe:HI+0x68] で
+operand1 が [*sframe:HI+0x4] らしい.
+
+gen_movsi は以下の部分から結果的に呼び出されている.
+
+expr.c
+  last_insn = emit_move_insn_1 (x, y);
+
+そしてこれは gcc-7.1.0 でも同じであった.
+
+% cat yy
+b emit_move_insn
+command
+if (x!=0xb79a9b50 || y!=0xb79a9b70)     # gcc-8.1.0 の場合
+c
+end
+end
+
+(gdb) source yy
+(gdb) run
+...
+emit_mov_insn で停止
+
+emit_move_insn_1 (x, y)
+
+の呼び出しまでどの条件も成立していない. これは gcc-7.1.0 でも同じ状況.
+
+% cat zz
+b expand_assignment
+command
+if (to!=0xb799d9d8 || from!=0xb799d938)     # gcc-8.1.0 の場合
+c
+end
+end
+
+(gdb) source zz
+(gdb) run
+
+expand_assignment で停止.
+
+  result = store_expr_with_bounds (from, to_rtx, 0, nontemporal, false, to);
+
+の呼び出しで問題の rtx_insn* を生成している.
+問題の (rtx)0xb79a9b50 は
+
+  to_rtx = expand_expr (to, NULL_RTX, VOIDmode, EXPAND_WRITE);
+
+で生成されている.
+
+expand_assignment に渡された to に対して
+
+gcc-8.1.0 では
+(gdb) p debug_tree(to)
+ <ssa_name 0xb799d9d8
+    type <integer_type 0xb795a960 USItype sizes-gimplified public unsigned SI
+        size <integer_cst 0xb78e65a0 constant 32>
+        unit-size <integer_cst 0xb78e65b4 constant 4>
+        align:8 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb7ae1420 precision:32 min <integer_cst 0xb78e6758 0> max <integer_cst 0xb78e6744 4294967295> context <translation_unit_decl 0xb79821c8 a.c>>
+    var <var_decl 0xb797e498 __xr>
+    def_stmt __xr_145 = d0_141;
+    version:145>
+$17 = void
+(gdb)
+
+gcc-7.1.0 では
+(gdb) p debug_tree(to)
+ <ssa_name 0xb799d708
+    type <integer_type 0xb7966540 USItype sizes-gimplified public unsigned SI
+        size <integer_cst 0xb78e558c constant 32>
+        unit size <integer_cst 0xb78e55a0 constant 4>
+        align 8 symtab 0 alias set -1 canonical type 0xb7ae1420 precision 32 min <integer_cst 0xb78e5744 0> max <integer_cst 0xb78e5730 4294967295> context <translation_unit_decl 0xb797b1c8 a.c>>
+    var <var_decl 0xb7978498 __xr>
+    def_stmt __xr_282 = d0_141;
+    version 282>
+$3 = void
+(gdb)
+
+ここでは明確な違いが出ていないと判断した. ということは
+
+  to_rtx = expand_expr (to, NULL_RTX, VOIDmode, EXPAND_WRITE);
+
+に対して
+gcc-8.1.0 では [*sframe:HI+0x68] が生成されていて
+gcc-7.1.0 では [*sframe:HI+0xcc] が生成されているということになる.
+
+再現させるソースに
+
+    USItype __xr = ...
+
+という宣言がいくつかあるがおそらくこれのいずれか.
+
+expand_expr が
+gcc-8.1.0 だと 0xb799d9d8 で呼び出されたとき
+gcc-7.1.0 だと 0xb799d708 で呼び出されたときで比較してみる.
+
+
+
+      exp = SSA_NAME_VAR (ssa_name);
+
+これを実行したとき
+
+gcc-8.1.0
+(gdb) p debug_tree(exp)
+ <var_decl 0xb797e498 __xr
+    type <integer_type 0xb795a960 USItype sizes-gimplified public unsigned SI
+        size <integer_cst 0xb78e65a0 constant 32>
+        unit-size <integer_cst 0xb78e65b4 constant 4>
+        align:8 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb7ae1420 precision:32 min <integer_cst 0xb78e6758 0> max <integer_cst 0xb78e6744 4294967295> context <translation_unit_decl 0xb79821c8 a.c>>
+    unsigned read SI a.c:42:17 size <integer_cst 0xb78e65a0 32> unit-size <integer_cst 0xb78e65b4 4>
+    align:8 warn_if_not_align:0 context <function_decl 0xb796d380 __udivmoddi4>
+    (mem/c:SI (plus:HI (reg/f:HI 49 virtual-stack-vars)
+        (const_int 104 [0x68])) [1 __xr+0 S4 A8]) chain <var_decl 0xb797e4ec __a>>
+
+gcc-7.1.0
+(gdb) p debug_tree(exp)
+ <var_decl 0xb7978498 __xr
+    type <integer_type 0xb7966540 USItype sizes-gimplified public unsigned SI
+        size <integer_cst 0xb78e558c constant 32>
+        unit size <integer_cst 0xb78e55a0 constant 4>
+        align 8 symtab 0 alias set -1 canonical type 0xb7ae1420 precision 32 min <integer_cst 0xb78e5744 0> max <integer_cst 0xb78e5730 4294967295> context <translation_unit_decl 0xb797b1c8 a.c>>
+    unsigned SI file a.c line 42 col 17 size <integer_cst 0xb78e558c 32> unit size <integer_cst 0xb78e55a0 4>
+    align 8 context <function_decl 0xb7965580 __udivmoddi4>
+    (mem/c:SI (plus:HI (reg/f:HI 49 virtual-stack-vars)
+        (const_int 204 [0xcc])) [1 __xr+0 S4 A8]) chain <var_decl 0xb79784ec __a>>
+
+0x68 と 0xcc とで違いが出ている.
+
+SSA_NAME_VAR はマクロ展開されて結局
+
+ssa_name->ssa_name.var
+
+である. ということは expand_assignment にきた時点で
+
+(gdb) p debug_tree(to->ssa_name.var)
+
+とすれば gcc-8.1.0 と gcc-7.1.0 とで違いがすでに出ていたわけだ.
+
+% cat zz2
+b expand_gimple_stmt_1
+command
+if (stmt!=0xb7984750)           # gcc-8.1.0 の場合
+c
+end
+end
+
+このブレークポイントで停止したとき
+
+	tree lhs = gimple_assign_lhs (assign_stmt);
+
+で問題の 0x68 のオフセットになっている.
+
+(gdb) p debug_tree(lhs->ssa_name.var)
+ <var_decl 0xb797e498 __xr
+    type <integer_type 0xb795a960 USItype sizes-gimplified public unsigned SI
+        size <integer_cst 0xb78e65a0 constant 32>
+        unit-size <integer_cst 0xb78e65b4 constant 4>
+        align:8 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb7ae1420 precision:32 min <integer_cst 0xb78e6758 0> max <integer_cst 0xb78e6744 4294967295> context <translation_unit_decl 0xb79821c8 a.c>>
+    unsigned read SI a.c:42:17 size <integer_cst 0xb78e65a0 32> unit-size <integer_cst 0xb78e65b4 4>
+    align:8 warn_if_not_align:0 context <function_decl 0xb796d380 __udivmoddi4>
+    (mem/c:SI (plus:HI (reg/f:HI 49 virtual-stack-vars)
+        (const_int 104 [0x68])) [1 __xr+0 S4 A8]) chain <var_decl 0xb797e4ec __a>>
+$4 = void
+(gdb)
+
+同じことを gcc-7.1.0 で行なった:
+
+% cat zz2
+b expand_gimple_stmt_1
+command
+if (stmt!=0xb7980630)      # gcc-7.1.0 の場合
+c
+end
+end
+
+(gdb) p debug_tree(lhs->ssa_name.var)
+ <var_decl 0xb7978498 __xr
+    type <integer_type 0xb7966540 USItype sizes-gimplified public unsigned SI
+        size <integer_cst 0xb78e558c constant 32>
+        unit size <integer_cst 0xb78e55a0 constant 4>
+        align 8 symtab 0 alias set -1 canonical type 0xb7ae1420 precision 32 min <integer_cst 0xb78e5744 0> max <integer_cst 0xb78e5730 4294967295> context <translation_unit_decl 0xb797b1c8 a.c>>
+    unsigned SI file a.c line 42 col 17 size <integer_cst 0xb78e558c 32> unit size <integer_cst 0xb78e55a0 4>
+    align 8 context <function_decl 0xb7965580 __udivmoddi4>
+    (mem/c:SI (plus:HI (reg/f:HI 49 virtual-stack-vars)
+        (const_int 204 [0xcc])) [1 __xr+0 S4 A8]) chain <var_decl 0xb79784ec __a>>
+$1 = void
+(gdb)
+
+ということは gimple* stmt が作成された時点で既に違いがあったわけだ.
+
+gcc-8.1.0 の場合
+(gdb) p debug_gimple_stmt(stmt)
+__xr_145 = d0_141;
+
+(gdb) p debug_tree(((gassign*)stmt)->op[0]->ssa_name.var)
+ <var_decl 0xb797e498 __xr
+    type <integer_type 0xb795a960 USItype sizes-gimplified public unsigned SI
+        size <integer_cst 0xb78e65a0 constant 32>
+        unit-size <integer_cst 0xb78e65b4 constant 4>
+        align:8 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb7ae1420 precision:32 min <integer_cst 0xb78e6758 0> max <integer_cst 0xb78e6744 4294967295> context <translation_unit_decl 0xb79821c8 a.c>>
+    unsigned read SI a.c:42:17 size <integer_cst 0xb78e65a0 32> unit-size <integer_cst 0xb78e65b4 4>
+    align:8 warn_if_not_align:0 context <function_decl 0xb796d380 __udivmoddi4>
+    (mem/c:SI (plus:HI (reg/f:HI 49 virtual-stack-vars)
+        (const_int 104 [0x68])) [1 __xr+0 S4 A8]) chain <var_decl 0xb797e4ec __a>>
+$11 = void
+
+$5 = void
+
+gcc-7.1.0 の場合
+(gdb) p debug_gimple_stmt(stmt)
+__xr_282 = d0_141;
+$2 = void
+(gdb) p debug_tree(((gassign*)stmt)->op[0]->ssa_name.var)
+ <var_decl 0xb7978498 __xr
+    type <integer_type 0xb7966540 USItype sizes-gimplified public unsigned SI
+        size <integer_cst 0xb78e558c constant 32>
+        unit size <integer_cst 0xb78e55a0 constant 4>
+        align 8 symtab 0 alias set -1 canonical type 0xb7ae1420 precision 32 min <integer_cst 0xb78e5744 0> max <integer_cst 0xb78e5730 4294967295> context <translation_unit_decl 0xb797b1c8 a.c>>
+    unsigned SI file a.c line 42 col 17 size <integer_cst 0xb78e558c 32> unit size <integer_cst 0xb78e55a0 4>
+    align 8 context <function_decl 0xb7965580 __udivmoddi4>
+    (mem/c:SI (plus:HI (reg/f:HI 49 virtual-stack-vars)
+        (const_int 204 [0xcc])) [1 __xr+0 S4 A8]) chain <var_decl 0xb79784ec __a>>
+$3 = void
+
+そもそもこの tree が作成されるタイミングを捉える.
+
 
 gcc-8.1.0 では
 
-(gdb) p debug_insn_slim((rtx_insn *) 0xb7999fc0)
-   32: {[r49:HI+0x68]=[r49:HI+0x4];clobber scratch;}
-$84 = void
-(gdb)
+Hardware watchpoint 15: *(int*)0xb79a6e68
 
-のように生成される.
+に 108 をセットしていた:
+
+static inline rtx
+gen_rtx_fmt_w_stat (RTX_CODE code, machine_mode mode,
+	HOST_WIDE_INT arg0 MEM_STAT_DECL)
+{
+  rtx rt;
+  rt = rtx_alloc (code PASS_MEM_STAT);
+
+  PUT_MODE_RAW (rt, mode);
+  XWINT (rt, 0) = arg0;          ここで 108 をセットしていた
+
+  return rt;
+}
+
+そしてそれは以下から呼び出されていた:
+
+static void
+expand_one_stack_var_at (tree decl, rtx base, unsigned base_align,
+			 poly_int64 offset)
+{
+  unsigned align;
+  rtx x;
+
+  /* If this fails, we've overflowed the stack frame.  Error nicely?  */
+  gcc_assert (known_eq (offset, trunc_int_for_mode (offset, Pmode)));
+
+  x = plus_constant (Pmode, base, offset);
+
+函数の名前もそれっぽい. offset.coeffs[0] = 104 になっている.
+
+以下のようにすれば offset = 104 の計算の瞬間を捉えられる:
+
+static void
+expand_one_stack_var_1 (tree var)
+{
+...
+  if (var == (tree) 0xb799d9d8)         # gcc-8.1.0 の場合
+    asm("int3");
+  offset = alloc_stack_frame_space (size, byte_align);
+
+  expand_one_stack_var_at (var, virtual_stack_vars_rtx,
+			   crtl->max_used_stack_slot_alignment, offset);
+
+
+gcc-7.1.0 の場合は
+
+  if (var == (tree) 0xb799d708)
+    asm("int3");
+
+とすれば offset = 204 の計算の瞬間を捉えられる.
+
+#define frame_offset (crtl->x_frame_offset)
+
+だが
+
+gcc-8.1.0 の場合 104
+gcc-7.1.0 の場合 204
+
+なので結果的に違いが出ている. crtl->x_frame_offset にウォッチポイントをセットしたところ
+
+gcc-8.1.0 の場合:
+(gdb) watch *(int*)0x93e0838
+0 -> 4 -> 8 -> ... -> 104 のように増加している.
+
+gcc-7.1.0 の場合
+(gdb) watch *(int*)0x9196ae4
+0 -> 4 -> 8 -> ... -> 204 のように増加している.
+
+原因はこれだけだと不明だが, 本来ローカル変数としてスケジューリングされるべきものがされていないの
+ならば問題がある.
+
+  debug_tree(var);
+  offset = alloc_stack_frame_space (size, byte_align);
+
+  expand_one_stack_var_at (var, virtual_stack_vars_rtx,
+			   crtl->max_used_stack_slot_alignment, offset);
+
+のようにして var をダンプしてみた. そして gcc-8.1.0 と gcc-7.1.0 との結果を比較してみた.
+
+gcc-7.1.0 では
+
+ <ssa_name 0xb799c2f8
+    type <integer_type 0xb7966540 USItype sizes-gimplified public unsigned SI
+        size <integer_cst 0xb78e558c constant 32>
+        unit size <integer_cst 0xb78e55a0 constant 4>
+        align 8 symtab 0 alias set -1 canonical type 0xb7ae1420 precision 32 min <integer_cst 0xb78e5744 0> max <integer_cst 0xb78e5730 4294967295> context <translation_unit_decl 0xb797b1c8 a.c>>
+    var <var_decl 0xb79783f0 b>
+    def_stmt b_154 = 32 - bm_153;
+    version 154>
+
+のように version 154 のものがあるのに対して gcc-8.1.0 では 154 に対してこれが
+ない. これが最初の違う点.
+
+だからまずは 154 に対してなぜ gcc-8.1.0 でスタックが割り当てられていないかを調べてみる.
+
+gcc-8.1.0 の場合
+  if (var == (tree) 0xb799daf0)
+    asm("int3");
+
+とすれば version 152 に対して止めることができている. この次の b_154 に対して
+ローカル変数が割り当てられない原因を調べたい.
+
+expand_one_stak_var_1 は以下から呼び出されている:
+
+expand_one_ssa_partition(tree var)
+{
+...
+  if (!use_register_for_decl (var))
+    {
+      if (defer_stack_allocation (var, true))
+	add_stack_var (var);
+      else
+	expand_one_stack_var_1 (var);
+      return;
+    }
+
+version 152 に対して止めた後 if の行にブレークポイントをセットして, そこで
+停止したときに var を表示してみた:
+
+(gdb) p debug_tree(var)
+ <ssa_name 0xb799dbb8
+    type <integer_type 0xb795a960 USItype sizes-gimplified public unsigned SI
+        size <integer_cst 0xb78e65a0 constant 32>
+        unit-size <integer_cst 0xb78e65b4 constant 4>
+        align:8 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb7ae1420 precision:32 min <integer_cst 0xb78e6758 0> max <integer_cst 0xb78e6744 4294967295> context <translation_unit_decl 0xb79821c8 a.c>>
+    var <var_decl 0xb797e63c __d1>
+    def_stmt __d1_157 = d0_47 >> 16;
+    version:157>
+$1 = void
+
+この時点ですでに 154 はおそらくローカル変数が割り当てられていない.
+expand_one_ssa_partition は以下から呼び出されている.
+
+  for (i = 0; i < SA.map->num_partitions; i++)
+    {
+      if (bitmap_bit_p (SA.partitions_for_parm_default_defs, i))
+	continue;
+
+      tree var = partition_to_var (SA.map, i);
+
+      gcc_assert (!virtual_operand_p (var));
+
+      expand_one_ssa_partition (var);
+    }
+
+version 152 が処理された後, 次のループで var は version 157 のものになっている.
+ということはすでにこの時点で 154 はローカル変数の対象になっていない.
+
+version 152 の (tree)0xb799daf0 が生成されるのはどのタイミングか調べてみた.
+
+tree-ssanames.c
+
+tree
+make_ssa_name_fn (struct function *fn, tree var, gimple *stmt,
+		  unsigned int version)
+{
+...
+      t = make_node (SSA_NAME);
+      SSA_NAME_VERSION (t) = SSANAMES (fn)->length ();
+      vec_safe_push (SSANAMES (fn), t);
+      ssa_name_nodes_created++;
+
+version 152 はここでセットされている. そして 153, 154 もここ.
+ということは 152 の tree が SA.map に入っているのに対して
+154 の tree が SA.map に入っていない原因を調べることになる.
+
+static void
+remove_ssa_form (bool perform_ter, struct ssaexpand *sa)
+{
+...
+  sa->map = map;
+
+SA.map に値がセットされるのはこのタイミング. そしてこの時点で
+
+(gdb) p debug_tree(partition_to_var (SA.map, 117))
+ <ssa_name 0xb799daf0
+    type <integer_type 0xb795a960 USItype sizes-gimplified public unsigned SI
+        size <integer_cst 0xb78e65a0 constant 32>
+        unit-size <integer_cst 0xb78e65b4 constant 4>
+        align:8 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb7ae1420 precision:32 min <integer_cst 0xb78e6758 0> max <integer_cst 0xb78e6744 4294967295> context <translation_unit_decl 0xb79821c8 a.c>>
+    var <var_decl 0xb797e4ec __a>
+    def_stmt __a_152 = iftmp.2_123;
+    version:152>
+$42 = void
+(gdb) p debug_tree(partition_to_var (SA.map, 118))
+ <ssa_name 0xb799dbb8
+    type <integer_type 0xb795a960 USItype sizes-gimplified public unsigned SI
+        size <integer_cst 0xb78e65a0 constant 32>
+        unit-size <integer_cst 0xb78e65b4 constant 4>
+        align:8 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb7ae1420 precision:32 min <integer_cst 0xb78e6758 0> max <integer_cst 0xb78e6744 4294967295> context <translation_unit_decl 0xb79821c8 a.c>>
+    var <var_decl 0xb797e63c __d1>
+    def_stmt __d1_157 = d0_47 >> 16;
+    version:157>
+$43 = void
+
+のようになっている.
+
+static void
+remove_ssa_form (bool perform_ter, struct ssaexpand *sa)
+{
+  bitmap values = NULL;
+  var_map map;
+
+  map = coalesce_ssa_name ();
+
+  /* Return to viewing the variable list as just all reference variables after
+     coalescing has been performed.  */
+  partition_view_normal (map);
+
+この呼び出しの後に
+
+(gdb) p debug_tree(partition_to_var (map, 117)) 
+ <ssa_name 0xb799daf0
+    type <integer_type 0xb795a960 USItype sizes-gimplified public unsigned SI
+        size <integer_cst 0xb78e65a0 constant 32>
+        unit-size <integer_cst 0xb78e65b4 constant 4>
+        align:8 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb7ae1420 precision:32 min <integer_cst 0xb78e6758 0> max <integer_cst 0xb78e6744 4294967295> context <translation_unit_decl 0xb79821c8 a.c>>
+    var <var_decl 0xb797e4ec __a>
+    def_stmt __a_152 = iftmp.2_123;
+    version:152>
+$51 = void
+(gdb) p debug_tree(partition_to_var (map, 118)) 
+ <ssa_name 0xb799dbb8
+    type <integer_type 0xb795a960 USItype sizes-gimplified public unsigned SI
+        size <integer_cst 0xb78e65a0 constant 32>
+        unit-size <integer_cst 0xb78e65b4 constant 4>
+        align:8 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb7ae1420 precision:32 min <integer_cst 0xb78e6758 0> max <integer_cst 0xb78e6744 4294967295> context <translation_unit_decl 0xb79821c8 a.c>>
+    var <var_decl 0xb797e63c __d1>
+    def_stmt __d1_157 = d0_47 >> 16;
+    version:157>
+$52 = void
+
+のようになっている.
+
+とここまで解析してみたが
+
+gcc-8.1.0
+
+__a_152 = iftmp.2_123;
+__d1_157 = d0_47 >> 16;
+__d0_158 = d0_47 & 65535;
+
+gcc-7.1.0
+
+__a_152 = iftmp.2_123;
+b_154 = 32 - bm_153;
+n2_157 = n1_144 >> b_154;
+__d1_160 = d1_155 >> 16;
+__d0_161 = d1_155 & 65535;
+
+
+のような違いある. そしてこれは gcc-8.1.0.arm-elf と gcc-7.1.0.arm-elf とでも
+似たような差分が出ている.
+
+というわけで以下の差分
+
+<    32: {[*sframe:HI+0x68]=[*sframe:HI+0x4];clobber scratch;}
+---
+>    32: {[*sframe:HI+0xcc]=[*sframe:HI+0x4];clobber scratch;}
+49c49
+<    34: cc0=cmp([*sframe:HI+0x68],0)
+---
+>    34: cc0=cmp([*sframe:HI+0xcc],0)
+
+はとりあえず無視して良さそう.
