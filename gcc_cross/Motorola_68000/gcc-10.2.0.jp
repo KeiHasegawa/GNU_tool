@@ -15,40 +15,473 @@ gcc-10.2.0 m68hc11-elf-gcc のインストール
 % make maybe-configure-target-libgcc # error will occur but just ignore.
 % cp ../Makefile.empty m68hc11-elf/fshort-double/libgcc/Makefile
 % make maybe-all-target-libgcc
+% make install-gcc
+% make maybe-install-target-libgcc
 
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include    -g -O0 -m68hc11 -O0  -g -O0 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../../host-i686-pc-linux-gnu/gcc -I../../.././libgcc -I../../.././libgcc/. -I../../.././libgcc/../gcc -I../../.././libgcc/../include  -DHAVE_CC_TLS -DUSE_EMUTLS -o _muldi3.o -MT _muldi3.o -MD -MP -MF _muldi3.dep -DL_muldi3 -c ../../.././libgcc/libgcc2.c -fvisibility=hidden -DHIDE_EXPORTS
+ポイントは以下の修正を入れること:
+
+m68hc11.h
+#if 0
+#define REG_ALLOC_ORDER							\
+{ HARD_D_REGNUM, HARD_X_REGNUM, HARD_Y_REGNUM,				\
+  SOFT_REG_ORDER, HARD_Z_REGNUM, HARD_PC_REGNUM, HARD_A_REGNUM,		\
+  HARD_B_REGNUM, HARD_CCR_REGNUM, HARD_FP_REGNUM, SOFT_FP_REGNUM,	\
+  HARD_SP_REGNUM, SOFT_TMP_REGNUM, SOFT_Z_REGNUM, SOFT_SAVED_XY_REGNUM, \
+  SOFT_AP_REGNUM, FAKE_CLOBBER_REGNUM  }
+#else
+#define REG_ALLOC_ORDER							\
+{ HARD_D_REGNUM, HARD_X_REGNUM, HARD_Y_REGNUM,				\
+  SOFT_REG_ORDER, HARD_PC_REGNUM, HARD_A_REGNUM,		\
+  HARD_B_REGNUM, HARD_CCR_REGNUM, HARD_FP_REGNUM, SOFT_FP_REGNUM,	\
+  HARD_SP_REGNUM, SOFT_TMP_REGNUM, SOFT_Z_REGNUM, SOFT_SAVED_XY_REGNUM, \
+  SOFT_AP_REGNUM, FAKE_CLOBBER_REGNUM  }
+#endif
+
+この修正なしで libgcc をビルドしようとすると以下のようにエラーする:
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include    -g -O0 -m68hc11 -O0  -g -O0 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../../host-i686-pc-linux-gnu/gcc -I../../.././libgcc -I../../.././libgcc/. -I../../.././libgcc/../gcc -I../../.././libgcc/../include  -DHAVE_CC_TLS -DUSE_EMUTLS -o _divmoddi4.o -MT _divmoddi4.o -MD -MP -MF _divmoddi4.dep -DL_divmoddi4 -c ../../.././libgcc/libgcc2.c \
+  -fexceptions -fnon-call-exceptions -fvisibility=hidden -DHIDE_EXPORTS
 In file included from ../../../host-i686-pc-linux-gnu/gcc/tm.h:22,
                  from ../../.././libgcc/libgcc2.c:29:
 ../../.././libgcc/../gcc/config/m68hc11/m68hc11.h:894:36: 警告: ‘enum machine_mode’ declared inside parameter list will not be visible outside of this definition or declaration
   894 | m68hc11_function_arg_padding (enum machine_mode mode, const_tree type);
       |                                    ^~~~~~~~~~~~
-../../.././libgcc/libgcc2.c: 関数 ‘__muldi3’ 内:
-../../.././libgcc/libgcc2.c:558:1: エラー: 命令を分割できませんでした
-  558 | }
+../../.././libgcc/libgcc2.c: 関数 ‘__divmoddi4’ 内:
+../../.././libgcc/libgcc2.c:1301:1: エラー: cannot do z-register replacement
+ 1301 | }
       | ^
-(insn 32 170 515 (parallel [
-            (set (mem:SI (pre_dec:HI (reg/f:HI 0 x [217])) [0  S4 A8])
-                (mem/c:SI (plus:HI (reg/f:HI 2 y [218])
-                        (const_int 13 [0xd])) [1 __vl+0 S4 A8]))
-            (clobber (reg:HI 1 d [127]))
-        ]) "../../.././libgcc/libgcc2.c":552:22 20 {*pushsi_internal}
-     (expr_list:REG_INC (reg/f:HI 0 x [217])
-        (expr_list:REG_ARGS_SIZE (const_int 4 [0x4])
-            (nil))))
-during RTL pass: final
-../../.././libgcc/libgcc2.c:558:1: コンパイラ内部エラー: final_scan_insn_1 内、位置 final.c:3073
+(insn 1724 1723 3485 (set (reg:HI 8 z)
+        (plus:HI (reg:HI 8 z)
+            (reg/f:HI 9 *_.frame))) "../../.././libgcc/libgcc2.c":1281:11 -1
+     (expr_list:REG_EQUIV (plus:HI (reg/f:HI 9 *_.frame)
+            (const_int 272 [0x110]))
+        (nil)))
+during RTL pass: mach
+../../.././libgcc/libgcc2.c:1301:1: コンパイラ内部エラー: m68hc11_z_replacement 内、位置 config/m68hc11/m68hc11.c:5082
 0x8a468ec _fatal_insn(char const*, rtx_def const*, char const*, int, char const*)
 	../.././gcc/rtl-error.c:108
-0x87050d4 final_scan_insn_1
-	../.././gcc/final.c:3073
-0x8705346 final_scan_insn(rtx_insn*, _IO_FILE*, int, int, int*)
-	../.././gcc/final.c:3152
-0x8703052 final_1
-	../.././gcc/final.c:2020
-0x87076ac rest_of_handle_final
-	../.././gcc/final.c:4658
-0x87078da execute
-	../.././gcc/final.c:4736
+0x8df785c m68hc11_z_replacement
+	../.././gcc/config/m68hc11/m68hc11.c:5082
+0x8df7dac m68hc11_reassign_regs
+	../.././gcc/config/m68hc11/m68hc11.c:5216
+0x8df7e77 m68hc11_reorg
+	../.././gcc/config/m68hc11/m68hc11.c:5348
+0x8a4375a execute
+	../.././gcc/reorg.c:3993
+Please submit a full bug report,
 
-これは gcc-{7,9}.1.0 と同じ, そして gcc-8.1.0 とは異なるエラーのように見える.
+以下のように gdb から cc1 を実行して再現できている.
 
+M-x gdb
+gdb --annotate=3 ./cc1
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf/m68hc11-elf/m68hc11/libgcc
+Working directory /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf/m68hc11-elf/m68hc11/libgcc.
+(gdb) run  -quiet -I . -I . -I ../../../host-i686-pc-linux-gnu/gcc -I ../../.././libgcc -I ../../.././libgcc/. -I ../../.././libgcc/../gcc -I ../../.././libgcc/../include -imultilib m68hc11 -iprefix /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf/host-i686-pc-linux-gnu/gcc/../lib/gcc/m68hc11-elf/10.2.0/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf/host-i686-pc-linux-gnu/gcc/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf/host-i686-pc-linux-gnu/gcc/include-fixed -MD _divmoddi4.d -MF _divmoddi4.dep -MP -MT _divmoddi4.o "-D__INT__=32" -Dmc6811 -DMC6811 -Dmc68hc11 -D IN_GCC -D CROSS_DIRECTORY_STRUCTURE -D IN_LIBGCC2 -D inhibit_libc -D HAVE_CC_TLS -D USE_EMUTLS -D L_divmoddi4 -D HIDE_EXPORTS -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include -isystem ./include ../../.././libgcc/libgcc2.c -quiet -dumpbase libgcc2.c -m68hc11 -auxbase-strip _divmoddi4.o -g -g -g -O0 -O0 -O0 -Wextra -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual "-Wno-error=format-diag" -Wstrict-prototypes -Wmissing-prototypes "-Wno-error=format-diag" -Wold-style-definition -fbuilding-libgcc -fno-stack-protector -fexceptions -fnon-call-exceptions "-fvisibility=hidden" -o /tmp/ccSigrbE.s
+
+(gdb) b m68hc11.c:5082
+(gdb) run
+...
+m68hc11.c
+
+static void
+m68hc11_z_replacement (rtx_insn* insn)
+{
+...
+	  if (!validate_replace_rtx (z_reg, replace_reg, insn))
+	    {
+	      INSN_CODE (insn) = -1;
+	      if (!validate_replace_rtx (z_reg, replace_reg, insn))
+		fatal_insn ("cannot do z-register replacement", insn);
+	    }
+
+上の fatal_insn が実行されてエラーとなっている.
+
+% cat xx
+b m68hc11_z_replacement
+command
+silent
+p debug_insn_slim(insn)
+c
+end
+
+(gdb) source xx
+(gdb) run
+
+上のブレークポイントで表示されたのは以下:
+
+ 1712: z:HI=*_.frame:HI
+$1 = void
+ 1723: z:HI=0x110
+$2 = void
+
+2 回目でエラーしているらしい.
+
+同様のことを gcc-9.1.0 で行なってみたところ, そもそもこの函数は呼び出されていなかった
+ことが判明. この函数は以下から呼び出されていた:
+
+	  if (reg_mentioned_p (z_reg, body))
+	    {
+	      m68hc11_z_replacement (insn);
+	    }
+
+これから推測するとそもそも
+
+ 1712: z:HI=*_.frame:HI
+
+や
+
+ 1723: z:HI=0x110
+
+の命令が生成されたところが gcc-9.1.0 と動作の違いとして現われている.
+
+static void
+m68hc11_reorg (void)
+{
+...
+  first = get_insns ();
+
+この first に値がセットされたところで first に続く命令列をダンプしてみた.
+そしてその結果を gcc-9.1.0 と比較してみた.
+
+最初に意味のある差分があったのは以下:
+
+gcc-10.2.0
+ 3456: {sp:HI=sp:HI-0x1f0;clobber x:HI;}
+
+gcc-9.1.0
+ 3502: {sp:HI=sp:HI-0x1f1;clobber x:HI;}
+
+その次は
+
+gcc-10.2.0
+ 1712: z:HI=*_.frame:HI
+    7: {[z:HI+0x5]=0;clobber scratch;}
+
+gcc-9.1.0
+ 1712: x:HI=*_.frame:HI
+    7: {[x:HI+0x5]=0;clobber scratch;}
+
+さらに
+
+gcc-10.2.0
+ 1721: y:HI=[y:HI+0xed]
+ 1723: z:HI=0x110
+ 1724: z:HI=z:HI+*_.frame:HI
+      REG_EQUIV *_.frame:HI+0x110
+
+gcc-9.1.0
+ 1721: y:HI=[y:HI+0xee]
+ 1723: x:HI=0x110
+ 1724: x:HI=x:HI+*_.frame:HI
+      REG_EQUIV *_.frame:HI+0x110
+
+おそらく最初のものを調査するよりもエラーを引き起こしている 3 つ目や明らかな動作の違いを
+引き起こしている 2 つ目を調査するべきと推測した.
+
+まずは直接エラーを引き起している 1724 の (rtx_insn *) 0xb765f480 が生成される
+タイミングを捉えたい.
+
+rtx
+gen_addhi3 (rtx operand0,
+	rtx operand1,
+	rtx operand2)
+{
+...
+  emit_insn (gen_rtx_SET (operand0,
+	gen_rtx_PLUS (HImode,
+	operand1,
+	operand2)));   ここだった.
+
+
+生成された直後は以下:
+
+(gdb) p debug_insn_slim((rtx_insn *) 0xb765f480)
+ 1724: z:HI=z:HI+*_.frame:HI
+$17 = void
+
+operand0 が z:HI になっているのが期待値と異なる.
+1721, 1723, 1724 という流れを見れば, operand0 は 1723 の operand0 なので
+この (rtx_insn *) 0xb765f480 の operand0 よりも
+
+
+(gdb) p debug_insn_slim(PREV_INSN((rtx_insn *) 0xb765f480))
+ 1723: x:HI=0x110
+$29 = void
+(gdb) p PREV_INSN((rtx_insn *) 0xb765f480)
+$30 = (rtx_insn *) 0xb765f45c
+
+この (rtx_insn *) 0xb765f45c の operand0 が x:HI になる原因を調査するべき.
+この命令が生成されるのは
+
+rtx
+gen_movhi (rtx operand0,
+	rtx operand1)
+{
+...
+  emit_insn (gen_rtx_SET (operand0,
+	operand1));  ここだった.
+
+生成された直後は
+
+(gdb) p debug_insn_slim((rtx_insn *) 0xb765f45c)
+ 1723: z:HI=0x110
+$37 = void
+
+なのでこの時点で違う. operand0 は z:HI だが
+
+(gdb) p reg_names[REGNO (SET_DEST (PATTERN ((rtx_insn *) 0xb765f45c)))]
+$47 = 0x93bd6b4 "z"
+
+のようにして z になっている.
+
+(gdb) p REGNO (SET_DEST (PATTERN ((rtx_insn *) 0xb765f45c)))
+$48 = 8
+(gdb) p REG_CHECK (SET_DEST (PATTERN ((rtx_insn *) 0xb765f45c)))->regno
+$49 = 8
+(gdb) p &REG_CHECK (SET_DEST (PATTERN ((rtx_insn *) 0xb765f45c)))->regno
+$50 = (unsigned int *) 0xb769cd50
+
+つまりこのアドレスに x のレジスタ番号である 0 がセットされるのが期待値だが 8 が
+現状セットされているということ.
+
+この瞬間を捉える.
+
+
+rtx
+gen_rtx_REG (machine_mode mode, unsigned int regno)
+{
+...
+  return gen_raw_REG (mode, regno);       ここで 8 が指定されている.
+
+この函数は
+
+static int
+allocate_reload_reg (class insn_chain *chain ATTRIBUTE_UNUSED, int r,
+		     int last_reload)
+{
+
+
+から呼び出されていた. そこで
+
+% cat yy
+b allocate_reload_reg
+command
+silent
+if (chain->insn!=0xb75f86e4)
+c
+end
+end
+
+(gdb) source yy
+(gdb) run
+...
+(gdb) b gen_rtx_REG
+(gdb) c
+...
+gen_rtx_REG(regno=8) の呼び出しがある. だから yy で指定したブレークポイントに
+ヒットしてからどのように 8 が計算されるかを調査する.
+
+上と同様のことを gcc-9.1.0 でもやってみた.
+
+% cat yy
+b allocate_reload_reg
+command
+silent
+if (chain->insn!=0xb769a5e8)
+c
+end
+end
+
+gcc-9.1.0 の場合は gen_rtx_REG(regno=0) の呼び出しがある.
+
+gcc-10.2.0 と gcc-9.1.0 とで動作の比較を行なう.
+
+gcc-9.1.0 では
+
+reload1.c:
+  if (count >= n_spills)
+    return 0;
+
+ここにきた時点で i = 0, r = 0 になって
+
+  return set_reload_reg (i, r);
+
+以下の呼び出しがある. 一方 gcc-10.2.0 では
+
+reload1.c:
+  if (count >= n_spills)
+    return 0;
+
+ここにきた時点で i = 3, r = 0 になっている.
+
+  for (pass = 0; pass < 3; pass++)
+    {
+      for (count = 0; count < n_spills; count++)
+	{
+      ...
+    }
+
+この for ループで i と r とを計算しているのだろうがここで違いが出ている.
+だから, gcc-9.1.0 で i = 0 になる理由, gccc-10.1.0 で i = 3 になる理由を調査する.
+
+allocate_reload_reg が呼び出された時点で
+
+gcc-9.1.0  : n_spills = 3
+gcc-10.2.0 : n_spills = 4
+
+のように違いが出ている.
+
+n_spills はおそらく事前に以下で計算されている:
+
+static int
+finish_spills (int global)
+{
+  ...
+  
+gcc-9.1.0  では 3 回の呼び出しがあった. そのうち 2 回目で n_spills が 3 になっている.
+gcc-10.2.0 でも 3 回の呼び出しがあり, そのうち 2 回目で n_spills が 4 になっている.
+
+試しに  allocate_reload_reg が呼び出された時点で n_spills を 3 にしてみたが違うエラー
+が発生している.
+
+またこれも試しに finish_spills の 2回目の呼び出しで n_spills を 3 にしてみたが同じエラ
+ーが発生している.
+
+さて, n_spills が 4 になる原因を調査するべきか...
+遠回りかもしれないがまずは n_spills が 4 になる原因を調査する.
+
+  for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
+    if (TEST_HARD_REG_BIT (used_spill_regs, i))
+      {
+	spill_reg_order[i] = n_spills;
+	spill_regs[n_spills++] = i;                ここでインクリメントされている
+	if (num_eliminable && ! df_regs_ever_live_p (i))
+	  something_changed = 1;
+	df_set_regs_ever_live (i, true);
+      }
+    else
+      spill_reg_order[i] = -1;
+
+
+gcc-9.1.0 の場合 i = 0, 1, 2 で n_spills がインクリメントされているのに対して
+gcc-10.2.0 では i = 0, 1, 2 と i = 8 とでインクリメントされている.
+
+gcc-9.1.0
+(gdb) p TEST_HARD_REG_BIT (used_spill_regs, 8)
+$37 = false
+
+gcc-10.2.0
+(gdb) p TEST_HARD_REG_BIT (used_spill_regs, 8)
+$37 = true
+
+というわけだ. だからまず何故この違いが出るのかを調査する.
+
+gcc-9.1.0
+(gdb) p/x used_spill_regs
+$38 = {0x7, 0}
+
+gcc-10.2.0
+(gdb) p/x used_spill_regs
+$21 = {elts = {0x107, 0x0}}
+
+おそらくこれはビットマップ. gcc-10.2.0 で 0x107 になる原因を調査する.
+
+static void
+find_reload_regs (class insn_chain *chain)
+{
+...
+  used_spill_regs |= used_spill_regs_local;
+
+ここで 7 -> 0x107 に変更している.
+
+static int
+find_reg (class insn_chain *chain, int order)
+{
+...
+  if (best_reg == -1)
+    return 0;
+
+  if (best_reg == 8)
+    asm("int3");              このブレークポイントにヒットして,
+
+  if (dump_file)
+...
+
+
+static void
+find_reload_regs (class insn_chain *chain)
+{
+...
+  used_spill_regs |= used_spill_regs_local;
+  ここで used_spill_regs = {0x107, 0 } になっている.
+
+だから find_reg で best_reg = 8 になる原因を調査する.
+
+
+	  if (regno == 8 && best_reg == 2) {
+	    if (this_cost < best_cost)
+	      asm("int3");                     このブレークポイントにヒットして
+	  }
+	  if (this_cost < best_cost
+...
+	    {
+	      if (regno == 8)
+		asm("int3");
+	      best_reg = regno;        ここで best_reg が 8 になる.
+	      best_cost = this_cost;
+	    }
+
+regno = 8 で best_reg = 2 の場合はあるのだが, this_cost = best_cost = 0
+で 8 が選択されないというのがほとんどの場合で,
+上のブレークポイントにヒットするときは this_cost = 0, best_cost = 1000 に
+なっていた.
+
+
+find_reload_regs で停止したとき
+
+(gdb) p debug_insn_slim(chain->insn)
+ 1333: {*_.d1:SI=*_.d1:SI-[*sframe:HI+0xf6];clobber scratch;}
+      REG_DEAD *_.d1:SI
+
+1333 の対応する命令は gcc-9.1.0 では
+
+(rtx_insn*)0xb76f0798
+ 1333: {x:SI=x:SI-[y:HI+0xf7];clobber scratch;}
+
+もやはこうなると対応しているのかさえ疑わしい.
+
+そもそも 8 番のレジスタが選択された場合にできていなかった可能性がある.
+
+static int
+find_reg (class insn_chain *chain, int order)
+{
+...
+	  if (regno == 8) {
+	    if (this_cost < best_cost) {
+	      this_cost = best_cost;
+	    }
+	  }
+	  if (this_cost < best_cost
+
+find_reg に上のようなコードを入れた. これで 8 番のレジスタが選択されることはないのだろう.
+この修正を入れればそれなりに動作するが, ここは共通ソースなので本当は良くない.
+上の修正の替わりに以下の修正を入れてみた.
+
+m68hc11.h
+#if 0
+#define REG_ALLOC_ORDER							\
+{ HARD_D_REGNUM, HARD_X_REGNUM, HARD_Y_REGNUM,				\
+  SOFT_REG_ORDER, HARD_Z_REGNUM, HARD_PC_REGNUM, HARD_A_REGNUM,		\
+  HARD_B_REGNUM, HARD_CCR_REGNUM, HARD_FP_REGNUM, SOFT_FP_REGNUM,	\
+  HARD_SP_REGNUM, SOFT_TMP_REGNUM, SOFT_Z_REGNUM, SOFT_SAVED_XY_REGNUM, \
+  SOFT_AP_REGNUM, FAKE_CLOBBER_REGNUM  }
+#else
+#define REG_ALLOC_ORDER							\
+{ HARD_D_REGNUM, HARD_X_REGNUM, HARD_Y_REGNUM,				\
+  SOFT_REG_ORDER, HARD_PC_REGNUM, HARD_A_REGNUM,		\
+  HARD_B_REGNUM, HARD_CCR_REGNUM, HARD_FP_REGNUM, SOFT_FP_REGNUM,	\
+  HARD_SP_REGNUM, SOFT_TMP_REGNUM, SOFT_Z_REGNUM, SOFT_SAVED_XY_REGNUM, \
+  SOFT_AP_REGNUM, FAKE_CLOBBER_REGNUM  }
+#endif
+
+これで正常に動作していることを確認できた.
