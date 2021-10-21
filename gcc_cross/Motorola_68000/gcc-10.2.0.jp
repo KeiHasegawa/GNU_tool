@@ -485,3 +485,34 @@ m68hc11.h
 #endif
 
 これで正常に動作していることを確認できた.
+
+この方法では -O2 オプションによる cc1 等のビルドや libgcc の -O2 ビルドを避けている.
+ビルド時の手順にある
+
+% find . -name 'Makefile.*' -exec ../erase_O2 {} \;
+% find . -name 'configure' -exec ../erase_O2 {} \;
+
+をやらないと libgcc の configure の実行時に以下のようなエラーになる:
+
+checking for suffix of object files... configure: error: in `/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf/m68hc11-elf/libgcc':
+configure: error: cannot compute suffix of object files: cannot compile
+See `config.log' for more details
+
+これは config.log の中を調べるとビルドされた xgcc を -O2 オプション付きで起動したときに
+
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include    a.c -O2
+a.c: 関数 ‘main’ 内:
+a.c:4:1: エラー: 認識できない命令:
+    4 | }
+      | ^
+(jump_insn 17 16 18 2 (parallel [
+            (eh_return)
+            (use (reg:SI 0 x))
+        ]) "a.c":4:1 -1
+     (nil)
+ -> return)
+during RTL pass: cprop_hardreg
+a.c:4:1: コンパイラ内部エラー: extract_insn 内、位置 recog.c:2294
+0x81726e9 _fatal_insn(char const*, rtx_def const*, char const*, int, char const*)
+
+のように内部エラーを引き起こしてしまうためである.
