@@ -1,0 +1,143 @@
+newlib-4.1.0 のインストール
+
+gunzip -c ../newlib-4.1.0.tar.gz | tar xf -
+mv newlib-4.1.0 newlib-4.1.0.m68hc11-elf
+cd newlib-4.1.0.m68hc11-elf
+find . -name 'Makefile.*' -exec ../erase_O2 {} \;
+find . -name 'configure' -exec ../erase_O2 {} \;
+./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=m68hc11-elf
+make && exit 1
+find . -name 'Makefile' -exec ../erase_Os {} \;
+make
+...
+
+m68hc11-elf-gcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/m68hc11-elf/m68hc11/newlib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/m68hc11-elf/m68hc11/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/newlib/libc/include -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/m68hc11-elf/m68hc11/libgloss/m68hc11 -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/m68hc11-elf/m68hc11/libgloss/libnosys -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/libgloss/m68hc11  -m68hc11 -DPACKAGE_NAME=\"newlib\" -DPACKAGE_TARNAME=\"newlib\" -DPACKAGE_VERSION=\"4.1.0\" -DPACKAGE_STRING=\"newlib\ 4.1.0\" -DPACKAGE_BUGREPORT=\"\" -DPACKAGE_URL=\"\" -I. -I../../../../.././newlib/libc/time -DPREFER_SIZE_OVER_SPEED -O0 -mrelax -DNO_EXEC -DABORT_PROVIDED -DSMALL_MEMORY -DMISSING_SYSCALL_NAMES -DHAVE_INIT_FINI      -g -O0 -c -o lib_a-strftime.o `test -f 'strftime.c' || echo '../../../../.././newlib/libc/time/'`strftime.c
+../../../../.././newlib/libc/time/strftime.c: 関数 ‘__strftime’ 内:
+../../../../.././newlib/libc/time/strftime.c:1426:1: エラー: unable to find a register to spill in class ‘A_REGS’
+ 1426 | }
+      | ^
+../../../../.././newlib/libc/time/strftime.c:1426:1: エラー: this is the insn:
+(insn 2600 2599 2603 340 (parallel [
+            (set (reg:SI 14 *_.d1 [orig:346 _293 ] [346])
+                (minus:SI (reg:SI 332 [ _279 ])
+                    (reg:SI 14 *_.d1 [orig:432 iftmp.45_439 ] [432])))
+            (clobber (scratch:HI))
+        ]) "../../../../.././newlib/libc/time/strftime.c":1231:8 57 {*subsi3}
+     (expr_list:REG_DEAD (reg:SI 14 *_.d1 [orig:432 iftmp.45_439 ] [432])
+        (expr_list:REG_DEAD (reg:SI 332 [ _279 ])
+            (nil))))
+../../../../.././newlib/libc/time/strftime.c:1426: 前のエラーにより混乱していますので、脱出します
+
+
+M-x gdb
+gdb --annotate ./cc1
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/m68hc11-elf/m68hc11/newlib/libc/time
+(gdb) run -quiet -I . -I ../../../../.././newlib/libc/time -imultilib m68hc11 "-D__INT__=32" -Dmc6811 -DMC6811 -Dmc68hc11 -D PREFER_SIZE_OVER_SPEED -D NO_EXEC -D ABORT_PROVIDED -D SMALL_MEMORY -D MISSING_SYSCALL_NAMES -D HAVE_INIT_FINI -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/m68hc11-elf/m68hc11/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/newlib/libc/include ../../../../.././newlib/libc/time/strftime.c -quiet -dumpbase strftime.c -m68hc11 -mrelax -auxbase-strip lib_a-strftime.o -g -O0 -O0 -o /tmp/ccyb0KZT.s
+
+エラーを gdb から実行して再現できている.
+
+同じことを gcc-9.1.0 の cc1 でやってみたところ, 以下のようになった:
+
+../../../../.././newlib/libc/time/strftime.c: 関数 ‘__strftime’ 内:
+../../../../.././newlib/libc/time/strftime.c:1426:1: エラー: cannot do z-register replacement
+ 1426 | }
+      | ^
+(insn 3838 3837 3839 (set (reg:HI 8 z)
+        (plus:HI (reg:HI 8 z)
+            (reg/f:HI 9 *_.frame))) "../../../../.././newlib/libc/time/strftime.c":695:24 -1
+     (expr_list:REG_EQUIV (plus:HI (reg/f:HI 9 *_.frame)
+            (const_int 512 [0x200]))
+        (nil)))
+during RTL pass: mach
+
+これは gcc-10.2.0 で必要だった z レジスタの対応が抜けているために起こっているエラー
+のように思える.
+
+そこで m68hc11.h のコメントにあるように -ffixed-z で gcc-9.1.0 の cc1 を起動してみた:
+
+(gdb) run -quiet -I . -I ../../../../.././newlib/libc/time -imultilib m68hc11 "-D__INT__=32" -Dmc6811 -DMC6811 -Dmc68hc11 -D PREFER_SIZE_OVER_SPEED -D NO_EXEC -D ABORT_PROVIDED -D SMALL_MEMORY -D MISSING_SYSCALL_NAMES -D HAVE_INIT_FINI -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/m68hc11-elf/m68hc11/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/newlib/libc/include ../../../../.././newlib/libc/time/strftime.c -quiet -dumpbase strftime.c -m68hc11 -mrelax -auxbase-strip lib_a-strftime.o -g -O0 -O0 -o /tmp/ccyb0KZT.s -ffixed-z
+
+../../../../.././newlib/libc/time/strftime.c: 関数 ‘__strftime’ 内:
+../../../../.././newlib/libc/time/strftime.c:1426:1: エラー: unable to find a register to spill in class ‘A_REGS’
+ 1426 | }
+      | ^
+../../../../.././newlib/libc/time/strftime.c:1426:1: エラー: this is the insn:
+(insn 2602 2601 2605 342 (parallel [
+            (set (reg:SI 14 *_.d1 [orig:346 _293 ] [346])
+                (minus:SI (reg:SI 332 [ _279 ])
+                    (reg:SI 14 *_.d1 [orig:432 iftmp.45_439 ] [432])))
+            (clobber (scratch:HI))
+        ]) "../../../../.././newlib/libc/time/strftime.c":1231:8 57 {*subsi3}
+     (expr_list:REG_DEAD (reg:SI 14 *_.d1 [orig:432 iftmp.45_439 ] [432])
+        (expr_list:REG_DEAD (reg:SI 332 [ _279 ])
+            (nil))))
+../../../../.././newlib/libc/time/strftime.c:1426: 前のエラーにより混乱していますので、脱出します
+
+これは gcc-10.2.0 の cc1 と同じような症状.
+同様のことを gcc-8.1.0 でもやってみたところ同じエラーが発生する.
+同様のことを gcc-7.1.0 でもやってみたところ同じエラーが発生する.
+同様のことを gcc-6.1.0 でもやってみたところ正常終了している.
+
+しかし, gcc-6.1.0 でも strptime.c のビルドで以下のようにエラーしている:
+
+m68hc11-elf-gcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/m68hc11-elf/m68hc11/newlib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/m68hc11-elf/m68hc11/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/newlib/libc/include -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/m68hc11-elf/m68hc11/libgloss/m68hc11 -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/m68hc11-elf/m68hc11/libgloss/libnosys -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/libgloss/m68hc11  -m68hc11 -DPACKAGE_NAME=\"newlib\" -DPACKAGE_TARNAME=\"newlib\" -DPACKAGE_VERSION=\"4.1.0\" -DPACKAGE_STRING=\"newlib\ 4.1.0\" -DPACKAGE_BUGREPORT=\"\" -DPACKAGE_URL=\"\" -I. -I../../../../.././newlib/libc/time -DPREFER_SIZE_OVER_SPEED -ffixed-z -mrelax -DNO_EXEC -DABORT_PROVIDED -DSMALL_MEMORY -DMISSING_SYSCALL_NAMES -DHAVE_INIT_FINI      -g -ffixed-z -c -o lib_a-strptime.o `test -f 'strptime.c' || echo '../../../../.././newlib/libc/time/'`strptime.c
+../../../../.././newlib/libc/time/strptime.c: 関数 ‘strptime_l’ 内:
+../../../../.././newlib/libc/time/strptime.c:503:1: エラー: unable to find a register to spill in class ‘A_REGS’
+ }
+ ^
+../../../../.././newlib/libc/time/strptime.c:503:1: エラー: this is the insn:
+(insn 267 266 268 41 (parallel [
+            (set (reg:SI 319)
+                (ashift:SI (reg:SI 319)
+                    (const_int 5 [0x5])))
+            (clobber (scratch:HI))
+        ]) ../../../../.././newlib/libc/time/strptime.c:209 114 {*ashlsi3_const}
+     (expr_list:REG_EQUAL (ashift:SI (reg:SI 14 *_.d1 [317])
+            (const_int 5 [0x5]))
+        (nil)))
+../../../../.././newlib/libc/time/strptime.c:503: 前のエラーにより混乱していますので、脱出します
+
+これもやはり gdb から再現している
+M-x gdb
+gdb --annotate ./cc1
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/m68hc11-elf/m68hc11/newlib/libc/time
+(gdb) run -quiet -I . -I ../../../../.././newlib/libc/time -imultilib m68hc11 "-D__INT__=32" -Dmc6811 -DMC6811 -Dmc68hc11  -D PREFER_SIZE_OVER_SPEED -D NO_EXEC -D ABORT_PROVIDED -D SMALL_MEMORY -D MISSING_SYSCALL_NAMES -D HAVE_INIT_FINI -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/m68hc11-elf/m68hc11/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/newlib/libc/include ../../../../.././newlib/libc/time/strptime.c -quiet -dumpbase strptime.c -m68hc11 -mrelax -auxbase-strip lib_a-strptime.o -g -ffixed-z -ffixed-z -o /tmp/ccXuPwxf.s
+
+同じことを gcc-5.1.0 でもためしてみたところ正常終了している.
+しかし gcc-5.1.0 でも stdlib/rand_r.c でエラーしている:
+
+m68hc11-elf-gcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/m68hc11-elf/m68hc11/newlib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/m68hc11-elf/m68hc11/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/newlib/libc/include -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/m68hc11-elf/m68hc11/libgloss/m68hc11 -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/m68hc11-elf/m68hc11/libgloss/libnosys -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/libgloss/m68hc11  -m68hc11 -DPACKAGE_NAME=\"newlib\" -DPACKAGE_TARNAME=\"newlib\" -DPACKAGE_VERSION=\"4.1.0\" -DPACKAGE_STRING=\"newlib\ 4.1.0\" -DPACKAGE_BUGREPORT=\"\" -DPACKAGE_URL=\"\" -I. -I../../../../.././newlib/libc/stdlib -DPREFER_SIZE_OVER_SPEED -ffixed-z -mrelax -DNO_EXEC -DABORT_PROVIDED -DSMALL_MEMORY -DMISSING_SYSCALL_NAMES -DHAVE_INIT_FINI      -g -ffixed-z -c -o lib_a-rand_r.o `test -f 'rand_r.c' || echo '../../../../.././newlib/libc/stdlib/'`rand_r.c
+../../../../.././newlib/libc/stdlib/rand_r.c: 関数 ‘rand_r’ 内:
+../../../../.././newlib/libc/stdlib/rand_r.c:37:1: エラー: unable to find a register to spill in class ‘A_REGS’
+ }
+ ^
+../../../../.././newlib/libc/stdlib/rand_r.c:37:1: エラー: this is the insn:
+(insn 34 33 35 5 (parallel [
+            (set (reg:SI 72)
+                (ashift:SI (reg:SI 72)
+                    (const_int 5 [0x5])))
+            (clobber (scratch:HI))
+        ]) ../../../../.././newlib/libc/stdlib/rand_r.c:32 114 {*ashlsi3_const}
+     (expr_list:REG_EQUAL (ashift:SI (reg:SI 14 *_.d1 [71])
+            (const_int 5 [0x5]))
+        (nil)))
+../../../../.././newlib/libc/stdlib/rand_r.c:37: 前のエラーにより混乱していますので、脱出します
+
+M-x gdb
+gdb --annotate ./cc1
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/m68hc11-elf/m68hc11/newlib/libc/stdlib
+(gdb) run -quiet -I . -I ../../../../.././newlib/libc/time -imultilib m68hc11 "-D__INT__=32" -Dmc6811 -DMC6811 -Dmc68hc11  -D PREFER_SIZE_OVER_SPEED -D NO_EXEC -D ABORT_PROVIDED -D SMALL_MEMORY -D MISSING_SYSCALL_NAMES -D HAVE_INIT_FINI -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/m68hc11-elf/m68hc11/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/newlib/libc/include ../../../../.././newlib/libc/stdlib/rand_r.c -quiet -m68hc11 -mrelax -g -ffixed-z -ffixed-z -o /tmp/ccXuPwxf.s
+
+とすれば gdb から cc1 を起動して再現できている.
+
+このエラーは gcc-4.6.4 でも再現している.
+stddef.h がインクルードできないために再インストールする必要はあったが gdb から cc1 を起動
+して再現している.
+
+同じことを gcc-4.2.0 の cc1 を gdb から起動して試してみたところ:
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m68hc11-elf/newlib/libc/include/stdlib.h:134: エラー: wrong number of arguments specified for ‘__deprecated__’ attribute
+
+のようにエラーしている. gcc-4.2.0 を再インストールしてもこのエラーはそのまま. ということは
+__deprecated__ の仕様が変更されたのだろう.
+
