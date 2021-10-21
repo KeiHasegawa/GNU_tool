@@ -1,0 +1,8 @@
+以下は hasegawa-elf-gcc をコンパイルするための必要な手順と差分
+
+% xz -d -c ../gcc-10.2.0.tar.xz | tar xf -
+% mv gcc-10.2.0 gcc-10.2.0.hasegawa-elf
+% cd gcc-10.2.0.hasegawa-elf
+% patch -p1 < ../gcc-10.2.0.hasegawa-elf.diff
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=hasegawa-elf --with-newlib
+% make
