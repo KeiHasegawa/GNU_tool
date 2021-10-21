@@ -141,3 +141,53 @@ stddef.h がインクルードできないために再インストールする�
 のようにエラーしている. gcc-4.2.0 を再インストールしてもこのエラーはそのまま. ということは
 __deprecated__ の仕様が変更されたのだろう.
 
+gcc-4.3.0 で試してみたが gcc-4.2.0 と同じ.
+gcc-4.5.4 で試してみたが gcc-4.6.4 と同じ.
+
+とここまで書いて気付いたが
+
+4.2.0 => OK
+4.3.0 => NG
+4.5.4 => NG
+4.6.0 => NG
+4.6.4 => NG
+
+であった. 
+ということは, newlib-4.1.0 をビルドできる可能性のある, かつビルド済みの gcc は 5.1.0
+ということになる.
+
+まずは gcc-5.1.0 で newlib-4.1.0 をビルドすることに挑戦してみる.
+
+gdb から再現させてみた. そして
+(gdb) b _fatal_insn
+(gdb) run
+...
+(gdb) where
+
+
+	if (! find_reg (chain, i))
+	  {
+	    if (dump_file)
+	      fprintf (dump_file, "reload failure for reload %d\n", r);
+	    spill_failure (chain->insn, rld[r].rclass);   ここでエラーしている
+	    
+単純に A_REGS = (X or Y or Z) をはずしてみた. gcc-10.2.0 の修正の経緯から
+Z もはずしてみた.
+
+#if 0
+#define REG_ALLOC_ORDER							\
+{ HARD_D_REGNUM, HARD_X_REGNUM, HARD_Y_REGNUM,				\
+  SOFT_REG_ORDER, HARD_Z_REGNUM, HARD_PC_REGNUM, HARD_A_REGNUM,		\
+  HARD_B_REGNUM, HARD_CCR_REGNUM, HARD_FP_REGNUM, SOFT_FP_REGNUM,	\
+  HARD_SP_REGNUM, SOFT_TMP_REGNUM, SOFT_Z_REGNUM, SOFT_SAVED_XY_REGNUM, \
+  SOFT_AP_REGNUM, FAKE_CLOBBER_REGNUM  }
+#else
+#define REG_ALLOC_ORDER							\
+{ HARD_D_REGNUM, HARD_X_REGNUM, HARD_Y_REGNUM,				\
+  SOFT_REG_ORDER, HARD_PC_REGNUM, 		\
+  HARD_B_REGNUM, HARD_CCR_REGNUM, HARD_FP_REGNUM, SOFT_FP_REGNUM,	\
+  HARD_SP_REGNUM, SOFT_TMP_REGNUM, SOFT_Z_REGNUM, SOFT_SAVED_XY_REGNUM, \
+  SOFT_AP_REGNUM, FAKE_CLOBBER_REGNUM  }
+#endif
+
+しかし症状は変わらない. そんなに単純ではないらしい.
