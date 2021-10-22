@@ -1,0 +1,62 @@
+*** gcc-10.2.0.org/config.sub	2021-10-21 16:53:54.000000000 +0900
+--- gcc-10.2.0.hasegawa-elf/config.sub	2021-10-21 17:36:35.000000000 +0900
+***************
+*** 1250,1255 ****
+--- 1250,1256 ----
+  			| x86 | x86_64 | xc16x | xgate | xps100 \
+  			| xstormy16 | xtensa* \
+  			| ymp \
++ 			| hasegawa \
+  			| z8k | z80)
+  				;;
+  
+*** gcc-10.2.0.org/gcc/config.gcc	2021-10-16 10:31:18.000000000 +0900
+--- gcc-10.2.0.hasegawa-elf/gcc/config.gcc	2021-10-21 17:44:57.000000000 +0900
+***************
+*** 3505,3510 ****
+--- 3505,3518 ----
+  	c_target_objs="m32c-pragma.o"
+  	cxx_target_objs="m32c-pragma.o"
+   	;;
++ hasegawa-*-elf*)
++ 	tm_file="dbxelf.h elfos.h usegas.h newlib-stdint.h hasegawa/hasegawa.h"
++ 	tm_p_file="hasegawa/hasegawa-protos.h"
++ 	md_file="hasegawa/hasegawa.md"
++ 	out_file="hasegawa/hasegawa.c"
++ 	tmake_file="hasegawa/t-hasegawa"
++ 	use_gcc_stdint=wrap
++         ;;
+  *)
+  	echo "*** Configuration ${target} not supported" 1>&2
+  	exit 1
+*** gcc-10.2.0.org/libgcc/config.host	2021-10-16 08:22:39.000000000 +0900
+--- gcc-10.2.0.hasegawa-elf/libgcc/config.host	2021-10-20 15:46:13.000000000 +0900
+***************
+*** 1491,1496 ****
+--- 1491,1498 ----
+  	tmake_file="$tmake_file nvptx/t-nvptx"
+  	extra_parts="crt0.o"
+  	;;
++ hasegawa-*-*)
++         ;;
+  *)
+  	echo "*** Configuration ${host} not supported" 1>&2
+  	exit 1
+*** gcc-10.2.0.org/libgcc/Makefile.in	2021-10-16 10:32:34.000000000 +0900
+--- gcc-10.2.0.hasegawa-elf/libgcc/Makefile.in	2021-10-21 17:36:51.000000000 +0900
+***************
+*** 20,26 ****
+  #
+  
+  libgcc_topdir = @libgcc_topdir@
+! host_subdir = @host_subdir@
+  
+  gcc_objdir = $(MULTIBUILDTOP)../../$(host_subdir)/gcc
+  
+--- 20,26 ----
+  #
+  
+  libgcc_topdir = @libgcc_topdir@
+! host_subdir = host-i686-pc-linux-gnu
+  
+  gcc_objdir = $(MULTIBUILDTOP)../../$(host_subdir)/gcc
