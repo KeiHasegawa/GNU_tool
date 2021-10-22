@@ -11,3 +11,39 @@
 % make install-gcc
 % make maybe-install-target-libgcc
 
+現状
+
+int f(){ return 1; }
+
+のようなソースをコンパイルすると以下の assert で失敗する:
+
+expr.c
+
+static rtx_insn *
+emit_move_multi_word (machine_mode mode, rtx x, rtx y)
+{
+...
+  mode_size = GET_MODE_SIZE (mode).to_constant ();
+  gcc_assert (mode_size >= UNITS_PER_WORD);
+
+エラーしたときの変数は以下:
+
+mode = E_HImode
+mode_size = 2
+UNITS_PER_WORD は hasegawa.h で宣言されていて
+
+constexpr int UNITS_PER_WORD = 4;
+
+このエラーを回避するためだけに試しに UNITS_PER_WORD を 2 にして cc1 をリビルドしてみた
+ところ
+
+c-family/c-common.c
+
+  char32_type_node = get_identifier (CHAR32_TYPE);
+
+で 0 番地アクセスが発生した. この理由は上の行のプリプロセスの結果が以下だから:
+
+  c_global_trees[CTI_CHAR32_TYPE] = (__builtin_constant_p ((((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) ? ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) : (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) ? (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) : 0)) ? get_identifier_with_length (((((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) ? ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) : (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) ? (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) : 0)), strlen ((((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) ? ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) : (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) ? (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) : 0))) : get_identifier ((((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) ? ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) : (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) ? (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) : 0)));
+
+UNITS_PER_WORD は int を 32 ビットにするのならば 4 が正しい.
+
