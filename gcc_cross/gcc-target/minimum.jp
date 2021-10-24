@@ -47,3 +47,476 @@ c-family/c-common.c
 
 UNITS_PER_WORD は int を 32 ビットにするのならば 4 が正しい.
 
+現状では
+
+int f()
+{
+  return 1;
+}
+
+に対して不正メモリアクセスが発生する. この理由は emit_move_insn の呼び出しが再帰的に
+emit_move_insn を呼び出すことによるもので,
+実際は
+
+rtx_insn *
+emit_move_insn_1 (rtx x, rtx y)
+{
+  machine_mode mode = GET_MODE (x);
+  enum insn_code code;
+
+  gcc_assert ((unsigned int) mode < (unsigned int) MAX_MACHINE_MODE);
+
+  code = optab_handler (mov_optab, mode);
+  if (code != CODE_FOR_nothing)
+    return emit_insn (GEN_FCN (code) (x, y));   ここで処理できていない
+
+というのが理由である. 例えば m68hc11 ならば m68hc11.md に
+
+(define_expand "movsi"
+  [(parallel [(set (match_operand:SI 0 "nonimmediate_operand" "")
+		   (match_operand:SI 1 "general_operand" ""))
+	      (clobber (match_scratch:HI 2 ""))])]
+  ""
+  "/* For push/pop, emit a REG_INC note to make sure the reload
+      inheritance and reload CSE pass notice the change of the stack
+      pointer.  */
+  if (IS_STACK_PUSH (operands[0]) || IS_STACK_POP (operands[1]))
+    {
+
+という記述があって insn-emit.c の
+
+/* ../.././gcc/config/m68hc11/m68hc11.md:644 */
+rtx
+gen_movsi (rtx operand0,
+	rtx operand1)
+{
+  rtx_insn *_val = 0;
+  start_sequence ();
+  {
+
+この函数が呼び出されている. optab_handler で計算される値は結果的に
+以下のメンバを参照していた:
+
+/* Target-dependent globals.  */
+struct target_optabs {
+  /* Patterns that are used by optabs that are enabled for this target.  */
+  bool pat_enable[NUM_OPTAB_PATTERNS];        これ
+
+そして現状では
+
+insn-opinit.h
+#define NUM_OPTAB_PATTERNS  0
+
+のようになっている.
+
+m68hc11 では insn-output で
+
+const struct insn_data_d insn_data[] = 
+{
+...
+  /* ../.././gcc/config/m68hc11/m68hc11.md:644 */
+  {
+    "movsi",
+#if HAVE_DESIGNATED_UNION_INITIALIZERS
+    { 0 },
+#else
+    { 0, 0, 0 },
+#endif
+    { (insn_gen_fn::stored_funcptr) gen_movsi },
+    &operand_data[372],
+    2,
+    3,
+    0,
+    0,
+    0
+  },
+
+のようにエントリがある.
+
+他のプロセッサの状況を調べてみた:
+
+(*) aarch64
+
+(define_expand "mov<mode>"
+  [(set (match_operand:GPI 0 "nonimmediate_operand")
+	(match_operand:GPI 1 "general_operand"))]
+  ""
+  "
+    if (MEM_P (operands[0]) && !MEM_VOLATILE_P (operands[0])
+
+生成された函数(の 1 つ?)は gen_movsi でそこが呼び出された.
+
+(*) arm
+
+(define_expand "movsi"
+  [(set (match_operand:SI 0 "general_operand")
+        (match_operand:SI 1 "general_operand"))]
+  "TARGET_EITHER"
+  "
+  {
+  rtx base, offset, tmp;
+
+やはり呼び出されたのは gen_movsi.
+
+(*) avr
+
+;; General move expanders
+
+;; "movqi" "movqq" "movuqq"
+;; "movhi" "movhq" "movuhq" "movha" "movuha"
+;; "movsi" "movsq" "movusq" "movsa" "movusa"
+;; "movsf"
+;; "movpsi"
+(define_expand "mov<mode>"
+  [(set (match_operand:MOVMODE 0 "nonimmediate_operand" "")
+        (match_operand:MOVMODE 1 "general_operand" ""))]
+  ""
+  {
+    rtx dest = operands[0];
+
+やはり呼び出されたのは gen_movsi.
+
+なんとなく雰囲気が分かったので, 以下を hasegawa.md に追加.
+
+(define_expand "movsi"
+  [(set (match_operand:SI 0 "general_operand")
+        (match_operand:SI 1 "general_operand"))]
+  ""
+  "
+{
+}")
+
+
+さらに進んで現状, 以下 fatal_insn_not_found でエラーする. 
+
+
+      icode = recog_memoized (insn);
+      if (icode < 0)
+	fatal_insn_not_found (insn);
+
+このとき
+
+(gdb) p debug_insn_slim(insn)
+    5: r15:SI=0x1
+$28 = void
+(gdb) 
+
+
+recog_memoized では recog で -1 が返っている.
+
+int
+recog (rtx x1 ATTRIBUTE_UNUSED,
+	rtx_insn *insn ATTRIBUTE_UNUSED,
+	int *pnum_clobbers ATTRIBUTE_UNUSED)
+{
+...
+  switch (GET_CODE (x2))
+    {
+    case COMPARE:
+...
+    case LABEL_REF:
+...
+    default:
+      return -1;          ここで -1 が返っている.
+
+
+    case SET:
+      のようなコードがない.
+
+m68hc11 では
+
+  switch (GET_CODE (x1))
+    {
+    case SET:
+      return recog_12 (x1, insn, pnum_clobbers);
+
+のようになっている.
+
+また他のプロセッサを調べてみる
+
+(*) aarch64
+
+  switch (GET_CODE (x1))
+    {
+    case SET:
+      return recog_437 (x1, insn, pnum_clobbers);  これは m68hc11 とほぼ同じ
+
+(*) arm
+
+    case SET:
+      return recog_339 (x1, insn, pnum_clobbers);  生成されている位置は違うが
+                                                   実行されていそうなコードは
+						   ほぼ同じ.
+
+(*) avr
+
+  switch (GET_CODE (x1))
+    {
+    case SET:
+      return recog_38 (x1, insn, pnum_clobbers);  これは m68hc11 とほぼ同じ
+
+
+insn-recog.c はざっくりというと
+
+build/genrecog ../.././gcc/common.md ../.././gcc/config/hasegawa/hasegawa.md \
+  insn-conditions.md > insn-recog.c
+
+のように生成される.
+
+cd build
+M-x gdb
+gdb --annotate genrecog
+(gdb) run  a.md > b
+a.md: No such file or directory
+
+a.md を単純なものにしてみた.
+
+(define_expand "movsi"
+  [(set (match_operand:SI 0 "general_operand")
+        (match_operand:SI 1 "general_operand"))]
+  ""
+  "
+  emit_insn(gen_rtx_SET(operands[0], operands[1]));
+  DONE;
+  "
+)
+
+(gdb) run
+
+正常終了するものの b に生成された函数 recog は -1 を返す空の函数.
+
+a.md を以下のものにしてみた:
+
+(define_insn "jump"
+  [(set (pc)
+	(label_ref (match_operand 0 "" "")))]
+  ""
+  "bra\\t%l0")
+
+これだと生成された recog で -1 以外が返るようになっている.
+
+define_expand の指定は insn-emit.c にのみ影響するらしい.
+define_insn だと insn-recog.c, insn-emit.c もそれっぽいものが生成される.
+
+./genemit a.md > b
+./genrecog a.md > b2
+
+よく分からないので m68hc11 で 
+
+./genrecog ../../.././gcc/common.md ../../.././gcc/config/m68hc11/m68hc11.md   ../insn-conditions.md > x
+
+のようにしてみたところ
+
+static int
+recog_12 (rtx x1 ATTRIBUTE_UNUSED,
+	rtx_insn *insn ATTRIBUTE_UNUSED,
+	int *pnum_clobbers ATTRIBUTE_UNUSED)
+{
+...
+
+int
+recog (rtx x1 ATTRIBUTE_UNUSED,
+	rtx_insn *insn ATTRIBUTE_UNUSED,
+	int *pnum_clobbers ATTRIBUTE_UNUSED)
+{
+...
+  switch (GET_CODE (x1))
+    {
+    case SET:
+      return recog_12 (x1, insn, pnum_clobbers);
+
+のように x に生成されている. だから recong_12 が何を契機に生成されるのかを調べてみる.
+
+M-x gdb
+gdb --annotate=3 ./genrecog
+(gdb) run ../../.././gcc/common.md ../../.././gcc/config/m68hc11/m68hc11.md ../insn-conditions.md > x
+...
+[Inferior 1 (process 11731) exited normally]
+(gdb)
+
+gdb から実行できている.
+
+問題の recog_12 を生成しているのは以下
+
+      auto_vec <state *> subroutines;
+      find_subroutines (type, root, subroutines); ここで subroutines がセットされ
+
+      /* Output the subroutines (but not ROOT itself).  */
+      unsigned int i;
+      state *s;
+      FOR_EACH_VEC_ELT (subroutines, i, s)
+	print_subroutine (os, s, i + 1);          ここで出力される. 
+
+soubroutine[11] に値がセットされるタイミングを捉えたい.
+
+static state *
+create_subroutine (routine_type type, state *s, vec <state *> &procs)
+{
+  procs.safe_push (s);     ここで入れている
+ 
+
+define_insn
+define_split
+define_peephole2
+
+でこれらだけが対象になっている.
+
+
+m68hc11 で
+
+./genrecog a.md b.md c.md > x && grep recog_12 x && echo ok
+
+のようにして正常終了する部分を探してみたが,
+
+b.md:6680
+
+
+(define_insn "indirect_jump"
+  [(set (pc) (match_operand:HI 0 "nonimmediate_operand" "xy"))]
+  ""
+  "jmp\\t0,%0")
+
+この宣言(?) を削除するとエラーになるが, これがあれば正常終了している.
+
+しかしこの直前の (define_ を削除してもエラーにはならない.
+
+(define_insn "indirect_jump"
+
+を b.md の前のほうに引っ越ししてもエラーにはならない.
+
+いろいろやってみたが, b.md を修正して genrecog を動作して確認する
+を繰り返して探すのは大変.
+
+
+arm の場合で再調査してみたところ
+
+(define_insn "*arm_movsi_insn"
+  [(set (match_operand:SI 0 "nonimmediate_operand" "=rk,r,r,r,rk,m")
+	(match_operand:SI 1 "general_operand"      "rk, I,K,j,mi,rk"))]
+  "TARGET_ARM && !TARGET_IWMMXT && !TARGET_HARD_FLOAT
+   && (   register_operand (operands[0], SImode)
+       || register_operand (operands[1], SImode))"
+  "@
+
+が関係していて結果的に
+
+insn-recog.c
+    case E_SImode:
+      if (nonimmediate_operand (operands[0], E_SImode)
+          && general_operand (operands[1], E_SImode)
+          && 
+// #line 6446 "../.././gcc/config/arm/arm.md"
+(TARGET_ARM && !TARGET_IWMMXT && !TARGET_HARD_FLOAT
+   && (   register_operand (operands[0], SImode)
+       || register_operand (operands[1], SImode))))
+        return 253; /* *arm_movsi_insn */                 ここで 253 が返っている.
+	
+
+m68hc11 でも recog から -1 以外が返るところをステップ実行してみると
+
+                            case 2:
+                              if (push_operand (operands[0], E_SImode))
+                                return 20; /* *pushsi_internal */
+                              if (!nonimmediate_operand (operands[0], E_SImode))
+                                return -1;
+                              return 21; /* movsi_internal */  ここで 21 が返る
+
+
+そしてどうやらこれは
+
+(define_insn_and_split "movsi_internal"
+  [(set (match_operand:SI 0 "nonimmediate_operand" "=mu,mu,?D,m,?D,?u,?u,!u,D")
+	(match_operand:SI 1 "general_operand" "K,imu,im,?D,!u,?D,mi,!u,!D"))
+   (clobber (match_scratch:HI 2               "=X,&d,X,X,X,X,&d,&d,X"))]
+  ""
+  "#"
+  "reload_completed"
+  [(const_int 0)]
+  "m68hc11_split_move (operands[0], operands[1], operands[2]);
+   DONE;")
+
+が関係しているらしい.
+
+なんだかよく分かっていない.
+
+(*) genconstants
+
+(define_constants [(AAA 123) (BBB 456)])
+
+に対して
+
+#define AAA 123
+#define BBB 456
+
+を生成する.
+
+(*) genpreds
+
+オプションなしで
+
+(define_predicate "func" (match_code "subreg,reg,mem") "hoge();")
+
+に対して以下のように生成した:
+
+static inline int
+func_1 (rtx op ATTRIBUTE_UNUSED, machine_mode mode ATTRIBUTE_UNUSED)
+{
+  return hoge;
+}
+
+int
+func (rtx op, machine_mode mode ATTRIBUTE_UNUSED)
+{
+  switch (GET_CODE (op))
+    {
+    case SUBREG:
+    case REG:
+    case MEM:
+      break;
+    default:
+      return false;
+    }
+  return ((func_1 (op, mode))) && ((mode == VOIDmode || GET_MODE (op) == mode));
+}
+
+これは op が SUBREG, REG, MEM 以外ならば false をそうでなければ, ざっくりと言うと
+
+func_1(op, mode)
+
+を返すコードを生成する.
+
+-h オプション
+
+func の函数宣言を生成する.
+
+-c オプション
+
+(define_memory_constraint "xyz" "mannual string" (match_test "func(op)"))
+
+に対して
+
+static inline bool satisfies_constraint_xyz(rtx op)
+{
+  return func(op);
+}
+
+のようなコードを生成する. 但し define_register_constraint に関してはこの限りではない.
+通常は op がメモリであることを限定するのだから
+
+(define_memory_constraint "xyz"
+  "manual string"
+  (and (match_code "mem")
+       (match_test "func(op)")))
+
+のように使用しこの結果
+
+static inline bool satisfies_constraint_xyz(rtx op)
+{
+  return (GET_CODE(op) == MEM) && func(op);
+}
+
+のようなコードが生成される.
+
+(*) genconditions
+
+
