@@ -59,8 +59,28 @@ c-parser.c から
     asm("xchgb %b0,%h0" : "=Q" (x) : "0" (x));
 
     出力オペランドに "=Q" が指定されている. これもレジスタを使ってもよい
-    ことを表している. r と Q との違いはここでは不明.
+    ことを表している. r と Q との違いはここでは不明. どうやらこれはターゲットコンパイラ
+    に依存していて
 
+gcc-10.2.0.hasegawa-elf/gcc/config/i386/constraints.md:
+
+(define_register_constraint "Q" "Q_REGS"
+ "Any register accessible as @code{@var{r}h}: @code{a}, @code{b},
+  @code{c}, and @code{d}.")
+
+    のような記述がある. そして
+
+gcc-10.2.0.hasegawa-elf/gcc/config/i386/i386.h:
+
+enum reg_class
+{
+  NO_REGS,
+  AREG, DREG, CREG, BREG, SIREG, DIREG,
+  AD_REGS,			/* %eax/%edx for DImode */
+  CLOBBERED_REGS,		/* call-clobbered integer registers */
+  Q_REGS,			/* %eax %ebx %ecx %edx */
+
+     なので eax, ebx,, ecx, edx のうちならどれでも良いということを示しているらしい.
 
 (*3) スタックポインタの値をローカル変数にセット
 
