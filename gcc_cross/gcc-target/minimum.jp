@@ -7,436 +7,17 @@
 % tar xvf ../hasegawa-elf.tar
 % ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=hasegawa-elf --with-newlib
 % make all-gcc
-% make maybe-all-target-libgcc
-% make install-gcc
-% make maybe-install-target-libgcc
 
-現状
+この結果ビルドされた cc1 は gcc で言うところのレジスタ割り付けされた 3 番地コードを
+アセンブラの出力ファイルに書き込むもので, 勿論何らかのアセンブラでアセンブルできるという
+わけではない.
 
-int f(){ return 1; }
+cc1 等のビルドの過程で
 
-のようなソースをコンパイルすると以下の assert で失敗する:
+build/genxxx ... > tmp-xxx.c
+move-if-change tmp-xxx.c insn-xxx.c
 
-expr.c
-
-static rtx_insn *
-emit_move_multi_word (machine_mode mode, rtx x, rtx y)
-{
-...
-  mode_size = GET_MODE_SIZE (mode).to_constant ();
-  gcc_assert (mode_size >= UNITS_PER_WORD);
-
-エラーしたときの変数は以下:
-
-mode = E_HImode
-mode_size = 2
-UNITS_PER_WORD は hasegawa.h で宣言されていて
-
-constexpr int UNITS_PER_WORD = 4;
-
-このエラーを回避するためだけに試しに UNITS_PER_WORD を 2 にして cc1 をリビルドしてみた
-ところ
-
-c-family/c-common.c
-
-  char32_type_node = get_identifier (CHAR32_TYPE);
-
-で 0 番地アクセスが発生した. この理由は上の行のプリプロセスの結果が以下だから:
-
-  c_global_trees[CTI_CHAR32_TYPE] = (__builtin_constant_p ((((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) ? ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) : (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) ? (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) : 0)) ? get_identifier_with_length (((((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) ? ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) : (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) ? (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) : 0)), strlen ((((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) ? ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) : (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) ? (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) : 0))) : get_identifier ((((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) ? ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) : (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) ? (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) : 0)));
-
-UNITS_PER_WORD は int を 32 ビットにするのならば 4 が正しい.
-
-現状では
-
-int f()
-{
-  return 1;
-}
-
-に対して不正メモリアクセスが発生する. この理由は emit_move_insn の呼び出しが再帰的に
-emit_move_insn を呼び出すことによるもので,
-実際は
-
-rtx_insn *
-emit_move_insn_1 (rtx x, rtx y)
-{
-  machine_mode mode = GET_MODE (x);
-  enum insn_code code;
-
-  gcc_assert ((unsigned int) mode < (unsigned int) MAX_MACHINE_MODE);
-
-  code = optab_handler (mov_optab, mode);
-  if (code != CODE_FOR_nothing)
-    return emit_insn (GEN_FCN (code) (x, y));   ここで処理できていない
-
-というのが理由である. 例えば m68hc11 ならば m68hc11.md に
-
-(define_expand "movsi"
-  [(parallel [(set (match_operand:SI 0 "nonimmediate_operand" "")
-		   (match_operand:SI 1 "general_operand" ""))
-	      (clobber (match_scratch:HI 2 ""))])]
-  ""
-  "/* For push/pop, emit a REG_INC note to make sure the reload
-      inheritance and reload CSE pass notice the change of the stack
-      pointer.  */
-  if (IS_STACK_PUSH (operands[0]) || IS_STACK_POP (operands[1]))
-    {
-
-という記述があって insn-emit.c の
-
-/* ../.././gcc/config/m68hc11/m68hc11.md:644 */
-rtx
-gen_movsi (rtx operand0,
-	rtx operand1)
-{
-  rtx_insn *_val = 0;
-  start_sequence ();
-  {
-
-この函数が呼び出されている. optab_handler で計算される値は結果的に
-以下のメンバを参照していた:
-
-/* Target-dependent globals.  */
-struct target_optabs {
-  /* Patterns that are used by optabs that are enabled for this target.  */
-  bool pat_enable[NUM_OPTAB_PATTERNS];        これ
-
-そして現状では
-
-insn-opinit.h
-#define NUM_OPTAB_PATTERNS  0
-
-のようになっている.
-
-m68hc11 では insn-output で
-
-const struct insn_data_d insn_data[] = 
-{
-...
-  /* ../.././gcc/config/m68hc11/m68hc11.md:644 */
-  {
-    "movsi",
-#if HAVE_DESIGNATED_UNION_INITIALIZERS
-    { 0 },
-#else
-    { 0, 0, 0 },
-#endif
-    { (insn_gen_fn::stored_funcptr) gen_movsi },
-    &operand_data[372],
-    2,
-    3,
-    0,
-    0,
-    0
-  },
-
-のようにエントリがある.
-
-他のプロセッサの状況を調べてみた:
-
-(*) aarch64
-
-(define_expand "mov<mode>"
-  [(set (match_operand:GPI 0 "nonimmediate_operand")
-	(match_operand:GPI 1 "general_operand"))]
-  ""
-  "
-    if (MEM_P (operands[0]) && !MEM_VOLATILE_P (operands[0])
-
-生成された函数(の 1 つ(?)は gen_movsi でそこが呼び出された.
-
-(*) arm
-
-(define_expand "movsi"
-  [(set (match_operand:SI 0 "general_operand")
-        (match_operand:SI 1 "general_operand"))]
-  "TARGET_EITHER"
-  "
-  {
-  rtx base, offset, tmp;
-
-やはり呼び出されたのは gen_movsi.
-
-(*) avr
-
-;; General move expanders
-
-;; "movqi" "movqq" "movuqq"
-;; "movhi" "movhq" "movuhq" "movha" "movuha"
-;; "movsi" "movsq" "movusq" "movsa" "movusa"
-;; "movsf"
-;; "movpsi"
-(define_expand "mov<mode>"
-  [(set (match_operand:MOVMODE 0 "nonimmediate_operand" "")
-        (match_operand:MOVMODE 1 "general_operand" ""))]
-  ""
-  {
-    rtx dest = operands[0];
-
-やはり呼び出されたのは gen_movsi.
-
-なんとなく雰囲気が分かったので, 以下を hasegawa.md に追加.
-
-(define_expand "movsi"
-  [(set (match_operand:SI 0 "general_operand")
-        (match_operand:SI 1 "general_operand"))]
-  ""
-  "
-{
-}")
-
-
-さらに進んで現状, 以下 fatal_insn_not_found でエラーする. 
-
-      icode = recog_memoized (insn);
-      if (icode < 0)
-	fatal_insn_not_found (insn);
-
-このとき
-
-(gdb) p debug_insn_slim(insn)
-    5: r15:SI=0x1
-$28 = void
-(gdb) 
-
-
-recog_memoized では recog で -1 が返っている.
-
-int
-recog (rtx x1 ATTRIBUTE_UNUSED,
-	rtx_insn *insn ATTRIBUTE_UNUSED,
-	int *pnum_clobbers ATTRIBUTE_UNUSED)
-{
-...
-  switch (GET_CODE (x2))
-    {
-    case COMPARE:
-...
-    case LABEL_REF:
-...
-    default:
-      return -1;          ここで -1 が返っている.
-
-
-    case SET:
-      のようなコードがない.
-
-m68hc11 では
-
-  switch (GET_CODE (x1))
-    {
-    case SET:
-      return recog_12 (x1, insn, pnum_clobbers);
-
-のようになっている.
-
-また他のプロセッサを調べてみる
-
-(*) aarch64
-
-  switch (GET_CODE (x1))
-    {
-    case SET:
-      return recog_437 (x1, insn, pnum_clobbers);  これは m68hc11 とほぼ同じ
-
-(*) arm
-
-    case SET:
-      return recog_339 (x1, insn, pnum_clobbers);  生成されている位置は違うが
-                                                   実行されていそうなコードは
-						   ほぼ同じ.
-
-(*) avr
-
-  switch (GET_CODE (x1))
-    {
-    case SET:
-      return recog_38 (x1, insn, pnum_clobbers);  これは m68hc11 とほぼ同じ
-
-
-insn-recog.c はざっくりというと
-
-build/genrecog ../.././gcc/common.md ../.././gcc/config/hasegawa/hasegawa.md \
-  insn-conditions.md > insn-recog.c
-
-のように生成される.
-
-cd build
-M-x gdb
-gdb --annotate genrecog
-(gdb) run  a.md > b
-a.md: No such file or directory
-
-a.md を単純なものにしてみた.
-
-(define_expand "movsi"
-  [(set (match_operand:SI 0 "general_operand")
-        (match_operand:SI 1 "general_operand"))]
-  ""
-  "
-  emit_insn(gen_rtx_SET(operands[0], operands[1]));
-  DONE;
-  "
-)
-
-(gdb) run
-
-正常終了するものの b に生成された函数 recog は -1 を返す空の函数.
-
-a.md を以下のものにしてみた:
-
-(define_insn "jump"
-  [(set (pc)
-	(label_ref (match_operand 0 "" "")))]
-  ""
-  "bra\\t%l0")
-
-これだと生成された recog で -1 以外が返るようになっている.
-
-define_expand の指定は insn-emit.c にのみ影響するらしい.
-define_insn だと insn-recog.c, insn-emit.c もそれっぽいものが生成される.
-
-./genemit a.md > b
-./genrecog a.md > b2
-
-よく分からないので m68hc11 で 
-
-./genrecog ../../.././gcc/common.md ../../.././gcc/config/m68hc11/m68hc11.md   ../insn-conditions.md > x
-
-のようにしてみたところ
-
-static int
-recog_12 (rtx x1 ATTRIBUTE_UNUSED,
-	rtx_insn *insn ATTRIBUTE_UNUSED,
-	int *pnum_clobbers ATTRIBUTE_UNUSED)
-{
-...
-
-int
-recog (rtx x1 ATTRIBUTE_UNUSED,
-	rtx_insn *insn ATTRIBUTE_UNUSED,
-	int *pnum_clobbers ATTRIBUTE_UNUSED)
-{
-...
-  switch (GET_CODE (x1))
-    {
-    case SET:
-      return recog_12 (x1, insn, pnum_clobbers);
-
-のように x に生成されている. だから recong_12 が何を契機に生成されるのかを調べてみる.
-
-M-x gdb
-gdb --annotate=3 ./genrecog
-(gdb) run ../../.././gcc/common.md ../../.././gcc/config/m68hc11/m68hc11.md ../insn-conditions.md > x
-...
-[Inferior 1 (process 11731) exited normally]
-(gdb)
-
-gdb から実行できている.
-
-問題の recog_12 を生成しているのは以下
-
-      auto_vec <state *> subroutines;
-      find_subroutines (type, root, subroutines); ここで subroutines がセットされ
-
-      /* Output the subroutines (but not ROOT itself).  */
-      unsigned int i;
-      state *s;
-      FOR_EACH_VEC_ELT (subroutines, i, s)
-	print_subroutine (os, s, i + 1);          ここで出力される. 
-
-soubroutine[11] に値がセットされるタイミングを捉えたい.
-
-static state *
-create_subroutine (routine_type type, state *s, vec <state *> &procs)
-{
-  procs.safe_push (s);     ここで入れている
- 
-
-define_insn
-define_split
-define_peephole2
-
-でこれらだけが対象になっている.
-
-
-m68hc11 で
-
-./genrecog a.md b.md c.md > x && grep recog_12 x && echo ok
-
-のようにして正常終了する部分を探してみたが,
-
-b.md:6680
-
-
-(define_insn "indirect_jump"
-  [(set (pc) (match_operand:HI 0 "nonimmediate_operand" "xy"))]
-  ""
-  "jmp\\t0,%0")
-
-この宣言(?) を削除するとエラーになるが, これがあれば正常終了している.
-
-しかしこの直前の (define_ を削除してもエラーにはならない.
-
-(define_insn "indirect_jump"
-
-を b.md の前のほうに引っ越ししてもエラーにはならない.
-
-いろいろやってみたが, b.md を修正して genrecog を動作して確認する
-を繰り返して探すのは大変.
-
-
-arm の場合で再調査してみたところ
-
-(define_insn "*arm_movsi_insn"
-  [(set (match_operand:SI 0 "nonimmediate_operand" "=rk,r,r,r,rk,m")
-	(match_operand:SI 1 "general_operand"      "rk, I,K,j,mi,rk"))]
-  "TARGET_ARM && !TARGET_IWMMXT && !TARGET_HARD_FLOAT
-   && (   register_operand (operands[0], SImode)
-       || register_operand (operands[1], SImode))"
-  "@
-
-が関係していて結果的に
-
-insn-recog.c
-    case E_SImode:
-      if (nonimmediate_operand (operands[0], E_SImode)
-          && general_operand (operands[1], E_SImode)
-          && 
-// #line 6446 "../.././gcc/config/arm/arm.md"
-(TARGET_ARM && !TARGET_IWMMXT && !TARGET_HARD_FLOAT
-   && (   register_operand (operands[0], SImode)
-       || register_operand (operands[1], SImode))))
-        return 253; /* *arm_movsi_insn */                 ここで 253 が返っている.
-	
-
-m68hc11 でも recog から -1 以外が返るところをステップ実行してみると
-
-                            case 2:
-                              if (push_operand (operands[0], E_SImode))
-                                return 20; /* *pushsi_internal */
-                              if (!nonimmediate_operand (operands[0], E_SImode))
-                                return -1;
-                              return 21; /* movsi_internal */  ここで 21 が返る
-
-
-そしてどうやらこれは
-
-(define_insn_and_split "movsi_internal"
-  [(set (match_operand:SI 0 "nonimmediate_operand" "=mu,mu,?D,m,?D,?u,?u,!u,D")
-	(match_operand:SI 1 "general_operand" "K,imu,im,?D,!u,?D,mi,!u,!D"))
-   (clobber (match_scratch:HI 2               "=X,&d,X,X,X,X,&d,&d,X"))]
-  ""
-  "#"
-  "reload_completed"
-  [(const_int 0)]
-  "m68hc11_split_move (operands[0], operands[1], operands[2]);
-   DONE;")
-
-が関係しているらしい.
-
-なんだかよく分かっていない.
+のようにツールによりファイルを生成する.
 
 (*) genmodes
 
@@ -483,12 +64,12 @@ const char *const mode_name[NUM_MACHINE_MODES] =
 
 (define_predicate "func" (match_code "subreg,reg,mem") "hoge();")
 
-に対して以下のように生成した:
+に対して以下のように出力する:
 
 static inline int
 func_1 (rtx op ATTRIBUTE_UNUSED, machine_mode mode ATTRIBUTE_UNUSED)
 {
-  return hoge;
+  return hoge();
 }
 
 int
@@ -527,7 +108,7 @@ static inline bool satisfies_constraint_xyz(rtx op)
   return func(op);
 }
 
-のようなコードを生成する. 但し define_register_constraint に関してはこの限りではない.
+のようなコードを生成する. 但し define_register_constraint に関しては何も生成しない.
 通常は op がメモリであることを限定するのだから
 
 (define_memory_constraint "xyz"
@@ -546,23 +127,23 @@ static inline bool satisfies_constraint_xyz(rtx op)
 
 (*) genconditions
 
-このプログラムは md ファイルを読み込んで C++ ファイルを生成する. このファイルを
+このプログラムは .md ファイルを読み込んで C++ ファイルを生成する. このファイルを
 gencondmd.cpp とすれば
 
 g++ -o gencondmd gencondmd.o ...
 
-のように次に述べる gencondmd を生成する.
+のように次に述べる gencondmd を生成する. 例えば .md ファイルが
 
 (define_insn "jump" [(set (pc) (label_ref (match_operand 0 "" "")))] "foo"
 "jump	%l0")
 
-に対して
+であるとすれば
 
 static const struct c_test insn_conditions[] = {
   { "foo",  __builtin_constant_p (foo)  ? (int) (foo)  : -1 },
 };
 
-のようなソースを生成する.
+のようなソースを出力する.
 
 (*) gencondmd
 
@@ -579,22 +160,20 @@ static const struct c_test insn_conditions[] = {
   "
   emit_insn(gen_rtx_SET(operands[0], operands[1]));
   DONE;
-  "
-)
+  ")
 
 のような入力に対して以下のような出力をする.
 
 #define HAVE_movsi (456)
 extern rtx        gen_movsi (rtx, rtx);
 
-
 (*) genattr
 
-一応 md ファイルを読み込んでいるようだが m68hc11.md と hasegawa.md とで差分が確認できない.
+一応 .md ファイルを読み込んでいるようだが m68hc11.md と hasegawa.md とで差分が確認できない.
 
 (*) genattr-common
 
-これも genattr 同様. どうやら遅延分岐が関係しているらしい.
+これも genattr 同様で差分は確認できていない. しかし, どうやら遅延分岐が関係しているらしい.
 
 (*) gencodes
 
@@ -607,8 +186,7 @@ enum insn_code の宣言を出力する. 例えば以下に対して
   "
   emit_insn(gen_rtx_SET(operands[0], operands[1]));
   DONE;
-  "
-)
+  ")
 
 (define_insn "jump"
    [(set (pc) (label_ref (match_operand 0 "" "")))]
@@ -627,8 +205,7 @@ const unsigned int NUM_INSN_CODES = 3;
 
 (*) genconfig
 
-命令セットに conditional move があるかなどの宣言. どのように使用されるかは不明.
-
+命令セットに conditional move があるかなどの宣言. どのように使用されるかは未調査.
 
 (*) gentarget-def
 
@@ -663,7 +240,7 @@ target_gen_jump (rtx x0)
 
 (*) genhooks
 
-入力ファイルなし. hasegawa.c で定義される
+入力ファイルなし. hasegawa.c で定義されている
 
 gcc_target targetm = TARGET_INITIALIZER;
 
@@ -686,8 +263,7 @@ gcc_target targetm = TARGET_INITIALIZER;
   "
   emit_insn(gen_rtx_SET(operands[0], operands[1]));
   DONE;
-  "
-)
+  ")
 
 の入力に対して以下のように出力する.
 
@@ -703,9 +279,12 @@ init_all_optabs (struct target_optabs *optabs)
 }
 ...
 
+最も重要なツールの 1 つ.
+
+
 (*) genattrtab
 
-./genattrtab x.md -Aa.c -Db.c -Lc.c
+build/genattrtab x.md -Aa.c -Db.c -Lc.c
 
 のように動かす. md ファイルがいまひとつどのように依存しているか不明だが
 
@@ -728,8 +307,7 @@ c.c : ??? ほぼ空
   "
   emit_insn(gen_rtx_SET(operands[0], operands[1]));
   DONE;
-  "
-)
+  ")
 
 (define_insn "jump"
    [(set (pc) (label_ref (match_operand 0 "" "")))]
@@ -737,7 +315,7 @@ c.c : ??? ほぼ空
    "jump	%l0")
 
 
-のような入力に対して以下を生成する. おそらくこれが最も重要.
+のような入力に対して以下を生成する. おそらくこれが最も重要なツールの 1 つ.
 
 rtx gen_jump (rtx operand0)
 {
@@ -770,8 +348,7 @@ rtx gen_movsi (rtx operand0, rtx operand1)
   "
   emit_insn(gen_rtx_SET(operands[0], operands[1]));
   DONE;
-  "
-)
+  ")
 
 (define_insn "jump"
    [(set (pc) (label_ref (match_operand 0 "" "")))]
@@ -795,18 +372,18 @@ insn_extract (rtx_insn *insn)
     }
 }   
 
-ここで movsi についての出力はなかった.
+ここで movsi についての出力はない. つまり define_insn は出力結果に影響するが,
+define_expand は出力結果と無関係のようである.
 
 (*) gencfn-macros
 
 入力ファイルなし. CASE_CFN_XXX のマクロを生成する.
 
-
 (*) genmatch
 
 ./genmatch --gimple ../.././gcc/match.pd
 
-のように動かすらしいが md ファイルを入力としていない.
+のように動かすらしいが .md ファイルを入力としていない.
 
 (*) genoutput
 
@@ -817,8 +394,7 @@ insn_extract (rtx_insn *insn)
   "
   emit_insn(gen_rtx_SET(operands[0], operands[1]));
   DONE;
-  "
-)
+  ")
 
 (define_insn "jump"
    [(set (pc) (label_ref (match_operand 0 "" "")))]
@@ -848,7 +424,7 @@ const struct insn_data_d insn_data[] = {
   }
 };
 
-のようなテーブルデータを出力する.
+のようなテーブルデータを出力する. おそらくこれが最も重要なツールの 1 つ.
 
 (*) genpeep
 
@@ -865,7 +441,7 @@ const struct insn_data_d insn_data[] = {
   "g()")
 
 のような入力に対して意味のあるコードを生成すると予測したが, これは空の入力に対する
-出力結果と同じ. 不明.
+出力結果と同じ. いまのところ不明.
 
 
 (*) genrecog
@@ -902,15 +478,147 @@ int recog(rtx x1, rtx_insn *insn,int *pnum_clobbers)
   ""
   "")
 
-のような入力に対して -1 以外を返すようなコードは生成されていない. 現状これがネックになっている.
+のような入力に対して -1 以外を返すようなコードは生成されていない.
+おそらくこれが最も重要なツールの 1 つ.
 
 (*) genenums
 
 (define_enum_attr "hoge" "foo" 0)
 
-のような入力に対して意味のある宣言は生成されず.
+のような入力に対して意味のある宣言は生成されず. 不明.
 
 (*) genchecksum
 
 入力ファイルはアセンブラの出力 .o やアーカイブファイル .a でこのチェックサムを作っている.
 
+(*) RTX と RTL
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.hasegawa-elf/gcc/rtl.def
+
+RTX : Register Transfer eXpression
+RTL : Register TRansfer Language
+
+この rtl.def 自体も gcc をビルドするのに関係しているようではあるが, まずは .md ファイルがど
+のように書かれるべきかをこれを見て学習する.
+
+2021.11.02 9:33 現在
+
+int f(int x, int y)
+{
+  return x + y;
+}
+
+二項の +, -, *, /, %, <<, >>, &, ^, | に対しても動作している.
+単項の -, ~ に対しても動作している.
+函数を呼び出すこともできている.
+
+単項の &, * は特に対処が必要なかった. 添字参照演算子も特に対応が必要なかった.
+メンバ参照演算子 . -> も対応の必要がなかった.
+後置の ++, -- も必要がなかった.
+
+修正は必要だったが文字列リテラルを扱うことができている. 浮動少数点数リテラルも扱うことが
+できている. コンパウンドリテラルも修正は必要だったができている.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/gcc-1.42/config/i386.md
+
+を見ると分かるがこのときは
+
+define_insn がほとんどで defien_expand は 4 つのみ.
+
+(*) define_insn
+
+define_insn の最も簡単な使い方は以下:
+
+(define_insn "addsi3"
+  [(set
+    (match_operand:SI 0 "nonimmediate_operand" "")
+    (plus:SI
+     (match_operand:SI 1 "general_operand" "")
+     (match_operand:SI 2 "general_operand" "")))]
+  ""
+  "%0 := %1 + %2")
+
+これは SI すなわち 4 バイトの整数の加算に対する処理を定義している.
+define_insn の直後の "addsi3" だがこれには add si 3 とそれぞれに意味があって
+このどれかを間違えると途端に期待しない動作になってしまう.
+
+"nonimmediate_operand" の次の "" には "r" のように constraint と呼ばれる
+制限を記述することができる.
+
+例えば
+
+(define_insn "addsi3"
+  [(set
+    (match_operand:SI 0 "nonimmediate_operand" "m")
+    (plus:SI
+     (match_operand:SI 1 "general_operand" "r")
+     (match_operand:SI 2 "general_operand" "i")))]
+  ""
+  "%0 := %1 + %2")
+
+は
+
+メモリ := レジスタ + 定数
+
+だけを扱うようにすることができる.
+
+"%0 := %1 + %2" の 1 つ前の "" には第 2 条件を記述することができる. これは
+そのまま if の条件式に複写される.
+
+最後の "%0 := %1 + %2" はテンプレートを指定している. これがアセンブル出力に直結
+する.
+ここにはテンプレートでなくて以下のようにプログラムを記述することができる:
+
+(define_insn "addsi3"
+  [(set
+    (match_operand:SI 0 "nonimmediate_operand" "")
+    (plus:SI
+     (match_operand:SI 1 "general_operand" "")
+     (match_operand:SI 2 "general_operand" "")))]
+  ""
+  "*
+  assert(REG_P(operand[0]);
+  return \"add\ %0, %1, %2\"";
+  ")
+
+また以下のように各 constraint に対してテンプレートを指定することができる:
+
+(define_insn "addsi3"
+  [(set
+    (match_operand:SI 0 "nonimmediate_operand" "r,r,r")
+    (plus:SI
+     (match_operand:SI 1 "general_operand" "r,r,r")
+     (match_operand:SI 2 "general_operand" "r,m,i")))]
+  ""
+  "@
+  addr %0, %1, %2
+  addm %0, %1, %2
+  addi %0, %1, %2
+  ")
+
+(*) .md ファイルの修正に伴なうリコンパイルが必要なもの
+
+.md ファイルを修正したときに生成されたファイルに変更がなければ生成ファイルを更新しないような
+工夫(move-if-change スクリプト)はあるものの, 大抵は全コンパイルが make によって必要
+と判断されてしまう.
+
+しかし, .md ファイルを更新したときに影響範囲を予測できるのならば大幅にリコンパイルを省略
+できる.
+
+insn-target-def.h
+insn-flags.h
+insn-emit.c
+insn-output.c
+insn-recog.c
+insn-opinit.{c,h}
+insn-codes.h
+insn-extract.c
+
+を生成し直して .c ファイルをリコンパイルし libbackend.a を作成し, cc1 をリンクすれば
+大抵はうまくいく.
+
+しかし場合によって
+
+lra.c
+
+のリコンパイルも必要になる. 影響範囲を予測できないのならば残念だが全ビルドしておくのが安全.
