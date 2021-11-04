@@ -373,3 +373,44 @@ gcc-7.1.0 では
 のように変化してそして上のブレークポイントに到達している.
 
 さてこれはどう見るべきなのか...
+
+この調査とは別に「gcc ターゲット依存部」で .md ファイルの書式について調査してみたところ
+gcc のどのバージョンかは不明だが仕様が大幅に変更されて下位互換ではなくなっていることに気付
+いた.
+
+例えば i386.md のかなり初期のバージョンでは 
+
+(define_insn "cmpsi"
+  [(set (cc0)
+	(compare (match_operand:SI 0 "general_operand" "mr,ri")
+		 (match_operand:SI 1 "general_operand" "ri,mr")))]
+  ""
+...
+
+(define_insn "beq"
+  [(set (pc)
+	(if_then_else (eq (cc0)
+			  (const_int 0))
+		      (label_ref (match_operand 0 "" ""))
+		      (pc)))]
+  ""
+  "je %l0")
+
+のように条件分岐を実現していたが, この方法は gcc-10.2.0 では少なくとも動作しないようである.
+この .md ファイルの仕様変更が今回のバグの直接的な原因かは不明だが, 可能性は 0 ではない.
+ちなみに m68hc11.md での上の部分は
+
+(define_expand "cbranchsi4"
+  [(set (cc0)
+	(compare (match_operand:SI 1 "tst_operand" "")
+		 (match_operand:SI 2 "cmp_operand" "")))
+   (set (pc)
+	(if_then_else (match_operator 0 "ordered_comparison_operator"
+		       [(cc0) (const_int 0)])
+		      (label_ref (match_operand 3 "" ""))
+		      (pc)))]
+  ""
+...
+
+のように新仕様に合っているっぽいのでここは問題なさそう.
+
