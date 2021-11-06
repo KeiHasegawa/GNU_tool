@@ -1,0 +1,29 @@
+int f(int a, int b)
+{
+  return a + b;
+} 
+
+に対する -mshort のコード.
+
+_.frame は 0x10 番地に配置されていて, f を呼び出した main で _.frame に 0xffb を
+セットした状態. また main から f(5, 6) で呼び出したとする.
+
+f:                             意味                  シミュレーションの値
+	ldx	*_.frame       x := *_.frame        x <- mem[0x10](0xffb)
+	pshx                   mem[sp-1] := x       mem[0xff6] <- 0xffb
+	                       sp -= 2              sp <- 0xff5
+	pshx                   mem[sp-1] := x       mem[0xff4] <- 0xffb
+	                       sp -= 2              sp <- 0xff3
+	sts	*_.frame       *_.frame = sp        mem[0x10] <- 0xff3
+	ldx	*_.frame       x := *_.frame        x <- 0xff3
+	std	1,x            mem[x+1] := d        mem[0xff4] <- d(5)
+	ldx	*_.frame       x := *_.frame        x <- 0xff3
+	ldd	1,x            d := mem[x+1]        d <- mem[0xff4] (5)
+	ldx	*_.frame       x := *_.frame        x <- 0xff3
+	addd	7,x            d := d + mem[x+7]    d <- d(5) + mem[0xffa](6)
+	pulx
+	pulx
+	stx	*_.frame
+	rts
+
+2 つ目の pshx はローカル変数 2 バイト分を確保したもの.
