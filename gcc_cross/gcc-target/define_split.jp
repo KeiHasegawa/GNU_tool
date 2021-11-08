@@ -1,5 +1,62 @@
 define_split
 
+例えば
+
+int f(int a, int b)
+{
+  return a - b;
+}
+
+に対して
+
+f:
+	((pre_dec:SI (reg/f:SI 1 sp))) := fp
+	fp := sp
+	sp := sp - 16
+	(fp+4) := (fp)
+	(fp+12) := (fp+4)
+	(fp) := (fp) - (fp+8)
+	a := (fp+4)
+	sp := fp
+	fp := ((post_inc:SI (reg/f:SI 1 sp)))
+	return
+
+のような出力をしているとして,
+
+(define_split
+  [(set (match_operand:SI 0 "nonimmediate_operand" "")
+	(match_operand:SI 1 "general_operand" ""))]
+  "MEM_P(operands[1])"
+  [(set (match_dup 1)
+	(match_dup 0))]
+  "asm(\"int3\");")
+
+上のような出鱈目な define_split を追加すると
+
+f:
+	((pre_dec:SI (reg/f:SI 1 sp))) := fp
+	fp := sp
+	sp := sp - 16
+	(fp) := (fp+4)                ここ
+	(fp+4) := (fp+12)             ここ
+	(fp) := (fp) - (fp+8)
+	a := (fp+4)
+	sp := fp
+	fp := ((post_inc:SI (reg/f:SI 1 sp)))
+	return
+
+上のようにソースとデスティネーションが反転することになる. これが意味のある例とは
+到底思えないが define_insn の機能を理解することができるだろう.
+defien_insn の第 2 オペランドの "MEP_P(operands[1])" が "" だとすべての 4 バイトの
+代入に対して反転を繰り返すことになり再帰呼び出しが停止しない.
+
+	a := (fp+4)
+
+に適用されないのは a レジスタが戻り値を格納するレジスタとして指定されていることが関係している
+のだろう.
+
+define_split は m68hc11.md で以下のように使用されている:
+
 (define_split
   [(set (cc0)
 	(compare (match_operand:QI 0 "hard_addr_reg_operand" "")
@@ -13,28 +70,36 @@ define_split
 	      (set (match_dup 1) (reg:HI D_REGNUM))])]
   "operands[1] = gen_rtx_REG (HImode, REGNO (operands[0]));")
 
-define_split の直後には split 対象とする 3 番地コードを指定する.
+define_split の第 1 オペランドには split 対象とする 3 番地コードを指定する.
 上の場合はざっくりと言うと
 
 cc0 := cmp.b(op0, 0)
 
-となる. これに対して
+となる. 上の define_split の指定に対して
 
   if (z_replacement_completed == 2 && GET_MODE (operands[0]) == QImode)
     return gen_split_1(insn, operands);
 
-
 のようなコードが insn-recog.c に生成される.
-define_insn, define_expand, define_peephole と同様に 2 つ目には
-生成されるプログラムにそのまま複写される条件式を書く.
+第 2 オペランドには生成されるプログラムにそのまま複写される条件式を書く.
 
 gen_split_1(rtx_insn*, rtx*) の定義は insn-emit.c に生成される.
 
 rtx_insn *
-gen_split_1 (rtx_insn *curr_insn ATTRIBUTE_UNUSED, rtx *operands)
+gen_split_1(rtx_insn *curr_insn, rtx *operands)
 {
 ...
   operands[1] = gen_rtx_REG (HImode, REGNO (operands[0]));
-...  
+...
+  emit (gen_rtx_PARALLEL (VOIDmode,
+	gen_rtvec (2,
+		gen_rtx_SET (gen_rtx_REG (HImode,
+	1),
+	operand1),
+		gen_rtx_SET (copy_rtx (operand1),
+	gen_rtx_REG (HImode,
+	1)))), true);
+...
 
-つまり最後に指定した文字列が
+つまり第 4 オペランドがまず, 複写され第 3 オペランドに相当する C++ コードが
+最後に生成される.
