@@ -2,24 +2,17 @@ define_split
 
 例えば
 
-int f(int a, int b)
+int f(int x, int y)
 {
-  return a - b;
+  return x + y;
 }
 
 に対して
 
 f:
-	((pre_dec:SI (reg/f:SI 1 sp))) := fp
-	fp := sp
-	sp := sp - 16
-	(fp+4) := (fp)
-	(fp+12) := (fp+4)
-	(fp) := (fp) - (fp+8)
-	a := (fp+4)
-	sp := fp
-	fp := ((post_inc:SI (reg/f:SI 1 sp)))
-	return
+	a := (fp)
+	b := (fp+4)
+	a := a + b
 
 のような出力をしているとして,
 
@@ -31,29 +24,17 @@ f:
 	(match_dup 0))]
   "asm(\"int3\");")
 
-上のような出鱈目な define_split を追加すると
+上のような出鱈目な define_split を追加すると, 埋め込んだブレークポイントに 2 度ヒットして 
 
 f:
-	((pre_dec:SI (reg/f:SI 1 sp))) := fp
-	fp := sp
-	sp := sp - 16
-	(fp) := (fp+4)                ここ
-	(fp+4) := (fp+12)             ここ
-	(fp) := (fp) - (fp+8)
-	a := (fp+4)
-	sp := fp
-	fp := ((post_inc:SI (reg/f:SI 1 sp)))
-	return
+	(fp) := a
+	(fp+4) := b
+	a := a + b
 
 上のようにソースとデスティネーションが反転することになる. これが意味のある例とは
 到底思えないが define_insn の機能を理解することができるだろう.
-defien_insn の第 2 オペランドの "MEP_P(operands[1])" が "" だとすべての 4 バイトの
-代入に対して反転を繰り返すことになり再帰呼び出しが停止しない.
-
-	a := (fp+4)
-
-に適用されないのは a レジスタが戻り値を格納するレジスタとして指定されていることが関係している
-のだろう.
+defien_insn の第 2 オペランドの "MEP_P(operands[1])" が "" だと一度適用した
+4 バイトの代入に対する反転を再び繰り返すことになり, 再帰呼び出しが停止しないことになる.
 
 define_split は m68hc11.md で以下のように使用されている:
 
