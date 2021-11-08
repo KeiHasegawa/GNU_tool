@@ -12,11 +12,8 @@ define_insn の最も簡単な使い方は以下:
   "%0 := %1 + %2")
 
 これは SI すなわち 4 バイトの整数の加算に対する処理を定義している.
-define_insn の直後の "addsi3" だが
-
-add si 3
-
-とそれぞれに意味があってこのどれかを間違えると途端に期待しない動作になってしまう.
+define_insn の直後の "addsi3" により生成される函数の名前は gen_addsi3
+のようになる.
 
 "nonimmediate_operand" の次の "" には "r" のように constraint と呼ばれる
 制限を記述することができる.
@@ -53,7 +50,7 @@ add si 3
      (match_operand:SI 2 "general_operand" "")))]
   ""
   "*
-  assert(REG_P(operand[0]);
+  assert(REG_P(operands[0]);
   return \"add\ %0, %1, %2\"";
   ")
 
@@ -71,3 +68,26 @@ add si 3
   addm %0, %1, %2
   addi %0, %1, %2
   ")
+
+(*) m68hc11.md の tsthi_1
+
+通常
+
+(define_insn "tsthi_1"
+  [(set (cc0)
+	(compare (match_operand:HI 0 "general_operand" "")
+		 (const_int 0)))]
+  ""
+  ...)
+
+のようにしても gen_tsthi_1 が呼び出されることはないが, 例えば
+
+static rtx
+m68hc11_expand_compare(enum rtx_code code, rtx op0, rtx op1)
+{
+...
+  emit_insn(gen_rtx_SET(cc0_rtx,
+			gen_rtx_COMPARE(VOIDmode, op0, op1)));
+
+のようにターゲット固有部分で cc0 := cmp(op0, op1) のような 3 番地コード
+を生成すれば gen_tsthi_1 が呼び出されるようになる.

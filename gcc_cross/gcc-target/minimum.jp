@@ -428,21 +428,7 @@ const struct insn_data_d insn_data[] = {
 
 (*) genpeep
 
-(define_constants [(SP_REGNUM 3)])
-
-(define_peephole2
-  [(set (mem:HI (pre_dec:HI (reg:HI SP_REGNUM)))
-        (match_operand:HI 0 "hard_reg_operand" ""))
-   (set (mem:HI (reg:HI SP_REGNUM))
-        (const_int 0))]
-  "f()"
-  [(set (mem:HI (pre_dec:HI (reg:HI SP_REGNUM)))
-        (const_int 0))]
-  "g()")
-
-のような入力に対して意味のあるコードを生成すると予測したが, これは空の入力に対する
-出力結果と同じ. いまのところ不明.
-
+define_peep を参照.
 
 (*) genrecog
 
@@ -523,7 +509,20 @@ int f(int x, int y)
 
 を見ると分かるがこのときは
 
-define_insn がほとんどで defien_expand は 4 つのみ.
+define_insn がほとんどで define_expand は 4 つのみ. 
+また他のターゲットコンパイラでは define_peephole も使用している.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/gcc-2.7.2.3/config/
+
+になると
+
+define_attr
+define_asm_attributes
+define_delay
+define_function_unit
+define_split
+
+が追加されている.
 
 (*) .md ファイルの修正に伴なうリコンパイルが必要なもの
 

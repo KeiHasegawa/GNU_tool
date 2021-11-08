@@ -1,0 +1,29 @@
+define_peephole
+
+gcc-10.2.0/gcc/rtl.def 
+
+を見れば分かるが, define_peephole2 を使ったほうが良いらしい.
+
+peephole の日本語訳は覗き穴であり, コンパイラ(ドラゴンブック )II の 9.9 でも
+紹介されている最適化の技法である.
+
+o 冗長な命令の削除
+o 制御の流れの最適化
+o 代数的簡約化
+o 機械固有の機能の利用
+
+がある. 推測だが, 最初の 3 つは gcc の共通部で行なわれる. 最後の 1 つを実現する
+のに define_peephole や define_peephole2 が使用される.
+
+以下のように書いてみた:
+
+(define_peephole
+  [(set (match_operand:SI 0 "nonimmediate_operand" "")
+	(match_operand:SI 1 "general_operand" ""))]
+  ""
+  "peephole %0, %1")
+
+cc1 を -O1, -O2, -O3 オプションのいずれかを指定して起動すると 4 バイトの代入に対して上
+が適用される.
+
+
