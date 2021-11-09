@@ -82,9 +82,11 @@ Motorola 68000 ABI
 	
 (*5) Normal argument and return value
 
-        sizeof(int) = 4
+        sizeof(int) = 4 : No option or -mlong option
+	sizeof(int) = 2 : -mshort option
 
-	1st : `d' register
+	1st : `d' register. If sizeof(int) = 4, use x register for high
+	      harf word.
 	2nd : use stack
 
 	For example
@@ -93,10 +95,10 @@ Motorola 68000 ABI
 
 	f(10, 11, 12, 13);
 
-	At the start address of `f', `d' register and stack layout become
-	like below:
+	At the start address of `f', `d' and `x' register and stack layout
+	become like below:
 
-	d = 10
+	d = 10, x = 2
 
 	+------------------+ -1
 	|                  | <- sp
@@ -113,7 +115,7 @@ Motorola 68000 ABI
 	|        13        |
 	+------------------+ +15
 
-        Function return value is set to `d' register.
+        Function return value is set to `d' and `x' register.
 
 (*6) `long' and `long long' argument and return value
 
