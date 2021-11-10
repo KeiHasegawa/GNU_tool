@@ -1,0 +1,36 @@
+define_insn_and_split
+
+例えば
+
+int f(int x, int y)
+{
+  return x + y;
+}
+
+に対して
+
+f:
+	a := (fp)
+	b := (fp+4)
+	a := a + b
+
+のような出力をしているとして,
+
+(define_insn_and_split "movsi3"
+  [(set (match_operand:SI 0 "nonimmediate_operand" "")
+	(match_operand:SI 1 "general_operand" ""))]
+  ""
+  "#"
+  "MEM_P(operands[1])"
+  [(set (match_dup 1) (match_dup 0))]
+  "asm(\"int3\");")
+
+上のような出鱈目な define_insn_and_split を追加すると, 埋め込んだブレークポイントに
+2 度ヒットして 
+
+f:
+	(fp) := a
+	(fp+4) := b
+	a := a + b
+
+上のようにソースとデスティネーションが反転することになる.

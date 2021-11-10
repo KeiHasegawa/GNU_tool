@@ -482,7 +482,7 @@ int recog(rtx x1, rtx_insn *insn,int *pnum_clobbers)
 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.hasegawa-elf/gcc/rtl.def
 
 RTX : Register Transfer eXpression
-RTL : Register TRansfer Language
+RTL : Register Transfer Language
 
 この rtl.def 自体も gcc をビルドするのに関係しているようではあるが, まずは .md ファイルがど
 のように書かれるべきかをこれを見て学習する.
@@ -523,6 +523,65 @@ define_function_unit
 define_split
 
 が追加されている.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/gcc-2.95.3/gcc/config/
+
+では特に何も追加されていない.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/gcc-3.0.1/gcc/config/
+
+になると以下が追加されている
+
+define_constants
+define_cond_exec
+define_insn_and_split
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/gcc-4.0.0/gcc/config/
+
+になると以下が追加されている.
+
+define_mode_macro
+define_automaton
+define_cpu_unit
+define_reservation
+define_bypass
+define_predicate
+define_special_predicate
+define_query_cpu_unit
+define_mode_attr
+define_code_macro
+define_code_attr
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/gcc-5.1.0/gcc/config/
+
+になると以下が追加されている.
+
+define_register_constraint
+define_memory_constraint
+define_constraint
+define_code_iterator
+define_c_enum
+define_mode_iterator
+define_int_iterator
+define_int_attr
+define_address_constraint
+define_enum
+define_enum_attr
+define_subst
+define_subst_attr
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/gcc-6.1.0/gcc/config/
+
+になると以下が追加されている
+
+define_special_memory_constraint
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/gcc-7.1.0/gcc/config/
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/gcc-8.1.0/gcc/config/
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/gcc-9.1.0/gcc/config/
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/gcc-10.2.0.org/gcc/config/
+
+では何も追加されていない.
 
 (*) .md ファイルの修正に伴なうリコンパイルが必要なもの
 

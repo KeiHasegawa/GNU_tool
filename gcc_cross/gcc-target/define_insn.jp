@@ -13,7 +13,23 @@ define_insn の最も簡単な使い方は以下:
 
 これは SI すなわち 4 バイトの整数の加算に対する処理を定義している.
 define_insn の直後の "addsi3" により生成される函数の名前は gen_addsi3
-のようになる.
+のようになる. 実は addsi3 は
+
+add
+si
+3
+
+と 3 つの意味をもつ. これらを変更すると途端に違う動作になる.
+
+insn-opinit.c:
+
+  ena[31] = HAVE_adddi3;
+
+insn-flag.h:
+
+#define HAVE_addsi3 1
+
+のようにこの HAVE_addsi3 が gcc の共通ソースで参照されるからである.
 
 "nonimmediate_operand" の次の "" には "r" のように constraint と呼ばれる
 制限を記述することができる.
@@ -91,3 +107,67 @@ m68hc11_expand_compare(enum rtx_code code, rtx op0, rtx op1)
 
 のようにターゲット固有部分で cc0 := cmp(op0, op1) のような 3 番地コード
 を生成すれば gen_tsthi_1 が呼び出されるようになる.
+
+
+gcc-10.2.0/gcc/rtl.def
+
+を見れば define_insn の構文が
+
+(define_insn sEsTV)
+
+となることが推測できる. ここで
+
+s : ダブルクォーテーションで囲まれた文字列
+E : 3 番地コード
+T : パターン
+V : 属性. オプショナル.
+
+らしい.
+
+函数のプロローグに対して
+
+        enter
+
+という出力を出そうとして以下のように .md ファイルに書いてみた.
+
+(define_insn "prologue"
+  [(clobber (const_int 0))]
+  ""
+  "enter")
+
+しかし期待する動作にはならない. prologue や epilogue に対しては define_expand
+を使用する必要がある. ここで第 3 オペランドの
+
+[(clobber (const_int 0))]
+
+はダミーの 3 番地コードで後に続く処理で無視される.
+
+しかしちょっと捻って
+
+(define_insn "prologue"
+  [(set (reg:SI 1) (reg:SI 2))]
+  ""
+  "enter %0, %1")
+
+としてみた. レジスタ番号 1 が sp で 2 は fp であることに留意すると prologue の部分は
+
+   sp := fp
+
+がアセンブラ出力として生成される. やはりここでも "enter %0, %1" という文字列は参照されない.
+このカラクリは
+
+1. gen_prologue という函数が呼ばれる
+2. [(set (reg:SI 1) (reg:SI 2))] が生成される
+3. gen_movsi で 2 で生成した 3 番地コードに対して sp := fp が出力される
+
+ということになる.
+
+(define_insn "prologue" ...)
+
+で第 3 オペランドに適切な式を指定すればこれでも一応 prologue のコード
+生成は可能であるが, 普通は 
+
+(define_expand "prologue" ...)
+
+を使用したほうが良い.
+
