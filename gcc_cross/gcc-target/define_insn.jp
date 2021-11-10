@@ -12,6 +12,10 @@ define_insn の最も簡単な使い方は以下:
   "%0 := %1 + %2")
 
 これは SI すなわち 4 バイトの整数の加算に対する処理を定義している.
+
+gcc の共通部分で 4 バイトの加算が生成され, それに対してコードを生成す
+る必要になったとき, この部分の記述が参照されることになる.
+
 define_insn の直後の "addsi3" により生成される函数の名前は gen_addsi3
 のようになる. 実は addsi3 は
 
@@ -19,7 +23,8 @@ add
 si
 3
 
-と 3 つの意味をもつ. これらを変更すると途端に違う動作になる.
+と 3 つがそれぞれの意味をもつ. これらを変更すると途端に違う動作になる. 簡単に説
+明すると
 
 insn-opinit.c:
 
@@ -67,7 +72,7 @@ insn-flag.h:
   ""
   "*
   assert(REG_P(operands[0]);
-  return \"add\ %0, %1, %2\"";
+  return \"add %0, %1, %2\"";
   ")
 
 また以下のように各 constraint に対してテンプレートを指定することができる:
@@ -119,12 +124,12 @@ gcc-10.2.0/gcc/rtl.def
 
 s : ダブルクォーテーションで囲まれた文字列
 E : 3 番地コード
-T : パターン
+T : パターンもしくは * に続くプログラムテキスト
 V : 属性. オプショナル.
 
 らしい.
 
-函数のプロローグに対して
+(*) 函数のプロローグに対して
 
         enter
 
@@ -135,14 +140,21 @@ V : 属性. オプショナル.
   ""
   "enter")
 
-しかし期待する動作にはならない. prologue や epilogue に対しては define_expand
-を使用する必要がある. ここで第 3 オペランドの
+しかし期待した動作にはならない. ここで第 3 オペランドの
 
 [(clobber (const_int 0))]
 
 はダミーの 3 番地コードで後に続く処理で無視される.
 
-しかしちょっと捻って
+上に対して実際に行なわれることは
+
+gen_prologue が呼び出されたときに 
+
+[(clobber (const_int 0))]
+
+という 3 番地コードが生成されるということだけである.
+
+ちょっと捻って
 
 (define_insn "prologue"
   [(set (reg:SI 1) (reg:SI 2))]
@@ -170,4 +182,53 @@ V : 属性. オプショナル.
 (define_expand "prologue" ...)
 
 を使用したほうが良い.
+
+ところで函数のプロローグに対して define_insn だけを使用して
+
+   enter
+
+とアセンブラ出力するためには,
+
+(define_mode_iterator ALLI [BLK BI QI HI SI DI TI SF DF])
+
+(define_insn "mov<mode>"
+  [(set (match_operand:ALLI 0 "nonimmediate_operand" "")
+	(match_operand:ALLI 1 "general_operand" ""))]
+  ""
+  "*
+  return hasegawa_mov(operands[0], operands[1]);")
+...
+
+(define_insn "prologue"
+  [(set (reg:SI 1) (reg:SI 2))]
+  ""
+  "")
+...
+
+const char* hasegawa_mov(rtx x, rtx y)
+{
+  if (REG_P(x) && REGNO(x) == 1 && REG_P(y) && REGNO(y) == 2)
+    return "enter";
+
+のようにすれば少し無理やりだができる. define_insn で指定する 3 番地コー
+ドは他で生成されないものである必要がある. そういう 3 番地コードを新規
+に作成してもよいが, やる意義が薄いので深くは追求しない.
+
+ところで
+
+(define_insn "addsi3"
+  [(set
+    (match_operand:SI 0 "nonimmediate_operand" "")
+    (plus:SI
+     (match_operand:SI 1 "general_operand" "")
+     (match_operand:SI 2 "general_operand" "")))]
+  ""
+  ...)
+
+のように記述した場合に gen_addsi3 では
+
+  [(set (operand0 (plus::SI (operand1, operand2))))]
+
+のような 3 番地コードを生成する.
+
 
