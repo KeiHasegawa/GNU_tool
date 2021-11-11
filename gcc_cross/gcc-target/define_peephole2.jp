@@ -2,10 +2,55 @@ define_peephole2
 
 define_peephole も参照.
 
-以下のように書いてみた.
+例えば
+
+int f(int x, int y)
+{
+  return x + y;
+}
+
+に対して -O2 オプション付きでアセンブラの生成が
+
+f:
+	a := (sp+-1) + (sp+3)
+
+のようになっていると仮定する.
+
+以下のように define_peephole2 を .md ファイルに追加してみる.
 
 (define_peephole2
   [(set (match_operand:SI 0 "nonimmediate_operand" "")
-	(match_operand:SI 1 "general_operand" ""))]
-  ""
-  "peephole2 %0, %1")
+    (plus:SI
+     (match_operand:SI 1 "general_operand" "")
+     (match_operand:SI 2 "general_operand" "")))]
+  "puts(\"peephole2\")"
+  [(set (match_dup 1) (match_dup 0))]
+  "asm(\"int3\");")
+
+同様に -O2 オプション付きで cc1 を起動すると
+
+peephole2
+
+が印字されさらに埋め込んだブレークポイントにヒットして
+
+f:
+	(sp+-1) := a
+
+がアセンブラの出力となる. やはりここで行なわれていることは全くの出鱈目
+な変換である. しかし define_peephole2 の機能を示すために意図してこのよなこと
+をしている. -O1 オプションでは define_peephole2 の変換は適用されないよ
+うである.
+
+define_peephole2 の構文は
+
+gcc-10.2.0/gcc/rtl.def
+
+によれば
+
+(define_peephole2 EsES)
+
+のようになる. ここで
+
+E : 3 番地コード
+s : ダブルクォーテーションで囲まれた文字列
+S : オプショナル. 変換後の 3 番地コードを生成する前に実行される.
