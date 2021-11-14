@@ -397,12 +397,14 @@ extern "C" void modify_deleted_line(bfd* abfd, bfd_byte* buf)
     line_stmt = read_debug_line(abfd, line_stmt, opc_base, &addr);
 }
 
+#if 0
 struct check {
   ~check()
   {
     assert(deleted.empty());
   }
 } check;
+#endif
 
 void debug(const deleted_info& info)
 {
