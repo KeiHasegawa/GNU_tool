@@ -1,0 +1,7 @@
+#! /bin/csh -vf
+
+msp430-elf-as -o start.o -g start.S || exit 1
+msp430-elf-gcc -o sample.o -c sample.c -g || exit 1
+msp430-elf-ld -o sample.elf start.o sample.o -T sample.x || exit 1
+msp430-elf-objdump -x -d sample.elf > sample.objdump
+msp430-elf-run sample.elf
