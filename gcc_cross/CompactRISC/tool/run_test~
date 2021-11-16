@@ -1,0 +1,8 @@
+#! /bin/csh -vf
+
+cr16-elf-as -o start.o -g start.S || exit 1
+cr16-elf-gcc -o test034.s test034.c -S || exit 1
+cr16-elf-as -o test034.o -g test034.s || exit 1
+cr16-elf-ld -o test034.elf start.o test034.o /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/cr16-elf/10.2.0/libgcc.a -T test034.x || exit 1
+cr16-elf-objdump -x -d test034.elf > test034.objdump || exit 1
+cr16-elf-run test034.elf
