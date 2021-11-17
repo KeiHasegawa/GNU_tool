@@ -1,8 +1,8 @@
 #! /bin/csh -vf
 
 cris-elf-as -o start.o -g start.S || exit 1
-cris-elf-gcc -o test010.s test010.c -S || exit 1
-cris-elf-as -o test010.o -g test010.s || exit 1
-cris-elf-ld -o test010.elf start.o test010.o /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/cris-elf/10.2.0/libgcc.a -T test010.x || exit 1
-cris-elf-objdump -x -d test010.elf > test010.objdump || exit 1
-cris-elf-run test010.elf
+cris-elf-gcc -o sample.s sample.c -S || exit 1
+cris-elf-as -o sample.o -g sample.s || exit 1
+cris-elf-ld -o sample.elf start.o sample.o /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/cris-elf/10.2.0/libgcc.a -T sample.x || exit 1
+cris-elf-objdump -x -d sample.elf > sample.objdump || exit 1
+cris-elf-run sample.elf
