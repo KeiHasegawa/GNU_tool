@@ -1,0 +1,23 @@
+本来は
+
+0xfdb0 : exit(0)
+0xfdb1 : printf
+0xfdb2 : puts
+0xfdb3 : putchar
+
+とするところだったが, cris のシミュレータの構造が複雑だったので
+
+0x110 の ret : printf
+0x112 の ret : puts
+0x114 の ret : putchar
+
+とした.
+動作確認してみたが, 残念ながら期待通り動作せず. これはコンパイラができていないっぽい.
+また
+
+  printf("\n");
+
+が putchar('\n'); ではなく putchar(12); putchar(10) のように扱われている.
+
+
+
