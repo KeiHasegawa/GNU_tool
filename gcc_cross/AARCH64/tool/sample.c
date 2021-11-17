@@ -37,3 +37,12 @@ int main()
   hh(1.0L);
   return 0;
 }
+
+char* my_memcpy(char* dst, const char* src, int n)
+{
+  char* r = dst;
+  while (n--)
+    *dst++ = *src++;
+  return r;
+}
+
