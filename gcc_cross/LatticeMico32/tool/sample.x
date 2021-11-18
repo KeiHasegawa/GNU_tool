@@ -1,8 +1,8 @@
 SECTIONS {
-	 . = 0x80000100;
+	 . = 0x100;
 	 .text : {}
 
-	 . = 0x80001000;
+	 . = 0x1000;
 	 .stack : {}
 	 PROVIDE(stack = .);
 }

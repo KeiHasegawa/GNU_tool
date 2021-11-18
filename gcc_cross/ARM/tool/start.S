@@ -25,11 +25,6 @@ putchar:
 	.word	0xbadbeef3
 	mov	pc, lr
 
-	.global	vprintf
-vprintf:	
-	.word	0xbadbeef4
-	mov	pc, lr
-
 	.global	memcpy
 memcpy:
 	str	fp, [sp, #-4]!

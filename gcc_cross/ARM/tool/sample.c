@@ -47,17 +47,18 @@ void h2(int a, int b, int c, int d, int e)
   printf("%d %d %d %d %d\n", a, b, c, d, e);
 }
 
-void f3(const char* fmt, ...)
-{
-  va_list ap;
-  va_start(ap, fmt);
-  vprintf(fmt, ap);
-  va_end(ap);
-}
-
 int main()
 {
-  f3("%f\n", 1.0);
+  f(5, 6);
+  g();
+  h(1.0);
+  ff(9LL);
+  char a[] = "hasegawa kei";
+  gg(&a[0], 5, 6.0);
+  hh(3.0L);
+  f2(1.0, 2.0, 3.0);
+  g2(1LL, 2LL, 3LL);
+  h2(1, 2, 3, 4, 5);
   return 0;
 }
 

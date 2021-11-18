@@ -12,11 +12,6 @@ printf:
 	.word	0xbadbeef1
 	ret
 
-	.global vprintf
-vprintf:
-	.word	0xbadbeef1
-	ret
-
 	.global puts
 puts:
 	.word	0xbadbeef2

@@ -1,11 +1,22 @@
 	.text
 start:
-	lui	%29,%hi(stack)
-	addiu	%29,%29,%lo(stack)
-	lui	%3,%hi(main)
-	addiu	%3,%3,%lo(main)
-	jalr	%31,%3
+	orhi     sp, r0, hi(stack)
+	ori      sp, sp, lo(stack)
+	calli    main
 	nop
-end:
+	.long	0xbadbeef0
+
+	.global printf
+printf:	
+	b        ra
+
+	.global puts
+puts:	
+	b        ra
+
+	.global putchar
+putchar:	
+	b        ra
+
+_fstack:	
 	nop
-	

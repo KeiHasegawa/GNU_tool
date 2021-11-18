@@ -22,11 +22,6 @@ printf:
 	.long	0x1badbeef
 	return
 
-	.global	vprintf
-vprintf:
-	.long	0x1badbeef
-	return
-	
 	.global	puts
 puts:
 	.long	0x2badbeef
