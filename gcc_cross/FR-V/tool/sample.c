@@ -47,14 +47,6 @@ void h2(int a, int b, int c, int d, int e)
   printf("%d %d %d %d %d\n", a, b, c, d, e);
 }
 
-void f3(const char* fmt, ...)
-{
-  va_list ap;
-  va_start(ap, fmt);
-  vprintf(fmt, ap);
-  va_end(ap);
-}
-
 int main()
 {
   f(5, 6);
@@ -67,8 +59,6 @@ int main()
   f2(1.0, 2.0, 3.0);
   g2(1LL, 2LL, 3LL);
   h2(1, 2, 3, 4, 5);
-  f3("%f\n", 1.0);
-  f3("%d\n", 2);
   return 0;
 }
 

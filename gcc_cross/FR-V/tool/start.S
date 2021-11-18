@@ -27,11 +27,6 @@ putchar:
 	.word	0x3badbeef
 	ret
 
-	.global vprintf
-vprintf:
-	.word	0x4badbeef
-	ret
-
 	.globl memcpy
 memcpy:
 	addi sp,#-40,sp
