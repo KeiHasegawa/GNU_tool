@@ -1,9 +1,21 @@
 	.text
 start:
-	lis 1,stack@ha
-	la 1,stack@l(1)
-	bl main
-	nop	
-end:
+	ldi	sp, stack
+	call	main
 	nop
-	
+	.word	0xbadbeef0
+
+	.global	printf
+printf:
+	.word	0xbadbeef1
+	ret
+
+	.global	puts
+puts:
+	.word	0xbadbeef2
+	ret
+
+	.global	putchar
+putchar:
+	.word	0xbadbeef3
+	ret
