@@ -1,0 +1,221 @@
+*** gdb-10.2.aarch64-elf/sim/arm/armemu.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.arm-elf/sim/arm/armemu.c	2021-11-20 12:01:05.000000000 +0900
+***************
+*** 1138,1143 ****
+--- 1138,1319 ----
+      }
+  }
+  
++ #include <assert.h>
++ #include <string.h>
++ 
++ static const char* first_string(ARMul_State* state)
++ {
++   ARMword r0 = state->Reg[0];
++   static char buf[1024];
++   for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i ) {
++     char c = ARMul_LoadByte(state, r0+i);
++     buf[i] = c;
++     if (c == '\0')
++       return &buf[0]; // ok
++   }
++   assert(0 && "not enough buffer");
++   return &buf[0];
++ }
++ 
++ enum arg_class { NONE, WORD, DW, DF, LDF, STR };
++ 
++ static const char* get_part(const char* fmt, enum arg_class* how)
++ {
++   for ( ; *fmt ; ++fmt) {
++     char c = *fmt;
++     if (c == 'd' || c == 'i' || c == 'x' || c == 'u') {
++       if (*how == NONE)
++ 	*how = WORD;
++       return ++fmt;
++     }
++     if (c == 'c') {
++       *how = WORD;
++       return ++fmt;
++     }
++     if (c == 'f') {
++       char prev = *(fmt-1);
++       *how = prev == 'L' ? LDF : DF;
++       return ++fmt;
++     }
++     if (c == 's') {
++       *how = STR;
++       return ++fmt;
++     }
++     if (c == 'l') {
++       if (*how == NONE)
++ 	*how = WORD;
++       else
++ 	*how = DW;
++     }
++   }
++   assert(0 && "unexpected");
++   return fmt;
++ }
++ 
++ static unsigned int arg32(ARMul_State* state, int nth)
++ {
++   assert(nth);
++   if (nth < 4)
++     return state->Reg[nth];
++   int sp = state->Reg[13];
++   int addr = sp + 4*(nth-4);
++   return ARMul_LoadWordN(state, addr);
++ }
++ 
++ static uint64_t arg64(ARMul_State* state, int nth)
++ {
++   assert(nth);
++   if (nth == 1) {
++     uint32_t a = state->Reg[nth];
++     uint64_t b = state->Reg[nth+1];
++     return (b << 32) | a;
++   }
++   if (nth == 2) {
++     uint32_t a = state->Reg[nth];
++     uint64_t b = state->Reg[nth+1];
++     return (b << 32) | a;
++   }
++   if (nth == 3) {
++     uint32_t a = state->Reg[3];
++     int sp = state->Reg[13];
++     uint64_t b = ARMul_LoadWordN(state, sp);
++     return (b << 32) | a; 
++   }
++   int sp = state->Reg[13]; 
++   int addr = sp + 4*(nth-4);
++   uint32_t a = ARMul_LoadWordN(state, addr);
++   uint64_t b = ARMul_LoadWordN(state, addr+4);
++   return (b << 32) | a; 
++ }
++ 
++ static const char*
++ handle(ARMul_State* state, const char* fmt, int* nth, int* ret)
++ {
++   char c = *fmt;
++   if (c != '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   const char* beg = fmt;
++   c = *++fmt;
++   if (c == '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   enum arg_class how = NONE;
++   const char* end = get_part(fmt, &how);
++   char part_fmt[256];
++   int n = end - beg;
++   assert(n + 1 < sizeof part_fmt/sizeof part_fmt[0]);
++   strncpy(&part_fmt[0], beg, n);
++   part_fmt[n] = '\0';
++   if (how == WORD) {
++     int arg = arg32(state, (*nth)++);
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DW) {
++     uint64_t arg = arg64(state, *nth);
++     *nth += 2;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DF || how == LDF) {
++     union {
++       uint64_t i;
++       double d;
++     } u = { arg64(state, *nth) };
++     *nth += 2;
++     if (how == DF)
++       *ret += printf(part_fmt, u.d);
++     else
++       *ret += printf(part_fmt, (long double)u.d);
++     return end;
++   }
++   if (how == STR) {
++     uint32_t addr = arg32(state, (*nth)++);
++     char buf[256];
++     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++       char c = ARMul_LoadByte(state, addr+i);
++       buf[i] = c;
++       if (c == '\0') {
++ 	*ret += printf(part_fmt, &buf[0]);  // ok
++ 	return end;
++       }
++     }
++     assert(0 && "not enough buffer");
++     return end;
++   }
++   asm("int3");
++   return end;
++ }
++ 
++ static void do_printf(ARMul_State* state)
++ {
++   const char* fmt = first_string(state);
++   int nargc = 1;
++   int ret = 0;
++   while (*fmt)
++     fmt = handle(state, fmt, &nargc, &ret);
++   state->Reg[0] = ret;
++ }
++ 
++ static void do_puts(ARMul_State* state)
++ {
++   const char* arg = first_string(state);
++   int ret = puts(arg);
++   state->Reg[0] = ret;
++ }
++ 
++ static void do_putchar(ARMul_State* state)
++ {
++   ARMword r0 = state->Reg[0];
++   int ret = putchar(r0);
++   state->Reg[0] = ret;
++ }
++ 
+  /* EMULATION of ARM6.  */
+  
+  ARMword
+***************
+*** 1354,1359 ****
+--- 1530,1560 ----
+        if (disas)
+  	print_insn (instr);
+  
++       switch (instr){
++       case 0xbadbeef0: exit(0); break;
++       case 0xbadbeef1:
++ 	do_printf(state);
++ 	pc += 4;
++ 	instr   = ARMul_ReLoadInstr (state, pc, isize);
++ 	decoded = ARMul_ReLoadInstr (state, pc + isize, isize);
++ 	loaded  = ARMul_ReLoadInstr (state, pc + isize * 2, isize);
++ 	break;
++       case 0xbadbeef2:
++ 	do_puts(state);
++ 	pc += 4;
++ 	instr   = ARMul_ReLoadInstr (state, pc, isize);
++ 	decoded = ARMul_ReLoadInstr (state, pc + isize, isize);
++ 	loaded  = ARMul_ReLoadInstr (state, pc + isize * 2, isize);
++ 	break;
++       case 0xbadbeef3:
++ 	do_putchar(state);
++ 	pc += 4;
++ 	instr   = ARMul_ReLoadInstr (state, pc, isize);
++ 	decoded = ARMul_ReLoadInstr (state, pc + isize, isize);
++ 	loaded  = ARMul_ReLoadInstr (state, pc + isize * 2, isize);
++ 	break;
++       }
++ 
+        /* Check the condition codes.  */
+        if ((temp = TOPBITS (28)) == AL)
+  	/* Vile deed in the need for speed.  */
