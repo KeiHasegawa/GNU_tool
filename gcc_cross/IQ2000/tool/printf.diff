@@ -1,0 +1,205 @@
+*** gdb-10.2.aarch64-elf/sim/iq2000/sem-switch.c	2021-04-25 13:04:35.000000000 +0900
+--- gdb-10.2.iq2000-elf/sim/iq2000/sem-switch.c	2021-11-18 17:03:03.000000000 +0900
+***************
+*** 20,25 ****
+--- 20,191 ----
+     with this program; if not, see <http://www.gnu.org/licenses/>.
+  
+  */
++ const char* first_string(SIM_CPU* cpu)
++ {
++   int addr = GET_H_GR(4);
++   addr |= 0x80000000;
++   static char buf[1024];
++   for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i ) {
++     char c = GETMEMQI(cpu, 0, addr+i);
++     buf[i] = c;
++     if (c == '\0')
++       return &buf[0]; // ok
++   }
++   assert(0 && "not enough buffer");
++   return &buf[0];
++ }
++ 
++ enum arg_class { NONE, WORD, DW, DF, LDF, STR };
++ 
++ const char* get_part(const char* fmt, enum arg_class* how)
++ {
++   for ( ; *fmt ; ++fmt) {
++     char c = *fmt;
++     if (c == 'd' || c == 'i' || c == 'x' || c == 'u') {
++       if (*how == NONE)
++ 	*how = WORD;
++       return ++fmt;
++     }
++     if (c == 'c') {
++       *how = WORD;
++       return ++fmt;
++     }
++     if (c == 'f') {
++       char prev = *(fmt-1);
++       *how = prev == 'L' ? LDF : DF;
++       return ++fmt;
++     }
++     if (c == 's') {
++       *how = STR;
++       return ++fmt;
++     }
++     if (c == 'l') {
++       if (*how == NONE)
++ 	*how = WORD;
++       else
++ 	*how = DW;
++     }
++   }
++   assert(0 && "unexpected");
++   return fmt;
++ }
++ 
++ unsigned int arg32(SIM_CPU* cpu, int nth)
++ {
++   assert(nth);
++   if (nth < 8)
++     return GET_H_GR(nth+4);
++   int sp = GET_H_GR(29);
++   int addr = sp + 4*(nth-8);
++   return GETMEMSI(cpu, 0, addr);
++ }
++ 
++ uint64_t arg64(SIM_CPU* cpu, int nth)
++ {
++   assert(nth);
++   assert(!(nth & 1));
++   if (nth < 7) {
++     uint64_t a = GET_H_GR(nth+4);
++     uint32_t b = GET_H_GR(nth+5);
++     return (a << 32) | b;
++   }
++   int sp = GET_H_GR(29);
++   int addr = sp + 4*(nth-8);
++   uint64_t a = GETMEMSI(cpu, 0, addr);
++   uint32_t b = GETMEMSI(cpu, 0, addr+4);
++   return (a << 32) | b; 
++ }
++ 
++ const char* handle(SIM_CPU* cpu, const char* fmt, int* nth, int* ret)
++ {
++   char c = *fmt;
++   if (c != '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   const char* beg = fmt;
++   c = *++fmt;
++   if (c == '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   enum arg_class how = NONE;
++   const char* end = get_part(fmt, &how);
++   char part_fmt[256];
++   int n = end - beg;
++   assert(n + 1 < sizeof part_fmt/sizeof part_fmt[0]);
++   strncpy(&part_fmt[0], beg, n);
++   part_fmt[n] = '\0';
++   if (how == WORD) {
++     int arg = arg32(cpu, (*nth)++);
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DW) {
++     if (*nth & 1)
++       ++*nth;
++     uint64_t arg = arg64(cpu, *nth);
++     *nth += 2;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DF || how == LDF) {
++     if (*nth & 1)
++       ++*nth;
++     union {
++       uint64_t i;
++       double d;
++     } u = { arg64(cpu, *nth) };
++     *nth += 2;
++     if (how == DF)
++       *ret += printf(part_fmt, u.d);
++     else
++       *ret += printf(part_fmt, (long double)u.d);
++     return end;
++   }
++   if (how == STR) {
++     uint32_t addr = arg32(cpu, (*nth)++);
++     char buf[256];
++     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++       char c = GETMEMQI(cpu, 0, addr+i);
++       buf[i] = c;
++       if (c == '\0') {
++ 	*ret += printf(part_fmt, &buf[0]);  // ok
++ 	return end;
++       }
++     }
++     assert(0 && "not enough buffer");
++     return end;
++   }
++   asm("int3");
++   return end;
++ }
++ 
++ void do_printf(SIM_CPU* cpu)
++ {
++   const char* fmt = first_string(cpu);
++   int argc = 1;
++   int ret = 0;
++   while (*fmt)
++     fmt = handle(cpu, fmt, &argc, &ret);
++   SET_H_GR(2, ret);
++ }
++ 
++ void do_puts(SIM_CPU* cpu)
++ {
++   const char* arg = first_string(cpu);
++   int ret = puts(arg);
++   SET_H_GR(2, ret);
++ }
++ 
++ void do_putchar(SIM_CPU* cpu)
++ {
++   int arg = GET_H_GR(4);
++   int ret = putchar(arg);
++   SET_H_GR(2, ret);
++ }
+  
+  #ifdef DEFINE_LABELS
+  
+***************
+*** 256,261 ****
+--- 422,430 ----
+         using the default-insn-bitsize spec.  When executing insns in parallel
+         we may want to queue the fault and continue execution.  */
+      vpc = SEM_NEXT_VPC (sem_arg, pc, 4);
++     int insn = GETMEMSI(current_cpu, pc, pc);
++     if (insn == 0xbadbeef0)
++       exit(0);
+      vpc = sim_engine_invalid_insn (current_cpu, pc, vpc);
+    }
+  
+***************
+*** 1610,1615 ****
+--- 1779,1791 ----
+      SEM_BRANCH_VIA_ADDR (current_cpu, sem_arg, opval, vpc);
+      CGEN_TRACE_RESULT (current_cpu, abuf, "pc", 'x', opval);
+    }
++   if (FLD(f_rs) == 31) {
++     switch (pc) {
++     case 0x8000011c: do_printf(current_cpu); break;
++     case 0x80000124: do_puts(current_cpu); break;
++     case 0x8000012c: do_putchar(current_cpu); break; 
++     }
++   }
+  }
+  
+    SEM_BRANCH_FINI (vpc);
