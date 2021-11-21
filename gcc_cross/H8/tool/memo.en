@@ -1,0 +1,28 @@
+(*) Test compiler
+
+I have my own compiler test environment. And applied it to `h8300-elf-gcc'.
+These are consist of 
+
+o Run time test using `printf'
+o Compile time error test
+o Link time error test
+
+(*) printf
+
+It's very useful to call `printf' easily instead of calling newlib `printf',
+so I coded `start.S' on this web page.
+
+If you patch like below:
+
+% cd gdb-10.2.h8300-elf
+% patch -p1 < /tmp/printf.diff
+
+H8 simulator can deal with `printf', `puts' and `putchar' in the same way
+with `write' and `fstat', 
+
+Now you can execute target program like below:
+
+% h8300-elf-run sample.elf
+
+(*) Result
+
