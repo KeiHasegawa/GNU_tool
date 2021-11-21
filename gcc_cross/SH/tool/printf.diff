@@ -1,0 +1,231 @@
+*** gdb-10.2.arm-elf/sim/sh/interp.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.sh-elf/sim/sh/interp.c	2021-11-13 10:42:21.000000000 +0900
+***************
+*** 1726,1731 ****
+--- 1726,1925 ----
+  
+  #define MMASKB ((saved_state.asregs.msize -1) & ~0)
+  
++ #include <assert.h>
++ 
++ static int first_arg()
++ {
++   int* r = &(saved_state.asregs.regs[0]);
++   return r[4];
++ }
++ 
++ static const char* first_string()
++ {
++   int addr = first_arg();
++   static char buf[256];
++   for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++     unsigned char* mem = saved_state.asregs.memory;
++     char c = rbat_fast(mem, addr+i, 0);
++     buf[i] = c;
++     if (c == '\0')
++       return &buf[0]; // ok
++   }
++ 
++   assert(0 && "not enough buffer");
++   return &buf[0];
++ }
++ 
++ enum arg_class { NONE, WORD, DW, DF, LDF, STR };
++ 
++ static const char* get_part(const char* fmt, enum arg_class* how)
++ {
++   for ( ; *fmt ; ++fmt) {
++     char c = *fmt;
++     if (c == 'd' || c == 'i' || c == 'x' || c == 'u') {
++       if (*how == NONE)
++ 	*how = WORD;
++       return ++fmt;
++     }
++     if (c == 'c') {
++       *how = WORD;
++       return ++fmt;
++     }
++     if (c == 'f') {
++       char prev = *(fmt-1);
++       *how = prev == 'L' ? LDF : DF;
++       return ++fmt;
++     }
++     if (c == 's') {
++       *how = STR;
++       return ++fmt;
++     }
++     if (c == 'l') {
++       if (*how == NONE)
++ 	*how = WORD;
++       else
++ 	*how = DW;
++     }
++   }
++   assert(0 && "unexpected");
++   return fmt;
++ }
++ 
++ static unsigned int arg32(int nth)
++ {
++   assert(nth);
++   int* r = &(saved_state.asregs.regs[0]);
++   if (nth < 4)
++     return r[nth+4];
++   int sp = r[15];
++   int addr = sp + 4*(nth-4);
++   unsigned char* mem = saved_state.asregs.memory;
++   return rlat_fast(mem, addr, 0);
++ }
++ 
++ static unsigned long long arg64(int nth)
++ {
++   assert(nth);
++   int* r = &(saved_state.asregs.regs[0]);
++   if (nth == 1) {
++     long long a = r[5];
++     unsigned b = r[6];
++     return (a << 32) | b;
++   }
++   if (nth == 2) {
++     long long a = r[6];
++     unsigned b = r[7];
++     return (a << 32) | b;
++   }
++ 
++   if (nth == 3) {
++     long long a = r[7];
++     int sp = r[15];
++     unsigned char* mem = saved_state.asregs.memory;
++     unsigned b = rlat_fast(mem, sp, 0);
++     return (a << 32) | b;
++   }
++ 
++   
++   int sp = r[15];
++   int addr = sp + 4*(nth-4);
++   unsigned char* mem = saved_state.asregs.memory;
++   long long a = rlat_fast(mem, addr, 0);
++   unsigned b = rlat_fast(mem, addr+4, 0);
++   return (a << 32) | b;
++ }
++ 
++ static const char* handle(const char* fmt, int* nth, int* ret)
++ {
++   char c = *fmt;
++   if (c != '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   const char* beg = fmt;
++   c = *++fmt;
++   if (c == '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   enum arg_class how = NONE;
++   const char* end = get_part(fmt, &how);
++   char part_fmt[256];
++   int n = end - beg;
++   assert(n + 1 < sizeof part_fmt/sizeof part_fmt[0]);
++   strncpy(&part_fmt[0], beg, n);
++   part_fmt[n] = '\0';
++   if (how == WORD) {
++     int arg = arg32((*nth)++);
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DW) {
++     unsigned long long arg = arg64(*nth);
++     *nth += 2;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DF || how == LDF) {
++     union {
++       unsigned long long i;
++       double d;
++     } u = { arg64(*nth) };
++     *nth += 2;
++     if (how == DF)
++       *ret += printf(part_fmt, u.d);
++     else
++       *ret += printf(part_fmt, (long double)u.d);
++     return end;
++   }
++   if (how == STR) {
++     int addr = arg32((*nth)++);
++     char buf[256];
++     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++       unsigned char* mem = saved_state.asregs.memory;
++       char c = rbat_fast(mem, addr+i, 0);
++       buf[i] = c;
++       if (c == '\0') {
++ 	*ret += printf(part_fmt, &buf[0]);  // ok
++ 	return end;
++       }
++     }
++     assert(0 && "not enough buffer");
++     return end;
++   }
++   asm("int3");
++   return end;
++ }
++ 
++ static void do_printf()
++ {
++   const char* fmt = first_string();
++   int argc = 1;
++   int ret = 0;
++   while (*fmt)
++     fmt = handle(fmt, &argc, &ret);
++   int* r = &(saved_state.asregs.regs[0]);
++   r[0] = ret;
++ }
++ 
++ static void do_puts()
++ {
++   const char* arg = first_string();
++   int ret = puts(arg);
++   int* r = &(saved_state.asregs.regs[0]);
++   r[0] = ret;
++ }
++ 
++ static void do_putchar()
++ {
++   int arg = first_arg();
++   int ret = putchar(arg);
++   int* r = &(saved_state.asregs.regs[0]);
++   r[0] = ret;
++ }
++ 
+  void
+  sim_resume (SIM_DESC sd, int step, int siggnal)
+  {
+***************
+*** 1811,1816 ****
+--- 2005,2027 ----
+    while (insn_ptr < saved_state.asregs.insn_end)
+      {
+        register unsigned int iword = RIAT (insn_ptr);
++       if (iword == 0xfe50)
++ 	exit(0);
++       if (iword == 0xfe51) {
++ 	do_printf();
++ 	insn_ptr += 2;
++ 	iword = RIAT (insn_ptr);
++       }
++       if (iword == 0xfe52) {
++ 	do_puts();
++ 	insn_ptr += 2;
++ 	iword = RIAT (insn_ptr);
++       }
++       if (iword == 0xfe53) {
++ 	do_putchar();
++ 	insn_ptr += 2;
++ 	iword = RIAT (insn_ptr);
++       }
+        register unsigned int ult;
+        register unsigned char *nip = insn_ptr + 2;
+  
