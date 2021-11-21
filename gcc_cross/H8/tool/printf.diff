@@ -1,0 +1,255 @@
+*** gdb-10.2.aarch64-elf/sim/h8300/compile.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.h8300-elf/sim/h8300/compile.c	2021-11-12 08:40:04.000000000 +0900
+***************
+*** 36,41 ****
+--- 36,43 ----
+  #include "sys/types.h"
+  #include "sim-options.h"
+  
++ #include <assert.h>
++ 
+  #ifndef SIGTRAP
+  # define SIGTRAP 5
+  #endif
+***************
+*** 1174,1179 ****
+--- 1176,1193 ----
+  			case 0xcc:
+  			  dst->opcode = O (O_SYS_CMDLINE, SB);
+  			  break;
++ 			case 0xcd:
++ 			  dst->opcode = O (O_SYS_EXIT, SB);
++ 			  break;
++ 			case 0xce:
++ 			  dst->opcode = O (O_SYS_PRINTF, SB);
++ 			  break;
++ 			case 0xcf:
++ 			  dst->opcode = O (O_SYS_PUTS, SB);
++ 			  break;
++ 			case 0xd0:
++ 			  dst->opcode = O (O_SYS_PUTCHAR, SB);
++ 			  break;
+  			}
+  		      /* End of Processing for system calls.  */
+  		    }
+***************
+*** 1833,1838 ****
+--- 1847,2044 ----
+    goto next;					\
+  }
+  
++ 
++ static int first_arg(SIM_DESC sd, SIM_CPU *cpu, _Bool refer_stack)
++ {
++   if (refer_stack) {
++     unsigned char* mem = h8_get_memory_buf(sd);    
++     unsigned int sp = cpu->regs[SP_REGNUM];
++     unsigned int ret = (mem[sp+2] << 8) | mem[sp+3];    
++     return ret;
++   }
++   return cpu->regs[R0_REGNUM];
++ }
++ 
++ const char* first_string(SIM_DESC sd, SIM_CPU *cpu, _Bool refer_stack)
++ {
++   unsigned char* mem = h8_get_memory_buf(sd);
++   int addr = first_arg(sd, cpu, refer_stack);
++   static char buf[256];
++   for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++     char c = mem[addr+i];
++     buf[i] = c;
++     if (c == '\0')
++       return &buf[0]; // ok
++   }
++ 
++   assert(0 && "not enough buffer");
++   return &buf[0];
++ }
++ 
++ enum arg_class { NONE, WORD, LONG, LONGLONG, DF, LDF, STR };
++ 
++ static const char* get_part(const char* fmt, enum arg_class* how)
++ {
++   for ( ; *fmt ; ++fmt) {
++     char c = *fmt;
++     if (c == 'd' || c == 'i' || c == 'x' || c == 'u') {
++       if (*how == NONE)
++ 	*how = WORD; 
++       return ++fmt;
++     }
++     if (c == 'c') {
++       *how = WORD;
++       return ++fmt;
++     }
++     if (c == 'f') {
++       char prev = *(fmt-1);
++       *how = prev == 'L' ? LDF : DF;
++       return ++fmt;
++     }
++     if (c == 's') {
++       *how = STR;
++       return ++fmt;
++     }
++     if (c == 'l') {
++       if (*how == NONE)
++ 	*how = LONG;
++       else
++ 	*how = LONGLONG;
++     }
++   }
++   assert(0 && "unexpected");
++   return fmt;
++ }
++ 
++ static int arg16(SIM_DESC sd, sim_cpu* cpu, int nth)
++ {
++   assert(nth);
++   unsigned char* mem = h8_get_memory_buf(sd);
++   int sp = cpu->regs[SP_REGNUM];
++   int addr = sp+2+2*nth;
++   short ret = (mem[addr] << 8) | mem[addr+1];
++   return ret;
++ }
++ 
++ static unsigned int arg32(SIM_DESC sd, sim_cpu* cpu, int nth)
++ {
++   assert(nth);
++   unsigned char* mem = h8_get_memory_buf(sd);  
++   int sp = cpu->regs[SP_REGNUM];  
++   int addr = sp+2+2*nth;
++   unsigned int a = (mem[addr+0] << 8) | mem[addr+1];
++   unsigned int b = (mem[addr+2] << 8) | mem[addr+3];
++   return (a << 16) | b;
++ }
++ 
++ static unsigned long long arg64(SIM_DESC sd, sim_cpu* cpu, int nth)
++ {
++   assert(nth);
++   unsigned char* mem = h8_get_memory_buf(sd);  
++   int sp = cpu->regs[SP_REGNUM];  
++   int addr = sp+2+2*nth;
++   unsigned long long a = (mem[addr+0] << 8) | mem[addr+1];
++   unsigned long long b = (mem[addr+2] << 8) | mem[addr+3];
++   unsigned long long c = (mem[addr+4] << 8) | mem[addr+5];
++   unsigned long long d = (mem[addr+6] << 8) | mem[addr+7];
++   return a << 48 | (b << 32) | (c << 16) | d;
++ }
++ 
++ const char*
++ handle(SIM_DESC sd, SIM_CPU *cpu, const char* fmt, int* nth, int* ret)
++ {
++   char c = *fmt;
++   if (c != '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   const char* beg = fmt;
++   c = *++fmt;
++   if (c == '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   enum arg_class how = NONE;
++   const char* end = get_part(fmt, &how);
++   char part_fmt[256];
++   int n = end - beg;
++   assert(n + 1 < sizeof part_fmt/sizeof part_fmt[0]);
++   strncpy(&part_fmt[0], beg, n);
++   part_fmt[n] = '\0';
++   if (how == WORD) {
++     int arg = arg16(sd, cpu, (*nth)++);
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == LONG) {
++     int arg = arg32(sd, cpu, *nth);
++     *nth += 2;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == LONGLONG) {
++     unsigned long long arg = arg64(sd, cpu, *nth);
++     *nth += 4;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DF || how == LDF) {
++     union {
++       unsigned int i;
++       float f;
++     } u = { arg32(sd, cpu, *nth) };
++     *nth += 2;
++     if (how == DF)
++       *ret += printf(part_fmt, u.f);
++     else
++       *ret += printf(part_fmt, (long double)u.f);
++     return end;
++   }
++   if (how == STR) {
++     unsigned char* mem = h8_get_memory_buf(sd);
++     int addr = arg16(sd, cpu, (*nth)++);
++     char buf[256];
++     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++       char c = mem[addr+i];
++       buf[i] = c;
++       if (c == '\0') {
++ 	*ret += printf(part_fmt, &buf[0]);  // ok
++ 	return end;
++       }
++     }
++     assert(0 && "not enough buffer");
++     return end;
++   }
++   asm("int3");
++   return end;
++ }
++ 
++ static void do_printf(SIM_DESC sd, SIM_CPU *cpu)
++ {
++   const char* fmt = first_string(sd, cpu, TRUE);
++   int argc = 1;
++   int ret = 0;
++   while (*fmt)
++     fmt = handle(sd, cpu, fmt, &argc, &ret);
++   cpu->regs[R0_REGNUM] = ret;
++ }
++ 
++ static void do_puts(SIM_DESC sd, SIM_CPU *cpu)
++ {
++   const char* arg = first_string(sd, cpu, FALSE);
++   int ret = puts(arg);
++   cpu->regs[R0_REGNUM] = ret;
++ }
++ 
++ static void do_putchar(SIM_DESC sd, SIM_CPU *cpu)
++ {
++   int arg = first_arg(sd, cpu, FALSE);
++   int ret = putchar(arg);
++   cpu->regs[R0_REGNUM] = ret;
++ }
++ 
+  static void
+  step_once (SIM_DESC sd, SIM_CPU *cpu)
+  {
+***************
+*** 3108,3113 ****
+--- 3314,3330 ----
+  	    h8_set_reg (sd, 0, stat_return);
+  	  }
+  	  goto next;
++ 	case O (O_SYS_EXIT, SB):
++ 	  exit(0);
++ 	case O (O_SYS_PRINTF, SB):
++ 	  do_printf(sd, cpu);
++ 	  goto next;
++ 	case O (O_SYS_PUTS, SB):
++ 	  do_puts(sd, cpu);
++ 	  goto next;
++ 	case O (O_SYS_PUTCHAR, SB):
++ 	  do_putchar(sd, cpu);
++ 	  goto next;
+  	  /* End of system call processing.  */
+  
+  	case O (O_NOT, SB):		/* not.b */
