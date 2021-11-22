@@ -170,21 +170,21 @@
 !   int ret = 0;
 !   while (*fmt)
 !     fmt = handle(sd, cpu, cia, fmt, &nargc, &ret);
-!   cpu->registers[3] = ret;
+!   cpu->registers[2] = ret;
 ! }
 ! 
 ! static void do_puts(SIM_DESC sd, sim_cpu* cpu, instruction_address cia)
 ! {
 !   const char* arg = first_string(sd, cpu, cia);
 !   int ret = puts(arg);
-!   cpu->registers[3] = ret;  
+!   cpu->registers[2] = ret;  
 ! }
 ! 
 ! static void do_putchar(SIM_DESC sd, sim_cpu* cpu, instruction_address cia)
 ! {
 !   uint32_t r4 = cpu->registers[4];
 !   int ret = putchar(r4);
-!   cpu->registers[3] = ret;  
+!   cpu->registers[2] = ret;  
 ! }
 ! 
 ! INLINE_ENGINE					\
