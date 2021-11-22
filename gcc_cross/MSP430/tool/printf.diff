@@ -1,0 +1,214 @@
+*** gdb-10.2.aarch64-elf/sim/msp430/msp430-sim.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.msp430-elf/sim/msp430/msp430-sim.c	2021-11-13 08:01:21.000000000 +0900
+***************
+*** 1064,1072 ****
+--- 1064,1077 ----
+      msp430_cio (sd);
+  
+    ld.sd = sd;
++  label:  
+    ld.gb_addr = PC;
+    opsize = msp430_decode_opcode (MSP430_CPU (sd)->state.regs[0],
+  				 opcode, msp430_getbyte, &ld);
++   if (opsize < 0) {
++     PC += 2;
++     goto label;
++   }
+    PC += opsize;
+    if (opsize <= 0)
+      {
+***************
+*** 1494,1496 ****
+--- 1499,1690 ----
+  	sim_events_process (sd);
+      }
+  }
++ 
++ static int first_arg(SIM_DESC sd, SIM_CPU *cpu, _Bool refer_stack)
++ {
++   if (refer_stack) {
++     int sp = REG_GET(MSR_SP);
++     return mem_get_val(sd, sp+2, 16);
++   }
++   return REG_GET(12);
++ }
++ 
++ static const char* first_string(SIM_DESC sd, SIM_CPU *cpu, _Bool refer_stack)
++ {
++   int addr = first_arg(sd, cpu, refer_stack);
++   static char buf[256];
++   for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++     char c = mem_get_val(sd, addr+i, 8);
++     buf[i] = c;
++     if (c == '\0')
++       return &buf[0]; // ok
++   }
++ 
++   assert(0 && "not enough buffer");
++   return &buf[0];
++ }
++ 
++ enum arg_class { NONE, WORD, LONG, LONGLONG, DF, LDF, STR };
++ 
++ static const char* get_part(const char* fmt, enum arg_class* how)
++ {
++   for ( ; *fmt ; ++fmt) {
++     char c = *fmt;
++     if (c == 'd' || c == 'i' || c == 'x' || c == 'u') {
++       if (*how == NONE)
++ 	*how = WORD; 
++       return ++fmt;
++     }
++     if (c == 'c') {
++       *how = WORD;
++       return ++fmt;
++     }
++     if (c == 'f') {
++       char prev = *(fmt-1);
++       *how = prev == 'L' ? LDF : DF;
++       return ++fmt;
++     }
++     if (c == 's') {
++       *how = STR;
++       return ++fmt;
++     }
++     if (c == 'l') {
++       if (*how == NONE)
++ 	*how = LONG;
++       else
++ 	*how = LONGLONG;
++     }
++   }
++   assert(0 && "unexpected");
++   return fmt;
++ }
++ 
++ static int arg16(SIM_DESC sd, sim_cpu* cpu, int nth)
++ {
++   assert(nth);
++   int sp = REG_GET(MSR_SP);
++   int addr = sp+2+2*nth;
++   short ret = mem_get_val(sd, addr, 16);
++   return ret;
++ }
++ 
++ static unsigned int arg32(SIM_DESC sd, sim_cpu* cpu, int nth)
++ {
++   assert(nth);
++   int sp = REG_GET(MSR_SP);
++   int addr = sp+2+2*nth;
++   return mem_get_val(sd, addr, 32);
++ }
++ 
++ static unsigned long long arg64(SIM_DESC sd, sim_cpu* cpu, int nth)
++ {
++   assert(nth);
++   int sp = REG_GET(MSR_SP);
++   int addr = sp+2+2*nth;
++   unsigned int a = mem_get_val(sd, addr+0, 32);
++   unsigned long long b = mem_get_val(sd, addr+4, 32);
++   return (b << 32) | a;
++ }
++ 
++ static const char*
++ handle(SIM_DESC sd, SIM_CPU *cpu, const char* fmt, int* nth, int* ret)
++ {
++   char c = *fmt;
++   if (c != '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   const char* beg = fmt;
++   c = *++fmt;
++   if (c == '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   enum arg_class how = NONE;
++   const char* end = get_part(fmt, &how);
++   char part_fmt[256];
++   int n = end - beg;
++   assert(n + 1 < sizeof part_fmt/sizeof part_fmt[0]);
++   strncpy(&part_fmt[0], beg, n);
++   part_fmt[n] = '\0';
++   if (how == WORD) {
++     int arg = arg16(sd, cpu, (*nth)++);
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == LONG) {
++     int arg = arg32(sd, cpu, *nth);
++     *nth += 2;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == LONGLONG) {
++     unsigned long long arg = arg64(sd, cpu, *nth);
++     *nth += 4;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DF || how == LDF) {
++     union {
++       unsigned long long i;
++       double d;
++     } u = { arg64(sd, cpu, *nth) };
++     *nth += 4;
++     if (how == DF)
++       *ret += printf(part_fmt, u.d);
++     else
++       *ret += printf(part_fmt, (long double)u.d);
++     return end;
++   }
++   if (how == STR) {
++     int addr = arg16(sd, cpu, (*nth)++);
++     char buf[256];
++     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++       char c = mem_get_val(sd, addr+i, 8);
++       buf[i] = c;
++       if (c == '\0') {
++ 	*ret += printf(part_fmt, &buf[0]);  // ok
++ 	return end;
++       }
++     }
++     assert(0 && "not enough buffer");
++     return end;
++   }
++   asm("int3");
++   return end;
++ }
++ 
++ void do_printf(void*);
++ void do_printf(void* ptr)
++ {
++   Get_Byte_Local_Data* p = (Get_Byte_Local_Data*)ptr;
++   SIM_DESC sd = p->sd;
++   const char* fmt = first_string(sd, MSP430_CPU(sd), TRUE);
++   int argc = 1;
++   int ret = 0;
++   while (*fmt)
++     fmt = handle(sd, MSP430_CPU(sd), fmt, &argc, &ret);
++   REG_PUT(12, ret);
++ }
++ 
++ void do_puts(void*);
++ void do_puts(void* ptr)
++ {
++   Get_Byte_Local_Data* p = (Get_Byte_Local_Data*)ptr;
++   SIM_DESC sd = p->sd;
++   const char* fmt = first_string(sd, MSP430_CPU(sd), FALSE);
++   int ret = puts(fmt);
++   REG_PUT(12, ret);
++ }
++ 
++ void do_putchar(void*);
++ void do_putchar(void* ptr)
++ {
++   Get_Byte_Local_Data* p = (Get_Byte_Local_Data*)ptr;
++   SIM_DESC sd = p->sd;
++   int arg = first_arg(sd, MSP430_CPU(sd), FALSE);
++   int ret = putchar(arg);
++   REG_PUT(12, ret);
++ }
