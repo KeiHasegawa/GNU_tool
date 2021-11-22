@@ -1,0 +1,265 @@
+*** gdb-10.2.aarch64-elf/sim/avr/interp.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.avr-elf/sim/avr/interp.c	2021-11-14 09:07:06.000000000 +0900
+***************
+*** 783,788 ****
+--- 783,988 ----
+    cpu->cycles++;
+  }
+  
++ #include <stdlib.h>
++ #include <assert.h>
++ 
++ static int first_arg(SIM_CPU *cpu)
++ {
++   CPUREG_FETCH_FN* fetch = CPU_REG_FETCH(cpu);  
++   uint8_t r24, r25;
++   fetch(cpu, 24, &r24, 1);
++   fetch(cpu, 25, &r25, 1);
++   int ret = (r25 << 8) | r24;
++   return ret;
++ }
++ 
++ static const char* first_string(SIM_CPU* cpu)
++ {
++   int addr = first_arg(cpu);
++   static char buf[256];
++   for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i ) {
++     char c = sram[addr+i];
++     buf[i] = c;
++     if (c == '\0')
++       return &buf[0]; // ok
++   }
++   assert(0 && "not enough buffer");
++   return &buf[0];
++ }
++ 
++ enum arg_class { NONE, WORD, LONG, LONGLONG, DF, LDF, STR };
++ 
++ static const char* get_part(const char* fmt, enum arg_class* how)
++ {
++   for ( ; *fmt ; ++fmt) {
++     char c = *fmt;
++     if (c == 'd' || c == 'i' || c == 'x' || c == 'u') {
++       if (*how == NONE)
++ 	*how = WORD;
++       return ++fmt;
++     }
++     if (c == 'c') {
++       *how = WORD;
++       return ++fmt;
++     }
++     if (c == 'f') {
++       char prev = *(fmt-1);
++       *how = prev == 'L' ? LDF : DF;
++       return ++fmt;
++     }
++     if (c == 's') {
++       *how = STR;
++       return ++fmt;
++     }
++     if (c == 'l') {
++       if (*how == NONE)
++ 	*how = LONG;
++       else
++ 	*how = LONGLONG;
++     }
++   }
++   assert(0 && "unexpected");
++   return fmt;
++ }
++ 
++ static int arg16(SIM_CPU* cpu, int nth)
++ {
++   assert(nth);
++   unsigned int sp = read_word(REG_SP);
++   int addr = sp+3+2*nth;
++   int ret = (sram[addr+1] << 8) | sram[addr];
++   return ret;
++ }
++ 
++ static int arg32(SIM_CPU* cpu, int nth)
++ {
++   assert(nth);
++   unsigned int sp = read_word(REG_SP);
++   int addr = sp+3+2*nth;
++   int ret = (sram[addr+3] << 24) | (sram[addr+2] << 16) |
++     (sram[addr+1] << 8) | sram[addr];
++   return ret;
++ }
++ 
++ static uint64_t arg64(SIM_CPU* cpu, int nth)
++ {
++   assert(nth);
++   unsigned int sp = read_word(REG_SP);
++   int addr = sp+3+2*nth;
++   uint32_t a = (sram[addr+3] << 24) | (sram[addr+2] << 16) |
++     (sram[addr+1] << 8) | sram[addr];
++   uint64_t b = (sram[addr+7] << 24) | (sram[addr+6] << 16) |
++     (sram[addr+5] << 8) | sram[addr+4];
++   return (b << 32) | a;
++ }
++ 
++ static const char*
++ handle(SIM_CPU* cpu, const char* fmt, int* nth, int* ret)
++ {
++   char c = *fmt;
++   if (c != '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   const char* beg = fmt;
++   c = *++fmt;
++   if (c == '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   enum arg_class how = NONE;
++   const char* end = get_part(fmt, &how);
++   char part_fmt[256];
++   int n = end - beg;
++   assert(n + 1 < sizeof part_fmt/sizeof part_fmt[0]);
++   strncpy(&part_fmt[0], beg, n);
++   part_fmt[n] = '\0';
++   if (how == WORD) {
++     int arg = arg16(cpu, (*nth)++);
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == LONG) {
++     uint64_t arg = arg32(cpu, *nth);
++     *nth += 2;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == LONGLONG) {
++     uint64_t arg = arg64(cpu, *nth);
++     *nth += 4;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DF || how == LDF) {
++     union {
++       uint64_t i;
++       double d;
++     } u = { arg64(cpu, *nth) };
++     *nth += 4;
++     if (how == DF)
++       *ret += printf(part_fmt, u.d);
++     else
++       *ret += printf(part_fmt, (long double)u.d);
++     return end;
++   }
++   if (how == STR) {
++     uint32_t addr = arg16(cpu, (*nth)++);
++     char buf[256];
++     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++       char c = sram[addr+i];
++       buf[i] = c;
++       if (c == '\0') {
++ 	*ret += printf(part_fmt, &buf[0]);  // ok
++ 	return end;
++       }
++     }
++     assert(0 && "not enough buffer");
++     return end;
++   }
++   asm("int3");
++   return end;
++ }
++ 
++ static void do_printf(SIM_CPU* cpu)
++ {
++   const char* fmt = first_string(cpu);
++   int argc = 1;
++   int ret = 0;
++   while (*fmt)
++     fmt = handle(cpu, fmt, &argc, &ret);
++ 
++   CPUREG_STORE_FN* store = CPU_REG_STORE(cpu);
++   uint8_t r24 = ret;
++   uint8_t r25 = ret >> 8;
++   store(cpu, 24, &r24, 1);
++   store(cpu, 25, &r25, 1);
++ }
++ 
++ static void do_puts(SIM_CPU* cpu)
++ {
++   const char* arg = first_string(cpu);
++   int ret = puts(arg);
++   CPUREG_STORE_FN* store = CPU_REG_STORE(cpu);
++   uint8_t r24 = ret;
++   uint8_t r25 = ret >> 8;
++   store(cpu, 24, &r24, 1);
++   store(cpu, 25, &r25, 1);
++ }
++ 
++ static void do_putchar(SIM_CPU* cpu)
++ {
++   int arg = first_arg(cpu);
++   int ret = putchar(arg);
++   CPUREG_STORE_FN* store = CPU_REG_STORE(cpu);
++   uint8_t r24 = ret;
++   uint8_t r25 = ret >> 8;
++   store(cpu, 24, &r24, 1);
++   store(cpu, 25, &r25, 1);
++ }
++ 
+  static void
+  step_once (SIM_CPU *cpu)
+  {
+***************
+*** 793,798 ****
+--- 993,1003 ----
+    byte res;
+    byte r, d, vd;
+  
++ #if 0  
++   if (cpu->pc == (0x12a>>1))
++     asm("int3");
++ #endif  
++ 
+   again:
+    code = flash[cpu->pc].code;
+    op = flash[cpu->pc].op;
+***************
+*** 1497,1504 ****
+  	break;
+  
+        case OP_bad:
+! 	sim_engine_halt (CPU_STATE (cpu), cpu, NULL, cpu->pc, sim_signalled, SIM_SIGILL);
+! 
+        default:
+  	sim_engine_halt (CPU_STATE (cpu), cpu, NULL, cpu->pc, sim_signalled, SIM_SIGILL);
+        }
+--- 1702,1716 ----
+  	break;
+  
+        case OP_bad:
+! 	switch (op) {
+! 	case 0xf818: exit(0); break;
+! 	case 0xf819: do_printf(cpu); break;
+! 	case 0xf81a: do_puts(cpu); break;
+! 	case 0xf81b: do_putchar(cpu); break;
+! 	default:
+! 	  sim_engine_halt (CPU_STATE (cpu), cpu, NULL, cpu->pc, sim_signalled, SIM_SIGILL);
+! 	}
+! 	break;
+        default:
+  	sim_engine_halt (CPU_STATE (cpu), cpu, NULL, cpu->pc, sim_signalled, SIM_SIGILL);
+        }
+***************
+*** 1767,1773 ****
+--- 1979,1989 ----
+      addr = bfd_get_start_address (abfd);
+    else
+      addr = 0;
++ #if 0  
+    sim_pc_set (cpu, addr);
++ #else
++   sim_pc_set (cpu, addr >> 1);
++ #endif
+  
+    if (abfd != NULL)
+      sd->avr_pc22 = (bfd_get_mach (abfd) >= bfd_mach_avr6);
