@@ -1,0 +1,238 @@
+*** gdb-10.2.arm-elf/sim/aarch64/simulator.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.aarch64-elf/sim/aarch64/simulator.c	2021-11-19 16:42:29.000000000 +0900
+***************
+*** 14322,14327 ****
+--- 14326,14520 ----
+      }
+  }
+  
++ #include <assert.h>
++ 
++ static const char* first_string(sim_cpu* cpu)
++ {
++   uint64_t x0 = cpu->gr[0].u64;
++ 
++   static char buf[256];
++   for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i ) {
++     char c = aarch64_get_mem_s8(cpu, x0+i);
++     buf[i] = c;
++     if (c == '\0')
++       return &buf[0]; // ok
++   }
++   assert(0 && "not enough buffer");
++   return &buf[0];
++ }
++ 
++ enum arg_class { NONE, WORD, DW, DF, LDF, STR };
++ 
++ static const char* get_part(const char* fmt, enum arg_class* how)
++ {
++   for ( ; *fmt ; ++fmt) {
++     char c = *fmt;
++     if (c == 'd' || c == 'i' || c == 'x' || c == 'u') {
++       if (*how == NONE)
++ 	*how = WORD;
++       return ++fmt;
++     }
++     if (c == 'c') {
++       *how = WORD;
++       return ++fmt;
++     }
++     if (c == 'f') {
++       char prev = *(fmt-1);
++       *how = prev == 'L' ? LDF : DF;
++       return ++fmt;
++     }
++     if (c == 's') {
++       *how = STR;
++       return ++fmt;
++     }
++     if (c == 'l') {
++       if (*how == NONE)
++ 	*how = WORD;
++       else
++ 	*how = DW;
++     }
++   }
++   assert(0 && "unexpected");
++   return fmt;
++ }
++ 
++ static unsigned int arg32(sim_cpu* cpu, int nth)
++ {
++   assert(nth);
++   if (nth < 8)
++     return cpu->gr[nth].u32;
++   uint64_t sp = cpu->gr[31].u64;
++   uint64_t addr = sp + 4*(nth-8);
++   return aarch64_get_mem_u32(cpu, addr);
++ }
++ 
++ static uint64_t arg64(sim_cpu* cpu, int nth)
++ {
++   assert(nth);
++   if (nth < 8)
++     return cpu->gr[nth].u64;
++   uint64_t sp = cpu->gr[31].u64;
++   uint64_t addr = sp + 8*(nth-8);
++   return aarch64_get_mem_u64(cpu, addr);
++ }
++ 
++ static double float64(sim_cpu* cpu, int nth)
++ {
++   if (nth < 8)
++     return cpu->fr[nth].d;
++   uint64_t sp = cpu->gr[31].u64;
++   uint64_t addr = sp + 8*(nth-8);
++   union {
++     uint64_t i;
++     double d;
++   } u = { aarch64_get_mem_u64(cpu, addr) };
++   return u.d;
++ }
++ 
++ static __float128 float128(sim_cpu* cpu, int nth)
++ {
++   union U {
++     uint64_t i[2];
++     __float128 f128;
++   };
++   if (nth < 8) {
++     union U u = { cpu->fr[nth].v[0], cpu->fr[nth].v[1] };
++     return u.f128;
++   }
++   uint64_t sp = cpu->gr[31].u64;
++   uint64_t addr = sp + 8*(nth-8);
++   union U u = {
++     aarch64_get_mem_u64(cpu, addr), aarch64_get_mem_u64(cpu, addr+8)
++   };
++   return u.f128;
++ }
++ 
++ static const char*
++ handle(sim_cpu* cpu, const char* fmt, int* nth, int *fargc, int* ret)
++ {
++   char c = *fmt;
++   if (c != '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   const char* beg = fmt;
++   c = *++fmt;
++   if (c == '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   enum arg_class how = NONE;
++   const char* end = get_part(fmt, &how);
++   char part_fmt[256];
++   int n = end - beg;
++   assert(n + 1 < sizeof part_fmt/sizeof part_fmt[0]);
++   strncpy(&part_fmt[0], beg, n);
++   part_fmt[n] = '\0';
++   if (how == WORD) {
++     int arg = arg32(cpu, (*nth)++);
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DW) {
++     unsigned long long arg = arg64(cpu, (*nth)++);
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DF) {
++     double d = float64(cpu, (*fargc)++);
++     *ret += printf(part_fmt, d);
++     return end;
++   }
++   if (how == LDF) {
++     __float128 f128 = float128(cpu, (*fargc)++);
++     *ret += printf(part_fmt, (long double)f128);
++     return end;
++   }
++   if (how == STR) {
++     uint32_t addr = arg32(cpu, (*nth)++);
++     char buf[256];
++     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++       char c = aarch64_get_mem_s8(cpu, addr+i);
++       buf[i] = c;
++       if (c == '\0') {
++ 	*ret += printf(part_fmt, &buf[0]);  // ok
++ 	return end;
++       }
++     }
++     assert(0 && "not enough buffer");
++     return end;
++   }
++   asm("int3");
++   return end;
++ }
++ 
++ static void do_printf(sim_cpu* cpu)
++ {
++   const char* fmt = first_string(cpu);
++   int nargc = 1;
++   int fargc = 0;
++   int ret = 0;
++   while (*fmt)
++     fmt = handle(cpu, fmt, &nargc, &fargc, &ret);
++   cpu->gr[0].u32 = ret;
++ }
++ 
++ static void do_puts(sim_cpu* cpu)
++ {
++   const char* arg = first_string(cpu);
++   int ret = puts(arg);
++   cpu->gr[0].u32 = ret;
++ }
++ 
++ static void do_putchar(sim_cpu* cpu)
++ {
++   uint32_t arg = cpu->gr[0].u32;
++   int ret = putchar(arg);
++   cpu->gr[0].u32 = ret;
++ }
++ 
+  static bfd_boolean
+  aarch64_step (sim_cpu *cpu)
+  {
+***************
+*** 14336,14342 ****
+    sim_core_read_buffer (CPU_STATE (cpu), cpu, read_map,
+  			& aarch64_get_instr (cpu), pc, 4);
+    aarch64_get_instr (cpu) = endian_le2h_4 (aarch64_get_instr (cpu));
+! 
+    TRACE_INSN (cpu, " pc = %" PRIx64 " instr = %08x", pc,
+  	      aarch64_get_instr (cpu));
+    TRACE_DISASM (cpu, pc);
+--- 14529,14556 ----
+    sim_core_read_buffer (CPU_STATE (cpu), cpu, read_map,
+  			& aarch64_get_instr (cpu), pc, 4);
+    aarch64_get_instr (cpu) = endian_le2h_4 (aarch64_get_instr (cpu));
+!   uint32_t tmp = aarch64_get_instr (cpu);
+!   switch (tmp) {
+!   case 0xbadbeef0: exit(0); break;
+!   case 0xbadbeef1:
+!     do_printf(cpu);
+!     pc += 4;
+!     sim_core_read_buffer (CPU_STATE (cpu), cpu, read_map,
+! 			  & aarch64_get_instr (cpu), pc, 4);
+!     break;
+!   case 0xbadbeef2:
+!     do_puts(cpu);
+!     pc += 4;
+!     sim_core_read_buffer (CPU_STATE (cpu), cpu, read_map,
+! 			  & aarch64_get_instr (cpu), pc, 4);
+!     break;
+!   case 0xbadbeef3:
+!     do_putchar(cpu);
+!     pc += 4;
+!     sim_core_read_buffer (CPU_STATE (cpu), cpu, read_map,
+! 			  & aarch64_get_instr (cpu), pc, 4);
+!     break;
+!   }
+    TRACE_INSN (cpu, " pc = %" PRIx64 " instr = %08x", pc,
+  	      aarch64_get_instr (cpu));
+    TRACE_DISASM (cpu, pc);
