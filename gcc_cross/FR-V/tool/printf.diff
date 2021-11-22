@@ -1,0 +1,210 @@
+*** gdb-10.2.tmp/sim/frv/mloop.c	2021-11-23 07:23:26.000000000 +0900
+--- gdb-10.2.frv-elf/sim/frv/mloop.c	2021-11-18 17:34:27.000000000 +0900
+***************
+*** 474,479 ****
+--- 474,649 ----
+  
+  #define FAST_P 0
+  
++ #include <stdlib.h>
++ 
++ static const char* first_string(SIM_CPU* current_cpu)
++ {
++   USI gr8 = GET_H_GR(8);
++   static char buf[1024];
++   for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i ) {
++     char c = frvbf_read_mem_QI(current_cpu, 0, gr8+i);
++     buf[i] = c;
++     if (c == '\0')
++       return &buf[0]; // ok
++   }
++   assert(0 && "not enough buffer");
++   return &buf[0];
++ }
++ 
++ enum arg_class { NONE, WORD, DW, DOUBLEF, LDF, STR };
++ 
++ static const char* get_part(const char* fmt, enum arg_class* how)
++ {
++   for ( ; *fmt ; ++fmt) {
++     char c = *fmt;
++     if (c == 'd' || c == 'i' || c == 'x' || c == 'u') {
++       if (*how == NONE)
++ 	*how = WORD;
++       return ++fmt;
++     }
++     if (c == 'c') {
++       *how = WORD;
++       return ++fmt;
++     }
++     if (c == 'f') {
++       char prev = *(fmt-1);
++       *how = prev == 'L' ? LDF : DOUBLEF;
++       return ++fmt;
++     }
++     if (c == 's') {
++       *how = STR;
++       return ++fmt;
++     }
++     if (c == 'l') {
++       if (*how == NONE)
++ 	*how = WORD;
++       else
++ 	*how = DW;
++     }
++   }
++   assert(0 && "unexpected");
++   return fmt;
++ }
++ 
++ static SI arg32(SIM_CPU* current_cpu, int nth)
++ {
++   assert(nth);
++   if (nth < 7)
++     return GET_H_GR(nth+8);
++   int sp = GET_H_GR(1);
++   int addr = sp + 4*(nth-7);
++   return frvbf_read_mem_SI(current_cpu, 0, addr);
++ }
++ 
++ static uint64_t arg64(SIM_CPU* current_cpu, int nth)
++ {
++   assert(nth);
++   if (nth < 5) {
++     uint64_t a = GET_H_GR(nth+8);
++     uint32_t b = GET_H_GR(nth+9);
++     return (a << 32) | b;
++   }
++   if (nth == 5) {
++     uint64_t a = GET_H_GR(nth+8);
++     int sp = GET_H_GR(1);    
++     uint32_t b = frvbf_read_mem_SI(current_cpu, 0, sp);
++     return (a << 32) | b;
++   }
++   int sp = GET_H_GR(1);
++   int addr = sp + 4*(nth-4);
++   uint64_t a = (uint32_t)frvbf_read_mem_SI(current_cpu, 0, addr);
++   uint32_t b = frvbf_read_mem_SI(current_cpu, 0, addr+4);
++   return (a << 32) | b;
++ }
++ 
++ static const char*
++ handle(SIM_CPU* current_cpu, const char* fmt, int* nth, int* ret)
++ {
++   char c = *fmt;
++   if (c != '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   const char* beg = fmt;
++   c = *++fmt;
++   if (c == '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   enum arg_class how = NONE;
++   const char* end = get_part(fmt, &how);
++   char part_fmt[256];
++   int n = end - beg;
++   assert(n + 1 < sizeof part_fmt/sizeof part_fmt[0]);
++   strncpy(&part_fmt[0], beg, n);
++   part_fmt[n] = '\0';
++   if (how == WORD) {
++     int arg = arg32(current_cpu, (*nth)++);
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DW) {
++     uint64_t arg = arg64(current_cpu, *nth);
++     *nth += 2;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DOUBLEF || how == LDF) {
++     union {
++       uint64_t i;
++       double d;
++     } u = { arg64(current_cpu, *nth) };
++     *nth += 2;
++     if (how == DOUBLEF)
++       *ret += printf(part_fmt, u.d);
++     else
++       *ret += printf(part_fmt, (long double)u.d);
++     return end;
++   }
++   if (how == STR) {
++     uint32_t addr = arg32(current_cpu, (*nth)++);
++     char buf[256];
++     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++       char c = frvbf_read_mem_QI(current_cpu, 0, addr+i);
++       buf[i] = c;
++       if (c == '\0') {
++ 	*ret += printf(part_fmt, &buf[0]);  // ok
++ 	return end;
++       }
++     }
++     assert(0 && "not enough buffer");
++     return end;
++   }
++   asm("int3");
++   return end;
++ }
++ 
++ void do_printf(SIM_CPU* current_cpu)
++ {
++   const char* fmt = first_string(current_cpu);
++   int argc = 1;
++   int ret = 0;
++   while (*fmt)
++     fmt = handle(current_cpu, fmt, &argc, &ret);
++   SET_H_GR(8, ret);
++ }
++ 
++ void do_puts(SIM_CPU* current_cpu)
++ {
++   const char* arg = first_string(current_cpu);
++   int ret = puts(arg);
++   SET_H_GR(8, ret);  
++ }
++ 
++ void do_putchar(SIM_CPU* current_cpu)
++ {
++   USI arg = GET_H_GR(8);
++   int ret = putchar(arg);
++   SET_H_GR(8, ret);  
++ }
++ 
+  void
+  frvbf_engine_run_full (SIM_CPU *current_cpu)
+  {
+***************
+*** 498,503 ****
+--- 668,680 ----
+      }
+  
+    vpc = GET_H_PC ();
++   uint32_t insn = frvbf_read_imem_USI (current_cpu, vpc);
++   switch (insn) {
++   case 0x0badbeef: exit(0);
++   case 0x1badbeef: do_printf(current_cpu); SET_H_PC(vpc+4); return;
++   case 0x2badbeef: do_puts(current_cpu); SET_H_PC(vpc+4); return;
++   case 0x3badbeef: do_putchar(current_cpu); SET_H_PC(vpc+4); return;
++   }
+  
+    do
+      {
+*** gdb-10.2.tmp/sim/frv/registers.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.frv-elf/sim/frv/registers.c	2021-11-18 10:35:30.000000000 +0900
+***************
+*** 6416,6421 ****
+--- 6416,6423 ----
+       Set the hardware directly to avoid user/supervisor state change. */
+    CPU (h_psr_s) = 1;
+  
++   CPU (h_psr_cm) = 1;
++   
+    /* Now initialize each register except PSR.  */
+    for (i = 0; i < FRV_MAX_SPR; ++i)
+      {
