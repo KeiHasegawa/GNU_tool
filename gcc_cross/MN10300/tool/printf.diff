@@ -1,0 +1,223 @@
+*** gdb-10.2.tmp/sim/mn10300/engine.c	2021-11-22 13:05:21.000000000 +0900
+--- gdb-10.2.mn10300-elf/sim/mn10300/engine.c	2021-11-20 07:07:52.000000000 +0900
+***************
+*** 66,71 ****
+--- 66,230 ----
+    void *function_or_table;
+  } idecode_table_entry;
+  
++ #include <assert.h>
++ #include <stdlib.h>
++ 
++ static const char* first_string(SIM_DESC sd)
++ {
++   uint32 d0 = State.regs[0];
++   static char buf[1024];
++   for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i ) {
++     char c = load_byte(d0+i);
++     buf[i] = c;
++     if (c == '\0')
++       return &buf[0]; // ok
++   }
++   assert(0 && "not enough buffer");
++   return &buf[0];
++ }
++ 
++ enum arg_class { NONE, WORD, DW, DF, LDF, STR };
++ 
++ static const char* get_part(const char* fmt, enum arg_class* how)
++ {
++   for ( ; *fmt ; ++fmt) {
++     char c = *fmt;
++     if (c == 'd' || c == 'i' || c == 'x' || c == 'u') {
++       if (*how == NONE)
++ 	*how = WORD;
++       return ++fmt;
++     }
++     if (c == 'c') {
++       *how = WORD;
++       return ++fmt;
++     }
++     if (c == 'f') {
++       char prev = *(fmt-1);
++       *how = prev == 'L' ? LDF : DF;
++       return ++fmt;
++     }
++     if (c == 's') {
++       *how = STR;
++       return ++fmt;
++     }
++     if (c == 'l') {
++       if (*how == NONE)
++ 	*how = WORD;
++       else
++ 	*how = DW;
++     }
++   }
++   assert(0 && "unexpected");
++   return fmt;
++ }
++ 
++ static unsigned int arg32(SIM_DESC sd, int nth)
++ {
++   assert(nth);
++   if (nth < 2)
++     return State.regs[nth];
++   int sp = SP;
++   int addr = sp + 4*nth+4;
++   return load_word(addr);
++ }
++ 
++ static uint64_t arg64(SIM_DESC sd, int nth)
++ {
++   assert(nth);
++   int sp = SP; 
++   int addr = sp + 4*nth+4;
++   uint32_t a = load_word(addr);
++   uint64_t b = load_word(addr+4);
++   return (b << 32) | a; 
++ }
++ 
++ static const char*
++ handle(SIM_DESC sd, const char* fmt, int* nth, int* ret)
++ {
++   char c = *fmt;
++   if (c != '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   const char* beg = fmt;
++   c = *++fmt;
++   if (c == '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   enum arg_class how = NONE;
++   const char* end = get_part(fmt, &how);
++   char part_fmt[256];
++   int n = end - beg;
++   assert(n + 1 < sizeof part_fmt/sizeof part_fmt[0]);
++   strncpy(&part_fmt[0], beg, n);
++   part_fmt[n] = '\0';
++   if (how == WORD) {
++     int arg = arg32(sd, (*nth)++);
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DW) {
++     uint64_t arg = arg64(sd, *nth);
++     *nth += 2;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DF || how == LDF) {
++     union {
++       uint64_t i;
++       double d;
++     } u = { arg64(sd, *nth) };
++     *nth += 2;
++     if (how == DF)
++       *ret += printf(part_fmt, u.d);
++     else
++       *ret += printf(part_fmt, (long double)u.d);
++     return end;
++   }
++   if (how == STR) {
++     uint32_t addr = arg32(sd, (*nth)++);
++     char buf[256];
++     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++       char c = load_byte(addr+i);
++       buf[i] = c;
++       if (c == '\0') {
++ 	*ret += printf(part_fmt, &buf[0]);  // ok
++ 	return end;
++       }
++     }
++     assert(0 && "not enough buffer");
++     return end;
++   }
++   asm("int3");
++   return end;
++ }
++ 
++ static void do_printf(SIM_DESC sd)
++ {
++   const char* fmt = first_string(sd);
++   int argc = 1;
++   int ret = 0;
++   while (*fmt)
++     fmt = handle(sd, fmt, &argc, &ret);
++   State.regs[0] = ret;
++ }
++ 
++ static void do_puts(SIM_DESC sd)
++ {
++   const char* arg = first_string(sd);
++   int ret = puts(arg);
++   State.regs[0] = ret;
++ }
++ 
++ static void do_putchar(SIM_DESC sd)
++ {
++   int arg = State.regs[0];
++   int ret = putchar(arg);
++   State.regs[0] = ret;
++ }
+  
+  INLINE_ENGINE\
+  (void) engine_mn10300_run
+***************
+*** 2020,2025 ****
+--- 2179,2186 ----
+                      break;
+                    }
+                  default:
++ 		    if (instruction_1 == 0xf8 && instruction_0 == 0xf0)
++ 		      exit(0);
+                      nia =  semantic_illegal (sd, cia);
+                      break;
+                  }
+***************
+*** 2098,2103 ****
+--- 2259,2269 ----
+                      break;
+                    }
+                  default:
++  		    if (instruction_1 == 0xf8 && instruction_0 == 0xf1) {
++ 		      do_printf(sd);
++ 		      nia += 2;
++ 		      break;
++ 		    }
+                      nia =  semantic_illegal (sd, cia);
+                      break;
+                  }
+***************
+*** 4125,4130 ****
+--- 4291,4301 ----
+                      break;
+                    }
+                  default:
++ 		    if (instruction_0 == 0xf8 && instruction_1 == 0xf8) {
++ 		      do_puts(sd);
++ 		      nia += 2;
++ 		      break;
++ 		    }
+                      nia =  semantic_illegal (sd, cia);
+                      break;
+                  }
+***************
+*** 4148,4153 ****
+--- 4319,4329 ----
+                      break;
+                    }
+                  default:
++ 		    if (instruction_0 == 0xf9 && instruction_1 == 0xf8) {
++ 		      do_putchar(sd);
++ 		      nia += 2;
++ 		      break;
++ 		    }
+                      nia =  semantic_illegal (sd, cia);
+                      break;
+                  }
