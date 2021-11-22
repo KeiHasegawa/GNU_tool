@@ -1,0 +1,231 @@
+*** gdb-10.2.aarch64-elf/sim/rl78/rl78.c	2021-04-25 13:04:35.000000000 +0900
+--- gdb-10.2.rl78-elf/sim/rl78/rl78.c	2021-11-21 08:54:46.000000000 +0900
+***************
+*** 412,417 ****
+--- 412,601 ----
+    pending_clocks += n - 1;
+  }
+  
++ #include <assert.h>
++ #include <string.h>
++ 
++ static const char* first_string(void)
++ {
++   uint32_t sp = get_reg(RL78_Reg_SP);
++   uint32_t addr = mem_get_hi(sp+4);
++   static char buf[1024];
++   for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i ) {
++     char c = mem_get_qi(addr+i);
++     buf[i] = c;
++     if (c == '\0')
++       return &buf[0]; // ok
++   }
++   assert(0 && "not enough buffer");
++   return &buf[0];
++ }
++ 
++ enum arg_class { NONE, WORD, LONG, LONGLONG, DF, LDF, STR };
++ 
++ static const char* get_part(const char* fmt, enum arg_class* how)
++ {
++   for ( ; *fmt ; ++fmt) {
++     char c = *fmt;
++     if (c == 'd' || c == 'i' || c == 'x' || c == 'u') {
++       if (*how == NONE)
++ 	*how = WORD;
++       return ++fmt;
++     }
++     if (c == 'c') {
++       *how = WORD;
++       return ++fmt;
++     }
++     if (c == 'f') {
++       char prev = *(fmt-1);
++       *how = prev == 'L' ? LDF : DF;
++       return ++fmt;
++     }
++     if (c == 's') {
++       *how = STR;
++       return ++fmt;
++     }
++     if (c == 'l') {
++       if (*how == NONE)
++ 	*how = LONG;
++       else
++ 	*how = LONGLONG;
++     }
++   }
++   assert(0 && "unexpected");
++   return fmt;
++ }
++ 
++ static unsigned int arg16(int nth)
++ {
++   assert(nth);
++   uint32_t sp = get_reg(RL78_Reg_SP);
++   uint32_t addr = sp + 4 + 2*nth;
++   return mem_get_hi(addr);
++ }
++ 
++ static unsigned int arg32(int nth)
++ {
++   assert(nth);
++   uint32_t sp = get_reg(RL78_Reg_SP);  
++   uint32_t addr = sp + 4 + 2*nth;
++   uint32_t lo = mem_get_hi(addr);
++   uint32_t hi = mem_get_hi(addr+2);
++   return (hi << 16) | lo;
++ }
++ 
++ static uint64_t arg64(int nth)
++ {
++   assert(nth);
++   uint32_t sp = get_reg(RL78_Reg_SP);  
++   uint32_t addr = sp + 4 + 2*nth;
++   uint32_t a = mem_get_hi(addr);
++   uint32_t b = mem_get_hi(addr+2);
++   uint64_t c = mem_get_hi(addr+4);
++   uint64_t d = mem_get_hi(addr+6);
++   return (d << 48) | (c << 32) | (b << 16) | a;
++ }
++ 
++ static const char* handle(const char* fmt, int* nth, int* ret)
++ {
++   char c = *fmt;
++   if (c != '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   const char* beg = fmt;
++   c = *++fmt;
++   if (c == '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   enum arg_class how = NONE;
++   const char* end = get_part(fmt, &how);
++   char part_fmt[256];
++   int n = end - beg;
++   assert(n + 1 < sizeof part_fmt/sizeof part_fmt[0]);
++   strncpy(&part_fmt[0], beg, n);
++   part_fmt[n] = '\0';
++   if (how == WORD) {
++     int arg = arg16((*nth)++);
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == LONG) {
++     int arg = arg32(*nth);
++     *nth += 2;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == LONGLONG) {
++     uint64_t arg = arg64(*nth);
++     *nth += 4;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DF) {
++     union {
++       uint32_t i;
++       float d;
++     } u = { arg32(*nth) };
++     *nth += 2;
++     *ret += printf(part_fmt, u.d);
++     return end;
++   }
++   if (how == LDF) {
++     union {
++       uint64_t i;
++       double d;
++     } u = { arg64(*nth) };
++     *nth += 4;
++     *ret += printf(part_fmt, (long double)u.d);
++     return end;
++   }
++   if (how == STR) {
++     uint32_t addr = arg16((*nth)++);
++     char buf[256];
++     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++       char c = mem_get_qi(addr+i);
++       buf[i] = c;
++       if (c == '\0') {
++ 	*ret += printf(part_fmt, &buf[0]);  // ok
++ 	return end;
++       }
++     }
++     assert(0 && "not enough buffer");
++     return end;
++   }
++   asm("int3");
++   return end;
++ }
++ 
++ static void do_printf(void)
++ {
++   const char* fmt = first_string();
++   int nargc = 1;
++   int ret = 0;
++   while (*fmt)
++     fmt = handle(fmt, &nargc, &ret);
++   set_reg(RL78_Reg_X, ret);
++ }
++ 
++ static void do_puts(void)
++ {
++   const char* arg = first_string();
++   int ret = puts(arg);
++   set_reg(RL78_Reg_X, ret);
++ }
++ 
++ static void do_putchar(void)
++ {
++   uint32_t sp = get_reg(RL78_Reg_SP);
++   uint32_t addr = sp + 4;
++   int arg = mem_get_hi(addr);
++   int ret = putchar(arg);
++   set_reg(RL78_Reg_X, ret);
++ }
++ 
+  int
+  decode_opcode (void)
+  {
+***************
+*** 910,917 ****
+        break;
+  
+      default:
+!       tprintf ("Unknown opcode?\n");
+!       DO_RETURN (RL78_MAKE_HIT_BREAK ());
+      }
+  
+    if (timer_enabled)
+--- 1094,1118 ----
+        break;
+  
+      default:
+!       {
+! 	uint8_t x = mem_get_qi(opcode_pc);
+! 	if (x == 0x31) {
+! 	  uint8_t y = mem_get_qi(opcode_pc+1);
+! 	  switch (y) {
+! 	  case 0x06: exit(0);
+! 	  case 0x16: do_printf(); break;
+! 	  case 0x26: do_puts(); break;
+! 	  case 0x36: do_putchar(); break;
+! 	  default:
+! 	    tprintf ("Unknown opcode?\n");
+! 	    DO_RETURN (RL78_MAKE_HIT_BREAK ());
+! 	  }
+! 	}
+! 	else {
+! 	  tprintf ("Unknown opcode?\n");
+! 	  DO_RETURN (RL78_MAKE_HIT_BREAK ());
+! 	}
+!       }
+      }
+  
+    if (timer_enabled)
