@@ -1,0 +1,213 @@
+*** gdb-10.2.aarch64-elf/sim/microblaze/interp.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.microblaze-elf/sim/microblaze/interp.c	2021-11-19 14:23:45.000000000 +0900
+***************
+*** 109,114 ****
+--- 109,284 ----
+  
+  static int tracing = 0;
+  
++ #include <assert.h>
++ 
++ static const char* first_string(SIM_DESC sd, SIM_CPU* cpu)
++ {
++   uint32_t r5 = cpu->microblaze_cpu.regs[5];
++   static char buf[1024];
++   for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i ) {
++     char c = MEM_RD_BYTE(r5+i);
++     buf[i] = c;
++     if (c == '\0')
++       return &buf[0]; // ok
++   }
++   assert(0 && "not enough buffer");
++   return &buf[0];
++ }
++ 
++ enum arg_class { NONE, WORD, DW, DF, LDF, STR };
++ 
++ static const char* get_part(const char* fmt, enum arg_class* how)
++ {
++   for ( ; *fmt ; ++fmt) {
++     char c = *fmt;
++     if (c == 'd' || c == 'i' || c == 'x' || c == 'u') {
++       if (*how == NONE)
++ 	*how = WORD;
++       return ++fmt;
++     }
++     if (c == 'c') {
++       *how = WORD;
++       return ++fmt;
++     }
++     if (c == 'f') {
++       char prev = *(fmt-1);
++       *how = prev == 'L' ? LDF : DF;
++       return ++fmt;
++     }
++     if (c == 's') {
++       *how = STR;
++       return ++fmt;
++     }
++     if (c == 'l') {
++       if (*how == NONE)
++ 	*how = WORD;
++       else
++ 	*how = DW;
++     }
++   }
++   assert(0 && "unexpected");
++   return fmt;
++ }
++ 
++ static unsigned int arg32(SIM_DESC sd, SIM_CPU* cpu, int nth)
++ {
++   assert(nth);
++   if (nth < 6)
++     return cpu->microblaze_cpu.regs[nth+5];
++   int sp = cpu->microblaze_cpu.regs[1];
++   int addr = sp + 4*nth;
++   return MEM_RD_WORD(addr);
++ }
++ 
++ static uint64_t arg64(SIM_DESC sd, SIM_CPU* cpu, int nth)
++ {
++   assert(nth);
++   if (nth < 5) {
++     uint64_t a = cpu->microblaze_cpu.regs[nth+5];
++     uint32_t b = cpu->microblaze_cpu.regs[nth+6];
++     return (a << 32) | b;
++   }
++   if (nth == 5) {
++     uint64_t a = cpu->microblaze_cpu.regs[nth+5];
++     int sp = cpu->microblaze_cpu.regs[1];
++     uint32_t b = MEM_RD_WORD(sp);
++     return (a << 32) | b; 
++   }
++   int sp = cpu->microblaze_cpu.regs[1];
++   int addr = sp + 4*nth;
++   uint64_t a = MEM_RD_WORD(addr);
++   uint32_t b = MEM_RD_WORD(addr+4);
++   return (a << 32) | b; 
++ }
++ 
++ static const char*
++ handle(SIM_DESC sd, SIM_CPU* cpu, const char* fmt, int* nth, int* ret)
++ {
++   char c = *fmt;
++   if (c != '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   const char* beg = fmt;
++   c = *++fmt;
++   if (c == '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   enum arg_class how = NONE;
++   const char* end = get_part(fmt, &how);
++   char part_fmt[256];
++   int n = end - beg;
++   assert(n + 1 < sizeof part_fmt/sizeof part_fmt[0]);
++   strncpy(&part_fmt[0], beg, n);
++   part_fmt[n] = '\0';
++   if (how == WORD) {
++     int arg = arg32(sd, cpu, (*nth)++);
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DW) {
++     uint64_t arg = arg64(sd, cpu, *nth);
++     *nth += 2;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DF || how == LDF) {
++     union {
++       uint64_t i;
++       double d;
++     } u = { arg64(sd, cpu, *nth) };
++     *nth += 2;
++     if (how == DF)
++       *ret += printf(part_fmt, u.d);
++     else
++       *ret += printf(part_fmt, (long double)u.d);
++     return end;
++   }
++   if (how == STR) {
++     uint32_t addr = arg32(sd, cpu, (*nth)++);
++     char buf[256];
++     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++       char c = MEM_RD_BYTE(addr+i);
++       buf[i] = c;
++       if (c == '\0') {
++ 	*ret += printf(part_fmt, &buf[0]);  // ok
++ 	return end;
++       }
++     }
++     assert(0 && "not enough buffer");
++     return end;
++   }
++   asm("int3");
++   return end;
++ }
++ 
++ static void do_printf(SIM_DESC sd, SIM_CPU* cpu)
++ {
++   const char* fmt = first_string(sd, cpu);
++   int argc = 1;
++   int ret = 0;
++   while (*fmt)
++     fmt = handle(sd, cpu, fmt, &argc, &ret);
++   cpu->microblaze_cpu.regs[5] = ret;
++ }
++ 
++ static void do_puts(SIM_DESC sd, SIM_CPU* cpu)
++ {
++   const char* arg = first_string(sd, cpu);
++   int ret = puts(arg);
++   cpu->microblaze_cpu.regs[5] = ret;  
++ }
++ 
++ static void do_putchar(SIM_DESC sd, SIM_CPU* cpu)
++ {
++   int arg = cpu->microblaze_cpu.regs[5];
++   int ret = putchar(arg);
++   cpu->microblaze_cpu.regs[5] = ret;  
++ }
++ 
+  void
+  sim_engine_run (SIM_DESC sd,
+  		int next_cpu_nr, /* ignore  */
+***************
+*** 143,148 ****
+--- 313,330 ----
+      {
+        /* Fetch the initial instructions that we'll decode. */
+        inst = MEM_RD_WORD (PC & 0xFFFFFFFC);
++       switch (inst) {
++       case 0xbadbeef0: exit(0);
++       case 0xbadbeef1:
++ 	do_printf(sd, cpu); PC += 4; inst = MEM_RD_WORD (PC & 0xFFFFFFFC);
++ 	break;
++       case 0xbadbeef2:
++ 	do_puts(sd, cpu); PC += 4; inst = MEM_RD_WORD (PC & 0xFFFFFFFC);
++ 	break;
++       case 0xbadbeef3:
++ 	do_putchar(sd, cpu); PC += 4; inst = MEM_RD_WORD (PC & 0xFFFFFFFC);
++ 	break;
++       }
+  
+        op = get_insn_microblaze (inst, &imm_unsigned, &insn_type,
+  				&num_delay_slot);
+***************
+*** 163,168 ****
+--- 345,352 ----
+        branch_taken = 0;
+        if (op == microblaze_brk)
+  	sim_engine_halt (sd, NULL, NULL, NULL_CIA, sim_stopped, SIM_SIGTRAP);
++       else if (op == brki)
++ 	sim_engine_halt(CPU_STATE(cpu), cpu, NULL,PC,sim_stopped,SIM_SIGTRAP);
+        else if (inst == MICROBLAZE_HALT_INST)
+  	{
+  	  insts += 1;
