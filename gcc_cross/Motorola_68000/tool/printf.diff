@@ -1,0 +1,267 @@
+*** gdb-10.2.aarch64-elf/sim/m68hc11/emulos.c	2021-04-25 13:04:35.000000000 +0900
+--- gdb-10.2.m68hc11-elf/sim/m68hc11/emulos.c	2021-11-11 10:18:01.000000000 +0900
+***************
+*** 22,27 ****
+--- 22,30 ----
+  #include <unistd.h>
+  #endif
+  
++ #include <stdlib.h>
++ #include <assert.h>
++ 
+  #ifndef WIN32
+  #include <sys/types.h>
+  #include <sys/time.h>
+***************
+*** 123,128 ****
+--- 126,318 ----
+  		   cpu_get_d (cpu));
+  }
+  
++ static const char* first_string(sim_cpu* cpu)
++ {
++   int addr = cpu_get_d(cpu);  
++   static char buf[256];
++   for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++     uint8 c = memory_read8(cpu, addr+i);
++     buf[i] = c;
++     if (c == '\0')
++       return &buf[0];  // ok
++   }
++   assert(0 && "not enough buffer");
++   return 0;
++ }
++ 
++ static uint16 arg16(sim_cpu* cpu, int nth, _Bool mshort)
++ {
++   assert(nth);
++   int sp = cpu_get_sp(cpu);
++   int off = mshort ? 2 * nth : 2 + 4 * (nth-1);
++   return memory_read16(cpu, sp+off+1);
++ }
++ 
++ static uint32 arg32(sim_cpu* cpu, int nth, _Bool mshort)
++ {
++   assert(nth);
++   int sp = cpu_get_sp(cpu);
++   int off = mshort ? 2 * nth : 2 + 4 * (nth-1);
++   uint16 high = memory_read16(cpu, sp+off+1);
++   uint16 low  = memory_read16(cpu, sp+off+3);
++   return (high << 16) | low;
++ }
++ 
++ static uint64 arg64(sim_cpu* cpu, int nth, _Bool mshort)
++ {
++   assert(nth);
++   int sp = cpu_get_sp(cpu);
++   int off = mshort ? 2 * nth : 2 + 4 * (nth-1);
++   uint64 a = memory_read16(cpu, sp+off+1);
++   uint64 b = memory_read16(cpu, sp+off+3);
++   uint64 c = memory_read16(cpu, sp+off+5);
++   uint64 d = memory_read16(cpu, sp+off+7);
++   return a << 48 | (b << 32) | (c << 16) | d;
++ }
++ 
++ enum arg_class { NONE, WORD, DW, DF, LDF, STR };
++ 
++ static const char* get_part(const char* fmt, enum arg_class* how)
++ {
++   for ( ; *fmt ; ++fmt) {
++     char c = *fmt;
++     if (c == 'd' || c == 'i' || c == 'x' || c == 'u') {
++       if (*how == NONE)
++ 	*how = WORD; 
++       return ++fmt;
++     }
++     if (c == 'c') {
++       *how = WORD;
++       return ++fmt;
++     }
++     if (c == 'f') {
++       char prev = *(fmt-1);
++       *how = prev == 'L' ? LDF : DF;
++       return ++fmt;
++     }
++     if (c == 's') {
++       *how = STR;
++       return ++fmt;
++     }
++     if (c == 'l') {
++       if (*how == NONE)
++ 	*how = WORD;
++       else
++ 	*how = DW;
++     }
++   }
++   assert(0 && "unexpected");
++   return fmt;
++ }
++ 
++ static const char*
++ handle(sim_cpu* cpu, const char* fmt, int* nth, _Bool mshort, int* ret)
++ {
++   char c = *fmt;
++   if (c != '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   const char* beg = fmt;
++   c = *++fmt;
++   if (c == '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   enum arg_class how = NONE;
++   const char* end = get_part(fmt, &how);
++   char part_fmt[256];
++   int n = end - beg;
++   assert(n + 1 < sizeof part_fmt/sizeof part_fmt[0]);
++   strncpy(&part_fmt[0], beg, n);
++   part_fmt[n] = '\0';
++   if (how == WORD) {
++     uint32 arg = mshort ? arg16(cpu, (*nth)++, mshort)
++       : arg32(cpu, (*nth)++, mshort);
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DW) {
++     uint64 arg = arg64(cpu, *nth, mshort);
++     *nth += 2;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DF || how == LDF) {
++     union {
++       uint64 i;
++       double d;
++     } u = { arg64(cpu, *nth, mshort) };
++     *nth += 2;
++     if (how == DF)
++       *ret += printf(part_fmt, u.d);
++     else
++       *ret += printf(part_fmt, (long double)u.d);
++     return end;
++   }
++   if (how == STR) {
++     uint32 addr = arg16(cpu, (*nth)++, mshort);
++     char buf[256];
++     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++       uint8 c = memory_read8(cpu, addr+i);
++       buf[i] = c;
++       if (c == '\0') {
++ 	*ret += printf(part_fmt, &buf[0]);  // ok
++ 	return end;
++       }
++     }
++     assert(0 && "not enough buffer");
++     return end;
++   }
++   asm("int3");
++   return end;
++ }
++ 
++ static void set_ret(sim_cpu* cpu, int ret, _Bool mshort)
++ {
++   uint16 d = ret & 0xffff;
++   cpu_set_d(cpu, d);
++   if (mshort)
++     return;
++   uint16 x = (ret >> 16) & 0xffff;
++   cpu_set_x(cpu, x);
++ }
++ 
++ static void emul_printf(sim_cpu* cpu, _Bool mshort)
++ {
++   const char* fmt = first_string(cpu);
++   int argc = 1;
++   int ret = 0;
++   while (*fmt)
++     fmt = handle(cpu, fmt, &argc, mshort, &ret);
++   set_ret(cpu, ret, mshort);
++ }
++ 
++ static void emul_puts(sim_cpu* cpu, _Bool mshort)
++ {
++   const char* arg = first_string(cpu);
++   int ret = puts(arg);
++   set_ret(cpu, ret, mshort);
++ }
++ 
++ int first_arg(sim_cpu* cpu, _Bool mshort)
++ {
++   int d = cpu_get_d(cpu);
++   if (mshort)
++     return d;
++   int x = cpu_get_x(cpu);
++   return (x << 16) | d;
++ }
++ 
++ static void emul_putchar(sim_cpu* cpu, _Bool mshort)
++ {
++   int arg = first_arg(cpu, mshort);
++   int ret = putchar(arg);
++   set_ret(cpu, ret, mshort);
++ }
++ 
+  void
+  emul_os (int code, sim_cpu *cpu)
+  {
+***************
+*** 130,135 ****
+--- 320,326 ----
+    switch (code)
+      {
+      case 0x0:
++       exit(0);
+        break;
+  
+        /* 0xCD 0x01 */
+***************
+*** 139,144 ****
+--- 330,336 ----
+  
+        /* 0xCD 0x02 */
+      case 0x02:
++       emul_printf(cpu, TRUE);
+        break;
+  
+        /* 0xCD 0x03 */
+***************
+*** 152,158 ****
+        emul_bench (cpu);
+  #endif
+        break;
+!         
+      default:
+        break;
+      }
+--- 344,370 ----
+        emul_bench (cpu);
+  #endif
+        break;
+! 
+!     case 0x05:
+!       emul_printf(cpu, FALSE);
+!       break;
+! 
+!     case 0x06:
+!       emul_puts(cpu, TRUE);
+!       break;
+! 
+!     case 0x07:
+!       emul_puts(cpu, FALSE);
+!       break;
+! 
+!     case 0x08:
+!       emul_putchar(cpu, TRUE);
+!       break;
+! 
+!     case 0x09:
+!       emul_putchar(cpu, FALSE);
+!       break;
+!       
+      default:
+        break;
+      }
