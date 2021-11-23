@@ -6,5 +6,23 @@ start:
 
       	brlid	r15, main
 	nop
-end:	
+	.word	0xbadbeef0
+
+	.global	printf
+printf:
+	.word	0xbadbeef1
+	rtsd	r15,8
 	nop
+
+	.global	puts
+puts:
+	.word	0xbadbeef2
+	rtsd	r15,8
+	nop
+	
+	.global	putchar
+putchar:
+	.word	0xbadbeef3
+	rtsd	r15,8
+	nop
+	
