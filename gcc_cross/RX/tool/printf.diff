@@ -1,0 +1,202 @@
+*** gdb-10.2.aarch64-elf/sim/rx/rx.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.rx-elf/sim/rx/rx.c	2021-11-21 10:13:39.000000000 +0900
+***************
+*** 930,935 ****
+--- 930,1100 ----
+  
+  #define DO_RETURN(x) { longjmp (decode_jmp_buf, x); }
+  
++ #include <assert.h>
++ #include <string.h>
++ 
++ uint32_t first_arg(_Bool refer_stack)
++ {
++   if (refer_stack) {
++     uint32_t stack_pointer = get_reg(0);
++     return mem_get_psi(stack_pointer + 4);
++   }
++   return get_reg(1);
++ }
++ 
++ static const char* first_string(_Bool refer_stack)
++ {
++   uint32_t addr = first_arg(refer_stack);
++   static char buf[1024];
++   for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i ) {
++     char c = mem_get_qi(addr+i);
++     buf[i] = c;
++     if (c == '\0')
++       return &buf[0]; // ok
++   }
++   assert(0 && "not enough buffer");
++   return &buf[0];
++ }
++ 
++ enum arg_class { NONE, WORD, DW, DF, LDF, STR };
++ 
++ static const char* get_part(const char* fmt, enum arg_class* how)
++ {
++   for ( ; *fmt ; ++fmt) {
++     char c = *fmt;
++     if (c == 'd' || c == 'i' || c == 'x' || c == 'u') {
++       if (*how == NONE)
++ 	*how = WORD;
++       return ++fmt;
++     }
++     if (c == 'c') {
++       *how = WORD;
++       return ++fmt;
++     }
++     if (c == 'f') {
++       char prev = *(fmt-1);
++       *how = prev == 'L' ? LDF : DF;
++       return ++fmt;
++     }
++     if (c == 's') {
++       *how = STR;
++       return ++fmt;
++     }
++     if (c == 'l') {
++       if (*how == NONE)
++ 	*how = WORD;
++       else
++ 	*how = DW;
++     }
++   }
++   assert(0 && "unexpected");
++   return fmt;
++ }
++ 
++ static unsigned int arg32(int nth)
++ {
++   assert(nth);
++   uint32_t stack_pointer = get_reg(0);
++   int addr = stack_pointer + 4 + 4*nth;
++   return mem_get_si(addr);
++ }
++ 
++ static uint64_t arg64(int nth)
++ {
++   assert(nth);
++   uint32_t stack_pointer = get_reg(0);  
++   int addr = stack_pointer + 4 + 4*nth;
++   uint32_t a = mem_get_si(addr);
++   uint64_t b = mem_get_si(addr+4);
++   return (b << 32) | a; 
++ }
++ 
++ static const char* handle(const char* fmt, int* nth, int* ret)
++ {
++   char c = *fmt;
++   if (c != '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   const char* beg = fmt;
++   c = *++fmt;
++   if (c == '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   enum arg_class how = NONE;
++   const char* end = get_part(fmt, &how);
++   char part_fmt[256];
++   int n = end - beg;
++   assert(n + 1 < sizeof part_fmt/sizeof part_fmt[0]);
++   strncpy(&part_fmt[0], beg, n);
++   part_fmt[n] = '\0';
++   if (how == WORD) {
++     int arg = arg32((*nth)++);
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DW) {
++     uint64_t arg = arg64(*nth);
++     *nth += 2;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DF || how == LDF) {
++     union {
++       uint32_t i;
++       float d;
++     } u = { arg32((*nth)++) };
++     if (how == DF)
++       *ret += printf(part_fmt, u.d);
++     else
++       *ret += printf(part_fmt, (long double)u.d);
++     return end;
++   }
++   if (how == STR) {
++     uint32_t addr = arg32((*nth)++);
++     char buf[256];
++     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++       char c = mem_get_qi(addr+i);      
++       buf[i] = c;
++       if (c == '\0') {
++ 	*ret += printf(part_fmt, &buf[0]);  // ok
++ 	return end;
++       }
++     }
++     assert(0 && "not enough buffer");
++     return end;
++   }
++   asm("int3");
++   return end;
++ }
++ 
++ static void do_printf(void)
++ {
++   const char* fmt = first_string((_Bool)1);
++   int nargc = 1;
++   int ret = 0;
++   while (*fmt)
++     fmt = handle(fmt, &nargc, &ret);
++   put_reg(1, ret);
++ }
++ 
++ static void do_puts(void)
++ {
++   const char* arg = first_string((_Bool)0);
++   int ret = puts(arg);
++   put_reg(1, ret);
++ }
++ 
++ static void do_putchar(void)
++ {
++   int arg = first_arg((_Bool)0);
++   int ret = putchar(arg);
++   put_reg(1, ret);
++ }
++ 
+  int
+  decode_opcode ()
+  {
+***************
+*** 2156,2162 ****
+        break;
+  
+      default:
+!       EXCEPTION (EX_UNDEFINED);
+      }
+  
+  #ifdef CYCLE_ACCURATE
+--- 2321,2336 ----
+        break;
+  
+      default:
+!       {
+! 	uint8_t x = mem_get_qi(opcode_pc);
+! 	switch (x) {
+! 	case 0x30: exit(0);
+! 	case 0x31: do_printf(); ++regs.cycle_count; break;
+! 	case 0x32: do_puts(); ++regs.cycle_count; break;
+! 	case 0x33: do_putchar(); ++regs.cycle_count; break;
+! 	default: EXCEPTION (EX_UNDEFINED); break;
+! 	}
+!       }
+      }
+  
+  #ifdef CYCLE_ACCURATE
