@@ -1,0 +1,205 @@
+*** gdb-10.2.tmp/sim/or1k/mloop.c	2021-11-23 16:42:57.000000000 +0900
+--- gdb-10.2.or1k-elf/sim/or1k/mloop.c	2021-11-20 10:17:36.000000000 +0900
+***************
+*** 490,495 ****
+--- 490,649 ----
+  
+  #define FAST_P 0
+  
++ const char* first_string(SIM_CPU* current_cpu)
++ {
++   int addr = GET_H_GPR(3);
++   static char buf[1024];
++   for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i ) {
++     char c = GETMEMQI(current_cpu, 0, addr+i);
++     buf[i] = c;
++     if (c == '\0')
++       return &buf[0]; // ok
++   }
++   assert(0 && "not enough buffer");
++   return &buf[0];
++ }
++ 
++ enum arg_class { NONE, WORD, DW, DOUBLEF, LDF, STR };
++ 
++ const char* get_part(const char* fmt, enum arg_class* how)
++ {
++   for ( ; *fmt ; ++fmt) {
++     char c = *fmt;
++     if (c == 'd' || c == 'i' || c == 'x' || c == 'u') {
++       if (*how == NONE)
++ 	*how = WORD;
++       return ++fmt;
++     }
++     if (c == 'c') {
++       *how = WORD;
++       return ++fmt;
++     }
++     if (c == 'f') {
++       char prev = *(fmt-1);
++       *how = prev == 'L' ? LDF : DOUBLEF;
++       return ++fmt;
++     }
++     if (c == 's') {
++       *how = STR;
++       return ++fmt;
++     }
++     if (c == 'l') {
++       if (*how == NONE)
++ 	*how = WORD;
++       else
++ 	*how = DW;
++     }
++   }
++   assert(0 && "unexpected");
++   return fmt;
++ }
++ 
++ unsigned int arg32(SIM_CPU* current_cpu, int nth)
++ {
++   assert(nth);
++   int sp = GET_H_GPR(1);
++   int addr = sp + 4*(nth-1);
++   return GETMEMSI(current_cpu, 0, addr);
++ }
++ 
++ uint64_t arg64(SIM_CPU* current_cpu, int nth)
++ {
++   assert(nth);
++   int sp = GET_H_GPR(1);
++   int addr = sp + 4*(nth-1);
++   uint64_t a = GETMEMSI(current_cpu, 0, addr);
++   uint32_t b = GETMEMSI(current_cpu, 0, addr+4);
++   return (a << 32) | b;
++ }
++ 
++ const char* handle(SIM_CPU* current_cpu, const char* fmt, int* nth, int* ret)
++ {
++   char c = *fmt;
++   if (c != '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   const char* beg = fmt;
++   c = *++fmt;
++   if (c == '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   enum arg_class how = NONE;
++   const char* end = get_part(fmt, &how);
++   char part_fmt[256];
++   int n = end - beg;
++   assert(n + 1 < sizeof part_fmt/sizeof part_fmt[0]);
++   strncpy(&part_fmt[0], beg, n);
++   part_fmt[n] = '\0';
++   if (how == WORD) {
++     int arg = arg32(current_cpu, (*nth)++);
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DW) {
++     uint64_t arg = arg64(current_cpu, *nth);
++     *nth += 2;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DOUBLEF || how == LDF) {
++     union {
++       uint64_t i;
++       double d;
++     } u = { arg64(current_cpu, *nth) };
++     *nth += 2;
++     if (how == DOUBLEF)
++       *ret += printf(part_fmt, u.d);
++     else
++       *ret += printf(part_fmt, (long double)u.d);
++     return end;
++   }
++   if (how == STR) {
++     uint32_t addr = arg32(current_cpu, (*nth)++);
++     char buf[256];
++     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++       char c = GETMEMQI(current_cpu, 0, addr+i);
++       buf[i] = c;
++       if (c == '\0') {
++ 	*ret += printf(part_fmt, &buf[0]);  // ok
++ 	return end;
++       }
++     }
++     assert(0 && "not enough buffer");
++     return end;
++   }
++   asm("int3");
++   return end;
++ }
++ 
++ void do_printf(SIM_CPU* current_cpu)
++ {
++   const char* fmt = first_string(current_cpu);
++   int argc = 1;
++   int ret = 0;
++   while (*fmt)
++     fmt = handle(current_cpu, fmt, &argc, &ret);
++   SET_H_GPR(11, ret);
++ }
++ 
++ void do_puts(SIM_CPU* current_cpu)
++ {
++   const char* arg = first_string(current_cpu);
++   int ret = puts(arg);
++   SET_H_GPR(11, ret);
++ }
++ 
++ void do_putchar(SIM_CPU* current_cpu)
++ {
++   int arg = GET_H_GPR(3);
++   int ret = putchar(arg);
++   SET_H_GPR(11, ret);
++ }
++ 
+  void
+  or1k32bf_engine_run_full (SIM_CPU *current_cpu)
+  {
+*** gdb-10.2.tmp/sim/or1k/sem-switch.c	2021-04-25 13:04:35.000000000 +0900
+--- gdb-10.2.or1k-elf/sim/or1k/sem-switch.c	2021-11-20 09:57:02.000000000 +0900
+***************
+*** 21,27 ****
+     51 Franklin Street - Fifth Floor, Boston, MA 02110-1301, USA.
+  
+  */
+- 
+  #ifdef DEFINE_LABELS
+  
+    /* The labels have the case they have because the enum of insn types
+--- 21,26 ----
+***************
+*** 254,259 ****
+--- 253,261 ----
+         using the default-insn-bitsize spec.  When executing insns in parallel
+         we may want to queue the fault and continue execution.  */
+      vpc = SEM_NEXT_VPC (sem_arg, pc, 4);
++     int insn = GETMEMSI(current_cpu, pc, pc);
++     if (insn == 0xbadbeef0)
++       exit(0);
+      vpc = sim_engine_invalid_insn (current_cpu, pc, vpc);
+    }
+  
+***************
+*** 479,484 ****
+--- 481,493 ----
+      SEM_BRANCH_VIA_ADDR (current_cpu, sem_arg, opval, vpc);
+      CGEN_TRACE_RESULT (current_cpu, abuf, "pc", 'x', opval);
+    }
++   if (FLD(f_r3) == 9) {
++     switch (pc) {
++     case 0x11c: do_printf(current_cpu); break;
++     case 0x124: do_puts(current_cpu); break;
++     case 0x12c: do_putchar(current_cpu); break;
++     }
++   }
+  }
+  if (GET_H_SYS_CPUCFGR_ND ()) {
+  if (1)
