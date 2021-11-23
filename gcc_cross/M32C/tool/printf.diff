@@ -1,0 +1,5611 @@
+*** gdb-10.2.tmp/sim/m32c/r8c.c	2021-11-23 11:57:49.000000000 +0900
+--- gdb-10.2.m32c-elf/sim/m32c/r8c.c	2021-11-19 09:22:04.000000000 +0900
+***************
+*** 1,4 ****
+! #line 2 "./r8c.opc"
+  /* r8c.opc --- semantics for r8c opcodes.		        -*- mode: c -*-
+  
+  Copyright (C) 2005-2021 Free Software Foundation, Inc.
+--- 1,4 ----
+! // #line2 "./r8c.opc"
+  /* r8c.opc --- semantics for r8c opcodes.		        -*- mode: c -*-
+  
+  Copyright (C) 2005-2021 Free Software Foundation, Inc.
+***************
+*** 306,311 ****
+--- 306,482 ----
+    0, 1, 2, 3, 8, 9, 10, 11, 4, 5, 6, 7, 12, 13, 14, 15
+  };
+  
++ #include <stdlib.h>
++ #include <assert.h>
++ 
++ static const char* first_string(void)
++ {
++   unsigned int R1 = get_reg(r1);
++   static char buf[1024];
++   for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i ) {
++     char c = mem_get_qi(R1+i);
++     buf[i] = c;
++     if (c == '\0')
++       return &buf[0]; // ok
++   }
++   assert(0 && "not enough buffer");
++   return &buf[0];
++ }
++ 
++ enum arg_class { NONE, WORD, LONG, LONGLONG, DF, LDF, STR };
++ 
++ static const char* get_part(const char* fmt, enum arg_class* how)
++ {
++   for ( ; *fmt ; ++fmt) {
++     char c = *fmt;
++     if (c == 'd' || c == 'i' || c == 'x' || c == 'u') {
++       if (*how == NONE)
++ 	*how = WORD;
++       return ++fmt;
++     }
++     if (c == 'c') {
++       *how = WORD;
++       return ++fmt;
++     }
++     if (c == 'f') {
++       char prev = *(fmt-1);
++       *how = prev == 'L' ? LDF : DF;
++       return ++fmt;
++     }
++     if (c == 's') {
++       *how = STR;
++       return ++fmt;
++     }
++     if (c == 'l') {
++       if (*how == NONE)
++ 	*how = LONG;
++       else
++ 	*how = LONGLONG;
++     }
++   }
++   assert(0 && "unexpected");
++   return fmt;
++ }
++ 
++ static unsigned int arg16(int nth)
++ {
++   assert(nth);
++   int SP = get_reg (sp);
++   int addr = SP + 3 + 2*(nth-1);
++   return mem_get_hi(addr);
++ }
++ 
++ static unsigned int arg32(int nth)
++ {
++   assert(nth);
++   int SP = get_reg(sp);  
++   int addr = SP + 3 + 2*(nth-1);
++   return mem_get_si(addr);
++ }
++ 
++ static unsigned long long arg64(int nth)
++ {
++   assert(nth);
++   int SP = get_reg(sp);
++   int addr = SP + 3 + 2*(nth-1);
++   unsigned a = mem_get_si(addr);
++   unsigned long long b = mem_get_si(addr+4);
++   return (b << 32) | a;
++ }
++ 
++ static const char* handle(const char* fmt, int* nth, int* ret)
++ {
++   char c = *fmt;
++   if (c != '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   const char* beg = fmt;
++   c = *++fmt;
++   if (c == '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   enum arg_class how = NONE;
++   const char* end = get_part(fmt, &how);
++   char part_fmt[256];
++   int n = end - beg;
++   assert(n + 1 < sizeof part_fmt/sizeof part_fmt[0]);
++   strncpy(&part_fmt[0], beg, n);
++   part_fmt[n] = '\0';
++   if (how == WORD) {
++     int arg = arg16((*nth)++);
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == LONG) {
++     int arg = arg32(*nth);
++     *nth += 2;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == LONGLONG) {
++     unsigned long long arg = arg64(*nth);
++     *nth += 4;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DF || how == LDF) {
++     union {
++       unsigned long long i;
++       double d;
++     } u = { arg64(*nth) };
++     *nth += 4;
++     if (how == DF)
++       *ret += printf(part_fmt, u.d);
++     else
++       *ret += printf(part_fmt, (long double)u.d);
++     return end;
++   }
++   if (how == STR) {
++     int addr = arg16((*nth)++);
++     char buf[256];
++     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++       char c = mem_get_qi(addr+i);
++       buf[i] = c;
++       if (c == '\0') {
++ 	*ret += printf(part_fmt, &buf[0]);  // ok
++ 	return end;
++       }
++     }
++     assert(0 && "not enough buffer");
++     return end;
++   }
++   asm("int3");
++   return end;
++ }
++ 
++ static void do_printf(void)
++ {
++   const char* fmt = first_string();
++   int argc = 1;
++   int ret = 0;
++   while (*fmt)
++     fmt = handle(fmt, &argc, &ret);
++   put_reg(r0, ret);
++ }
++ 
++ static void do_puts(void)
++ {
++   const char* arg = first_string();
++   int ret = puts(arg);
++   put_reg(r0, ret);
++ }
++ 
++ static void do_putchar(void)
++ {
++   int R1 = get_reg(r1);
++   int ret = putchar(R1);
++   put_reg(r0, ret);
++ }
++ 
+  int
+  decode_r8c (void)
+  {
+***************
+*** 331,337 ****
+                       "/** 0000 0000            BRK */",
+                       op[0]);
+              }
+! #line 508 "./r8c.opc"
+          
+            /* We report the break to our caller with the PC still pointing at the 
+               breakpoint instruction.  */
+--- 502,508 ----
+                       "/** 0000 0000            BRK */",
+                       op[0]);
+              }
+! // #line508 "./r8c.opc"
+          
+            /* We report the break to our caller with the PC still pointing at the 
+               breakpoint instruction.  */
+***************
+*** 350,358 ****
+      case 0x07:
+          {
+            /** 0000 0s ds           MOV.B:S R0L/R0H,dest */
+! #line 940 "./r8c.opc"
+            int s AU = (op[0] >> 2) & 0x01;
+! #line 940 "./r8c.opc"
+            int ds AU = op[0] & 0x03;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 521,529 ----
+      case 0x07:
+          {
+            /** 0000 0s ds           MOV.B:S R0L/R0H,dest */
+! // #line940 "./r8c.opc"
+            int s AU = (op[0] >> 2) & 0x01;
+! // #line940 "./r8c.opc"
+            int ds AU = op[0] & 0x03;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 361,367 ****
+                printf("  s = 0x%x,", s);
+                printf("  ds = 0x%x\n", ds);
+              }
+! #line 941 "./r8c.opc"
+          
+            if (ds == 0)
+              UNSUPPORTED();
+--- 532,538 ----
+                printf("  s = 0x%x,", s);
+                printf("  ds = 0x%x\n", ds);
+              }
+! // #line941 "./r8c.opc"
+          
+            if (ds == 0)
+              UNSUPPORTED();
+***************
+*** 380,386 ****
+                       "/** 0000 0100            NOP */",
+                       op[0]);
+              }
+! #line 1063 "./r8c.opc"
+          
+            tprintf("nop\n");
+          
+--- 551,557 ----
+                       "/** 0000 0100            NOP */",
+                       op[0]);
+              }
+! // #line1063 "./r8c.opc"
+          
+            tprintf("nop\n");
+          
+***************
+*** 396,404 ****
+      case 0x0f:
+          {
+            /** 0000 1d sr           MOV.B:S src,R0L/R0H */
+! #line 949 "./r8c.opc"
+            int d AU = (op[0] >> 2) & 0x01;
+! #line 949 "./r8c.opc"
+            int sr AU = op[0] & 0x03;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 567,575 ----
+      case 0x0f:
+          {
+            /** 0000 1d sr           MOV.B:S src,R0L/R0H */
+! // #line949 "./r8c.opc"
+            int d AU = (op[0] >> 2) & 0x01;
+! // #line949 "./r8c.opc"
+            int sr AU = op[0] & 0x03;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 407,413 ****
+                printf("  d = 0x%x,", d);
+                printf("  sr = 0x%x\n", sr);
+              }
+! #line 950 "./r8c.opc"
+          
+            sc = decode_src2 (sr, 0, d);
+            v = get_src (sc);
+--- 578,584 ----
+                printf("  d = 0x%x,", d);
+                printf("  sr = 0x%x\n", sr);
+              }
+! // #line950 "./r8c.opc"
+          
+            sc = decode_src2 (sr, 0, d);
+            v = get_src (sc);
+***************
+*** 426,434 ****
+      case 0x17:
+          {
+            /** 0001 0d sr           AND.B:S src,R0L/R0H */
+! #line 436 "./r8c.opc"
+            int d AU = (op[0] >> 2) & 0x01;
+! #line 436 "./r8c.opc"
+            int sr AU = op[0] & 0x03;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 597,605 ----
+      case 0x17:
+          {
+            /** 0001 0d sr           AND.B:S src,R0L/R0H */
+! // #line436 "./r8c.opc"
+            int d AU = (op[0] >> 2) & 0x01;
+! // #line436 "./r8c.opc"
+            int sr AU = op[0] & 0x03;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 437,443 ****
+                printf("  d = 0x%x,", d);
+                printf("  sr = 0x%x\n", sr);
+              }
+! #line 437 "./r8c.opc"
+          
+            sc = decode_src2 (sr, 0, d);
+            dc = decode_dest1 (d, 0);
+--- 608,614 ----
+                printf("  d = 0x%x,", d);
+                printf("  sr = 0x%x\n", sr);
+              }
+! // #line437 "./r8c.opc"
+          
+            sc = decode_src2 (sr, 0, d);
+            dc = decode_dest1 (d, 0);
+***************
+*** 460,468 ****
+      case 0x1f:
+          {
+            /** 0001 1d sr           OR.B:S src,R0L/R0H */
+! #line 1110 "./r8c.opc"
+            int d AU = (op[0] >> 2) & 0x01;
+! #line 1110 "./r8c.opc"
+            int sr AU = op[0] & 0x03;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 631,639 ----
+      case 0x1f:
+          {
+            /** 0001 1d sr           OR.B:S src,R0L/R0H */
+! // #line1110 "./r8c.opc"
+            int d AU = (op[0] >> 2) & 0x01;
+! // #line1110 "./r8c.opc"
+            int sr AU = op[0] & 0x03;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 471,477 ****
+                printf("  d = 0x%x,", d);
+                printf("  sr = 0x%x\n", sr);
+              }
+! #line 1111 "./r8c.opc"
+          
+            sc = decode_src2 (sr, 0, d);
+            dc = decode_dest1 (d, 0);
+--- 642,648 ----
+                printf("  d = 0x%x,", d);
+                printf("  sr = 0x%x\n", sr);
+              }
+! // #line1111 "./r8c.opc"
+          
+            sc = decode_src2 (sr, 0, d);
+            dc = decode_dest1 (d, 0);
+***************
+*** 494,502 ****
+      case 0x27:
+          {
+            /** 0010 0d sr           ADD.B:S src,R0L/R0H */
+! #line 375 "./r8c.opc"
+            int d AU = (op[0] >> 2) & 0x01;
+! #line 375 "./r8c.opc"
+            int sr AU = op[0] & 0x03;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 665,673 ----
+      case 0x27:
+          {
+            /** 0010 0d sr           ADD.B:S src,R0L/R0H */
+! // #line375 "./r8c.opc"
+            int d AU = (op[0] >> 2) & 0x01;
+! // #line375 "./r8c.opc"
+            int sr AU = op[0] & 0x03;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 505,511 ****
+                printf("  d = 0x%x,", d);
+                printf("  sr = 0x%x\n", sr);
+              }
+! #line 376 "./r8c.opc"
+          
+            sc = decode_src2 (sr, 0, d);
+            dc = decode_dest1 (d, 0);
+--- 676,682 ----
+                printf("  d = 0x%x,", d);
+                printf("  sr = 0x%x\n", sr);
+              }
+! // #line376 "./r8c.opc"
+          
+            sc = decode_src2 (sr, 0, d);
+            dc = decode_dest1 (d, 0);
+***************
+*** 524,532 ****
+      case 0x2f:
+          {
+            /** 0010 1d sr           SUB.B:S src,R0L/R0H */
+! #line 1533 "./r8c.opc"
+            int d AU = (op[0] >> 2) & 0x01;
+! #line 1533 "./r8c.opc"
+            int sr AU = op[0] & 0x03;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 695,703 ----
+      case 0x2f:
+          {
+            /** 0010 1d sr           SUB.B:S src,R0L/R0H */
+! // #line1533 "./r8c.opc"
+            int d AU = (op[0] >> 2) & 0x01;
+! // #line1533 "./r8c.opc"
+            int sr AU = op[0] & 0x03;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 535,541 ****
+                printf("  d = 0x%x,", d);
+                printf("  sr = 0x%x\n", sr);
+              }
+! #line 1534 "./r8c.opc"
+          
+            sc = decode_src2 (sr, 0, d);
+            dc = decode_dest1 (d, 0);
+--- 706,712 ----
+                printf("  d = 0x%x,", d);
+                printf("  sr = 0x%x\n", sr);
+              }
+! // #line1534 "./r8c.opc"
+          
+            sc = decode_src2 (sr, 0, d);
+            dc = decode_dest1 (d, 0);
+***************
+*** 554,562 ****
+      case 0x37:
+          {
+            /** 0011 0d sr           MOV.B:S src,dest */
+! #line 933 "./r8c.opc"
+            int d AU = (op[0] >> 2) & 0x01;
+! #line 933 "./r8c.opc"
+            int sr AU = op[0] & 0x03;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 725,733 ----
+      case 0x37:
+          {
+            /** 0011 0d sr           MOV.B:S src,dest */
+! // #line933 "./r8c.opc"
+            int d AU = (op[0] >> 2) & 0x01;
+! // #line933 "./r8c.opc"
+            int sr AU = op[0] & 0x03;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 565,571 ****
+                printf("  d = 0x%x,", d);
+                printf("  sr = 0x%x\n", sr);
+              }
+! #line 934 "./r8c.opc"
+          
+            sc = decode_src2 (sr, 0, d);
+            v = get_src (sc);
+--- 736,742 ----
+                printf("  d = 0x%x,", d);
+                printf("  sr = 0x%x\n", sr);
+              }
+! // #line934 "./r8c.opc"
+          
+            sc = decode_src2 (sr, 0, d);
+            v = get_src (sc);
+***************
+*** 584,592 ****
+      case 0x3f:
+          {
+            /** 0011 1d sr           CMP.B:S src,R0L/R0H */
+! #line 580 "./r8c.opc"
+            int d AU = (op[0] >> 2) & 0x01;
+! #line 580 "./r8c.opc"
+            int sr AU = op[0] & 0x03;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 755,763 ----
+      case 0x3f:
+          {
+            /** 0011 1d sr           CMP.B:S src,R0L/R0H */
+! // #line580 "./r8c.opc"
+            int d AU = (op[0] >> 2) & 0x01;
+! // #line580 "./r8c.opc"
+            int sr AU = op[0] & 0x03;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 595,601 ****
+                printf("  d = 0x%x,", d);
+                printf("  sr = 0x%x\n", sr);
+              }
+! #line 581 "./r8c.opc"
+          
+            sc = decode_src2 (sr, 0, d);
+            dc = decode_dest1 (d, 0);
+--- 766,772 ----
+                printf("  d = 0x%x,", d);
+                printf("  sr = 0x%x\n", sr);
+              }
+! // #line581 "./r8c.opc"
+          
+            sc = decode_src2 (sr, 0, d);
+            dc = decode_dest1 (d, 0);
+***************
+*** 615,621 ****
+      case 0x47:
+          {
+            /** 0100 0bit            BCLR:S bit,base:11[SB] */
+! #line 456 "./r8c.opc"
+            int bit AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 786,792 ----
+      case 0x47:
+          {
+            /** 0100 0bit            BCLR:S bit,base:11[SB] */
+! // #line456 "./r8c.opc"
+            int bit AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 623,629 ****
+                       op[0]);
+                printf("  bit = 0x%x\n", bit);
+              }
+! #line 457 "./r8c.opc"
+          
+            dc = decode_bit11 (bit);
+            put_bit (dc, 0);
+--- 794,800 ----
+                       op[0]);
+                printf("  bit = 0x%x\n", bit);
+              }
+! // #line457 "./r8c.opc"
+          
+            dc = decode_bit11 (bit);
+            put_bit (dc, 0);
+***************
+*** 640,646 ****
+      case 0x4f:
+          {
+            /** 0100 1bit            BSET:S bit,base:11[SB] */
+! #line 521 "./r8c.opc"
+            int bit AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 811,817 ----
+      case 0x4f:
+          {
+            /** 0100 1bit            BSET:S bit,base:11[SB] */
+! // #line521 "./r8c.opc"
+            int bit AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 648,654 ****
+                       op[0]);
+                printf("  bit = 0x%x\n", bit);
+              }
+! #line 522 "./r8c.opc"
+          
+            dc = decode_bit11 (bit);
+            put_bit (dc, 1);
+--- 819,825 ----
+                       op[0]);
+                printf("  bit = 0x%x\n", bit);
+              }
+! // #line522 "./r8c.opc"
+          
+            dc = decode_bit11 (bit);
+            put_bit (dc, 1);
+***************
+*** 665,671 ****
+      case 0x57:
+          {
+            /** 0101 0bit            BNOT:S bit,base:11[SB] */
+! #line 488 "./r8c.opc"
+            int bit AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 836,842 ----
+      case 0x57:
+          {
+            /** 0101 0bit            BNOT:S bit,base:11[SB] */
+! // #line488 "./r8c.opc"
+            int bit AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 673,679 ****
+                       op[0]);
+                printf("  bit = 0x%x\n", bit);
+              }
+! #line 489 "./r8c.opc"
+          
+            dc = decode_bit11 (bit);
+            put_bit (dc, !get_bit (dc));
+--- 844,850 ----
+                       op[0]);
+                printf("  bit = 0x%x\n", bit);
+              }
+! // #line489 "./r8c.opc"
+          
+            dc = decode_bit11 (bit);
+            put_bit (dc, !get_bit (dc));
+***************
+*** 690,696 ****
+      case 0x5f:
+          {
+            /** 0101 1bit            BTST:S bit,base:11[SB] */
+! #line 532 "./r8c.opc"
+            int bit AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 861,867 ----
+      case 0x5f:
+          {
+            /** 0101 1bit            BTST:S bit,base:11[SB] */
+! // #line532 "./r8c.opc"
+            int bit AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 698,704 ****
+                       op[0]);
+                printf("  bit = 0x%x\n", bit);
+              }
+! #line 533 "./r8c.opc"
+          
+            dc = decode_bit11 (bit);
+            b = get_bit (dc);
+--- 869,875 ----
+                       op[0]);
+                printf("  bit = 0x%x\n", bit);
+              }
+! // #line533 "./r8c.opc"
+          
+            dc = decode_bit11 (bit);
+            b = get_bit (dc);
+***************
+*** 716,722 ****
+      case 0x67:
+          {
+            /** 0110 0dsp            JMP.S label */
+! #line 744 "./r8c.opc"
+            int dsp AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 887,893 ----
+      case 0x67:
+          {
+            /** 0110 0dsp            JMP.S label */
+! // #line744 "./r8c.opc"
+            int dsp AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 724,730 ****
+                       op[0]);
+                printf("  dsp = 0x%x\n", dsp);
+              }
+! #line 745 "./r8c.opc"
+          
+            put_reg (pc, orig_pc + 2 + dsp);
+          
+--- 895,901 ----
+                       op[0]);
+                printf("  dsp = 0x%x\n", dsp);
+              }
+! // #line745 "./r8c.opc"
+          
+            put_reg (pc, orig_pc + 2 + dsp);
+          
+***************
+*** 740,746 ****
+      case 0x6f:
+          {
+            /** 0110 1cnd            Jcnd label */
+! #line 732 "./r8c.opc"
+            int cnd AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 911,917 ----
+      case 0x6f:
+          {
+            /** 0110 1cnd            Jcnd label */
+! // #line732 "./r8c.opc"
+            int cnd AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 748,754 ****
+                       op[0]);
+                printf("  cnd = 0x%x\n", cnd);
+              }
+! #line 733 "./r8c.opc"
+          
+            v = sign_ext (IMM(0), 8);
+            if (condition_true (cnd))
+--- 919,925 ----
+                       op[0]);
+                printf("  cnd = 0x%x\n", cnd);
+              }
+! // #line733 "./r8c.opc"
+          
+            v = sign_ext (IMM(0), 8);
+            if (condition_true (cnd))
+***************
+*** 761,771 ****
+        GETBYTE();
+          {
+            /** 0111 000w srcx dest  MULU.size src,dest */
+! #line 1046 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! #line 1046 "./r8c.opc"
+            int srcx AU = (op[1] >> 4) & 0x0f;
+! #line 1046 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 932,942 ----
+        GETBYTE();
+          {
+            /** 0111 000w srcx dest  MULU.size src,dest */
+! // #line1046 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! // #line1046 "./r8c.opc"
+            int srcx AU = (op[1] >> 4) & 0x0f;
+! // #line1046 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 775,781 ****
+                printf("  srcx = 0x%x,", srcx);
+                printf("  dest = 0x%x\n", dest);
+              }
+! #line 1047 "./r8c.opc"
+          
+            BINARY_UOP;
+            v = a * b;
+--- 946,952 ----
+                printf("  srcx = 0x%x,", srcx);
+                printf("  dest = 0x%x\n", dest);
+              }
+! // #line1047 "./r8c.opc"
+          
+            BINARY_UOP;
+            v = a * b;
+***************
+*** 790,800 ****
+        GETBYTE();
+          {
+            /** 0111 001w srcx dest  MOV.size:G src,dest */
+! #line 925 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! #line 925 "./r8c.opc"
+            int srcx AU = (op[1] >> 4) & 0x0f;
+! #line 925 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 961,971 ----
+        GETBYTE();
+          {
+            /** 0111 001w srcx dest  MOV.size:G src,dest */
+! // #line925 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! // #line925 "./r8c.opc"
+            int srcx AU = (op[1] >> 4) & 0x0f;
+! // #line925 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 804,810 ****
+                printf("  srcx = 0x%x,", srcx);
+                printf("  dest = 0x%x\n", dest);
+              }
+! #line 926 "./r8c.opc"
+          
+            sc = decode_srcdest4 (srcx, w);
+            dc = decode_srcdest4 (dest, w);
+--- 975,981 ----
+                printf("  srcx = 0x%x,", srcx);
+                printf("  dest = 0x%x\n", dest);
+              }
+! // #line926 "./r8c.opc"
+          
+            sc = decode_srcdest4 (srcx, w);
+            dc = decode_srcdest4 (dest, w);
+***************
+*** 821,829 ****
+              op_semantics_1:
+                {
+                  /** 0111 010w 0000 srcx  STE.size src,abs20 */
+! #line 1439 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 1439 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 992,1000 ----
+              op_semantics_1:
+                {
+                  /** 0111 010w 0000 srcx  STE.size src,abs20 */
+! // #line1439 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line1439 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 832,838 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! #line 1440 "./r8c.opc"
+                
+                  sc = decode_srcdest4 (srcx, w);
+                  a = IMM(2);
+--- 1003,1009 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! // #line1440 "./r8c.opc"
+                
+                  sc = decode_srcdest4 (srcx, w);
+                  a = IMM(2);
+***************
+*** 855,863 ****
+              op_semantics_2:
+                {
+                  /** 0111 010w 0001 srcx  STE.size src,disp20[a0] */
+! #line 1456 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 1456 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1026,1034 ----
+              op_semantics_2:
+                {
+                  /** 0111 010w 0001 srcx  STE.size src,disp20[a0] */
+! // #line1456 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line1456 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 866,872 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! #line 1457 "./r8c.opc"
+                
+                  sc = decode_srcdest4 (srcx, w);
+                  a = get_reg(a0) + IMM(2);
+--- 1037,1043 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! // #line1457 "./r8c.opc"
+                
+                  sc = decode_srcdest4 (srcx, w);
+                  a = get_reg(a0) + IMM(2);
+***************
+*** 889,897 ****
+              op_semantics_3:
+                {
+                  /** 0111 010w 0010 srcx  STE.size src,[a1a0] */
+! #line 1473 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 1473 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1060,1068 ----
+              op_semantics_3:
+                {
+                  /** 0111 010w 0010 srcx  STE.size src,[a1a0] */
+! // #line1473 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line1473 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 900,906 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! #line 1474 "./r8c.opc"
+                
+                  sc = decode_srcdest4 (srcx, w);
+                  a = get_reg(a1a0);
+--- 1071,1077 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! // #line1474 "./r8c.opc"
+                
+                  sc = decode_srcdest4 (srcx, w);
+                  a = get_reg(a1a0);
+***************
+*** 923,931 ****
+              op_semantics_4:
+                {
+                  /** 0111 010w 0011 srcx  MOV.size:G src, disp8[SP] */
+! #line 969 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 969 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1094,1102 ----
+              op_semantics_4:
+                {
+                  /** 0111 010w 0011 srcx  MOV.size:G src, disp8[SP] */
+! // #line969 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line969 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 934,940 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! #line 970 "./r8c.opc"
+                
+                  sc = decode_srcdest4 (srcx, w);
+                  imm = IMM(0);
+--- 1105,1111 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! // #line970 "./r8c.opc"
+                
+                  sc = decode_srcdest4 (srcx, w);
+                  imm = IMM(0);
+***************
+*** 953,961 ****
+              op_semantics_5:
+                {
+                  /** 0111 010w 0100 srcx  PUSH.size:G src */
+! #line 1189 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 1189 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1124,1132 ----
+              op_semantics_5:
+                {
+                  /** 0111 010w 0100 srcx  PUSH.size:G src */
+! // #line1189 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line1189 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 964,970 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! #line 1190 "./r8c.opc"
+                
+                  sc = decode_srcdest4 (srcx, w);
+                  v = get_src (sc);
+--- 1135,1141 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! // #line1190 "./r8c.opc"
+                
+                  sc = decode_srcdest4 (srcx, w);
+                  v = get_src (sc);
+***************
+*** 987,995 ****
+              op_semantics_6:
+                {
+                  /** 0111 010w 0101 dest  NEG.size dest */
+! #line 1054 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 1054 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1158,1166 ----
+              op_semantics_6:
+                {
+                  /** 0111 010w 0101 dest  NEG.size dest */
+! // #line1054 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line1054 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 998,1004 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 1055 "./r8c.opc"
+                
+                  UNARY_SOP;
+                  tprintf("%d * -1 = %d\n", v, -v);
+--- 1169,1175 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line1055 "./r8c.opc"
+                
+                  UNARY_SOP;
+                  tprintf("%d * -1 = %d\n", v, -v);
+***************
+*** 1012,1020 ****
+              op_semantics_7:
+                {
+                  /** 0111 010w 0110 dest  ROT.size R1H,dest */
+! #line 1305 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 1305 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1183,1191 ----
+              op_semantics_7:
+                {
+                  /** 0111 010w 0110 dest  ROT.size R1H,dest */
+! // #line1305 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line1305 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1023,1029 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 1306 "./r8c.opc"
+                
+                  dc = decode_srcdest4 (dest, w);
+                  rot_op (dc, 0, sign_ext (get_reg (r1h), 8));
+--- 1194,1200 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line1306 "./r8c.opc"
+                
+                  dc = decode_srcdest4 (dest, w);
+                  rot_op (dc, 0, sign_ext (get_reg (r1h), 8));
+***************
+*** 1034,1042 ****
+              op_semantics_8:
+                {
+                  /** 0111 010w 0111 dest  NOT.size:G */
+! #line 1066 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 1066 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1205,1213 ----
+              op_semantics_8:
+                {
+                  /** 0111 010w 0111 dest  NOT.size:G */
+! // #line1066 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line1066 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1045,1051 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 1067 "./r8c.opc"
+                
+                  UNARY_UOP;
+                  tprintf("~ %x = %x\n", v, ~v);
+--- 1216,1222 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line1067 "./r8c.opc"
+                
+                  UNARY_UOP;
+                  tprintf("~ %x = %x\n", v, ~v);
+***************
+*** 1059,1067 ****
+              op_semantics_9:
+                {
+                  /** 0111 010w 1000 dest  LDE.size abs20,dest */
+! #line 850 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 850 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1230,1238 ----
+              op_semantics_9:
+                {
+                  /** 0111 010w 1000 dest  LDE.size abs20,dest */
+! // #line850 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line850 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1070,1076 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 851 "./r8c.opc"
+                
+                  dc = decode_srcdest4 (dest, w);
+                  imm = IMM(2);
+--- 1241,1247 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line851 "./r8c.opc"
+                
+                  dc = decode_srcdest4 (dest, w);
+                  imm = IMM(2);
+***************
+*** 1086,1094 ****
+              op_semantics_10:
+                {
+                  /** 0111 010w 1001 dest  LDE.size dsp:20[a0], dest */
+! #line 860 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 860 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1257,1265 ----
+              op_semantics_10:
+                {
+                  /** 0111 010w 1001 dest  LDE.size dsp:20[a0], dest */
+! // #line860 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line860 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1097,1103 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 861 "./r8c.opc"
+                
+                  dc = decode_srcdest4 (dest, w);
+                  imm = IMM(2) + get_reg (a0);
+--- 1268,1274 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line861 "./r8c.opc"
+                
+                  dc = decode_srcdest4 (dest, w);
+                  imm = IMM(2) + get_reg (a0);
+***************
+*** 1113,1121 ****
+              op_semantics_11:
+                {
+                  /** 0111 010w 1010 dest  LDE.size [a1a0],dest */
+! #line 870 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 870 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1284,1292 ----
+              op_semantics_11:
+                {
+                  /** 0111 010w 1010 dest  LDE.size [a1a0],dest */
+! // #line870 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line870 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1124,1130 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 871 "./r8c.opc"
+                  
+                  dc = decode_srcdest4 (dest, w);
+                  imm = get_reg (a1a0);
+--- 1295,1301 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line871 "./r8c.opc"
+                  
+                  dc = decode_srcdest4 (dest, w);
+                  imm = get_reg (a1a0);
+***************
+*** 1140,1148 ****
+              op_semantics_12:
+                {
+                  /** 0111 010w 1011 dest  MOV.size:G dsp:8[SP], dest */
+! #line 956 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 956 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1311,1319 ----
+              op_semantics_12:
+                {
+                  /** 0111 010w 1011 dest  MOV.size:G dsp:8[SP], dest */
+! // #line956 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line956 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1151,1157 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 957 "./r8c.opc"
+                
+                  dc = decode_srcdest4 (dest, w);
+                  imm = IMM(0);
+--- 1322,1328 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line957 "./r8c.opc"
+                
+                  dc = decode_srcdest4 (dest, w);
+                  imm = IMM(0);
+***************
+*** 1170,1178 ****
+              op_semantics_13:
+                {
+                  /** 0111 010w 1100 dest  MOV.size:G #IMM,dest */
+! #line 884 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 884 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1341,1349 ----
+              op_semantics_13:
+                {
+                  /** 0111 010w 1100 dest  MOV.size:G #IMM,dest */
+! // #line884 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line884 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1181,1187 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 885 "./r8c.opc"
+                
+                  dc = decode_srcdest4 (dest, w);
+                  imm = IMM(w);
+--- 1352,1358 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line885 "./r8c.opc"
+                
+                  dc = decode_srcdest4 (dest, w);
+                  imm = IMM(w);
+***************
+*** 1196,1204 ****
+              op_semantics_14:
+                {
+                  /** 0111 010w 1101 dest  POP.size:G dest */
+! #line 1121 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 1121 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1367,1375 ----
+              op_semantics_14:
+                {
+                  /** 0111 010w 1101 dest  POP.size:G dest */
+! // #line1121 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line1121 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1207,1213 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 1122 "./r8c.opc"
+                
+                  dc = decode_srcdest4 (dest, w);
+                  if (w)
+--- 1378,1384 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line1122 "./r8c.opc"
+                
+                  dc = decode_srcdest4 (dest, w);
+                  if (w)
+***************
+*** 1230,1238 ****
+              op_semantics_15:
+                {
+                  /** 0111 010w 1110 dest  SHL.size R1H,dest */
+! #line 1355 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 1355 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1401,1409 ----
+              op_semantics_15:
+                {
+                  /** 0111 010w 1110 dest  SHL.size R1H,dest */
+! // #line1355 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line1355 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1241,1247 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 1356 "./r8c.opc"
+                
+                  dc = decode_srcdest4(dest, w);
+                  a = sign_ext (get_reg (r1h), 8);
+--- 1412,1418 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line1356 "./r8c.opc"
+                
+                  dc = decode_srcdest4(dest, w);
+                  a = sign_ext (get_reg (r1h), 8);
+***************
+*** 1253,1261 ****
+              op_semantics_16:
+                {
+                  /** 0111 010w 1111 dest  SHA.size R1H,dest */
+! #line 1333 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 1333 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1424,1432 ----
+              op_semantics_16:
+                {
+                  /** 0111 010w 1111 dest  SHA.size R1H,dest */
+! // #line1333 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line1333 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1264,1270 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 1334 "./r8c.opc"
+                
+                  dc = decode_srcdest4(dest, w);
+                  a = sign_ext (get_reg (r1h), 8);
+--- 1435,1441 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line1334 "./r8c.opc"
+                
+                  dc = decode_srcdest4(dest, w);
+                  a = sign_ext (get_reg (r1h), 8);
+***************
+*** 1334,1342 ****
+              op_semantics_17:
+                {
+                  /** 0111 011w 0000 dest  TST.size #IMM, dest */
+! #line 1540 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 1540 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1505,1513 ----
+              op_semantics_17:
+                {
+                  /** 0111 011w 0000 dest  TST.size #IMM, dest */
+! // #line1540 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line1540 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1345,1351 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 1541 "./r8c.opc"
+                
+                  UNARY_UOP;
+                  imm = IMM(w);
+--- 1516,1522 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line1541 "./r8c.opc"
+                
+                  UNARY_UOP;
+                  imm = IMM(w);
+***************
+*** 1359,1367 ****
+              op_semantics_18:
+                {
+                  /** 0111 011w 0001 dest  XOR.size #IMM,dest */
+! #line 1572 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 1572 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1530,1538 ----
+              op_semantics_18:
+                {
+                  /** 0111 011w 0001 dest  XOR.size #IMM,dest */
+! // #line1572 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line1572 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1370,1376 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 1573 "./r8c.opc"
+                
+                  UNARY_UOP;
+                  imm = IMM(w);
+--- 1541,1547 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line1573 "./r8c.opc"
+                
+                  UNARY_UOP;
+                  imm = IMM(w);
+***************
+*** 1385,1393 ****
+              op_semantics_19:
+                {
+                  /** 0111 011w 0010 dest  AND.size:G #IMM,dest */
+! #line 409 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 409 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1556,1564 ----
+              op_semantics_19:
+                {
+                  /** 0111 011w 0010 dest  AND.size:G #IMM,dest */
+! // #line409 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line409 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1396,1402 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 410 "./r8c.opc"
+                
+                  UNARY_UOP;
+                  imm = IMM(w);
+--- 1567,1573 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line410 "./r8c.opc"
+                
+                  UNARY_UOP;
+                  imm = IMM(w);
+***************
+*** 1411,1419 ****
+              op_semantics_20:
+                {
+                  /** 0111 011w 0011 dest  OR.size:G #IMM,dest */
+! #line 1083 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 1083 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1582,1590 ----
+              op_semantics_20:
+                {
+                  /** 0111 011w 0011 dest  OR.size:G #IMM,dest */
+! // #line1083 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line1083 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1422,1428 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 1084 "./r8c.opc"
+                
+                  UNARY_UOP;
+                  imm = IMM(w);
+--- 1593,1599 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line1084 "./r8c.opc"
+                
+                  UNARY_UOP;
+                  imm = IMM(w);
+***************
+*** 1437,1445 ****
+              op_semantics_21:
+                {
+                  /** 0111 011w 0100 dest  ADD.size:G #imm,dest */
+! #line 350 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 350 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1608,1616 ----
+              op_semantics_21:
+                {
+                  /** 0111 011w 0100 dest  ADD.size:G #imm,dest */
+! // #line350 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line350 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1448,1454 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 351 "./r8c.opc"
+                
+                  dc = decode_srcdest4(dest, w);
+                  imm = IMM(w);
+--- 1619,1625 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line351 "./r8c.opc"
+                
+                  dc = decode_srcdest4(dest, w);
+                  imm = IMM(w);
+***************
+*** 1460,1468 ****
+              op_semantics_22:
+                {
+                  /** 0111 011w 0101 dest  SUB.size:G #IMM,dest */
+! #line 1514 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 1514 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1631,1639 ----
+              op_semantics_22:
+                {
+                  /** 0111 011w 0101 dest  SUB.size:G #IMM,dest */
+! // #line1514 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line1514 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1471,1477 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 1515 "./r8c.opc"
+                
+                  dc = decode_srcdest4 (dest, w);
+                  imm = IMM(w);
+--- 1642,1648 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line1515 "./r8c.opc"
+                
+                  dc = decode_srcdest4 (dest, w);
+                  imm = IMM(w);
+***************
+*** 1483,1491 ****
+              op_semantics_23:
+                {
+                  /** 0111 011w 0110 dest  ADC.size #IMM,dest */
+! #line 332 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 332 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1654,1662 ----
+              op_semantics_23:
+                {
+                  /** 0111 011w 0110 dest  ADC.size #IMM,dest */
+! // #line332 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line332 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1494,1500 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 333 "./r8c.opc"
+                
+                  dc = decode_srcdest4(dest, w);
+                  imm = IMM(w);
+--- 1665,1671 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line333 "./r8c.opc"
+                
+                  dc = decode_srcdest4(dest, w);
+                  imm = IMM(w);
+***************
+*** 1506,1514 ****
+              op_semantics_24:
+                {
+                  /** 0111 011w 0111 dest  SBB.size #IMM,dest */
+! #line 1315 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 1315 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1677,1685 ----
+              op_semantics_24:
+                {
+                  /** 0111 011w 0111 dest  SBB.size #IMM,dest */
+! // #line1315 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line1315 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1517,1523 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 1316 "./r8c.opc"
+                
+                  dc = decode_srcdest4 (dest, w);
+                  imm = IMM(w);
+--- 1688,1694 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line1316 "./r8c.opc"
+                
+                  dc = decode_srcdest4 (dest, w);
+                  imm = IMM(w);
+***************
+*** 1529,1537 ****
+              op_semantics_25:
+                {
+                  /** 0111 011w 1000 dest  CMP.size:G #IMM,dest */
+! #line 556 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 556 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1700,1708 ----
+              op_semantics_25:
+                {
+                  /** 0111 011w 1000 dest  CMP.size:G #IMM,dest */
+! // #line556 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line556 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1540,1546 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 557 "./r8c.opc"
+                
+                  UNARY_UOP;
+                  imm = IMM(w);
+--- 1711,1717 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line557 "./r8c.opc"
+                
+                  UNARY_UOP;
+                  imm = IMM(w);
+***************
+*** 1552,1560 ****
+              op_semantics_26:
+                {
+                  /** 0111 011w 1001 srcx  DIVX.size src */
+! #line 664 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 664 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1723,1731 ----
+              op_semantics_26:
+                {
+                  /** 0111 011w 1001 srcx  DIVX.size src */
+! // #line664 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line664 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1563,1569 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! #line 665 "./r8c.opc"
+                
+                  div_op (srcx, 0, 1, w);
+                
+--- 1734,1740 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! // #line665 "./r8c.opc"
+                
+                  div_op (srcx, 0, 1, w);
+                
+***************
+*** 1573,1581 ****
+              op_semantics_27:
+                {
+                  /** 0111 011w 1010 dest  ROLC.size dest */
+! #line 1290 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 1290 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1744,1752 ----
+              op_semantics_27:
+                {
+                  /** 0111 011w 1010 dest  ROLC.size dest */
+! // #line1290 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line1290 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1584,1590 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 1291 "./r8c.opc"
+                
+                  dc = decode_srcdest4 (dest, w);
+                  rot_op (dc, 1, 1);
+--- 1755,1761 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line1291 "./r8c.opc"
+                
+                  dc = decode_srcdest4 (dest, w);
+                  rot_op (dc, 1, 1);
+***************
+*** 1595,1603 ****
+              op_semantics_28:
+                {
+                  /** 0111 011w 1011 dest  RORC.size dest */
+! #line 1295 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 1295 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1766,1774 ----
+              op_semantics_28:
+                {
+                  /** 0111 011w 1011 dest  RORC.size dest */
+! // #line1295 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line1295 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1606,1612 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 1296 "./r8c.opc"
+                
+                  dc = decode_srcdest4 (dest, w);
+                  rot_op (dc, 1, -1);
+--- 1777,1783 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line1296 "./r8c.opc"
+                
+                  dc = decode_srcdest4 (dest, w);
+                  rot_op (dc, 1, -1);
+***************
+*** 1617,1625 ****
+              op_semantics_29:
+                {
+                  /** 0111 011w 1100 srcx  DIVU.size src */
+! #line 656 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 656 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1788,1796 ----
+              op_semantics_29:
+                {
+                  /** 0111 011w 1100 srcx  DIVU.size src */
+! // #line656 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line656 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1628,1634 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! #line 657 "./r8c.opc"
+                
+                  div_op (srcx, 1, 0, w);
+                
+--- 1799,1805 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! // #line657 "./r8c.opc"
+                
+                  div_op (srcx, 1, 0, w);
+                
+***************
+*** 1638,1646 ****
+              op_semantics_30:
+                {
+                  /** 0111 011w 1101 srcx  DIV.size src */
+! #line 648 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 648 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1809,1817 ----
+              op_semantics_30:
+                {
+                  /** 0111 011w 1101 srcx  DIV.size src */
+! // #line648 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line648 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1649,1655 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! #line 649 "./r8c.opc"
+                
+                  div_op (srcx, 0, 0, w);
+                
+--- 1820,1826 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! // #line649 "./r8c.opc"
+                
+                  div_op (srcx, 0, 0, w);
+                
+***************
+*** 1659,1667 ****
+              op_semantics_31:
+                {
+                  /** 0111 011w 1110 dest  ADCF.size dest */
+! #line 345 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 345 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1830,1838 ----
+              op_semantics_31:
+                {
+                  /** 0111 011w 1110 dest  ADCF.size dest */
+! // #line345 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line345 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1670,1676 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 346 "./r8c.opc"
+                
+                  dc = decode_srcdest4(dest, w);
+                  MATH_OP (dc, 0, carry, +, > (w?0xffff:0xff));
+--- 1841,1847 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line346 "./r8c.opc"
+                
+                  dc = decode_srcdest4(dest, w);
+                  MATH_OP (dc, 0, carry, +, > (w?0xffff:0xff));
+***************
+*** 1681,1689 ****
+              op_semantics_32:
+                {
+                  /** 0111 011w 1111 dest  ABS.size dest */
+! #line 324 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 324 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1852,1860 ----
+              op_semantics_32:
+                {
+                  /** 0111 011w 1111 dest  ABS.size dest */
+! // #line324 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line324 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1692,1698 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 325 "./r8c.opc"
+                
+                  UNARY_SOP;
+                  a = v<0 ? -v : v;
+--- 1863,1869 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line325 "./r8c.opc"
+                
+                  UNARY_SOP;
+                  a = v<0 ? -v : v;
+***************
+*** 1762,1772 ****
+        GETBYTE();
+          {
+            /** 0111 100w srcx dest  MUL.size src,dest */
+! #line 1029 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! #line 1029 "./r8c.opc"
+            int srcx AU = (op[1] >> 4) & 0x0f;
+! #line 1029 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1933,1943 ----
+        GETBYTE();
+          {
+            /** 0111 100w srcx dest  MUL.size src,dest */
+! // #line1029 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! // #line1029 "./r8c.opc"
+            int srcx AU = (op[1] >> 4) & 0x0f;
+! // #line1029 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1776,1782 ****
+                printf("  srcx = 0x%x,", srcx);
+                printf("  dest = 0x%x\n", dest);
+              }
+! #line 1030 "./r8c.opc"
+          
+            BINARY_SOP;
+            v = a * b;
+--- 1947,1953 ----
+                printf("  srcx = 0x%x,", srcx);
+                printf("  dest = 0x%x\n", dest);
+              }
+! // #line1030 "./r8c.opc"
+          
+            BINARY_SOP;
+            v = a * b;
+***************
+*** 1793,1803 ****
+              op_semantics_33:
+                {
+                  /** 0111 101w 00sr dest  XCHG.size src,dest */
+! #line 1563 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 1563 "./r8c.opc"
+                  int sr AU = (op[1] >> 4) & 0x03;
+! #line 1563 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1964,1974 ----
+              op_semantics_33:
+                {
+                  /** 0111 101w 00sr dest  XCHG.size src,dest */
+! // #line1563 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line1563 "./r8c.opc"
+                  int sr AU = (op[1] >> 4) & 0x03;
+! // #line1563 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1807,1813 ****
+                      printf("  sr = 0x%x,", sr);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 1564 "./r8c.opc"
+                
+                  sc = decode_srcdest4 (sr, w);
+                  dc = decode_srcdest4 (dest, w);
+--- 1978,1984 ----
+                      printf("  sr = 0x%x,", sr);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line1564 "./r8c.opc"
+                
+                  sc = decode_srcdest4 (sr, w);
+                  dc = decode_srcdest4 (dest, w);
+***************
+*** 1822,1830 ****
+            case 0xc0:
+                {
+                  /** 0111 1010 1reg srcx  LDC src,dest */
+! #line 840 "./r8c.opc"
+                  int reg AU = (op[1] >> 4) & 0x07;
+! #line 840 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 1993,2001 ----
+            case 0xc0:
+                {
+                  /** 0111 1010 1reg srcx  LDC src,dest */
+! // #line840 "./r8c.opc"
+                  int reg AU = (op[1] >> 4) & 0x07;
+! // #line840 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1833,1839 ****
+                      printf("  reg = 0x%x,", reg);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! #line 841 "./r8c.opc"
+                
+                  dc = decode_cr (reg);
+                  sc = decode_srcdest4 (srcx,1);
+--- 2004,2010 ----
+                      printf("  reg = 0x%x,", reg);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! // #line841 "./r8c.opc"
+                
+                  dc = decode_cr (reg);
+                  sc = decode_srcdest4 (srcx,1);
+***************
+*** 1854,1862 ****
+            case 0xc0:
+                {
+                  /** 0111 1011 1src dest  STC src,dest */
+! #line 1423 "./r8c.opc"
+                  int src AU = (op[1] >> 4) & 0x07;
+! #line 1423 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 2025,2033 ----
+            case 0xc0:
+                {
+                  /** 0111 1011 1src dest  STC src,dest */
+! // #line1423 "./r8c.opc"
+                  int src AU = (op[1] >> 4) & 0x07;
+! // #line1423 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1865,1871 ****
+                      printf("  src = 0x%x,", src);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 1424 "./r8c.opc"
+                
+                  dc = decode_srcdest4 (dest, 1);
+                  sc = decode_cr (src);
+--- 2036,2042 ----
+                      printf("  src = 0x%x,", src);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line1424 "./r8c.opc"
+                
+                  dc = decode_srcdest4 (dest, 1);
+                  sc = decode_cr (src);
+***************
+*** 1945,1953 ****
+            case 0x3f:
+                {
+                  /** 0111 1100 00hl srcx  MOVdir src,R0L */
+! #line 1004 "./r8c.opc"
+                  int hl AU = (op[1] >> 4) & 0x03;
+! #line 1004 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 2116,2124 ----
+            case 0x3f:
+                {
+                  /** 0111 1100 00hl srcx  MOVdir src,R0L */
+! // #line1004 "./r8c.opc"
+                  int hl AU = (op[1] >> 4) & 0x03;
+! // #line1004 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 1956,1962 ****
+                      printf("  hl = 0x%x,", hl);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! #line 1005 "./r8c.opc"
+                
+                  if (srcx == 0 || srcx == 4 || srcx == 5)
+                    UNSUPPORTED();
+--- 2127,2133 ----
+                      printf("  hl = 0x%x,", hl);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! // #line1005 "./r8c.opc"
+                
+                  if (srcx == 0 || srcx == 4 || srcx == 5)
+                    UNSUPPORTED();
+***************
+*** 1993,2001 ****
+              op_semantics_34:
+                {
+                  /** 0111 110w 0100 dest  MULU.size #IMM,dest */
+! #line 1037 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 1037 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 2164,2172 ----
+              op_semantics_34:
+                {
+                  /** 0111 110w 0100 dest  MULU.size #IMM,dest */
+! // #line1037 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line1037 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 2004,2010 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 1038 "./r8c.opc"
+                
+                  UNARY_UOP;
+                  imm = IMM(w);
+--- 2175,2181 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line1038 "./r8c.opc"
+                
+                  UNARY_UOP;
+                  imm = IMM(w);
+***************
+*** 2034,2042 ****
+              op_semantics_35:
+                {
+                  /** 0111 110w 0101 dest  MUL.size #IMM,dest */
+! #line 1020 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 1020 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 2205,2213 ----
+              op_semantics_35:
+                {
+                  /** 0111 110w 0101 dest  MUL.size #IMM,dest */
+! // #line1020 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line1020 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 2045,2051 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 1021 "./r8c.opc"
+                
+                  UNARY_SOP;
+                  imm = sign_ext (IMM(w), w?16:8);
+--- 2216,2222 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line1021 "./r8c.opc"
+                
+                  UNARY_SOP;
+                  imm = sign_ext (IMM(w), w?16:8);
+***************
+*** 2074,2080 ****
+            case 0x6f:
+                {
+                  /** 0111 1100 0110 dest  EXTS.B dest */
+! #line 684 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 2245,2251 ----
+            case 0x6f:
+                {
+                  /** 0111 1100 0110 dest  EXTS.B dest */
+! // #line684 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 2082,2088 ****
+                             op[0], op[1]);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 685 "./r8c.opc"
+                
+                  dc = decode_srcdest4 (dest, 0);
+                  v = sign_ext (get_src (dc), 8);
+--- 2253,2259 ----
+                             op[0], op[1]);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line685 "./r8c.opc"
+                
+                  dc = decode_srcdest4 (dest, 0);
+                  v = sign_ext (get_src (dc), 8);
+***************
+*** 2158,2166 ****
+            case 0xbf:
+                {
+                  /** 0111 1100 10hl dest  MOVdir R0L,dest */
+! #line 988 "./r8c.opc"
+                  int hl AU = (op[1] >> 4) & 0x03;
+! #line 988 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 2329,2337 ----
+            case 0xbf:
+                {
+                  /** 0111 1100 10hl dest  MOVdir R0L,dest */
+! // #line988 "./r8c.opc"
+                  int hl AU = (op[1] >> 4) & 0x03;
+! // #line988 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 2169,2175 ****
+                      printf("  hl = 0x%x,", hl);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 989 "./r8c.opc"
+                
+                  if (dest == 0 || dest == 4 || dest == 5)
+                    UNSUPPORTED();
+--- 2340,2346 ----
+                      printf("  hl = 0x%x,", hl);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line989 "./r8c.opc"
+                
+                  if (dest == 0 || dest == 4 || dest == 5)
+                    UNSUPPORTED();
+***************
+*** 2205,2211 ****
+            case 0xcf:
+                {
+                  /** 0111 1100 1100 dest  STC PC,dest */
+! #line 1429 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 2376,2382 ----
+            case 0xcf:
+                {
+                  /** 0111 1100 1100 dest  STC PC,dest */
+! // #line1429 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 2213,2219 ****
+                             op[0], op[1]);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 1430 "./r8c.opc"
+                
+                  dc = decode_srcdest4 (dest, 1);
+                  dc.bytes = 3;
+--- 2384,2390 ----
+                             op[0], op[1]);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line1430 "./r8c.opc"
+                
+                  dc = decode_srcdest4 (dest, 1);
+                  dc.bytes = 3;
+***************
+*** 2225,2231 ****
+              op_semantics_36:
+                {
+                  /** 0111 110w 1110 0000  DIVU.size #IMM */
+! #line 652 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 2396,2402 ----
+              op_semantics_36:
+                {
+                  /** 0111 110w 1110 0000  DIVU.size #IMM */
+! // #line652 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 2233,2239 ****
+                             op[0], op[1]);
+                      printf("  w = 0x%x\n", w);
+                    }
+! #line 653 "./r8c.opc"
+                
+                  div_op (-1, 1, 0, w);
+                
+--- 2404,2410 ----
+                             op[0], op[1]);
+                      printf("  w = 0x%x\n", w);
+                    }
+! // #line653 "./r8c.opc"
+                
+                  div_op (-1, 1, 0, w);
+                
+***************
+*** 2243,2249 ****
+              op_semantics_37:
+                {
+                  /** 0111 110w 1110 0001  DIV.size #IMM */
+! #line 644 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 2414,2420 ----
+              op_semantics_37:
+                {
+                  /** 0111 110w 1110 0001  DIV.size #IMM */
+! // #line644 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 2251,2257 ****
+                             op[0], op[1]);
+                      printf("  w = 0x%x\n", w);
+                    }
+! #line 645 "./r8c.opc"
+                
+                  div_op (-1, 0, 0, w);
+                
+--- 2422,2428 ----
+                             op[0], op[1]);
+                      printf("  w = 0x%x\n", w);
+                    }
+! // #line645 "./r8c.opc"
+                
+                  div_op (-1, 0, 0, w);
+                
+***************
+*** 2261,2267 ****
+              op_semantics_38:
+                {
+                  /** 0111 110w 1110 0010  PUSH.size:G #IMM */
+! #line 1173 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 2432,2438 ----
+              op_semantics_38:
+                {
+                  /** 0111 110w 1110 0010  PUSH.size:G #IMM */
+! // #line1173 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 2269,2275 ****
+                             op[0], op[1]);
+                      printf("  w = 0x%x\n", w);
+                    }
+! #line 1174 "./r8c.opc"
+                
+                  imm = IMM(w);
+                  if (w)
+--- 2440,2446 ----
+                             op[0], op[1]);
+                      printf("  w = 0x%x\n", w);
+                    }
+! // #line1174 "./r8c.opc"
+                
+                  imm = IMM(w);
+                  if (w)
+***************
+*** 2291,2297 ****
+              op_semantics_39:
+                {
+                  /** 0111 110w 1110 0011  DIVX.size #IMM */
+! #line 660 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 2462,2468 ----
+              op_semantics_39:
+                {
+                  /** 0111 110w 1110 0011  DIVX.size #IMM */
+! // #line660 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 2299,2305 ****
+                             op[0], op[1]);
+                      printf("  w = 0x%x\n", w);
+                    }
+! #line 661 "./r8c.opc"
+                
+                  div_op (-1, 0, 1, w);
+                
+--- 2470,2476 ----
+                             op[0], op[1]);
+                      printf("  w = 0x%x\n", w);
+                    }
+! // #line661 "./r8c.opc"
+                
+                  div_op (-1, 0, 1, w);
+                
+***************
+*** 2316,2328 ****
+              op_semantics_40:
+                {
+                  /** 0111 110w 1110 i1c s  DADC,DADD,DSBB,DSUB */
+! #line 588 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 588 "./r8c.opc"
+                  int i AU = (op[1] >> 3) & 0x01;
+! #line 588 "./r8c.opc"
+                  int c AU = (op[1] >> 1) & 0x01;
+! #line 588 "./r8c.opc"
+                  int s AU = op[1] & 0x01;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 2487,2499 ----
+              op_semantics_40:
+                {
+                  /** 0111 110w 1110 i1c s  DADC,DADD,DSBB,DSUB */
+! // #line588 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line588 "./r8c.opc"
+                  int i AU = (op[1] >> 3) & 0x01;
+! // #line588 "./r8c.opc"
+                  int c AU = (op[1] >> 1) & 0x01;
+! // #line588 "./r8c.opc"
+                  int s AU = op[1] & 0x01;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 2333,2339 ****
+                      printf("  c = 0x%x,", c);
+                      printf("  s = 0x%x\n", s);
+                    }
+! #line 589 "./r8c.opc"
+                
+                  /* w = width, i = immediate, c = carry, s = subtract */
+                
+--- 2504,2510 ----
+                      printf("  c = 0x%x,", c);
+                      printf("  s = 0x%x\n", s);
+                    }
+! // #line589 "./r8c.opc"
+                
+                  /* w = width, i = immediate, c = carry, s = subtract */
+                
+***************
+*** 2379,2387 ****
+              op_semantics_41:
+                {
+                  /** 0111 110w 1110 100b  SMOVB.size */
+! #line 1372 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! #line 1372 "./r8c.opc"
+                  int b AU = op[1] & 0x01;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 2550,2558 ----
+              op_semantics_41:
+                {
+                  /** 0111 110w 1110 100b  SMOVB.size */
+! // #line1372 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+! // #line1372 "./r8c.opc"
+                  int b AU = op[1] & 0x01;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 2390,2396 ****
+                      printf("  w = 0x%x,", w);
+                      printf("  b = 0x%x\n", b);
+                    }
+! #line 1373 "./r8c.opc"
+                
+                  int count = get_reg (r3);
+                  int s1 = get_reg (a0) + (get_reg (r1h) << 16);
+--- 2561,2567 ----
+                      printf("  w = 0x%x,", w);
+                      printf("  b = 0x%x\n", b);
+                    }
+! // #line1373 "./r8c.opc"
+                
+                  int count = get_reg (r3);
+                  int s1 = get_reg (a0) + (get_reg (r1h) << 16);
+***************
+*** 2424,2430 ****
+              op_semantics_42:
+                {
+                  /** 0111 110w 1110 1010  SSTR.size */
+! #line 1400 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 2595,2601 ----
+              op_semantics_42:
+                {
+                  /** 0111 110w 1110 1010  SSTR.size */
+! // #line1400 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 2432,2438 ****
+                             op[0], op[1]);
+                      printf("  w = 0x%x\n", w);
+                    }
+! #line 1401 "./r8c.opc"
+                
+                  int count = get_reg (r3);
+                  int s1 = get_reg (a1);
+--- 2603,2609 ----
+                             op[0], op[1]);
+                      printf("  w = 0x%x\n", w);
+                    }
+! // #line1401 "./r8c.opc"
+                
+                  int count = get_reg (r3);
+                  int s1 = get_reg (a1);
+***************
+*** 2461,2467 ****
+              op_semantics_43:
+                {
+                  /** 0111 110w 1110 1011  ADD.size:G #IMM,sp */
+! #line 382 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 2632,2638 ----
+              op_semantics_43:
+                {
+                  /** 0111 110w 1110 1011  ADD.size:G #IMM,sp */
+! // #line382 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 2469,2475 ****
+                             op[0], op[1]);
+                      printf("  w = 0x%x\n", w);
+                    }
+! #line 383 "./r8c.opc"
+                
+                  dc = reg_sd (sp);
+                  imm = sign_ext (IMM(w), w?16:8);
+--- 2640,2646 ----
+                             op[0], op[1]);
+                      printf("  w = 0x%x\n", w);
+                    }
+! // #line383 "./r8c.opc"
+                
+                  dc = reg_sd (sp);
+                  imm = sign_ext (IMM(w), w?16:8);
+***************
+*** 2485,2491 ****
+                             "/** 0111 1100 1111 0000  LDCTX abs16,abs20 */",
+                             op[0], op[1]);
+                    }
+! #line 847 "./r8c.opc"
+                
+                  NOTYET();
+                
+--- 2656,2662 ----
+                             "/** 0111 1100 1111 0000  LDCTX abs16,abs20 */",
+                             op[0], op[1]);
+                    }
+! // #line847 "./r8c.opc"
+                
+                  NOTYET();
+                
+***************
+*** 2495,2501 ****
+              op_semantics_44:
+                {
+                  /** 0111 110w 1111 0001  RMPA.size */
+! #line 1259 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 2666,2672 ----
+              op_semantics_44:
+                {
+                  /** 0111 110w 1111 0001  RMPA.size */
+! // #line1259 "./r8c.opc"
+                  int w AU = op[0] & 0x01;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 2503,2509 ****
+                             op[0], op[1]);
+                      printf("  w = 0x%x\n", w);
+                    }
+! #line 1260 "./r8c.opc"
+                
+                  int count = get_reg (r3);
+                  int list1 = get_reg (a0);
+--- 2674,2680 ----
+                             op[0], op[1]);
+                      printf("  w = 0x%x\n", w);
+                    }
+! // #line1260 "./r8c.opc"
+                
+                  int count = get_reg (r3);
+                  int list1 = get_reg (a0);
+***************
+*** 2544,2550 ****
+                             "/** 0111 1100 1111 0010  ENTER #IMM8 */",
+                             op[0], op[1]);
+                    }
+! #line 669 "./r8c.opc"
+                
+                  imm = IMM(0);
+                  put_reg (sp, get_reg (sp) - 2);
+--- 2715,2721 ----
+                             "/** 0111 1100 1111 0010  ENTER #IMM8 */",
+                             op[0], op[1]);
+                    }
+! // #line669 "./r8c.opc"
+                
+                  imm = IMM(0);
+                  put_reg (sp, get_reg (sp) - 2);
+***************
+*** 2562,2568 ****
+                             "/** 0111 1100 1111 0011  EXTS.W R0 */",
+                             op[0], op[1]);
+                    }
+! #line 693 "./r8c.opc"
+                
+                  v = sign_ext (get_reg (r0), 16);
+                  put_reg (r2r0, v);
+--- 2733,2739 ----
+                             "/** 0111 1100 1111 0011  EXTS.W R0 */",
+                             op[0], op[1]);
+                    }
+! // #line693 "./r8c.opc"
+                
+                  v = sign_ext (get_reg (r0), 16);
+                  put_reg (r2r0, v);
+***************
+*** 2594,2600 ****
+            case 0x0f:
+                {
+                  /** 0111 1101 0000 srcx  JMPI.A src */
+! #line 776 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 2765,2771 ----
+            case 0x0f:
+                {
+                  /** 0111 1101 0000 srcx  JMPI.A src */
+! // #line776 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 2602,2608 ****
+                             op[0], op[1]);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! #line 777 "./r8c.opc"
+                
+                  sc = decode_jumpdest (srcx, 0);
+                  a = get_src (sc);
+--- 2773,2779 ----
+                             op[0], op[1]);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! // #line777 "./r8c.opc"
+                
+                  sc = decode_jumpdest (srcx, 0);
+                  a = get_src (sc);
+***************
+*** 2628,2634 ****
+            case 0x1f:
+                {
+                  /** 0111 1101 0001 srcx  JSRI.A src */
+! #line 814 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 2799,2805 ----
+            case 0x1f:
+                {
+                  /** 0111 1101 0001 srcx  JSRI.A src */
+! // #line814 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 2636,2642 ****
+                             op[0], op[1]);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! #line 815 "./r8c.opc"
+                
+                  sc = decode_jumpdest (srcx, 0);
+                  a = get_src (sc);
+--- 2807,2813 ----
+                             op[0], op[1]);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! // #line815 "./r8c.opc"
+                
+                  sc = decode_jumpdest (srcx, 0);
+                  a = get_src (sc);
+***************
+*** 2665,2671 ****
+            case 0x2f:
+                {
+                  /** 0111 1101 0010 srcx  JMPI.W src */
+! #line 769 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 2836,2842 ----
+            case 0x2f:
+                {
+                  /** 0111 1101 0010 srcx  JMPI.W src */
+! // #line769 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 2673,2679 ****
+                             op[0], op[1]);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! #line 770 "./r8c.opc"
+                
+                  sc = decode_jumpdest (srcx, 1);
+                  a = get_src (sc);
+--- 2844,2850 ----
+                             op[0], op[1]);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! // #line770 "./r8c.opc"
+                
+                  sc = decode_jumpdest (srcx, 1);
+                  a = get_src (sc);
+***************
+*** 2700,2706 ****
+            case 0x3f:
+                {
+                  /** 0111 1101 0011 srcx  JSRI.W src */
+! #line 804 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 2871,2877 ----
+            case 0x3f:
+                {
+                  /** 0111 1101 0011 srcx  JSRI.W src */
+! // #line804 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 2708,2714 ****
+                             op[0], op[1]);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! #line 805 "./r8c.opc"
+                
+                  sc = decode_jumpdest (srcx, 1);
+                  a = get_src (sc);
+--- 2879,2885 ----
+                             op[0], op[1]);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! // #line805 "./r8c.opc"
+                
+                  sc = decode_jumpdest (srcx, 1);
+                  a = get_src (sc);
+***************
+*** 2774,2780 ****
+            case 0x9f:
+                {
+                  /** 0111 1101 1001 srcx  PUSHA src */
+! #line 1220 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 2945,2951 ----
+            case 0x9f:
+                {
+                  /** 0111 1101 1001 srcx  PUSHA src */
+! // #line1220 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 2782,2788 ****
+                             op[0], op[1]);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! #line 1221 "./r8c.opc"
+                
+                  sc = decode_srcdest4 (srcx, 0);
+                  put_reg (sp, get_reg (sp) - 2);
+--- 2953,2959 ----
+                             op[0], op[1]);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! // #line1221 "./r8c.opc"
+                
+                  sc = decode_srcdest4 (srcx, 0);
+                  put_reg (sp, get_reg (sp) - 2);
+***************
+*** 2801,2807 ****
+            case 0xa7:
+                {
+                  /** 0111 1101 1010 0imm  LDIPL #IMM */
+! #line 880 "./r8c.opc"
+                  int imm AU = op[1] & 0x07;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 2972,2978 ----
+            case 0xa7:
+                {
+                  /** 0111 1101 1010 0imm  LDIPL #IMM */
+! // #line880 "./r8c.opc"
+                  int imm AU = op[1] & 0x07;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 2809,2815 ****
+                             op[0], op[1]);
+                      printf("  imm = 0x%x\n", imm);
+                    }
+! #line 881 "./r8c.opc"
+                
+                  set_flags (0x700, imm*0x100);
+                
+--- 2980,2986 ----
+                             op[0], op[1]);
+                      printf("  imm = 0x%x\n", imm);
+                    }
+! // #line881 "./r8c.opc"
+                
+                  set_flags (0x700, imm*0x100);
+                
+***************
+*** 2833,2839 ****
+            case 0xbf:
+                {
+                  /** 0111 1101 1011 immm  ADD.size:Q #IMM,sp */
+! #line 388 "./r8c.opc"
+                  int immm AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 3004,3010 ----
+            case 0xbf:
+                {
+                  /** 0111 1101 1011 immm  ADD.size:Q #IMM,sp */
+! // #line388 "./r8c.opc"
+                  int immm AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 2841,2847 ****
+                             op[0], op[1]);
+                      printf("  immm = 0x%x\n", immm);
+                    }
+! #line 389 "./r8c.opc"
+                
+                  dc = reg_sd (sp);
+                  imm = sign_ext (immm, 4);
+--- 3012,3018 ----
+                             op[0], op[1]);
+                      printf("  immm = 0x%x\n", immm);
+                    }
+! // #line389 "./r8c.opc"
+                
+                  dc = reg_sd (sp);
+                  imm = sign_ext (immm, 4);
+***************
+*** 2867,2873 ****
+            case 0xcf:
+                {
+                  /** 0111 1101 1100 cond  Jcnd label */
+! #line 738 "./r8c.opc"
+                  int cond AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 3038,3044 ----
+            case 0xcf:
+                {
+                  /** 0111 1101 1100 cond  Jcnd label */
+! // #line738 "./r8c.opc"
+                  int cond AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 2875,2881 ****
+                             op[0], op[1]);
+                      printf("  cond = 0x%x\n", cond);
+                    }
+! #line 739 "./r8c.opc"
+                
+                  v = sign_ext (IMM(0), 8);
+                  if (condition_true (cond))
+--- 3046,3052 ----
+                             op[0], op[1]);
+                      printf("  cond = 0x%x\n", cond);
+                    }
+! // #line739 "./r8c.opc"
+                
+                  v = sign_ext (IMM(0), 8);
+                  if (condition_true (cond))
+***************
+*** 2901,2907 ****
+            case 0xdf:
+                {
+                  /** 0111 1101 1101 cond  BMcnd C  */
+! #line 469 "./r8c.opc"
+                  int cond AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 3072,3078 ----
+            case 0xdf:
+                {
+                  /** 0111 1101 1101 cond  BMcnd C  */
+! // #line469 "./r8c.opc"
+                  int cond AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 2909,2915 ****
+                             op[0], op[1]);
+                      printf("  cond = 0x%x\n", cond);
+                    }
+! #line 470 "./r8c.opc"
+                
+                  if (condition_true (cond))
+                    set_c (1);
+--- 3080,3086 ----
+                             op[0], op[1]);
+                      printf("  cond = 0x%x\n", cond);
+                    }
+! // #line470 "./r8c.opc"
+                
+                  if (condition_true (cond))
+                    set_c (1);
+***************
+*** 2958,2964 ****
+                             "/** 0111 1101 1111 0000  STCTX abs16,abs20 */",
+                             op[0], op[1]);
+                    }
+! #line 1436 "./r8c.opc"
+                
+                  NOTYET();
+                
+--- 3129,3135 ----
+                             "/** 0111 1101 1111 0000  STCTX abs16,abs20 */",
+                             op[0], op[1]);
+                    }
+! // #line1436 "./r8c.opc"
+                
+                  NOTYET();
+                
+***************
+*** 2975,2981 ****
+                             "/** 0111 1101 1111 0010  EXITD */",
+                             op[0], op[1]);
+                    }
+! #line 677 "./r8c.opc"
+                
+                  put_reg (sp, get_reg (fb));
+                  put_reg (fb, mem_get_hi (get_reg (sp)));
+--- 3146,3152 ----
+                             "/** 0111 1101 1111 0010  EXITD */",
+                             op[0], op[1]);
+                    }
+! // #line677 "./r8c.opc"
+                
+                  put_reg (sp, get_reg (fb));
+                  put_reg (fb, mem_get_hi (get_reg (sp)));
+***************
+*** 2993,2999 ****
+                             "/** 0111 1101 1111 0011  WAIT */",
+                             op[0], op[1]);
+                    }
+! #line 1560 "./r8c.opc"
+                
+                  tprintf("waiting...\n");
+                
+--- 3164,3170 ----
+                             "/** 0111 1101 1111 0011  WAIT */",
+                             op[0], op[1]);
+                    }
+! // #line1560 "./r8c.opc"
+                
+                  tprintf("waiting...\n");
+                
+***************
+*** 3008,3014 ****
+            case 0x00:
+                {
+                  /** 0111 1110 0000 dest  BTSTC dest */
+! #line 538 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 3179,3185 ----
+            case 0x00:
+                {
+                  /** 0111 1110 0000 dest  BTSTC dest */
+! // #line538 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 3016,3022 ****
+                             op[0], op[1]);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 539 "./r8c.opc"
+                
+                  dc = decode_bit (dest);
+                  b = get_bit (dc);
+--- 3187,3193 ----
+                             op[0], op[1]);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line539 "./r8c.opc"
+                
+                  dc = decode_bit (dest);
+                  b = get_bit (dc);
+***************
+*** 3028,3034 ****
+            case 0x10:
+                {
+                  /** 0111 1110 0001 dest  BTSTS dest */
+! #line 545 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 3199,3205 ----
+            case 0x10:
+                {
+                  /** 0111 1110 0001 dest  BTSTS dest */
+! // #line545 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 3036,3042 ****
+                             op[0], op[1]);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 546 "./r8c.opc"
+                
+                  dc = decode_bit (dest);
+                  b = get_bit (dc);
+--- 3207,3213 ----
+                             op[0], op[1]);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line546 "./r8c.opc"
+                
+                  dc = decode_bit (dest);
+                  b = get_bit (dc);
+***************
+*** 3048,3054 ****
+            case 0x20:
+                {
+                  /** 0111 1110 0010 dest  BMcnd dest  */
+! #line 461 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 3219,3225 ----
+            case 0x20:
+                {
+                  /** 0111 1110 0010 dest  BMcnd dest  */
+! // #line461 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 3056,3062 ****
+                             op[0], op[1]);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 462 "./r8c.opc"
+                
+                  dc = decode_bit (dest);
+                  if (condition_true (bmcnd_cond_map [IMM (0) & 15]))
+--- 3227,3233 ----
+                             op[0], op[1]);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line462 "./r8c.opc"
+                
+                  dc = decode_bit (dest);
+                  if (condition_true (bmcnd_cond_map [IMM (0) & 15]))
+***************
+*** 3069,3075 ****
+            case 0x30:
+                {
+                  /** 0111 1110 0011 srcx  BNTST src */
+! #line 493 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 3240,3246 ----
+            case 0x30:
+                {
+                  /** 0111 1110 0011 srcx  BNTST src */
+! // #line493 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 3077,3083 ****
+                             op[0], op[1]);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! #line 494 "./r8c.opc"
+                
+                  dc = decode_bit (srcx);
+                  b = get_bit (dc);
+--- 3248,3254 ----
+                             op[0], op[1]);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! // #line494 "./r8c.opc"
+                
+                  dc = decode_bit (srcx);
+                  b = get_bit (dc);
+***************
+*** 3088,3094 ****
+            case 0x40:
+                {
+                  /** 0111 1110 0100 srcx  BAND src */
+! #line 447 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 3259,3265 ----
+            case 0x40:
+                {
+                  /** 0111 1110 0100 srcx  BAND src */
+! // #line447 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 3096,3102 ****
+                             op[0], op[1]);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! #line 448 "./r8c.opc"
+                
+                  BIT_OPC (srcx, b & carry);
+                
+--- 3267,3273 ----
+                             op[0], op[1]);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! // #line448 "./r8c.opc"
+                
+                  BIT_OPC (srcx, b & carry);
+                
+***************
+*** 3105,3111 ****
+            case 0x50:
+                {
+                  /** 0111 1110 0101 srcx  BNAND src */
+! #line 476 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 3276,3282 ----
+            case 0x50:
+                {
+                  /** 0111 1110 0101 srcx  BNAND src */
+! // #line476 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 3113,3119 ****
+                             op[0], op[1]);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! #line 477 "./r8c.opc"
+                
+                  BIT_OPC (srcx, (!b) & carry);
+                
+--- 3284,3290 ----
+                             op[0], op[1]);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! // #line477 "./r8c.opc"
+                
+                  BIT_OPC (srcx, (!b) & carry);
+                
+***************
+*** 3122,3128 ****
+            case 0x60:
+                {
+                  /** 0111 1110 0110 srcx  BOR src */
+! #line 503 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 3293,3299 ----
+            case 0x60:
+                {
+                  /** 0111 1110 0110 srcx  BOR src */
+! // #line503 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 3130,3136 ****
+                             op[0], op[1]);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! #line 504 "./r8c.opc"
+                
+                  BIT_OPC (srcx, b | carry);
+                
+--- 3301,3307 ----
+                             op[0], op[1]);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! // #line504 "./r8c.opc"
+                
+                  BIT_OPC (srcx, b | carry);
+                
+***************
+*** 3139,3145 ****
+            case 0x70:
+                {
+                  /** 0111 1110 0111 srcx  BNOR src */
+! #line 480 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 3310,3316 ----
+            case 0x70:
+                {
+                  /** 0111 1110 0111 srcx  BNOR src */
+! // #line480 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 3147,3153 ****
+                             op[0], op[1]);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! #line 481 "./r8c.opc"
+                
+                  BIT_OPC (srcx, (!b) | carry);
+                
+--- 3318,3324 ----
+                             op[0], op[1]);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! // #line481 "./r8c.opc"
+                
+                  BIT_OPC (srcx, (!b) | carry);
+                
+***************
+*** 3156,3162 ****
+            case 0x80:
+                {
+                  /** 0111 1110 1000 dest  BCLR:G dest */
+! #line 451 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 3327,3333 ----
+            case 0x80:
+                {
+                  /** 0111 1110 1000 dest  BCLR:G dest */
+! // #line451 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 3164,3170 ****
+                             op[0], op[1]);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 452 "./r8c.opc"
+                
+                  dc = decode_bit (dest);
+                  put_bit (dc, 0);
+--- 3335,3341 ----
+                             op[0], op[1]);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line452 "./r8c.opc"
+                
+                  dc = decode_bit (dest);
+                  put_bit (dc, 0);
+***************
+*** 3174,3180 ****
+            case 0x90:
+                {
+                  /** 0111 1110 1001 dest  BSET:G dest */
+! #line 516 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 3345,3351 ----
+            case 0x90:
+                {
+                  /** 0111 1110 1001 dest  BSET:G dest */
+! // #line516 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 3182,3188 ****
+                             op[0], op[1]);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 517 "./r8c.opc"
+                
+                  dc = decode_bit (dest);
+                  put_bit (dc, 1);
+--- 3353,3359 ----
+                             op[0], op[1]);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line517 "./r8c.opc"
+                
+                  dc = decode_bit (dest);
+                  put_bit (dc, 1);
+***************
+*** 3192,3198 ****
+            case 0xa0:
+                {
+                  /** 0111 1110 1010 dest  BNOT:G dest */
+! #line 484 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 3363,3369 ----
+            case 0xa0:
+                {
+                  /** 0111 1110 1010 dest  BNOT:G dest */
+! // #line484 "./r8c.opc"
+                  int dest AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 3200,3206 ****
+                             op[0], op[1]);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! #line 485 "./r8c.opc"
+                
+                  BIT_OP (dest, !b);
+                
+--- 3371,3377 ----
+                             op[0], op[1]);
+                      printf("  dest = 0x%x\n", dest);
+                    }
+! // #line485 "./r8c.opc"
+                
+                  BIT_OP (dest, !b);
+                
+***************
+*** 3209,3215 ****
+            case 0xb0:
+                {
+                  /** 0111 1110 1011 srcx  BTST:G src */
+! #line 526 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 3380,3386 ----
+            case 0xb0:
+                {
+                  /** 0111 1110 1011 srcx  BTST:G src */
+! // #line526 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 3217,3223 ****
+                             op[0], op[1]);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! #line 527 "./r8c.opc"
+                
+                  dc = decode_bit (srcx);
+                  b = get_bit (dc);
+--- 3388,3394 ----
+                             op[0], op[1]);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! // #line527 "./r8c.opc"
+                
+                  dc = decode_bit (srcx);
+                  b = get_bit (dc);
+***************
+*** 3228,3234 ****
+            case 0xc0:
+                {
+                  /** 0111 1110 1100 srcx  BXOR src */
+! #line 552 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 3399,3405 ----
+            case 0xc0:
+                {
+                  /** 0111 1110 1100 srcx  BXOR src */
+! // #line552 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 3236,3242 ****
+                             op[0], op[1]);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! #line 553 "./r8c.opc"
+                
+                  BIT_OPC (srcx, b ^ carry);
+                
+--- 3407,3413 ----
+                             op[0], op[1]);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! // #line553 "./r8c.opc"
+                
+                  BIT_OPC (srcx, b ^ carry);
+                
+***************
+*** 3245,3251 ****
+            case 0xd0:
+                {
+                  /** 0111 1110 1101 srcx  BNXOR src */
+! #line 499 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 3416,3422 ----
+            case 0xd0:
+                {
+                  /** 0111 1110 1101 srcx  BNXOR src */
+! // #line499 "./r8c.opc"
+                  int srcx AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 3253,3259 ****
+                             op[0], op[1]);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! #line 500 "./r8c.opc"
+                
+                  BIT_OPC (srcx, !b ^ carry);
+                
+--- 3424,3430 ----
+                             op[0], op[1]);
+                      printf("  srcx = 0x%x\n", srcx);
+                    }
+! // #line500 "./r8c.opc"
+                
+                  BIT_OPC (srcx, !b ^ carry);
+                
+***************
+*** 3267,3277 ****
+        GETBYTE();
+          {
+            /** 1000 000w srcx dest  TST.size src,dest */
+! #line 1548 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! #line 1548 "./r8c.opc"
+            int srcx AU = (op[1] >> 4) & 0x0f;
+! #line 1548 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 3438,3448 ----
+        GETBYTE();
+          {
+            /** 1000 000w srcx dest  TST.size src,dest */
+! // #line1548 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! // #line1548 "./r8c.opc"
+            int srcx AU = (op[1] >> 4) & 0x0f;
+! // #line1548 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 3281,3287 ****
+                printf("  srcx = 0x%x,", srcx);
+                printf("  dest = 0x%x\n", dest);
+              }
+! #line 1549 "./r8c.opc"
+          
+            BINARY_UOP;
+            tprintf ("%x & %x = %x\n", a, b, a & b);
+--- 3452,3458 ----
+                printf("  srcx = 0x%x,", srcx);
+                printf("  dest = 0x%x\n", dest);
+              }
+! // #line1549 "./r8c.opc"
+          
+            BINARY_UOP;
+            tprintf ("%x & %x = %x\n", a, b, a & b);
+***************
+*** 3294,3300 ****
+      case 0x8a:
+          {
+            /** 1000 s010            PUSH.B:S src */
+! #line 1206 "./r8c.opc"
+            int s AU = (op[0] >> 3) & 0x01;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 3465,3471 ----
+      case 0x8a:
+          {
+            /** 1000 s010            PUSH.B:S src */
+! // #line1206 "./r8c.opc"
+            int s AU = (op[0] >> 3) & 0x01;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 3302,3308 ****
+                       op[0]);
+                printf("  s = 0x%x\n", s);
+              }
+! #line 1207 "./r8c.opc"
+          
+            v = get_reg (s ? r0h : r0l);
+            put_reg (sp, get_reg (sp) - 1);
+--- 3473,3479 ----
+                       op[0]);
+                printf("  s = 0x%x\n", s);
+              }
+! // #line1207 "./r8c.opc"
+          
+            v = get_reg (s ? r0h : r0l);
+            put_reg (sp, get_reg (sp) - 1);
+***************
+*** 3318,3324 ****
+      case 0x87:
+          {
+            /** 1000 0dst            ADD.B:S #IMM8,dst */
+! #line 362 "./r8c.opc"
+            int dst AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 3489,3495 ----
+      case 0x87:
+          {
+            /** 1000 0dst            ADD.B:S #IMM8,dst */
+! // #line362 "./r8c.opc"
+            int dst AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 3326,3332 ****
+                       op[0]);
+                printf("  dst = 0x%x\n", dst);
+              }
+! #line 363 "./r8c.opc"
+          
+            imm = IMM(0);
+            dc = decode_dest3 (dst, 0);
+--- 3497,3503 ----
+                       op[0]);
+                printf("  dst = 0x%x\n", dst);
+              }
+! // #line363 "./r8c.opc"
+          
+            imm = IMM(0);
+            dc = decode_dest3 (dst, 0);
+***************
+*** 3339,3349 ****
+        GETBYTE();
+          {
+            /** 1000 100w srcx dest  XOR.size src,dest */
+! #line 1581 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! #line 1581 "./r8c.opc"
+            int srcx AU = (op[1] >> 4) & 0x0f;
+! #line 1581 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 3510,3520 ----
+        GETBYTE();
+          {
+            /** 1000 100w srcx dest  XOR.size src,dest */
+! // #line1581 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! // #line1581 "./r8c.opc"
+            int srcx AU = (op[1] >> 4) & 0x0f;
+! // #line1581 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 3353,3359 ****
+                printf("  srcx = 0x%x,", srcx);
+                printf("  dest = 0x%x\n", dest);
+              }
+! #line 1582 "./r8c.opc"
+          
+            BINARY_UOP;
+            tprintf ("%x ^ %x = %x\n", a, b, a ^ b);
+--- 3524,3530 ----
+                printf("  srcx = 0x%x,", srcx);
+                printf("  dest = 0x%x\n", dest);
+              }
+! // #line1582 "./r8c.opc"
+          
+            BINARY_UOP;
+            tprintf ("%x ^ %x = %x\n", a, b, a ^ b);
+***************
+*** 3371,3377 ****
+      case 0x8f:
+          {
+            /** 1000 1dst            SUB.B:S #IMM8,dest */
+! #line 1520 "./r8c.opc"
+            int dst AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 3542,3548 ----
+      case 0x8f:
+          {
+            /** 1000 1dst            SUB.B:S #IMM8,dest */
+! // #line1520 "./r8c.opc"
+            int dst AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 3379,3385 ****
+                       op[0]);
+                printf("  dst = 0x%x\n", dst);
+              }
+! #line 1521 "./r8c.opc"
+          
+            imm = IMM(0);
+            dc = decode_dest3 (dst, 0);
+--- 3550,3556 ----
+                       op[0]);
+                printf("  dst = 0x%x\n", dst);
+              }
+! // #line1521 "./r8c.opc"
+          
+            imm = IMM(0);
+            dc = decode_dest3 (dst, 0);
+***************
+*** 3392,3402 ****
+        GETBYTE();
+          {
+            /** 1001 000w srcx dest  AND.size:G src.dest */
+! #line 428 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! #line 428 "./r8c.opc"
+            int srcx AU = (op[1] >> 4) & 0x0f;
+! #line 428 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 3563,3573 ----
+        GETBYTE();
+          {
+            /** 1001 000w srcx dest  AND.size:G src.dest */
+! // #line428 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! // #line428 "./r8c.opc"
+            int srcx AU = (op[1] >> 4) & 0x0f;
+! // #line428 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 3406,3412 ****
+                printf("  srcx = 0x%x,", srcx);
+                printf("  dest = 0x%x\n", dest);
+              }
+! #line 429 "./r8c.opc"
+          
+            BINARY_UOP;
+            tprintf ("%x & %x = %x\n", a, b, a & b);
+--- 3577,3583 ----
+                printf("  srcx = 0x%x,", srcx);
+                printf("  dest = 0x%x\n", dest);
+              }
+! // #line429 "./r8c.opc"
+          
+            BINARY_UOP;
+            tprintf ("%x & %x = %x\n", a, b, a & b);
+***************
+*** 3420,3426 ****
+      case 0x9a:
+          {
+            /** 1001 d010            POP.B:S dest */
+! #line 1138 "./r8c.opc"
+            int d AU = (op[0] >> 3) & 0x01;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 3591,3597 ----
+      case 0x9a:
+          {
+            /** 1001 d010            POP.B:S dest */
+! // #line1138 "./r8c.opc"
+            int d AU = (op[0] >> 3) & 0x01;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 3428,3434 ****
+                       op[0]);
+                printf("  d = 0x%x\n", d);
+              }
+! #line 1139 "./r8c.opc"
+          
+            v = mem_get_qi (get_reg (sp));
+            put_reg (d ? r0h : r0l, v);
+--- 3599,3605 ----
+                       op[0]);
+                printf("  d = 0x%x\n", d);
+              }
+! // #line1139 "./r8c.opc"
+          
+            v = mem_get_qi (get_reg (sp));
+            put_reg (d ? r0h : r0l, v);
+***************
+*** 3444,3450 ****
+      case 0x97:
+          {
+            /** 1001 0dst            AND.B:S #IMM8,dest */
+! #line 418 "./r8c.opc"
+            int dst AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 3615,3621 ----
+      case 0x97:
+          {
+            /** 1001 0dst            AND.B:S #IMM8,dest */
+! // #line418 "./r8c.opc"
+            int dst AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 3452,3458 ****
+                       op[0]);
+                printf("  dst = 0x%x\n", dst);
+              }
+! #line 419 "./r8c.opc"
+          
+            imm = IMM(0);
+            dc = decode_dest3 (dst, 0);
+--- 3623,3629 ----
+                       op[0]);
+                printf("  dst = 0x%x\n", dst);
+              }
+! // #line419 "./r8c.opc"
+          
+            imm = IMM(0);
+            dc = decode_dest3 (dst, 0);
+***************
+*** 3469,3479 ****
+        GETBYTE();
+          {
+            /** 1001 100w srcx dest  OR.size:G src,dest */
+! #line 1102 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! #line 1102 "./r8c.opc"
+            int srcx AU = (op[1] >> 4) & 0x0f;
+! #line 1102 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 3640,3650 ----
+        GETBYTE();
+          {
+            /** 1001 100w srcx dest  OR.size:G src,dest */
+! // #line1102 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! // #line1102 "./r8c.opc"
+            int srcx AU = (op[1] >> 4) & 0x0f;
+! // #line1102 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 3483,3489 ****
+                printf("  srcx = 0x%x,", srcx);
+                printf("  dest = 0x%x\n", dest);
+              }
+! #line 1103 "./r8c.opc"
+          
+            BINARY_UOP;
+            tprintf ("%x | %x = %x\n", a, b, a | b);
+--- 3654,3660 ----
+                printf("  srcx = 0x%x,", srcx);
+                printf("  dest = 0x%x\n", dest);
+              }
+! // #line1103 "./r8c.opc"
+          
+            BINARY_UOP;
+            tprintf ("%x | %x = %x\n", a, b, a | b);
+***************
+*** 3500,3506 ****
+      case 0x9f:
+          {
+            /** 1001 1dst            OR.B:S #IMM8,dest */
+! #line 1092 "./r8c.opc"
+            int dst AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 3671,3677 ----
+      case 0x9f:
+          {
+            /** 1001 1dst            OR.B:S #IMM8,dest */
+! // #line1092 "./r8c.opc"
+            int dst AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 3508,3514 ****
+                       op[0]);
+                printf("  dst = 0x%x\n", dst);
+              }
+! #line 1093 "./r8c.opc"
+          
+            imm = IMM(0);
+            dc = decode_dest3 (dst, 0);
+--- 3679,3685 ----
+                       op[0]);
+                printf("  dst = 0x%x\n", dst);
+              }
+! // #line1093 "./r8c.opc"
+          
+            imm = IMM(0);
+            dc = decode_dest3 (dst, 0);
+***************
+*** 3525,3535 ****
+        GETBYTE();
+          {
+            /** 1010 000w srcx dest  ADD.size:G src,dest */
+! #line 368 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! #line 368 "./r8c.opc"
+            int srcx AU = (op[1] >> 4) & 0x0f;
+! #line 368 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 3696,3706 ----
+        GETBYTE();
+          {
+            /** 1010 000w srcx dest  ADD.size:G src,dest */
+! // #line368 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! // #line368 "./r8c.opc"
+            int srcx AU = (op[1] >> 4) & 0x0f;
+! // #line368 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 3539,3545 ****
+                printf("  srcx = 0x%x,", srcx);
+                printf("  dest = 0x%x\n", dest);
+              }
+! #line 369 "./r8c.opc"
+          
+            sc = decode_srcdest4(srcx, w);
+            dc = decode_srcdest4(dest, w);
+--- 3710,3716 ----
+                printf("  srcx = 0x%x,", srcx);
+                printf("  dest = 0x%x\n", dest);
+              }
+! // #line369 "./r8c.opc"
+          
+            sc = decode_srcdest4(srcx, w);
+            dc = decode_srcdest4(dest, w);
+***************
+*** 3554,3562 ****
+      case 0xea:
+          {
+            /** 1w10 d010            MOV.size:S #IMM,dest */
+! #line 910 "./r8c.opc"
+            int w AU = (op[0] >> 6) & 0x01;
+! #line 910 "./r8c.opc"
+            int d AU = (op[0] >> 3) & 0x01;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 3725,3733 ----
+      case 0xea:
+          {
+            /** 1w10 d010            MOV.size:S #IMM,dest */
+! // #line910 "./r8c.opc"
+            int w AU = (op[0] >> 6) & 0x01;
+! // #line910 "./r8c.opc"
+            int d AU = (op[0] >> 3) & 0x01;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 3565,3571 ****
+                printf("  w = 0x%x,", w);
+                printf("  d = 0x%x\n", d);
+              }
+! #line 911 "./r8c.opc"
+          
+            /* Note that for w, 0=W and 1=B unlike the usual meaning.  */
+            v = IMM(1-w);
+--- 3736,3742 ----
+                printf("  w = 0x%x,", w);
+                printf("  d = 0x%x\n", d);
+              }
+! // #line911 "./r8c.opc"
+          
+            /* Note that for w, 0=W and 1=B unlike the usual meaning.  */
+            v = IMM(1-w);
+***************
+*** 3582,3588 ****
+      case 0xa7:
+          {
+            /** 1010 0dst            INC.B dest */
+! #line 706 "./r8c.opc"
+            int dst AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 3753,3759 ----
+      case 0xa7:
+          {
+            /** 1010 0dst            INC.B dest */
+! // #line706 "./r8c.opc"
+            int dst AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 3590,3596 ****
+                       op[0]);
+                printf("  dst = 0x%x\n", dst);
+              }
+! #line 707 "./r8c.opc"
+          
+            dc = decode_dest3 (dst, 0);
+            v = get_src (dc);
+--- 3761,3767 ----
+                       op[0]);
+                printf("  dst = 0x%x\n", dst);
+              }
+! // #line707 "./r8c.opc"
+          
+            dc = decode_dest3 (dst, 0);
+            v = get_src (dc);
+***************
+*** 3606,3616 ****
+        GETBYTE();
+          {
+            /** 1010 100w srcx dest  SUB.size:G src,dest */
+! #line 1526 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! #line 1526 "./r8c.opc"
+            int srcx AU = (op[1] >> 4) & 0x0f;
+! #line 1526 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 3777,3787 ----
+        GETBYTE();
+          {
+            /** 1010 100w srcx dest  SUB.size:G src,dest */
+! // #line1526 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! // #line1526 "./r8c.opc"
+            int srcx AU = (op[1] >> 4) & 0x0f;
+! // #line1526 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 3620,3626 ****
+                printf("  srcx = 0x%x,", srcx);
+                printf("  dest = 0x%x\n", dest);
+              }
+! #line 1527 "./r8c.opc"
+          
+            sc = decode_srcdest4(srcx, w);
+            dc = decode_srcdest4(dest, w);
+--- 3791,3797 ----
+                printf("  srcx = 0x%x,", srcx);
+                printf("  dest = 0x%x\n", dest);
+              }
+! // #line1527 "./r8c.opc"
+          
+            sc = decode_srcdest4(srcx, w);
+            dc = decode_srcdest4(dest, w);
+***************
+*** 3636,3642 ****
+      case 0xaf:
+          {
+            /** 1010 1dst            DEC.B dest */
+! #line 627 "./r8c.opc"
+            int dst AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 3807,3813 ----
+      case 0xaf:
+          {
+            /** 1010 1dst            DEC.B dest */
+! // #line627 "./r8c.opc"
+            int dst AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 3644,3650 ****
+                       op[0]);
+                printf("  dst = 0x%x\n", dst);
+              }
+! #line 628 "./r8c.opc"
+          
+            dc = decode_dest3 (dst, 0);
+            v = get_src (dc);
+--- 3815,3821 ----
+                       op[0]);
+                printf("  dst = 0x%x\n", dst);
+              }
+! // #line628 "./r8c.opc"
+          
+            dc = decode_dest3 (dst, 0);
+            v = get_src (dc);
+***************
+*** 3660,3670 ****
+        GETBYTE();
+          {
+            /** 1011 000w srcx dest  ADC.size src,dest */
+! #line 338 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! #line 338 "./r8c.opc"
+            int srcx AU = (op[1] >> 4) & 0x0f;
+! #line 338 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 3831,3841 ----
+        GETBYTE();
+          {
+            /** 1011 000w srcx dest  ADC.size src,dest */
+! // #line338 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! // #line338 "./r8c.opc"
+            int srcx AU = (op[1] >> 4) & 0x0f;
+! // #line338 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 3674,3680 ****
+                printf("  srcx = 0x%x,", srcx);
+                printf("  dest = 0x%x\n", dest);
+              }
+! #line 339 "./r8c.opc"
+          
+            sc = decode_srcdest4(srcx, w);
+            dc = decode_srcdest4(dest, w);
+--- 3845,3851 ----
+                printf("  srcx = 0x%x,", srcx);
+                printf("  dest = 0x%x\n", dest);
+              }
+! // #line339 "./r8c.opc"
+          
+            sc = decode_srcdest4(srcx, w);
+            dc = decode_srcdest4(dest, w);
+***************
+*** 3687,3693 ****
+      case 0xba:
+          {
+            /** 1011 d010            INC.W dest */
+! #line 715 "./r8c.opc"
+            int d AU = (op[0] >> 3) & 0x01;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 3858,3864 ----
+      case 0xba:
+          {
+            /** 1011 d010            INC.W dest */
+! // #line715 "./r8c.opc"
+            int d AU = (op[0] >> 3) & 0x01;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 3695,3701 ****
+                       op[0]);
+                printf("  d = 0x%x\n", d);
+              }
+! #line 716 "./r8c.opc"
+          
+            v = get_reg (d ? a1 : a0);
+            tprintf("%x ++ = %x\n", v, v+1);
+--- 3866,3872 ----
+                       op[0]);
+                printf("  d = 0x%x\n", d);
+              }
+! // #line716 "./r8c.opc"
+          
+            v = get_reg (d ? a1 : a0);
+            tprintf("%x ++ = %x\n", v, v+1);
+***************
+*** 3712,3718 ****
+      case 0xb7:
+          {
+            /** 1011 0dst            MOV.B:Z #0,dest */
+! #line 918 "./r8c.opc"
+            int dst AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 3883,3889 ----
+      case 0xb7:
+          {
+            /** 1011 0dst            MOV.B:Z #0,dest */
+! // #line918 "./r8c.opc"
+            int dst AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 3720,3726 ****
+                       op[0]);
+                printf("  dst = 0x%x\n", dst);
+              }
+! #line 919 "./r8c.opc"
+          
+            dc = decode_dest3 (dst, 0);
+            v = 0;
+--- 3891,3897 ----
+                       op[0]);
+                printf("  dst = 0x%x\n", dst);
+              }
+! // #line919 "./r8c.opc"
+          
+            dc = decode_dest3 (dst, 0);
+            v = 0;
+***************
+*** 3734,3744 ****
+        GETBYTE();
+          {
+            /** 1011 100w srcx dest  SBB.size src,dest */
+! #line 1321 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! #line 1321 "./r8c.opc"
+            int srcx AU = (op[1] >> 4) & 0x0f;
+! #line 1321 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 3905,3915 ----
+        GETBYTE();
+          {
+            /** 1011 100w srcx dest  SBB.size src,dest */
+! // #line1321 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! // #line1321 "./r8c.opc"
+            int srcx AU = (op[1] >> 4) & 0x0f;
+! // #line1321 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 3748,3754 ****
+                printf("  srcx = 0x%x,", srcx);
+                printf("  dest = 0x%x\n", dest);
+              }
+! #line 1322 "./r8c.opc"
+          
+            sc = decode_srcdest4(srcx, w);
+            dc = decode_srcdest4(dest, w);
+--- 3919,3925 ----
+                printf("  srcx = 0x%x,", srcx);
+                printf("  dest = 0x%x\n", dest);
+              }
+! // #line1322 "./r8c.opc"
+          
+            sc = decode_srcdest4(srcx, w);
+            dc = decode_srcdest4(dest, w);
+***************
+*** 3764,3770 ****
+      case 0xbf:
+          {
+            /** 1011 1dst            NOT.B:S dest */
+! #line 1074 "./r8c.opc"
+            int dst AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 3935,3941 ----
+      case 0xbf:
+          {
+            /** 1011 1dst            NOT.B:S dest */
+! // #line1074 "./r8c.opc"
+            int dst AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 3772,3778 ****
+                       op[0]);
+                printf("  dst = 0x%x\n", dst);
+              }
+! #line 1075 "./r8c.opc"
+          
+            dc = decode_dest3 (dst, 0);
+            v = get_src (dc);
+--- 3943,3949 ----
+                       op[0]);
+                printf("  dst = 0x%x\n", dst);
+              }
+! // #line1075 "./r8c.opc"
+          
+            dc = decode_dest3 (dst, 0);
+            v = get_src (dc);
+***************
+*** 3788,3798 ****
+        GETBYTE();
+          {
+            /** 1100 000w srcx dest  CMP.size:G src,dest */
+! #line 575 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! #line 575 "./r8c.opc"
+            int srcx AU = (op[1] >> 4) & 0x0f;
+! #line 575 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 3959,3969 ----
+        GETBYTE();
+          {
+            /** 1100 000w srcx dest  CMP.size:G src,dest */
+! // #line575 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! // #line575 "./r8c.opc"
+            int srcx AU = (op[1] >> 4) & 0x0f;
+! // #line575 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 3802,3808 ****
+                printf("  srcx = 0x%x,", srcx);
+                printf("  dest = 0x%x\n", dest);
+              }
+! #line 576 "./r8c.opc"
+          
+            BINARY_UOP;
+            cmp(b, a, w);
+--- 3973,3979 ----
+                printf("  srcx = 0x%x,", srcx);
+                printf("  dest = 0x%x\n", dest);
+              }
+! // #line576 "./r8c.opc"
+          
+            BINARY_UOP;
+            cmp(b, a, w);
+***************
+*** 3813,3819 ****
+      case 0xca:
+          {
+            /** 1100 s010            PUSH.W:S src */
+! #line 1213 "./r8c.opc"
+            int s AU = (op[0] >> 3) & 0x01;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 3984,3990 ----
+      case 0xca:
+          {
+            /** 1100 s010            PUSH.W:S src */
+! // #line1213 "./r8c.opc"
+            int s AU = (op[0] >> 3) & 0x01;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 3821,3827 ****
+                       op[0]);
+                printf("  s = 0x%x\n", s);
+              }
+! #line 1214 "./r8c.opc"
+          
+            v = get_reg (s ? a1 : a0);
+            put_reg (sp, get_reg (sp) - 2);
+--- 3992,3998 ----
+                       op[0]);
+                printf("  s = 0x%x\n", s);
+              }
+! // #line1214 "./r8c.opc"
+          
+            v = get_reg (s ? a1 : a0);
+            put_reg (sp, get_reg (sp) - 2);
+***************
+*** 3837,3843 ****
+      case 0xc7:
+          {
+            /** 1100 0dst            MOV.B:S #IMM8,dest */
+! #line 901 "./r8c.opc"
+            int dst AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 4008,4014 ----
+      case 0xc7:
+          {
+            /** 1100 0dst            MOV.B:S #IMM8,dest */
+! // #line901 "./r8c.opc"
+            int dst AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 3845,3851 ****
+                       op[0]);
+                printf("  dst = 0x%x\n", dst);
+              }
+! #line 902 "./r8c.opc"
+          
+            imm = IMM(0);
+            dc = decode_dest3 (dst, 0);
+--- 4016,4022 ----
+                       op[0]);
+                printf("  dst = 0x%x\n", dst);
+              }
+! // #line902 "./r8c.opc"
+          
+            imm = IMM(0);
+            dc = decode_dest3 (dst, 0);
+***************
+*** 3861,3871 ****
+        GETBYTE();
+          {
+            /** 1100 100w immm dest  ADD.size:Q #IMM,dest */
+! #line 356 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! #line 356 "./r8c.opc"
+            int immm AU = (op[1] >> 4) & 0x0f;
+! #line 356 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 4032,4042 ----
+        GETBYTE();
+          {
+            /** 1100 100w immm dest  ADD.size:Q #IMM,dest */
+! // #line356 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! // #line356 "./r8c.opc"
+            int immm AU = (op[1] >> 4) & 0x0f;
+! // #line356 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 3875,3881 ****
+                printf("  immm = 0x%x,", immm);
+                printf("  dest = 0x%x\n", dest);
+              }
+! #line 357 "./r8c.opc"
+          
+            dc = decode_srcdest4(dest, w);
+            imm = sign_ext (immm, 4);
+--- 4046,4052 ----
+                printf("  immm = 0x%x,", immm);
+                printf("  dest = 0x%x\n", dest);
+              }
+! // #line357 "./r8c.opc"
+          
+            dc = decode_srcdest4(dest, w);
+            imm = sign_ext (immm, 4);
+***************
+*** 3890,3896 ****
+      case 0xcf:
+          {
+            /** 1100 1dst            STZ #IMM8,dest */
+! #line 1497 "./r8c.opc"
+            int dst AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 4061,4067 ----
+      case 0xcf:
+          {
+            /** 1100 1dst            STZ #IMM8,dest */
+! // #line1497 "./r8c.opc"
+            int dst AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 3898,3904 ****
+                       op[0]);
+                printf("  dst = 0x%x\n", dst);
+              }
+! #line 1498 "./r8c.opc"
+          
+            imm = IMM(0);
+            dc = decode_dest3(dst, 0);
+--- 4069,4075 ----
+                       op[0]);
+                printf("  dst = 0x%x\n", dst);
+              }
+! // #line1498 "./r8c.opc"
+          
+            imm = IMM(0);
+            dc = decode_dest3(dst, 0);
+***************
+*** 3912,3922 ****
+        GETBYTE();
+          {
+            /** 1101 000w immm dest  CMP.size:Q #IMM,dest */
+! #line 562 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! #line 562 "./r8c.opc"
+            int immm AU = (op[1] >> 4) & 0x0f;
+! #line 562 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 4083,4093 ----
+        GETBYTE();
+          {
+            /** 1101 000w immm dest  CMP.size:Q #IMM,dest */
+! // #line562 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! // #line562 "./r8c.opc"
+            int immm AU = (op[1] >> 4) & 0x0f;
+! // #line562 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 3926,3932 ****
+                printf("  immm = 0x%x,", immm);
+                printf("  dest = 0x%x\n", dest);
+              }
+! #line 563 "./r8c.opc"
+          
+            UNARY_UOP;
+            immm = sign_ext (immm, 4);
+--- 4097,4103 ----
+                printf("  immm = 0x%x,", immm);
+                printf("  dest = 0x%x\n", dest);
+              }
+! // #line563 "./r8c.opc"
+          
+            UNARY_UOP;
+            immm = sign_ext (immm, 4);
+***************
+*** 3938,3944 ****
+      case 0xda:
+          {
+            /** 1101 d010            POP.W:S dest */
+! #line 1145 "./r8c.opc"
+            int d AU = (op[0] >> 3) & 0x01;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 4109,4115 ----
+      case 0xda:
+          {
+            /** 1101 d010            POP.W:S dest */
+! // #line1145 "./r8c.opc"
+            int d AU = (op[0] >> 3) & 0x01;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 3946,3952 ****
+                       op[0]);
+                printf("  d = 0x%x\n", d);
+              }
+! #line 1146 "./r8c.opc"
+          
+            v = mem_get_hi (get_reg (sp));
+            put_reg (d ? a1 : a0, v);
+--- 4117,4123 ----
+                       op[0]);
+                printf("  d = 0x%x\n", d);
+              }
+! // #line1146 "./r8c.opc"
+          
+            v = mem_get_hi (get_reg (sp));
+            put_reg (d ? a1 : a0, v);
+***************
+*** 3962,3968 ****
+      case 0xd7:
+          {
+            /** 1101 0dst            STNZ #IMM8,dest */
+! #line 1490 "./r8c.opc"
+            int dst AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 4133,4139 ----
+      case 0xd7:
+          {
+            /** 1101 0dst            STNZ #IMM8,dest */
+! // #line1490 "./r8c.opc"
+            int dst AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 3970,3976 ****
+                       op[0]);
+                printf("  dst = 0x%x\n", dst);
+              }
+! #line 1491 "./r8c.opc"
+          
+            imm = IMM(0);
+            dc = decode_dest3(dst, 0);
+--- 4141,4147 ----
+                       op[0]);
+                printf("  dst = 0x%x\n", dst);
+              }
+! // #line1491 "./r8c.opc"
+          
+            imm = IMM(0);
+            dc = decode_dest3(dst, 0);
+***************
+*** 3984,3994 ****
+        GETBYTE();
+          {
+            /** 1101 100w immm dest  MOV.size:Q #IMM,dest */
+! #line 893 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! #line 893 "./r8c.opc"
+            int immm AU = (op[1] >> 4) & 0x0f;
+! #line 893 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 4155,4165 ----
+        GETBYTE();
+          {
+            /** 1101 100w immm dest  MOV.size:Q #IMM,dest */
+! // #line893 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! // #line893 "./r8c.opc"
+            int immm AU = (op[1] >> 4) & 0x0f;
+! // #line893 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 3998,4004 ****
+                printf("  immm = 0x%x,", immm);
+                printf("  dest = 0x%x\n", dest);
+              }
+! #line 894 "./r8c.opc"
+          
+            dc = decode_srcdest4 (dest, w);
+            v = sign_ext (immm, 4);
+--- 4169,4175 ----
+                printf("  immm = 0x%x,", immm);
+                printf("  dest = 0x%x\n", dest);
+              }
+! // #line894 "./r8c.opc"
+          
+            dc = decode_srcdest4 (dest, w);
+            v = sign_ext (immm, 4);
+***************
+*** 4015,4021 ****
+      case 0xdf:
+          {
+            /** 1101 1dst            STZX #IMM81,#IMM82,dest */
+! #line 1504 "./r8c.opc"
+            int dst AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 4186,4192 ----
+      case 0xdf:
+          {
+            /** 1101 1dst            STZX #IMM81,#IMM82,dest */
+! // #line1504 "./r8c.opc"
+            int dst AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 4023,4029 ****
+                       op[0]);
+                printf("  dst = 0x%x\n", dst);
+              }
+! #line 1505 "./r8c.opc"
+          
+            a = IMM(0);
+            dc = decode_dest3(dst, 0);
+--- 4194,4200 ----
+                       op[0]);
+                printf("  dst = 0x%x\n", dst);
+              }
+! // #line1505 "./r8c.opc"
+          
+            a = IMM(0);
+            dc = decode_dest3(dst, 0);
+***************
+*** 4040,4050 ****
+        GETBYTE();
+          {
+            /** 1110 000w immm dest  ROT.size #IMM,dest */
+! #line 1300 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! #line 1300 "./r8c.opc"
+            int immm AU = (op[1] >> 4) & 0x0f;
+! #line 1300 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 4211,4221 ----
+        GETBYTE();
+          {
+            /** 1110 000w immm dest  ROT.size #IMM,dest */
+! // #line1300 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! // #line1300 "./r8c.opc"
+            int immm AU = (op[1] >> 4) & 0x0f;
+! // #line1300 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 4054,4060 ****
+                printf("  immm = 0x%x,", immm);
+                printf("  dest = 0x%x\n", dest);
+              }
+! #line 1301 "./r8c.opc"
+          
+            dc = decode_srcdest4 (dest, w);
+            rot_op (dc, 0, IMM4());
+--- 4225,4231 ----
+                printf("  immm = 0x%x,", immm);
+                printf("  dest = 0x%x\n", dest);
+              }
+! // #line1301 "./r8c.opc"
+          
+            dc = decode_srcdest4 (dest, w);
+            rot_op (dc, 0, IMM4());
+***************
+*** 4068,4074 ****
+      case 0xe7:
+          {
+            /** 1110 0dst            CMP.B:S #IMM8,dest */
+! #line 568 "./r8c.opc"
+            int dst AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 4239,4245 ----
+      case 0xe7:
+          {
+            /** 1110 0dst            CMP.B:S #IMM8,dest */
+! // #line568 "./r8c.opc"
+            int dst AU = op[0] & 0x07;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 4076,4082 ****
+                       op[0]);
+                printf("  dst = 0x%x\n", dst);
+              }
+! #line 569 "./r8c.opc"
+          
+            imm = IMM(0);
+            dc = decode_dest3 (dst, 0);
+--- 4247,4253 ----
+                       op[0]);
+                printf("  dst = 0x%x\n", dst);
+              }
+! // #line569 "./r8c.opc"
+          
+            imm = IMM(0);
+            dc = decode_dest3 (dst, 0);
+***************
+*** 4090,4100 ****
+        GETBYTE();
+          {
+            /** 1110 100w immm dest  SHL.size #IMM, dest */
+! #line 1350 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! #line 1350 "./r8c.opc"
+            int immm AU = (op[1] >> 4) & 0x0f;
+! #line 1350 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 4261,4271 ----
+        GETBYTE();
+          {
+            /** 1110 100w immm dest  SHL.size #IMM, dest */
+! // #line1350 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! // #line1350 "./r8c.opc"
+            int immm AU = (op[1] >> 4) & 0x0f;
+! // #line1350 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 4104,4110 ****
+                printf("  immm = 0x%x,", immm);
+                printf("  dest = 0x%x\n", dest);
+              }
+! #line 1351 "./r8c.opc"
+          
+            dc = decode_srcdest4(dest, w);
+            shift_op (dc, 0, IMM4());
+--- 4275,4281 ----
+                printf("  immm = 0x%x,", immm);
+                printf("  dest = 0x%x\n", dest);
+              }
+! // #line1351 "./r8c.opc"
+          
+            dc = decode_srcdest4(dest, w);
+            shift_op (dc, 0, IMM4());
+***************
+*** 4120,4126 ****
+            case 0x60:
+                {
+                  /** 1110 1011 0reg 0000  LDC #IMM16,dest */
+! #line 834 "./r8c.opc"
+                  int reg AU = (op[1] >> 4) & 0x07;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 4291,4297 ----
+            case 0x60:
+                {
+                  /** 1110 1011 0reg 0000  LDC #IMM16,dest */
+! // #line834 "./r8c.opc"
+                  int reg AU = (op[1] >> 4) & 0x07;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 4128,4134 ****
+                             op[0], op[1]);
+                      printf("  reg = 0x%x\n", reg);
+                    }
+! #line 835 "./r8c.opc"
+                
+                  dc = decode_cr (reg);
+                  imm = IMM(1);
+--- 4299,4305 ----
+                             op[0], op[1]);
+                      printf("  reg = 0x%x\n", reg);
+                    }
+! // #line835 "./r8c.opc"
+                
+                  dc = decode_cr (reg);
+                  imm = IMM(1);
+***************
+*** 4139,4145 ****
+            case 0x01:
+                {
+                  /** 1110 1011 000d 0001  SHL.L R1H,dest */
+! #line 1366 "./r8c.opc"
+                  int d AU = (op[1] >> 4) & 0x01;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 4310,4316 ----
+            case 0x01:
+                {
+                  /** 1110 1011 000d 0001  SHL.L R1H,dest */
+! // #line1366 "./r8c.opc"
+                  int d AU = (op[1] >> 4) & 0x01;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 4147,4153 ****
+                             op[0], op[1]);
+                      printf("  d = 0x%x\n", d);
+                    }
+! #line 1367 "./r8c.opc"
+                
+                  dc = reg_sd (d ? r3r1 : r2r0);
+                  a = sign_ext (get_reg (r1h), 8);
+--- 4318,4324 ----
+                             op[0], op[1]);
+                      printf("  d = 0x%x\n", d);
+                    }
+! // #line1367 "./r8c.opc"
+                
+                  dc = reg_sd (d ? r3r1 : r2r0);
+                  a = sign_ext (get_reg (r1h), 8);
+***************
+*** 4161,4167 ****
+            case 0x62:
+                {
+                  /** 1110 1011 0src 0010  PUSHC src */
+! #line 1227 "./r8c.opc"
+                  int src AU = (op[1] >> 4) & 0x07;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 4332,4338 ----
+            case 0x62:
+                {
+                  /** 1110 1011 0src 0010  PUSHC src */
+! // #line1227 "./r8c.opc"
+                  int src AU = (op[1] >> 4) & 0x07;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 4169,4175 ****
+                             op[0], op[1]);
+                      printf("  src = 0x%x\n", src);
+                    }
+! #line 1228 "./r8c.opc"
+                
+                  sc = decode_cr (src);
+                  put_reg (sp, get_reg (sp) - 2);
+--- 4340,4346 ----
+                             op[0], op[1]);
+                      printf("  src = 0x%x\n", src);
+                    }
+! // #line1228 "./r8c.opc"
+                
+                  sc = decode_cr (src);
+                  put_reg (sp, get_reg (sp) - 2);
+***************
+*** 4185,4191 ****
+            case 0x63:
+                {
+                  /** 1110 1011 0reg 0011  POPC dest */
+! #line 1152 "./r8c.opc"
+                  int reg AU = (op[1] >> 4) & 0x07;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 4356,4362 ----
+            case 0x63:
+                {
+                  /** 1110 1011 0reg 0011  POPC dest */
+! // #line1152 "./r8c.opc"
+                  int reg AU = (op[1] >> 4) & 0x07;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 4193,4199 ****
+                             op[0], op[1]);
+                      printf("  reg = 0x%x\n", reg);
+                    }
+! #line 1153 "./r8c.opc"
+                
+                  dc = decode_cr (reg);
+                  v = mem_get_hi (get_reg (sp));
+--- 4364,4370 ----
+                             op[0], op[1]);
+                      printf("  reg = 0x%x\n", reg);
+                    }
+! // #line1153 "./r8c.opc"
+                
+                  dc = decode_cr (reg);
+                  v = mem_get_hi (get_reg (sp));
+***************
+*** 4209,4215 ****
+            case 0x64:
+                {
+                  /** 1110 1011 0flg 0100  FSET dest */
+! #line 702 "./r8c.opc"
+                  int flg AU = (op[1] >> 4) & 0x07;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 4380,4386 ----
+            case 0x64:
+                {
+                  /** 1110 1011 0flg 0100  FSET dest */
+! // #line702 "./r8c.opc"
+                  int flg AU = (op[1] >> 4) & 0x07;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 4217,4223 ****
+                             op[0], op[1]);
+                      printf("  flg = 0x%x\n", flg);
+                    }
+! #line 703 "./r8c.opc"
+                
+                  set_flags (1 << flg, 1 << flg);
+                
+--- 4388,4394 ----
+                             op[0], op[1]);
+                      printf("  flg = 0x%x\n", flg);
+                    }
+! // #line703 "./r8c.opc"
+                
+                  set_flags (1 << flg, 1 << flg);
+                
+***************
+*** 4229,4235 ****
+            case 0x65:
+                {
+                  /** 1110 1011 0flg 0101  FCLR dest */
+! #line 698 "./r8c.opc"
+                  int flg AU = (op[1] >> 4) & 0x07;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 4400,4406 ----
+            case 0x65:
+                {
+                  /** 1110 1011 0flg 0101  FCLR dest */
+! // #line698 "./r8c.opc"
+                  int flg AU = (op[1] >> 4) & 0x07;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 4237,4243 ****
+                             op[0], op[1]);
+                      printf("  flg = 0x%x\n", flg);
+                    }
+! #line 699 "./r8c.opc"
+                
+                  set_flags (1 << flg, 0);
+                
+--- 4408,4414 ----
+                             op[0], op[1]);
+                      printf("  flg = 0x%x\n", flg);
+                    }
+! // #line699 "./r8c.opc"
+                
+                  set_flags (1 << flg, 0);
+                
+***************
+*** 4277,4285 ****
+            case 0x6f:
+                {
+                  /** 1110 1011 0reg 1src  MOVA src,dest */
+! #line 982 "./r8c.opc"
+                  int reg AU = (op[1] >> 4) & 0x07;
+! #line 982 "./r8c.opc"
+                  int src AU = op[1] & 0x07;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 4448,4456 ----
+            case 0x6f:
+                {
+                  /** 1110 1011 0reg 1src  MOVA src,dest */
+! // #line982 "./r8c.opc"
+                  int reg AU = (op[1] >> 4) & 0x07;
+! // #line982 "./r8c.opc"
+                  int src AU = op[1] & 0x07;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 4288,4294 ****
+                      printf("  reg = 0x%x,", reg);
+                      printf("  src = 0x%x\n", src);
+                    }
+! #line 983 "./r8c.opc"
+                
+                  static reg_id map[] = { r0, r1, r2, r3, a0, a1, 0, 0 };
+                  sc = decode_srcdest4 (8 + src, 0);
+--- 4459,4465 ----
+                      printf("  reg = 0x%x,", reg);
+                      printf("  src = 0x%x\n", src);
+                    }
+! // #line983 "./r8c.opc"
+                
+                  static reg_id map[] = { r0, r1, r2, r3, a0, a1, 0, 0 };
+                  sc = decode_srcdest4 (8 + src, 0);
+***************
+*** 4299,4305 ****
+            case 0x21:
+                {
+                  /** 1110 1011 001d 0001  SHA.L R1H,dest */
+! #line 1344 "./r8c.opc"
+                  int d AU = (op[1] >> 4) & 0x01;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 4470,4476 ----
+            case 0x21:
+                {
+                  /** 1110 1011 001d 0001  SHA.L R1H,dest */
+! // #line1344 "./r8c.opc"
+                  int d AU = (op[1] >> 4) & 0x01;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 4307,4313 ****
+                             op[0], op[1]);
+                      printf("  d = 0x%x\n", d);
+                    }
+! #line 1345 "./r8c.opc"
+                
+                  dc = reg_sd (d ? r3r1 : r2r0);
+                  a = sign_ext (get_reg (r1h), 8);
+--- 4478,4484 ----
+                             op[0], op[1]);
+                      printf("  d = 0x%x\n", d);
+                    }
+! // #line1345 "./r8c.opc"
+                
+                  dc = reg_sd (d ? r3r1 : r2r0);
+                  a = sign_ext (get_reg (r1h), 8);
+***************
+*** 4333,4341 ****
+            case 0x8f:
+                {
+                  /** 1110 1011 100d immm  SHL.L #IMM,dest */
+! #line 1361 "./r8c.opc"
+                  int d AU = (op[1] >> 4) & 0x01;
+! #line 1361 "./r8c.opc"
+                  int immm AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 4504,4512 ----
+            case 0x8f:
+                {
+                  /** 1110 1011 100d immm  SHL.L #IMM,dest */
+! // #line1361 "./r8c.opc"
+                  int d AU = (op[1] >> 4) & 0x01;
+! // #line1361 "./r8c.opc"
+                  int immm AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 4344,4350 ****
+                      printf("  d = 0x%x,", d);
+                      printf("  immm = 0x%x\n", immm);
+                    }
+! #line 1362 "./r8c.opc"
+                
+                  dc = reg_sd (d ? r3r1 : r2r0);
+                  shift_op (dc, 0, IMM4());
+--- 4515,4521 ----
+                      printf("  d = 0x%x,", d);
+                      printf("  immm = 0x%x\n", immm);
+                    }
+! // #line1362 "./r8c.opc"
+                
+                  dc = reg_sd (d ? r3r1 : r2r0);
+                  shift_op (dc, 0, IMM4());
+***************
+*** 4369,4377 ****
+            case 0xaf:
+                {
+                  /** 1110 1011 101d immm  SHA.L #IMM, dest */
+! #line 1339 "./r8c.opc"
+                  int d AU = (op[1] >> 4) & 0x01;
+! #line 1339 "./r8c.opc"
+                  int immm AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 4540,4548 ----
+            case 0xaf:
+                {
+                  /** 1110 1011 101d immm  SHA.L #IMM, dest */
+! // #line1339 "./r8c.opc"
+                  int d AU = (op[1] >> 4) & 0x01;
+! // #line1339 "./r8c.opc"
+                  int immm AU = op[1] & 0x0f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 4380,4386 ****
+                      printf("  d = 0x%x,", d);
+                      printf("  immm = 0x%x\n", immm);
+                    }
+! #line 1340 "./r8c.opc"
+                
+                  dc = reg_sd (d ? r3r1 : r2r0);
+                  shift_op (dc, 1, IMM4());
+--- 4551,4557 ----
+                      printf("  d = 0x%x,", d);
+                      printf("  immm = 0x%x\n", immm);
+                    }
+! // #line1340 "./r8c.opc"
+                
+                  dc = reg_sd (d ? r3r1 : r2r0);
+                  shift_op (dc, 1, IMM4());
+***************
+*** 4421,4427 ****
+            case 0xef:
+                {
+                  /** 1110 1011 11vector   INT #imm */
+! #line 723 "./r8c.opc"
+                  int vector AU = op[1] & 0x3f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 4592,4598 ----
+            case 0xef:
+                {
+                  /** 1110 1011 11vector   INT #imm */
+! // #line723 "./r8c.opc"
+                  int vector AU = op[1] & 0x3f;
+                  if (trace) {
+                      printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 4429,4435 ****
+                             op[0], op[1]);
+                      printf("  vector = 0x%x\n", vector);
+                    }
+! #line 724 "./r8c.opc"
+                
+                  trigger_based_interrupt (vector);
+                
+--- 4600,4606 ----
+                             op[0], op[1]);
+                      printf("  vector = 0x%x\n", vector);
+                    }
+! // #line724 "./r8c.opc"
+                
+                  trigger_based_interrupt (vector);
+                
+***************
+*** 4446,4452 ****
+                       "/** 1110 1100            PUSHM src */",
+                       op[0]);
+              }
+! #line 1236 "./r8c.opc"
+          
+            static int map[] = { fb, sb, a1, a0, r3, r2, r1, r0 };
+            imm = IMM(0);
+--- 4617,4623 ----
+                       "/** 1110 1100            PUSHM src */",
+                       op[0]);
+              }
+! // #line1236 "./r8c.opc"
+          
+            static int map[] = { fb, sb, a1, a0, r3, r2, r1, r0 };
+            imm = IMM(0);
+***************
+*** 4469,4475 ****
+                       "/** 1110 1101            POPM dest */",
+                       op[0]);
+              }
+! #line 1161 "./r8c.opc"
+          
+            static int map[] = { r0, r1, r2, r3, a0, a1, sb, fb };
+            imm = IMM(0);
+--- 4640,4646 ----
+                       "/** 1110 1101            POPM dest */",
+                       op[0]);
+              }
+! // #line1161 "./r8c.opc"
+          
+            static int map[] = { r0, r1, r2, r3, a0, a1, sb, fb };
+            imm = IMM(0);
+***************
+*** 4492,4498 ****
+                       "/** 1110 1110            JMPS #IMM8 */",
+                       op[0]);
+              }
+! #line 783 "./r8c.opc"
+          
+            M16C_ONLY();
+          
+--- 4663,4669 ----
+                       "/** 1110 1110            JMPS #IMM8 */",
+                       op[0]);
+              }
+! // #line783 "./r8c.opc"
+          
+            M16C_ONLY();
+          
+***************
+*** 4510,4516 ****
+                       "/** 1110 1111            JSRS #IMM8 */",
+                       op[0]);
+              }
+! #line 824 "./r8c.opc"
+          
+            M16C_ONLY();
+          
+--- 4681,4687 ----
+                       "/** 1110 1111            JSRS #IMM8 */",
+                       op[0]);
+              }
+! // #line824 "./r8c.opc"
+          
+            M16C_ONLY();
+          
+***************
+*** 4528,4538 ****
+        GETBYTE();
+          {
+            /** 1111 000w immm dest  SHA.size #IMM, dest */
+! #line 1328 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! #line 1328 "./r8c.opc"
+            int immm AU = (op[1] >> 4) & 0x0f;
+! #line 1328 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 4699,4709 ----
+        GETBYTE();
+          {
+            /** 1111 000w immm dest  SHA.size #IMM, dest */
+! // #line1328 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! // #line1328 "./r8c.opc"
+            int immm AU = (op[1] >> 4) & 0x0f;
+! // #line1328 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 4542,4548 ****
+                printf("  immm = 0x%x,", immm);
+                printf("  dest = 0x%x\n", dest);
+              }
+! #line 1329 "./r8c.opc"
+          
+            dc = decode_srcdest4(dest, w);
+            shift_op (dc, 1, IMM4());
+--- 4713,4719 ----
+                printf("  immm = 0x%x,", immm);
+                printf("  dest = 0x%x\n", dest);
+              }
+! // #line1329 "./r8c.opc"
+          
+            dc = decode_srcdest4(dest, w);
+            shift_op (dc, 1, IMM4());
+***************
+*** 4553,4559 ****
+      case 0xfa:
+          {
+            /** 1111 d010            DEC.W dest */
+! #line 636 "./r8c.opc"
+            int d AU = (op[0] >> 3) & 0x01;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+--- 4724,4730 ----
+      case 0xfa:
+          {
+            /** 1111 d010            DEC.W dest */
+! // #line636 "./r8c.opc"
+            int d AU = (op[0] >> 3) & 0x01;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x\n",
+***************
+*** 4561,4567 ****
+                       op[0]);
+                printf("  d = 0x%x\n", d);
+              }
+! #line 637 "./r8c.opc"
+          
+            v = get_reg (d ? a1 : a0);
+            tprintf("%x -- = %x\n", v, v-1);
+--- 4732,4738 ----
+                       op[0]);
+                printf("  d = 0x%x\n", d);
+              }
+! // #line637 "./r8c.opc"
+          
+            v = get_reg (d ? a1 : a0);
+            tprintf("%x -- = %x\n", v, v-1);
+***************
+*** 4579,4585 ****
+                       "/** 1111 0011            RTS */",
+                       op[0]);
+              }
+! #line 1311 "./r8c.opc"
+          
+            put_reg (pc, mem_get_psi (get_reg (sp)));
+            put_reg (sp, get_reg (sp) + 3);
+--- 4750,4756 ----
+                       "/** 1111 0011            RTS */",
+                       op[0]);
+              }
+! // #line1311 "./r8c.opc"
+          
+            put_reg (pc, mem_get_psi (get_reg (sp)));
+            put_reg (sp, get_reg (sp) + 3);
+***************
+*** 4594,4600 ****
+                       "/** 1111 0100            JMP.W label */",
+                       op[0]);
+              }
+! #line 760 "./r8c.opc"
+          
+            imm = sign_ext (IMM(1), 16);
+            put_reg (pc, orig_pc + 1 + imm);
+--- 4765,4771 ----
+                       "/** 1111 0100            JMP.W label */",
+                       op[0]);
+              }
+! // #line760 "./r8c.opc"
+          
+            imm = sign_ext (IMM(1), 16);
+            put_reg (pc, orig_pc + 1 + imm);
+***************
+*** 4609,4615 ****
+                       "/** 1111 0101            JSR.W label */",
+                       op[0]);
+              }
+! #line 791 "./r8c.opc"
+          
+            imm = sign_ext (IMM(1), 16);
+            put_reg (sp, get_reg (sp) - 3);
+--- 4780,4786 ----
+                       "/** 1111 0101            JSR.W label */",
+                       op[0]);
+              }
+! // #line791 "./r8c.opc"
+          
+            imm = sign_ext (IMM(1), 16);
+            put_reg (sp, get_reg (sp) - 3);
+***************
+*** 4626,4632 ****
+                       "/** 1111 0110            INTO */",
+                       op[0]);
+              }
+! #line 728 "./r8c.opc"
+          
+            if (FLAG_O)
+              trigger_fixed_interrupt (0xffe0);
+--- 4797,4803 ----
+                       "/** 1111 0110            INTO */",
+                       op[0]);
+              }
+! // #line728 "./r8c.opc"
+          
+            if (FLAG_O)
+              trigger_fixed_interrupt (0xffe0);
+***************
+*** 4638,4648 ****
+        GETBYTE();
+          {
+            /** 1111 100w immm dest  ADJNZ.size #IMM,dest,label */
+! #line 394 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! #line 394 "./r8c.opc"
+            int immm AU = (op[1] >> 4) & 0x0f;
+! #line 394 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+--- 4809,4819 ----
+        GETBYTE();
+          {
+            /** 1111 100w immm dest  ADJNZ.size #IMM,dest,label */
+! // #line394 "./r8c.opc"
+            int w AU = op[0] & 0x01;
+! // #line394 "./r8c.opc"
+            int immm AU = (op[1] >> 4) & 0x0f;
+! // #line394 "./r8c.opc"
+            int dest AU = op[1] & 0x0f;
+            if (trace) {
+                printf("\033[33m%s\033[0m  %02x %02x\n",
+***************
+*** 4652,4658 ****
+                printf("  immm = 0x%x,", immm);
+                printf("  dest = 0x%x\n", dest);
+              }
+! #line 395 "./r8c.opc"
+          
+            UNARY_UOP;
+            imm = sign_ext(immm, 4);
+--- 4823,4829 ----
+                printf("  immm = 0x%x,", immm);
+                printf("  dest = 0x%x\n", dest);
+              }
+! // #line395 "./r8c.opc"
+          
+            UNARY_UOP;
+            imm = sign_ext(immm, 4);
+***************
+*** 4677,4683 ****
+                       "/** 1111 1011            REIT */",
+                       op[0]);
+              }
+! #line 1249 "./r8c.opc"
+          
+            a = get_reg (sp);
+            v = (mem_get_hi (a)
+--- 4848,4854 ----
+                       "/** 1111 1011            REIT */",
+                       op[0]);
+              }
+! // #line1249 "./r8c.opc"
+          
+            a = get_reg (sp);
+            v = (mem_get_hi (a)
+***************
+*** 4698,4704 ****
+                       "/** 1111 1100            JMP.A label */",
+                       op[0]);
+              }
+! #line 765 "./r8c.opc"
+            
+            imm = IMM(2);
+            put_reg (pc, imm);
+--- 4869,4875 ----
+                       "/** 1111 1100            JMP.A label */",
+                       op[0]);
+              }
+! // #line765 "./r8c.opc"
+            
+            imm = IMM(2);
+            put_reg (pc, imm);
+***************
+*** 4713,4719 ****
+                       "/** 1111 1101            JSR.A label */",
+                       op[0]);
+              }
+! #line 798 "./r8c.opc"
+          
+            imm = IMM(2);
+            put_reg (sp, get_reg (sp) - 3);
+--- 4884,4890 ----
+                       "/** 1111 1101            JSR.A label */",
+                       op[0]);
+              }
+! // #line798 "./r8c.opc"
+          
+            imm = IMM(2);
+            put_reg (sp, get_reg (sp) - 3);
+***************
+*** 4730,4736 ****
+                       "/** 1111 1110            JMP.B label */",
+                       op[0]);
+              }
+! #line 749 "./r8c.opc"
+          
+            imm = sign_ext (IMM(0), 8);
+            if (imm == -1)
+--- 4901,4907 ----
+                       "/** 1111 1110            JMP.B label */",
+                       op[0]);
+              }
+! // #line749 "./r8c.opc"
+          
+            imm = sign_ext (IMM(0), 8);
+            if (imm == -1)
+***************
+*** 4751,4765 ****
+                       "/** 1111 1111            UND */",
+                       op[0]);
+              }
+! #line 1556 "./r8c.opc"
+          
+            trigger_fixed_interrupt (0xffdc);
+          
+          }
+        break;
+      default: UNSUPPORTED(); break;
+    }
+! #line 1591 "./r8c.opc"
+  
+    return step_result;
+  }
+--- 4922,4947 ----
+                       "/** 1111 1111            UND */",
+                       op[0]);
+              }
+! // #line1556 "./r8c.opc"
+          
+            trigger_fixed_interrupt (0xffdc);
+          
+          }
+        break;
++     case 0x7f:
++       {
++ 	GETBYTE();
++ 	switch (op[1]) {
++ 	case 0x00: exit(0);
++ 	case 0x01: do_printf(); break;
++ 	case 0x02: do_puts(); break;
++ 	case 0x03: do_putchar(); break;
++ 	}
++       }
++       break;
+      default: UNSUPPORTED(); break;
+    }
+! // #line1591 "./r8c.opc"
+  
+    return step_result;
+  }
