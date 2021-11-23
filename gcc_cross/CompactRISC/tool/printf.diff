@@ -1,0 +1,238 @@
+*** gdb-10.2.aarch64-elf/sim/cr16/interp.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.cr16-elf/sim/cr16/interp.c	2021-11-15 06:35:18.000000000 +0900
+***************
+*** 68,74 ****
+    return ((insn & 0xF)); /* Use last 4 bits as hask key.  */
+  }
+  
+- 
+  INLINE static struct hash_entry *
+  lookup_hash (SIM_DESC sd, SIM_CPU *cpu, uint64 ins, int size)
+  {
+--- 68,73 ----
+***************
+*** 321,326 ****
+--- 320,510 ----
+    State.trace.psw = PSR;
+  }
+  
++ #include <assert.h>
++ 
++ static int first_arg(SIM_CPU* cpu, _Bool refer_stack)
++ {
++   if (refer_stack) {
++     int sp = GPR(15);
++     return RW(sp);
++   }    
++   return GPR(2);
++ }
++ 
++ static const char* first_string(SIM_DESC sd, SIM_CPU* cpu, _Bool refer_stack)
++ {
++   int addr = first_arg(cpu, refer_stack);
++   static char buf[256];
++   for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i ) {
++     char c = RB(addr+i);
++     buf[i] = c;
++     if (c == '\0')
++       return &buf[0]; // ok
++   }
++   assert(0 && "not enough buffer");
++   return &buf[0];
++ }
++ 
++ enum arg_class { NONE, WORD, LONG, LONG_LONG, DF, LDF, STR };
++ 
++ static const char* get_part(const char* fmt, enum arg_class* how)
++ {
++   for ( ; *fmt ; ++fmt) {
++     char c = *fmt;
++     if (c == 'd' || c == 'i' || c == 'x' || c == 'u') {
++       if (*how == NONE)
++ 	*how = WORD;
++       return ++fmt;
++     }
++     if (c == 'c') {
++       *how = WORD;
++       return ++fmt;
++     }
++     if (c == 'f') {
++       char prev = *(fmt-1);
++       *how = prev == 'L' ? LDF : DF;
++       return ++fmt;
++     }
++     if (c == 's') {
++       *how = STR;
++       return ++fmt;
++     }
++     if (c == 'l') {
++       if (*how == NONE)
++ 	*how = LONG;
++       else
++ 	*how = LONG_LONG;
++     }
++   }
++   assert(0 && "unexpected");
++   return fmt;
++ }
++ 
++ static int arg16(SIM_CPU* cpu, int nth)
++ {
++   assert(nth);
++   int sp = GPR(15);
++   int addr = sp + 4 + 2 * (nth-2);
++   return RW(addr);
++ }
++ 
++ static int arg32(SIM_CPU* cpu, int nth)
++ {
++   int sp = GPR(15);
++   int addr = sp + 4 + 2 * (nth-2);
++   uint32_t lo = RW(addr);
++   uint32_t hi = RW(addr+2);
++   return (hi << 16) | lo;
++ }
++ 
++ static uint64_t arg64(SIM_CPU* cpu, int nth)
++ {
++   int sp = GPR(15);
++   int addr = sp + 4 + 2 * (nth-2);
++   uint32_t a = RW(addr+0);
++   uint32_t b = RW(addr+2);
++   uint32_t c = RW(addr+4);
++   uint32_t d = RW(addr+6);
++   uint32_t lo = (b << 16) | a;
++   uint64_t hi = (d << 16) | c;
++   return (hi << 32) | lo;
++ }
++ 
++ static const char*
++ handle(SIM_CPU* cpu, const char* fmt, int* nth, int* ret)
++ {
++   char c = *fmt;
++   if (c != '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   const char* beg = fmt;
++   c = *++fmt;
++   if (c == '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   enum arg_class how = NONE;  
++   const char* end = get_part(fmt, &how);
++   char part_fmt[256];
++   int n = end - beg;
++   assert(n + 1 < sizeof part_fmt/sizeof part_fmt[0]);
++   strncpy(&part_fmt[0], beg, n);
++   part_fmt[n] = '\0';
++   if (how == WORD) {
++     int arg = arg16(cpu, (*nth)++);
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == LONG) {
++     uint64_t arg = arg32(cpu, *nth);
++     *nth += 2;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == LONG_LONG) {
++     uint64_t arg = arg64(cpu, *nth);
++     *nth += 4;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DF || how == LDF) {
++     union {
++       uint64_t i;
++       double d;
++     } u = { arg64(cpu, *nth) };
++     *nth += 4;
++     if (how == DF)
++       *ret += printf(part_fmt, u.d);
++     else
++       *ret += printf(part_fmt, (long double)u.d);
++     return end;
++   }
++   if (how == STR) {
++     uint32_t addr = arg32(cpu, *nth);
++     *nth += 2;
++     char buf[256];
++     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++       char c = RB(addr+i);
++       buf[i] = c;
++       if (c == '\0') {
++ 	*ret += printf(part_fmt, &buf[0]);  // ok
++ 	return end;
++       }
++     }
++     assert(0 && "not enough buffer");
++     return end;
++   }
++   asm("int3");
++   return end;
++ }
++ 
++ static void do_printf(SIM_DESC sd, SIM_CPU *cpu)
++ {
++   const char* fmt = first_string(sd, cpu, TRUE);
++   int argc = 2;
++   int ret = 0;
++   while (*fmt)
++     fmt = handle(cpu, fmt, &argc, &ret);
++   SET_GPR(2, ret);
++ }
++ 
++ static void do_puts(SIM_DESC sd, SIM_CPU *cpu)
++ {
++   const char* arg = first_string(sd, cpu, FALSE);
++   int ret = puts(arg);
++   SET_GPR(2, ret);
++ }
++ 
++ static void do_putchar(SIM_DESC sd, SIM_CPU *cpu)
++ {
++   int arg = first_arg(cpu, FALSE);
++   int ret = putchar(arg);
++   SET_GPR(2, ret);
++ }
++ 
+  static int
+  do_run (SIM_DESC sd, SIM_CPU *cpu, uint64 mcode)
+  {
+***************
+*** 331,337 ****
+      sim_io_printf (sd, "do_long 0x%x\n", mcode);
+  #endif
+  
+!    h = lookup_hash (sd, cpu, mcode, 1);
+  
+    if ((h == NULL) || (h->opcode == 0))
+      return 0;
+--- 515,528 ----
+      sim_io_printf (sd, "do_long 0x%x\n", mcode);
+  #endif
+  
+!   switch (mcode >> 16) {
+!     case 0x80f0: exit(0);
+!     case 0x80f1: do_printf(sd, cpu); return 1;
+!     case 0x80f2: do_puts(sd, cpu);  return 1;
+!     case 0x80f3: do_putchar(sd, cpu); return 1;
+!   }
+! 
+!   h = lookup_hash (sd, cpu, mcode, 1);
+  
+    if ((h == NULL) || (h->opcode == 0))
+      return 0;
+***************
+*** 809,811 ****
+--- 1000,1004 ----
+    SLOT_FLUSH ();
+    return size;
+  }
++ 
++ struct _state State;
