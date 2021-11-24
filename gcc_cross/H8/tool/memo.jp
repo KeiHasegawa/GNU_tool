@@ -27,6 +27,22 @@ newlib による printf ではなくて, お手軽にログを出力できたほ
 
 のように実行すればよい.
 
+(*) コンパイラの実装やプロセッサによる違い
+
+o sizeof(int)
+o sizeof(long)
+o sizeof(void*)
+o long long x; void* y; ... ; x = y; の場合に場合符号拡張するか否か.
+o ptrdiff_t の型
+o char が signed char と同じ範囲の値を取るか, あるいは unsigned char と同じ範囲の
+  値を取るか.
+o wchar_t の型
+o sizoef(wchar_t)
+o sizeof(double)
+o sizeof(long doububle)
+
+によりテストのログの期待値が異なることになる.
+
 (*) 結果
 
 2021/11/24 16:36
