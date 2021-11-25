@@ -6,7 +6,7 @@ SECTIONS {
 	 _gp = . ;
 	 .sdata : {}
 
-	 . = 0xa0021000;
+	 . = 0xa0026000;
 	 .stack : {}
 	 PROVIDE(stack = .);
 

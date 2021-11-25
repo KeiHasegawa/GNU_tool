@@ -9,7 +9,7 @@ SECTIONS {
 	 PROVIDE(data_end = .);
 	 .bss : {}
 
-	 . = 0x1000;
+	 . = 0x6000;
 	 .stack : {}
 	 PROVIDE(stack = .);
 }

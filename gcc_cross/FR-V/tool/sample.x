@@ -8,7 +8,7 @@ SECTIONS {
 	       *(.data)
 	 }
 
-	 . = 0x1000;
+	 . = 0x6000;
 	 .stack : {}
 	 PROVIDE(_stack = .);
 }

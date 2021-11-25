@@ -5,10 +5,11 @@ SECTIONS {
 	 . = 0x0500;
 	 .heap : {}
  	 PROVIDE(heap = .);
-	 . = 0x1000;
-	 .stack : {}
-	 PROVIDE(stack = .);	 
 
 	 . = 0x1040;
 	 .text : {}
+
+	 . = 0x7000;
+	 .stack : {}
+	 PROVIDE(stack = .);	 
 }
