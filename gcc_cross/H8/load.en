@@ -1,4 +1,4 @@
-以下のようなプログラムをビルドして実行してみた.
+I tried to build and execute below program:
 
 % cat sample.c
 #include <stdio.h>
@@ -35,14 +35,13 @@ start () at ../../../../.././newlib/libc/sys/h8300hms/crt0.S:11
 11		mov.w	#_edata,r0
 (gdb)
 
-start は sample.elf のエントリポイントでそこから 2 命令を実行したところで
-Illegal instruction のエラーになったということ.
+where, `start' is the entry point of this program. Above shows
+that 2 `stepi' commmands causes `Illegal instruction' erorr.
 
-エラーの直接の原因は不正なオペコードを検出したからなのだが, load コマンドで
-プログラムのロードイメージが 64 KByte を超えていたことがそもそもの原因であった.
+Direct reason of this error is executing invalid opcode. But
+before this, `load' command might be able to detect the program
+exceeds 64 KBytes.
 
-このエラーは函数 sim_load で捉えられるべきだがそうはなっていなかったということ
-である.
+This error should be caught at `sim_load' function, but not.
 
-ところでこのプログラムのおおよそのサイズだが 0x100 から 0x11920+0x5b8 = 0x11ed8
-ということになる.
+By the way, this program load image is in 0x100 to 0x11920+0x5b8 = 0x11ed8.
