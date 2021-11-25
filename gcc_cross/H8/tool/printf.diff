@@ -1,5 +1,5 @@
 *** gdb-10.2.aarch64-elf/sim/h8300/compile.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.h8300-elf/sim/h8300/compile.c	2021-11-25 16:26:05.000000000 +0900
+--- gdb-10.2.h8300-elf/sim/h8300/compile.c	2021-11-25 16:38:15.000000000 +0900
 ***************
 *** 36,41 ****
 --- 36,43 ----
@@ -101,13 +101,13 @@
 +   return fmt;
 + }
 + 
-+ static uint32_t arg16(SIM_DESC sd, sim_cpu* cpu, int nth)
++ static int arg16(SIM_DESC sd, sim_cpu* cpu, int nth)
 + {
 +   assert(nth);
 +   unsigned char* mem = h8_get_memory_buf(sd);
 +   int sp = cpu->regs[SP_REGNUM];
 +   int addr = sp+2+2*nth;
-+   unsigned short ret = (mem[addr] << 8) | mem[addr+1];
++   short ret = (mem[addr] << 8) | mem[addr+1];
 +   return ret;
 + }
 + 
@@ -159,7 +159,7 @@
 +   strncpy(&part_fmt[0], beg, n);
 +   part_fmt[n] = '\0';
 +   if (how == WORD) {
-+     uint32_t arg = arg16(sd, cpu, (*nth)++);
++     int arg = arg16(sd, cpu, (*nth)++);
 +     *ret += printf(part_fmt, arg);
 +     return end;
 +   }
@@ -189,7 +189,7 @@
 +   }
 +   if (how == STR) {
 +     unsigned char* mem = h8_get_memory_buf(sd);
-+     uint32_t addr = arg16(sd, cpu, (*nth)++);
++     uint16_t addr = arg16(sd, cpu, (*nth)++);
 +     char buf[256];
 +     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
 +       char c = mem[addr+i];
