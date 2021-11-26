@@ -1,0 +1,27 @@
+ARM simulator memory
+
+If target program access memory, the below function is called:
+
+static ARMword
+GetWord (ARMul_State * state, ARMword address, int check)
+{
+...
+
+And, if memory is not allocated for `address', automatically it is allocated
+like below:
+
+  if (pageptr == NULL)
+    {
+      pageptr = (ARMword *) malloc (PAGESIZE);
+
+      if (pageptr == NULL)
+	{
+	  perror ("ARMulator can't allocate VM page");
+	  exit (12);
+	}
+
+      *(pagetable + page) = pageptr;
+    }
+
+  return *(pageptr + offset);
+}

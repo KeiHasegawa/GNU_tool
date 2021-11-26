@@ -1,0 +1,26 @@
+ARM シミュレータのメモリ
+
+メモリアクセスに対して最後には以下の函数が呼び出される:
+
+static ARMword
+GetWord (ARMul_State * state, ARMword address, int check)
+{
+...
+
+そしてメモリがまだ確保されていなければ自動的にメモリを割り当てる:
+
+  if (pageptr == NULL)
+    {
+      pageptr = (ARMword *) malloc (PAGESIZE);
+
+      if (pageptr == NULL)
+	{
+	  perror ("ARMulator can't allocate VM page");
+	  exit (12);
+	}
+
+      *(pagetable + page) = pageptr;
+    }
+
+  return *(pageptr + offset);
+}
