@@ -1,0 +1,7 @@
+ETRAX_CRIS のシミュレータのメモリ
+
+sim_open で以下のように [0, 0x2000) 番地を確保している:
+
+  if (sim_core_read_buffer (sd, NULL, read_map, &c, startmem, 1) == 0)
+    sim_do_commandf (sd, "memory region 0x%lx,0x%lx", startmem,
+		     endmem - startmem);
