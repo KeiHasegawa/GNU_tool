@@ -2,7 +2,7 @@ SECTIONS {
 	 . = 0x100;
 	 .text : {}
 
-	 . = 0xf000;
+	 . = 0x8000;
 	 .stack : {}
 	 PROVIDE(stack = .);
 }
