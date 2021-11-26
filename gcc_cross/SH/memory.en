@@ -1,0 +1,10 @@
+SH simulator memory
+
+While `sim_load' is called, `sim_write' is called and just onece, executed
+like below:
+
+  saved_state.asregs.memory =
+    (unsigned char *) mcalloc (1, saved_state.asregs.msize);
+
+where, saved_state.asregs.msize = 0x40000000. i.e.
+[0, 0x40000000) area is allocated.

@@ -1,0 +1,14 @@
+SH シミュレータのメモリ
+
+sim_load のタイミングで sim_write が呼び出され, そこで 1 度だけ
+
+  saved_state.asregs.memory =
+    (unsigned char *) mcalloc (1, saved_state.asregs.msize);
+
+の呼び出しがある. saved_state.asregs.msize = 0x40000000
+[0, 0x40000000) の 1 GByte の領域を固定でメモリ割り当てしている.
+
+Linux マシンを長い時間使用していると SH のシミュレータを起動できなくなるのは
+これが原因らしい.
+
+
