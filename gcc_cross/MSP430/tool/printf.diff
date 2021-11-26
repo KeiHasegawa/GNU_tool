@@ -1,5 +1,5 @@
 *** gdb-10.2.aarch64-elf/sim/msp430/msp430-sim.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.msp430-elf/sim/msp430/msp430-sim.c	2021-11-13 08:01:21.000000000 +0900
+--- gdb-10.2.msp430-elf/sim/msp430/msp430-sim.c	2021-11-26 14:50:21.000000000 +0900
 ***************
 *** 1064,1072 ****
 --- 1064,1077 ----
@@ -35,8 +35,8 @@
 + 
 + static const char* first_string(SIM_DESC sd, SIM_CPU *cpu, _Bool refer_stack)
 + {
-+   int addr = first_arg(sd, cpu, refer_stack);
-+   static char buf[256];
++   uint16_t addr = first_arg(sd, cpu, refer_stack);
++   static char buf[1024];
 +   for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
 +     char c = mem_get_val(sd, addr+i, 8);
 +     buf[i] = c;
@@ -163,7 +163,7 @@
 +     return end;
 +   }
 +   if (how == STR) {
-+     int addr = arg16(sd, cpu, (*nth)++);
++     uint16_t addr = arg16(sd, cpu, (*nth)++);
 +     char buf[256];
 +     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
 +       char c = mem_get_val(sd, addr+i, 8);
