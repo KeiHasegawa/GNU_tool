@@ -1,0 +1,20 @@
+MIPS シミュレータのメモリ
+
+sim_open で以下を実行:
+
+      sim_do_command(sd," memory region 0x7fff8000,0x8000") ; /* MTZ- 32 k stack */
+
+	  /* memory alias K1BASE@1,K1SIZE%MEMSIZE,K0BASE */
+	  sim_do_commandf (sd, "memory alias 0x%lx@1,0x%lx%%0x%lx,0x%0x",
+			   K1BASE, K1SIZE, (long)mem_size, K0BASE);
+
+
+      /* the default monitor region */
+      sim_do_commandf (sd, "memory region 0x%x,0x%x",
+		       idt_monitor_base, idt_monitor_size);
+
+1 つ目は memory region 0x7fff8000,0x8000
+2 つ目は memory alias 0xa0000000@1,0x20000000%0x800000,0x80000000
+3 つ目は memory region 0xbfc00000,0x800
+
+のようになっている.
