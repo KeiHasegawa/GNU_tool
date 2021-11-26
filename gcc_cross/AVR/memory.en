@@ -1,0 +1,10 @@
+AVR simulator memory
+
+AVR instruction memory and data memory is enough small, so
+statically allocated:
+
+#define MAX_AVR_FLASH (128 * 1024)
+#define MAX_AVR_SRAM (64 * 1024)
+...
+static struct avr_insn_cell flash[MAX_AVR_FLASH];
+static byte sram[MAX_AVR_SRAM];

@@ -1,0 +1,10 @@
+AVR のシミュレータのメモリの扱い
+
+AVR の命令用メモリ, データ用メモリは比較的小さいので以下のように静的に
+確保している:
+
+#define MAX_AVR_FLASH (128 * 1024)
+#define MAX_AVR_SRAM (64 * 1024)
+...
+static struct avr_insn_cell flash[MAX_AVR_FLASH];
+static byte sram[MAX_AVR_SRAM];
