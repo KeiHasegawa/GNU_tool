@@ -54,4 +54,37 @@ _memcpy:
 	add.w	r3,r7
 	mov.w	@r7+,r6
 	rts
-	
+
+	.global _memset
+_memset:
+	mov.w	r6,@-r7
+	mov.w	r7,r6
+	mov.w	#-8,r3
+	add.w	r3,r7
+	mov.w	r0,@(-4,r6)
+	mov.w	r1,@(-6,r6)
+	mov.w	r2,@(-8,r6)
+	mov.w	@(-4,r6),r2
+	mov.w	r2,@(-2,r6)
+	bra	.L17
+.L18:
+	mov.w	@(-4,r6),r2
+	mov.w	r2,r3
+	adds	#1,r3
+	mov.w	r3,@(-4,r6)
+	mov.w	@(-6,r6),r3
+	mov.b	r3l,@r2
+.L17:
+	mov.w	@(-8,r6),r2
+	mov.w	r2,r3
+	subs	#1,r3
+	mov.w	r3,@(-8,r6)
+	mov.w	r2,r2
+	bne	.L18
+	mov.w	@(-2,r6),r2
+	mov.w	r2,r0
+	mov.w	#8,r3
+	add.w	r3,r7
+	mov.w	@r7+,r6
+	rts
+
