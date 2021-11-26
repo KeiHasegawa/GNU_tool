@@ -1,0 +1,23 @@
+M68000 シミュレータのメモリ
+
+sim_open から呼び出された函数 sim_hw_configure で以下のように sim_do_commandf
+を呼び出している:
+
+	  sim_do_commandf (sd, "memory region 0x%lx@%d,0x%lx",
+			   /* MONITOR_BASE, MONITOR_SIZE */
+			   0x8000, M6811_RAM_LEVEL, 0x8000);
+	  sim_do_commandf (sd, "memory region 0x000@%d,0x8000",
+			   M6811_RAM_LEVEL);
+
+
+1 つ目は memory region 0x8000@3,0x8000
+2 つ目は memory region 0x000@3,0x8000
+
+になる. 結果的には
+
+	do_memopt_add (sd, level, space, addr, nr_bytes, modulo,
+		       &STATE_MEMOPT (sd), NULL);
+
+の呼び出しになるが @3 は level = 3 に相当する. [0, 0x10000) の 64 KBytes
+を確保している.
+

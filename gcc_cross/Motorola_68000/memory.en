@@ -1,0 +1,22 @@
+M68000 simulator memory
+
+In `sim_open' function, calling `sim_hw_configure' and executed like below:
+
+	  sim_do_commandf (sd, "memory region 0x%lx@%d,0x%lx",
+			   /* MONITOR_BASE, MONITOR_SIZE */
+			   0x8000, M6811_RAM_LEVEL, 0x8000);
+	  sim_do_commandf (sd, "memory region 0x000@%d,0x8000",
+			   M6811_RAM_LEVEL);
+
+
+1st call is "memory region 0x8000@3,0x8000"
+2nd call is " memory region 0x000@3,0x8000"
+
+As a result,
+
+	do_memopt_add (sd, level, space, addr, nr_bytes, modulo,
+		       &STATE_MEMOPT (sd), NULL);
+
+is executed, where @3 is correspond to level = 3. [0, 0x10000) area is
+allocated.
+
