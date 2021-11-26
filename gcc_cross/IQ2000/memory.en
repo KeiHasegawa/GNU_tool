@@ -1,0 +1,13 @@
+IQ2000 simulator memory
+
+In `sim_open' function, executed like below:
+
+  /* Allocate core managed memory.  */
+  sim_do_commandf (sd, "memory region 0x%lx,0x%lx", IQ2000_INSN_VALUE, IQ2000_INSN_MEM_SIZE); 
+  sim_do_commandf (sd, "memory region 0x%lx,0x%lx", IQ2000_DATA_VALUE, IQ2000_DATA_MEM_SIZE); 
+
+1st call is "memory region 0x80000000,0x800000"
+2nd call is "memory region 0x0,0x800000"
+
+[0, 0x1000000) is allocated.
+

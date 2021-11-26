@@ -1,0 +1,12 @@
+IQ2000 のシミュレータのメモリ
+
+sim_open 函数で以下を実行している:
+
+  /* Allocate core managed memory.  */
+  sim_do_commandf (sd, "memory region 0x%lx,0x%lx", IQ2000_INSN_VALUE, IQ2000_INSN_MEM_SIZE); 
+  sim_do_commandf (sd, "memory region 0x%lx,0x%lx", IQ2000_DATA_VALUE, IQ2000_DATA_MEM_SIZE); 
+
+1 つ目は memory region 0x80000000,0x800000
+2 つ目は memory region 0x0,0x800000
+
+[0, 0x1000000) の領域を固定で確保している.
