@@ -1,0 +1,23 @@
+M32C simulator memory
+
+If target program accesses memory, the below function is called:
+
+static unsigned char *
+mem_ptr (int address)
+{
+...
+
+And if not assigned memory for the `address', memory is assigned automatically:
+
+...
+
+  if (pt[pt1] == 0)
+    pt[pt1] = (unsigned char **) calloc (L2_LEN, sizeof (char **));
+  if (pt[pt1][pt2] == 0)
+    {
+      pt[pt1][pt2] = (unsigned char *) malloc (OFF_LEN);
+      memset (pt[pt1][pt2], 0, OFF_LEN);
+    }
+
+  return pt[pt1][pt2] + pto;
+}

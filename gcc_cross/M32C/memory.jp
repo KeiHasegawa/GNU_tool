@@ -1,0 +1,23 @@
+M32C シミュレータのメモリ
+
+メモリアクセスがあると結果的に以下が呼び出される:
+
+static unsigned char *
+mem_ptr (int address)
+{
+...
+
+そしてそこがまだメモリ割り当てされていないのならば, 自動的に割り当てる
+ようにしている:
+
+...
+  if (pt[pt1] == 0)
+    pt[pt1] = (unsigned char **) calloc (L2_LEN, sizeof (char **));
+  if (pt[pt1][pt2] == 0)
+    {
+      pt[pt1][pt2] = (unsigned char *) malloc (OFF_LEN);
+      memset (pt[pt1][pt2], 0, OFF_LEN);
+    }
+
+  return pt[pt1][pt2] + pto;
+}
