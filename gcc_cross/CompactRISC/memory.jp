@@ -1,0 +1,12 @@
+CompactRISC のシミュレータのメモリ
+
+函数 sim_open の中で以下のように行なっている:
+ 
+  sim_do_commandf (sd, "memory-size %#x", 20 * 1024 * 1024);
+
+これは結果的にシミュレータの共通ソースで以下を実行していることになる:
+
+	do_memopt_add (sd, level, space, addr, nr_bytes, modulo,
+		       &STATE_MEMOPT (sd), NULL);
+
+20 MByte を必ず確保するのを止めるには以下のようにする:
