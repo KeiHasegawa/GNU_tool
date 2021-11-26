@@ -58,6 +58,24 @@ Program received signal SIGILL, Illegal instruction.
 現実世界ではそこにメモリがあってアクセス可能だから実行しているというのが H8 のシミュレータ
 の開発者の言い分なのかもしれない. 実際そういうシミュレーションを行なうべき場面は確かに存在する.
 
+ところで上の現象で Illegal instruction が検出される部分を調査してみた:
+
+static void
+step_once (SIM_DESC sd, SIM_CPU *cpu)
+{
+...
+  pc = h8_get_pc (sd);
+  if (pc == 0x10002)
+    asm("int3");          ここで停止していることを確認した
+...   
+      cidx = h8_get_cache_idx (sd, pc);   cidx = 0xffff になり
+      if (cidx == (unsigned short) -1 ||
+	  cidx >= sd->sim_cache_size)
+	goto illegal;                  そしてここで illegal にジャンプしていた
+
+おそらくだが, 現実世界では 2 番地を実行するのが期待値. おやと思うのは, それでは 0x10000
+に対しては何をシミュレーションしていたかとうことであるが, もはやどうでもいいか.
+
 (*2) ロード/ストア
 
 test001.S
