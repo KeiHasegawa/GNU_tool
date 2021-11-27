@@ -1,0 +1,92 @@
+*** gdb-10.2.arm-elf/sim/aarch64/simulator.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.aarch64-elf/sim/aarch64/simulator.c	2021-11-27 17:51:09.000000000 +0900
+***************
+*** 8389,8395 ****
+  }
+  
+  static void
+! do_fcvtzu (sim_cpu *cpu)
+  {
+    /* instr[31]    = size: 32-bit (0), 64-bit (1)
+       instr[30,23] = 00111100
+--- 8389,8395 ----
+  }
+  
+  static void
+! do_fcvtzu (sim_cpu *cpu, _Bool check)
+  {
+    /* instr[31]    = size: 32-bit (0), 64-bit (1)
+       instr[30,23] = 00111100
+***************
+*** 8403,8410 ****
+    unsigned rs = INSTR (9, 5);
+    unsigned rd = INSTR (4, 0);
+  
+!   NYI_assert (30, 23, 0x3C);
+!   NYI_assert (20, 16, 0x19);
+  
+    if (INSTR (21, 21) != 1)
+      /* Convert to fixed point.  */
+--- 8403,8412 ----
+    unsigned rs = INSTR (9, 5);
+    unsigned rd = INSTR (4, 0);
+  
+!   if (check) {
+!     NYI_assert (30, 23, 0x3C);
+!     NYI_assert (20, 16, 0x19);
+!   }
+  
+    if (INSTR (21, 21) != 1)
+      /* Convert to fixed point.  */
+***************
+*** 8606,8612 ****
+  	case 3: fcvtszd (cpu); return;
+  	}
+  
+!     case 25: do_fcvtzu (cpu); return;
+      case 3:  do_UCVTF (cpu); return;
+  
+      case 0:	/* FCVTNS.  */
+--- 8608,8614 ----
+  	case 3: fcvtszd (cpu); return;
+  	}
+  
+!     case 25: do_fcvtzu (cpu, TRUE); return;
+      case 3:  do_UCVTF (cpu); return;
+  
+      case 0:	/* FCVTNS.  */
+***************
+*** 9310,9317 ****
+    unsigned rn = INSTR (9, 5);
+    unsigned rd = INSTR (4, 0);
+  
+    NYI_assert (31, 10, 0x1FB82E);
+! 
+    TRACE_DECODE (cpu, "emulated at line %d", __LINE__);
+    aarch64_set_vec_u64 (cpu, rd, 0, - aarch64_get_vec_u64 (cpu, rn, 0));
+  }
+--- 9312,9325 ----
+    unsigned rn = INSTR (9, 5);
+    unsigned rd = INSTR (4, 0);
+  
++ #if 0  
+    NYI_assert (31, 10, 0x1FB82E);
+! #else
+!   if (INSTR(31, 10) != 0x1FB82E) {
+!     do_fcvtzu(cpu, FALSE);
+!     return;
+!   }
+! #endif  
+    TRACE_DECODE (cpu, "emulated at line %d", __LINE__);
+    aarch64_set_vec_u64 (cpu, rd, 0, - aarch64_get_vec_u64 (cpu, rn, 0));
+  }
+***************
+*** 9456,9461 ****
+--- 9464,9470 ----
+  	case 0x32: do_scalar_FCMGT_zero (cpu); return;
+  	case 0x36: do_scalar_FCMEQ_zero (cpu); return;
+  	case 0x3A: do_scalar_FCMLT_zero (cpu); return;
++ 	case 0x2e: do_fcvtzu(cpu, FALSE); return;
+  	default:
+  	  HALT_NYI;
+  	}
