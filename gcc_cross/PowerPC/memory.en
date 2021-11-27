@@ -1,0 +1,23 @@
+PowerPC simulator memory
+
+[0, 0x100000) is assigned below:
+
+	core_map_attach(memory->map + access_map,
+			attach,
+			space, addr, nr_bytes,
+			client, buffer, free_buffer);
+
+At this time, `where' command result become like below:
+
+(gdb) where
+#0  new_core_mapping (attach=attach_raw_memory, space=0, addr=0, nr_bytes=1048576, device=0x830fb98, buffer=0xb7c86008, free_buffer=0xb7c86008) at corefile.c:150
+#1  0x0805a3c1 in core_map_attach (access_map=0x830e008, attach=attach_raw_memory, space=0, addr=0, nr_bytes=1048576, client=0x830fb98, buffer=0xb7c86008, free_buffer=0xb7c86008) at corefile.c:206
+#2  0x0805a47f in core_attach (memory=0x830e008, attach=attach_raw_memory, space=0, access=access_read_write_exec, addr=0, nr_bytes=1048576, client=0x830fb98) at corefile.c:243
+#3  0x080bdd56 in hw_memory_init_address (me=0x830fb98) at hw_memory.c:179
+#4  0x08064e66 in tree_traverse (root=0x830fb98, prefix=0x8063d00 <device_init_address>, postfix=0x0, data=0x830e5a0) at tree.c:929
+#5  0x08064f75 in tree_traverse (data=0x830e5a0, postfix=0x0, prefix=<optimized out>, root=0x830e018) at tree.c:933
+#6  tree_init (root=0x830e018, system=0x830e5a0) at tree.c:412
+#7  0x0804c011 in psim_init (system=<optimized out>) at psim.c:734
+#8  0x0804aa8b in main (argc=2, argv=0xbffff5e8) at main.c:297
+(gdb)
+
