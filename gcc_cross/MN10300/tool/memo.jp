@@ -1,4 +1,5 @@
 (*) printf
+
 engine.c はビルドの過程で生成されるファイルなので何かのきっかけて削除される可能性もある.
 パッチの当て方は
 
@@ -7,6 +8,12 @@ engine.c はビルドの過程で生成されるファイルなので何かの�
 % cd gcc-10.2.mips-elf
 % patch -p1 < /tmp/printf.diff
 
+オペコードと機能の対応は以下:
+
+0xf8f0 : exit(0) の呼び出し
+0xf8f1 : printf
+0xf8f8 : puts
+0xf8f9 : putchar
 
 (*) 結果
 
