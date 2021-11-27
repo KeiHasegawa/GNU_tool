@@ -1,0 +1,23 @@
+RX シミュレータのメモリ
+
+ターゲットプログラムがメモリアクセスすると以下の函数が呼び出される:
+
+unsigned char *
+rx_mem_ptr (unsigned long address, enum mem_ptr_action action)
+{
+...
+
+そして以下のようにメモリ割り当てされていなければ自動的に割り当てる:
+
+  if (pt[pt1][pt2] == 0)
+    {
+      if (action == MPA_READING)
+	execution_error (SIM_ERR_READ_UNWRITTEN_PAGES, address);
+
+      pt[pt1][pt2] = (unsigned char *) calloc (OFF_LEN, 1);
+      ptr[pt1][pt2] = (unsigned char *) calloc (OFF_LEN, 1);
+      ptdc[pt1][pt2] = (RX_Opcode_Decoded **) calloc (OFF_LEN, sizeof(RX_Opcode_Decoded *));
+    }
+...
+  return pt[pt1][pt2] + pto;
+}
