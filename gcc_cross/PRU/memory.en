@@ -1,0 +1,17 @@
+PRU simulator memory
+
+In `sim_open' function, executed like below:
+
+#define DMEM_DEFAULT_SIZE (64 * 1024 * 1024)
+...
+
+      sim_do_commandf (sd, "memory-region 0x%x,0x%x",
+		       0,
+		       DMEM_DEFAULT_SIZE);
+
+#define IMEM_ADDR_DEFAULT 0x20000000
+#define IMEM_DEFAULT_SIZE (64 * 4 * 1024)
+...
+      sim_do_commandf (sd, "memory-region 0x%x,0x%x",
+		       IMEM_ADDR_DEFAULT,
+		       IMEM_DEFAULT_SIZE);
