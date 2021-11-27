@@ -1,0 +1,35 @@
+AARCH64 の FPU
+
+AARCH64 のシミュレータで浮動小数点数演算を行なうと以下のように演算結果
+をチェックして場合によって FPSR を変更し, さらに演算結果を変更している:
+
+#define RAISE_EXCEPTIONS(F, VALUE, FTYPE, ITYPE)	\
+  do							\
+    {							\
+      switch (fpclassify (F))				\
+	{						\
+	case FP_INFINITE:				\
+	case FP_NAN:					\
+	  aarch64_set_FPSR (cpu, IO);			\
+	  if (signbit (F))				\
+	    VALUE = ITYPE##_MAX;			\
+	  else						\
+	    VALUE = ITYPE##_MIN;			\
+	  break;					\
+...
+
+fcvtzu 命令のシミュレーション
+...
+
+	  float  f = aarch64_get_FP_float (cpu, rs);
+
+	  value = (uint32_t) f;
+	  /* Do not raise an exception if we have reached UINT_MAX.  */
+	  if (value != (1UL << 31))
+	    RAISE_EXCEPTIONS (f, value, FLOAT, UINT);
+
+例えば -128.5F を uint32_t に変換すると FPSR = 0x11 = IX(0x10) | IO(0x01)
+に変更され結果的に 0 に変換されてしまう. 0xffffff80 には変換されない.
+
+このシミュレーションそのものが正しいかどうかは不明だが, 演算結果が変更
+されなおかつプログラムで例外が発生しないというのは仕様として問題がある.

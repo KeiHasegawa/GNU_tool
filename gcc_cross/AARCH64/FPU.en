@@ -1,0 +1,37 @@
+AARCH64 FPU
+
+AARCH64 simulator deals with floating point operation like below:
+
+#define RAISE_EXCEPTIONS(F, VALUE, FTYPE, ITYPE)	\
+  do							\
+    {							\
+      switch (fpclassify (F))				\
+	{						\
+	case FP_INFINITE:				\
+	case FP_NAN:					\
+	  aarch64_set_FPSR (cpu, IO);			\
+	  if (signbit (F))				\
+	    VALUE = ITYPE##_MAX;			\
+	  else						\
+	    VALUE = ITYPE##_MIN;			\
+	  break;					\
+...
+
+`fcvtzu' instruction simulation
+...
+
+	  float  f = aarch64_get_FP_float (cpu, rs);
+
+	  value = (uint32_t) f;
+	  /* Do not raise an exception if we have reached UINT_MAX.  */
+	  if (value != (1UL << 31))
+	    RAISE_EXCEPTIONS (f, value, FLOAT, UINT);
+
+i.e. After operation, check the value and if some condition is statisfied,
+set some value to `FPSR', and modify the result.
+
+For example, -128.5F is converted to uint32_t `0' not 0xffffff80
+and FPSR becomes 0x11 = IX(0x10) | IO(0x01).
+
+Is this simulation right?
+
