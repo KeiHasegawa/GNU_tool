@@ -1,11 +1,34 @@
 *** gdb-10.2.arm-elf/sim/aarch64/simulator.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.aarch64-elf/sim/aarch64/simulator.c	2021-11-28 08:19:35.000000000 +0900
+--- gdb-10.2.aarch64-elf/sim/aarch64/simulator.c	2021-11-28 11:03:15.000000000 +0900
+***************
+*** 32,37 ****
+--- 32,39 ----
+  #include "cpustate.h"
+  #include "memory.h"
+  
++ #include <assert.h>
++ 
+  #define NO_SP 0
+  #define SP_OK 1
+  
 ***************
 *** 9411,9416 ****
---- 9419,9424 ----
+--- 9421,9438 ----
   	case 0x01: do_scalar_MOV (cpu); return;
   	case 0x39: do_scalar_FCM (cpu); return;
   	case 0x3B: do_scalar_FCM (cpu); return;
-+ 	case 0x36: scvtf(cpu); return;
++ 	case 0x36:
++ 	  {
++ 	    int sf = INSTR(31, 31);
++ 	    int ftype = INSTR(23, 22);
++ 	    if (sf == 0 && ftype == 1) {
++ 	      scvtd(cpu);
++ 	      return;
++ 	    }
++ 	    assert(sf == 0 && ftype == 0);
++ 	    scvtf(cpu);
++ 	    return;
++ 	  }
   	}
         break;
+  
