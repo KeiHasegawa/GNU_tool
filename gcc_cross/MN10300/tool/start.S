@@ -10,19 +10,19 @@ start:
 	.global	_printf
 _printf:
 	.short	0xf8f1
-	mov a3,sp
+	movm [a3],(sp)
 	ret [a3],4
 
 	.global	_puts
 _puts:
 	.short	0xf8f8
-	mov a3,sp
+	movm [a3],(sp)
 	ret [a3],4
 
 	.global	_putchar
 _putchar:
 	.short	0xf8f9
-	mov a3,sp
+	movm [a3],(sp)
 	ret [a3],4
 	
 	.global _memcpy
