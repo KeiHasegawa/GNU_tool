@@ -8,14 +8,17 @@ start:
 	.global	_printf
 _printf:
 	ret
+	nop
 
 	.global	_puts
 _puts:
 	ret
+	nop
 
 	.global	_putchar
 _putchar:
 	ret
+	nop
 	
 	.global _memcpy
 _memcpy:
