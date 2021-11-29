@@ -26,3 +26,40 @@ putchar:
 	rtsd	r15,8
 	nop
 	
+	.globl	memcpy
+	.ent	memcpy
+	.type	memcpy, @function
+memcpy:
+	.frame	r19,12,r15		# vars= 4, regs= 1, args= 0
+	.mask	0x00080000
+	addik	r1,r1,-12
+	swi	r19,r1,8
+	addk	r19,r1,r0
+	swi	r5,r19,16
+	swi	r6,r19,20
+	swi	r7,r19,24
+	lwi	r3,r19,16
+	swi	r3,r19,4
+	bri	$L13
+$L14:
+	lwi	r4,r19,20
+	addik	r3,r4,1
+	swi	r3,r19,20
+	lwi	r3,r19,16
+	addik	r5,r3,1
+	swi	r5,r19,16
+	lbui	r4,r4,0
+	sext8	r4,r4
+	sbi	r4,r3,0
+$L13:
+	lwi	r3,r19,24
+	addik	r4,r3,-1
+	swi	r4,r19,24
+	bnei	r3,$L14
+	lwi	r3,r19,4
+	addk	r1,r19,r0
+	lwi	r19,r1,8
+	addik	r1,r1,12
+	rtsd	r15,8 
+	nop		# Unfilled delay slot
+	.end	memcpy

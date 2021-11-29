@@ -22,3 +22,45 @@ puts:
 putchar:
 	j	%31
 	nop
+
+	.globl	memcpy
+memcpy:
+	addiu	%29,%29,-32
+	sw	%27,24(%29)
+	or	%27,%0,%29
+	sw	%4,8(%27)
+	sw	%5,12(%27)
+	sw	%6,16(%27)
+	lw	%2,8(%27)
+	nop
+	sw	%2,0(%27)
+	j	$L13
+	nop
+$L14:
+	lw	%4,12(%27)
+	nop
+	addiu	%2,%4,1
+	sw	%2,12(%27)
+	lw	%3,8(%27)
+	nop
+	addiu	%2,%3,1
+	sw	%2,8(%27)
+	lb	%2,0(%4)
+	nop
+	sb	%2,0(%3)
+$L13:
+	lw	%3,16(%27)
+	nop
+	addiu	%2,%3,-1
+	sw	%2,16(%27)
+	bne	%3,%0,$L14
+	nop
+	lw	%2,0(%27)
+	nop
+	or	%29,%0,%27
+	lw	%27,24(%29)
+	nop
+	addiu	%29,%29,32
+	j	%31
+	nop
+	
