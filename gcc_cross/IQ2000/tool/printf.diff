@@ -2,14 +2,13 @@
 --- gdb-10.2.iq2000-elf/sim/iq2000/sem-switch.c	2021-11-18 17:03:03.000000000 +0900
 ***************
 *** 20,25 ****
---- 20,191 ----
+--- 20,190 ----
      with this program; if not, see <http://www.gnu.org/licenses/>.
   
   */
 + const char* first_string(SIM_CPU* cpu)
 + {
 +   int addr = GET_H_GR(4);
-+   addr |= 0x80000000;
 +   static char buf[1024];
 +   for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i ) {
 +     char c = GETMEMQI(cpu, 0, addr+i);
