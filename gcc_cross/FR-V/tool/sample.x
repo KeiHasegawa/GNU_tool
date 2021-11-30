@@ -1,12 +1,11 @@
 SECTIONS {
 	 . = 0x100;
 	 .text : {}
-	 
-	 .data : {
-	       PROVIDE(gp = .);
-	       *(.rodata)
-	       *(.data)
-	 }
+
+	 .rodata : {}
+	 _gp = .;
+	 .sdata : {}
+	 .sbss : {}
 
 	 . = 0xf000;
 	 .stack : {}

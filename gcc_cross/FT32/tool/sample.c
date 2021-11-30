@@ -42,9 +42,9 @@ void g2(long long a, long long b, long long c)
   printf("%lld %lld %lld\n", a, b, c);
 }
 
-void h2(int a, int b, int c, int d, int e)
+void h2(int a, int b, int c, int d, int e, int x, int y)
 {
-  printf("%d %d %d %d %d\n", a, b, c, d, e);
+  printf("%d %d %d %d %d %d %d\n", a, b, c, d, e, x, y);
 }
 
 int main()
@@ -58,7 +58,7 @@ int main()
   hh(3.0L);
   f2(1.0, 2.0, 3.0);
   g2(1LL, 2LL, 3LL);
-  h2(1, 2, 3, 4, 5);
+  h2(1, 2, 3, 4, 5, 6, 7);
   return 0;
 }
 

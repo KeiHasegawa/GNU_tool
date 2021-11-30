@@ -2,8 +2,8 @@
 _start:
 	sethi	#hi(_stack), sp
 	setlo	#lo(_stack), sp
-	sethi	#hi(gp), gr16
-	setlo	#lo(gp), gr16
+	sethi	#hi(_gp), gr16
+	setlo	#lo(_gp), gr16
 	call	main
 	nop
 	.word	0x0badbeef
