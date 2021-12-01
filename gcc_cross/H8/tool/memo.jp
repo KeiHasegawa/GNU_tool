@@ -12,8 +12,8 @@ o リンク時のエラーテスト
 (*) 簡易版 printf
 
 newlib による printf ではなくて, お手軽にログを出力できたほうが便利なのでこのページ
-にあるような start.S にしてみた. つまり write や fstat に対するシミュレータの扱いを
-真似たわけだ.
+にあるような start.S に printf 等の函数を作成した. つまり write や
+fstat に対するシミュレータの扱いを真似たわけだ.
 
 そしてシミュレータで printf, puts, putchar を実行することでお手軽にテストを実施する
 ことができる. 以下のように printf.diff のパッチを適用すればよい.
@@ -40,7 +40,7 @@ o char が signed char と同じ範囲の値を取るか, あるいは unsigned 
 o wchar_t と同じ範囲の値を取る型
 o sizeof(wchar_t)
 o sizeof(double)
-o sizeof(long doububle)
+o sizeof(long double)
 
 によりテストのログの期待値が異なることになる.
 
