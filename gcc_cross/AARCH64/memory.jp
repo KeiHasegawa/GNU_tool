@@ -23,14 +23,16 @@ diff -c gdb-10.2.arm-elf/sim/common/sim-load.c gdb-10.2.aarch64-elf/sim/common/s
   	    }
   	}
 +       else if (s->flags & SEC_ALLOC) {
-+ 	bfd_vma lma = lma_p ? bfd_section_lma(s) : bfd_section_vma(s);
-+ 	bfd_size_type size = bfd_section_size(s);
-+ 	sim_do_commandf(sd, "memory-region 0x%llx,0x%llx", lma, size);
++         bfd_vma lma = lma_p ? bfd_section_lma(s) : bfd_section_vma(s);
++         bfd_size_type size = bfd_section_size(s);
++         sim_do_command(sd, "memory-fill 0xcc");
++         sim_do_commandf(sd, "memory-region 0x%llx,0x%llx", lma, size);
 +       }
 
 1 つ目の sim_do_commandf の呼び出しにより .text, .rodata, .data 等の領域
 を確保できる.
-2 つ目の sim_do_commandf の呼び出しにより .bss を確保できる.
+2 つ目の sim_do_commandf の呼び出しにより .bss を確保できる. 折角なので 0xcc で
+初期化しておいた.
 スタックは別途割り当てる必要はある.
 
 

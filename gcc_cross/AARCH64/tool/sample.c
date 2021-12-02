@@ -55,6 +55,13 @@ void f3(int a)
   printf("%d\n", test_f3);
 }
 
+int test_f4;
+
+void f4(void)
+{
+  printf("%x\n", test_f4);
+}
+
 int main()
 {
   f(5, 6);
@@ -68,6 +75,7 @@ int main()
   g2(1LL, 2LL, 3LL);
   h2(1, 2, 3, 4, 5);
   f3(1234);
+  f4();
   return 0;
 }
 
