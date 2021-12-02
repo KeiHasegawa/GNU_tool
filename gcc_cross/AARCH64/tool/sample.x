@@ -3,8 +3,10 @@ SECTIONS {
 	 .text : {}
 	 .rodata : {}
 	 .data : {}
-	 _bss_start = .;
-	 .bss : {}
+	 
+	 .bss : {
+	 	 _bss_start = .;
+	 }
 	 _bss_end = .;
 
 	 . = 0x20000;
