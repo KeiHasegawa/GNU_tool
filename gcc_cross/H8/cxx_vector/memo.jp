@@ -1,0 +1,49 @@
+C++ vector
+
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=h8300-elf
+% make all-gcc
+% make maybe-configure-target-libgcc
+% make maybe-all-target-libgcc
+% make maybe-configure-target-libstdc++-v3
+configure: error: No support for this host/target combination.
+make: *** [Makefile:11272: configure-target-libstdc++-v3] エラー 1
+
+だめらしい.
+
+Standard Template Library はネイティブコンパイラの vector を使ってみた.
+
+% g++ -E use_vec.cpp > use_vec.i
+
+use_vec.i に vector やその他のファイルのパスを確認できる. そこで以下のように
+コンパイルしてみた.
+
+% h8300-elf-g++ -o use_vec.o use_vec.cpp -g -c -I/usr/local/include/c++/10.2.0 -I/usr/local/include/c++/10.2.0/i686-pc-linux-gnu -I/usr/include
+
+コンパイルは一応できている.
+
+% h8300-elf-ld -o use_vec.elf /home/khasegawa/lang/53_GNU_tool/gcc_cross/H8/tool/start.o use_vec.o mine.o mine2.o /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/h8300-elf/10.2.0/libgcc.a -T /home/khasegawa/lang/53_GNU_tool/gcc_cross/H8/tool/sample.x
+
+上のようにリンクしてみた. ここで start.o や sample.x は「テストツール」で使用したものであ
+る.
+
+mine.o や mine2.o に参照されているが定義されていない変数や函数を定義しておく.
+mine.S や mine2.cpp では
+
+___gxx_personality_sj0
+
+extern "C" void abort();
+
+void std::__throw_length_error(const char*);
+
+void std::__throw_bad_alloc();
+
+void operator delete(void*, size_t);
+
+void* operator new(size_t);
+
+extern "C" void* memmove(void*, const void*, size_t);
+
+を定義すればよい.
+リンクできた use_vec.elf を h8300-elf-gdb か h8300-elf-run で実行すれば期待した
+動作を確認できる.
+
