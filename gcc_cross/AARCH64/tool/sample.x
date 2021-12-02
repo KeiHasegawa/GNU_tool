@@ -1,8 +1,10 @@
 SECTIONS {
 	 . = 0x100;
 	 .text : {}
+	 .rodata : {}
+	 .data : {}
+	 .bss : {}
 
-	 . = 0xf000;
-	 .stack : {}
+	 . = 0x20000;
 	 PROVIDE(_stack = .);	
 }
