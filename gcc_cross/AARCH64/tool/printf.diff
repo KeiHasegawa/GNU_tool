@@ -64,8 +64,8 @@
 +   if (nth < 8)
 +     return cpu->gr[nth].u32;
 +   uint64_t sp = cpu->gr[31].u64;
-+   uint64_t addr = sp + 4*(nth-8);
-+   return aarch64_get_mem_u32(cpu, addr);
++   uint64_t addr = sp + 8*(nth-8);
++   return aarch64_get_mem_u64(cpu, addr);
 + }
 + 
 + static uint64_t arg64(sim_cpu* cpu, int nth)

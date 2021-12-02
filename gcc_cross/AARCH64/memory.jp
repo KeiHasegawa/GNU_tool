@@ -32,3 +32,25 @@ diff -c gdb-10.2.arm-elf/sim/common/sim-load.c gdb-10.2.aarch64-elf/sim/common/s
 を確保できる.
 2 つ目の sim_do_commandf の呼び出しにより .bss を確保できる.
 スタックは別途割り当てる必要はある.
+
+
+このようにアクセスできるメモリを制限してコンパイラのテストを実施したと
+ころ, 本来 1 バイトアクセスするべきところで 4 バイトアクセスしている
+ことが判明した. 調べてみるとコンパイラの生成コードには問題なくシミュレー
+タにバグがあった:
+
+
+*** gdb-10.2.arm-elf/sim/aarch64/simulator.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.aarch64-elf/sim/aarch64/simulator.c	2021-12-02 12:16:29.000000000 +0900
+***************
+*** 580,586 ****
+--- 582,592 ----
+    uint64_t addr = aarch64_get_reg_u64 (cpu, rn, SP_OK) + offset;
+  
+    TRACE_DECODE (cpu, "emulated at line %d", __LINE__);
++ #if 0  
+    aarch64_set_vec_u8 (cpu, rd, 0, aarch64_get_mem_u32 (cpu, addr));
++ #else
++   aarch64_set_vec_u8 (cpu, rd, 0, aarch64_get_mem_u8 (cpu, addr));
++ #endif  
+  }
