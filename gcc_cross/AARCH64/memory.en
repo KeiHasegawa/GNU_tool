@@ -22,12 +22,75 @@ diff -c gdb-10.2.arm-elf/sim/common/sim-load.c gdb-10.2.aarch64-elf/sim/common/s
   	    }
   	}
 +       else if (s->flags & SEC_ALLOC) {
-+ 	bfd_vma lma = lma_p ? bfd_section_lma(s) : bfd_section_vma(s);
-+ 	bfd_size_type size = bfd_section_size(s);
-+ 	sim_do_commandf(sd, "memory-region 0x%llx,0x%llx", lma, size);
++         bfd_vma lma = lma_p ? bfd_section_lma(s) : bfd_section_vma(s);
++         bfd_size_type size = bfd_section_size(s);
++         sim_do_command(sd, "memory-fill 0xcc");
++         sim_do_commandf(sd, "memory-region 0x%llx,0x%llx", lma, size);
 +       }
 
 As this result, memory will be allocated for `.text', `.rodata', `.data'
 and `.bss' section.
 
 Users have to assign memory for stack.
+
+I noticed aarch64 simulator bug and fixed like below:
+
+(*) Should access 1 byte. not 4 bytes
+*** gdb-10.2.arm-elf/sim/aarch64/simulator.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.aarch64-elf/sim/aarch64/simulator.c	2021-12-02 12:16:29.000000000 +0900
+***************
+*** 580,586 ****
+--- 582,592 ----
+    uint64_t addr = aarch64_get_reg_u64 (cpu, rn, SP_OK) + offset;
+  
+    TRACE_DECODE (cpu, "emulated at line %d", __LINE__);
++ #if 0  
+    aarch64_set_vec_u8 (cpu, rd, 0, aarch64_get_mem_u32 (cpu, addr));
++ #else
++   aarch64_set_vec_u8 (cpu, rd, 0, aarch64_get_mem_u8 (cpu, addr));
++ #endif  
+  }
+
+
+(*) Add error information of load/store instruction address
+*** gdb-10.2.arm-elf/sim/aarch64/memory.c	2021-04-25 13:04:35.000000000 +0900
+--- gdb-10.2.aarch64-elf/sim/aarch64/memory.c	2021-12-03 06:48:26.000000000 +0900
+***************
+*** 59,66 ****
+    RETURN_TYPE								\
+    aarch64_get_mem_##NAME (sim_cpu *cpu, uint64_t address)		\
+    {									\
+      RETURN_TYPE val = (RETURN_TYPE) (ACCESS_TYPE)			\
+!       sim_core_read_unaligned_##N (cpu, 0, read_map, address);		\
+      TRACE_MEMORY (cpu, "read of %8x (%d bytes) from %" PRIx64,		\
+  		  val, N, address);					\
+  									\
+--- 59,67 ----
+    RETURN_TYPE								\
+    aarch64_get_mem_##NAME (sim_cpu *cpu, uint64_t address)		\
+    {									\
++     uint64_t pc = aarch64_get_PC (cpu);					\
+      RETURN_TYPE val = (RETURN_TYPE) (ACCESS_TYPE)			\
+!       sim_core_read_unaligned_##N (cpu, pc, read_map, address);		\
+      TRACE_MEMORY (cpu, "read of %8x (%d bytes) from %" PRIx64,		\
+  		  val, N, address);					\
+  									\
+***************
+*** 90,97 ****
+      TRACE_MEMORY (cpu,							\
+  		  "write of %" PRIx64 " (%d bytes) to %" PRIx64,	\
+  		  (uint64_t) value, N, address);			\
+! 									\
+!     sim_core_write_unaligned_##N (cpu, 0, write_map, address, value);	\
+    }
+  
+  STORE_FUNC (uint64_t, u64, 8)
+--- 91,98 ----
+      TRACE_MEMORY (cpu,							\
+  		  "write of %" PRIx64 " (%d bytes) to %" PRIx64,	\
+  		  (uint64_t) value, N, address);			\
+!     uint64_t pc = aarch64_get_PC (cpu);					\
+!     sim_core_write_unaligned_##N (cpu, pc, write_map, address, value);	\
+    }
+  
+  STORE_FUNC (uint64_t, u64, 8)
