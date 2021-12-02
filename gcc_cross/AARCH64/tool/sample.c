@@ -47,6 +47,14 @@ void h2(int a, int b, int c, int d, int e)
   printf("%d %d %d %d %d\n", a, b, c, d, e);
 }
 
+int test_f3;
+
+void f3(int a)
+{
+  test_f3 = a;
+  printf("%d\n", test_f3);
+}
+
 int main()
 {
   f(5, 6);
@@ -59,6 +67,7 @@ int main()
   f2(1.0, 2.0, 3.0);
   g2(1LL, 2LL, 3LL);
   h2(1, 2, 3, 4, 5);
+  f3(1234);
   return 0;
 }
 

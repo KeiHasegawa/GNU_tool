@@ -1,5 +1,34 @@
 AARCH64 のシミュレータのメモリ
 
-sim_open で以下のように 128 MByte を確保している:
+sim_open で以下のように 128 MByte を固定で確保している:
 
   sim_do_commandf (sd, "memory-size 0x8000000");
+
+これを止めて共通部分ではあるが以下のようにプログラムのロード時に領域を
+確保する:
+
+diff -c gdb-10.2.arm-elf/sim/common/sim-load.c gdb-10.2.aarch64-elf/sim/common/sim-load.c
+*** gdb-10.2.arm-elf/sim/common/sim-load.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.aarch64-elf/sim/common/sim-load.c	2021-12-02 11:22:01.000000000 +0900
+***************
+*** 133,143 ****
+--- 133,149 ----
+  		}
+  	      data_count += size;
+  	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
++ 	      sim_do_commandf(sd, "memory-region 0x%llx,0x%llx", lma, size);
+  	      do_write (sd, lma, buffer, size);
+  	      found_loadable_section = 1;
+  	      free (buffer);
+  	    }
+  	}
++       else if (s->flags & SEC_ALLOC) {
++ 	bfd_vma lma = lma_p ? bfd_section_lma(s) : bfd_section_vma(s);
++ 	bfd_size_type size = bfd_section_size(s);
++ 	sim_do_commandf(sd, "memory-region 0x%llx,0x%llx", lma, size);
++       }
+
+1 つ目の sim_do_commandf の呼び出しにより .text, .rodata, .data 等の領域
+を確保できる.
+2 つ目の sim_do_commandf の呼び出しにより .bss を確保できる.
+スタックは別途割り当てる必要はある.
