@@ -2,7 +2,6 @@ Blackfin のシミュレータのメモリ
 
 sim_open で以下を実行している:
 
-
 #define BFIN_DEFAULT_MEM_SIZE (128 * 1024 * 1024)
 ...
       sim_do_commandf (sd, "memory-size 0x%lx", BFIN_DEFAULT_MEM_SIZE);
@@ -33,3 +32,5 @@ sim_open で以下を実行している:
       }
   
     if (!found_loadable_section)
+
+.bss は 0xcc で初期化される. スタックは別途割り当てる必要がある.
