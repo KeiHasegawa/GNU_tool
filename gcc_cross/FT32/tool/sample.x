@@ -1,10 +1,17 @@
 SECTIONS {
 	 . = 0x100;
 	 .text : {}
-	 _data_start = .;
-	 .data : {}
-	 .rodata : {}
-	 _data_end = .;
+	 
+	 .data : {
+	 	 _data_start = .;
+	 }
+ 	 _data_end = .;
+	 
+	 .rodata : {
+	 	 _rodata_start = .;
+	 }
+	 _rodata_end = .;
+
 	 .bss : {
 	      _bss_start = .;
 	 }
