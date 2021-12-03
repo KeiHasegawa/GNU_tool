@@ -1,7 +1,18 @@
 	.text
 start:
-	lui	%29,%hi(stack)
-	addiu	%29,%29,%lo(stack)
+	lui	%2,%hi(_bss_start)
+	addiu	%2,%2,%lo(_bss_start)
+	lui	%3,%hi(_bss_end)
+	addiu	%3,%3,%lo(_bss_end)
+$L1:	
+	beq	%2,%3,$L2
+	nop
+	sb	%0,0(%2)
+	addiu	%2,%2,1
+	j	$L1
+$L2:	
+	lui	%29,%hi(_stack)
+	addiu	%29,%29,%lo(_stack)
 	lui	%3,%hi(main)
 	addiu	%3,%3,%lo(main)
 	jalr	%31,%3
