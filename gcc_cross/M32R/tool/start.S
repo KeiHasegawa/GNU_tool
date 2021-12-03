@@ -1,6 +1,17 @@
 	.text
 start:
-	ld24 sp,#stack
+	ld24	r4, #_bss_start
+	ld24	r5, #_bss_end
+	ldi	r6, #0
+.L1:
+	beq	r4, r5, .L2
+	nop
+	stb	r6,@(r4)
+	add3	r4, r4, #1
+	bra	.L1
+	nop
+.L2:
+	ld24 sp,#_stack
 	bl main
 	nop
 	nop
