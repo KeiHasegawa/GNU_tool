@@ -3,6 +3,7 @@
 lm32-elf-as -o start.o -g start.S || exit 1
 lm32-elf-gcc -o sample.s sample.c -S || exit 1
 lm32-elf-as -o sample.o -g sample.s || exit 1
+#lm32-elf-gcc -o sample.o sample.c -g -c || exit 1
 lm32-elf-ld -o sample.elf start.o sample.o /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/lm32-elf/10.2.0/libgcc.a -T sample.x || exit 1
 lm32-elf-objdump -d sample.elf > sample.objdump || exit 1
 lm32-elf-run sample.elf
