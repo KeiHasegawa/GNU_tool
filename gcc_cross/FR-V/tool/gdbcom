@@ -1,6 +1,8 @@
 set prompt (frv-elf-gdb) 
 target sim
 load
-b main
+#sim memory-fill 0xcc
+#sim memory-region 0x1b000,0x5000
+b _start
 run
-set $psr = $psr |(1<<13)
+

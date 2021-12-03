@@ -5,9 +5,11 @@ SECTIONS {
 	 .rodata : {}
 	 _gp = .;
 	 .sdata : {}
-	 .sbss : {}
+	 .sbss : {
+	       _bss_start = .;
+	 }
+	 _bss_end = .;
 
-	 . = 0xf000;
-	 .stack : {}
-	 PROVIDE(_stack = .);
+	 . = 0x20000;
+	 _stack = .;
 }
