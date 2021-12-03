@@ -1,16 +1,16 @@
 SECTIONS {
 	 . = 0x100;
 	 .text : {}
-	 . = ALIGN(4);
-	 PROVIDE(data_start = .);
+	 _data_start = .;
 	 .data : {}
 	 .rodata : {}
-	 . = ALIGN(4);	 
-	 PROVIDE(data_end = .);
-	 .bss : {}
+	 _data_end = .;
+	 .bss : {
+	      _bss_start = .;
+	 }
+	 _bss_end = .;
 
 	 . = 0xf000;
-	 .stack : {}
-	 PROVIDE(stack = .);
+	 stack = .;
 }
 

@@ -1,17 +1,28 @@
 	.text
 start:
-	ldk.l	$r0, data_start
-	ldk.l	$r1, data_end
+	ldk.l	$r0, _data_start
+	ldk.l	$r1, _data_end
 
 .L1:
 	/* if r0 == r1 goto .L2 */	
 	cmp.l	$r0, $r1
 	jmpc	z,.L2
-	lpmi.l	$r2, $r0, 0
-	sti.l	$r0,0,$r2
-	add.l	$r0,$r0,4
+	lpmi.b	$r2, $r0, 0
+	sti.b	$r0,0,$r2
+	add.l	$r0,$r0,1
 	jmp	.L1
 .L2:	
+	ldk.l	$r0, _bss_start
+	ldk.l	$r1, _bss_end
+	ldk.b	$r2,0
+.L3:
+	/* if r0 == r1 goto .L4 */
+	cmp.l	$r0, $r1
+	jmpc	z,.L4
+	sti.b	$r0,0,$r2
+	add.l	$r0,$r0,1
+	jmp	.L3
+.L4:	
 	ldk.l	$sp,stack
 	call	main
 	nop
@@ -19,15 +30,15 @@ start:
 
 	.global	printf
 printf:
-	.long	0x1badbeef
+	.long	0x0badbeee
 	return
 
 	.global	puts
 puts:
-	.long	0x2badbeef
+	.long	0x0badbeed
 	return
 
 	.global	putchar
 putchar:
-	.long	0x3badbeef
+	.long	0x0badbeec
 	return
