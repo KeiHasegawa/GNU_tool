@@ -1,8 +1,13 @@
 SECTIONS  {
 	  . = 0x100;
 	  .text : {}
+	  .rodata : {}
+	  .data : {}
+	  .bss : {
+	       _bss_start = .;
+	  }
+	  _bss_end = .;
 
-	  . = 0xf000;
-	  .stack : {}
-	  PROVIDE(_stack = .);
+	  . = 0x20000;
+	  _stack = .;
 }

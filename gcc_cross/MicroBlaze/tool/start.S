@@ -1,6 +1,16 @@
 	.text
-	.global _start
 start:
+	nop
+	la	r3, r0, _bss_start
+	nop
+	la	r4, r0, _bss_end
+$L1:
+	xor	r5, r3, r4
+	beqi	r5, $L2
+	sbi	r0, r3, 0
+	addik	r3, r3, 1
+	bri	$L1
+$L2:	
 	nop
 	la	r1, r0, _stack-16
 

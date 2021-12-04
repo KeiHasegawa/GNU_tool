@@ -1,14 +1,16 @@
 SECTIONS {
 	 . = 0xa0020000;
 	 .text : {}
-
-	 . = ALIGN(8);
+	 .rdata : {}
 	 _gp = . ;
 	 .sdata : {}
+	 .sbss : {
+	       _bss_start = .;
+	 }
+	 _bss_end = .;
 
-	 . = 0xa002f000;
-	 .stack : {}
-	 PROVIDE(stack = .);
+	 . = 0xa0040000;
+	 _stack = .;
 
 
 }

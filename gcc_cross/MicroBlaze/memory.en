@@ -4,3 +4,34 @@ In `sim_open' function, executed like below:
 
   /* Default to a 8 Mbyte (== 2^23) memory space.  */
   sim_do_commandf (sd, "memory-size 0x800000");
+
+Except above, while loading target program, allocate memory like below:
+
+*** gdb-10.2.arm-elf/sim/common/sim-load.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.microblaze-elf/sim/common/sim-load.c	2021-12-04 09:47:42.000000000 +0900
+***************
+*** 133,143 ****
+--- 133,150 ----
+  		}
+  	      data_count += size;
+  	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
++        	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
+  	      do_write (sd, lma, buffer, size);
+  	      found_loadable_section = 1;
+  	      free (buffer);
+  	    }
+  	}
++         else if (s->flags & SEC_ALLOC) {
++           bfd_vma lma = lma_p ? bfd_section_lma(s) : bfd_section_vma(s);
++           bfd_size_type size = bfd_section_size(s);
++           sim_do_command(sd, "memory-fill 0xcc");
++           sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
++         }
+      }
+  
+    if (!found_loadable_section)
+
+As this result, memory will be allocated for `.text', `.rodata', `.data'
+and `.bss' section.
+
+Users have to assign memory for stack.

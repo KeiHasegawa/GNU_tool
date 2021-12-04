@@ -18,3 +18,36 @@ sim_open で以下を実行:
 3 つ目は memory region 0xbfc00000,0x800
 
 のようになっている.
+
+2 つ目の alias は
+
+[0xa0000000, 0xc0000000) の領域が確保され
+[0x80000000 ,0xa0000000) の領域が言わゆる alias ということ
+
+これを止めて以下のようにプログラムのロードのときにメモリを確保する.
+
+*** gdb-10.2.arm-elf/sim/common/sim-load.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.mips-elf/sim/common/sim-load.c	2021-12-04 11:04:16.000000000 +0900
+***************
+*** 133,143 ****
+--- 133,150 ----
+  		}
+  	      data_count += size;
+  	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
++        	      sim_do_commandf(sd, "memory-region 0x%lx,0x%llx", (uint32_t)lma, size);
+  	      do_write (sd, lma, buffer, size);
+  	      found_loadable_section = 1;
+  	      free (buffer);
+  	    }
+  	}
++         else if (s->flags & SEC_ALLOC) {
++           bfd_vma lma = lma_p ? bfd_section_lma(s) : bfd_section_vma(s);
++           bfd_size_type size = bfd_section_size(s);
++           sim_do_command(sd, "memory-fill 0xcc");
++           sim_do_commandf(sd, "memory-region 0x%lx,0x%llx", (uint32_t)lma, size);
++         }
+      }
+  
+    if (!found_loadable_section)
+
+.bss は 0xcc で初期化される. スタックは別途割り当てる必要がある.
