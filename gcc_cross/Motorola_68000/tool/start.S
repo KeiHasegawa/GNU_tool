@@ -1,10 +1,19 @@
 	.text
 	.global start
 start:
-	ldx	#stack
+	ldd	#_bss_start
+.L1:
+	cpd	#_bss_end
+	beq	.L2
+	xgdx
+	clr	0,x
+	xgdx
+	addd	#1
+	bra	.L1
+.L2:
+	ldx	#_stack
 	txs
 	bsr	main
-end:
 	.word	0xcd00
 
 
