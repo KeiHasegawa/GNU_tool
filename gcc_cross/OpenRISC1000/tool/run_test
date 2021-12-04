@@ -5,4 +5,5 @@ or1k-elf-gcc -o sample.s sample.c -S || exit 1
 or1k-elf-as -o sample.o  -g sample.s || exit 1
 or1k-elf-ld -o sample.elf start.o sample.o /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/or1k-elf/10.2.0/libgcc.a -T sample.x || exit 1
 or1k-elf-objdump -d sample.elf > sample.objdump || exit 1
-or1k-elf-run sample.elf
+or1k-elf-run --memory-fill 0xcc --memory-region 0x1b000,0x5000 sample.elf
+

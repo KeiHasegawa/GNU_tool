@@ -1,5 +1,18 @@
 	.text
-	mov	stack, a0
+	mov	_bss_start, a0
+	mov	_bss_end, a1
+	mov	0,d0
+	mov	1,d1
+.L1:	
+	cmp	a0, a1
+	beq	.L2
+	nop
+	movbu	d0,(a0)
+	add	d1, a0
+	jmp	.L1
+	nop
+.L2:
+	mov	_stack, a0
 	mov	a0, sp
 start:
 	nop

@@ -1,7 +1,17 @@
 	.text
 start:
+	ldi.l	$r0, _bss_start
+	ldi.l	$r1, _bss_end
+	xor	$r2, $r2
+.L1:	
+	cmp	$r0, $r1
+	beq	.L2
+	st.b	($r0), $r2
+	inc	$r0, 1
+	jmpa	.L1
+.L2:	
 	nop
-	ldi.l	$sp, stack
+	ldi.l	$sp, _stack
 	jsra	main
 	nop
 	.short	0xfff0

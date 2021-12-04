@@ -2,8 +2,23 @@
 start:
 	l.nop
 	l.nop
-	l.movhi	r1, ha(stack)
-	l.addi	r1, r1, lo(stack)
+
+	l.movhi	r17, ha(_bss_start)
+	l.addi	r17, r17, lo(_bss_start)
+	l.movhi	r19, ha(_bss_end)
+	l.addi	r19, r19, lo(_bss_end)
+.L1:
+	l.sfeq	r17, r19
+	l.bf	.L2
+	l.nop
+	l.sb	0(r17), r0
+	l.addi	r17, r17, 1
+	l.j	.L1
+	l.nop
+.L2:
+	
+	l.movhi	r1, ha(_stack)
+	l.addi	r1, r1, lo(_stack)
 	l.jal	main
 	l.nop
 	.word	0xbadbeef0

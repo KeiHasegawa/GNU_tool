@@ -1,8 +1,19 @@
 	.text
 start:
 	nop
-	movhi hi(stack),r0,sp
-	movea lo(stack),sp,sp
+	movhi	hi(_bss_start), r0, r10
+	movea	lo(_bss_start), r10, r10
+	movhi	hi(_bss_end), r0, r11
+	movea	lo(_bss_end), r11, r11
+.L1:	
+	cmp	r10, r11
+	be	.L2
+	st.b	r0, 0[r10]
+	addi	1, r10, r10
+	br	.L1
+.L2:	
+	movhi hi(_stack),r0,sp
+	movea lo(_stack),sp,sp
 	movhi hi(_main),r0,r10
 	movea lo(_main),r10,r10
 	jarl .+4, r31 ; add 4, r31 ; jmp r10

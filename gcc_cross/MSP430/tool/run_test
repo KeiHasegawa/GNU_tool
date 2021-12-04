@@ -1,7 +1,10 @@
 #! /bin/csh -vf
 
 msp430-elf-as -o start.o -g start.S || exit 1
-msp430-elf-gcc -o sample.o -c sample.c -g || exit 1
+#msp430-elf-gcc -o sample.o -c sample.c -g || exit 1
+msp430-elf-gcc -o sample.s -S sample.c || exit 1
+msp430-elf-as -o sample.o -g sample.s || exit 1
 msp430-elf-ld -o sample.elf start.o sample.o -T sample.x || exit 1
 msp430-elf-objdump -x -d sample.elf > sample.objdump
-msp430-elf-run sample.elf
+msp430-elf-run --memory-region 0xe000,0x1f00 sample.elf
+

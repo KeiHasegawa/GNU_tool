@@ -1,6 +1,15 @@
 	.text
 start:
-	MOV.W	#stack, R1
+	MOV.W	#_bss_start, R12
+	MOV.W	#_bss_end, R13
+.L1:
+	CMP.W	R12, R13
+	JEQ	.L2
+	MOV.B	#0, @R12
+	ADD.W	#1, R12
+	BR	#.L1
+.L2:	
+	MOV.W	#_stack, R1
 	CALL	#main
 	nop	
 	.word	0x11c0      	; simulator or gdb will exit(0);
