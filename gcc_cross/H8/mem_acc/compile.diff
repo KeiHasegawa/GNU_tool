@@ -1,0 +1,586 @@
+*** gdb-10.2.arm-elf/sim/h8300/compile.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.h8300-elf/sim/h8300/compile.c	2021-12-06 06:44:46.000000000 +0900
+***************
+*** 36,41 ****
+--- 36,44 ----
+  #include "sys/types.h"
+  #include "sim-options.h"
+  
++ #include <assert.h>
++ #include <stdlib.h>
++ 
+  #ifndef SIGTRAP
+  # define SIGTRAP 5
+  #endif
+***************
+*** 282,287 ****
+--- 285,291 ----
+    sd -> cache_idx = ptr;
+  }
+  
++ #ifndef NEW_MEM_MAP
+  static unsigned short
+  h8_get_cache_idx (SIM_DESC sd, unsigned int idx)
+  {
+***************
+*** 289,294 ****
+--- 293,299 ----
+      return (unsigned short) -1;
+    return sd -> cache_idx[idx];
+  }
++ #endif
+  
+  static void
+  h8_set_cache_idx (SIM_DESC sd, int idx, unsigned int val)
+***************
+*** 1174,1179 ****
+--- 1179,1196 ----
+  			case 0xcc:
+  			  dst->opcode = O (O_SYS_CMDLINE, SB);
+  			  break;
++ 			case 0xcd:
++ 			  dst->opcode = O (O_SYS_EXIT, SB);
++ 			  break;
++ 			case 0xce:
++ 			  dst->opcode = O (O_SYS_PRINTF, SB);
++ 			  break;
++ 			case 0xcf:
++ 			  dst->opcode = O (O_SYS_PUTS, SB);
++ 			  break;
++ 			case 0xd0:
++ 			  dst->opcode = O (O_SYS_PUTCHAR, SB);
++ 			  break;
+  			}
+  		      /* End of Processing for system calls.  */
+  		    }
+***************
+*** 1235,1240 ****
+--- 1252,1258 ----
+  #define GET_L_REG(X)     h8_get_reg (sd, X)
+  #define SET_L_REG(X, Y)  h8_set_reg (sd, X, Y)
+  
++ #ifndef NEW_MEM_MAP
+  #define GET_MEMORY_L(X) \
+    ((X) < memory_size \
+     ? ((h8_get_memory (sd, (X)+0) << 24) | (h8_get_memory (sd, (X)+1) << 16)  \
+***************
+*** 1274,1279 ****
+--- 1292,1330 ----
+  #define SET_MEMORY_B(X, Y) \
+    ((X) < memory_size ? (h8_set_memory   (sd, (X), (Y))) \
+                       : (h8_set_eightbit (sd, (X) & 0xff, (Y))))
++ #else // NEW_MEM_MAP
++ sim_cpu* g_cpu;
++ sim_cia g_cia;
++ uint32_t GET_MEMORY_L(uint32_t addr)
++ {
++   return sim_core_read_aligned_4(g_cpu, g_cia, read_map, addr);
++ }
++ 
++ uint16_t GET_MEMORY_W(uint32_t addr)
++ {
++   return sim_core_read_aligned_2(g_cpu, g_cia, read_map, addr);
++ }
++ 
++ uint8_t GET_MEMORY_B(uint32_t addr)
++ {
++   return sim_core_read_aligned_1(g_cpu, g_cia, read_map, addr);
++ }
++ 
++ void SET_MEMORY_L(uint32_t addr, uint32_t val)
++ {
++   sim_core_write_aligned_4(g_cpu, g_cia, write_map, addr, val);
++ }
++ 
++ void SET_MEMORY_W(uint32_t addr, uint16_t val)
++ {
++   sim_core_write_aligned_2(g_cpu, g_cia, write_map, addr, val);
++ }
++ 
++ void SET_MEMORY_B(uint32_t addr, uint8_t val)
++ {
++   sim_core_write_aligned_1(g_cpu, g_cia, write_map, addr, val);
++ }
++ #endif // NEW_MEM_MAP
+  
+  /* Simulate a memory fetch.
+     Return 0 for success, -1 for failure.
+***************
+*** 1731,1737 ****
+    if (init_pointers_needed)
+      {
+        int i;
+! 
+        if (h8300smode && !h8300_normal_mode)
+  	memory_size = H8300S_MSIZE;
+        else if (h8300hmode && !h8300_normal_mode)
+--- 1782,1788 ----
+    if (init_pointers_needed)
+      {
+        int i;
+! #ifndef NEW_MEM_MAP
+        if (h8300smode && !h8300_normal_mode)
+  	memory_size = H8300S_MSIZE;
+        else if (h8300hmode && !h8300_normal_mode)
+***************
+*** 1762,1768 ****
+        h8_set_eightbit_buf (sd, (unsigned char *) calloc (sizeof (char), 256));
+  
+        h8_set_mask (sd, memory_size - 1);
+! 
+        memset (h8_get_reg_buf (sd), 0, sizeof (((STATE_CPU (sd, 0))->regs)));
+  
+        for (i = 0; i < 8; i++)
+--- 1813,1819 ----
+        h8_set_eightbit_buf (sd, (unsigned char *) calloc (sizeof (char), 256));
+  
+        h8_set_mask (sd, memory_size - 1);
+! #endif // NEW_MEM_MAP
+        memset (h8_get_reg_buf (sd), 0, sizeof (((STATE_CPU (sd, 0))->regs)));
+  
+        for (i = 0; i < 8; i++)
+***************
+*** 1833,1838 ****
+--- 1884,2126 ----
+    goto next;					\
+  }
+  
++ 
++ static int first_arg(SIM_DESC sd, SIM_CPU *cpu, _Bool refer_stack)
++ {
++   if (refer_stack) {
++ #ifndef NEW_MEM_MAP
++     unsigned char* mem = h8_get_memory_buf(sd);    
++     unsigned int sp = cpu->regs[SP_REGNUM];
++     unsigned int ret = (mem[sp+2] << 8) | mem[sp+3];
++     return ret;    
++ #else // NEW_MEM_MAP
++     unsigned int sp = cpu->regs[SP_REGNUM];
++     return GET_MEMORY_W(sp+2);
++ #endif // NEW_MEM_MAP
++   }
++   return cpu->regs[R0_REGNUM];
++ }
++ 
++ const char* first_string(SIM_DESC sd, SIM_CPU *cpu, _Bool refer_stack)
++ {
++ #ifndef NEW_MEM_MAP
++   unsigned char* mem = h8_get_memory_buf(sd);
++ #endif  
++   uint16_t addr = first_arg(sd, cpu, refer_stack);
++   static char buf[1024];
++   for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++ #ifndef NEW_MEM_MAP
++     char c = mem[addr+i];
++ #else // NEW_MEM_MAP
++     char c = GET_MEMORY_B(addr+i);
++ #endif // NEW_MEM_MAP
++     buf[i] = c;
++     if (c == '\0')
++       return &buf[0]; // ok
++   }
++ 
++   assert(0 && "not enough buffer");
++   return &buf[0];
++ }
++ 
++ enum arg_class { NONE, WORD, LONG, LONGLONG, DF, LDF, STR };
++ 
++ static const char* get_part(const char* fmt, enum arg_class* how)
++ {
++   for ( ; *fmt ; ++fmt) {
++     char c = *fmt;
++     if (c == 'd' || c == 'i' || c == 'x' || c == 'u') {
++       if (*how == NONE)
++ 	*how = WORD; 
++       return ++fmt;
++     }
++     if (c == 'c') {
++       *how = WORD;
++       return ++fmt;
++     }
++     if (c == 'f') {
++       char prev = *(fmt-1);
++       *how = prev == 'L' ? LDF : DF;
++       return ++fmt;
++     }
++     if (c == 's') {
++       *how = STR;
++       return ++fmt;
++     }
++     if (c == 'l') {
++       if (*how == NONE)
++ 	*how = LONG;
++       else
++ 	*how = LONGLONG;
++     }
++   }
++   assert(0 && "unexpected");
++   return fmt;
++ }
++ 
++ static int arg16(SIM_DESC sd, sim_cpu* cpu, int nth)
++ {
++   assert(nth);
++ #ifndef NEW_MEM_MAP  
++   unsigned char* mem = h8_get_memory_buf(sd);
++   int sp = cpu->regs[SP_REGNUM];
++   int addr = sp+2+2*nth;
++   short ret = (mem[addr] << 8) | mem[addr+1];
++   return ret;
++ #else // NEW_MEM_MAP
++   int sp = cpu->regs[SP_REGNUM];
++   int addr = sp+2+2*nth;
++   return (int16_t)GET_MEMORY_W(addr);
++ #endif // NEW_MEM_MAP
++ }
++ 
++ static unsigned int arg32(SIM_DESC sd, sim_cpu* cpu, int nth)
++ {
++   assert(nth);
++   int sp = cpu->regs[SP_REGNUM];  
++   int addr = sp+2+2*nth;
++ #ifndef NEW_MEM_MAP
++   unsigned char* mem = h8_get_memory_buf(sd);  
++   unsigned int a = (mem[addr+0] << 8) | mem[addr+1];
++   unsigned int b = (mem[addr+2] << 8) | mem[addr+3];
++ #else // NEW_MEM_MAP
++   unsigned int a = GET_MEMORY_W(addr);
++   unsigned int b = GET_MEMORY_W(addr+2);
++ #endif // NEW_MEM_MAP
++   return (a << 16) | b;  
++ }
++ 
++ static unsigned long long arg64(SIM_DESC sd, sim_cpu* cpu, int nth)
++ {
++   assert(nth);
++   int sp = cpu->regs[SP_REGNUM];  
++   int addr = sp+2+2*nth;
++ #ifndef NEW_MEM_MAP
++   unsigned char* mem = h8_get_memory_buf(sd);  
++   unsigned long long a = (mem[addr+0] << 8) | mem[addr+1];
++   unsigned long long b = (mem[addr+2] << 8) | mem[addr+3];
++   unsigned long long c = (mem[addr+4] << 8) | mem[addr+5];
++   unsigned long long d = (mem[addr+6] << 8) | mem[addr+7];
++ #else // NEW_MEM_MAP
++   unsigned long long a = GET_MEMORY_W(addr+0);
++   unsigned long long b = GET_MEMORY_W(addr+2);
++   unsigned long long c = GET_MEMORY_W(addr+4);
++   unsigned long long d = GET_MEMORY_W(addr+6);
++ #endif // NEW_MEM_MAP
++   return a << 48 | (b << 32) | (c << 16) | d;
++ }
++ 
++ const char*
++ handle(SIM_DESC sd, SIM_CPU *cpu, const char* fmt, int* nth, int* ret)
++ {
++   char c = *fmt;
++   if (c != '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   const char* beg = fmt;
++   c = *++fmt;
++   if (c == '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   enum arg_class how = NONE;
++   const char* end = get_part(fmt, &how);
++   char part_fmt[256];
++   int n = end - beg;
++   assert(n + 1 < sizeof part_fmt/sizeof part_fmt[0]);
++   strncpy(&part_fmt[0], beg, n);
++   part_fmt[n] = '\0';
++   if (how == WORD) {
++     int arg = arg16(sd, cpu, (*nth)++);
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == LONG) {
++     int arg = arg32(sd, cpu, *nth);
++     *nth += 2;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == LONGLONG) {
++     unsigned long long arg = arg64(sd, cpu, *nth);
++     *nth += 4;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DF || how == LDF) {
++     union {
++       unsigned int i;
++       float f;
++     } u = { arg32(sd, cpu, *nth) };
++     *nth += 2;
++     if (how == DF)
++       *ret += printf(part_fmt, u.f);
++     else
++       *ret += printf(part_fmt, (long double)u.f);
++     return end;
++   }
++   if (how == STR) {
++ #ifndef NEW_MEM_MAP
++     unsigned char* mem = h8_get_memory_buf(sd);
++ #endif    
++     uint16_t addr = arg16(sd, cpu, (*nth)++);
++     char buf[256];
++     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++ #ifndef NEW_MEM_MAP
++       char c = mem[addr+i];
++ #else
++       char c = GET_MEMORY_B(addr+i);
++ #endif
++       buf[i] = c;
++       if (c == '\0') {
++ 	*ret += printf(part_fmt, &buf[0]);  // ok
++ 	return end;
++       }
++     }
++     assert(0 && "not enough buffer");
++     return end;
++   }
++   asm("int3");
++   return end;
++ }
++ 
++ static void do_printf(SIM_DESC sd, SIM_CPU *cpu)
++ {
++   const char* fmt = first_string(sd, cpu, TRUE);
++   int argc = 1;
++   int ret = 0;
++   while (*fmt)
++     fmt = handle(sd, cpu, fmt, &argc, &ret);
++   cpu->regs[R0_REGNUM] = ret;
++ }
++ 
++ static void do_puts(SIM_DESC sd, SIM_CPU *cpu)
++ {
++   const char* arg = first_string(sd, cpu, FALSE);
++   int ret = puts(arg);
++   cpu->regs[R0_REGNUM] = ret;
++ }
++ 
++ static void do_putchar(SIM_DESC sd, SIM_CPU *cpu)
++ {
++   int arg = first_arg(sd, cpu, FALSE);
++   int ret = putchar(arg);
++   cpu->regs[R0_REGNUM] = ret;
++ }
++ 
++ static void swap(uint8_t* a, uint8_t* b)
++ {
++   uint8_t tmp = *a;
++   *a = *b;
++   *b = tmp;
++ }
++ 
++ extern decoded_inst* get_cache(int);
++ extern void set_cache(int, decoded_inst*);
++ 
+  static void
+  step_once (SIM_DESC sd, SIM_CPU *cpu)
+  {
+***************
+*** 1849,1857 ****
+    int trace, intMask;
+    int oldmask;
+    host_callback *sim_callback = STATE_CALLBACK (sd);
+- 
+    init_pointers (sd);
+- 
+    pc = h8_get_pc (sd);
+  
+    /* The PC should never be odd.  */
+--- 2137,2143 ----
+***************
+*** 1875,1883 ****
+      h8_set_mask (sd, 0xffff);
+    do
+      {
+        unsigned short cidx;
+        decoded_inst *code;
+- 
+      top:
+        cidx = h8_get_cache_idx (sd, pc);
+        if (cidx == (unsigned short) -1 ||
+--- 2161,2169 ----
+      h8_set_mask (sd, 0xffff);
+    do
+      {
++ #ifndef NEW_MEM_MAP
+        unsigned short cidx;
+        decoded_inst *code;
+      top:
+        cidx = h8_get_cache_idx (sd, pc);
+        if (cidx == (unsigned short) -1 ||
+***************
+*** 1885,1890 ****
+--- 2171,2223 ----
+  	goto illegal;
+  	  
+        code = sd->sim_cache + cidx;
++ #else // NEW_MEM_MAP
++       g_cpu = STATE_CPU(sd, 0);
++       g_cia = pc;
++ #if 0      
++       union {
++ 	uint32_t i;
++ 	uint16_t half[2];
++ 	uint8_t data[4];
++       } uu;
++       if (pc & 2) {
++ 	uu.half[0] = sim_core_read_aligned_2(g_cpu, g_cia, read_map, pc);
++ 	uu.half[1] = sim_core_read_aligned_2(g_cpu, g_cia, read_map, pc+2);
++ 	int i = 0x12345678;
++ 	if (*(char*)&i != 0x12) {
++ 	  swap(&uu.data[0],&uu.data[1]);
++ 	  swap(&uu.data[2],&uu.data[3]);
++ 	}
++       }
++       else {
++ 	uu.i = sim_core_read_aligned_4(g_cpu, g_cia, read_map, pc);
++ 	int i = 0x12345678;
++ 	if (*(char*)&i != 0x12) {
++ 	  swap(&uu.data[0],&uu.data[3]);
++ 	  swap(&uu.data[1],&uu.data[2]);
++ 	}
++       }
++       decoded_inst dinst;
++       decode(sd, pc, &uu.data[0], &dinst);
++       decoded_inst *code = &dinst;      
++ #else
++       decoded_inst* code = get_cache(pc);
++       if (!code) {
++ 	uint8_t data[] = {
++ 	  sim_core_read_aligned_1(g_cpu, g_cia, read_map, pc+0),
++ 	  sim_core_read_aligned_1(g_cpu, g_cia, read_map, pc+1),
++ 	  sim_core_read_aligned_1(g_cpu, g_cia, read_map, pc+2),
++ 	  sim_core_read_aligned_1(g_cpu, g_cia, read_map, pc+3),
++ 	};
++ 	decoded_inst dinst;
++ 	decode(sd, pc, &data[0], &dinst);
++ 	if (data[0] != 0x01 || data[1] != 0x80) // not break_insn
++ 	  set_cache(pc, &dinst);
++ 	code = &dinst;
++       }
++ #endif      
++ 
++ #endif // NEW_MEM_MAP
+  
+  #if ADEBUG
+        if (debug)
+***************
+*** 1904,1909 ****
+--- 2237,2243 ----
+        switch (code->opcode)
+  	{
+  	case 0:
++ #ifndef NEW_MEM_MAP	  
+  	  /*
+  	   * This opcode is a fake for when we get to an
+  	   * instruction which hasnt been compiled
+***************
+*** 1911,1916 ****
+--- 2245,2253 ----
+  	  compile (sd, pc);
+  	  goto top;
+  	  break;
++ #else
++ 	  abort();
++ #endif  
+  
+  	case O (O_MOVAB, SL):
+  	case O (O_MOVAW, SL):
+***************
+*** 3108,3113 ****
+--- 3445,3461 ----
+  	    h8_set_reg (sd, 0, stat_return);
+  	  }
+  	  goto next;
++ 	case O (O_SYS_EXIT, SB):
++ 	  exit(0);
++ 	case O (O_SYS_PRINTF, SB):
++ 	  do_printf(sd, cpu);
++ 	  goto next;
++ 	case O (O_SYS_PUTS, SB):
++ 	  do_puts(sd, cpu);
++ 	  goto next;
++ 	case O (O_SYS_PUTCHAR, SB):
++ 	  do_putchar(sd, cpu);
++ 	  goto next;
+  	  /* End of system call processing.  */
+  
+  	case O (O_NOT, SB):		/* not.b */
+***************
+*** 4539,4545 ****
+  	sim_events_process (sd);
+      }
+  }
+! 
+  int
+  sim_write (SIM_DESC sd, SIM_ADDR addr, const unsigned char *buffer, int size)
+  {
+--- 4887,4893 ----
+  	sim_events_process (sd);
+      }
+  }
+! #ifndef NEW_MEM_MAP
+  int
+  sim_write (SIM_DESC sd, SIM_ADDR addr, const unsigned char *buffer, int size)
+  {
+***************
+*** 4575,4581 ****
+      memcpy (buffer, h8_get_eightbit_buf (sd) + (addr & 0xff), size);
+    return size;
+  }
+! 
+  static int
+  h8300_reg_store (SIM_CPU *cpu, int rn, unsigned char *value, int length)
+  {
+--- 4923,4929 ----
+      memcpy (buffer, h8_get_eightbit_buf (sd) + (addr & 0xff), size);
+    return size;
+  }
+! #endif
+  static int
+  h8300_reg_store (SIM_CPU *cpu, int rn, unsigned char *value, int length)
+  {
+***************
+*** 4937,4943 ****
+  	  set_h8300h (bfd_get_mach (prog_bfd));
+  	}
+      }
+! 
+    /* If we're using gdb attached to the simulator, then we have to
+       reallocate memory for the simulator.
+  
+--- 5285,5291 ----
+  	  set_h8300h (bfd_get_mach (prog_bfd));
+  	}
+      }
+! #ifndef NEW_MEM_MAP
+    /* If we're using gdb attached to the simulator, then we have to
+       reallocate memory for the simulator.
+  
+***************
+*** 4981,4987 ****
+        return SIM_RC_FAIL;
+      }
+    h8_set_mask (sd, memory_size - 1);
+! 
+    if (sim_load_file (sd, STATE_MY_NAME (sd), STATE_CALLBACK (sd), prog,
+  		     prog_bfd, STATE_OPEN_KIND (sd) == SIM_OPEN_DEBUG,
+  		     0, sim_write)
+--- 5329,5335 ----
+        return SIM_RC_FAIL;
+      }
+    h8_set_mask (sd, memory_size - 1);
+! #endif
+    if (sim_load_file (sd, STATE_MY_NAME (sd), STATE_CALLBACK (sd), prog,
+  		     prog_bfd, STATE_OPEN_KIND (sd) == SIM_OPEN_DEBUG,
+  		     0, sim_write)
