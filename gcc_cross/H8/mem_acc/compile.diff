@@ -1,5 +1,5 @@
 *** gdb-10.2.arm-elf/sim/h8300/compile.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.h8300-elf/sim/h8300/compile.c	2021-12-06 06:44:46.000000000 +0900
+--- gdb-10.2.h8300-elf/sim/h8300/compile.c	2021-12-06 11:16:18.000000000 +0900
 ***************
 *** 36,41 ****
 --- 36,44 ----
@@ -65,7 +65,7 @@
      ? ((h8_get_memory (sd, (X)+0) << 24) | (h8_get_memory (sd, (X)+1) << 16)  \
 ***************
 *** 1274,1279 ****
---- 1292,1330 ----
+--- 1292,1335 ----
   #define SET_MEMORY_B(X, Y) \
     ((X) < memory_size ? (h8_set_memory   (sd, (X), (Y))) \
                        : (h8_set_eightbit (sd, (X) & 0xff, (Y))))
@@ -74,7 +74,9 @@
 + sim_cia g_cia;
 + uint32_t GET_MEMORY_L(uint32_t addr)
 + {
-+   return sim_core_read_aligned_4(g_cpu, g_cia, read_map, addr);
++   uint16_t hi = sim_core_read_aligned_2(g_cpu, g_cia, read_map, addr);
++   uint16_t lo = sim_core_read_aligned_2(g_cpu, g_cia, read_map, addr+2);
++   return (hi << 16) | lo;
 + }
 + 
 + uint16_t GET_MEMORY_W(uint32_t addr)
@@ -89,7 +91,10 @@
 + 
 + void SET_MEMORY_L(uint32_t addr, uint32_t val)
 + {
-+   sim_core_write_aligned_4(g_cpu, g_cia, write_map, addr, val);
++   uint16_t hi = val >> 16;
++   sim_core_write_aligned_2(g_cpu, g_cia, write_map, addr, hi);
++   uint16_t lo = val;
++   sim_core_write_aligned_2(g_cpu, g_cia, write_map, addr+2, lo);
 + }
 + 
 + void SET_MEMORY_W(uint32_t addr, uint16_t val)
@@ -114,7 +119,7 @@
         if (h8300smode && !h8300_normal_mode)
   	memory_size = H8300S_MSIZE;
         else if (h8300hmode && !h8300_normal_mode)
---- 1782,1788 ----
+--- 1787,1793 ----
     if (init_pointers_needed)
       {
         int i;
@@ -131,7 +136,7 @@
         memset (h8_get_reg_buf (sd), 0, sizeof (((STATE_CPU (sd, 0))->regs)));
   
         for (i = 0; i < 8; i++)
---- 1813,1819 ----
+--- 1818,1824 ----
         h8_set_eightbit_buf (sd, (unsigned char *) calloc (sizeof (char), 256));
   
         h8_set_mask (sd, memory_size - 1);
@@ -141,7 +146,7 @@
         for (i = 0; i < 8; i++)
 ***************
 *** 1833,1838 ****
---- 1884,2126 ----
+--- 1889,2131 ----
     goto next;					\
   }
   
@@ -396,7 +401,7 @@
     pc = h8_get_pc (sd);
   
     /* The PC should never be odd.  */
---- 2137,2143 ----
+--- 2142,2148 ----
 ***************
 *** 1875,1883 ****
       h8_set_mask (sd, 0xffff);
@@ -408,7 +413,7 @@
       top:
         cidx = h8_get_cache_idx (sd, pc);
         if (cidx == (unsigned short) -1 ||
---- 2161,2169 ----
+--- 2166,2174 ----
       h8_set_mask (sd, 0xffff);
     do
       {
@@ -420,7 +425,7 @@
         if (cidx == (unsigned short) -1 ||
 ***************
 *** 1885,1890 ****
---- 2171,2223 ----
+--- 2176,2228 ----
   	goto illegal;
   	  
         code = sd->sim_cache + cidx;
@@ -454,6 +459,7 @@
 +       decode(sd, pc, &uu.data[0], &dinst);
 +       decoded_inst *code = &dinst;      
 + #else
++       decoded_inst dinst;      
 +       decoded_inst* code = get_cache(pc);
 +       if (!code) {
 + 	uint8_t data[] = {
@@ -462,7 +468,6 @@
 + 	  sim_core_read_aligned_1(g_cpu, g_cia, read_map, pc+2),
 + 	  sim_core_read_aligned_1(g_cpu, g_cia, read_map, pc+3),
 + 	};
-+ 	decoded_inst dinst;
 + 	decode(sd, pc, &data[0], &dinst);
 + 	if (data[0] != 0x01 || data[1] != 0x80) // not break_insn
 + 	  set_cache(pc, &dinst);
@@ -476,7 +481,7 @@
         if (debug)
 ***************
 *** 1904,1909 ****
---- 2237,2243 ----
+--- 2242,2248 ----
         switch (code->opcode)
   	{
   	case 0:
@@ -486,7 +491,7 @@
   	   * instruction which hasnt been compiled
 ***************
 *** 1911,1916 ****
---- 2245,2253 ----
+--- 2250,2258 ----
   	  compile (sd, pc);
   	  goto top;
   	  break;
@@ -498,7 +503,7 @@
   	case O (O_MOVAW, SL):
 ***************
 *** 3108,3113 ****
---- 3445,3461 ----
+--- 3450,3466 ----
   	    h8_set_reg (sd, 0, stat_return);
   	  }
   	  goto next;
@@ -525,7 +530,7 @@
   int
   sim_write (SIM_DESC sd, SIM_ADDR addr, const unsigned char *buffer, int size)
   {
---- 4887,4893 ----
+--- 4892,4898 ----
   	sim_events_process (sd);
       }
   }
@@ -542,7 +547,7 @@
   static int
   h8300_reg_store (SIM_CPU *cpu, int rn, unsigned char *value, int length)
   {
---- 4923,4929 ----
+--- 4928,4934 ----
       memcpy (buffer, h8_get_eightbit_buf (sd) + (addr & 0xff), size);
     return size;
   }
@@ -559,7 +564,7 @@
     /* If we're using gdb attached to the simulator, then we have to
        reallocate memory for the simulator.
   
---- 5285,5291 ----
+--- 5290,5296 ----
   	  set_h8300h (bfd_get_mach (prog_bfd));
   	}
       }
@@ -576,7 +581,7 @@
     if (sim_load_file (sd, STATE_MY_NAME (sd), STATE_CALLBACK (sd), prog,
   		     prog_bfd, STATE_OPEN_KIND (sd) == SIM_OPEN_DEBUG,
   		     0, sim_write)
---- 5329,5335 ----
+--- 5334,5340 ----
         return SIM_RC_FAIL;
       }
     h8_set_mask (sd, memory_size - 1);

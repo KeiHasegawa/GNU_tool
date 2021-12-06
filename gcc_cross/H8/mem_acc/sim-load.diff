@@ -1,14 +1,48 @@
 *** gdb-10.2.arm-elf/sim/common/sim-load.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.h8300-elf/sim/common/sim-load.c	2021-12-05 16:36:32.000000000 +0900
+--- gdb-10.2.h8300-elf/sim/common/sim-load.c	2021-12-06 07:22:13.000000000 +0900
+***************
+*** 53,58 ****
+--- 53,81 ----
+     NOTE: For historical reasons, older hardware simulators incorrectly
+     write the program sections at LMA interpreted as a virtual address.
+     This is still accommodated for backward compatibility reasons. */
++ #ifdef NEW_MEM_MAP
++ struct bfd_section* find_next_load_section(struct bfd_section* sec)
++ {
++   struct bfd_section* next = sec->next;
++   if (!next)
++     return NULL;
++   flagword flags = next->flags;
++   if (flags & SEC_LOAD)
++     return next;
++   return find_next_load_section(next);
++ }
++ 
++ _Bool has_gap_next_load_section(int lma_p, struct bfd_section* sec)
++ {
++   struct bfd_section* next = find_next_load_section(sec);
++   if (!next)
++     return TRUE;
++   bfd_vma lma = lma_p ?  bfd_section_lma(sec) : bfd_section_vma(sec);
++   bfd_size_type size = bfd_section_size(sec);
++   bfd_vma next_lma = lma_p ?  bfd_section_lma(next) : bfd_section_vma(next);
++   return lma + size != next_lma;
++ }
++ #endif // NEW_MEM_MAP
+  
+  
+  bfd *
 ***************
 *** 133,143 ****
---- 133,159 ----
+--- 156,184 ----
   		}
   	      data_count += size;
   	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
 + #ifdef NEW_MEM_MAP
-+ 	      if (s->flags & SEC_CODE)
-+ 		size += 2;
++ 	      if (s->flags & SEC_CODE) {
++ 		if (has_gap_next_load_section(lma_p, s))
++ 		  size += 2;
++ 	      }
 + 	      if (lma + size > 0xffff) {
 + 		asm("int3");
 + 	      }
