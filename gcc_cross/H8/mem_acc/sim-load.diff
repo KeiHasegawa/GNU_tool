@@ -1,8 +1,8 @@
 *** gdb-10.2.arm-elf/sim/common/sim-load.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.h8300-elf/sim/common/sim-load.c	2021-12-06 07:22:13.000000000 +0900
+--- gdb-10.2.h8300-elf/sim/common/sim-load.c	2021-12-06 13:35:03.000000000 +0900
 ***************
 *** 53,58 ****
---- 53,81 ----
+--- 53,83 ----
      NOTE: For historical reasons, older hardware simulators incorrectly
      write the program sections at LMA interpreted as a virtual address.
      This is still accommodated for backward compatibility reasons. */
@@ -28,21 +28,27 @@
 +   bfd_vma next_lma = lma_p ?  bfd_section_lma(next) : bfd_section_vma(next);
 +   return lma + size != next_lma;
 + }
++ 
++ void set_code_area(bfd_vma, bfd_size_type);
 + #endif // NEW_MEM_MAP
   
   
   bfd *
 ***************
 *** 133,143 ****
---- 156,184 ----
+--- 158,190 ----
   		}
   	      data_count += size;
   	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
 + #ifdef NEW_MEM_MAP
++ #if 0
 + 	      if (s->flags & SEC_CODE) {
 + 		if (has_gap_next_load_section(lma_p, s))
 + 		  size += 2;
 + 	      }
++ #endif
++ 	      if (s->flags & SEC_CODE)
++ 		set_code_area(lma, size);
 + 	      if (lma + size > 0xffff) {
 + 		asm("int3");
 + 	      }
