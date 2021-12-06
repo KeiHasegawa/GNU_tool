@@ -1,0 +1,42 @@
+_start:
+	mov.w	#_stack,sp
+	mov.w	#_edata,r0        この命令を stepi 実行すると
+	                          illegal instruction になる.
+
+さて... これは一体.
+
+
+gdb                                              simulator
+        sim_resume(step=0)
+     ---------------------------------------->
+
+        sim_engine_halt()
+	            cia=0x10c
+	            reason=sim_stopped
+		    sigrc=SIM_SIGTRAP(66)
+     <----------------------------------------   最初のブレークポイント
+
+
+        sim_resume(step=1)
+     ---------------------------------------->
+        sim_engine_halt()
+	            cia=0x0
+	            reason=sim_stopped
+		    sigrc=SIM_SIGTRAP(66)
+     <----------------------------------------   最初の stepi 実行
+     
+
+        sim_resume(step=1)
+     ---------------------------------------->
+        sim_engine_halt()
+	            cia = 0x110
+		    reason=sim_stopped
+		    sigrc=SIM_SIGILL(65)
+     <----------------------------------------   2 回目の stepi 実行
+		    
+2 回目の stepi 実行の終わりが SIM_SIGILL になっているのが期待しない動
+作.
+
+
+test016.objdump を見れば分かるが 64 KByte を超えたプログラムになってい
+る. 本来 load コマンドでエラーが捉えられるべきだが, それができていない.
