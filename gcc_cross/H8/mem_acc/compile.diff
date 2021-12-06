@@ -1,5 +1,5 @@
 *** gdb-10.2.arm-elf/sim/h8300/compile.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.h8300-elf/sim/h8300/compile.c	2021-12-06 14:07:27.000000000 +0900
+--- gdb-10.2.h8300-elf/sim/h8300/compile.c	2021-12-06 15:17:10.000000000 +0900
 ***************
 *** 36,41 ****
 --- 36,44 ----
@@ -12,6 +12,23 @@
   #ifndef SIGTRAP
   # define SIGTRAP 5
   #endif
+***************
+*** 130,136 ****
+    sd -> cache_top = val;
+  }
+  
+! static int
+  h8_get_mask (SIM_DESC sd)
+  {
+    return (STATE_CPU (sd, 0)) -> mask;
+--- 133,139 ----
+    sd -> cache_top = val;
+  }
+  
+! int
+  h8_get_mask (SIM_DESC sd)
+  {
+    return (STATE_CPU (sd, 0)) -> mask;
 ***************
 *** 282,287 ****
 --- 285,291 ----
@@ -436,7 +453,7 @@
         if (cidx == (unsigned short) -1 ||
 ***************
 *** 1885,1890 ****
---- 2176,2200 ----
+--- 2176,2202 ----
   	goto illegal;
   	  
         code = sd->sim_cache + cidx;
@@ -449,8 +466,10 @@
 + 	uint8_t data[6];
 + 	for (int i = 0 ; i != sizeof data/sizeof data[0] ; ++i) {
 + 	  int addr = pc+i;
-+ 	  data[i] = code_area(addr) ?
-+ 	    sim_core_read_aligned_1(g_cpu, g_cia, read_map, addr) : 0xcc;
++ 	  if (code_area(addr) || i < 2)
++ 	    data[i] = sim_core_read_aligned_1(g_cpu, g_cia, read_map, addr);
++ 	  else
++ 	    data[i] = 0xcc;
 + 	}
 + 	decode(sd, pc, &data[0], &dinst);
 + 	if (data[0] != 0x01 || data[1] != 0x80) // not break_insn
@@ -464,7 +483,7 @@
         if (debug)
 ***************
 *** 1904,1909 ****
---- 2214,2220 ----
+--- 2216,2222 ----
         switch (code->opcode)
   	{
   	case 0:
@@ -474,7 +493,7 @@
   	   * instruction which hasnt been compiled
 ***************
 *** 1911,1916 ****
---- 2222,2230 ----
+--- 2224,2232 ----
   	  compile (sd, pc);
   	  goto top;
   	  break;
@@ -486,7 +505,7 @@
   	case O (O_MOVAW, SL):
 ***************
 *** 3108,3113 ****
---- 3422,3438 ----
+--- 3424,3440 ----
   	    h8_set_reg (sd, 0, stat_return);
   	  }
   	  goto next;
@@ -513,7 +532,7 @@
   int
   sim_write (SIM_DESC sd, SIM_ADDR addr, const unsigned char *buffer, int size)
   {
---- 4864,4870 ----
+--- 4866,4872 ----
   	sim_events_process (sd);
       }
   }
@@ -530,7 +549,7 @@
   static int
   h8300_reg_store (SIM_CPU *cpu, int rn, unsigned char *value, int length)
   {
---- 4900,4906 ----
+--- 4902,4908 ----
       memcpy (buffer, h8_get_eightbit_buf (sd) + (addr & 0xff), size);
     return size;
   }
@@ -539,36 +558,36 @@
   h8300_reg_store (SIM_CPU *cpu, int rn, unsigned char *value, int length)
   {
 ***************
-*** 4937,4943 ****
-  	  set_h8300h (bfd_get_mach (prog_bfd));
-  	}
-      }
+*** 4959,4965 ****
+      memory_size = H8300H_MSIZE;
+    else
+      memory_size = H8300_MSIZE;
 ! 
-    /* If we're using gdb attached to the simulator, then we have to
-       reallocate memory for the simulator.
-  
---- 5262,5268 ----
-  	  set_h8300h (bfd_get_mach (prog_bfd));
-  	}
-      }
+    if (h8_get_memory_buf (sd))
+      free (h8_get_memory_buf (sd));
+    if (h8_get_cache_idx_buf (sd))
+--- 5286,5292 ----
+      memory_size = H8300H_MSIZE;
+    else
+      memory_size = H8300_MSIZE;
 ! #ifndef NEW_MEM_MAP
-    /* If we're using gdb attached to the simulator, then we have to
-       reallocate memory for the simulator.
-  
+    if (h8_get_memory_buf (sd))
+      free (h8_get_memory_buf (sd));
+    if (h8_get_cache_idx_buf (sd))
 ***************
-*** 4981,4987 ****
-        return SIM_RC_FAIL;
-      }
-    h8_set_mask (sd, memory_size - 1);
+*** 4973,4979 ****
+  			calloc (sizeof (short), memory_size));
+    sd->memory_size = memory_size;
+    h8_set_eightbit_buf (sd, (unsigned char *) calloc (sizeof (char), 256));
 ! 
-    if (sim_load_file (sd, STATE_MY_NAME (sd), STATE_CALLBACK (sd), prog,
-  		     prog_bfd, STATE_OPEN_KIND (sd) == SIM_OPEN_DEBUG,
-  		     0, sim_write)
---- 5306,5312 ----
-        return SIM_RC_FAIL;
-      }
-    h8_set_mask (sd, memory_size - 1);
-! #endif
-    if (sim_load_file (sd, STATE_MY_NAME (sd), STATE_CALLBACK (sd), prog,
-  		     prog_bfd, STATE_OPEN_KIND (sd) == SIM_OPEN_DEBUG,
-  		     0, sim_write)
+    /* `msize' must be a power of two.  */
+    if ((memory_size & (memory_size - 1)) != 0)
+      {
+--- 5300,5306 ----
+  			calloc (sizeof (short), memory_size));
+    sd->memory_size = memory_size;
+    h8_set_eightbit_buf (sd, (unsigned char *) calloc (sizeof (char), 256));
+! #endif  // NEW_MEM_MAP
+    /* `msize' must be a power of two.  */
+    if ((memory_size & (memory_size - 1)) != 0)
+      {
