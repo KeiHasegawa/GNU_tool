@@ -1,4 +1,4 @@
-*** gdb-10.2.h8300-elf/sim/arm/wrapper.c	2021-04-25 13:06:26.000000000 +0900
+*** gdb-10.2.ppc-elf/sim/arm/wrapper.c	2021-04-25 13:06:26.000000000 +0900
 --- gdb-10.2.arm-elf/sim/arm/wrapper.c	2021-12-07 09:15:10.000000000 +0900
 ***************
 *** 112,118 ****
@@ -59,7 +59,7 @@
   
     if (step)
       {
-*** gdb-10.2.h8300-elf/sim/arm/armos.c	2021-04-25 13:06:26.000000000 +0900
+*** gdb-10.2.ppc-elf/sim/arm/armos.c	2021-04-25 13:06:26.000000000 +0900
 --- gdb-10.2.arm-elf/sim/arm/armos.c	2021-12-07 09:07:23.000000000 +0900
 ***************
 *** 124,130 ****
@@ -88,7 +88,7 @@
   
   /* #endif  ASIM */
   #endif /* VALIDATE */
-*** gdb-10.2.h8300-elf/sim/arm/armvirt.c	2020-09-13 11:33:41.000000000 +0900
+*** gdb-10.2.ppc-elf/sim/arm/armvirt.c	2020-09-13 11:33:41.000000000 +0900
 --- gdb-10.2.arm-elf/sim/arm/armvirt.c	2021-12-07 11:17:07.000000000 +0900
 ***************
 *** 21,27 ****
@@ -417,47 +417,42 @@
 +   asm("int3");
 + #endif // NEW_MEM_MAP  
   }
-*** gdb-10.2.h8300-elf/sim/common/sim-load.c	2021-12-06 15:06:17.000000000 +0900
+*** gdb-10.2.ppc-elf/sim/common/sim-load.c	2021-04-25 13:06:26.000000000 +0900
 --- gdb-10.2.arm-elf/sim/common/sim-load.c	2021-12-07 11:07:46.000000000 +0900
 ***************
-*** 53,63 ****
-     NOTE: For historical reasons, older hardware simulators incorrectly
+*** 54,60 ****
      write the program sections at LMA interpreted as a virtual address.
      This is still accommodated for backward compatibility reasons. */
-- #ifdef NEW_MEM_MAP
-- void set_code_area(bfd_vma, bfd_size_type);
-- int h8_get_mask(SIM_DESC);
-- #endif // NEW_MEM_MAP
-- 
   
+- 
   bfd *
   sim_load_file (SIM_DESC sd, const char *myname, host_callback *callback,
---- 53,58 ----
+  	       const char *prog, bfd *prog_bfd, int verbose_p, int lma_p,
+--- 54,59 ----
 ***************
-*** 138,153 ****
+*** 133,143 ****
+--- 132,155 ----
+  		}
   	      data_count += size;
   	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
-  #ifdef NEW_MEM_MAP
-! 	      if (s->flags & SEC_CODE)
-! 		set_code_area(lma, size);
-! 	      int mask = h8_get_mask(sd);
-! 	      if (lma + size > mask) {
-! 		eprintf (callback,
-! 		 "`%s' section (lma : 0x%lx, size : 0x%lx) exceeds 0x%x\n",
-! 		 s->name, lma, size, mask);
-! 		return NULL;
-! 	      }
-! 	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
-  #endif  // NEW_MEM_MAP
++ #ifdef NEW_MEM_MAP
++ 	      if (s->flags & SEC_READONLY)
++ 		size = (size + 3) & (~0 << 2);
++  	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
++ #endif  // NEW_MEM_MAP
   	      do_write (sd, lma, buffer, size);
   	      found_loadable_section = 1;
---- 133,141 ----
-  	      data_count += size;
-  	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
-  #ifdef NEW_MEM_MAP
-! 	      if (s->flags & SEC_READONLY)
-! 		size = (size + 3) & (~0 << 2);
-!  	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
-  #endif  // NEW_MEM_MAP
-  	      do_write (sd, lma, buffer, size);
-  	      found_loadable_section = 1;
+  	      free (buffer);
+  	    }
+  	}
++ #ifdef NEW_MEM_MAP
++         else if (s->flags & SEC_ALLOC) {
++           bfd_vma lma = lma_p ? bfd_section_lma(s) : bfd_section_vma(s);
++           bfd_size_type size = bfd_section_size(s);
++           sim_do_command(sd, "memory-fill 0xcc");
++           sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
++         }
++ #endif  // NEW_MEM_MAP
+      }
+  
+    if (!found_loadable_section)
