@@ -1,0 +1,714 @@
+*** gdb-10.2.ppc-elf/sim/common/sim-load.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.sh-elf/sim/common/sim-load.c	2021-12-07 12:26:15.000000000 +0900
+***************
+*** 133,143 ****
+--- 133,155 ----
+  		}
+  	      data_count += size;
+  	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
++   	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
++ #ifdef NEW_MEM_MAP
++  	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
++ #endif  // NEW_MEM_MAP
+  	      do_write (sd, lma, buffer, size);
+  	      found_loadable_section = 1;
+  	      free (buffer);
+  	    }
+  	}
++ #ifdef NEW_MEM_MAP
++         else if (s->flags & SEC_ALLOC) {
++           bfd_vma lma = lma_p ? bfd_section_lma(s) : bfd_section_vma(s);
++           bfd_size_type size = bfd_section_size(s);
++           sim_do_command(sd, "memory-fill 0xcc");
++           sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
++         }
++ #endif  // NEW_MEM_MAP
+      }
+  
+    if (!found_loadable_section)
+*** gdb-10.2.ppc-elf/sim/sh/interp.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.sh-elf/sim/sh/interp.c	2021-12-08 07:46:48.000000000 +0900
+***************
+*** 152,158 ****
+--- 152,162 ----
+  #define PR	saved_state.asregs.sregs.named.pr
+  #define FPUL	saved_state.asregs.sregs.named.fpul
+  
++ #ifndef NEW_MEM_MAP
+  #define PC insn_ptr
++ #else // NEW_MEM_MAP
++ #define PC pc
++ #endif // NEW_MEM_MAP
+  
+  
+  
+***************
+*** 555,560 ****
+--- 559,565 ----
+    return *p;
+  }
+  
++ #ifndef NEW_MEM_MAP
+  static INLINE int
+  riat_fast (unsigned char *insn_ptr, int endianw)
+  {
+***************
+*** 562,567 ****
+--- 567,582 ----
+  
+    return *p;
+  }
++ #else // NEW_MEM_MAP
++ sim_cpu* g_cpu;
++ sim_cia g_cia;
++ 
++ uint16_t riat_fast(int addr, int endianw)
++ {
++   (void)endianw;
++   return sim_core_read_aligned_2(g_cpu, g_cia, read_map, addr);
++ }
++ #endif // NEW_MEM_MAP
+  
+  static INLINE int
+  rbat_fast (unsigned char *memory, int x, int maskb)
+***************
+*** 572,577 ****
+--- 587,593 ----
+    return *p;
+  }
+  
++ #ifndef NEW_MEM_MAP
+  #define RWAT(x) 	(rwat_fast (memory, x, maskw, endianw))
+  #define RLAT(x) 	(rlat_fast (memory, x, maskl))
+  #define RBAT(x)         (rbat_fast (memory, x, maskb))
+***************
+*** 579,584 ****
+--- 595,638 ----
+  #define WWAT(x,v) 	(wwat_fast (memory, x, v, maskw, endianw))
+  #define WLAT(x,v) 	(wlat_fast (memory, x, v, maskl))
+  #define WBAT(x,v)       (wbat_fast (memory, x, v, maskb))
++ #else // NEW_MEM_MAP
++ #define RIAT(p)		(riat_fast ((p), endianw))
++ 
++ uint16_t RWAT(int addr)
++ {
++   return sim_core_read_aligned_2(g_cpu, g_cia, read_map, addr);  
++ }
++ 
++ int RLAT(int addr)
++ {
++   uint16_t hi = sim_core_read_aligned_2(g_cpu, g_cia, read_map, addr);
++   uint16_t lo = sim_core_read_aligned_2(g_cpu, g_cia, read_map, addr+2);
++   return (hi << 16) | lo;
++ }
++ 
++ int RBAT(int addr)
++ {
++   return sim_core_read_aligned_1(g_cpu, g_cia, read_map, addr);
++ }
++ 
++ void WWAT(int addr, uint16_t v)
++ {
++   sim_core_write_aligned_2(g_cpu, g_cia, write_map, addr, v);  
++ }
++ 
++ void WLAT(int addr, uint32_t v)
++ {
++   uint16_t hi = v >> 16;
++   sim_core_write_aligned_2(g_cpu, g_cia, write_map, addr, hi);
++   uint16_t lo = v;
++   sim_core_write_aligned_2(g_cpu, g_cia, write_map, addr+2, lo);
++ }
++ 
++ void WBAT(int addr, uint8_t v)
++ {
++   sim_core_write_aligned_1(g_cpu, g_cia, write_map, addr, v);
++ }
++ #endif // NEW_MEM_MAP
+  
+  #define RUWAT(x)  (RWAT (x) & 0xffff)
+  #define RSWAT(x)  ((short) (RWAT (x)))
+***************
+*** 679,696 ****
+--- 733,760 ----
+  #endif
+  #define SIGN32(x)	(SEXT32 (x) >> 31)
+  
++ #ifndef NEW_MEM_MAP
+  /* convert pointer from target to host value.  */
+  #define PT2H(x) ((x) + memory)
+  /* convert pointer from host to target value.  */
+  #define PH2T(x) ((x) - memory)
++ #else // NEW_MEM_MAP
++ #define PT2H(x) x
++ #define PH2T(x) x
++ #endif // NEW_MEM_MAP
+  
+  #define SKIP_INSN(p) ((p) += ((RIAT (p) & 0xfc00) == 0xf800 ? 4 : 2))
+  
++ #ifndef NEW_MEM_MAP
+  #define SET_NIP(x) nip = (x); CHECK_INSN_PTR (nip);
++ #else // NEW_MEM_MAP
++ #define SET_NIP(x) nip = (x);
++ #endif // NEW_MEM_MAP
+  
+  static int in_delay_slot = 0;
+  #define Delay_Slot(TEMPPC)  	iword = RIAT (TEMPPC); in_delay_slot = 1; goto top;
+  
++ #ifndef NEW_MEM_MAP
+  #define CHECK_INSN_PTR(p) \
+  do { \
+    if (saved_state.asregs.exception || PH2T (p) & maskw) \
+***************
+*** 700,705 ****
+--- 764,772 ----
+    else \
+      saved_state.asregs.insn_end = mem_end; \
+  } while (0)
++ #else // NEW_MEM_MAP
++ #define CHECK_INSN_PTR(p)
++ #endif // NEW_MEM_MAP
+  
+  #ifdef ACE_FAST
+  
+***************
+*** 1311,1316 ****
+--- 1378,1386 ----
+    unsigned char *memory = saved_state.asregs.memory;
+    int maskb = ~((saved_state.asregs.msize - 1) & ~0);
+    unsigned char *insn_ptr = PT2H (saved_state.asregs.pc);
++ #ifdef NEW_MEM_MAP
++   int pc = saved_state.asregs.pc;
++ #endif // NEW_MEM_MAP
+  
+    switch (op) {
+    case MOVB_RM:		/* signed */
+***************
+*** 1670,1680 ****
+  static void
+  init_pointers (void)
+  {
+    if (saved_state.asregs.msize != 1 << sim_memory_size)
+      {
+        sim_size (sim_memory_size);
+      }
+! 
+    if (saved_state.asregs.profile && !profile_file)
+      {
+        profile_file = fopen ("gmon.out", "wb");
+--- 1740,1751 ----
+  static void
+  init_pointers (void)
+  {
++ #ifndef NEW_MEM_MAP  
+    if (saved_state.asregs.msize != 1 << sim_memory_size)
+      {
+        sim_size (sim_memory_size);
+      }
+! #endif // NEW_MEM_MAP
+    if (saved_state.asregs.profile && !profile_file)
+      {
+        profile_file = fopen ("gmon.out", "wb");
+***************
+*** 1726,1731 ****
+--- 1797,2017 ----
+  
+  #define MMASKB ((saved_state.asregs.msize -1) & ~0)
+  
++ #include <assert.h>
++ 
++ static int first_arg()
++ {
++   int* r = &(saved_state.asregs.regs[0]);
++   return r[4];
++ }
++ 
++ static const char* first_string()
++ {
++   int addr = first_arg();
++   static char buf[256];
++   for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++ #ifndef NEW_MEM_MAP    
++     unsigned char* mem = saved_state.asregs.memory;
++     char c = rbat_fast(mem, addr+i, 0);
++ #else  // NEW_MEM_MAP
++     char c = RBAT(addr+i);
++ #endif  // NEW_MEM_MAP
++     buf[i] = c;
++     if (c == '\0')
++       return &buf[0]; // ok
++   }
++ 
++   assert(0 && "not enough buffer");
++   return &buf[0];
++ }
++ 
++ enum arg_class { NONE, WORD, DW, DF, LDF, STR };
++ 
++ static const char* get_part(const char* fmt, enum arg_class* how)
++ {
++   for ( ; *fmt ; ++fmt) {
++     char c = *fmt;
++     if (c == 'd' || c == 'i' || c == 'x' || c == 'u') {
++       if (*how == NONE)
++ 	*how = WORD;
++       return ++fmt;
++     }
++     if (c == 'c') {
++       *how = WORD;
++       return ++fmt;
++     }
++     if (c == 'f') {
++       char prev = *(fmt-1);
++       *how = prev == 'L' ? LDF : DF;
++       return ++fmt;
++     }
++     if (c == 's') {
++       *how = STR;
++       return ++fmt;
++     }
++     if (c == 'l') {
++       if (*how == NONE)
++ 	*how = WORD;
++       else
++ 	*how = DW;
++     }
++   }
++   assert(0 && "unexpected");
++   return fmt;
++ }
++ 
++ static unsigned int arg32(int nth)
++ {
++   assert(nth);
++   int* r = &(saved_state.asregs.regs[0]);
++   if (nth < 4)
++     return r[nth+4];
++   int sp = r[15];
++   int addr = sp + 4*(nth-4);
++ #ifndef NEW_MEM_MAP  
++   unsigned char* mem = saved_state.asregs.memory;
++   return rlat_fast(mem, addr, 0);
++ #else  // NEW_MEM_MAP
++   return RLAT(addr);
++ #endif  // NEW_MEM_MAP
++ }
++ 
++ static unsigned long long arg64(int nth)
++ {
++   assert(nth);
++   int* r = &(saved_state.asregs.regs[0]);
++   if (nth == 1) {
++     long long a = r[5];
++     unsigned b = r[6];
++     return (a << 32) | b;
++   }
++   if (nth == 2) {
++     long long a = r[6];
++     unsigned b = r[7];
++     return (a << 32) | b;
++   }
++ 
++   if (nth == 3) {
++     long long a = r[7];
++     int sp = r[15];
++ #ifndef NEW_MEM_MAP    
++     unsigned char* mem = saved_state.asregs.memory;
++     unsigned b = rlat_fast(mem, sp, 0);
++ #else  // NEW_MEM_MAP
++     unsigned b = RLAT(sp);
++ #endif  // NEW_MEM_MAP
++     return (a << 32) | b;
++   }
++ 
++   
++   int sp = r[15];
++   int addr = sp + 4*(nth-4);
++ #ifndef NEW_MEM_MAP
++   unsigned char* mem = saved_state.asregs.memory;
++   long long a = rlat_fast(mem, addr, 0);
++   unsigned b = rlat_fast(mem, addr+4, 0);
++ #else  // NEW_MEM_MAP
++   long long a = RLAT(addr);
++   unsigned b = RLAT(addr+4);
++ #endif  // NEW_MEM_MAP
++   return (a << 32) | b;
++ }
++ 
++ static const char* handle(const char* fmt, int* nth, int* ret)
++ {
++   char c = *fmt;
++   if (c != '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   const char* beg = fmt;
++   c = *++fmt;
++   if (c == '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   enum arg_class how = NONE;
++   const char* end = get_part(fmt, &how);
++   char part_fmt[256];
++   int n = end - beg;
++   assert(n + 1 < sizeof part_fmt/sizeof part_fmt[0]);
++   strncpy(&part_fmt[0], beg, n);
++   part_fmt[n] = '\0';
++   if (how == WORD) {
++     int arg = arg32((*nth)++);
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DW) {
++     unsigned long long arg = arg64(*nth);
++     *nth += 2;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DF || how == LDF) {
++     union {
++       unsigned long long i;
++       double d;
++     } u = { arg64(*nth) };
++     *nth += 2;
++     if (how == DF)
++       *ret += printf(part_fmt, u.d);
++     else
++       *ret += printf(part_fmt, (long double)u.d);
++     return end;
++   }
++   if (how == STR) {
++     int addr = arg32((*nth)++);
++     char buf[256];
++     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++ #ifndef NEW_MEM_MAP
++       unsigned char* mem = saved_state.asregs.memory;
++       char c = rbat_fast(mem, addr+i, 0);
++ #else  // NEW_MEM_MAP
++       char c = RBAT(addr+i);
++ #endif  // NEW_MEM_MAP
++       buf[i] = c;
++       if (c == '\0') {
++ 	*ret += printf(part_fmt, &buf[0]);  // ok
++ 	return end;
++       }
++     }
++     assert(0 && "not enough buffer");
++     return end;
++   }
++   asm("int3");
++   return end;
++ }
++ 
++ static void do_printf()
++ {
++   const char* fmt = first_string();
++   int argc = 1;
++   int ret = 0;
++   while (*fmt)
++     fmt = handle(fmt, &argc, &ret);
++   int* r = &(saved_state.asregs.regs[0]);
++   r[0] = ret;
++ }
++ 
++ static void do_puts()
++ {
++   const char* arg = first_string();
++   int ret = puts(arg);
++   int* r = &(saved_state.asregs.regs[0]);
++   r[0] = ret;
++ }
++ 
++ static void do_putchar()
++ {
++   int arg = first_arg();
++   int ret = putchar(arg);
++   int* r = &(saved_state.asregs.regs[0]);
++   r[0] = ret;
++ }
++ #ifndef NEW_MEM_MAP
+  void
+  sim_resume (SIM_DESC sd, int step, int siggnal)
+  {
+***************
+*** 1777,1783 ****
+      loop = get_loop_bounds_ext (RS, RE, memory, mem_end, maskw, endianw);
+    else
+      loop = get_loop_bounds     (RS, RE, memory, mem_end, maskw, endianw);
+! 
+    insn_ptr = PT2H (saved_state.asregs.pc);
+    CHECK_INSN_PTR (insn_ptr);
+  
+--- 2063,2069 ----
+      loop = get_loop_bounds_ext (RS, RE, memory, mem_end, maskw, endianw);
+    else
+      loop = get_loop_bounds     (RS, RE, memory, mem_end, maskw, endianw);
+!   
+    insn_ptr = PT2H (saved_state.asregs.pc);
+    CHECK_INSN_PTR (insn_ptr);
+  
+***************
+*** 1811,1816 ****
+--- 2097,2119 ----
+    while (insn_ptr < saved_state.asregs.insn_end)
+      {
+        register unsigned int iword = RIAT (insn_ptr);
++       if (iword == 0xfe50)
++ 	exit(0);
++       if (iword == 0xfe51) {
++ 	do_printf();
++ 	insn_ptr += 2;
++ 	iword = RIAT (insn_ptr);
++       }
++       if (iword == 0xfe52) {
++ 	do_puts();
++ 	insn_ptr += 2;
++ 	iword = RIAT (insn_ptr);
++       }
++       if (iword == 0xfe53) {
++ 	do_putchar();
++ 	insn_ptr += 2;
++ 	iword = RIAT (insn_ptr);
++       }
+        register unsigned int ult;
+        register unsigned char *nip = insn_ptr + 2;
+  
+***************
+*** 1818,1824 ****
+        insts++;
+  #endif
+      top:
+! 
+  #include "code.c"
+  
+  
+--- 2121,2127 ----
+        insts++;
+  #endif
+      top:
+!       
+  #include "code.c"
+  
+  
+***************
+*** 1903,1909 ****
+--- 2206,2351 ----
+  
+    signal (SIGFPE, prev_fpe);
+  }
++ #else // NEW_MEM_MAP
++ static void
++ has_stepped (SIM_DESC sd,
++ 	     void *data)
++ {
++   ASSERT (STATE_MAGIC (sd) == SIM_MAGIC_NUMBER);
++   sim_engine_halt (sd, NULL, NULL, NULL_CIA, sim_stopped, SIM_SIGTRAP);
++ }
++ 
++ void step_once(SIM_DESC sd, sim_cpu* cpu)
++ {
++   g_cpu = cpu;
++   int pc = saved_state.asregs.pc;  
++   uint16_t iword = sim_core_read_aligned_2(cpu, pc, read_map, pc);
++   if (iword == 0xfe50)
++     exit(0);
++   if (iword == 0xfe51) {
++     do_printf();
++     pc += 2;
++     iword = sim_core_read_aligned_2(cpu, pc, read_map, pc);
++   }
++   if (iword == 0xfe52) {
++     do_puts();
++     pc += 2;
++     iword = sim_core_read_aligned_2(cpu, pc, read_map, pc);
++   }
++   if (iword == 0xfe53) {
++     do_putchar();
++     pc += 2;
++     iword = sim_core_read_aligned_2(cpu, pc, read_map, pc);
++   }
++   g_cia = pc;
++   unsigned short* jump_table = sh_jump_table;
++   int prevlock = saved_state.asregs.prevlock;
++   int stalls = 0;
++   int endianw = global_endianw;
++   int* R = &(saved_state.asregs.regs[0]);
++   int nip = pc+2;
++   int cycles = 0;
++   int memstalls = 0;
++   int thislock = 0;
++   unsigned char* memory = 0;
++   unsigned char* mem_end = 0;
++   unsigned int sbit = ((unsigned int) 1 << 31);
++   unsigned int ult;
++   int maskb = ~((saved_state.asregs.msize - 1) & ~0);
++   int maskw = ~((saved_state.asregs.msize - 1) & ~1);
++   int maskl = ~((saved_state.asregs.msize - 1) & ~3);
++   struct loop_bounds loop;
++   int doprofile = 0;
++  top:
++   (void)0;
++ 
++ #include "code.c"
++ 
++   in_delay_slot = 0;
++   saved_state.asregs.pc = nip;
++ }
++ 
++ void
++ sim_engine_run (SIM_DESC sd,
++ 		int next_cpu_nr,  /* ignore  */
++ 		int nr_cpus,      /* ignore  */
++ 		int siggnal)
++ {
++   sim_cpu *cpu;
++ 
++   SIM_ASSERT (STATE_MAGIC (sd) == SIM_MAGIC_NUMBER);
++ 
++   cpu = STATE_CPU (sd, 0);
++ 
++   while (1)
++     {
++       step_once (sd, cpu);
++       if (sim_events_tick (sd))
++ 	sim_events_process (sd);
++     }
++ }
+  
++ void
++ sim_resume (SIM_DESC sd,
++ 	    int step,
++ 	    int siggnal)
++ {
++   sim_engine *engine = STATE_ENGINE (sd);
++   jmp_buf buf;
++   int jmpval;
++ 
++   ASSERT (STATE_MAGIC (sd) == SIM_MAGIC_NUMBER);
++ 
++   /* we only want to be single stepping the simulator once */
++   if (engine->stepper != NULL)
++     {
++       sim_events_deschedule (sd, engine->stepper);
++       engine->stepper = NULL;
++     }
++   if (step)
++     engine->stepper = sim_events_schedule (sd, 1, has_stepped, sd);
++ 
++   sim_module_resume (sd);
++ 
++   /* run/resume the simulator */
++   engine->jmpbuf = &buf;
++   jmpval = setjmp (buf);
++   if (jmpval == sim_engine_start_jmpval
++       || jmpval == sim_engine_restart_jmpval)
++     {
++       int last_cpu_nr = sim_engine_last_cpu_nr (sd);
++       int next_cpu_nr = sim_engine_next_cpu_nr (sd);
++       int nr_cpus = sim_engine_nr_cpus (sd);
++       int sig_to_deliver;
++ 
++       sim_events_preprocess (sd, last_cpu_nr >= nr_cpus, next_cpu_nr >= nr_cpus);
++       if (next_cpu_nr >= nr_cpus)
++ 	next_cpu_nr = 0;
++ 
++       /* Only deliver the SIGGNAL [sic] the first time through - don't
++          re-deliver any SIGGNAL during a restart.  NOTE: A new local
++          variable is used to avoid problems with the automatic
++          variable ``siggnal'' being trashed by a long jump.  */
++       if (jmpval == sim_engine_start_jmpval)
++ 	sig_to_deliver = siggnal;
++       else
++ 	sig_to_deliver = 0;
++ 
++ #ifdef SIM_CPU_EXCEPTION_RESUME
++       {
++ 	sim_cpu* cpu = STATE_CPU (sd, next_cpu_nr);
++ 	SIM_CPU_EXCEPTION_RESUME (sd, cpu, sig_to_deliver);
++       }
++ #endif
++ 
++       sim_engine_run (sd, next_cpu_nr, nr_cpus, sig_to_deliver);
++     }
++   engine->jmpbuf = NULL;
++ 
++   sim_module_suspend (sd);
++ }
++ #endif // NEW_MEM_MAP
++ #ifndef NEW_MEM_MAP
+  int
+  sim_write (SIM_DESC sd, SIM_ADDR addr, const unsigned char *buffer, int size)
+  {
+***************
+*** 1931,1937 ****
+      }
+    return size;
+  }
+! 
+  static int gdb_bank_number;
+  enum {
+    REGBANK_MACH = 15,
+--- 2373,2379 ----
+      }
+    return size;
+  }
+! #endif // NEW_MEM_MAP
+  static int gdb_bank_number;
+  enum {
+    REGBANK_MACH = 15,
+***************
+*** 2428,2440 ****
+        CPU_PC_FETCH (cpu) = sh_pc_get;
+        CPU_PC_STORE (cpu) = sh_pc_set;
+      }
+! 
+    for (p = argv + 1; *p != NULL; ++p)
+      {
+        if (isdigit (**p))
+  	parse_and_set_memory_size (sd, *p);
+      }
+! 
+    if (abfd)
+      init_dsp (abfd);
+  
+--- 2870,2882 ----
+        CPU_PC_FETCH (cpu) = sh_pc_get;
+        CPU_PC_STORE (cpu) = sh_pc_set;
+      }
+! #ifndef NEW_MEM_MAP
+    for (p = argv + 1; *p != NULL; ++p)
+      {
+        if (isdigit (**p))
+  	parse_and_set_memory_size (sd, *p);
+      }
+! #endif // NEW_MEM_MAP
+    if (abfd)
+      init_dsp (abfd);
+  
+***************
+*** 2482,2488 ****
+  
+    return SIM_RC_OK;
+  }
+! 
+  void
+  sim_do_command (SIM_DESC sd, const char *cmd)
+  {
+--- 2924,2930 ----
+  
+    return SIM_RC_OK;
+  }
+! #ifndef NEW_MEM_MAP
+  void
+  sim_do_command (SIM_DESC sd, const char *cmd)
+  {
+***************
+*** 2511,2513 ****
+--- 2953,2956 ----
+        sim_io_printf (sd, "Error: \"%s\" is not a valid SH simulator command.\n", cmd);
+      }
+  }
++ #endif // NEW_MEM_MAP
