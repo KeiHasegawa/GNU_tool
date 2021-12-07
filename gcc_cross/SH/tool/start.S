@@ -1,6 +1,19 @@
 	.text
 start:
 	nop
+	mov.l	label3,r1
+	mov.l	label4,r2
+	mov	#0,r3	
+.L4:	
+	cmp/eq	r1,r2
+	bt	.L5
+	nop
+
+	mov.b	r3,@r1
+	add	#1,r1
+	bra	.L4
+	nop
+.L5:	
 	mov.l	label1,r15
 	mov.l	label2,r1
 	jsr	@r1
@@ -8,26 +21,31 @@ start:
 	.word 0xfe50		# simulator or gdb will call exit(0)
 	.align 2
 label1:
-	.long	stack
+	.long	_stack
 label2:
 	.long	_main
-	
+label3:
+	.long	_bss_start
+label4:
+	.long	_bss_end
 	
 	.global	_printf
 _printf:
 	.word 0xfe51
 	rts
+	nop
 
 	.global	_puts
 _puts:
 	.word 0xfe52
 	rts
+	nop
 
 	.global	_putchar
 _putchar:
 	.word 0xfe53
 	rts
-
+	nop
 
 	.global	_memcpy
 _memcpy:
@@ -91,5 +109,3 @@ _memcpy:
 	mov.l	@r15+,r14
 	rts	
 	nop
-	
-	
