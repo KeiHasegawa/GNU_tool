@@ -1,0 +1,463 @@
+*** gdb-10.2.h8300-elf/sim/arm/wrapper.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.arm-elf/sim/arm/wrapper.c	2021-12-07 09:15:10.000000000 +0900
+***************
+*** 112,118 ****
+--- 112,120 ----
+        ARMul_EmulateInit ();
+        state = ARMul_NewState ();
+        state->bigendSig = (CURRENT_TARGET_BYTE_ORDER == BFD_ENDIAN_BIG ? HIGH : LOW);
++ #ifndef NEW_MEM_MAP
+        ARMul_MemoryInit (state, mem_size);
++ #endif      
+        ARMul_OSInit (state);
+        state->verbose = 0;
+        done = 1;
+***************
+*** 133,139 ****
+        va_end (ap);
+      }
+  }
+! 
+  int
+  sim_write (SIM_DESC sd ATTRIBUTE_UNUSED,
+  	   SIM_ADDR addr,
+--- 135,141 ----
+        va_end (ap);
+      }
+  }
+! #ifndef NEW_MEM_MAP
+  int
+  sim_write (SIM_DESC sd ATTRIBUTE_UNUSED,
+  	   SIM_ADDR addr,
+***************
+*** 165,171 ****
+  
+    return size;
+  }
+! 
+  int
+  sim_stop (SIM_DESC sd ATTRIBUTE_UNUSED)
+  {
+--- 167,173 ----
+  
+    return size;
+  }
+! #endif // NEW_MEM_MAP
+  int
+  sim_stop (SIM_DESC sd ATTRIBUTE_UNUSED)
+  {
+***************
+*** 181,186 ****
+--- 183,192 ----
+  {
+    state->EndCondition = 0;
+    stop_simulator = 0;
++ #ifdef NEW_MEM_MAP
++   extern sim_cpu* g_cpu;
++   g_cpu = sd->cpu[0];
++ #endif // NEW_MEM_MAP
+  
+    if (step)
+      {
+*** gdb-10.2.h8300-elf/sim/arm/armos.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.arm-elf/sim/arm/armos.c	2021-12-07 09:07:23.000000000 +0900
+***************
+*** 124,130 ****
+    ARMul_SetReg (state, UNDEF32MODE, 13, ADDRSUPERSTACK);/* ...and for undef 32 mode...  */
+    ARMul_SetReg (state, SYSTEMMODE,  13, ADDRSUPERSTACK);/* ...and for system mode.  */
+    instr = 0xe59ff000 | (ADDRSOFTVECTORS - 8);		/* Load pc from soft vector */
+! 
+    for (i = ARMul_ResetV; i <= ARMFIQV; i += 4)
+      /* Write hardware vectors.  */
+      ARMul_WriteWord (state, i, instr);
+--- 124,130 ----
+    ARMul_SetReg (state, UNDEF32MODE, 13, ADDRSUPERSTACK);/* ...and for undef 32 mode...  */
+    ARMul_SetReg (state, SYSTEMMODE,  13, ADDRSUPERSTACK);/* ...and for system mode.  */
+    instr = 0xe59ff000 | (ADDRSOFTVECTORS - 8);		/* Load pc from soft vector */
+! #ifndef NEW_MEM_MAP
+    for (i = ARMul_ResetV; i <= ARMFIQV; i += 4)
+      /* Write hardware vectors.  */
+      ARMul_WriteWord (state, i, instr);
+***************
+*** 174,179 ****
+--- 174,180 ----
+    /* Install new vector.  */
+    ARMul_WriteWord (state, ARMUndefinedInstrV, FPENEWVECT (ARMul_ReadWord (state, i - 4)));
+    ARMul_ConsolePrint (state, ", FPE");
++ #endif  // NEW_MEM_MAP
+  
+  /* #endif  ASIM */
+  #endif /* VALIDATE */
+*** gdb-10.2.h8300-elf/sim/arm/armvirt.c	2020-09-13 11:33:41.000000000 +0900
+--- gdb-10.2.arm-elf/sim/arm/armvirt.c	2021-12-07 11:17:07.000000000 +0900
+***************
+*** 21,27 ****
+     table. The routines PutWord and GetWord implement this. Pages are never
+     freed as they might be needed again. A single area of memory may be
+     defined to generate aborts.  */
+- 
+  #include "armos.h"
+  #include "armdefs.h"
+  #include "ansidecl.h"
+--- 21,26 ----
+***************
+*** 53,59 ****
+  /***************************************************************************\
+  *        Get a Word from Virtual Memory, maybe allocating the page          *
+  \***************************************************************************/
+! 
+  static ARMword
+  GetWord (ARMul_State * state, ARMword address, int check)
+  {
+--- 52,58 ----
+  /***************************************************************************\
+  *        Get a Word from Virtual Memory, maybe allocating the page          *
+  \***************************************************************************/
+! #ifndef NEW_MEM_MAP
+  static ARMword
+  GetWord (ARMul_State * state, ARMword address, int check)
+  {
+***************
+*** 85,95 ****
+  
+    return *(pageptr + offset);
+  }
+! 
+  /***************************************************************************\
+  *        Put a Word into Virtual Memory, maybe allocating the page          *
+  \***************************************************************************/
+! 
+  static void
+  PutWord (ARMul_State * state, ARMword address, ARMword data, int check)
+  {
+--- 84,94 ----
+  
+    return *(pageptr + offset);
+  }
+! #endif // NEW_MEM_MAP
+  /***************************************************************************\
+  *        Put a Word into Virtual Memory, maybe allocating the page          *
+  \***************************************************************************/
+! #ifndef NEW_MEM_MAP
+  static void
+  PutWord (ARMul_State * state, ARMword address, ARMword data, int check)
+  {
+***************
+*** 123,133 ****
+  
+    *(pageptr + offset) = data;
+  }
+! 
+  /***************************************************************************\
+  *                      Initialise the memory interface                      *
+  \***************************************************************************/
+! 
+  unsigned
+  ARMul_MemoryInit (ARMul_State * state, unsigned long initmemsize)
+  {
+--- 122,132 ----
+  
+    *(pageptr + offset) = data;
+  }
+! #endif // NEW_MEM_MAP
+  /***************************************************************************\
+  *                      Initialise the memory interface                      *
+  \***************************************************************************/
+! #ifndef NEW_MEM_MAP
+  unsigned
+  ARMul_MemoryInit (ARMul_State * state, unsigned long initmemsize)
+  {
+***************
+*** 151,161 ****
+  
+    return TRUE;
+  }
+! 
+  /***************************************************************************\
+  *                         Remove the memory interface                       *
+  \***************************************************************************/
+! 
+  void
+  ARMul_MemoryExit (ARMul_State * state)
+  {
+--- 150,160 ----
+  
+    return TRUE;
+  }
+! #endif // NEW_MEM_MAP
+  /***************************************************************************\
+  *                         Remove the memory interface                       *
+  \***************************************************************************/
+! #ifndef NEW_MEM_MAP
+  void
+  ARMul_MemoryExit (ARMul_State * state)
+  {
+***************
+*** 173,183 ****
+    free ((char *) pagetable);
+    return;
+  }
+! 
+  /***************************************************************************\
+  *                   ReLoad Instruction                                     *
+  \***************************************************************************/
+! 
+  ARMword
+  ARMul_ReLoadInstr (ARMul_State * state, ARMword address, ARMword isize)
+  {
+--- 172,184 ----
+    free ((char *) pagetable);
+    return;
+  }
+! #endif // NEW_MEM_MAP
+  /***************************************************************************\
+  *                   ReLoad Instruction                                     *
+  \***************************************************************************/
+! #ifdef NEW_MEM_MAP
+! struct sim_cpu* g_cpu;
+! #endif  // NEW_MEM_MAP
+  ARMword
+  ARMul_ReLoadInstr (ARMul_State * state, ARMword address, ARMword isize)
+  {
+***************
+*** 196,211 ****
+    if ((isize == 2) && (address & 0x2))
+      {
+        /* We return the next two halfwords: */
+        ARMword lo = GetWord (state, address, FALSE);
+        ARMword hi = GetWord (state, address + 4, FALSE);
+! 
+        if (state->bigendSig == HIGH)
+  	return (lo << 16) | (hi >> 16);
+        else
+  	return ((hi & 0xFFFF) << 16) | (lo >> 16);
+      }
+  
+    return GetWord (state, address, TRUE);
+  }
+  
+  /***************************************************************************\
+--- 197,221 ----
+    if ((isize == 2) && (address & 0x2))
+      {
+        /* We return the next two halfwords: */
++ #ifndef NEW_MEM_MAP
+        ARMword lo = GetWord (state, address, FALSE);
+        ARMword hi = GetWord (state, address + 4, FALSE);
+! #else // NEW_MEM_MAP
+!       asm("int3");
+!       ARMword lo = 0;
+!       ARMword hi = 0;
+! #endif // NEW_MEM_MAP  
+        if (state->bigendSig == HIGH)
+  	return (lo << 16) | (hi >> 16);
+        else
+  	return ((hi & 0xFFFF) << 16) | (lo >> 16);
+      }
+  
++ #ifndef NEW_MEM_MAP
+    return GetWord (state, address, TRUE);
++ #else // NEW_MEM_MAP
++   return sim_core_read_aligned_4(g_cpu, state->Reg[15], 0, address);
++ #endif // NEW_MEM_MAP  
+  }
+  
+  /***************************************************************************\
+***************
+*** 248,254 ****
+--- 258,268 ----
+      }
+  #endif
+  
++ #ifndef NEW_MEM_MAP
+    return GetWord (state, address, TRUE);
++ #else // NEW_MEM_MAP
++   return sim_core_read_aligned_4(g_cpu, state->Reg[15], 0, address);
++ #endif // NEW_MEM_MAP  
+  }
+  
+  /***************************************************************************\
+***************
+*** 295,306 ****
+--- 309,324 ----
+  
+  ARMword ARMul_ReadByte (ARMul_State * state, ARMword address)
+  {
++ #ifndef NEW_MEM_MAP
+    ARMword temp, offset;
+  
+    temp = ARMul_ReadWord (state, address);
+    offset = (((ARMword) state->bigendSig * 3) ^ (address & 3)) << 3;	/* bit offset into the word */
+  
+    return (temp >> offset & 0xffL);
++ #else  // NEW_MEM_MAP
++   return sim_core_read_aligned_1(g_cpu, state->Reg[15], 0, address);
++ #endif  // NEW_MEM_MAP
+  }
+  
+  /***************************************************************************\
+***************
+*** 332,339 ****
+        ARMul_CLEARABORT;
+      }
+  #endif
+! 
+    PutWord (state, address, data, TRUE);
+  }
+  
+  /***************************************************************************\
+--- 350,360 ----
+        ARMul_CLEARABORT;
+      }
+  #endif
+! #ifndef NEW_MEM_MAP
+    PutWord (state, address, data, TRUE);
++ #else // NEW_MEM_MAP
++   sim_core_write_aligned_4(g_cpu, state->Reg[15], 1, address, data);
++ #endif // NEW_MEM_MAP  
+  }
+  
+  /***************************************************************************\
+***************
+*** 385,393 ****
+--- 406,418 ----
+    temp = ARMul_ReadWord (state, address);
+    offset = (((ARMword) state->bigendSig * 2) ^ (address & 2)) << 3;	/* bit offset into the word */
+  
++ #ifndef NEW_MEM_MAP
+    PutWord (state, address,
+  	   (temp & ~(0xffffL << offset)) | ((data & 0xffffL) << offset),
+  	   TRUE);
++ #else // NEW_MEM_MAP
++   sim_core_write_aligned_2(g_cpu, state->Reg[15], 1, address, data);
++ #endif // NEW_MEM_MAP  
+  }
+  
+  /***************************************************************************\
+***************
+*** 397,410 ****
+  void
+  ARMul_WriteByte (ARMul_State * state, ARMword address, ARMword data)
+  {
+    ARMword temp, offset;
+  
+    temp = ARMul_ReadWord (state, address);
+    offset = (((ARMword) state->bigendSig * 3) ^ (address & 3)) << 3;	/* bit offset into the word */
+- 
+    PutWord (state, address,
+  	   (temp & ~(0xffL << offset)) | ((data & 0xffL) << offset),
+  	   TRUE);
+  }
+  
+  /***************************************************************************\
+--- 422,438 ----
+  void
+  ARMul_WriteByte (ARMul_State * state, ARMword address, ARMword data)
+  {
++ #ifndef NEW_MEM_MAP  
+    ARMword temp, offset;
+  
+    temp = ARMul_ReadWord (state, address);
+    offset = (((ARMword) state->bigendSig * 3) ^ (address & 3)) << 3;	/* bit offset into the word */
+    PutWord (state, address,
+  	   (temp & ~(0xffL << offset)) | ((data & 0xffL) << offset),
+  	   TRUE);
++ #else // NEW_MEM_MAP
++   sim_core_write_aligned_1(g_cpu, state->Reg[15], 1, address, data);
++ #endif // NEW_MEM_MAP  
+  }
+  
+  /***************************************************************************\
+***************
+*** 444,450 ****
+--- 472,482 ----
+  
+    state->NumNcycles++;
+  
++ #ifndef NEW_MEM_MAP
+    PutWord (state, address, data, TRUE);
++ #else // NEW_MEM_MAP
++   sim_core_write_aligned_4(g_cpu, state->Reg[15], 1, address, data);
++ #endif // NEW_MEM_MAP  
+  
+    return temp;
+  }
+***************
+*** 493,499 ****
+--- 525,535 ----
+  {
+    ARMword temp, offset;
+  
++ #ifndef NEW_MEM_MAP
+    temp = GetWord (state, address, FALSE);
++ #else // NEW_MEM_MAP
++   asm("int3");
++ #endif // NEW_MEM_MAP  
+    offset = (((ARMword) state->bigendSig * 3) ^ (address & 3)) << 3;
+  
+    return (temp >> offset & 0xffL);
+***************
+*** 504,513 ****
+--- 540,557 ----
+  {
+    ARMword temp, offset;
+  
++ #ifndef NEW_MEM_MAP
+    temp = GetWord (state, address, FALSE);
++ #else // NEW_MEM_MAP
++   asm("int3");
++ #endif // NEW_MEM_MAP  
+    offset = (((ARMword) state->bigendSig * 3) ^ (address & 3)) << 3;
+  
++ #ifndef NEW_MEM_MAP
+    PutWord (state, address,
+  	   (temp & ~(0xffL << offset)) | ((data & 0xffL) << offset),
+  	   FALSE);
++ #else // NEW_MEM_MAP
++   asm("int3");
++ #endif // NEW_MEM_MAP  
+  }
+*** gdb-10.2.h8300-elf/sim/common/sim-load.c	2021-12-06 15:06:17.000000000 +0900
+--- gdb-10.2.arm-elf/sim/common/sim-load.c	2021-12-07 11:07:46.000000000 +0900
+***************
+*** 53,63 ****
+     NOTE: For historical reasons, older hardware simulators incorrectly
+     write the program sections at LMA interpreted as a virtual address.
+     This is still accommodated for backward compatibility reasons. */
+- #ifdef NEW_MEM_MAP
+- void set_code_area(bfd_vma, bfd_size_type);
+- int h8_get_mask(SIM_DESC);
+- #endif // NEW_MEM_MAP
+- 
+  
+  bfd *
+  sim_load_file (SIM_DESC sd, const char *myname, host_callback *callback,
+--- 53,58 ----
+***************
+*** 138,153 ****
+  	      data_count += size;
+  	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
+  #ifdef NEW_MEM_MAP
+! 	      if (s->flags & SEC_CODE)
+! 		set_code_area(lma, size);
+! 	      int mask = h8_get_mask(sd);
+! 	      if (lma + size > mask) {
+! 		eprintf (callback,
+! 		 "`%s' section (lma : 0x%lx, size : 0x%lx) exceeds 0x%x\n",
+! 		 s->name, lma, size, mask);
+! 		return NULL;
+! 	      }
+! 	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
+  #endif  // NEW_MEM_MAP
+  	      do_write (sd, lma, buffer, size);
+  	      found_loadable_section = 1;
+--- 133,141 ----
+  	      data_count += size;
+  	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
+  #ifdef NEW_MEM_MAP
+! 	      if (s->flags & SEC_READONLY)
+! 		size = (size + 3) & (~0 << 2);
+!  	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
+  #endif  // NEW_MEM_MAP
+  	      do_write (sd, lma, buffer, size);
+  	      found_loadable_section = 1;

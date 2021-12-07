@@ -6,6 +6,10 @@ static ARMword
 GetWord (ARMul_State * state, ARMword address, int check)
 {
 ...
+static void
+PutWord (ARMul_State * state, ARMword address, ARMword data, int check)
+{
+...
 
 そしてメモリがまだ確保されていなければ自動的にメモリを割り当てる:
 
@@ -24,3 +28,11 @@ GetWord (ARMul_State * state, ARMword address, int check)
 
   return *(pageptr + offset);
 }
+
+このページにある memory.diff の修正を適用することで, 上をやめてプログラムのロード時
+に .text, .rodata, .data, .bss にメモリを割り当てる. シミュレータのユーザは
+ターゲットプログラムが使用するスタックの領域をメモリ割り当てする必要がある.
+
+このパッチを適用してコンパイラのテストを実施してみると, .rodata の領域のサイズを少し超えて
+読み出しアクセスする問題が発生してしまう. おそらく
+コンパイラを作成した人は意図して行なっているとは思われるが, この仕様は良くないように思える.

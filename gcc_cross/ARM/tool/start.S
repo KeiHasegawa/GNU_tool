@@ -1,5 +1,15 @@
 	.text
 start:
+	ldr	r2, label2
+	ldr	r3, label3
+	mov	r0, #0
+.L1:
+	cmp	r2, r3
+	beq	.L2
+	strb	r0, [r2]
+	add	r2, r2, #1
+	b	.L1
+.L2:	
 	nop
 	ldr	sp, label
 	bl	main
@@ -8,7 +18,11 @@ start:
 
 	.align	2
 label:
-	.word	stack
+	.word	_stack
+label2:
+	.word	_bss_start
+label3:
+	.word	_bss_end
 
 	.global	printf
 printf:
