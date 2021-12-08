@@ -5,4 +5,4 @@ avr-elf-gcc -o sample.s sample.c -S || exit 1
 avr-elf-as -o sample.o -g sample.s || exit 1
 avr-elf-ld -o sample.elf start.o sample.o /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/avr-elf/10.2.0/libgcc.a -T sample.x || exit 1
 avr-elf-objdump -x -d sample.elf > sample.objdump || exit 1
-avr-elf-run sample.elf
+avr-elf-run --memory-region 0x80ef00,0x1000 sample.elf
