@@ -1,0 +1,435 @@
+*** gdb-10.2.ppc-elf/sim/common/sim-load.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.m32c-elf/sim/common/sim-load.c	2021-12-08 17:10:07.000000000 +0900
+***************
+*** 133,143 ****
+--- 133,154 ----
+  		}
+  	      data_count += size;
+  	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
++ #ifdef NEW_MEM_MAP
++        	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
++ #endif
+  	      do_write (sd, lma, buffer, size);
+  	      found_loadable_section = 1;
+  	      free (buffer);
+  	    }
+  	}
++ #ifdef NEW_MEM_MAP
++         else if (s->flags & SEC_ALLOC) {
++           bfd_vma lma = lma_p ? bfd_section_lma(s) : bfd_section_vma(s);
++           bfd_size_type size = bfd_section_size(s);
++           sim_do_command(sd, "memory-fill 0xcc");
++           sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
++         }
++ #endif
+      }
+  
+    if (!found_loadable_section)
+*** gdb-10.2.ppc-elf/sim/m32c/main.c	2021-04-25 13:04:35.000000000 +0900
+--- gdb-10.2.m32c-elf/sim/m32c/main.c	2021-12-08 16:53:23.000000000 +0900
+***************
+*** 125,130 ****
+--- 125,131 ----
+  }
+  #endif
+  
++ #ifndef NEW_MEM_MAP
+  int
+  main (int argc, char **argv)
+  {
+***************
+*** 238,240 ****
+--- 239,242 ----
+  #endif
+      }
+  }
++ #endif // NEW_MEM_MAP
+*** gdb-10.2.ppc-elf/sim/m32c/gdb-if.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.m32c-elf/sim/m32c/gdb-if.c	2021-12-08 17:19:37.000000000 +0900
+***************
+*** 46,51 ****
+--- 46,52 ----
+  
+     So we just have one instance, that lives in global variables, and
+     each time we open it, we re-initialize it.  */
++ #ifndef NEW_MEM_MAP
+  struct sim_state
+  {
+    const char *message;
+***************
+*** 54,60 ****
+--- 55,63 ----
+  static struct sim_state the_minisim = {
+    "This is the sole m32c minisim instance.  See libsim.a's global variables."
+  };
++ #endif // NEW_MEM_MAP
+  
++ #ifndef NEW_MEM_MAP
+  static int open;
+  
+  SIM_DESC
+***************
+*** 88,95 ****
+--- 91,155 ----
+    open = 1;
+    return &the_minisim;
+  }
++ #else // NEW_MEM_MAP
++ #include "sim-main.h"
+  
+  static void
++ free_state (SIM_DESC sd)
++ {
++   if (STATE_MODULES (sd) != NULL)
++     sim_module_uninstall (sd);
++   sim_cpu_free_all (sd);
++   sim_state_free (sd);
++ }
++ 
++ SIM_DESC
++ sim_open (SIM_OPEN_KIND kind,
++ 	  struct host_callback_struct *callback,
++ 	  struct bfd *abfd, char * const *argv)
++ {
++   SIM_DESC sd = sim_state_alloc(kind, callback);
++ 
++   if (sim_cpu_alloc_all(sd, 1, 0) != SIM_RC_OK) {
++     free_state(sd);
++     return 0;
++   }
++ 
++   if (sim_pre_argv_init (sd, argv[0]) != SIM_RC_OK) {
++     free_state (sd);
++     return 0;
++   }
++ 
++   if (sim_parse_args (sd, argv) != SIM_RC_OK) {
++     free_state (sd);
++     return 0;
++   }
++ 
++   if (sim_analyze_program (sd,
++ 			   (STATE_PROG_ARGV (sd) != NULL
++ 			    ? *STATE_PROG_ARGV (sd)
++ 			    : NULL),
++ 			   abfd) != SIM_RC_OK) {
++     free_state (sd);
++     return 0;
++   }
++ 
++   if (sim_config (sd) != SIM_RC_OK) {
++     free_state (sd);
++     return 0;
++   }
++ 
++   if (sim_post_argv_init (sd) != SIM_RC_OK) {
++     free_state (sd);
++     return 0;
++   }
++   
++   return sd;
++ }
++ #endif // NEW_MEM_MAP
++ 
++ #ifndef NEW_MEM_MAP
++ static void
+  check_desc (SIM_DESC sd)
+  {
+    if (sd != &the_minisim)
+***************
+*** 106,112 ****
+  
+    open = 0;
+  }
+! 
+  static bfd *
+  open_objfile (const char *filename)
+  {
+--- 166,172 ----
+  
+    open = 0;
+  }
+! #endif // NEW_MEM_MAP
+  static bfd *
+  open_objfile (const char *filename)
+  {
+***************
+*** 127,133 ****
+    return prog;
+  }
+  
+! 
+  SIM_RC
+  sim_load (SIM_DESC sd, const char *prog, struct bfd * abfd, int from_tty)
+  {
+--- 187,193 ----
+    return prog;
+  }
+  
+! #ifndef NEW_MEM_MAP
+  SIM_RC
+  sim_load (SIM_DESC sd, const char *prog, struct bfd * abfd, int from_tty)
+  {
+***************
+*** 142,160 ****
+  
+    return SIM_RC_OK;
+  }
+! 
+  SIM_RC
+  sim_create_inferior (SIM_DESC sd, struct bfd * abfd,
+  		     char * const *argv, char * const *env)
+  {
+    check_desc (sd);
+  
+    if (abfd)
+      m32c_load (abfd);
+  
+    return SIM_RC_OK;
+  }
+! 
+  int
+  sim_read (SIM_DESC sd, SIM_ADDR mem, unsigned char *buf, int length)
+  {
+--- 202,226 ----
+  
+    return SIM_RC_OK;
+  }
+! #endif // NEW_MEM_MAP
+  SIM_RC
+  sim_create_inferior (SIM_DESC sd, struct bfd * abfd,
+  		     char * const *argv, char * const *env)
+  {
++ #ifndef NEW_MEM_MAP
+    check_desc (sd);
+  
+    if (abfd)
+      m32c_load (abfd);
++ #else // NEW_MEM_MAP
++   regs.r_pc = bfd_get_start_address (abfd);
++   unsigned long mach = bfd_get_mach (abfd);
++   m32c_set_mach (mach);
++ #endif  / NEW_MEM_MAP
+  
+    return SIM_RC_OK;
+  }
+! #ifndef NEW_MEM_MAP
+  int
+  sim_read (SIM_DESC sd, SIM_ADDR mem, unsigned char *buf, int length)
+  {
+***************
+*** 177,183 ****
+  
+    return length;
+  }
+! 
+  
+  /* Read the LENGTH bytes at BUF as an little-endian value.  */
+  static DI
+--- 243,249 ----
+  
+    return length;
+  }
+! #endif // NEW_MEM_MAP
+  
+  /* Read the LENGTH bytes at BUF as an little-endian value.  */
+  static DI
+***************
+*** 291,299 ****
+  sim_fetch_register (SIM_DESC sd, int regno, unsigned char *buf, int length)
+  {
+    size_t size;
+! 
+    check_desc (sd);
+! 
+    if (!check_regno (regno))
+      return 0;
+  
+--- 357,365 ----
+  sim_fetch_register (SIM_DESC sd, int regno, unsigned char *buf, int length)
+  {
+    size_t size;
+! #ifndef NEW_MEM_MAP
+    check_desc (sd);
+! #endif // NEW_MEM_MAP
+    if (!check_regno (regno))
+      return 0;
+  
+***************
+*** 404,410 ****
+--- 470,478 ----
+  {
+    size_t size;
+  
++ #ifndef NEW_MEM_MAP
+    check_desc (sd);
++ #endif / NEW_MEM_MAP
+  
+    if (!check_regno (regno))
+      return -1;
+***************
+*** 575,586 ****
+      }
+  }
+  
+  
+  void
+  sim_resume (SIM_DESC sd, int step, int sig_to_deliver)
+  {
+    check_desc (sd);
+! 
+    if (sig_to_deliver != 0)
+      {
+        fprintf (stderr,
+--- 643,658 ----
+      }
+  }
+  
++ #ifdef NEW_MEM_MAP
++ sim_cpu* g_cpu;
++ #endif
+  
+  void
+  sim_resume (SIM_DESC sd, int step, int sig_to_deliver)
+  {
++ #ifndef NEW_MEM_MAP
+    check_desc (sd);
+! #endif // NEW_MEM_MAP
+    if (sig_to_deliver != 0)
+      {
+        fprintf (stderr,
+***************
+*** 588,593 ****
+--- 660,669 ----
+  	       "signal delivery yet.\n" "Resuming with no signal.\n");
+      }
+  
++ #ifdef NEW_MEM_MAP
++   g_cpu = sd->cpu[0];
++ #endif  
++ 
+    if (step)
+      {
+        handle_step (decode_opcode ());
+***************
+*** 628,633 ****
+--- 704,710 ----
+    m32c_sim_restore_console ();
+  }
+  
++ #ifndef NEW_MEM_MAP
+  int
+  sim_stop (SIM_DESC sd)
+  {
+***************
+*** 712,714 ****
+--- 789,792 ----
+  {
+    printf ("The m32c minisim doesn't collect any statistics.\n");
+  }
++ #endif // NEW_MEM_MAP
+*** gdb-10.2.ppc-elf/sim/m32c/mem.c	2021-04-25 13:04:35.000000000 +0900
+--- gdb-10.2.m32c-elf/sim/m32c/mem.c	2021-12-08 17:39:28.000000000 +0900
+***************
+*** 87,93 ****
+    memset (pt, 0, sizeof (pt));
+    memset (mem_counters, 0, sizeof (mem_counters));
+  }
+! 
+  static unsigned char *
+  mem_ptr (int address)
+  {
+--- 87,93 ----
+    memset (pt, 0, sizeof (pt));
+    memset (mem_counters, 0, sizeof (mem_counters));
+  }
+! #ifndef NEW_MEM_MAP
+  static unsigned char *
+  mem_ptr (int address)
+  {
+***************
+*** 120,125 ****
+--- 120,126 ----
+  
+    return pt[pt1][pt2] + pto;
+  }
++ #endif // NEW_MEM_MAP
+  
+  static void
+  used (int rstart, int i, int j)
+***************
+*** 205,219 ****
+--- 206,229 ----
+  
+  extern int m32c_disassemble;
+  
++ #ifdef NEW_MEM_MAP
++ extern struct sim_cpu* g_cpu;
++ extern int g_cia;
++ #endif  // NEW_MEM_MAP
++ 
+  static void
+  mem_put_byte (int address, unsigned char value)
+  {
++ #ifndef NEW_MEM_MAP
+    unsigned char *m;
+    address &= membus_mask;
+    m = mem_ptr (address);
+    if (trace)
+      printf (" %02x", value);
+    *m = value;
++ #else // NEW_MEM_MAP
++   sim_core_write_aligned_1(g_cpu, g_cia, 1, address, value);
++ #endif // NEW_MEM_MAP
+    switch (address)
+      {
+      case 0x00e1:
+***************
+*** 378,386 ****
+--- 388,400 ----
+  unsigned char
+  mem_get_pc (void)
+  {
++ #ifndef NEW_MEM_MAP
+    unsigned char *m = mem_ptr (regs.r_pc & membus_mask);
+    COUNT (0, 0);
+    return *m;
++ #else // NEW_MEM_MAP
++   return sim_core_read_aligned_1(g_cpu, g_cia, 0, g_cia);  
++ #endif // NEW_MEM_MAP
+  }
+  
+  #ifdef HAVE_TERMIOS_H
+***************
+*** 414,422 ****
+--- 428,438 ----
+  static unsigned char
+  mem_get_byte (int address)
+  {
++ #ifndef NEW_MEM_MAP
+    unsigned char *m;
+    address &= membus_mask;
+    m = mem_ptr (address);
++ #endif // NEW_MEM_MAP
+    switch (address)
+      {
+  #ifdef HAVE_TERMIOS_H
+***************
+*** 476,485 ****
+--- 492,507 ----
+      }
+  
+    S ("=>");
++ #ifndef NEW_MEM_MAP
+    if (trace)
+      printf (" %02x", *m);
++ #endif
+    E ();
++ #ifndef NEW_MEM_MAP
+    return *m;
++ #else // NEW_MEM_MAP
++   return sim_core_read_aligned_1(g_cpu, g_cia, 0, address);
++ #endif // NEW_MEM_MAP
+  }
+  
+  unsigned char
