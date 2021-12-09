@@ -89,7 +89,7 @@
   /* #endif  ASIM */
   #endif /* VALIDATE */
 *** gdb-10.2.ppc-elf/sim/arm/armvirt.c	2020-09-13 11:33:41.000000000 +0900
---- gdb-10.2.arm-elf/sim/arm/armvirt.c	2021-12-07 11:17:07.000000000 +0900
+--- gdb-10.2.arm-elf/sim/arm/armvirt.c	2021-12-10 08:12:17.000000000 +0900
 ***************
 *** 21,27 ****
      table. The routines PutWord and GetWord implement this. Pages are never
@@ -220,7 +220,7 @@
   ARMul_ReLoadInstr (ARMul_State * state, ARMword address, ARMword isize)
   {
 ***************
-*** 196,211 ****
+*** 196,221 ****
     if ((isize == 2) && (address & 0x2))
       {
         /* We return the next two halfwords: */
@@ -237,7 +237,17 @@
   }
   
   /***************************************************************************\
---- 197,221 ----
+  *                   Load Instruction, Sequential Cycle                      *
+  \***************************************************************************/
+  
+  ARMword ARMul_LoadInstrS (ARMul_State * state, ARMword address, ARMword isize)
+  {
+    state->NumScycles++;
+  
+    return ARMul_ReLoadInstr (state, address, isize);
+  }
+  
+--- 197,235 ----
     if ((isize == 2) && (address & 0x2))
       {
         /* We return the next two halfwords: */
@@ -263,9 +273,23 @@
   }
   
   /***************************************************************************\
+  *                   Load Instruction, Sequential Cycle                      *
+  \***************************************************************************/
++ extern _Bool code_area(ARMword addr);
+  
+  ARMword ARMul_LoadInstrS (ARMul_State * state, ARMword address, ARMword isize)
+  {
+    state->NumScycles++;
+  
++   if (!code_area(address) || !code_area(address+isize-1))
++     return 0xbadbeef4;
++ 
+    return ARMul_ReLoadInstr (state, address, isize);
+  }
+  
 ***************
 *** 248,254 ****
---- 258,268 ----
+--- 262,272 ----
       }
   #endif
   
@@ -279,7 +303,7 @@
   /***************************************************************************\
 ***************
 *** 295,306 ****
---- 309,324 ----
+--- 313,328 ----
   
   ARMword ARMul_ReadByte (ARMul_State * state, ARMword address)
   {
@@ -306,7 +330,7 @@
   }
   
   /***************************************************************************\
---- 350,360 ----
+--- 354,364 ----
         ARMul_CLEARABORT;
       }
   #endif
@@ -320,7 +344,7 @@
   /***************************************************************************\
 ***************
 *** 385,393 ****
---- 406,418 ----
+--- 410,422 ----
     temp = ARMul_ReadWord (state, address);
     offset = (((ARMword) state->bigendSig * 2) ^ (address & 2)) << 3;	/* bit offset into the word */
   
@@ -350,7 +374,7 @@
   }
   
   /***************************************************************************\
---- 422,438 ----
+--- 426,442 ----
   void
   ARMul_WriteByte (ARMul_State * state, ARMword address, ARMword data)
   {
@@ -370,7 +394,7 @@
   /***************************************************************************\
 ***************
 *** 444,450 ****
---- 472,482 ----
+--- 476,486 ----
   
     state->NumNcycles++;
   
@@ -384,7 +408,7 @@
   }
 ***************
 *** 493,499 ****
---- 525,535 ----
+--- 529,539 ----
   {
     ARMword temp, offset;
   
@@ -398,7 +422,7 @@
     return (temp >> offset & 0xffL);
 ***************
 *** 504,513 ****
---- 540,557 ----
+--- 544,561 ----
   {
     ARMword temp, offset;
   
@@ -418,27 +442,29 @@
 + #endif // NEW_MEM_MAP  
   }
 *** gdb-10.2.ppc-elf/sim/common/sim-load.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.arm-elf/sim/common/sim-load.c	2021-12-07 11:07:46.000000000 +0900
+--- gdb-10.2.arm-elf/sim/common/sim-load.c	2021-12-10 08:00:20.000000000 +0900
 ***************
-*** 54,60 ****
+*** 54,59 ****
+--- 54,60 ----
      write the program sections at LMA interpreted as a virtual address.
      This is still accommodated for backward compatibility reasons. */
   
-- 
++ void set_code_area(bfd_vma addr, bfd_size_type size);
+  
   bfd *
   sim_load_file (SIM_DESC sd, const char *myname, host_callback *callback,
-  	       const char *prog, bfd *prog_bfd, int verbose_p, int lma_p,
---- 54,59 ----
 ***************
 *** 133,143 ****
---- 132,155 ----
+--- 134,161 ----
   		}
   	      data_count += size;
   	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
 + #ifdef NEW_MEM_MAP
-+ 	      if (s->flags & SEC_READONLY)
++  	      if (s->flags & SEC_CODE)
++  		set_code_area(lma, size);
++ 	      else if (s->flags & SEC_READONLY)
 + 		size = (size + 3) & (~0 << 2);
-+  	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
++ 	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
 + #endif  // NEW_MEM_MAP
   	      do_write (sd, lma, buffer, size);
   	      found_loadable_section = 1;
@@ -449,8 +475,10 @@
 +         else if (s->flags & SEC_ALLOC) {
 +           bfd_vma lma = lma_p ? bfd_section_lma(s) : bfd_section_vma(s);
 +           bfd_size_type size = bfd_section_size(s);
-+           sim_do_command(sd, "memory-fill 0xcc");
-+           sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
++ 	  if (size) {
++ 	    sim_do_command(sd, "memory-fill 0xcc");
++ 	    sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
++ 	  }
 +         }
 + #endif  // NEW_MEM_MAP
       }
