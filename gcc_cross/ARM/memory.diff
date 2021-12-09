@@ -89,7 +89,7 @@
   /* #endif  ASIM */
   #endif /* VALIDATE */
 *** gdb-10.2.ppc-elf/sim/arm/armvirt.c	2020-09-13 11:33:41.000000000 +0900
---- gdb-10.2.arm-elf/sim/arm/armvirt.c	2021-12-10 08:12:17.000000000 +0900
+--- gdb-10.2.arm-elf/sim/arm/armvirt.c	2021-12-10 08:48:32.000000000 +0900
 ***************
 *** 21,27 ****
      table. The routines PutWord and GetWord implement this. Pages are never
@@ -205,7 +205,7 @@
   ARMword
   ARMul_ReLoadInstr (ARMul_State * state, ARMword address, ARMword isize)
   {
---- 172,184 ----
+--- 172,185 ----
     free ((char *) pagetable);
     return;
   }
@@ -215,18 +215,22 @@
   \***************************************************************************/
 ! #ifdef NEW_MEM_MAP
 ! struct sim_cpu* g_cpu;
+! extern _Bool code_area(ARMword addr);
 ! #endif  // NEW_MEM_MAP
   ARMword
   ARMul_ReLoadInstr (ARMul_State * state, ARMword address, ARMword isize)
   {
 ***************
-*** 196,221 ****
+*** 193,211 ****
+      }
+  #endif
+  
     if ((isize == 2) && (address & 0x2))
       {
         /* We return the next two halfwords: */
         ARMword lo = GetWord (state, address, FALSE);
         ARMword hi = GetWord (state, address + 4, FALSE);
-! 
+- 
         if (state->bigendSig == HIGH)
   	return (lo << 16) | (hi >> 16);
         else
@@ -237,32 +241,28 @@
   }
   
   /***************************************************************************\
-  *                   Load Instruction, Sequential Cycle                      *
-  \***************************************************************************/
+--- 195,225 ----
+      }
+  #endif
   
-  ARMword ARMul_LoadInstrS (ARMul_State * state, ARMword address, ARMword isize)
-  {
-    state->NumScycles++;
-  
-    return ARMul_ReLoadInstr (state, address, isize);
-  }
-  
---- 197,235 ----
++ #ifdef NEW_MEM_MAP 
++   if (!code_area(address) || !code_area(address+isize-1))
++     return 0xbadbeef4;
++ #endif  // NEW_MEM_MAP 
++ 
     if ((isize == 2) && (address & 0x2))
       {
         /* We return the next two halfwords: */
 + #ifndef NEW_MEM_MAP
         ARMword lo = GetWord (state, address, FALSE);
         ARMword hi = GetWord (state, address + 4, FALSE);
-! #else // NEW_MEM_MAP
-!       asm("int3");
-!       ARMword lo = 0;
-!       ARMword hi = 0;
-! #endif // NEW_MEM_MAP  
         if (state->bigendSig == HIGH)
   	return (lo << 16) | (hi >> 16);
         else
   	return ((hi & 0xFFFF) << 16) | (lo >> 16);
++ #else // NEW_MEM_MAP
++       return sim_core_read_aligned_2(g_cpu, state->Reg[15], 0, address);
++ #endif // NEW_MEM_MAP  
       }
   
 + #ifndef NEW_MEM_MAP
@@ -273,20 +273,6 @@
   }
   
   /***************************************************************************\
-  *                   Load Instruction, Sequential Cycle                      *
-  \***************************************************************************/
-+ extern _Bool code_area(ARMword addr);
-  
-  ARMword ARMul_LoadInstrS (ARMul_State * state, ARMword address, ARMword isize)
-  {
-    state->NumScycles++;
-  
-+   if (!code_area(address) || !code_area(address+isize-1))
-+     return 0xbadbeef4;
-+ 
-    return ARMul_ReLoadInstr (state, address, isize);
-  }
-  
 ***************
 *** 248,254 ****
 --- 262,272 ----
