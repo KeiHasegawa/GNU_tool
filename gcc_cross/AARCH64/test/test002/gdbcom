@@ -1,0 +1,17 @@
+set prompt (aarch64-elf-gdb) 
+target sim
+load
+#sim trace-insn
+#sim trace-disasm
+#sim trace-decode
+#sim trace-branch
+#sim trace-memory
+sim memory-region 0xe00,0x200
+b _start
+b end
+b main
+run
+c
+s
+finish
+quit
