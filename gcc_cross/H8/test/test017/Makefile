@@ -7,7 +7,7 @@ test017.elf:test017.o test017.x
 	h8300-elf-as -o $@ -g $<
 
 %.elf:%.o
-	h8300-elf-ld -o $@ $< -T $(basename $<).x -Map $(basenanme $@).map
+	h8300-elf-ld -o $@ $< -T $(basename $<).x
 
 test017.log:test017.elf
 	wdog.exe -v h8300-elf-gdb -q -x gdbcom $< > $@

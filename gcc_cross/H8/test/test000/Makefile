@@ -10,10 +10,10 @@ test000.objdump:test000.elf
 	h8300-elf-objdump -x -d -g test000.elf > test000.objdump
 
 test000.log:test000.elf
-	h8300-elf-gdb -q -x gdbcom test000.elf > test000.log
+	wdog.exe -v h8300-elf-gdb -q -x gdbcom test000.elf > test000.log
 
 test000.lof:test000.log
-	diff $< $@
+	wdog.exe -v diff $< $@
 	touch $@
 
 clean:

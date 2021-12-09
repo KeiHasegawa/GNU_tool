@@ -1,6 +1,16 @@
 	.text
 start:
-	mov	#stack,sp
+	mov	#_bss_start, r2
+	mov	#_bss_end, r3
+	sub.b	r4l,r4l
+.L1:	
+	cmp.w	r2, r3
+	beq	.L2
+	mov.b	r4l,@r2
+	adds	#1,r2
+	bra	.L1
+.L2:	
+	mov	#_stack,sp
 	jsr	_main
 	nop
 	jsr	@@0xcd		; simulator exit(0)
