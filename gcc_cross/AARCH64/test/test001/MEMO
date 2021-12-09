@@ -1,0 +1,25 @@
+(aarch64-elf-gdb) p/x $sp
+
+で期待した結果が得られない. 以下の修正を入れた：
+
+gdb-10.2.aarch64-elf/sim/aarch64/interp.c:223
+
+#if 0      
+      val = aarch64_get_reg_u64 (cpu, regno, 0);
+#else
+      val = aarch64_get_reg_u64 (cpu, regno, 1);
+#endif      
+      break;
+
+
+write が hello wo\n", len=9 で呼び出されていた.
+
+単純に strlen ができていない.
+
+newlib-4.1.0.aarch64-elf/newlib/libc/machine/aarch64/strlen.S
+
+これを単純にコンパイルアウトして newlib をリビルドした.
+
+
+2021.12.09 14:21
+メモリを断片で確保する方法を採用したところメモリアクセス違反を検出している.

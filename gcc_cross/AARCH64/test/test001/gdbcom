@@ -1,0 +1,19 @@
+set prompt (aarch64-elf-gdb) 
+target sim
+load
+sim memory-region 0x7f000,0x1000
+#sim memory-region 0x415858,0x100
+b mallocr.c:2217
+b mallocr.c:2155
+b _sbrk
+b main
+#b _write
+#command
+#p buf
+#c
+#end
+#b end
+run
+#disassemble
+#c
+#quit
