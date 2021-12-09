@@ -17,4 +17,4 @@ start.lof:start.log
 	touch $@
 
 clean:
-	rm -f start.o start.elf start.elf.objdump start.map *~
+	rm -f start.o start.elf start.elf.objdump start.map *.log *~
