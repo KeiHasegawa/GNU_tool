@@ -20,7 +20,7 @@ test018.log:test018.elf gdbcom
 	wdog.exe -v aarch64-elf-gdb -q -x gdbcom $< > $@
 
 test018.lof:test018.log
-	wdog.exe -v dfif $< $@
+	wdog.exe -v diff $< $@
 	touch $@
 
 clean:
