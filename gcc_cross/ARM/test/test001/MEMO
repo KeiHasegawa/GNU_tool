@@ -1,0 +1,46 @@
+メモリを割り当てずに実行すると
+
+Reading symbols from hello.elf...
+Connected to the simulator.
+Loading section .init, size 0x20 lma 0x8000
+Loading section .text, size 0x3ee4 lma 0x8020
+Loading section .fini, size 0x1c lma 0xbf04
+Loading section .rodata, size 0x18 lma 0xbf20
+Loading section .ARM.exidx, size 0x8 lma 0xbf38
+Loading section .eh_frame, size 0x4 lma 0xbf40
+Loading section .ctors, size 0x8 lma 0x1bf44
+Loading section .dtors, size 0x8 lma 0x1bf4c
+Loading section .data, size 0x960 lma 0x1bf54
+Start address 0x81ec
+Transfer rate: 148896 bits in <1 sec.
+(arm-elf-gdb) run
+Starting program: /home/khasegawa/lang/53_GNU_tool/gcc_cross/ARM/test/test001/hello.elf 
+core: 4 byte write to unmapped address 0x7aff4 at 0x84b4
+sim_halt - bad long jump
+(arm-elf-gdb)
+
+のように 0x84b4 で 0x7aff4 番地に 4 バイトの書き込みでエラーする. そこで 0x84b4 番地に
+ブレークポイントをセットしてから実行してみた:
+
+Reading symbols from hello.elf...
+Connected to the simulator.
+Loading section .init, size 0x20 lma 0x8000
+Loading section .text, size 0x3ee4 lma 0x8020
+Loading section .fini, size 0x1c lma 0xbf04
+Loading section .rodata, size 0x18 lma 0xbf20
+Loading section .ARM.exidx, size 0x8 lma 0xbf38
+Loading section .eh_frame, size 0x4 lma 0xbf40
+Loading section .ctors, size 0x8 lma 0x1bf44
+Loading section .dtors, size 0x8 lma 0x1bf4c
+Loading section .data, size 0x960 lma 0x1bf54
+Start address 0x81ec
+Transfer rate: 148896 bits in <1 sec.
+(arm-elf-gdb) b *0x84b4
+Breakpoint 1 at 0x84b4: file ../../../.././newlib/libc/string/memset.c, line 66.
+(arm-elf-gdb) run
+Starting program: /home/khasegawa/lang/53_GNU_tool/gcc_cross/ARM/test/test001/hello.elf 
+core: 4 byte write to unmapped address 0x7aff4 at 0x84b4
+sim_halt - bad long jump
+(arm-elf-gdb)
+
+これはブレークポイントができていないということだろうか...
