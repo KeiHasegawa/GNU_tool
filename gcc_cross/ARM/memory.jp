@@ -36,3 +36,15 @@ PutWord (ARMul_State * state, ARMword address, ARMword data, int check)
 このパッチを適用してコンパイラのテストを実施してみると, .rodata の領域のサイズを少し超えて
 読み出しアクセスする問題が発生してしまう. おそらく
 コンパイラを作成した人は意図して行なっているとは思われるが, この仕様は良くないように思える.
+
+#ifdef NEW_MEM_MAP
+ 	      if (s->flags & SEC_CODE)
+ 		set_code_area(lma, size);
+	      else if (s->flags & SEC_READONLY)    // この対処 
+		size = (size + 3) & (~0 << 2);     // は本来必要ない
+	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
+#endif  // NEW_MEM_MAP
+
+
+上の対処を入れても文字列を読み出すのに範囲を超えて読み出しアクセスしている.
+
