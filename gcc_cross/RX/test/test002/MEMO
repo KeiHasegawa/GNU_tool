@@ -1,0 +1,28 @@
+start:
+	nop
+	nop
+	nop
+end:
+	nop
+
+
+のようにすれば期待した動きをするが
+
+start:
+	bra	func
+	nop
+	nop
+end:
+	nop
+
+func:
+	rts
+
+とすると step コマンドが期待した動作にはなっていない.
+
+例えば ../test001 の hello world だがこれは開始アドレスが
+
+0x01000000
+
+になっている. ここからステップ実行してみても全く予期しない動きをしている.
+
