@@ -1,0 +1,22 @@
+%.o : %.S
+	cr16-elf-as -o $@ $< -g
+
+%.o : %.c
+	cr16-elf-gcc -o $@ $< -c -g
+
+%.elf : %.o
+	cr16-elf-ld -o $@ start.o $< -T $(basename $<).x
+
+%.objdump : %.elf
+	cr16-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v cr16-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.s *.o *.elf *.objdump *.log *~
+
