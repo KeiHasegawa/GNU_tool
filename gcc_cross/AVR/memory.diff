@@ -31,7 +31,7 @@
   
     if (!found_loadable_section)
 *** gdb-10.2.ppc-elf/sim/avr/interp.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.avr-elf/sim/avr/interp.c	2021-12-08 12:52:27.000000000 +0900
+--- gdb-10.2.avr-elf/sim/avr/interp.c	2021-12-10 15:05:55.000000000 +0900
 ***************
 *** 202,207 ****
 --- 202,208 ----
@@ -744,9 +744,9 @@
     op = flash[cpu->pc].op;
 + #else  // NEW_MEM_MAP
 +   g_cpu = cpu;
-+   g_cia = cpu->pc << 1;
++   g_cia = cpu->pc;
 +   code = decode(cpu->pc);
-+   op = sim_core_read_aligned_2(cpu, g_cia, read_map, g_cia);
++   op = sim_core_read_aligned_2(cpu, g_cia, read_map, g_cia << 1);
 + #endif  // NEW_MEM_MAP
   
   #if 0
