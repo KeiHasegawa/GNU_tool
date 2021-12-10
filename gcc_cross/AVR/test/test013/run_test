@@ -1,0 +1,14 @@
+#! /bin/csh -vxf
+
+set aaa = avr
+set bbb = AVR
+
+$aaa-elf-as -o start.o -g start.S || exit 1
+$aaa-elf-gcc -o test013.s -S test013.c -std=c99 || exit 1
+$aaa-elf-as -o test013.o -g test013.s || exit 1
+$aaa-elf-ld -o test013.elf start.o test013.o \
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/$aaa-elf/10.2.0/libgcc.a \
+-T test013.x || exit 1
+
+$aaa-elf-objdump -x -d test013.elf > test013.objdump
+#$aaa-elf-run test013.elf || exit 1

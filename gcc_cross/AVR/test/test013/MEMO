@@ -1,0 +1,32 @@
+~/lang/41_ISO_IEC_9899/6_Language/1_Lexical_elements/3_Constants/1_Floating_constants/1_ok/test004.c
+
+_etext =            0x000017a2
+
+__data_load_start = 0x000017a2
+__data_load_end   = 0x000019a8
+
+
+00001756 <main>:
+
+
+     124:	18 db       	rcall	.-2512   	; 0xfffff756 <test07_ld1
+
+
+0x1756 - 0x124
+
+実行が停止しない原因は
+
+	rcall main
+
+は届かないから
+
+	rcall test04  ここは届く
+	rcall test05  ここは届かない
+
+rcall 命令は 2 バイトの命令で
+
+0xdXXX だが XXX を符号拡張して PC 相対で函数コールする.
+
+0xd22f ならばプログラムは PC + 0x22f << 1 = PC + 0x45e へ函数コールす
+る.
+
