@@ -1,0 +1,13 @@
+	.text
+start:
+	nop
+	ldr	sp, label
+	bl	main
+	nop
+end:
+	nop
+
+	.align	2
+label:
+	.word	stack
+	
