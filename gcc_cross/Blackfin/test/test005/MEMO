@@ -1,0 +1,49 @@
+Blackfin の gcc のスタックフレームと .debug_frame
+
+_f:
+	LINK 0;
+	[FP+8] = R0;
+	[FP+12] = R1;
+	R1 = [FP+8];
+	R0 = [FP+12];
+	R0 = R1 + R0;
+	P2 = R0;
+	R0 = P2;
+	UNLINK;
+	rts;
+
+LINK 0 で
+
+	+----------------+ <- sp_{new}, fp_{new}
+	|    fp_{old}    |
+	+----------------+ 
+	|   rets_{old}   |
+	+----------------+ <- sp_{old}
+
+のようになる. LINK 0 は 4 バイトの命令なので
+
+f から 4 バイト進んだアドレスでは
+
+rets が sp - 4 の位置に保存され
+fp が sp - 8 の位置に保存され
+fp が 8 減算される.
+
+14 番が sp
+15 番が fp
+
+  DW_CFA_def_cfa: r14 ofs 0
+ 
+  DW_CFA_advance_loc4: 4 to 00000004
+  DW_CFA_offset: r35 at cfa-4
+  DW_CFA_offset: r15 at cfa-8
+  DW_CFA_def_cfa: r15 ofs 8
+
+rets の gcc の番号は 35 だが gdb での番号が 37 なので
+
+bfin-tdep.c
+
+で
+
+map_gcc_gdb[35] = 37
+
+となっている.
