@@ -1,0 +1,22 @@
+%.o : %.S
+	bfin-elf-as -o $@ $< -g
+
+%.o : %.c
+	bfin-elf-gcc -o $@ $< -c -g
+
+%.elf : %.o
+	bfin-elf-ld -o $@ start.o $< -T $(basename $<).x
+
+%.objdump : %.elf
+	bfin-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v bfin-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.s *.o *.elf *.objdump *.log *~
+

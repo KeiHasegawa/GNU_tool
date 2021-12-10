@@ -1,0 +1,13 @@
+	.text
+start:
+	sp.H = _stack;
+	sp.L = _stack;
+	call _main;
+	nop;
+	nop;
+	nop;
+end:
+	nop;
+
+func:
+	rts;
