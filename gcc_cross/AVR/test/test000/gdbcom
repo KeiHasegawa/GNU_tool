@@ -1,0 +1,16 @@
+set prompt (avr-elf-gdb) 
+target sim
+load
+sim memory-region 0x80ef00,0x1000
+b main
+#b __swsetup_r
+#b _close_r
+#b _lseek_r
+#b _malloc_r
+#b _free_r
+#b _read_r
+#b _write
+run
+step
+finish
+quit
