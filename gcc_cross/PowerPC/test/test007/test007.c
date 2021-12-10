@@ -5,7 +5,7 @@ int f(int a, int b)
 
 int g(int a, int b)
 {
-  return g(a-1, b+2);
+  return f(a-1, b+2);
 }
 
 int main()
