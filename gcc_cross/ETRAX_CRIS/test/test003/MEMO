@@ -1,0 +1,13 @@
+ret 命令から step 実行すると.
+
+
+(cris-elf-gdb) s
+core: 2 byte read to unmapped address 0x2000 at 0x2000
+
+Program received signal SIGSEGV, Segmentation fault.
+0x00002000 in ?? ()
+(cris-elf-gdb)
+
+のようになってしまう. さてこれは一体?
+
+ret 命令の後に nop を入れると期待した動作になる.
