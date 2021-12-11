@@ -1,0 +1,107 @@
+test016a.c                                     6               0x128       3       x
+
+ 126:	12 00 10 f0 	loadw	0x33e <_delta.7>:l,r1
+ 12a:	3e 03 
+
+なので 0x128 は 0x126 の間違い.
+
+test016a.c                                    15               0x15e       9       x
+
+
+ 15c:	12 00 10 f0 	loadw	0x340 <_delta.6>:l,r1
+ 160:	40 03 
+
+なので 0x15e は 0x15c の間違い
+
+0x15e - 0x10a = 0x54
+
+
+test016b.c                                     6               0x1a8      17       x
+
+ 1a6:	12 00 10 f0 	loadw	0x342 <_delta.5>:l,r1
+ 1aa:	42 03 
+
+
+なので 0x1a8 は 0x1a6 の間違い
+
+0x1a8 - 0x10a = 0x9e -> 0x96(?)
+
+
+test016b.c                                    15               0x1de      23       x
+
+ 1da:	0d e0       	stord	(r1,r0),0x0:s(r13)
+ 1dc:	12 00 10 f0 	loadw	0x344 <_delta.4>:l,r1
+ 1e0:	44 03
+
+なので 0x1de は 0x1dc の間違い
+
+0x1dc - 0x10a = 0xd2  
+
+  [0x00000102]  PC を固定サイズ 10 分進め 0xd8 とします
+
+
+test016c.c                                     6               0x228      31       x
+
+
+ 226:	12 00 10 f0 	loadw	0x346 <_delta.3>:l,r1
+ 22a:	46 03 
+
+なので 0x228 は 0x226 の間違い.
+
+0x228 - 0x10a = 0x11e
+
+  [0x0000013a]  行を 1 進め 6 とします
+  [0x0000013c]  PC を固定サイズ 10 分進め 0x124 とします
+
+test016c.c                                    15               0x25e      37       x
+
+ 25c:	12 00 10 f0 	loadw	0x348 <_delta.2>:l,r1
+ 260:	48 03 
+
+なので 0x25e は 0x25c の間違い.
+
+0x25e - 0x10a = 0x154
+
+  [0x00000165]  コピー (view 36)
+  [0x00000166]  行を 1 進め 15 とします
+  [0x00000168]  PC を固定サイズ 10 分進め 0x15c とします
+
+test016.c                                     10               0x2a8      45       x
+
+ 2a6:	12 00 10 f0 	loadw	0x34a <_delta.1>:l,r1
+ 2aa:	4a 03 
+
+なので 0x2a8 は 0x2a6 の間違い.
+
+0x2a6 - 0x10a = 0x19c
+
+  [0x000001a0]  行を 1 進め 10 とします
+  [0x000001a2]  PC を固定サイズ 10 分進め 0x1a8 とします
+
+test016.c                                     19               0x2de      51       x
+
+
+ 2dc:	12 00 10 f0 	loadw	0x34c <_delta.0>:l,r1
+ 2e0:	4c 03 
+
+なので 0x2de は 0x2dc の間違い.
+
+0x2de - 0x10a = 0x1d4
+
+  [0x000001cc]  行を 1 進め 19 とします
+  [0x000001ce]  PC を固定サイズ 10 分進め 0x1e0 とします
+
+以下のようにすれば test016.elf は期待通り動作する.
+
+  while (buf < end)
+    buf = read_debug_line(abfd, buf, opc_base, &addr);
+  if (abfd->filename == string("test016.o")) {
+    *(char*)(start+0x70+1) = 8;
+    *(char*)(start+0x9c+1) = 8;
+    *(char*)(start+0xd6+1) = 8;
+    *(char*)(start+0x102+1) = 8;
+    *(char*)(start+0x13c+1) = 8;
+    *(char*)(start+0x168+1) = 8;
+    *(char*)(start+0x1a2+1) = 8;
+    *(char*)(start+int(0x1ce)+1) = 8;
+  }
