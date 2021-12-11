@@ -1,0 +1,39 @@
+Reading symbols from test028.elf...
+Connected to the simulator.
+Loading section .text, size 0x160 lma 0x100
+Start address 0x100
+Transfer rate: 2816 bits in <1 sec.
+Breakpoint 1 at 0x114: file test028.c, line 11.
+
+Breakpoint 1, main () at test028.c:11
+11	  memset(&s, 0, sizeof s);
+memset (m=0xfd4, c=0, n=32) at memset.c:42
+42	  char *s = (char *) m;
+48	  unsigned int d = c & 0xff;	/* To avoid sign extension, copy C to an
+51	  while (UNALIGNED (s))
+59	  if (!TOO_SMALL (n))
+62	      aligned_addr = (unsigned long *) s;
+66	      buffer = (d << 8) | d;
+67	      buffer |= (buffer << 16);
+68	      for (i = 32; i < LBLOCKSIZE * 8; i <<= 1)
+72	      while (n >= LBLOCKSIZE*4)
+74	          *aligned_addr++ = buffer;
+75	          *aligned_addr++ = buffer;
+76	          *aligned_addr++ = buffer;
+77	          *aligned_addr++ = buffer;
+78	          n -= 4*LBLOCKSIZE;
+72	      while (n >= LBLOCKSIZE*4)
+74	          *aligned_addr++ = buffer;
+75	          *aligned_addr++ = buffer;
+76	          *aligned_addr++ = buffer;
+77	          *aligned_addr++ = buffer;
+78	          n -= 4*LBLOCKSIZE;
+72	      while (n >= LBLOCKSIZE*4)
+81	      while (n >= LBLOCKSIZE)
+87	      s = (char*)aligned_addr;
+92	  while (n--)
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
