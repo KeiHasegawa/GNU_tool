@@ -1,0 +1,22 @@
+%.o : %.S
+	frv-elf-as -o $@ $< -g
+
+%.o : %.c
+	frv-elf-gcc -o $@ $< -c -g
+
+%.elf : %.o
+	frv-elf-ld -o $@ start.o $< -T $(basename $<).x
+
+%.objdump : %.elf
+	frv-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v frv-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.s *.o *.elf *.objdump *.log *.a *.map *~
+
