@@ -1,0 +1,22 @@
+%.o : %.S
+	cris-elf-as -o $@ $< -g
+
+%.o : %.c
+	cris-elf-gcc -o $@ $< -c -g
+
+%.elf : %.o
+	cris-elf-ld -o $@ start.o $< -T $(basename $<).x
+
+%.objdump : %.elf
+	cris-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v cris-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.s *.o *.elf *.objdump *.log *.a *.map *~
+
