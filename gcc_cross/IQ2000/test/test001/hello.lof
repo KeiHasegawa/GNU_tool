@@ -1,0 +1,26 @@
+Reading symbols from hello.elf...
+Connected to the simulator.
+Loading section .text, size 0x6730 lma 0x80000000
+Loading section .data, size 0x84c lma 0x1000
+Loading section .eh_frame, size 0xf4 lma 0x184c
+Loading section .rodata, size 0x68 lma 0x1940
+Start address 0x80000000
+Transfer rate: 231104 bits in <1 sec.
+Breakpoint 1 at 0x80000058: file hello.c, line 5.
+Breakpoint 2 at 0x80003c68: file ../../.././libgloss/iq2000/write.c, line 11.
+
+Breakpoint 1, main () at hello.c:5
+5	  printf("hello world\n");
+
+Breakpoint 2, _write (file=1, ptr=0x198c "Heap and stack collision\n", len=25)
+    at ../../.././libgloss/iq2000/write.c:11
+11	{
+
+Breakpoint 2, _write (file=1, ptr=0x1940 "hello world", len=11)
+    at ../../.././libgloss/iq2000/write.c:11
+11	{
+
+Breakpoint 2, _write (file=1, ptr=0x19a4 "\n", len=1)
+    at ../../.././libgloss/iq2000/write.c:11
+11	{
+[Inferior 1 (process 42000) exited normally]
