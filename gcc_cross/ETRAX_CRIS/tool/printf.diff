@@ -1,17 +1,17 @@
 *** gdb-10.2.aarch64-elf/sim/cris/semcrisv10f-switch.c	2021-04-25 13:04:35.000000000 +0900
---- gdb-10.2.cris-elf/sim/cris/semcrisv10f-switch.c	2021-11-17 12:09:24.000000000 +0900
+--- gdb-10.2.cris-elf/sim/cris/semcrisv10f-switch.c	2021-12-11 12:46:24.000000000 +0900
 ***************
 *** 20,25 ****
---- 20,196 ----
+--- 20,197 ----
      with this program; if not, see <http://www.gnu.org/licenses/>.
   
   */
-+ const char* first_string(SIM_CPU* cpu)
++ const char* first_string(SIM_CPU* cpu, uint32_t pc)
 + {
 +   int addr = GET_H_GR(10);
 +   static char buf[1024];
 +   for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i ) {
-+     char c = GETMEMQI(cpu, 0, addr+i);
++     char c = GETMEMQI(cpu, pc, addr+i);
 +     buf[i] = c;
 +     if (c == '\0')
 +       return &buf[0]; // ok
@@ -91,7 +91,8 @@
 +   return (b << 32) | a; 
 + }
 + 
-+ const char* handle(SIM_CPU* cpu, const char* fmt, int* nth, int* ret)
++ const char*
++ handle(SIM_CPU* cpu, const char* fmt, int* nth, int* ret, uint32_t pc)
 + {
 +   char c = *fmt;
 +   if (c != '%') {
@@ -140,7 +141,7 @@
 +     uint32_t addr = arg32(cpu, (*nth)++);
 +     char buf[256];
 +     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
-+       char c = GETMEMQI(cpu, 0, addr+i);
++       char c = GETMEMQI(cpu, pc, addr+i);
 +       buf[i] = c;
 +       if (c == '\0') {
 + 	*ret += printf(part_fmt, &buf[0]);  // ok
@@ -154,24 +155,24 @@
 +   return end;
 + }
 + 
-+ void do_printf(SIM_CPU* cpu)
++ void do_printf(SIM_CPU* cpu, uint32_t pc)
 + {
-+   const char* fmt = first_string(cpu);
++   const char* fmt = first_string(cpu, pc);
 +   int argc = 1;
 +   int ret = 0;
 +   while (*fmt)
-+     fmt = handle(cpu, fmt, &argc, &ret);
++     fmt = handle(cpu, fmt, &argc, &ret, pc);
 +   SET_H_GR(10, ret);
 + }
 + 
-+ void do_puts(SIM_CPU* cpu)
++ void do_puts(SIM_CPU* cpu, uint32_t pc)
 + {
-+   const char* arg = first_string(cpu);
++   const char* arg = first_string(cpu, pc);
 +   int ret = puts(arg);
 +   SET_H_GR(10, ret);
 + }
 + 
-+ void do_putchar(SIM_CPU* cpu)
++ void do_putchar(SIM_CPU* cpu, uint32_t pc)
 + {
 +   int arg = GET_H_GR(10);
 +   int ret = putchar(arg);
@@ -190,7 +191,7 @@
     }
   
   #undef FLD
---- 485,496 ----
+--- 486,497 ----
       /* Virtual insns have zero size.  Overwrite vpc with address of next insn
          using the default-insn-bitsize spec.  When executing insns in parallel
          we may want to queue the fault and continue execution.  */
@@ -205,21 +206,23 @@
   #undef FLD
 ***************
 *** 3334,3339 ****
---- 3509,3519 ----
+--- 3510,3522 ----
   #define FLD(f) abuf->fields.sfmt_move_spr_rv10.f
     int UNUSED written = 0;
     IADDR UNUSED pc = abuf->addr;
-+   switch (pc) {
-+   case 0x110: do_printf(current_cpu); break;
-+   case 0x112: do_puts(current_cpu); break;
-+   case 0x114: do_putchar(current_cpu); break;
++   if (getenv("USE_CRIS_PRINTF")) {
++     switch (pc) {
++     case 0x12e: do_printf(current_cpu, pc); break;
++     case 0x132: do_puts(current_cpu, pc); break;
++     case 0x136: do_putchar(current_cpu, pc); break;
++     }
 +   }
     SEM_BRANCH_INIT
     vpc = SEM_NEXT_VPC (sem_arg, pc, 2);
   
 ***************
 *** 12474,12482 ****
---- 12654,12667 ----
+--- 12657,12670 ----
     }
   }
     {
@@ -242,4 +245,4 @@
 - 
   #undef DEFINE_SWITCH
   #endif /* DEFINE_SWITCH */
---- 14227,14231 ----
+--- 14230,14234 ----
