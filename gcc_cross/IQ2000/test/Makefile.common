@@ -1,17 +1,17 @@
 %.o : %.S
-	frv-elf-as -o $@ $< -g
+	iq2000-elf-as -o $@ $< -g
 
 %.o : %.c
-	frv-elf-gcc -o $@ $< -c -g
+	iq2000-elf-gcc -o $@ $< -c -g
 
 %.elf : %.o
-	frv-elf-ld -o $@ start.o $< -T $(basename $<).x
+	iq2000-elf-ld -o $@ start.o $< -T $(basename $<).x
 
 %.objdump : %.elf
-	frv-elf-objdump -x -d -g $< > $@
+	iq2000-elf-objdump -x -d -g $< > $@
 
 %.log : %.elf
-	wdog.exe -v frv-elf-gdb -q -x gdbcom $< > $@
+	wdog.exe -v iq2000-elf-gdb -q -x gdbcom $< > $@
 
 %.lof : %.log
 	wdog.exe -v diff $< $@
