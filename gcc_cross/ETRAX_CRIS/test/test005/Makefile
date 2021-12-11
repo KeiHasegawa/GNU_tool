@@ -1,0 +1,14 @@
+all:test005.objdump test005.lof
+
+include ../Makefile.common
+
+LIBGCC = /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/cris-elf/10.2.0/libgcc.a
+
+test005.elf:start.o test005.o test005.x
+	cris-elf-ld -o $@ start.o test005.o $(LIBGCC) \
+	-T test005.x -Map test005.map
+
+test005.objdump:test005.elf
+	cris-elf-objdump -x -d -g $< > $@
+
+test005.lof:test005.log
