@@ -1,0 +1,44 @@
+27 行目でステップ実行して 29 行目にきている.
+
+test022.S                                     27               0x142      21       x
+test022.S                                     28               0x142      22       x
+test022.S                                     29               0x144      23       x
+
+
+27	movw	$1, r0
+28	movw	$1, r1
+29	cmpw	r0, r1
+
+
+ 140:	10 5a       	movw	$0x1:s,r0
+ 142:	11 5a       	movw	$0x1:s,r1
+ 144:	01 53       	cmpw	r0,r1
+
+ずれている. 27 行目は 0x142 ではなく 0x140 に対応しているのが正しい.
+
+一方 test024.o.objdump では
+
+test022.S                                     27                0x42      21       x
+test022.S                                     28                0x44      22       x
+test022.S                                     29                0x46
+23       x
+
+以下のようになれば期待値.
+
+  if (abfd->filename == string("test022.o")) {
+    *(line_stmt+0x98+3) = 4;
+    *(line_stmt+0xa0+7) = 4;
+    *(line_stmt+0xb0+3) = 4;
+    *(line_stmt+0xd0+1) = 4;
+    *(line_stmt+0xd8+5) = 4;
+    *(line_stmt+0xf8+3) = 4;
+    
+    *(line_stmt+0x118+1) = 2;
+    *(line_stmt+0x120+5) = 2;
+    *(line_stmt+0x130+1) = 2;
+    *(line_stmt+0x148+7) = 2;
+    *(line_stmt+0x158+3) = 2;
+    *(line_stmt+0x178+1) = 2;
+    return;
+  }
+
