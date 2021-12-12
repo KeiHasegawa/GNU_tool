@@ -1,0 +1,21 @@
+函数 f を実行しているところで
+
+Cannot access memory at address 0x40100000
+
+のようになる. そこで
+
+(lm32-elf-gdb) disass
+
+のようにしてみても逆アセンブルの結果が表示されない. lm32-elf-gdb が無
+限ループしているかのような状況.
+
+そしてこのプログラムをもう一度
+
+M-x gdb
+lm32-elf-gdb --annotate=3 test002.elf -x gdbcom
+
+のように lm32-elf-gdb を起動しようとしても意図した結果にならない.
+emacs の問題なのか?
+
+アセンブリレベルで実行してみると判明するが f から main には戻ってこれているようである.
+lm32-elf-gdb の finish コマンドの問題か?
