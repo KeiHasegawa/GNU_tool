@@ -1,0 +1,67 @@
+実行すると
+
+x:5: Error in sourced command file:
+Warning:
+Cannot insert breakpoint 1.
+Cannot access memory at address 0x100
+
+のようになる. さてこれは一体.
+
+../test001
+
+は hello world だが, これは main 函数にブレークポイントをセットできている.
+
+ここは右に習って 0x100 番地ではなく  0xa0020000 番地にプログラムを置いてみた.
+すると実行はできている.
+
+ブレークポイントでソースレベルデバッグができていないが, これはまた別の問題.
+
+mips-elf-gcc -g a.c -### 
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/mips-elf/3.4.4/specs から spec を読み込んでいます
+configure 設定: ./configure --target=mips-elf --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --with-newlib
+スレッドモデル: single
+gcc version 3.4.4
+ "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/libexec/gcc/mips-elf/3.4.4/cc1" "-quiet" "a.c" "-quiet" "-dumpbase" "a.c" "-auxbase" "a" "-g" "-o" "/tmp/cc3Rixl4.s"
+ "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/mips-elf/3.4.4/../../../../mips-elf/bin/as" "-EB" "-g" "-32" "-nocpp" "-o" "/tmp/ccPveXpe.o" "/tmp/cc3Rixl4.s"
+ "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/libexec/gcc/mips-elf/3.4.4/collect2" "-EB" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/mips-elf/3.4.4/crti.o" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/mips-elf/3.4.4/crtbegin.o" "-L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/mips-elf/3.4.4" "-L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/mips-elf/3.4.4/../../../../mips-elf/lib" "/tmp/ccPveXpe.o" "-lgcc" "-lgcc" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/mips-elf/3.4.4/crtend.o" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/mips-elf/3.4.4/crtn.o"
+> 
+
+試しに
+
+% mips-elf-as -g start.S -o start.o -EB -32 -nocpp
+
+のようにしてみたがやはりデバッグ情報は生成されていない.
+
+% mips-elf-gcc -g start.S -T start.x
+% mips-elf-objdump -x a.out > b
+
+b を確認したところデバッグ情報が生成されている.
+
+いろいろ試してみたところ
+
+	.file 1 "start.S"
+	.loc 1 5 0
+	.text
+start:
+	nop
+	nop
+	nop
+end:
+	nop
+	
+
+のように書くことでデバッグ情報が生成されているようであるが, 残念ながら上は回避策には
+なっていない.
+上は
+
+start
+
+のみ正しくデバッガが解釈してくれる.
+
+end
+
+にブレークポイントをセットしても start.S の 5 行目だと解釈されてしまう.
+
+--gen-debug 
+
+が正解だった.
