@@ -1,0 +1,32 @@
+Reading symbols from start.elf...
+Connected to the simulator.
+Loading section .text, size 0x90 lma 0x50
+Start address 0x50
+Transfer rate: 1152 bits in <1 sec.
+Breakpoint 1 at 0x50: file start.S, line 4.
+Breakpoint 2 at 0xc8: file start.S, line 37.
+Breakpoint 3 at 0xc4: file start.S, line 34.
+
+Breakpoint 1, _start () at start.S:4
+4		nop
+5	    	addi	r6, r0, __sbss_start
+6		addi	r7, r0, __sbss_end	
+8		rsub	r18, r6, r7
+9		blei	r18, label2
+14		nop
+16		addi	r6, r0, __bss_start
+17		addi	r7, r0, __bss_end
+19	    	rsub	r18, r6, r7
+20		blei	r18, label4
+25		nop
+
+Breakpoint 2, main () at start.S:37
+37		addik	r1,r1,-8
+
+Breakpoint 3, end () at start.S:34
+34		nop
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
