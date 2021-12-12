@@ -1,0 +1,27 @@
+gcc-3.4.4 では
+
+% mips-elf-gcc -o hello.elf -g hello.c -Tidt.ld
+
+で正常終了していたが
+
+gcc-10.2.0 ではリンクエラーが発生している.
+
+----------------------------------------------------
+
+(mips-elf-gdb) sim memory-info
+
+でメモリ割り当てが表示されない.
+
+-----------------------------------------------------
+実行すると main 函数が呼び出されるが
+
+(mips-elf-gdb) c
+Continuing.
+interp.c:1299: assertion failed - match != NULL
+(mips-elf-gdb)
+
+のようになる.
+
+
+
+

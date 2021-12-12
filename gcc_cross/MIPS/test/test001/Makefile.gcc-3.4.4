@@ -1,0 +1,10 @@
+all:hello.objdump
+
+hello.elf:hello.c
+	mips-elf-gcc -o $@ -g $< -Tidt.ld
+
+hello.objdump:hello.elf
+	mips-elf-objdump -x -d $< > $@
+
+clean:
+	rm -f *.elf *.objdump *~
