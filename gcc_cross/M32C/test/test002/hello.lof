@@ -1,0 +1,43 @@
+Reading symbols from hello.elf...
+Connected to the simulator.
+Breakpoint 1 at 0x500: file start.S, line 3.
+Breakpoint 2 at 0x50a: file start.S, line 8.
+Breakpoint 3 at 0x50b: file hello.c, line 5.
+Breakpoint 4 at 0x757: file puts.c, line 129.
+Breakpoint 5 at 0x51f: file dummy.c, line 6.
+Breakpoint 6 at 0x570: file dummy.c, line 22.
+Breakpoint 7 at 0x54d: file dummy.c, line 15.
+Breakpoint 8 at 0x58b: file dummy.c, line 35.
+Breakpoint 9 at 0x579: file dummy.c, line 27.
+Breakpoint 10 at 0x58d: file dummy.c, line 36.
+Breakpoint 11 at 0x58f: file dummy.c, line 37.
+Breakpoint 12 at 0x586: file dummy.c, line 32.
+
+Breakpoint 1, start () at start.S:3
+3		nop
+
+Breakpoint 3, main () at hello.c:5
+5	  printf("hello world\n");
+
+Breakpoint 4, puts (s=0x1f6a "hello world") at puts.c:129
+129	  return _puts_r (_REENT, s);
+
+Breakpoint 7, _malloc_r (size=8110) at dummy.c:15
+15	  char* ret = &heap + delta;
+
+Breakpoint 5, _fstat (fd=1, st=0x2f76) at dummy.c:6
+6	  memset(st, 0, sizeof*st);
+
+Breakpoint 7, _malloc_r (size=8110) at dummy.c:15
+15	  char* ret = &heap + delta;
+
+Breakpoint 9, _isatty (fd=1) at dummy.c:27
+27	  return 0;
+
+Breakpoint 12, _write (fd=1, buf=0x44ae "hello world\n", len=12) at dummy.c:32
+32	  return len;
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
