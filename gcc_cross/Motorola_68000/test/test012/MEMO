@@ -1,0 +1,52 @@
+#include <stdio.h>
+
+int f(int a, int b)
+{
+  return a + b;
+}
+
+int main()
+{
+  printf("%d\n", f(1,2));
+  return 0;
+}
+
+load コマンドでエラーする.
+
+(gdb) load
+Loading section .text, size 0x124ca lma 0x1040
+EEprom write error (only 1 byte can be programmed)
+sim_halt - bad long jump
+(gdb) 
+
+../test_m68hc11.004 を参考に .text の配置アドレスを 0x1040 にしている.
+がエラーになっている.
+
++---------------+
+|               |
++---------------+  0x00010
+|  .softregs    |
++---------------+
+|               |
+|               |
+|               |
+|   .stack      |
+|               |
+|               |
+|               |
++---------------+  0x01000
+|               |
+|     I/O       |
+|               |
++---------------+  0x01040
+|   .text       |
+|   .rodata     |
+|   .data       |
+|   .bss        |
+|               |
+|               |
+|               |
+|               |
++---------------+  0x1350a
+
+これはプログラムが単に大きすぎるということ.
