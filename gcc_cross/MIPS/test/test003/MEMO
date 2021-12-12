@@ -1,0 +1,19 @@
+../test001  と同様 gcc-10.2.0 でリンクエラーが発生している.
+
+
+gcc-10.2.0 で printf の中で不正メモリアクセスが発生している.
+
+
+
+(mips-elf-gdb) b *0xa0021e48
+Breakpoint 3 at 0xa0021e48: file ../../../.././newlib/libc/stdio/vfprintf.c, li
+(mips-elf-gdb) run
+...
+(mips-elf-gdb) x/i $pc
+=> 0xa0021e48 <_vfprintf_r+7376>:	sb	v0,-15044(zero)
+(mips-elf-gdb) p/x -15044
+$1 = 0xffffc53c
+(mips-elf-gdb) stepi
+mips-core: 1 byte write to unmapped address 0xffffc53c at 0xa0021e48
+
+
