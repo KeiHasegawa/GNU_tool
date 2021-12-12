@@ -1,0 +1,41 @@
+試しに即値 brai に指定してみたが期待通り動作している.
+
+% cat start.S
+	.text
+start:
+        brai    0x120
+	nop
+	nop
+	nop
+end:
+	nop
+	nop
+	nop
+	nop
+
+start1:
+	nop
+	nop
+	nop
+	nop
+
+start.objdump の結果は以下
+
+00000100 <start>:
+ 100:	b8080120 	brai	288	// 120 <start1>
+ 104:	80000000 	or	r0, r0, r0
+ 108:	80000000 	or	r0, r0, r0
+ 10c:	80000000 	or	r0, r0, r0
+
+00000110 <end>:
+ 110:	80000000 	or	r0, r0, r0
+ 114:	80000000 	or	r0, r0, r0
+ 118:	80000000 	or	r0, r0, r0
+ 11c:	80000000 	or	r0, r0, r0
+
+00000120 <start1>:
+ 120:	80000000 	or	r0, r0, r0
+ 124:	80000000 	or	r0, r0, r0
+ 128:	80000000 	or	r0, r0, r0
+ 12c:	80000000 	or	r0, r0, r0
+
