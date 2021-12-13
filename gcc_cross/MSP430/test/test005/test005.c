@@ -11,5 +11,5 @@ struct S f()
 int main()
 {
   struct S s = f();
-  return 0;
+  return s.i[0] + s.i[1] + s.i[2] + s.i[3] + s.i[4];
 }
