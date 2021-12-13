@@ -32,10 +32,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #define tprintf if (trace) printf
 
-#ifdef NEW_MEM_MAP
-int g_cia;
-#endif
-
 static unsigned char
 getbyte (void)
 {
@@ -44,9 +40,6 @@ getbyte (void)
 
   if (trace == 1)
     trace = 0;
-#ifdef NEW_MEM_MAP  
-  g_cia = regs.r_pc;
-#endif // NEW_MEM_MAP
   b = mem_get_pc ();
   regs.r_pc ++;
   trace = tsave;
@@ -484,6 +477,10 @@ static void do_putchar(void)
   put_reg(r0, ret);
 }
 
+#ifdef NEW_MEM_MAP
+int g_cia;
+#endif // NEW_MEM_MAP
+
 int
 decode_r8c (void)
 {
@@ -494,6 +491,9 @@ decode_r8c (void)
   srcdest sc, dc;
   int imm;
 
+#ifdef NEW_MEM_MAP
+  g_cia = orig_pc;
+#endif // NEW_MEM_MAP
   step_result = M32C_MAKE_STEPPED ();
 
   tprintf("trace: decode pc = %05x\n", orig_pc);

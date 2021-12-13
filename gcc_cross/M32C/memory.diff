@@ -1,5 +1,5 @@
 *** gdb-10.2.ppc-elf/sim/common/sim-load.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.m32c-elf/sim/common/sim-load.c	2021-12-08 17:10:07.000000000 +0900
+--- gdb-10.2.m32c-elf.new/sim/common/sim-load.c	2021-12-08 17:10:07.000000000 +0900
 ***************
 *** 133,143 ****
 --- 133,154 ----
@@ -26,7 +26,7 @@
   
     if (!found_loadable_section)
 *** gdb-10.2.ppc-elf/sim/m32c/main.c	2021-04-25 13:04:35.000000000 +0900
---- gdb-10.2.m32c-elf/sim/m32c/main.c	2021-12-08 16:53:23.000000000 +0900
+--- gdb-10.2.m32c-elf.new/sim/m32c/main.c	2021-12-08 16:53:23.000000000 +0900
 ***************
 *** 125,130 ****
 --- 125,131 ----
@@ -45,7 +45,7 @@
   }
 + #endif // NEW_MEM_MAP
 *** gdb-10.2.ppc-elf/sim/m32c/gdb-if.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.m32c-elf/sim/m32c/gdb-if.c	2021-12-08 17:19:37.000000000 +0900
+--- gdb-10.2.m32c-elf.new/sim/m32c/gdb-if.c	2021-12-14 07:24:26.000000000 +0900
 ***************
 *** 46,51 ****
 --- 46,52 ----
@@ -322,14 +322,37 @@
   sim_stop (SIM_DESC sd)
   {
 ***************
+*** 635,650 ****
+--- 712,731 ----
+  
+    return 1;
+  }
++ #endif // NEW_MEM_MAP
+  
+  void
+  sim_stop_reason (SIM_DESC sd, enum sim_stop *reason_p, int *sigrc_p)
+  {
++ #ifndef NEW_MEM_MAP
+    check_desc (sd);
++ #endif // NEW_MEM_MAP
+  
+    *reason_p = reason;
+    *sigrc_p = siggnal;
+  }
+  
++ #ifndef NEW_MEM_MAP
+  void
+  sim_do_command (SIM_DESC sd, const char *cmd)
+  {
+***************
 *** 712,714 ****
---- 789,792 ----
+--- 793,796 ----
   {
     printf ("The m32c minisim doesn't collect any statistics.\n");
   }
 + #endif // NEW_MEM_MAP
 *** gdb-10.2.ppc-elf/sim/m32c/mem.c	2021-04-25 13:04:35.000000000 +0900
---- gdb-10.2.m32c-elf/sim/m32c/mem.c	2021-12-08 17:39:28.000000000 +0900
+--- gdb-10.2.m32c-elf.new/sim/m32c/mem.c	2021-12-14 07:17:11.000000000 +0900
 ***************
 *** 87,93 ****
     memset (pt, 0, sizeof (pt));
@@ -395,7 +418,7 @@
     COUNT (0, 0);
     return *m;
 + #else // NEW_MEM_MAP
-+   return sim_core_read_aligned_1(g_cpu, g_cia, 0, g_cia);  
++   return sim_core_read_aligned_1(g_cpu, g_cia, 0, regs.r_pc );
 + #endif // NEW_MEM_MAP
   }
   
