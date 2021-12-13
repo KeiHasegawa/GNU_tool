@@ -1,0 +1,24 @@
+%.o : %.S
+	or1k-elf-as -o $@ $< -g
+
+%.o : %.c
+	or1k-elf-gcc -o $@ $< -c -g
+
+LIBGCC = /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/or1k-elf/10.2.0/libgcc.a
+
+%.elf : %.o
+	or1k-elf-ld -o $@ start.o $< $(LIBGCC) -T $(basename $<).x
+
+%.objdump : %.elf
+	or1k-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v or1k-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.s *.o *.elf *.objdump *.log *.a *.map *~
+
