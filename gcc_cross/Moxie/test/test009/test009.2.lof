@@ -1,0 +1,44 @@
+Reading symbols from hello.elf...
+Connected to the simulator.
+Loading section .text, size 0x31aa lma 0x1000
+Loading section .init, size 0xe lma 0x41aa
+Loading section .fini, size 0x8 lma 0x41b8
+Loading section .rodata, size 0x12 lma 0x41c0
+Loading section .data, size 0x840 lma 0x42d4
+Loading section .eh_frame, size 0x4 lma 0x4b14
+Loading section .ctors, size 0x8 lma 0x4b18
+Loading section .dtors, size 0x8 lma 0x4b20
+Start address 0x1000
+Transfer rate: 119088 bits in <1 sec.
+Breakpoint 1 at 0x4170: file ../../.././libgloss/moxie/sbrk.c, line 33.
+
+Breakpoint 1, _sbrk (nbytes=1048) at ../../.././libgloss/moxie/sbrk.c:33
+33	{
+#0  _sbrk (nbytes=1048) at ../../.././libgloss/moxie/sbrk.c:33
+#1  0x00003050 in _sbrk_r (ptr=0x42dc <impure_data>, ptr@entry=0x3ffe64, 
+    incr=<optimized out>) at ../../../.././newlib/libc/reent/sbrkr.c:51
+#2  0x000021fe in malloc_extend_top (nb=<optimized out>, 
+    reent_ptr=0x42dc <impure_data>)
+    at ../../../.././newlib/libc/stdlib/mallocr.c:2165
+#3  _malloc_r (reent_ptr=0x42dc <impure_data>, reent_ptr@entry=0x3ffee8, 
+    bytes=bytes@entry=4194024)
+    at ../../../.././newlib/libc/stdlib/mallocr.c:2580
+#4  0x00003d3a in __smakebuf_r (ptr=0x42dc <impure_data>, ptr@entry=0x3fff14, 
+    fp=0x4630 <impure_data+852>, fp@entry=0x3fff14)
+    at ../../../.././newlib/libc/stdio/makebuf.c:53
+#5  0x00003302 in __swsetup_r (ptr=ptr@entry=0x42dc <impure_data>, 
+    fp=0x4630 <impure_data+852>, fp@entry=0x3fff60)
+    at ../../../.././newlib/libc/stdio/wsetup.c:71
+#6  0x00001a36 in __sfvwrite_r (ptr=0x42dc <impure_data>, ptr@entry=0x3fffac, 
+    fp=0x4630 <impure_data+852>, uio=uio@entry=0x3fff88)
+    at ../../../.././newlib/libc/stdio/fvwrite.c:63
+#7  0x00001352 in _puts_r (ptr=0x42dc <impure_data>, s=0x41c0 "hello world")
+    at ../../../.././newlib/libc/stdio/puts.c:91
+#8  0x0000139a in puts (s=<optimized out>)
+    at ../../../.././newlib/libc/stdio/puts.c:129
+#9  0x0000116a in main () at hello.c:5
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
