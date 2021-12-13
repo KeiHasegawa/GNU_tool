@@ -1,0 +1,18 @@
+実行すると
+
+core: 4 byte write to unmapped address 0x9814 at 0x2028
+
+Program received signal SIGSEGV, Segmentation fault.
+0x00002028 in _or1k_start ()
+
+のようになる.
+
+00009814 g       .bss	00000000 end
+
+これはスタートアップルーチンのデバッグ情報がないので推測だが, bss 領域の
+初期化で範囲を超えてメモリアクセスしている可能性がある.
+
+しかし, この end は sbrk で参照されるはずだが...よく分からない.
+とりあえず fail の扱いにしておく.
+
+
