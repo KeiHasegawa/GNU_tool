@@ -1,0 +1,48 @@
+mn10300-elf-gdb でアセンブラのプログラムにブレークポイントをセットして
+そこで停止すると Warning ...
+というメッセージが表示される件の調査.
+
+再現方法
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_mn10300.000
+(gdb) run -q -x x test000.elf
+
+このメッセージを出力しているのは
+
+gdb-10.2.mn10300-elf/gdb/breakpoint.c
+
+static void
+insert_breakpoint_locations (void)
+{
+...
+  tmp_error_stream.puts ("Warning:\n");
+
+でこの函数が呼び出されるとこのメッセージは必ず表示される(実は間違い).
+
+      if (insert_mode != UGLL_DONT_INSERT)
+	insert_breakpoint_locations ();
+
+このように呼び出されている. しかしこの函数が呼び出されたからといって必ずしも
+メッセージが出されるわけではないらしい.
+
+シミュレータ側ではブレークポイントにヒットしたのを契機に
+
+      store_word (SP - 4, CPU_PC_GET (cpu));
+      store_half (SP - 8, PSW);
+
+のようなことをしている. sp が適切なところにセットされていないのが原因らしい.
+
+	.text
+	mov	0x80, a0
+	mov	a0, sp
+start:
+	nop
+	nop
+	nop
+end:
+	nop
+	
+のようにすれば start にブレークポイントをセットすることができる.
+
+
+
+
