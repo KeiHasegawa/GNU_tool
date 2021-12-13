@@ -1,0 +1,24 @@
+%.o : %.S
+	pru-elf-as -o $@ $< -g
+
+%.o : %.c
+	pru-elf-gcc -o $@ $< -c -g
+
+LIBGCC = /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/pru-elf/10.2.0/libgcc.a
+
+%.elf : %.o
+	pru-elf-ld -o $@ start.o $< $(LIBGCC) -T $(basename $<).x
+
+%.objdump : %.elf
+	pru-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v pru-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.s *.o *.elf *.objdump *.log *.a *.map *~
+
