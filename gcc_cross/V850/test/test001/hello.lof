@@ -1,0 +1,35 @@
+Reading symbols from hello.elf...
+Connected to the simulator.
+Loading section .text, size 0x2de8 lma 0x100000
+Loading section .rodata, size 0x28 lma 0x102de8
+Loading section .data, size 0x83c lma 0x102e10
+Loading section .sdata, size 0x4 lma 0x10364c
+Loading section .rosdata, size 0x4 lma 0x103650
+Start address 0x100000
+Transfer rate: 111264 bits in <1 sec.
+Breakpoint 1 at 0x100062: file hello.c, line 5.
+Breakpoint 2 at 0x1001ac: file ../../../.././newlib/libc/stdio/puts.c, line 129.
+Breakpoint 3 at 0x1025a2: file ../../../../.././newlib/libc/sys/sysnecv850/sbrk.c, line 12.
+Breakpoint 4 at 0x102616: file ../../../../.././newlib/libc/sys/sysnecv850/write.c, line 17.
+
+Breakpoint 1, main () at hello.c:5
+5	  printf("hello world\n");
+
+Breakpoint 2, puts (s=0x102de8 "hello world")
+    at ../../../.././newlib/libc/stdio/puts.c:129
+129	  return _puts_r (_REENT, s);
+
+Breakpoint 3, _sbrk (incr=incr@entry=1048)
+    at ../../../../.././newlib/libc/sys/sysnecv850/sbrk.c:12
+12	  char *        sp = (char *) & sp;
+
+Breakpoint 3, _sbrk (incr=incr@entry=1364)
+    at ../../../../.././newlib/libc/sys/sysnecv850/sbrk.c:12
+12	  char *        sp = (char *) & sp;
+
+Breakpoint 4, _write (file=1, 
+    ptr=ptr@entry=0x1036a0 "hello world\n", '\314' <repeats 187 times>, <incomplete sequence \314>..., len=len@entry=12)
+    at ../../../../.././newlib/libc/sys/sysnecv850/write.c:17
+17	  return TRAP0 (SYS_write, file, ptr, len);
+hello world
+[Inferior 1 (process 42000) exited normally]
