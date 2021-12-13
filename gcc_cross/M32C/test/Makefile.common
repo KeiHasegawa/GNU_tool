@@ -1,0 +1,22 @@
+%.o : %.S
+	m32c-elf-as -o $@ $< -g
+
+%.o : %.c
+	m32c-elf-gcc -o $@ $< -c -g
+
+%.elf : %.o
+	m32c-elf-ld -o $@ start.o $< -T $(basename $<).x
+
+%.objdump : %.elf
+	m32c-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v m32c-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.s *.o *.elf *.objdump *.log *.a *.map *~
+

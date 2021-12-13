@@ -24,7 +24,7 @@ void _free_r(void* ptr)
 
 int _isatty(int fd)
 {
-  return 0;
+  return 1;
 }
 
 int _write(int fd, const char* buf, int len)
