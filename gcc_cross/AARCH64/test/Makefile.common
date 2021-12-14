@@ -1,0 +1,21 @@
+%.o : %.S
+	aarch64-elf-as -o $@ $< -g
+
+%.o : %.c
+	aarch64-elf-gcc -o $@ $< -c -g
+
+%.elf : %.o
+	aarch64-elf-ld -o $@ start.o $< -T $(basename $<).x
+
+%.objdump : %.elf
+	aarch64-elf-objdump -x -t -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v aarch64-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.s *.o *.elf *.map *.objdump *.log *~
