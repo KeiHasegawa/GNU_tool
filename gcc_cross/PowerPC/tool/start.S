@@ -1,7 +1,21 @@
 	.text
 start:
-	lis 1,stack@ha
-	la 1,stack@l(1)
+	lis	1,_bss_start@ha
+	la	1,_bss_start@l(1)
+	lis	2,_bss_end@ha
+	la	2,_bss_end@l(2)
+	li	3,0
+	li	4,1
+	
+.L1:	
+	cmpw	0,1,2
+	beq	0,.L2
+	stb	3,0(1)
+	add	1,1,4
+	b	.L1
+.L2:
+	lis 1,_stack@ha
+	la 1,_stack@l(1)
 	bl main
 	nop	
 	.long	0x7fffbad0
