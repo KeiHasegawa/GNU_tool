@@ -1,0 +1,24 @@
+%.o : %.S
+	avr-elf-as -o $@ $< -g
+
+%.o : %.c
+	avr-elf-gcc -o $@ $< -c -g
+
+LIBGCC = /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/avr-elf/10.2.0/avr25/libgcc.a
+
+%.elf : %.o
+	avr-elf-ld -o $@ start.o $< $(LIBGCC) \
+	-T $(basename $<).x -Map $(basename $<).map
+
+%.objdump : %.elf
+	avr-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v avr-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.o *.s *.elf *.map *.objdump *.log *~
