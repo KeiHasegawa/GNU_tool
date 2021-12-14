@@ -3,7 +3,7 @@
 
 int _fstat(int fildes, struct stat *st)
 {
-  memset(st, sizeof*st, 0);
+  memset(st, 0, sizeof*st);
   st->st_mode = 0x2190;
   return 0;
 }
