@@ -3,11 +3,12 @@ Connected to the simulator.
 Loading section .text, size 0x46 lma 0x100
 Start address 0x100
 Transfer rate: 560 bits in <1 sec.
-core: 1 byte write to unmapped address 0x0 at 0x104
-
+mn10300-core: 4 byte write to unmapped address 0x1000 at 0x10a
+mn10300-core: 4 byte write to unmapped address 0xffc at 0x10a
+ERROR: recursion in program_interrupt during software exception dispatch.
 Program received signal SIGSEGV, Segmentation fault.
-0x00000104 in L0 () at start.S:2
-2		mov	stack, a0
+start () at start.S:7
+7		call _main,[],0
 (mn10300-elf-gdb) A debugging session is active.
 
 	Inferior 1 [process 42000] will be killed.
