@@ -1,0 +1,22 @@
+%.o : %.S
+	arm-elf-as -o $@ -g $<
+
+%.o : %.c
+	arm-elf-gcc -o $@ $< -c -g
+
+%.elf : %.o 
+	arm-elf-ld -o $@ start.o $< -T $(basename $<).x
+
+%.objdump : %.elf
+	arm-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v arm-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.o *.s *.elf *.map *.objdump *.log *~
+
