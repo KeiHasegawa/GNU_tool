@@ -1,0 +1,24 @@
+%.o : %.S
+	h8300-elf-as -o $@ $< -g
+
+%.o : %.c
+	h8300-elf-gcc -o $@ $< -g -c
+
+LIBC = /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/h8300-elf/lib/h8300h/libc.a
+
+%.elf : %.o
+	h8300-elf-ld -o $@ start.o $< $(LIBC) \
+	-T $(basename $<).x -Map $(basenanme $<).map
+
+%.objdump : %.elf
+	h8300-elf-objdump -x -t -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v h8300-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.s *.o *.elf *.map *.objdump *.log *~
