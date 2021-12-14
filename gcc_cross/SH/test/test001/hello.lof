@@ -1,0 +1,49 @@
+Reading symbols from hello.elf...
+Connected to the simulator.
+Loading section .init, size 0x36 lma 0x1000
+Loading section .text, size 0x2a98 lma 0x1038
+Loading section .fini, size 0x2a lma 0x3ad0
+Loading section .rodata, size 0x2a lma 0x3afc
+Loading section .eh_frame, size 0x4 lma 0x3b28
+Loading section .ctors, size 0x8 lma 0x3bac
+Loading section .dtors, size 0x8 lma 0x3bb4
+Loading section .data, size 0x83c lma 0x3bbc
+Loading section .got, size 0xc lma 0x43f8
+Loading section .stack, size 0x4 lma 0x3fffff00
+Start address 0x1038
+Transfer rate: 105488 bits in <1 sec.
+Breakpoint 1 at 0x11a2: file hello.c, line 5.
+Breakpoint 2 at 0x128c: file ../../../.././newlib/libc/stdio/puts.c, line 129.
+Breakpoint 3 at 0x1388: file ../../../../.././newlib/libc/sys/sh/syscalls.c, line 54.
+Breakpoint 4 at 0x13f0: file ../../../../.././newlib/libc/sys/sh/syscalls.c, line 72.
+Breakpoint 5 at 0x1424: file ../../../../.././newlib/libc/sys/sh/syscalls.c, line 99.
+Breakpoint 6 at 0x1364: _write. (2 locations)
+
+Breakpoint 1, main () at hello.c:5
+5	  printf("hello world\n");
+
+Breakpoint 2, puts (s=0x3afc "hello world")
+    at ../../../.././newlib/libc/stdio/puts.c:129
+129	  return _puts_r (_REENT, s);
+
+Breakpoint 4, _fstat (file=1, st=0x3ffffe30)
+    at ../../../../.././newlib/libc/sys/sh/syscalls.c:72
+72	  st->st_mode = S_IFCHR;
+
+Breakpoint 3, _sbrk (incr=1048)
+    at ../../../../.././newlib/libc/sys/sh/syscalls.c:54
+54	  if (heap_end == 0)
+
+Breakpoint 3, _sbrk (incr=1924)
+    at ../../../../.././newlib/libc/sys/sh/syscalls.c:54
+54	  if (heap_end == 0)
+
+Breakpoint 5, 0x00001424 in _isatty ()
+    at ../../../../.././newlib/libc/sys/sh/syscalls.c:99
+99	  return 1;
+
+Breakpoint 6, _write (file=1, ptr=0x4470 "hello world\n", len=12)
+    at ../../../../.././newlib/libc/sys/sh/syscalls.c:32
+32	  return __trap34 (SYS_write, file, ptr, len);
+hello world
+[Inferior 1 (process 42000) exited normally]
