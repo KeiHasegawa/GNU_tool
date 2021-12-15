@@ -1,0 +1,1007 @@
+*** gdb-10.2.ppc-elf/sim/ppc/cpu.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.ppc-elf.new/sim/ppc/cpu.c	2021-12-15 09:14:38.000000000 +0900
+***************
+*** 98,104 ****
+--- 98,108 ----
+  
+    /* link back to core system */
+    processor->system = system;
++ #ifndef NEW_MEM_MAP
+    processor->events = psim_event_queue(system);
++ #else // NEW_MEM_MAP
++   processor->events = 0;
++ #endif // NEW_MEM_MAP
+    processor->cpu_nr = cpu_nr;
+    processor->monitor = monitor;
+    processor->os_emulation = os_emulation;
+***************
+*** 184,190 ****
+    cpu_set_program_counter(processor, nia);
+    psim_restart(processor->system, processor->cpu_nr);
+  }
+! 
+  INLINE_CPU\
+  (void)
+  cpu_halt(cpu *processor,
+--- 188,194 ----
+    cpu_set_program_counter(processor, nia);
+    psim_restart(processor->system, processor->cpu_nr);
+  }
+! #ifndef NEW_MEM_MAP
+  INLINE_CPU\
+  (void)
+  cpu_halt(cpu *processor,
+***************
+*** 198,203 ****
+--- 202,208 ----
+    cpu_set_program_counter(processor, nia);
+    psim_halt(processor->system, processor->cpu_nr, reason, signal);
+  }
++ #endif // NEW_MEM_MAP
+  
+  EXTERN_CPU\
+  (void)
+*** gdb-10.2.ppc-elf/sim/ppc/gdb-sim.c	2021-04-25 13:04:35.000000000 +0900
+--- gdb-10.2.ppc-elf.new/sim/ppc/gdb-sim.c	2021-12-15 11:34:04.000000000 +0900
+***************
+*** 44,50 ****
+  /* Return the name of the register whose number is REGNUM, or zero if
+     REGNUM is an invalid register number.  */
+  
+! static const char *
+  regnum2name (int regnum)
+  {
+    switch (regnum)
+--- 44,50 ----
+  /* Return the name of the register whose number is REGNUM, or zero if
+     REGNUM is an invalid register number.  */
+  
+! const char *
+  regnum2name (int regnum)
+  {
+    switch (regnum)
+***************
+*** 1268,1273 ****
+--- 1268,1274 ----
+  }
+  
+  
++ #ifndef NEW_MEM_MAP
+  int
+  sim_fetch_register (SIM_DESC sd, int regno, unsigned char *buf, int length)
+  {
+***************
+*** 1275,1288 ****
+  
+    if (simulator == NULL || regname == NULL)
+      return -1;
+- 
+    TRACE(trace_gdb, ("sim_fetch_register(regno=%d(%s), buf=0x%lx)\n",
+  		    regno, regname, (long)buf));
+    return psim_read_register(simulator, MAX_NR_PROCESSORS,
+  			    buf, regname, raw_transfer);
+  }
+  
+- 
+  int
+  sim_store_register (SIM_DESC sd, int regno, unsigned char *buf, int length)
+  {
+--- 1276,1287 ----
+***************
+*** 1290,1298 ****
+  
+    if (simulator == NULL || regname == NULL)
+      return 0;
+- 
+    TRACE(trace_gdb, ("sim_store_register(regno=%d(%s), buf=0x%lx)\n",
+  		    regno, regname, (long)buf));
+    return psim_write_register(simulator, MAX_NR_PROCESSORS,
+  			     buf, regname, raw_transfer);
+  }
+--- 1289,1297 ----
+  
+    if (simulator == NULL || regname == NULL)
+      return 0;
+    TRACE(trace_gdb, ("sim_store_register(regno=%d(%s), buf=0x%lx)\n",
+  		    regno, regname, (long)buf));
+    return psim_write_register(simulator, MAX_NR_PROCESSORS,
+  			     buf, regname, raw_transfer);
+  }
++ #endif // NEW_MEM_MAP
+*** gdb-10.2.ppc-elf/sim/ppc/idecode.c	2021-12-14 18:15:50.000000000 +0900
+--- gdb-10.2.ppc-elf.new/sim/ppc/idecode.c	2021-12-15 13:33:15.000000000 +0900
+***************
+*** 6725,6731 ****
+    int last_cpu;
+    int current_cpu;
+    int cpu_nr;
+! 
+    /* flush the icache of a possible break insn */
+    for (cpu_nr = 0; cpu_nr < nr_cpus; cpu_nr++)
+      cpu_flush_icache(processors[cpu_nr]);
+--- 6725,6731 ----
+    int last_cpu;
+    int current_cpu;
+    int cpu_nr;
+! #ifndef NEW_MEM_MAP
+    /* flush the icache of a possible break insn */
+    for (cpu_nr = 0; cpu_nr < nr_cpus; cpu_nr++)
+      cpu_flush_icache(processors[cpu_nr]);
+***************
+*** 6734,6743 ****
+    psim_set_halt_and_restart(system, &halt, NULL);
+    if (setjmp(halt))
+      return;
+! 
+    /* where were we before the halt? */
+    last_cpu = psim_last_cpu(system);
+- 
+    /* check for need to force event processing first */
+    if (WITH_EVENTS) {
+      if (last_cpu == nr_cpus) {
+--- 6734,6742 ----
+    psim_set_halt_and_restart(system, &halt, NULL);
+    if (setjmp(halt))
+      return;
+!   
+    /* where were we before the halt? */
+    last_cpu = psim_last_cpu(system);
+    /* check for need to force event processing first */
+    if (WITH_EVENTS) {
+      if (last_cpu == nr_cpus) {
+***************
+*** 6761,6767 ****
+  
+    /* have ensured that the event queue can not be first */
+    ASSERT(last_cpu >= -1 && last_cpu < nr_cpus - 1);
+- 
+    /* CASE 2: SMP (With or without ICACHE)
+  
+       The complexity here comes from needing to correctly restart the
+--- 6760,6765 ----
+***************
+*** 6779,6787 ****
+      current_cpu = last_cpu;
+      ASSERT(current_cpu >= -1 && current_cpu < nr_cpus);
+    }
+! 
+    while (1) {
+! 
+      if (WITH_EVENTS) {
+        current_cpu += 1;
+        if (current_cpu == nr_cpus) {
+--- 6777,6785 ----
+      current_cpu = last_cpu;
+      ASSERT(current_cpu >= -1 && current_cpu < nr_cpus);
+    }
+! #endif // NEW_MEM_MAP
+    while (1) {
+! #ifndef NEW_MEM_MAP
+      if (WITH_EVENTS) {
+        current_cpu += 1;
+        if (current_cpu == nr_cpus) {
+***************
+*** 6794,6800 ****
+      else {
+        current_cpu = (current_cpu + 1) % nr_cpus;
+      }
+! 
+      {
+        cpu *processor = processors[current_cpu];
+        unsigned_word cia =
+--- 6792,6800 ----
+      else {
+        current_cpu = (current_cpu + 1) % nr_cpus;
+      }
+! #else  // NEW_MEM_MAP
+!     current_cpu = 0;
+! #endif // NEW_MEM_MAP
+      {
+        cpu *processor = processors[current_cpu];
+        unsigned_word cia =
+***************
+*** 6802,6807 ****
+--- 6802,6808 ----
+        idecode_cache *cache_entry =
+          cpu_icache_entry(processor, cia);
+  
++ #ifndef NEW_MEM_MAP
+        if (cache_entry->address == cia) {
+  
+          /* cache hit */
+***************
+*** 6810,6816 ****
+          cpu_set_program_counter(processor, cia);
+  
+        }
+!       else {
+  
+          /* cache miss */
+          instruction_word instruction =
+--- 6811,6819 ----
+          cpu_set_program_counter(processor, cia);
+  
+        }
+!       else
+! #endif // NEW_MEM_MAP
+! 	{
+  
+          /* cache miss */
+          instruction_word instruction =
+***************
+*** 6839,6847 ****
+  				    processor, cia);
+  	  break;
+  	}
+! 	
+          if (WITH_MON != 0)
+            mon_event(mon_event_icache_miss, processors[current_cpu], cia);
+          {
+            /* prime the search */
+            idecode_table_entry *table = idecode_table_0_5;
+--- 6842,6851 ----
+  				    processor, cia);
+  	  break;
+  	}
+! #ifndef NEW_MEM_MAP
+          if (WITH_MON != 0)
+            mon_event(mon_event_icache_miss, processors[current_cpu], cia);
++ #endif // NEW_MEM_MAP
+          {
+            /* prime the search */
+            idecode_table_entry *table = idecode_table_0_5;
+***************
+*** 6875,6881 ****
+              (processor, instruction, cia, cache_entry));
+          }
+          cpu_set_program_counter(processor, cia);
+! 
+        }
+      }
+    }
+--- 6879,6889 ----
+              (processor, instruction, cia, cache_entry));
+          }
+          cpu_set_program_counter(processor, cia);
+! #ifdef NEW_MEM_MAP
+! 	extern SIM_DESC g_sd;
+! 	if (sim_events_tick (g_sd))
+! 	  sim_events_process (g_sd);
+! #endif // NEW_MEM_MAP
+        }
+      }
+    }
+*** gdb-10.2.ppc-elf/sim/ppc/interrupts.c	2020-09-13 11:33:41.000000000 +0900
+--- gdb-10.2.ppc-elf.new/sim/ppc/interrupts.c	2021-12-14 16:19:27.000000000 +0900
+***************
+*** 398,404 ****
+--- 398,408 ----
+  
+    case USER_ENVIRONMENT:
+    case VIRTUAL_ENVIRONMENT:
++ #ifndef NEW_MEM_MAP 
+      os_emul_system_call(processor, cia);
++ #else  // NEW_MEM_MAP
++     asm("int3");
++ #endif  // NEW_MEM_MAP
+      cpu_restart(processor, cia+4);
+  
+    case OPERATING_ENVIRONMENT:
+*** gdb-10.2.ppc-elf/sim/ppc/main.c	2021-12-14 14:55:33.000000000 +0900
+--- gdb-10.2.ppc-elf.new/sim/ppc/main.c	2021-12-14 15:00:57.000000000 +0900
+***************
+*** 61,71 ****
+--- 61,73 ----
+  
+  static psim *simulation = NULL;
+  
++ #ifndef NEW_MEM_MAP
+  void
+  sim_io_poll_quit (void)
+  {
+    /* nothing to do */
+  }
++ #endif /// NEW_MEM_MAP
+  
+  void
+  sim_io_printf_filtered(const char *msg, ...)
+***************
+*** 91,97 ****
+  
+    exit (1);
+  }
+! 
+  int
+  sim_io_write_stdout(const char *buf,
+  		    int sizeof_buf)
+--- 93,99 ----
+  
+    exit (1);
+  }
+! #ifndef NEW_MEM_MAP
+  int
+  sim_io_write_stdout(const char *buf,
+  		    int sizeof_buf)
+***************
+*** 138,143 ****
+--- 140,146 ----
+    return 0;
+  }
+  
++ 
+  int
+  sim_io_read_stdin(char *buf,
+  		  int sizeof_buf)
+***************
+*** 208,214 ****
+    }
+    return 0;
+  }
+! 
+  void
+  sim_io_flush_stdoutput(void)
+  {
+--- 211,217 ----
+    }
+    return 0;
+  }
+! #endif // NEW_MEM_MAP
+  void
+  sim_io_flush_stdoutput(void)
+  {
+***************
+*** 223,229 ****
+      break;
+    }
+  }
+! 
+  void
+  sim_io_error (SIM_DESC sd, const char *msg, ...)
+  {
+--- 226,232 ----
+      break;
+    }
+  }
+! #ifndef NEW_MEM_MAP
+  void
+  sim_io_error (SIM_DESC sd, const char *msg, ...)
+  {
+***************
+*** 240,246 ****
+    exit (1);
+  }
+  
+- 
+  void *
+  zalloc(long size)
+  {
+--- 243,248 ----
+***************
+*** 250,255 ****
+--- 252,258 ----
+    memset(memory, 0, size);
+    return memory;
+  }
++ #endif // NEW_MEM_MAP
+  
+  /* When a CNTRL-C occures, queue an event to shut down the simulation */
+  
+***************
+*** 259,265 ****
+    psim_stop (simulation);
+  }
+  
+! 
+  int
+  main(int argc, char **argv)
+  {
+--- 262,268 ----
+    psim_stop (simulation);
+  }
+  
+! #ifndef NEW_MEM_MAP
+  int
+  main(int argc, char **argv)
+  {
+***************
+*** 328,330 ****
+--- 331,334 ----
+      return 0;
+    }
+  }
++ #endif // NEW_MEM_MAP
+*** gdb-10.2.ppc-elf/sim/ppc/mon.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.ppc-elf.new/sim/ppc/mon.c	2021-12-15 06:28:23.000000000 +0900
+***************
+*** 119,127 ****
+--- 119,129 ----
+  	  cpu *processor, 
+  	  unsigned_word cia)
+  {
++ #ifndef NEW_MEM_MAP
+    cpu_mon *monitor = cpu_monitor(processor);
+    ASSERT(index <= nr_itable_entries);
+    monitor->issue_count[index] += 1;
++ #endif // NEW_MEM_MAP
+  }
+  
+  
+*** gdb-10.2.ppc-elf/sim/ppc/os_emul.c	2020-09-13 11:33:41.000000000 +0900
+--- gdb-10.2.ppc-elf.new/sim/ppc/os_emul.c	2021-12-14 17:48:18.000000000 +0900
+***************
+*** 31,36 ****
+--- 31,37 ----
+  #include "emul_chirp.h"
+  #include "emul_bugapi.h"
+  
++ #ifndef NEW_MEM_MAP  
+  static const os_emul *(os_emulations[]) = {
+    &emul_chirp,
+    &emul_bugapi,
+***************
+*** 39,45 ****
+    &emul_linux,
+    0
+  };
+! 
+  
+  INLINE_OS_EMUL\
+  (os_emul *)
+--- 40,46 ----
+    &emul_linux,
+    0
+  };
+! #endif // NEW_MEM_MAP  
+  
+  INLINE_OS_EMUL\
+  (os_emul *)
+***************
+*** 75,88 ****
+    }
+  
+    /* see if the device tree already specifies the required emulation */
+    if (tree_find_property(root, "/openprom/options/os-emul") != NULL)
+      emulation_name =
+        tree_find_string_property(root, "/openprom/options/os-emul");
+    else
+      emulation_name = NULL;
+! 
+    /* go through each emulation to see if they reconize it. FIXME -
+       should have some sort of imported table from a separate file */
+    {
+      os_emul_data *emul_data;
+      const os_emul **possible_emulation;
+--- 76,94 ----
+    }
+  
+    /* see if the device tree already specifies the required emulation */
++ #ifndef NEW_MEM_MAP  
+    if (tree_find_property(root, "/openprom/options/os-emul") != NULL)
+      emulation_name =
+        tree_find_string_property(root, "/openprom/options/os-emul");
+    else
+      emulation_name = NULL;
+! #else // NEW_MEM_MAP  
+!   emulation_name = NULL;
+! #endif // NEW_MEM_MAP  
+!   
+    /* go through each emulation to see if they reconize it. FIXME -
+       should have some sort of imported table from a separate file */
++ #ifndef NEW_MEM_MAP  
+    {
+      os_emul_data *emul_data;
+      const os_emul **possible_emulation;
+***************
+*** 100,105 ****
+--- 106,112 ----
+        }
+      }
+    }
++ #endif // NEW_MEM_MAP  
+  
+    /* clean up */
+    if (image != NULL)
+*** gdb-10.2.ppc-elf/sim/ppc/psim.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.ppc-elf.new/sim/ppc/psim.c	2021-12-15 11:26:44.000000000 +0900
+***************
+*** 74,87 ****
+    cpu *processors[MAX_NR_PROCESSORS];
+  };
+  
+! 
+  int current_target_byte_order;
+  int current_host_byte_order;
+  int current_environment;
+  int current_alignment;
+  int current_floating_point;
+  int current_model_issue = MODEL_ISSUE_IGNORE;
+  int current_stdio = DO_USE_STDIO;
+  model_enum current_model = WITH_DEFAULT_MODEL;
+  
+  
+--- 74,92 ----
+    cpu *processors[MAX_NR_PROCESSORS];
+  };
+  
+! #ifndef NEW_MEM_MAP
+  int current_target_byte_order;
++ #endif
+  int current_host_byte_order;
+  int current_environment;
++ #ifndef NEW_MEM_MAP
+  int current_alignment;
++ #endif
+  int current_floating_point;
+  int current_model_issue = MODEL_ISSUE_IGNORE;
++ #ifndef NEW_MEM_MAP
+  int current_stdio = DO_USE_STDIO;
++ #endif
+  model_enum current_model = WITH_DEFAULT_MODEL;
+  
+  
+***************
+*** 91,96 ****
+--- 96,102 ----
+  (device *)
+  psim_tree(void)
+  {
++ #ifndef NEW_MEM_MAP  
+    device *root = tree_parse(NULL, "core");
+    tree_parse(root, "/aliases");
+    tree_parse(root, "/options");
+***************
+*** 102,107 ****
+--- 108,116 ----
+    tree_parse(root, "/openprom/trace");
+    tree_parse(root, "/openprom/options");
+    return root;
++ #else  // NEW_MEM_MAP
++   return 0;
++ #endif  // NEW_MEM_MAP
+  }
+  
+  STATIC_INLINE_PSIM\
+***************
+*** 120,125 ****
+--- 129,135 ----
+  (void)
+  psim_usage (int verbose, int help, SIM_OPEN_KIND kind)
+  {
++ #ifndef NEW_MEM_MAP
+    printf_filtered("Usage:\n");
+    printf_filtered("\n");
+    printf_filtered("\tpsim [ <psim-option> ... ] <image> [ <image-arg> ... ]\n");
+***************
+*** 223,228 ****
+--- 233,239 ----
+  	printf ("Report bugs to %s\n", REPORT_BUGS_TO);
+        exit (help ? 0 : 1);
+      }
++ #endif // NEW_MEM_MAP
+  }
+  
+  /* Test "string" for containing a string of digits that form a number
+***************
+*** 253,258 ****
+--- 264,270 ----
+  	     char **argv,
+  	     SIM_OPEN_KIND kind)
+  {
++ #ifndef NEW_MEM_MAP
+    device *current = root;
+    int argp;
+    if (argv == NULL)
+***************
+*** 402,407 ****
+--- 414,420 ----
+  
+    /* return where the options end */
+    return argv + argp;
++ #endif // NEW_MEM_MAP
+  }
+  
+  INLINE_PSIM\
+***************
+*** 409,414 ****
+--- 422,428 ----
+  psim_command(device *root,
+  	     char **argv)
+  {
++ #ifndef NEW_MEM_MAP
+    int argp = 0;
+    if (argv[argp] == NULL) {
+      return;
+***************
+*** 431,436 ****
+--- 445,451 ----
+      printf_filtered("    trace <trace-option>\n");
+      printf_filtered("    change-media <device> [ <new-image> ]\n");
+    }
++ #endif // NEW_MEM_MAP
+  }
+  
+  
+***************
+*** 441,446 ****
+--- 456,462 ----
+  psim_create(const char *file_name,
+  	    device *root)
+  {
++ #ifndef NEW_MEM_MAP
+    int cpu_nr;
+    const char *env;
+    psim *system;
+***************
+*** 559,564 ****
+--- 575,583 ----
+      error("");
+  
+    return system;
++ #else // NEW_MEM_MAP
++   return 0;
++ #endif // NEW_MEM_MAP
+  }
+  
+  
+***************
+*** 679,685 ****
+--- 698,708 ----
+  psim_device(psim *system,
+  	    const char *path)
+  {
++ #ifndef NEW_MEM_MAP  
+    return tree_find_device(system->devices, path);
++ #else  // NEW_MEM_MAP
++   return 0;
++ #endif  // NEW_MEM_MAP
+  }
+  
+  INLINE_PSIM\
+***************
+*** 707,712 ****
+--- 730,736 ----
+  (void)
+  psim_init(psim *system)
+  {
++ #ifndef NEW_MEM_MAP  
+    int cpu_nr;
+  
+    /* scrub the monitor */
+***************
+*** 745,750 ****
+--- 769,775 ----
+  
+    /* force loop to start with first cpu */
+    system->last_cpu = -1;
++ #endif // NEW_MEM_MAP  
+  }
+  
+  INLINE_PSIM\
+***************
+*** 753,758 ****
+--- 778,784 ----
+  	   char **argv,
+  	   char **envp)
+  {
++ #ifndef NEW_MEM_MAP  
+    /* pass the stack device the argv/envp and let it work out what to
+       do with it */
+    device *stack_device = tree_find_device(system->devices,
+***************
+*** 769,774 ****
+--- 795,801 ----
+  		 argv,
+  		 envp);
+    }
++ #endif // NEW_MEM_MAP  
+  }
+  
+  
+***************
+*** 780,796 ****
+--- 807,827 ----
+  (void)
+  psim_step(psim *system)
+  {
++ #ifndef NEW_MEM_MAP
+    volatile int keep_running = 0;
+    idecode_run_until_stop(system, &keep_running,
+  			 system->events, system->processors, system->nr_cpus);
++ #endif // NEW_MEM_MAP  
+  }
+  
+  INLINE_PSIM\
+  (void)
+  psim_run(psim *system)
+  {
++ #ifndef NEW_MEM_MAP
+    idecode_run(system,
+  	      system->events, system->processors, system->nr_cpus);
++ #endif // NEW_MEM_MAP  
+  }
+  
+  
+***************
+*** 809,814 ****
+--- 840,846 ----
+    cpu *processor;
+  
+    /* find our processor */
++ #ifndef NEW_MEM_MAP
+    if (which_cpu == MAX_NR_PROCESSORS) {
+      if (system->last_cpu == system->nr_cpus
+  	|| system->last_cpu == -1)
+***************
+*** 819,825 ****
+    ASSERT(which_cpu >= 0 && which_cpu < system->nr_cpus);
+  
+    processor = system->processors[which_cpu];
+! 
+    /* find the register description */
+    description = register_description(reg);
+    if (description.type == reg_invalid)
+--- 851,859 ----
+    ASSERT(which_cpu >= 0 && which_cpu < system->nr_cpus);
+  
+    processor = system->processors[which_cpu];
+! #else  // NEW_MEM_MAP
+!   processor = (cpu*)system;
+! #endif // NEW_MEM_MAP  
+    /* find the register description */
+    description = register_description(reg);
+    if (description.type == reg_invalid)
+***************
+*** 965,970 ****
+--- 999,1005 ----
+    register_descriptions description;
+    char *cooked_buf;
+  
++ #ifndef NEW_MEM_MAP  
+    /* find our processor */
+    if (which_cpu == MAX_NR_PROCESSORS) {
+      if (system->last_cpu == system->nr_cpus
+***************
+*** 973,978 ****
+--- 1008,1016 ----
+      else
+        which_cpu = system->last_cpu;
+    }
++ #else // NEW_MEM_MAP
++   processor = (cpu*)system;
++ #endif // NEW_MEM_MAP  
+  
+    /* find the description of the register */
+    description = register_description(reg);
+***************
+*** 980,985 ****
+--- 1018,1024 ----
+      return 0;
+    cooked_buf = alloca (description.size);
+  
++ #ifndef NEW_MEM_MAP  
+    if (which_cpu == -1) {
+      int i;
+      for (i = 0; i < system->nr_cpus; i++)
+***************
+*** 989,994 ****
+--- 1028,1034 ----
+    ASSERT(which_cpu >= 0 && which_cpu < system->nr_cpus);
+  
+    processor = system->processors[which_cpu];
++ #endif // NEW_MEM_MAP  
+  
+    /* If the data is comming in raw (target order), need to cook it
+       into host order before putting it into PSIM's internal structures */
+***************
+*** 1111,1116 ****
+--- 1151,1157 ----
+  		 unsigned_word vaddr,
+  		 unsigned nr_bytes)
+  {
++ #ifndef NEW_MEM_MAP  
+    cpu *processor;
+    if (which_cpu == MAX_NR_PROCESSORS) {
+      if (system->last_cpu == system->nr_cpus
+***************
+*** 1123,1128 ****
+--- 1164,1170 ----
+    return vm_data_map_read_buffer(cpu_data_map(processor),
+  				 buffer, vaddr, nr_bytes,
+  				 NULL, -1);
++ #endif // NEW_MEM_MAP  
+  }
+  
+  
+***************
+*** 1135,1140 ****
+--- 1177,1183 ----
+  		  unsigned nr_bytes,
+  		  int violate_read_only_section)
+  {
++ #ifndef NEW_MEM_MAP  
+    cpu *processor;
+    if (which_cpu == MAX_NR_PROCESSORS) {
+      if (system->last_cpu == system->nr_cpus
+***************
+*** 1148,1153 ****
+--- 1191,1197 ----
+    return vm_data_map_write_buffer(cpu_data_map(processor),
+  				  buffer, vaddr, nr_bytes, 1/*violate-read-only*/,
+  				  NULL, -1);
++ #endif // NEW_MEM_MAP  
+  }
+  
+  
+***************
+*** 1156,1162 ****
+--- 1200,1208 ----
+  psim_print_info(psim *system,
+  		int verbose)
+  {
++ #ifndef NEW_MEM_MAP  
+    mon_print_info(system, system->monitor, verbose);
++ #endif // NEW_MEM_MAP  
+  }
+  
+  
+***************
+*** 1167,1172 ****
+--- 1213,1219 ----
+  psim_merge_device_file(device *root,
+  		       const char *file_name)
+  {
++ #ifndef NEW_MEM_MAP  
+    FILE *description;
+    int line_nr;
+    char device_path[1000];
+***************
+*** 1224,1229 ****
+--- 1271,1277 ----
+      current = tree_parse(current, "%s", device);
+    }
+    fclose(description);
++ #endif // NEW_MEM_MAP  
+  }
+  
+  
+*** gdb-10.2.ppc-elf/sim/ppc/semantics.c	2021-12-09 16:39:27.000000000 +0900
+--- gdb-10.2.ppc-elf.new/sim/ppc/semantics.c	2021-12-15 13:28:51.000000000 +0900
+***************
+*** 38,47 ****
+--- 38,49 ----
+  PSIM_EXTERN_SEMANTICS(void)
+  semantic_init(device* root)
+  {
++ #ifndef NEW_MEM_MAP  
+    option_mpc860c0 = 0;
+    if (tree_find_property(root, "/options/mpc860c0"))
+      option_mpc860c0 = tree_find_integer_property(root, "/options/mpc860c0");
+      option_mpc860c0 *= 4;   /* convert word count to byte count */
++ #endif // NEW_MEM_MAP    
+  }
+  
+  
+*** gdb-10.2.ppc-elf/sim/ppc/vm.c	2020-09-13 11:33:41.000000000 +0900
+--- gdb-10.2.ppc-elf.new/sim/ppc/vm.c	2021-12-15 06:22:49.000000000 +0900
+***************
+*** 425,433 ****
+--- 425,437 ----
+  	     cpu *processor,
+  	     unsigned_word cia)
+  {
++ #ifndef NEW_MEM_MAP
+    if (WITH_XOR_ENDIAN)
+      ra ^= map->xor[sizeof(instruction_word) - 1];
+    return core_map_read_word(map->physical, ra, processor, cia);
++ #else // NEW_MEM_MAP
++   asm("int3");
++ #endif // NEW_MEM_MAP
+  }
+  
+  STATIC_INLINE_VM\
+***************
+*** 438,446 ****
+--- 442,454 ----
+  	      cpu *processor,
+  	      unsigned_word cia)
+  {
++ #ifndef NEW_MEM_MAP
+    if (WITH_XOR_ENDIAN)
+      ra ^= map->xor[sizeof(instruction_word) - 1];
+    core_map_write_word(map->physical, ra, val, processor, cia);
++ #else // NEW_MEM_MAP
++   asm("int3");
++ #endif // NEW_MEM_MAP
+  }
+  
+  
+***************
+*** 450,455 ****
+--- 458,464 ----
+  (vm *)
+  vm_create(core *physical)
+  {
++ #ifndef NEW_MEM_MAP  
+    vm *virtual;
+  
+    /* internal checks */
+***************
+*** 487,492 ****
+--- 496,504 ----
+    virtual->data_map.write = core_writeable(physical);
+  
+    return virtual;
++ #else // NEW_MEM_MAP
++   return 0;
++ #endif  // NEW_MEM_MAP
+  }
+  
+  
+***************
+*** 1091,1096 ****
+--- 1103,1109 ----
+  		      1); /*abort*/
+  }
+  
++ #ifndef NEW_MEM_MAP 
+  INLINE_VM\
+  (instruction_word)
+  vm_instruction_map_read(vm_instruction_map *map,
+***************
+*** 1102,1108 ****
+--- 1115,1125 ----
+    if (WITH_XOR_ENDIAN)
+      ra ^= map->translation.xor[sizeof(instruction_word) - 1];
+    return core_map_read_4(map->code, ra, processor, cia);
++ 
++   extern SIM_DESC g_sd;
++   return sim_core_read_aligned_4(g_sd->cpu[0], cia, read_map, cia);
+  }
++ #endif // NEW_MEM_MAP
+  
+  
+  INLINE_VM\
+***************
+*** 1114,1119 ****
+--- 1131,1137 ----
+  			cpu *processor,
+  			unsigned_word cia)
+  {
++ #ifndef NEW_MEM_MAP
+    unsigned count;
+    for (count = 0; count < nr_bytes; count++) {
+      unsigned_1 byte;
+***************
+*** 1133,1138 ****
+--- 1151,1159 ----
+      ((unsigned_1*)target)[count] = T2H_1(byte);
+    }
+    return count;
++ #else // NEW_MEM_MAP
++   asm("int3");
++ #endif // NEW_MEM_MAP
+  }
+  
+  
+***************
+*** 1146,1151 ****
+--- 1167,1173 ----
+  			 cpu *processor,
+  			 unsigned_word cia)
+  {
++ #ifndef NEW_MEM_MAP  
+    unsigned count;
+    unsigned_1 byte;
+    for (count = 0; count < nr_bytes; count++) {
+***************
+*** 1167,1172 ****
+--- 1189,1197 ----
+        break;
+    }
+    return count;
++ #else // NEW_MEM_MAP
++   asm("int3");
++ #endif // NEW_MEM_MAP  
+  }
+  
+  

@@ -1,0 +1,12 @@
+#! /bin/csh -vxf
+
+cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+cp gdb-10.2.ppc-elf.new/sim/ppc/Makefile.mine ~/lang/53_GNU_tool/gcc_cross/PowerPC/memory/
+
+cp gdb-10.2.ppc-elf.new/sim/ppc/mine.c ~/lang/53_GNU_tool/gcc_cross/PowerPC/memory/
+
+rm -f ~/lang/53_GNU_tool/gcc_cross/PowerPC/memory/memory.diff
+foreach file (cpu.c gdb-sim.c idecode.c interrupts.c main.c mon.c os_emul.c psim.c semantics.c vm.c)
+diff -c gdb-10.2.ppc-elf{,.new}/sim/ppc/$file >> ~/lang/53_GNU_tool/gcc_cross/PowerPC/memory/memory.diff
+end
+
