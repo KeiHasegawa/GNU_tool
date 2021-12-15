@@ -1,0 +1,10 @@
+ARM のシミュレータの実装の都合で範囲外の読み出しが必要になっている:
+
+ARMword
+ARMul_ReLoadInstr (ARMul_State * state, ARMword address, ARMword isize)
+{
+...
+  if (!code_area(address) || !code_area(address+isize-1))
+    return 0xbadbeef4;     これ
+
+なのでこれはエラーせず fail の扱いとしておく.
