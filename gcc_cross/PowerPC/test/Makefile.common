@@ -1,0 +1,23 @@
+%.o : %.S
+	ppc-elf-as -o $@ -g $<
+
+%.o : %.c
+	ppc-elf-gcc -o $@ $< -c -g
+
+LIBC = /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ppc-elf/lib/libc.a
+
+%.elf : %.o
+	ppc-elf-ld -o $@ start.o $< $(LIBC) -T $(basename $<).x
+
+%.objdump : %.elf
+	ppc-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v ppc-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.o *.s *.elf *.map *.objdump *.log *~
