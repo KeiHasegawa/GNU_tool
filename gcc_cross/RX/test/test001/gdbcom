@@ -1,6 +1,11 @@
 set prompt (rx-elf-gdb) 
 target sim
 load
+# 01002ae0 : __bssstart
+# 00000016 : __bsssize
+sim memory region 0x1002ae0:0x16
+
+
 b main
 b fstat
 b sbrk
