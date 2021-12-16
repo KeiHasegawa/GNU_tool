@@ -29,7 +29,7 @@
   
     if (!found_loadable_section)
 *** gdb-10.2.rl78-elf/sim/rl78/cpu.c	2021-12-09 17:47:36.000000000 +0900
---- gdb-10.2.rl78-elf.new/sim/rl78/cpu.c	2021-12-16 10:56:47.000000000 +0900
+--- gdb-10.2.rl78-elf.new/sim/rl78/cpu.c	2021-12-16 13:17:16.000000000 +0900
 ***************
 *** 28,33 ****
 --- 28,37 ----
@@ -117,7 +117,7 @@
       case RL78_Reg_None:
 ***************
 *** 115,120 ****
---- 124,146 ----
+--- 124,154 ----
       case RL78_Reg_PMC:	return memory[RL78_SFR_PMC];
       case RL78_Reg_MEM:	return memory[RL78_SFR_MEM];
       }
@@ -128,12 +128,20 @@
 +     return sim_core_read_aligned_2(g_sd->cpu[0], g_cia, read_map, RL78_SFR_SP);
 +   if (regno == RL78_Reg_PSW)
 +     return sim_core_read_aligned_1(g_sd->cpu[0], g_cia, read_map, RL78_SFR_PSW);
++   if (regno == RL78_Reg_ES)
++     return sim_core_read_aligned_1(g_sd->cpu[0], g_cia, read_map, RL78_SFR_ES);
++ 
++   if (regno == RL78_Reg_None)  // for example. `bz label' instruction
++     return 0;                  // refers this register.
++   
 +   if (regno == RL78_Reg_AX)
 +     return sim_core_read_aligned_2(g_sd->cpu[0], g_cia, read_map, 0xffef8+0);
 +   if (regno == RL78_Reg_A)
 +     return sim_core_read_aligned_1(g_sd->cpu[0], g_cia, read_map, 0xffef8+1);
 +   if (regno == RL78_Reg_BC)
 +     return sim_core_read_aligned_2(g_sd->cpu[0], g_cia, read_map, 0xffef8+2);
++   if (regno == RL78_Reg_DE)
++     return sim_core_read_aligned_2(g_sd->cpu[0], g_cia, read_map, 0xffef8+4);
 +   if (regno == RL78_Reg_HL)
 +     return sim_core_read_aligned_2(g_sd->cpu[0], g_cia, read_map, 0xffef8+6);
 +   asm("int3");
@@ -143,7 +151,7 @@
   extern unsigned char initted[];
 ***************
 *** 122,127 ****
---- 148,154 ----
+--- 156,162 ----
   SI
   set_reg (RL78_Register regno, SI val)
   {
@@ -153,7 +161,7 @@
       case RL78_Reg_None:
 ***************
 *** 175,180 ****
---- 202,240 ----
+--- 210,257 ----
       case RL78_Reg_MEM:	memory[RL78_SFR_MEM] = val; break;
       }
     return val;
@@ -168,6 +176,11 @@
 +     sim_core_write_aligned_1(g_sd->cpu[0], g_cia, write_map, RL78_SFR_PSW, val);
 +     return val;
 +   }
++   if (regno == RL78_Reg_ES) {
++     sim_core_write_aligned_1(g_sd->cpu[0], g_cia, write_map, RL78_SFR_ES, val);
++     return val;
++   }
++   
 +   if (regno == RL78_Reg_AX) {
 +     sim_core_write_aligned_2(g_sd->cpu[0], g_cia, write_map, 0xffef8+0, val);
 +     return val;
@@ -184,6 +197,10 @@
 +     sim_core_write_aligned_2(g_sd->cpu[0], g_cia, write_map, 0xffef8+2, val);
 +     return val;
 +   }
++   if (regno == RL78_Reg_DE) {
++     sim_core_write_aligned_2(g_sd->cpu[0], g_cia, write_map, 0xffef8+4, val);
++     return val;
++   }
 +   if (regno == RL78_Reg_HL) {
 +     sim_core_write_aligned_2(g_sd->cpu[0], g_cia, write_map, 0xffef8+6, val);
 +     return val;
@@ -195,7 +212,7 @@
   int
 ***************
 *** 290,296 ****
---- 350,360 ----
+--- 367,377 ----
   	    }
   	  a = REGISTER_ADDRESS + (i ^ 0x18);
   	  o = old_regs[i ^ 0x18] + old_regs[(i ^ 0x18) + 1] * 256;
@@ -209,7 +226,7 @@
   	  old_regs[(i ^ 0x18) + 1] = n >> 8;
 ***************
 *** 309,317 ****
---- 373,386 ----
+--- 390,403 ----
   	  else
   	    sprintf (buf, "r%d", i);
   #define TRB(name, idx) TB (name, memory[REGISTER_ADDRESS + (idx)], old_regs[idx])
@@ -226,7 +243,7 @@
         printf ("PSW: \033[31m");
 ***************
 *** 325,338 ****
---- 394,412 ----
+--- 411,429 ----
     TW ("SP", mem_get_hi (RL78_SFR_SP), old_sp);
     if (any)
       printf ("\n");
@@ -247,7 +264,7 @@
   
   SI pc;
 *** gdb-10.2.rl78-elf/sim/rl78/gdb-if.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.rl78-elf.new/sim/rl78/gdb-if.c	2021-12-16 10:22:01.000000000 +0900
+--- gdb-10.2.rl78-elf.new/sim/rl78/gdb-if.c	2021-12-16 12:59:46.000000000 +0900
 ***************
 *** 43,49 ****
   
@@ -316,7 +333,7 @@
   static void
   check_desc (SIM_DESC sd)
   {
---- 121,194 ----
+--- 121,210 ----
   
     return &the_minisim;
   }
@@ -329,6 +346,16 @@
 +     sim_module_uninstall (sd);
 +   sim_cpu_free_all (sd);
 +   sim_state_free (sd);
++ }
++ 
++ sim_cia my_pc_fetch(sim_cpu* cpu)
++ {
++   return pc;
++ }
++ 
++ void my_pc_store(sim_cpu* cpu, sim_cia addr)
++ {
++   pc = addr;
 + }
 + 
 + SIM_DESC
@@ -377,8 +404,14 @@
 +   // `r8', ..., `r31' register
 +   // `x',`a', `c', `b', `e', `d', `l' and `h' register
 +   sim_do_command(sd, "memory-region 0xffee0,0x20");
++ 
++   // `sp', `psw', `cs', `es' and `pmc' register
++   sim_do_command(sd, "memory-region 0xffff8,0x7");
++ 
++   sim_cpu* cpu = sd->cpu[0];
++   CPU_PC_FETCH(cpu) = my_pc_fetch;
++   CPU_PC_STORE(cpu) = my_pc_store;
 +   
-+   sim_do_command(sd, "memory-region 0xffff8,0x3");  // `sp', `psw' register
 +   return sd;
 + }
 + #endif // NEW_MEM_MAP
@@ -393,7 +426,7 @@
   {
 ***************
 *** 144,149 ****
---- 208,214 ----
+--- 224,230 ----
   
     open = 0;
   }
@@ -410,7 +443,7 @@
   SIM_RC
   sim_load (SIM_DESC sd, const char *prog, struct bfd *abfd, int from_tty)
   {
---- 234,240 ----
+--- 250,256 ----
   }
   
   /* Load a program.  */
@@ -420,7 +453,7 @@
   {
 ***************
 *** 184,189 ****
---- 249,255 ----
+--- 265,271 ----
   
     return SIM_RC_OK;
   }
@@ -446,7 +479,7 @@
   int
   sim_read (SIM_DESC sd, SIM_ADDR mem, unsigned char *buf, int length)
   {
---- 257,276 ----
+--- 273,293 ----
   sim_create_inferior (SIM_DESC sd, struct bfd *abfd,
   		     char * const *argv, char * const *env)
   {
@@ -459,6 +492,7 @@
     return SIM_RC_OK;
 + #else // NEW_MEM_MAP
 +   pc =  bfd_get_start_address (abfd);
++   return SIM_RC_OK;
 + #endif // NEW_MEM_MAP
   }
   
@@ -476,7 +510,7 @@
   /* Read the LENGTH bytes at BUF as an little-endian value.  */
   
   static SI
---- 300,306 ----
+--- 317,323 ----
     mem_put_blk (mem, buf, length);
     return length;
   }
@@ -495,7 +529,7 @@
     if (!check_regno (regno))
       return 0;
   
---- 398,407 ----
+--- 415,424 ----
   {
     size_t size;
     SI val;
@@ -516,7 +550,7 @@
   
     put_le (buf, length, val);
   
---- 412,424 ----
+--- 429,441 ----
   
     if (regno == sim_rl78_pc_regnum)
       val = pc;
@@ -541,7 +575,7 @@
     if (!check_regno (regno))
       return -1;
   
---- 433,441 ----
+--- 450,458 ----
   {
     size_t size;
     SI val;
@@ -566,7 +600,7 @@
   void
   sim_info (SIM_DESC sd, int verbose)
   {
---- 456,473 ----
+--- 473,490 ----
   	 from a 32-bit container on the stack.  */
         assert ((pc & ~0x0fffff) == 0);
       }
@@ -594,7 +628,7 @@
   static volatile int stop;
   static enum sim_stop reason;
   int siggnal;
---- 475,481 ----
+--- 492,498 ----
   
     printf ("The rl78 minisim doesn't collect any statistics.\n");
   }
@@ -612,31 +646,29 @@
   sim_resume (SIM_DESC sd, int step, int sig_to_deliver)
   {
     int rc;
-! 
+- 
     check_desc (sd);
-! 
+- 
     if (sig_to_deliver != 0)
       {
         fprintf (stderr,
---- 546,561 ----
+--- 563,574 ----
   
   
   /* Resume execution after a stop.  */
-! SIM_DESC g_sd;
+! #ifndef NEW_MEM_MAP
   void
   sim_resume (SIM_DESC sd, int step, int sig_to_deliver)
   {
     int rc;
-! #ifndef NEW_MEM_MAP
     check_desc (sd);
-! #else // NEW_MEM_MAP
-!   g_sd = sd;
-! #endif // NEW_MEM_MAP
     if (sig_to_deliver != 0)
       {
         fprintf (stderr,
 ***************
-*** 507,513 ****
+*** 505,513 ****
+  	}
+      }
   }
   
   /* Stop the sim.  */
@@ -644,8 +676,28 @@
   int
   sim_stop (SIM_DESC sd)
   {
---- 590,596 ----
+--- 601,627 ----
+  	}
+      }
   }
++ #else // NEW_MEM_MAP
++ SIM_DESC g_sd;
++ sim_cpu* g_cpu;
++ void sim_engine_run(SIM_DESC sd,
++ 		    int next_cpu_nr,
++ 		    int nr_cpus,
++ 		    int siggnal)
++ {
++   g_sd = sd;
++   g_cpu = sd->cpu[0];
++   while (1) {
++     int rc = decode_opcode();
++     handle_step(rc);
++     if (sim_events_tick(sd))
++       sim_events_process(sd);
++   }
++ }
++ #endif // NEW_MEM_MAP
   
   /* Stop the sim.  */
 ! #ifndef NEW_MEM_MAP
@@ -654,7 +706,7 @@
   {
 ***************
 *** 603,605 ****
---- 686,690 ----
+--- 717,721 ----
   {
       return NULL;
   }
@@ -794,7 +846,7 @@
   unsigned char
   mem_get_qi (int address)
 *** gdb-10.2.rl78-elf/sim/rl78/rl78.c	2021-12-09 17:48:19.000000000 +0900
---- gdb-10.2.rl78-elf.new/sim/rl78/rl78.c	2021-12-16 10:34:52.000000000 +0900
+--- gdb-10.2.rl78-elf.new/sim/rl78/rl78.c	2021-12-16 12:50:07.000000000 +0900
 ***************
 *** 418,423 ****
 --- 418,424 ----
@@ -878,6 +930,32 @@
   				    rl78_get_byte, &rl78_data, isa);
   
 ***************
+*** 692,699 ****
+      case RLO_break:
+        tprintf ("BRK: ");
+        CLOCKS (5);
+!       if (rl78_in_gdb)
+  	DO_RETURN (RL78_MAKE_HIT_BREAK ());
+        else
+  	DO_RETURN (RL78_MAKE_EXITED (1));
+        break;
+--- 705,719 ----
+      case RLO_break:
+        tprintf ("BRK: ");
+        CLOCKS (5);
+!       if (rl78_in_gdb) {
+! #ifndef NEW_MEM_MAP	
+  	DO_RETURN (RL78_MAKE_HIT_BREAK ());
++ #else // NEW_MEM_MAP
++ 	extern void* g_sd;
++ 	extern void* g_cpu;
++ 	sim_engine_halt(g_sd, g_cpu, 0, g_cia, 3 /* sim_stopped */, 68);
++ #endif // NEW_MEM_MAP
++       }
+        else
+  	DO_RETURN (RL78_MAKE_EXITED (1));
+        break;
+***************
 *** 1114,1122 ****
   	}
         }
@@ -888,7 +966,7 @@
 ! 
     return RL78_MAKE_STEPPED ();
   }
---- 1127,1135 ----
+--- 1134,1142 ----
   	}
         }
       }
