@@ -1,14 +1,20 @@
 *** gdb-10.2.rl78-elf/sim/common/sim-load.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.rl78-elf.new/sim/common/sim-load.c	2021-12-16 11:13:45.000000000 +0900
+--- gdb-10.2.rl78-elf.new/sim/common/sim-load.c	2021-12-16 15:03:29.000000000 +0900
 ***************
 *** 133,143 ****
---- 133,157 ----
+--- 133,163 ----
   		}
   	      data_count += size;
   	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
 + #ifdef NEW_MEM_MAP
-+ 	      if ((s->flags & SEC_DATA) && !(s->flags & SEC_READONLY))
++ 	      if ((s->flags & SEC_DATA) && !(s->flags & SEC_READONLY)) {
++ #if 0		
++ 		sim_do_commandf(sd, "memory-region 0x%lx,0x%lx",
++ 				lma | 0xf0000, size);
++ #else
 + 		lma |= 0xf0000;
++ #endif		
++ 	      }
 +        	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
 + #endif // NEW_MEM_MAP
   	      do_write (sd, lma, buffer, size);
