@@ -4,7 +4,23 @@ r12	=	0xffef4
 
 	.text
 start:
-	movw	sp, #stack
+	movw	r8, #_bss_start
+	movw	r10, #_bss_end
+.L1:
+	movw	ax, r8
+	cmpw	ax, r10
+	sknz
+	br	!!.L2
+	nop
+	movw	bc, r8
+	clrb	a
+	mov	[bc], a
+	movw	ax, r8
+	incw	ax
+	movw	r8, ax
+	br	!!.L1
+.L2:	
+	movw	sp, #_stack
 	call	!!%code(_main)
 	nop
 	.short	0x0631
