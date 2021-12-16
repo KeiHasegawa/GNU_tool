@@ -1,0 +1,21 @@
+%.o : %.S
+	rx-elf-as -o $@ $< -g
+
+%.o : %.c
+	rx-elf-gcc -o $@ $< -c -g
+
+%.elf : %.o
+	rx-elf-ld -o $@ start.o $< -T $(basename $<).x
+
+%.objdump : %.elf
+	rx-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v rx-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.o *.s *.elf *.map *.objdump *.log *~
