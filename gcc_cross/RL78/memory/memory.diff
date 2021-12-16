@@ -1,0 +1,900 @@
+*** gdb-10.2.rl78-elf/sim/common/sim-load.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.rl78-elf.new/sim/common/sim-load.c	2021-12-16 11:13:45.000000000 +0900
+***************
+*** 133,143 ****
+--- 133,157 ----
+  		}
+  	      data_count += size;
+  	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
++ #ifdef NEW_MEM_MAP
++ 	      if ((s->flags & SEC_DATA) && !(s->flags & SEC_READONLY))
++ 		lma |= 0xf0000;
++        	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
++ #endif // NEW_MEM_MAP
+  	      do_write (sd, lma, buffer, size);
+  	      found_loadable_section = 1;
+  	      free (buffer);
+  	    }
+  	}
++ #ifdef NEW_MEM_MAP
++         else if (s->flags & SEC_ALLOC) {
++           bfd_vma lma = lma_p ? bfd_section_lma(s) : bfd_section_vma(s);
++           bfd_size_type size = bfd_section_size(s);
++           sim_do_command(sd, "memory-fill 0xcc");
++ 	  lma |= 0xf0000;
++           sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
++         }
++ #endif
+      }
+  
+    if (!found_loadable_section)
+*** gdb-10.2.rl78-elf/sim/rl78/cpu.c	2021-12-09 17:47:36.000000000 +0900
+--- gdb-10.2.rl78-elf.new/sim/rl78/cpu.c	2021-12-16 10:56:47.000000000 +0900
+***************
+*** 28,33 ****
+--- 28,37 ----
+  #include "mem.h"
+  #include "cpu.h"
+  
++ #ifdef NEW_MEM_MAP
++ #include "sim-main.h"
++ #endif
++ 
+  int verbose = 0;
+  int trace = 0;
+  int rl78_in_gdb = 1;
+***************
+*** 56,68 ****
+  
+  #define regbase regbase_table[memory[RL78_SFR_PSW]]
+  
+  #define REG(r) ((regbase)->r)
+  
+  void
+  init_cpu (void)
+  {
+    int i;
+! 
+    init_mem ();
+  
+    memset (memory+REGISTER_ADDRESS, 0x11, 8 * 4);
+--- 60,74 ----
+  
+  #define regbase regbase_table[memory[RL78_SFR_PSW]]
+  
++ #ifndef NEW_MEM_MAP
+  #define REG(r) ((regbase)->r)
++ #endif // NEW_MEM_MAP
+  
+  void
+  init_cpu (void)
+  {
+    int i;
+! #ifndef NEW_MEM_MAP
+    init_mem ();
+  
+    memset (memory+REGISTER_ADDRESS, 0x11, 8 * 4);
+***************
+*** 70,82 ****
+    memory[RL78_SFR_ES] = 0x0f;
+    memory[RL78_SFR_CS] = 0x00;
+    memory[RL78_SFR_PMC] = 0x00;
+! 
+    for (i = 0; i < 256; i ++)
+      {
+        int rb0 = (i & RL78_PSW_RBS0) ? 1 : 0;
+        int rb1 = (i & RL78_PSW_RBS1) ? 2 : 0;
+        int rb = rb1 | rb0;
+        regbase_table[i] = (RegBank *)(memory + (3 - rb) * 8 + REGISTER_ADDRESS);
+      }
+  
+    trace_register_init ();
+--- 76,90 ----
+    memory[RL78_SFR_ES] = 0x0f;
+    memory[RL78_SFR_CS] = 0x00;
+    memory[RL78_SFR_PMC] = 0x00;
+! #endif // NEW_MEM_MAP
+    for (i = 0; i < 256; i ++)
+      {
+        int rb0 = (i & RL78_PSW_RBS0) ? 1 : 0;
+        int rb1 = (i & RL78_PSW_RBS1) ? 2 : 0;
+        int rb = rb1 | rb0;
++ #ifndef NEW_MEM_MAP
+        regbase_table[i] = (RegBank *)(memory + (3 - rb) * 8 + REGISTER_ADDRESS);
++ #endif // NEW_MEM_MAP
+      }
+  
+    trace_register_init ();
+***************
+*** 88,93 ****
+--- 96,102 ----
+  SI
+  get_reg (RL78_Register regno)
+  {
++ #ifndef NEW_MEM_MAP
+    switch (regno)
+      {
+      case RL78_Reg_None:
+***************
+*** 115,120 ****
+--- 124,146 ----
+      case RL78_Reg_PMC:	return memory[RL78_SFR_PMC];
+      case RL78_Reg_MEM:	return memory[RL78_SFR_MEM];
+      }
++ #else // NEW_MEM_MAP
++   extern SIM_DESC g_sd;
++   extern int g_cia;
++   if (regno == RL78_Reg_SP)
++     return sim_core_read_aligned_2(g_sd->cpu[0], g_cia, read_map, RL78_SFR_SP);
++   if (regno == RL78_Reg_PSW)
++     return sim_core_read_aligned_1(g_sd->cpu[0], g_cia, read_map, RL78_SFR_PSW);
++   if (regno == RL78_Reg_AX)
++     return sim_core_read_aligned_2(g_sd->cpu[0], g_cia, read_map, 0xffef8+0);
++   if (regno == RL78_Reg_A)
++     return sim_core_read_aligned_1(g_sd->cpu[0], g_cia, read_map, 0xffef8+1);
++   if (regno == RL78_Reg_BC)
++     return sim_core_read_aligned_2(g_sd->cpu[0], g_cia, read_map, 0xffef8+2);
++   if (regno == RL78_Reg_HL)
++     return sim_core_read_aligned_2(g_sd->cpu[0], g_cia, read_map, 0xffef8+6);
++   asm("int3");
++ #endif // NEW_MEM_MAP
+  }
+  
+  extern unsigned char initted[];
+***************
+*** 122,127 ****
+--- 148,154 ----
+  SI
+  set_reg (RL78_Register regno, SI val)
+  {
++ #ifndef NEW_MEM_MAP
+    switch (regno)
+      {
+      case RL78_Reg_None:
+***************
+*** 175,180 ****
+--- 202,240 ----
+      case RL78_Reg_MEM:	memory[RL78_SFR_MEM] = val; break;
+      }
+    return val;
++ #else // NEW_MEM_MAP
++   extern SIM_DESC g_sd;
++   extern int g_cia;
++   if (regno == RL78_Reg_SP) {
++     sim_core_write_aligned_2(g_sd->cpu[0], g_cia, write_map, RL78_SFR_SP, val);
++     return val;
++   }
++   if (regno == RL78_Reg_PSW) {
++     sim_core_write_aligned_1(g_sd->cpu[0], g_cia, write_map, RL78_SFR_PSW, val);
++     return val;
++   }
++   if (regno == RL78_Reg_AX) {
++     sim_core_write_aligned_2(g_sd->cpu[0], g_cia, write_map, 0xffef8+0, val);
++     return val;
++   }
++   if (regno == RL78_Reg_X) {
++     sim_core_write_aligned_1(g_sd->cpu[0], g_cia, write_map, 0xffef8+0, val);
++     return val;
++   }
++   if (regno == RL78_Reg_A) {
++     sim_core_write_aligned_1(g_sd->cpu[0], g_cia, write_map, 0xffef8+1, val);
++     return val;
++   }
++   if (regno == RL78_Reg_BC) {
++     sim_core_write_aligned_2(g_sd->cpu[0], g_cia, write_map, 0xffef8+2, val);
++     return val;
++   }
++   if (regno == RL78_Reg_HL) {
++     sim_core_write_aligned_2(g_sd->cpu[0], g_cia, write_map, 0xffef8+6, val);
++     return val;
++   }
++   asm("int3");
++ #endif // NEW_MEM_MAP
+  }
+  
+  int
+***************
+*** 290,296 ****
+--- 350,360 ----
+  	    }
+  	  a = REGISTER_ADDRESS + (i ^ 0x18);
+  	  o = old_regs[i ^ 0x18] + old_regs[(i ^ 0x18) + 1] * 256;
++ #ifndef	NEW_MEM_MAP 
+  	  n = memory[a] + memory[a + 1] * 256;
++ #else  // NEW_MEM_MAP
++ 	  asm("int3");
++ #endif  // NEW_MEM_MAP
+  	  TW (buf, n, o);
+  	  old_regs[i ^ 0x18] = n;
+  	  old_regs[(i ^ 0x18) + 1] = n >> 8;
+***************
+*** 309,317 ****
+--- 373,386 ----
+  	  else
+  	    sprintf (buf, "r%d", i);
+  #define TRB(name, idx) TB (name, memory[REGISTER_ADDRESS + (idx)], old_regs[idx])
++ #ifndef NEW_MEM_MAP	  
+  	  TRB (buf, i ^ 0x18);
++ #else  // NEW_MEM_MAP	  
++ 	  asm("int3");
++ #endif	// NEW_MEM_MAP  
+  	}
+      }
++ #ifndef NEW_MEM_MAP	  
+    if (memory[RL78_SFR_PSW] != old_psw)
+      {
+        printf ("PSW: \033[31m");
+***************
+*** 325,338 ****
+--- 394,412 ----
+    TW ("SP", mem_get_hi (RL78_SFR_SP), old_sp);
+    if (any)
+      printf ("\n");
++ #else  // NEW_MEM_MAP
++   asm("int3");
++ #endif	// NEW_MEM_MAP
+  }
+  
+  static void
+  trace_register_init (void)
+  {
++ #ifndef NEW_MEM_MAP	  
+    memcpy (old_regs, memory + REGISTER_ADDRESS, 8 * 4);
+    old_psw = memory[RL78_SFR_PSW];
+    old_sp = mem_get_hi (RL78_SFR_SP);
++ #endif	// NEW_MEM_MAP
+  }
+  
+  SI pc;
+*** gdb-10.2.rl78-elf/sim/rl78/gdb-if.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.rl78-elf.new/sim/rl78/gdb-if.c	2021-12-16 10:22:01.000000000 +0900
+***************
+*** 43,49 ****
+  
+     So we just have one instance, that lives in global variables, and
+     each time we open it, we re-initialize it.  */
+! 
+  struct sim_state
+  {
+    const char *message;
+--- 43,49 ----
+  
+     So we just have one instance, that lives in global variables, and
+     each time we open it, we re-initialize it.  */
+! #ifndef NEW_MEM_MAP
+  struct sim_state
+  {
+    const char *message;
+***************
+*** 52,57 ****
+--- 52,58 ----
+  static struct sim_state the_minisim = {
+    "This is the sole rl78 minisim instance."
+  };
++ #endif // NEW_MEM_MAP
+  
+  static int open;
+  
+***************
+*** 60,66 ****
+  /* Open an instance of the sim.  For this sim, only one instance
+     is permitted.  If sim_open() is called multiple times, the sim
+     will be reset.  */
+! 
+  SIM_DESC
+  sim_open (SIM_OPEN_KIND kind,
+  	  struct host_callback_struct *callback,
+--- 61,67 ----
+  /* Open an instance of the sim.  For this sim, only one instance
+     is permitted.  If sim_open() is called multiple times, the sim
+     will be reset.  */
+! #ifndef NEW_MEM_MAP
+  SIM_DESC
+  sim_open (SIM_OPEN_KIND kind,
+  	  struct host_callback_struct *callback,
+***************
+*** 71,76 ****
+--- 72,78 ----
+  
+    /* The 'run' interface doesn't use this function, so we don't care
+       about KIND; it's always SIM_OPEN_DEBUG.  */
++ 
+    if (kind != SIM_OPEN_DEBUG)
+      fprintf (stderr, "rl78 minisim: sim_open KIND != SIM_OPEN_DEBUG: %d\n",
+  	     kind);
+***************
+*** 119,130 ****
+  
+    return &the_minisim;
+  }
+  
+  /* Verify the sim descriptor.  Just print a message if the descriptor
+     doesn't match.  Nothing bad will happen if the descriptor doesn't
+     match because all of the state is global.  But if it doesn't
+     match, that means there's a problem with the caller.  */
+! 
+  static void
+  check_desc (SIM_DESC sd)
+  {
+--- 121,194 ----
+  
+    return &the_minisim;
+  }
++ #else // NEW_MEM_MAP
++ #include "sim-main.h"
++ static void
++ free_state (SIM_DESC sd)
++ {
++   if (STATE_MODULES (sd) != NULL)
++     sim_module_uninstall (sd);
++   sim_cpu_free_all (sd);
++   sim_state_free (sd);
++ }
++ 
++ SIM_DESC
++ sim_open (SIM_OPEN_KIND kind,
++ 	  struct host_callback_struct *callback,
++ 	  struct bfd *abfd, char * const *argv)
++ {
++   SIM_DESC sd = sim_state_alloc(kind, callback);
++ 
++   if (sim_cpu_alloc_all(sd, 1, 0) != SIM_RC_OK) {
++     free_state(sd);
++     return 0;
++   }
++ 
++   if (sim_pre_argv_init (sd, argv[0]) != SIM_RC_OK) {
++     free_state (sd);
++     return 0;
++   }
++ 
++   if (sim_parse_args (sd, argv) != SIM_RC_OK) {
++     free_state (sd);
++     return 0;
++   }
++ 
++   if (sim_analyze_program (sd,
++ 			   (STATE_PROG_ARGV (sd) != NULL
++ 			    ? *STATE_PROG_ARGV (sd)
++ 			    : NULL),
++ 			   abfd) != SIM_RC_OK) {
++     free_state (sd);
++     return 0;
++   }
++ 
++   if (sim_config (sd) != SIM_RC_OK) {
++     free_state (sd);
++     return 0;
++   }
++ 
++   if (sim_post_argv_init (sd) != SIM_RC_OK) {
++     free_state (sd);
++     return 0;
++   }
++ 
++   init_cpu ();
++ 
++   // `r8', ..., `r31' register
++   // `x',`a', `c', `b', `e', `d', `l' and `h' register
++   sim_do_command(sd, "memory-region 0xffee0,0x20");
++   
++   sim_do_command(sd, "memory-region 0xffff8,0x3");  // `sp', `psw' register
++   return sd;
++ }
++ #endif // NEW_MEM_MAP
+  
+  /* Verify the sim descriptor.  Just print a message if the descriptor
+     doesn't match.  Nothing bad will happen if the descriptor doesn't
+     match because all of the state is global.  But if it doesn't
+     match, that means there's a problem with the caller.  */
+! #ifndef NEW_MEM_MAP
+  static void
+  check_desc (SIM_DESC sd)
+  {
+***************
+*** 144,149 ****
+--- 208,214 ----
+  
+    open = 0;
+  }
++ #endif // NEW_MEM_MAP
+  
+  /* Open the program to run; print a message if the program cannot
+     be opened.  */
+***************
+*** 169,175 ****
+  }
+  
+  /* Load a program.  */
+! 
+  SIM_RC
+  sim_load (SIM_DESC sd, const char *prog, struct bfd *abfd, int from_tty)
+  {
+--- 234,240 ----
+  }
+  
+  /* Load a program.  */
+! #ifndef NEW_MEM_MAP
+  SIM_RC
+  sim_load (SIM_DESC sd, const char *prog, struct bfd *abfd, int from_tty)
+  {
+***************
+*** 184,189 ****
+--- 249,255 ----
+  
+    return SIM_RC_OK;
+  }
++ #endif // NEW_MEM_MAP
+  
+  /* Create inferior.  */
+  
+***************
+*** 191,206 ****
+  sim_create_inferior (SIM_DESC sd, struct bfd *abfd,
+  		     char * const *argv, char * const *env)
+  {
+    check_desc (sd);
+  
+    if (abfd)
+      rl78_load (abfd, 0, "sim");
+  
+    return SIM_RC_OK;
+  }
+  
+  /* Read memory.  */
+! 
+  int
+  sim_read (SIM_DESC sd, SIM_ADDR mem, unsigned char *buf, int length)
+  {
+--- 257,276 ----
+  sim_create_inferior (SIM_DESC sd, struct bfd *abfd,
+  		     char * const *argv, char * const *env)
+  {
++ #ifndef NEW_MEM_MAP  
+    check_desc (sd);
+  
+    if (abfd)
+      rl78_load (abfd, 0, "sim");
+  
+    return SIM_RC_OK;
++ #else // NEW_MEM_MAP
++   pc =  bfd_get_start_address (abfd);
++ #endif // NEW_MEM_MAP
+  }
+  
+  /* Read memory.  */
+! #ifndef NEW_MEM_MAP
+  int
+  sim_read (SIM_DESC sd, SIM_ADDR mem, unsigned char *buf, int length)
+  {
+***************
+*** 230,236 ****
+    mem_put_blk (mem, buf, length);
+    return length;
+  }
+! 
+  /* Read the LENGTH bytes at BUF as an little-endian value.  */
+  
+  static SI
+--- 300,306 ----
+    mem_put_blk (mem, buf, length);
+    return length;
+  }
+! #endif // NEW_MEM_MAP
+  /* Read the LENGTH bytes at BUF as an little-endian value.  */
+  
+  static SI
+***************
+*** 328,336 ****
+  {
+    size_t size;
+    SI val;
+! 
+    check_desc (sd);
+! 
+    if (!check_regno (regno))
+      return 0;
+  
+--- 398,407 ----
+  {
+    size_t size;
+    SI val;
+! #ifndef NEW_MEM_MAP
+    check_desc (sd);
+! #endif // NEW_MEM_MAP
+!   
+    if (!check_regno (regno))
+      return 0;
+  
+***************
+*** 341,348 ****
+  
+    if (regno == sim_rl78_pc_regnum)
+      val = pc;
+!   else
+      val = memory[reg_addr (regno)];
+  
+    put_le (buf, length, val);
+  
+--- 412,424 ----
+  
+    if (regno == sim_rl78_pc_regnum)
+      val = pc;
+!   else {
+! #ifndef NEW_MEM_MAP    
+      val = memory[reg_addr (regno)];
++ #else // NEW_MEM_MAP
++     val = sim_core_read_aligned_1(sd->cpu[0], pc, read_map, reg_addr (regno));
++ #endif // NEW_MEM_MAP
++   }
+  
+    put_le (buf, length, val);
+  
+***************
+*** 357,365 ****
+  {
+    size_t size;
+    SI val;
+! 
+    check_desc (sd);
+! 
+    if (!check_regno (regno))
+      return -1;
+  
+--- 433,441 ----
+  {
+    size_t size;
+    SI val;
+! #ifndef NEW_MEM_MAP
+    check_desc (sd);
+! #endif // NEW_MEM_MAP
+    if (!check_regno (regno))
+      return -1;
+  
+***************
+*** 380,392 ****
+  	 from a 32-bit container on the stack.  */
+        assert ((pc & ~0x0fffff) == 0);
+      }
+!   else
+      memory[reg_addr (regno)] = val;
+    return size;
+  }
+  
+  /* Print out message associated with "info target".  */
+! 
+  void
+  sim_info (SIM_DESC sd, int verbose)
+  {
+--- 456,473 ----
+  	 from a 32-bit container on the stack.  */
+        assert ((pc & ~0x0fffff) == 0);
+      }
+!   else {
+! #ifndef NEW_MEM_MAP
+      memory[reg_addr (regno)] = val;
++ #else // NEW_MEM_MAP
++     sim_core_write_aligned_1(sd->cpu[0], pc, write_map, reg_addr (regno), val);
++ #endif // NEW_MEM_MAP
++   }
+    return size;
+  }
+  
+  /* Print out message associated with "info target".  */
+! #ifndef NEW_MEM_MAP
+  void
+  sim_info (SIM_DESC sd, int verbose)
+  {
+***************
+*** 394,400 ****
+  
+    printf ("The rl78 minisim doesn't collect any statistics.\n");
+  }
+! 
+  static volatile int stop;
+  static enum sim_stop reason;
+  int siggnal;
+--- 475,481 ----
+  
+    printf ("The rl78 minisim doesn't collect any statistics.\n");
+  }
+! #endif // NEW_MEM_MAP
+  static volatile int stop;
+  static enum sim_stop reason;
+  int siggnal;
+***************
+*** 465,478 ****
+  
+  
+  /* Resume execution after a stop.  */
+! 
+  void
+  sim_resume (SIM_DESC sd, int step, int sig_to_deliver)
+  {
+    int rc;
+! 
+    check_desc (sd);
+! 
+    if (sig_to_deliver != 0)
+      {
+        fprintf (stderr,
+--- 546,561 ----
+  
+  
+  /* Resume execution after a stop.  */
+! SIM_DESC g_sd;
+  void
+  sim_resume (SIM_DESC sd, int step, int sig_to_deliver)
+  {
+    int rc;
+! #ifndef NEW_MEM_MAP
+    check_desc (sd);
+! #else // NEW_MEM_MAP
+!   g_sd = sd;
+! #endif // NEW_MEM_MAP
+    if (sig_to_deliver != 0)
+      {
+        fprintf (stderr,
+***************
+*** 507,513 ****
+  }
+  
+  /* Stop the sim.  */
+! 
+  int
+  sim_stop (SIM_DESC sd)
+  {
+--- 590,596 ----
+  }
+  
+  /* Stop the sim.  */
+! #ifndef NEW_MEM_MAP
+  int
+  sim_stop (SIM_DESC sd)
+  {
+***************
+*** 603,605 ****
+--- 686,690 ----
+  {
+      return NULL;
+  }
++ #endif // NEW_MEM_MAP
++ 
+*** gdb-10.2.rl78-elf/sim/rl78/mem.c	2021-04-25 13:04:35.000000000 +0900
+--- gdb-10.2.rl78-elf.new/sim/rl78/mem.c	2021-12-16 10:00:42.000000000 +0900
+***************
+*** 27,38 ****
+--- 27,43 ----
+  #include "opcode/rl78.h"
+  #include "mem.h"
+  #include "cpu.h"
++ #ifdef NEW_MEM_MAP
++ #include "sim-main.h"
++ #endif // NEW_MEM_MAP
+  
+  #define ILLEGAL_OPCODE 0xff
+  
+  int rom_limit = 0x100000;
+  int ram_base = 0xf8000;
++ #ifndef NEW_MEM_MAP
+  unsigned char memory[MEM_SIZE];
++ #endif // NEW_MEM_MAP
+  #define MASK 0xfffff
+  
+  unsigned char initted[MEM_SIZE];
+***************
+*** 40,45 ****
+--- 45,51 ----
+  
+  #define tprintf if (trace) printf
+  
++ #ifndef NEW_MEM_MAP
+  void
+  init_mem (void)
+  {
+***************
+*** 50,55 ****
+--- 56,62 ----
+    memset (initted + 0xffee0, 1, 0x00120);
+    memset (initted + 0xf0000, 1, 0x01000);
+  }
++ #endif // NEW_MEM_MAP
+  
+  void
+  mem_ram_size (int ram_bytes)
+***************
+*** 100,105 ****
+--- 107,113 ----
+  
+  static int last_addr_was_mirror;
+  
++ #ifndef NEW_MEM_MAP
+  static int
+  address_mapping (int address)
+  {
+***************
+*** 118,124 ****
+--- 126,134 ----
+      
+    return address;
+  }
++ #endif // NEW_MEM_MAP
+  
++ #ifndef NEW_MEM_MAP
+  static void
+  mem_put_byte (int address, unsigned char value)
+  {
+***************
+*** 219,227 ****
+--- 229,247 ----
+  	}
+      }
+  }
++ #else  // NEW_MEM_MAP
++ static void
++ mem_put_byte (int address, unsigned char value)
++ {
++   extern SIM_DESC g_sd;
++   extern int g_cia;
++   sim_core_write_aligned_1(g_sd->cpu[0], g_cia, write_map, address, value);
++ }
++ #endif  // NEW_MEM_MAP
+  
+  extern long long total_clocks;
+  
++ #ifndef NEW_MEM_MAP
+  static unsigned char
+  mem_get_byte (int address)
+  {
+***************
+*** 293,298 ****
+--- 313,328 ----
+  #endif
+    return memory [address];
+  }
++ #else  // NEW_MEM_MAP
++ static unsigned char
++ mem_get_byte (int address)
++ {
++   extern SIM_DESC g_sd;
++   extern int g_cia;
++   return sim_core_read_aligned_1(g_sd->cpu[0], g_cia, read_map, address);
++ }
++ #endif  // NEW_MEM_MAP
++ 
+  
+  extern jmp_buf decode_jmp_buf;
+  #define DO_RETURN(x) longjmp (decode_jmp_buf, x)
+***************
+*** 355,360 ****
+--- 385,391 ----
+      mem_put_byte (address ++, *bp ++);
+  }
+  
++ #ifndef NEW_MEM_MAP
+  unsigned char
+  mem_get_pc (int address)
+  {
+***************
+*** 365,370 ****
+--- 396,410 ----
+       execute out of the mirror.  */
+    return memory [address & MASK];
+  }
++ #else // NEW_MEM_MAP
++ unsigned char
++ mem_get_pc (int address)
++ {
++   extern SIM_DESC g_sd;
++   extern int g_cia;
++   return sim_core_read_aligned_1(g_sd->cpu[0], g_cia, read_map, address);
++ }
++ #endif // NEW_MEM_MAP
+  
+  unsigned char
+  mem_get_qi (int address)
+*** gdb-10.2.rl78-elf/sim/rl78/rl78.c	2021-12-09 17:48:19.000000000 +0900
+--- gdb-10.2.rl78-elf.new/sim/rl78/rl78.c	2021-12-16 10:34:52.000000000 +0900
+***************
+*** 418,423 ****
+--- 418,424 ----
+  static const char* first_string(void)
+  {
+    uint32_t sp = get_reg(RL78_Reg_SP);
++   sp |= 0xf0000;
+    uint32_t addr = mem_get_hi(sp+4);
+    static char buf[1024];
+    for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i ) {
+***************
+*** 469,474 ****
+--- 470,476 ----
+  {
+    assert(nth);
+    uint32_t sp = get_reg(RL78_Reg_SP);
++   sp |= 0xf0000;
+    uint32_t addr = sp + 4 + 2*nth;
+    return mem_get_hi(addr);
+  }
+***************
+*** 477,482 ****
+--- 479,485 ----
+  {
+    assert(nth);
+    uint32_t sp = get_reg(RL78_Reg_SP);  
++   sp |= 0xf0000;
+    uint32_t addr = sp + 4 + 2*nth;
+    uint32_t lo = mem_get_hi(addr);
+    uint32_t hi = mem_get_hi(addr+2);
+***************
+*** 487,492 ****
+--- 490,496 ----
+  {
+    assert(nth);
+    uint32_t sp = get_reg(RL78_Reg_SP);  
++   sp |= 0xf0000;
+    uint32_t addr = sp + 4 + 2*nth;
+    uint32_t a = mem_get_hi(addr);
+    uint32_t b = mem_get_hi(addr+2);
+***************
+*** 554,559 ****
+--- 558,564 ----
+    }
+    if (how == STR) {
+      uint32_t addr = arg16((*nth)++);
++     addr |= 0xf0000;
+      char buf[256];
+      for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
+        char c = mem_get_qi(addr+i);
+***************
+*** 590,601 ****
+--- 595,611 ----
+  static void do_putchar(void)
+  {
+    uint32_t sp = get_reg(RL78_Reg_SP);
++   sp |= 0xf0000;
+    uint32_t addr = sp + 4;
+    int arg = mem_get_hi(addr);
+    int ret = putchar(arg);
+    set_reg(RL78_Reg_X, ret);
+  }
+  
++ #ifdef NEW_MEM_MAP
++ int  g_cia;
++ #endif // NEW_MEM_MAP  
++ 
+  int
+  decode_opcode (void)
+  {
+***************
+*** 613,618 ****
+--- 623,631 ----
+  	: RL78_ISA_DEFAULT);
+  
+    rl78_data.dpc = pc;
++ #ifdef NEW_MEM_MAP
++   g_cia = pc;
++ #endif // NEW_MEM_MAP  
+    opcode_size = rl78_decode_opcode (pc, &opcode,
+  				    rl78_get_byte, &rl78_data, isa);
+  
+***************
+*** 1114,1122 ****
+  	}
+        }
+      }
+! 
+    if (timer_enabled)
+      process_clock_tick ();
+! 
+    return RL78_MAKE_STEPPED ();
+  }
+--- 1127,1135 ----
+  	}
+        }
+      }
+! #ifndef NEW_MEM_MAP
+    if (timer_enabled)
+      process_clock_tick ();
+! #endif // NEW_MEM_MAP
+    return RL78_MAKE_STEPPED ();
+  }
