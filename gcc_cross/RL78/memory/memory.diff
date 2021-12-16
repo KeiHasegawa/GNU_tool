@@ -1,5 +1,5 @@
 *** gdb-10.2.rl78-elf/sim/common/sim-load.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.rl78-elf.new/sim/common/sim-load.c	2021-12-16 15:03:29.000000000 +0900
+--- gdb-10.2.rl78-elf.new/sim/common/sim-load.c	2021-12-16 16:40:25.000000000 +0900
 ***************
 *** 133,143 ****
 --- 133,163 ----
@@ -30,7 +30,7 @@
 + 	  lma |= 0xf0000;
 +           sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
 +         }
-+ #endif
++ #endif // NEW_MEM_MAP
       }
   
     if (!found_loadable_section)
@@ -852,7 +852,7 @@
   unsigned char
   mem_get_qi (int address)
 *** gdb-10.2.rl78-elf/sim/rl78/rl78.c	2021-12-09 17:48:19.000000000 +0900
---- gdb-10.2.rl78-elf.new/sim/rl78/rl78.c	2021-12-16 12:50:07.000000000 +0900
+--- gdb-10.2.rl78-elf.new/sim/rl78/rl78.c	2021-12-17 06:48:29.000000000 +0900
 ***************
 *** 418,423 ****
 --- 418,424 ----
@@ -955,7 +955,7 @@
 + #else // NEW_MEM_MAP
 + 	extern void* g_sd;
 + 	extern void* g_cpu;
-+ 	sim_engine_halt(g_sd, g_cpu, 0, g_cia, 3 /* sim_stopped */, 68);
++ 	sim_engine_halt(g_sd, g_cpu, 0, g_cia, 3 /* sim_stopped */, 66);
 + #endif // NEW_MEM_MAP
 +       }
         else
