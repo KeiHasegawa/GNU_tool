@@ -1,0 +1,26 @@
+%.o : %.S
+	rl78-elf-as -o $@ $< -g
+
+%.o : %.c
+	rl78-elf-gcc -o $@ $< -c -g
+
+LIBGCC =/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/rl78-elf/10.2.0/libgcc.a
+
+LIBC = /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/rl78-elf/lib/libc.a
+
+%.elf : %.o
+	rl78-elf-ld -o $@ start.o test008.o $(LIBGCC) $(LIBC) \
+	-T $(basename $<).x
+
+%.objdump : %.elf
+	rl78-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v rl78-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.o *.s *.elf *.map *.objdump *.log *~
