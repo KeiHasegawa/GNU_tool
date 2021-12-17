@@ -516,7 +516,13 @@ decode_r8c (void)
           put_reg (pc, orig_pc);
           if (verbose)
             printf("[break]\n");
+#ifndef	NEW_MEM_MAP
           return M32C_MAKE_HIT_BREAK ();
+#else  // NEW_MEM_MAP
+	  extern void* g_sd;
+	  extern void* g_cpu;
+	  sim_engine_halt(g_sd, g_cpu, 0, orig_pc, 3, 66);
+#endif  // NEW_MEM_MAP
         
         }
       break;

@@ -45,7 +45,7 @@
   }
 + #endif // NEW_MEM_MAP
 *** gdb-10.2.org/sim/m32c/gdb-if.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.m32c-elf.new/sim/m32c/gdb-if.c	2021-12-14 07:24:26.000000000 +0900
+--- gdb-10.2.m32c-elf.new/sim/m32c/gdb-if.c	2021-12-17 17:55:07.000000000 +0900
 ***************
 *** 46,51 ****
 --- 46,52 ----
@@ -70,7 +70,7 @@
   SIM_DESC
 ***************
 *** 88,95 ****
---- 91,155 ----
+--- 91,169 ----
     open = 1;
     return &the_minisim;
   }
@@ -84,6 +84,16 @@
 +     sim_module_uninstall (sd);
 +   sim_cpu_free_all (sd);
 +   sim_state_free (sd);
++ }
++ 
++ sim_cia my_pc_fetch(sim_cpu* cpu)
++ {
++   return regs.r_pc;
++ }
++ 
++ void my_pc_store(sim_cpu* cpu, sim_cia addr)
++ {
++   regs.r_pc = addr;
 + }
 + 
 + SIM_DESC
@@ -126,6 +136,10 @@
 +     free_state (sd);
 +     return 0;
 +   }
++ 
++   sim_cpu* cpu = sd->cpu[0];
++   CPU_PC_FETCH(cpu) = my_pc_fetch;
++   CPU_PC_STORE(cpu) = my_pc_store;
 +   
 +   return sd;
 + }
@@ -145,7 +159,7 @@
   static bfd *
   open_objfile (const char *filename)
   {
---- 166,172 ----
+--- 180,186 ----
   
     open = 0;
   }
@@ -162,7 +176,7 @@
   SIM_RC
   sim_load (SIM_DESC sd, const char *prog, struct bfd * abfd, int from_tty)
   {
---- 187,193 ----
+--- 201,207 ----
     return prog;
   }
   
@@ -191,7 +205,7 @@
   int
   sim_read (SIM_DESC sd, SIM_ADDR mem, unsigned char *buf, int length)
   {
---- 202,226 ----
+--- 216,240 ----
   
     return SIM_RC_OK;
   }
@@ -226,7 +240,7 @@
   
   /* Read the LENGTH bytes at BUF as an little-endian value.  */
   static DI
---- 243,249 ----
+--- 257,263 ----
   
     return length;
   }
@@ -245,7 +259,7 @@
     if (!check_regno (regno))
       return 0;
   
---- 357,365 ----
+--- 371,379 ----
   sim_fetch_register (SIM_DESC sd, int regno, unsigned char *buf, int length)
   {
     size_t size;
@@ -257,7 +271,7 @@
   
 ***************
 *** 404,410 ****
---- 470,478 ----
+--- 484,492 ----
   {
     size_t size;
   
@@ -268,77 +282,95 @@
     if (!check_regno (regno))
       return -1;
 ***************
-*** 575,586 ****
+*** 575,581 ****
       }
   }
   
-  
-  void
-  sim_resume (SIM_DESC sd, int step, int sig_to_deliver)
-  {
-    check_desc (sd);
 ! 
-    if (sig_to_deliver != 0)
-      {
-        fprintf (stderr,
---- 643,658 ----
-      }
-  }
-  
-+ #ifdef NEW_MEM_MAP
-+ sim_cpu* g_cpu;
-+ #endif
-  
   void
   sim_resume (SIM_DESC sd, int step, int sig_to_deliver)
   {
-+ #ifndef NEW_MEM_MAP
-    check_desc (sd);
-! #endif // NEW_MEM_MAP
-    if (sig_to_deliver != 0)
-      {
-        fprintf (stderr,
-***************
-*** 588,593 ****
---- 660,669 ----
-  	       "signal delivery yet.\n" "Resuming with no signal.\n");
+--- 657,663 ----
       }
+  }
   
-+ #ifdef NEW_MEM_MAP
-+   g_cpu = sd->cpu[0];
-+ #endif  
-+ 
+! #ifndef NEW_MEM_MAP
+  void
+  sim_resume (SIM_DESC sd, int step, int sig_to_deliver)
+  {
+***************
+*** 591,599 ****
     if (step)
       {
         handle_step (decode_opcode ());
+- #ifdef TIMER_A
+        update_timer_a ();
+- #endif
+      }
+    else
+      {
+--- 673,679 ----
 ***************
-*** 628,633 ****
---- 704,710 ----
+*** 614,622 ****
+  	    }
+  
+  	  rc = decode_opcode ();
+- #ifdef TIMER_A
+  	  update_timer_a ();
+- #endif
+  
+  	  if (!M32C_STEPPED (rc))
+  	    {
+--- 694,700 ----
+***************
+*** 627,633 ****
+--- 705,731 ----
+      }
     m32c_sim_restore_console ();
   }
++ #else // NEW_MEM_MAP
++ SIM_DESC g_sd;
++ sim_cpu* g_cpu;
++ 
++ void sim_engine_run(SIM_DESC sd,
++ 		    int next_cpu_nr,
++ 		    int nr_cpus,
++ 		    int siggnal)
++ {
++   g_sd = sd;
++   g_cpu = sd->cpu[0];
++   while (1) {
++     int rc = decode_opcode();
++     handle_step(rc);
++     if (sim_events_tick(sd))
++       sim_events_process(sd);
++   }
++ }
++ #endif // NEW_MEM_MAP
   
 + #ifndef NEW_MEM_MAP
   int
   sim_stop (SIM_DESC sd)
   {
 ***************
-*** 635,650 ****
---- 712,731 ----
+*** 635,641 ****
+--- 733,741 ----
   
     return 1;
   }
 + #endif // NEW_MEM_MAP
   
++ #ifndef NEW_MEM_MAP
   void
   sim_stop_reason (SIM_DESC sd, enum sim_stop *reason_p, int *sigrc_p)
   {
-+ #ifndef NEW_MEM_MAP
-    check_desc (sd);
-+ #endif // NEW_MEM_MAP
-  
+***************
+*** 644,650 ****
+--- 744,752 ----
     *reason_p = reason;
     *sigrc_p = siggnal;
   }
++ #endif // NEW_MEM_MAP
   
 + #ifndef NEW_MEM_MAP
   void
@@ -346,7 +378,7 @@
   {
 ***************
 *** 712,714 ****
---- 793,796 ----
+--- 814,817 ----
   {
     printf ("The m32c minisim doesn't collect any statistics.\n");
   }
