@@ -1,5 +1,5 @@
 *** gdb-10.2.org/sim/arm/wrapper.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.arm-elf/sim/arm/wrapper.c	2021-12-17 16:31:49.000000000 +0900
+--- gdb-10.2.arm-elf/sim/arm/wrapper.c	2021-12-18 06:39:43.000000000 +0900
 ***************
 *** 112,118 ****
 --- 112,120 ----
@@ -29,40 +29,6 @@
   int
   sim_write (SIM_DESC sd ATTRIBUTE_UNUSED,
   	   SIM_ADDR addr,
-***************
-*** 165,171 ****
-  
-    return size;
-  }
-! 
-  int
-  sim_stop (SIM_DESC sd ATTRIBUTE_UNUSED)
-  {
---- 167,173 ----
-  
-    return size;
-  }
-! #endif // NEW_MEM_MAP
-  int
-  sim_stop (SIM_DESC sd ATTRIBUTE_UNUSED)
-  {
-***************
-*** 173,179 ****
-    stop_simulator = 1;
-    return 1;
-  }
-! 
-  void
-  sim_resume (SIM_DESC sd ATTRIBUTE_UNUSED,
-  	    int step,
---- 175,181 ----
-    stop_simulator = 1;
-    return 1;
-  }
-! #ifndef NEW_MEM_MAP
-  void
-  sim_resume (SIM_DESC sd ATTRIBUTE_UNUSED,
-  	    int step,
 ***************
 *** 196,201 ****
 --- 198,221 ----
