@@ -1,0 +1,85 @@
+VPATH = ../common
+
+RUN = run
+
+all:$(RUN)
+
+LIBSIM_A = libsim.a
+
+SIM_RUN_OBJS = nrun.o
+
+SIM_COMMON_HW_OBJS = \
+	hw-alloc.o \
+	hw-base.o \
+	hw-device.o \
+	hw-events.o \
+	hw-handles.o \
+	hw-instances.o \
+	hw-ports.o \
+	hw-properties.o \
+	hw-tree.o \
+	sim-hw.o \
+
+SIM_NEW_COMMON_OBJS = \
+	sim-arange.o \
+	sim-bits.o \
+	sim-close.o \
+	sim-command.o \
+	sim-config.o \
+	sim-core.o \
+	sim-cpu.o \
+	sim-endian.o \
+	sim-engine.o \
+	sim-events.o \
+	sim-fpu.o \
+	sim-hload.o \
+	sim-hrw.o \
+	sim-io.o \
+	sim-info.o \
+	sim-load.o \
+	sim-memopt.o \
+	sim-model.o \
+	sim-module.o \
+	sim-options.o \
+	sim-profile.o \
+	sim-reason.o \
+	sim-signal.o \
+	sim-stop.o \
+	sim-syscall.o \
+	sim-trace.o \
+	sim-utils.o \
+	sim-watch.o \
+	sim-resume.o \
+	\
+	$(SIM_HW_OBJS) \
+
+CC = gcc
+CFLAGS = -g3 -O0 -I. -I../common -I../../include -DHAVE_CONFIG_H \
+-DHAVE_ERRNO_H -DWITH_ALIGNMENT=STRICT_ALIGNMENT -DNEW_MEM_MAP
+
+$(RUN):$(SIM_RUN_OBJS) $(LIBSIM_A)
+	gcc -o $(RUN) $(SIM_RUN_OBJS) $(LIBSIM_A) \
+../../bfd/libbfd.a ../../opcodes/libopcodes.a  \
+../../libiberty/libiberty.a -lm -ldl -lnsl  -L../../zlib -lz 
+
+LIB_OBJS = callback.o \
+	   gdb-if.o \
+	   syscall.o \
+	   targ-map.o \
+	   syscalls.o \
+	   reg.o \
+	   err.o \
+	   trace.o \
+	   mem.o \
+	   rx.o \
+	   misc.o \
+	   fpu.o \
+	   version.o \
+	   $(SIM_NEW_COMMON_OBJS)
+
+$(LIBSIM_A):$(LIB_OBJS) Makefile.mine
+	rm -f $@
+	ar rc $(LIBSIM_A) $(LIB_OBJS)
+
+clean:
+	rm -f $(RUN) $(LIBSIM_A) $(LIB_OBJS) *~

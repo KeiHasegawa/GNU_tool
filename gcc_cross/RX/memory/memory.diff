@@ -1,0 +1,704 @@
+*** gdb-10.2.rx-elf/sim/common/sim-load.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.rx-elf.new/sim/common/sim-load.c	2021-12-16 18:13:47.000000000 +0900
+***************
+*** 133,143 ****
+--- 133,154 ----
+  		}
+  	      data_count += size;
+  	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
++ #ifdef NEW_MEM_MAP
++        	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
++ #endif // NEW_MEM_MAP
+  	      do_write (sd, lma, buffer, size);
+  	      found_loadable_section = 1;
+  	      free (buffer);
+  	    }
+  	}
++ #ifdef NEW_MEM_MAP
++         else if (strcmp(s->name, "B") == 0) {
++           bfd_vma lma = lma_p ? bfd_section_lma(s) : bfd_section_vma(s);
++           bfd_size_type size = bfd_section_size(s);
++           sim_do_command(sd, "memory-fill 0xcc");
++           sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
++         }
++ #endif // NEW_MEM_MAP
+      }
+  
+    if (!found_loadable_section)
+*** gdb-10.2.rx-elf/sim/rx/gdb-if.c	2021-07-06 12:51:27.000000000 +0900
+--- gdb-10.2.rx-elf.new/sim/rx/gdb-if.c	2021-12-16 18:05:07.000000000 +0900
+***************
+*** 45,50 ****
+--- 45,51 ----
+  
+     So we just have one instance, that lives in global variables, and
+     each time we open it, we re-initialize it.  */
++ #ifndef NEW_MEM_MAP
+  struct sim_state
+  {
+    const char *message;
+***************
+*** 73,79 ****
+    set_callbacks (callback);
+  
+    /* We don't expect any command-line arguments.  */
+- 
+    init_mem ();
+    init_regs ();
+    execution_error_init_debugger ();
+--- 74,79 ----
+***************
+*** 82,95 ****
+--- 82,167 ----
+    rx_sim_is_open = 1;
+    return &the_minisim;
+  }
++ #else // NEW_MEM_MAP
++ #include "sim-main.h"
++ static void
++ free_state (SIM_DESC sd)
++ {
++   if (STATE_MODULES (sd) != NULL)
++     sim_module_uninstall (sd);
++   sim_cpu_free_all (sd);
++   sim_state_free (sd);
++ }
++ 
++ sim_cia my_pc_fetch(sim_cpu* cpu)
++ {
++   return regs.r_pc;
++ }
++ 
++ void my_pc_store(sim_cpu* cpu, sim_cia addr)
++ {
++   regs.r_pc = addr;
++ }
++ 
++ SIM_DESC
++ sim_open (SIM_OPEN_KIND kind,
++ 	  struct host_callback_struct *callback,
++ 	  struct bfd *abfd, char * const *argv)
++ {
++   SIM_DESC sd = sim_state_alloc(kind, callback);
++ 
++   if (sim_cpu_alloc_all(sd, 1, 0) != SIM_RC_OK) {
++     free_state(sd);
++     return 0;
++   }
++ 
++   if (sim_pre_argv_init (sd, argv[0]) != SIM_RC_OK) {
++     free_state (sd);
++     return 0;
++   }
++ 
++   if (sim_parse_args (sd, argv) != SIM_RC_OK) {
++     free_state (sd);
++     return 0;
++   }
++ 
++   if (sim_analyze_program (sd,
++ 			   (STATE_PROG_ARGV (sd) != NULL
++ 			    ? *STATE_PROG_ARGV (sd)
++ 			    : NULL),
++ 			   abfd) != SIM_RC_OK) {
++     free_state (sd);
++     return 0;
++   }
++ 
++   if (sim_config (sd) != SIM_RC_OK) {
++     free_state (sd);
++     return 0;
++   }
++ 
++   if (sim_post_argv_init (sd) != SIM_RC_OK) {
++     free_state (sd);
++     return 0;
++   }
++ 
++   sim_cpu* cpu = sd->cpu[0];
++   CPU_PC_FETCH(cpu) = my_pc_fetch;
++   CPU_PC_STORE(cpu) = my_pc_store;
++ 
++   return sd;
++ }
++ #endif // NEW_MEM_MAP
+  
+  static void
+  check_desc (SIM_DESC sd)
+  {
++ #ifndef NEW_MEM_MAP
+    if (sd != &the_minisim)
+      fprintf (stderr, "rx minisim: desc != &the_minisim\n");
++ #endif // NEW_MEM_MAP
+  }
+  
++ #ifndef NEW_MEM_MAP
+  void
+  sim_close (SIM_DESC sd, int quitting)
+  {
+***************
+*** 100,105 ****
+--- 172,178 ----
+  
+    rx_sim_is_open = 0;
+  }
++ #endif  // NEW_MEM_MAP
+  
+  static bfd *
+  open_objfile (const char *filename)
+***************
+*** 190,196 ****
+      }
+    return 0;
+  }
+! 
+  SIM_RC
+  sim_load (SIM_DESC sd, const char *prog, struct bfd *abfd, int from_tty)
+  {
+--- 263,269 ----
+      }
+    return 0;
+  }
+! #ifndef NEW_MEM_MAP
+  SIM_RC
+  sim_load (SIM_DESC sd, const char *prog, struct bfd *abfd, int from_tty)
+  {
+***************
+*** 206,227 ****
+  
+    return SIM_RC_OK;
+  }
+! 
+  SIM_RC
+  sim_create_inferior (SIM_DESC sd, struct bfd *abfd,
+  		     char * const *argv, char * const *env)
+  {
+    check_desc (sd);
+- 
+    if (abfd)
+      {
+        rx_load (abfd, NULL);
+        build_swap_list (abfd);
+      }
+  
+    return SIM_RC_OK;
+  }
+  
+  int
+  sim_read (SIM_DESC sd, SIM_ADDR mem, unsigned char *buf, int length)
+  {
+--- 279,304 ----
+  
+    return SIM_RC_OK;
+  }
+! #endif // NEW_MEM_MAP
+  SIM_RC
+  sim_create_inferior (SIM_DESC sd, struct bfd *abfd,
+  		     char * const *argv, char * const *env)
+  {
++ #ifndef NEW_MEM_MAP
+    check_desc (sd);
+    if (abfd)
+      {
+        rx_load (abfd, NULL);
+        build_swap_list (abfd);
+      }
++ #else // NEW_MEM_MAP
++   put_reg(pc_regno, bfd_get_start_address (abfd));
++ #endif // NEW_MEM_MAP
+  
+    return SIM_RC_OK;
+  }
+  
++ #ifndef NEW_MEM_MAP
+  int
+  sim_read (SIM_DESC sd, SIM_ADDR mem, unsigned char *buf, int length)
+  {
+***************
+*** 268,273 ****
+--- 345,351 ----
+  
+    return length;
+  }
++ #endif // NEW_MEM_MAP
+  
+  /* Read the LENGTH bytes at BUF as an little-endian value.  */
+  static DI
+***************
+*** 492,498 ****
+--- 570,580 ----
+        val = get_reg (intb);
+        break;
+      case sim_rx_pc_regnum:
++ #ifndef NEW_MEM_MAP
+        val = get_reg (pc);
++ #else  // NEW_MEM_MAP
++       val = get_reg (pc_regno);
++ #endif // NEW_MEM_MAP
+        break;
+      case sim_rx_ps_regnum:
+        val = get_reg (psw);
+***************
+*** 607,613 ****
+--- 689,699 ----
+        put_reg (intb, val);
+        break;
+      case sim_rx_pc_regnum:
++ #ifndef NEW_MEM_MAP
+        put_reg (pc, val);
++ #else // NEW_MEM_MAP      
++       put_reg (pc_regno, val);
++ #endif // NEW_MEM_MAP      
+        break;
+      case sim_rx_ps_regnum:
+        put_reg (psw, val);
+***************
+*** 714,720 ****
+      }
+  }
+  
+! 
+  void
+  sim_resume (SIM_DESC sd, int step, int sig_to_deliver)
+  {
+--- 800,806 ----
+      }
+  }
+  
+! #ifndef NEW_MEM_MAP
+  void
+  sim_resume (SIM_DESC sd, int step, int sig_to_deliver)
+  {
+***************
+*** 773,779 ****
+  	}
+      }
+  }
+! 
+  int
+  sim_stop (SIM_DESC sd)
+  {
+--- 859,883 ----
+  	}
+      }
+  }
+! #else // NEW_MEM_MAP
+! SIM_DESC g_sd;
+! sim_cpu* g_cpu;
+! void sim_engine_run(SIM_DESC sd,
+! 		    int next_cpu_nr,
+! 		    int nr_cpus,
+! 		    int siggnal)
+! {
+!   g_sd = sd;
+!   g_cpu = sd->cpu[0];
+!   while (1) {
+!     int rc = decode_opcode();
+!     handle_step(rc);
+!     if (sim_events_tick(sd))
+!       sim_events_process(sd);
+!   }
+! }
+! #endif // NEW_MEM_MAP
+! #ifndef NEW_MEM_MAP
+  int
+  sim_stop (SIM_DESC sd)
+  {
+***************
+*** 854,856 ****
+--- 958,961 ----
+  {
+    return NULL;
+  }
++ #endif // NEW_MEM_MAP
+*** gdb-10.2.rx-elf/sim/rx/mem.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.rx-elf.new/sim/rx/mem.c	2021-12-16 18:00:27.000000000 +0900
+***************
+*** 76,81 ****
+--- 76,82 ----
+  unsigned char *
+  rx_mem_ptr (unsigned long address, enum mem_ptr_action action)
+  {
++ #ifndef NEW_MEM_MAP
+    int pt1 = (address >> (L2_BITS + OFF_BITS)) & ((1 << L1_BITS) - 1);
+    int pt2 = (address >> OFF_BITS) & ((1 << L2_BITS) - 1);
+    int pto = address & ((1 << OFF_BITS) - 1);
+***************
+*** 127,134 ****
+--- 128,139 ----
+      return (unsigned char *) (ptdc[pt1][pt2] + pto);
+  
+    return pt[pt1][pt2] + pto;
++ #else // NEW_MEM_MAP
++   asm("int3");
++ #endif // NEW_MEM_MAP  
+  }
+  
++ 
+  RX_Opcode_Decoded **
+  rx_mem_decode_cache (unsigned long address)
+  {
+***************
+*** 265,270 ****
+--- 270,276 ----
+  void
+  mem_put_byte (unsigned int address, unsigned char value)
+  {
++ #ifndef NEW_MEM_MAP  
+    unsigned char *m;
+    char tc = ' ';
+  
+***************
+*** 346,351 ****
+--- 352,361 ----
+        if (is_reserved_address (address))
+  	generate_access_exception ();
+      }
++ #else // NEW_MEM_MAP
++   extern void* g_cpu;
++   sim_core_write_aligned_1(g_cpu, regs.r_pc, 1, address, value);
++ #endif  // NEW_MEM_MAP
+  }
+  
+  void
+***************
+*** 455,460 ****
+--- 465,471 ----
+  static unsigned char
+  mem_get_byte (unsigned int address)
+  {
++ #ifndef NEW_MEM_MAP
+    unsigned char *m;
+  
+    S ("=>");
+***************
+*** 474,479 ****
+--- 485,494 ----
+      }
+    E ();
+    return *m;
++ #else // NEW_MEM_MAP
++   extern void* g_cpu;
++   return sim_core_read_aligned_1(g_cpu, regs.r_pc, 0, address);
++ #endif // NEW_MEM_MAP
+  }
+  
+  unsigned char
+*** gdb-10.2.rx-elf/sim/rx/reg.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.rx-elf.new/sim/rx/reg.c	2021-12-17 07:10:35.000000000 +0900
+***************
+*** 102,109 ****
+--- 102,114 ----
+        return regs.r_fintv;
+      case intb:
+        return regs.r_intb;
++ #ifndef NEW_MEM_MAP      
+      case pc:
+        return regs.r_pc;
++ #else // NEW_MEM_MAP
++     case pc_regno:
++       return regs.r_pc;
++ #endif  // NEW_MEM_MAP
+      case r_temp_idx:
+        return regs.r_temp;
+      case acchi:
+***************
+*** 120,127 ****
+--- 125,137 ----
+  get_reg (int id)
+  {
+    unsigned int rv = get_reg_i (id);
++ #ifndef NEW_MEM_MAP 
+    if (trace > ((id != pc && id != sp) ? 0 : 1))
+      printf ("get_reg (%s) = %08x\n", reg_names[id], rv);
++ #else // NEW_MEM_MAP
++   if (trace > ((id != pc_regno && id != sp) ? 0 : 1))
++     printf ("get_reg (%s) = %08x\n", reg_names[id], rv);
++ #endif // NEW_MEM_MAP
+    return rv;
+  }
+  
+***************
+*** 141,148 ****
+--- 151,163 ----
+  get_reg64 (int id)
+  {
+    unsigned long long rv = get_reg64_i (id);
++ #ifndef NEW_MEM_MAP  
+    if (trace > ((id != pc && id != sp) ? 0 : 1))
+      printf ("get_reg (%s) = %016llx\n", reg_names[id], rv);
++ #else // NEW_MEM_MAP  
++   if (trace > ((id != pc_regno && id != sp) ? 0 : 1))
++     printf ("get_reg (%s) = %016llx\n", reg_names[id], rv);
++ #endif // NEW_MEM_MAP  
+    return rv;
+  }
+  
+***************
+*** 162,169 ****
+--- 177,189 ----
+  void
+  put_reg (int id, unsigned int v)
+  {
++ #ifndef NEW_MEM_MAP  
+    if (trace > ((id != pc) ? 0 : 1))
+      printf ("put_reg (%s) = %08x\n", reg_names[id], v);
++ #else // NEW_MEM_MAP  
++   if (trace > ((id != pc_regno) ? 0 : 1))
++     printf ("put_reg (%s) = %08x\n", reg_names[id], v);
++ #endif // NEW_MEM_MAP  
+  
+  
+    switch (id)
+***************
+*** 203,212 ****
+      case intb:
+        regs.r_intb = v;
+        break;
+      case pc:
+        regs.r_pc = v;
+        break;
+! 
+      case acchi:
+        regs.r_acc = (regs.r_acc & 0xffffffffULL) | ((DI)v << 32);
+        break;
+--- 223,237 ----
+      case intb:
+        regs.r_intb = v;
+        break;
++ #ifndef NEW_MEM_MAP      
+      case pc:
+        regs.r_pc = v;
+        break;
+! #else // NEW_MEM_MAP
+!     case pc_regno:
+!       regs.r_pc = v;
+!       break;
+! #endif // NEW_MEM_MAP
+      case acchi:
+        regs.r_acc = (regs.r_acc & 0xffffffffULL) | ((DI)v << 32);
+        break;
+***************
+*** 263,271 ****
+  void
+  put_reg64 (int id, unsigned long long v)
+  {
+    if (trace > ((id != pc) ? 0 : 1))
+      printf ("put_reg (%s) = %016llx\n", reg_names[id], v);
+! 
+    switch (id)
+      {
+      case acc64:
+--- 288,300 ----
+  void
+  put_reg64 (int id, unsigned long long v)
+  {
++ #ifndef NEW_MEM_MAP
+    if (trace > ((id != pc) ? 0 : 1))
+      printf ("put_reg (%s) = %016llx\n", reg_names[id], v);
+! #else // NEW_MEM_MAP
+!   if (trace > ((id != pc_regno) ? 0 : 1))
+!     printf ("put_reg (%s) = %016llx\n", reg_names[id], v);
+! #endif  // NEW_MEM_MAP
+    switch (id)
+      {
+      case acc64:
+*** gdb-10.2.rx-elf/sim/rx/rx.c	2021-11-21 10:13:39.000000000 +0900
+--- gdb-10.2.rx-elf.new/sim/rx/rx.c	2021-12-17 06:43:52.000000000 +0900
+***************
+*** 381,391 ****
+    /* See load.c for an explanation of this.  */
+    if (rx_big_endian)
+      tpc ^= 3;
+! 
+    maybe_get_mem_page (tpc);
+- 
+    rx_data->dpc ++;
+    return get_byte_base [tpc];
+  }
+  
+  static int
+--- 381,395 ----
+    /* See load.c for an explanation of this.  */
+    if (rx_big_endian)
+      tpc ^= 3;
+! #ifndef NEW_MEM_MAP
+    maybe_get_mem_page (tpc);
+    rx_data->dpc ++;
+    return get_byte_base [tpc];
++ #else // NEW_MEM_MAP
++   rx_data->dpc ++;
++   extern void* g_cpu;
++   return sim_core_read_aligned_1(g_cpu, tpc, 0, tpc);
++ #endif
+  }
+  
+  static int
+***************
+*** 678,684 ****
+--- 682,690 ----
+    rsp -= 4;
+    put_reg (sp, rsp);
+    mem_put_si (rsp, val);
++ #ifndef NEW_MEM_MAP  
+    mem_set_content_range (rsp, rsp+3, MC_PUSHED_PC);
++ #endif // NEW_MEM_MAP
+  }
+  
+  static int
+***************
+*** 697,706 ****
+--- 703,716 ----
+  {
+    int rv;
+    int rsp = get_reg (sp);
++ #ifndef NEW_MEM_MAP  
+    if (mem_get_content_type (rsp) != MC_PUSHED_PC)
+      execution_error (SIM_ERR_CORRUPT_STACK, rsp);
++ #endif // NEW_MEM_MAP
+    rv = mem_get_si (rsp);
++ #ifndef NEW_MEM_MAP  
+    mem_set_content_range (rsp, rsp+3, MC_UNINIT);
++ #endif // NEW_MEM_MAP
+    rsp += 4;
+    put_reg (sp, rsp);
+    return rv;
+***************
+*** 1123,1133 ****
+  #endif
+  
+    rx_cycles ++;
+! 
+    maybe_get_mem_page (regs.r_pc);
+  
+    opcode_pc = regs.r_pc;
+  
+    /* Note that we don't word-swap this point, there's no point.  */
+    if (decode_cache_base[opcode_pc] == NULL)
+      {
+--- 1133,1145 ----
+  #endif
+  
+    rx_cycles ++;
+! #ifndef NEW_MEM_MAP
+    maybe_get_mem_page (regs.r_pc);
++ #endif // NEW_MEM_MAP
+  
+    opcode_pc = regs.r_pc;
+  
++ #ifndef NEW_MEM_MAP
+    /* Note that we don't word-swap this point, there's no point.  */
+    if (decode_cache_base[opcode_pc] == NULL)
+      {
+***************
+*** 1143,1148 ****
+--- 1155,1168 ----
+        opcode = decode_cache_base[opcode_pc];
+        opcode_size = opcode->n_bytes;
+      }
++ #else // NEW_MEM_MAP
++   rx_data.dpc = opcode_pc;
++   RX_Opcode_Decoded tmp;
++   opcode_size = rx_decode_opcode (opcode_pc, &tmp,
++ 				  rx_get_byte, &rx_data);
++   
++   opcode = &tmp;
++ #endif // NEW_MEM_MAP
+  
+  #ifdef CYCLE_ACCURATE
+    if (branch_alignment_penalty)
+***************
+*** 1293,1300 ****
+--- 1313,1328 ----
+      case RXO_brk:
+        {
+  	int old_psw = regs.r_psw;
++ #ifndef	NEW_MEM_MAP
+  	if (rx_in_gdb)
+  	  DO_RETURN (RX_MAKE_HIT_BREAK ());
++ #else // NEW_MEM_MAP
++ 	if (rx_in_gdb) {
++ 	  extern void* g_sd;
++ 	  extern void* g_cpu;
++ 	  sim_engine_halt(g_sd, g_cpu, 0, regs.r_pc, 3 /* sim_stopped */, 66);
++ 	}
++ #endif // NEW_MEM_MAP
+  	if (regs.r_intb == 0)
+  	  {
+  	    tprintf("BREAK hit, no vector table.\n");
+***************
+*** 1493,1505 ****
+--- 1521,1541 ----
+  #ifdef CYCLE_ACCURATE
+  	regs.link_register = regs.r_pc;
+  #endif
++ #ifndef NEW_MEM_MAP	
+  	pushpc (get_reg (pc));
++ #else // NEW_MEM_MAP
++ 	pushpc (get_reg (pc_regno));
++ #endif // NEW_MEM_MAP
+  	if (opcode->id == RXO_jsrrel)
+  	  v += regs.r_pc;
+  #ifdef CYCLE_ACCURATE
+  	delta = v - regs.r_pc;
+  #endif
++ #ifndef NEW_MEM_MAP	
+  	put_reg (pc, v);
++ #else // NEW_MEM_MAP
++ 	put_reg (pc_regno, v);
++ #endif // NEW_MEM_MAP
+  #ifdef CYCLE_ACCURATE
+  	/* Note: docs say 3, chip says 2 */
+  	if (delta >= 0 && delta < 16)
+***************
+*** 1954,1960 ****
+--- 1990,2000 ----
+  #endif
+  	  put_reg (0, get_reg (0) + GS());
+  	}
++ #ifndef NEW_MEM_MAP
+        put_reg (pc, poppc());
++ #else // NEW_MEM_MAP
++       put_reg (pc_regno, poppc());
++ #endif // NEW_MEM_MAP
+  #ifdef CYCLE_ACCURATE
+        if (regs.fast_return && regs.link_register == regs.r_pc)
+  	{
+*** gdb-10.2.rx-elf/sim/rx/trace.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.rx-elf.new/sim/rx/trace.c	2021-12-17 07:11:43.000000000 +0900
+***************
+*** 193,199 ****
+--- 193,203 ----
+  				 unsigned int * plineno)
+  {
+    static int   initted = 0;
++ #ifndef NEW_MEM_MAP  
+    int          mypc = get_reg (pc);
++ #else // NEW_MEM_MAP
++   int          mypc = get_reg (pc_regno);
++ #endif   // NEW_MEM_MAP
+  
+    if (current_bfd == NULL)
+      return 0;
+***************
+*** 256,263 ****
+    int           sym, bestaddr;
+    int           min, max, i;
+    int           save_trace = trace;
+    int           mypc = get_reg (pc);
+! 
+    if (! sim_get_current_source_location (& filename, & functionname, & lineno))
+      return;
+  
+--- 260,270 ----
+    int           sym, bestaddr;
+    int           min, max, i;
+    int           save_trace = trace;
++ #ifndef NEW_MEM_MAP  
+    int           mypc = get_reg (pc);
+! #else  // NEW_MEM_MAP  
+!   int           mypc = get_reg (pc_regno);
+! #endif // NEW_MEM_MAP  
+    if (! sim_get_current_source_location (& filename, & functionname, & lineno))
+      return;
+  
