@@ -1,5 +1,5 @@
 *** gdb-10.2.org/sim/arm/wrapper.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.arm-elf/sim/arm/wrapper.c	2021-12-07 09:15:10.000000000 +0900
+--- gdb-10.2.arm-elf/sim/arm/wrapper.c	2021-12-17 16:31:49.000000000 +0900
 ***************
 *** 112,118 ****
 --- 112,120 ----
@@ -47,18 +47,73 @@
   sim_stop (SIM_DESC sd ATTRIBUTE_UNUSED)
   {
 ***************
-*** 181,186 ****
---- 183,192 ----
-  {
-    state->EndCondition = 0;
-    stop_simulator = 0;
-+ #ifdef NEW_MEM_MAP
+*** 173,179 ****
+    stop_simulator = 1;
+    return 1;
+  }
+! 
+  void
+  sim_resume (SIM_DESC sd ATTRIBUTE_UNUSED,
+  	    int step,
+--- 175,181 ----
+    stop_simulator = 1;
+    return 1;
+  }
+! #ifndef NEW_MEM_MAP
+  void
+  sim_resume (SIM_DESC sd ATTRIBUTE_UNUSED,
+  	    int step,
+***************
+*** 196,201 ****
+--- 198,221 ----
+  
+    FLUSHPIPE;
+  }
++ #else // NEW_MEM_MAP
++ SIM_DESC* g_sd;
++ void sim_engine_run(SIM_DESC sd,
++ 		    int next_cpu_nr,
++ 		    int nr_cpus,
++ 		    int siggnal)
++ {
++   g_sd = sd;
 +   extern sim_cpu* g_cpu;
 +   g_cpu = sd->cpu[0];
++   while (1) {
++     state->Reg[15] = ARMul_DoInstr (state);
++     if (sim_events_tick(sd))
++       sim_events_process(sd);
++   }
++ }
 + #endif // NEW_MEM_MAP
++ 
   
-    if (step)
-      {
+  SIM_RC
+  sim_create_inferior (SIM_DESC sd ATTRIBUTE_UNUSED,
+***************
+*** 882,888 ****
+  
+    return sd;
+  }
+! 
+  void
+  sim_stop_reason (SIM_DESC sd ATTRIBUTE_UNUSED,
+  		 enum sim_stop *reason,
+--- 902,908 ----
+  
+    return sd;
+  }
+! #ifndef NEW_MEM_MAP
+  void
+  sim_stop_reason (SIM_DESC sd ATTRIBUTE_UNUSED,
+  		 enum sim_stop *reason,
+***************
+*** 910,912 ****
+--- 930,933 ----
+  	*sigrc = 0;
+      }
+  }
++ #endif // NEW_MEM_MAP
 *** gdb-10.2.org/sim/arm/armos.c	2021-04-25 13:06:26.000000000 +0900
 --- gdb-10.2.arm-elf/sim/arm/armos.c	2021-12-07 09:07:23.000000000 +0900
 ***************
