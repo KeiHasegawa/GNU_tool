@@ -47,3 +47,36 @@ Illegal instruction のエラーになったということ.
 
 ところでこのプログラムのおおよそのサイズだが 0x100 から 0x11920+0x5b8 = 0x11ed8
 ということになる.
+
+メモリ空間が 64KB でヒープとスタックを最後の 0x1000 バイトに割り当てるならば
+リンカスクリプトファイルを以下のようにする:
+
+% cat 64K.x
+MEMORY {
+  hoge (rwx) : ORIGIN = 0, LENGTH = 0xe000
+}
+
+SECTIONS {
+	 . = 0x100;
+	 .text : {}
+	 .rodata : {}
+	 .data : {}
+	 .bss : {
+	      _bss_start = .;
+	 }
+	 _bss_end = .;
+
+	 . = 0xe000;
+	 _end = .; 
+
+	 . = 0xf000;
+	 _stack = .;
+}
+%
+
+こうすることで .text, .rodata, .data, .bss が 0xe000 バイトに収まらないと以下のように
+リンク時にエラーを検出することができる:
+
+% h8300-elf-ld -o sample.elf start.o sample.o -lc -lgcc -T 64K.x
+h8300-elf-ld: sample.elf section `.text' will not fit in region `hoge'
+%
