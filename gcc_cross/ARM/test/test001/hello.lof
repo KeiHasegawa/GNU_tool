@@ -1,0 +1,55 @@
+Reading symbols from hello.elf...
+Connected to the simulator.
+Loading section .init, size 0x20 lma 0x8000
+Loading section .text, size 0x3ee4 lma 0x8020
+Loading section .fini, size 0x1c lma 0xbf04
+Loading section .rodata, size 0x18 lma 0xbf20
+Loading section .ARM.exidx, size 0x8 lma 0xbf38
+Loading section .eh_frame, size 0x4 lma 0xbf40
+Loading section .ctors, size 0x8 lma 0x1bf44
+Loading section .dtors, size 0x8 lma 0x1bf4c
+Loading section .data, size 0x960 lma 0x1bf54
+Start address 0x81ec
+Transfer rate: 148896 bits in <1 sec.
+Breakpoint 1 at 0x8348: file hello.c, line 5.
+Breakpoint 2 at 0x862c: file ../../../.././newlib/libc/stdio/puts.c, line 129.
+Breakpoint 3 at 0x8f00: file ../../../../.././newlib/libc/sys/arm/syscalls.c, line 551.
+Breakpoint 4 at 0x8e84: file ../../../../.././newlib/libc/sys/arm/syscalls.c, line 518.
+Breakpoint 5 at 0x90dc: file ../../../../.././newlib/libc/sys/arm/syscalls.c, line 661.
+Breakpoint 6 at 0x8b3c: file ../../../../.././newlib/libc/sys/arm/syscalls.c, line 343.
+Breakpoint 7 at 0x8374: file ../../../.././newlib/libc/stdlib/exit.c, line 60.
+
+Breakpoint 1, main () at hello.c:5
+5	  printf("hello world\n");
+
+Breakpoint 2, puts (s=0xbf20 "hello world")
+    at ../../../.././newlib/libc/stdio/puts.c:129
+129	  return _puts_r (_REENT, s);
+
+Breakpoint 3, _fstat (file=1, st=0x7af34, st@entry=0x7af2c)
+    at ../../../../.././newlib/libc/sys/arm/syscalls.c:551
+551	  memset (st, 0, sizeof (* st));
+
+Breakpoint 4, _sbrk (incr=incr@entry=1048)
+    at ../../../../.././newlib/libc/sys/arm/syscalls.c:518
+518	  if (heap_end == NULL)
+
+Breakpoint 4, _sbrk (incr=incr@entry=556)
+    at ../../../../.././newlib/libc/sys/arm/syscalls.c:518
+518	  if (heap_end == NULL)
+
+Breakpoint 5, _isatty (fd=1)
+    at ../../../../.././newlib/libc/sys/arm/syscalls.c:661
+661	  int fh = remap_handle (fd);
+
+Breakpoint 6, _write (file=1, ptr=0x1c9c8, len=12)
+    at ../../../../.././newlib/libc/sys/arm/syscalls.c:343
+343	  int slot = findslot (remap_handle (file));
+
+Breakpoint 7, exit (code=0) at ../../../.././newlib/libc/stdlib/exit.c:60
+60	    __call_exitprocs (code, NULL);
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
