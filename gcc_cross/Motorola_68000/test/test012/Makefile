@@ -11,4 +11,4 @@ test012.elf:start.o test012.o dummy.o test012.x
 	$(LIBC) $(LIBGCC) -T test012.x -Map test012.map
 
 test012.log:test012.elf
-	wdog.exe -v cat quit | m68hc11-elf-gdb -q -x gdbcom $< > $@ 2>&1
+	wdog.exe -v echo quit | m68hc11-elf-gdb -q -x gdbcom $< > $@ 2>&1
