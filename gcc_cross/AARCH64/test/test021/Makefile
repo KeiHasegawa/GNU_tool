@@ -11,6 +11,6 @@ test021.log:test021.elf
 	kill -INT `ps -ef | grep aarch64-elf-gdb | awk '{print $$2}'`
 
 test021.lof:test021.log
-	grep -q 'Program received signal SIGINT, Interrupt.' $<
+	grep -q 'Program received signal SIGINT, Interrupt.' $< || grep -q 'Program received signal SIGINT, Interrupt.' $<
 	touch $@
 
