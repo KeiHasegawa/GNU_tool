@@ -1,0 +1,24 @@
+%.o : %.S
+	msp430-elf-as -o $@ $< -g
+
+%.o : %.c
+	msp430-elf-gcc -o $@ $< -c -g
+
+LIBGCC = /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/msp430-elf/10.2.0/libgcc.a
+
+%.elf : %.o
+	msp430-elf-ld -o $@ start.o $< $(LIBGCC) -T $(basename $<).x
+
+%.objdump : %.elf
+	msp430-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v msp430-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.s *.o *.elf *.objdump *.log *.a *.map *~
+
