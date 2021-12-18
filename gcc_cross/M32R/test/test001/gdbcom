@@ -1,10 +1,22 @@
 set prompt (m32r-elf-gdb) 
 target sim
 load
+sim memory-region 0x7ff000,0x1000
+# 0x2ec0 : _end
+sim memory-region 0x2ec4,0x2000
+
 b main
+b puts
 b _fstat
 b _sbrk
 b _isatty
 b _write
 run
 
+c
+c
+c
+c
+c
+c
+c

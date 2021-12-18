@@ -1,0 +1,46 @@
+Reading symbols from hello.elf...
+Connected to the simulator.
+Loading section .init, size 0x24 lma 0x100
+Loading section .text, size 0x24b8 lma 0x124
+Loading section .fini, size 0x14 lma 0x25dc
+Loading section .rodata, size 0x2c lma 0x25f0
+Loading section .init_array, size 0x8 lma 0x263c
+Loading section .fini_array, size 0x8 lma 0x2644
+Loading section .data, size 0x82c lma 0x264c
+Loading section .sdata, size 0xc lma 0x2e78
+Start address 0x124
+Transfer rate: 92960 bits in <1 sec.
+Breakpoint 1 at 0x1b0: file hello.c, line 5.
+Breakpoint 2 at 0x2ac: file ../../../.././newlib/libc/stdio/puts.c, line 129.
+Breakpoint 3 at 0x24b4: file ../../.././libgloss/m32r/fstat.c, line 9.
+Breakpoint 4 at 0x251c: file ../../.././libgloss/m32r/sbrk.c, line 16.
+Breakpoint 5 at 0x24c4: file ../../.././libgloss/m32r/isatty.c, line 7.
+Breakpoint 6 at 0x2570: file ../../.././libgloss/m32r/write.c, line 9.
+
+Breakpoint 1, main () at hello.c:5
+5	  printf("hello world\n");
+
+Breakpoint 2, puts (s=0x25f0 "hello world")
+    at ../../../.././newlib/libc/stdio/puts.c:129
+129	  return _puts_r (_REENT, s);
+
+Breakpoint 3, _fstat (file=1, st=st@entry=0x7fff24)
+    at ../../.././libgloss/m32r/fstat.c:9
+9	  st->st_mode = S_IFCHR;
+
+Breakpoint 4, _sbrk (incr=incr@entry=1048)
+    at ../../.././libgloss/m32r/sbrk.c:16
+16	  char *sp = (char *)&sp;
+
+Breakpoint 4, _sbrk (incr=3368) at ../../.././libgloss/m32r/sbrk.c:16
+16	  char *sp = (char *)&sp;
+
+Breakpoint 5, _isatty (fd=1) at ../../.././libgloss/m32r/isatty.c:7
+7	  return 1;
+
+Breakpoint 6, _write (file=1, 
+    ptr=ptr@entry=0x2ec8 "hello world\n", '\314' <repeats 187 times>, <incomplete sequence \314>..., len=len@entry=12) at ../../.././libgloss/m32r/write.c:9
+9	  return TRAP0 (SYS_write, file, ptr, len);
+hello world
+[Inferior 1 (process 42000) exited normally]
+(m32r-elf-gdb) 
