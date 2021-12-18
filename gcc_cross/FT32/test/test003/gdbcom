@@ -1,12 +1,26 @@
 set prompt (ft32-elf-gdb) 
 target sim
 load
-sim memory-region 0x805000,0x1000
+sim memory-region 0x804efc,0x1104
+sim memory-region 0x806008,0x1000
+
 b start
-b end
+b _exit
+command
+quit
+end
 b main
-b _malloc_r
+b puts
+b _sbrk
+b _fstat
+b _isatty
+b _write
 run
 c
 c
-quit
+c
+c
+c
+c
+c
+c

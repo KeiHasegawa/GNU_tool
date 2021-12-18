@@ -1,24 +1,47 @@
 Reading symbols from hello.elf...
 Connected to the simulator.
-Loading section .rodata, size 0x14 lma 0x4da4
-Loading section .text, size 0x4468 lma 0x100
-Loading section .data, size 0x83c lma 0x4568
+Loading section .data, size 0x83c lma 0x4668
+Loading section .rodata, size 0x14 lma 0x4ea4
+Loading section .text, size 0x4568 lma 0x100
 Start address 0x100
-Transfer rate: 157120 bits in <1 sec.
+Transfer rate: 159168 bits in <1 sec.
 Breakpoint 1 at 0x100: file start.S, line 3.
-Breakpoint 2 at 0x128: file start.S, line 18.
-Breakpoint 3 at 0x130: file hello.c, line 5.
-Breakpoint 4 at 0x13c0: file ../../../.././newlib/libc/stdlib/mallocr.c, line 2353.
+Breakpoint 2 at 0x168: file start.S, line 39.
+Breakpoint 3 at 0x170: file hello.c, line 5.
+Breakpoint 4 at 0x2c4: file ../../../.././newlib/libc/stdio/puts.c, line 129.
+Breakpoint 5 at 0x45c8: file ../../../libgloss/ft32/sbrk.c, line 34.
+Breakpoint 6 at 0x4588: file ../../../libgloss/ft32/fstat.c, line 25.
+Breakpoint 7 at 0x45b4: file ../../../libgloss/ft32/isatty.c, line 25.
+Breakpoint 8 at 0x4648: file ../../../libgloss/ft32/sim-write.S, line 49.
 
 Breakpoint 1, start () at start.S:3
-3		ldk.l	$r0, data_start
+3		ldk.l	$r0, _data_start
 
 Breakpoint 3, main () at hello.c:5
 5	  printf("hello world\n");
 
-Breakpoint 4, _malloc_r (reent_ptr=0x804568, bytes=1024)
-    at ../../../.././newlib/libc/stdlib/mallocr.c:2353
-2353	  INTERNAL_SIZE_T nb  = request2size(bytes);  /* padded request size; */
+Breakpoint 4, puts (s=0x804ea4 "hello world")
+    at ../../../.././newlib/libc/stdio/puts.c:129
+129	  return _puts_r (_REENT, s);
+
+Breakpoint 6, _fstat (fd=1, buf=0x806ef0) at ../../../libgloss/ft32/fstat.c:25
+25	  buf->st_mode = S_IFCHR;        /* Always pretend to be a tty */
+
+Breakpoint 5, _sbrk (nbytes=1048) at ../../../libgloss/ft32/sbrk.c:34
+34	  if ((__heap_ptr + nbytes) < (&canary - 2000))
+
+Breakpoint 5, _sbrk (nbytes=3308) at ../../../libgloss/ft32/sbrk.c:34
+34	  if ((__heap_ptr + nbytes) < (&canary - 2000))
+
+Breakpoint 7, _isatty (fd=1) at ../../../libgloss/ft32/isatty.c:25
+25	  return (1);
+
+Breakpoint 8, _write () at ../../../libgloss/ft32/sim-write.S:49
+49	        ldk.l   $r3,0x10000
+hello world
+
+Breakpoint 2, _exit () at start.S:39
+39		jmp	.
 A debugging session is active.
 
 	Inferior 1 [process 42000] will be killed.
