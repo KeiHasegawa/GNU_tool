@@ -1,9 +1,17 @@
 set prompt (m68hc11-elf-gdb) 
 target sim
 load
+sim memory-region 0x800,0x800
+sim memory-region 0x500,0x300
+
 b start
-b end
+b _exit
+command
+quit
+end
+
 b main
+b puts
 b fstat
 b sbrk
 b write
@@ -12,6 +20,3 @@ b close
 b read
 b lseek
 run
-#disassemble
-#c
-#quit
