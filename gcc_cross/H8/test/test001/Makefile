@@ -12,7 +12,7 @@ TAGS:hello.elf
 	mktags.exe -o TAGS -e hello.elf
 
 hello.log:hello.elf
-	wdog.exe -v h8300-elf-gdb -q -x gdbcom $< > $@
+	echo quit | wdog.exe -v h8300-elf-gdb -q -x gdbcom $< > $@ 2>&1
 
 hello.lof:hello.log
 	wdog.exe -v diff $< $@

@@ -11,16 +11,30 @@ Loading section .data, size 0x46c vma 0x51bc
 Start address 0x10c
 Transfer rate: 174368 bits in <1 sec.
 Breakpoint 1 at 0x1f4: file hello.c, line 5.
+Breakpoint 2 at 0x36c: file ../../../.././newlib/libc/stdio/puts.c, line 129.
+Breakpoint 3 at 0x4f0c: file ../../../../.././newlib/libc/sys/h8300hms/fstat.S, line 15.
+Breakpoint 4 at 0x49b6: file ../../../../.././newlib/libc/sys/h8300hms/sbrk.c, line 15.
+Breakpoint 5 at 0x4ece: file ../../../../.././newlib/libc/sys/h8300hms/syscalls.c, line 9.
+Breakpoint 6 at 0x4a10: file ../../../../.././newlib/libc/sys/h8300hms/write.S, line 15.
 
 Breakpoint 1, main () at hello.c:5
 5	  printf("hello world\n");
-puts (s=0x5184 "hello world") at ../../../.././newlib/libc/stdio/puts.c:129
+
+Breakpoint 2, puts (s=0x5184 "hello world")
+    at ../../../.././newlib/libc/stdio/puts.c:129
 129	  return _puts_r (_REENT, s);
-main () at hello.c:6
-6	  return 0;
-Value returned is $1 = 10
-A debugging session is active.
 
-	Inferior 1 [process 42000] will be killed.
+Breakpoint 3, _fstat ()
+    at ../../../../.././newlib/libc/sys/h8300hms/fstat.S:15
+15		jsr @@0xcb
 
-Quit anyway? (y or n) [answered Y; input not from terminal]
+Breakpoint 4, _sbrk (incr=1040)
+    at ../../../../.././newlib/libc/sys/h8300hms/sbrk.c:15
+15	  if (heap_end == 0) 
+
+Breakpoint 6, _write ()
+    at ../../../../.././newlib/libc/sys/h8300hms/write.S:15
+15		jsr @@0xc7
+hello world
+[Inferior 1 (process 42000) exited normally]
+(h8300-elf-gdb) 
