@@ -51,3 +51,18 @@ sim_open で以下を実行:
     if (!found_loadable_section)
 
 .bss は 0xcc で初期化される. スタックは別途割り当てる必要がある.
+
+この修正に伴なって interp.c の以下も修正する必要があった:
+
+    case 55: /* void get_mem_info(unsigned int *ptr) */
+      /* in:  A0 = pointer to three word memory location */
+      /* out: [A0 + 0] = size */
+      /*      [A0 + 4] = instruction cache size */
+      /*      [A0 + 8] = data cache size */
+      {
+#if 0
+        ...
+#else
+	unsigned_4 value = K1SIZE;
+	unsigned_4 zero = 0;
+#endif
