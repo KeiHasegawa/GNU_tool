@@ -1,11 +1,16 @@
 SECTIONS {
 	 . = 0x100;
 	 .text : {}
+	 .romdata : {}
+	 .data : {}
+	 .bss : {
+	      _bss_start = .;
+	 }
+	 _bss_end = .;
 
 	 . = 0x3000;
-	 PROVIDE(heap = .);
+	 heap = .;
 
 	 . = 0x5000;
-	 .stack : {}
-	 PROVIDE(stack = .);
+	 stack = .;
 }
