@@ -3,14 +3,20 @@ SECTIONS {
 	 .text : {}
 
 	 .rodata : {}
-	 _gp = .;
 	 .sdata : {}
+	 _gp = .;	 
 	 .sbss : {
+	       _sbss_start = .;
+	 }
+	 _sbss_end = .;
+
+	 .data : {}
+	 .bss : {
 	       _bss_start = .;
 	 }
 	 _bss_end = .;
-
-	 . = 0x1000;
+	 
+	 . = 0x6000;
 	 _heap = .;
 
 	 . = 0x20000;

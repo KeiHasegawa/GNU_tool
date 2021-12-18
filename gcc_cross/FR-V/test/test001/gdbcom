@@ -2,15 +2,23 @@ set prompt (frv-elf-gdb)
 target sim
 load
 b main
+b puts
 b _fstat
 b _sbrk
-b _write
 b _isatty
+b _write
+b _exit
+command
+quit
+end
+sim memory-region 0x6000,0x1000
 sim memory-region 0x1b000,0x5000
 run
-#step
-#where
-#finish
-#quit
-
+c
+c
+c
+c
+c
+c
+c
 

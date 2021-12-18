@@ -1,3 +1,4 @@
+
 #include <string.h>
 #include <sys/stat.h>
 
@@ -10,15 +11,15 @@ int _fstat(int fildes, struct stat *st)
 
 void* _sbrk(long inc)
 {
-#if 0  
   extern char _heap;
   static long delta = 0;
-  void* ret = &_heap+delta;
+#if 0
+  void* ret = &_heap + delta;
+#else
+  void* ret = (void*)0x6000+delta;
+#endif  
   delta += inc;
   return ret;
-#else
-  return (void*)-1;
-#endif 
 }
 
 int _isatty(int fd)

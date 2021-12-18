@@ -1,0 +1,46 @@
+Reading symbols from hello.elf...
+Connected to the simulator.
+Loading section .text, size 0x52c0 lma 0x100
+Loading section .data, size 0x830 lma 0x5400
+Loading section .rodata, size 0x10 lma 0x53c0
+Loading section .sdata, size 0x10 lma 0x53d0
+Start address 0x100
+Transfer rate: 186496 bits in <1 sec.
+Breakpoint 1 at 0x188: file hello.c, line 5.
+Breakpoint 2 at 0x6a8: file ../../../.././newlib/libc/stdio/puts.c, line 129.
+Breakpoint 3 at 0x1cc: file dummy.c, line 7.
+Breakpoint 4 at 0x218: file dummy.c, line 19.
+Breakpoint 5 at 0x278: file dummy.c, line 27.
+Breakpoint 6 at 0x2b0: file dummy.c, line 32.
+Breakpoint 7 at 0x160: file start.S, line 35.
+
+Breakpoint 1, main () at hello.c:5
+5	  printf("hello world\n");
+
+Breakpoint 2, puts (s=0x53c0 "hello world")
+    at ../../../.././newlib/libc/stdio/puts.c:129
+129	  return _puts_r (_REENT, s);
+
+Breakpoint 3, _fstat (fildes=1, st=0x1fe78) at dummy.c:7
+7	  memset(st, 0, sizeof*st);
+
+Breakpoint 4, _sbrk (inc=1048) at dummy.c:19
+19	  void* ret = (void*)0x6000+delta;
+
+Breakpoint 4, _sbrk (inc=3048) at dummy.c:19
+19	  void* ret = (void*)0x6000+delta;
+
+Breakpoint 5, _isatty (fd=1) at dummy.c:27
+27	  return 1;
+
+Breakpoint 6, _write (fd=1, 
+    buf=0x6008 "hello world\n", '\314' <repeats 187 times>, <incomplete sequence \314>..., len=12) at dummy.c:32
+32	  return len;
+
+Breakpoint 7, _exit () at start.S:35
+35		bra	.
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
