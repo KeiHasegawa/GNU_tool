@@ -3,6 +3,7 @@ FT32 クロスコンパイル環境
 (*1) FT32
 (*2) スクリプトによるインストール
 (*3) 動作確認 => 一応 OK
+(*4) crt0.S をデバッグ情報付きでアセンブルする
 
 
 (*1) FT32
@@ -80,3 +81,15 @@ Unknown IO write 00002380 to to 00010035
 (gdb)
 
 のようになる. 最後は期待する動作ではないが, 一応これで満足しておく.
+
+
+(*4) crt0.S 等のアセンブラソースをデバッグ情報付きでアセンブルする
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/newlib/libc/machine/ft32
+% make -f Makefile.2
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ft32-elf/ft32-elf/libgloss/ft32
+% make -f Makefile.3
+
+
+

@@ -1,0 +1,23 @@
+LIB = lib.a
+
+all:$(LIB)
+
+VPATH = ../../../../../newlib/libc/machine/ft32
+
+%.o : %.S
+	ft32-elf-as -g --no-relax -o $@ $<
+
+
+OBJS = memcpy.o	\
+       setjmp.o	\
+       strcpy.o \
+       memset.o	\
+       strcmp.o	\
+       strlen.o \
+
+$(LIB):$(OBJS)
+	rm -f $@
+	ar rc $(LIB) $(OBJS)
+
+clean:
+	rm -f $(LIB) $(OBJS) *~

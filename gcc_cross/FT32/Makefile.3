@@ -1,0 +1,35 @@
+LIBSIM = libsim.a
+
+all:$(LIBSIM) crt0.o
+
+VPATH = ../../../libgloss/ft32
+
+%.o : %.c
+	ft32-elf-gcc -o $@ $< -g -c -I../../../libgloss
+
+%.o : %.S
+	ft32-elf-as -o $@ $< -g --no-relax
+
+
+OBJS = fstat.o \
+       getpid.o \
+       isatty.o \
+       kill.o \
+       sbrk.o \
+       sim-close.o \
+       sim-exit.o \
+       sim-inbyte.o \
+       sim-lseek.o \
+       sim-open.o \
+       sim-read.o \
+       sim-time.o \
+       sim-unlink.o \
+       sim-write.o \
+       stat.o \
+
+$(LIBSIM):$(OBJS)
+	rm -f $@
+	ar rc $@ $(OBJS)
+
+clean:
+	rm -f $(LIBSIM) $(OBJS) crt0.o
