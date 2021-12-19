@@ -272,10 +272,49 @@
       }
     }
 *** gdb-10.2.ppc-elf/sim/ppc/interrupts.c	2020-09-13 11:33:41.000000000 +0900
---- gdb-10.2.ppc-elf.new/sim/ppc/interrupts.c	2021-12-14 16:19:27.000000000 +0900
+--- gdb-10.2.ppc-elf.new/sim/ppc/interrupts.c	2021-12-19 17:44:53.000000000 +0900
 ***************
-*** 398,404 ****
---- 398,408 ----
+*** 355,364 ****
+        cia = perform_oea_interrupt(processor, cia, 0x00700, 0, 0, 0, srr1_set);
+        cpu_restart(processor, cia);
+      }
+! 
+    default:
+      error("internal error - program_interrupt - bad switch");
+! 
+    }
+  }
+  
+--- 355,364 ----
+        cia = perform_oea_interrupt(processor, cia, 0x00700, 0, 0, 0, srr1_set);
+        cpu_restart(processor, cia);
+      }
+! #ifndef NEW_MEM_MAP
+    default:
+      error("internal error - program_interrupt - bad switch");
+! #endif // NEW_MEM_MAP
+    }
+  }
+  
+***************
+*** 398,413 ****
+  
+    case USER_ENVIRONMENT:
+    case VIRTUAL_ENVIRONMENT:
+      os_emul_system_call(processor, cia);
+      cpu_restart(processor, cia+4);
+  
+    case OPERATING_ENVIRONMENT:
+      cia = perform_oea_interrupt(processor, cia+4, 0x00c00, 0, 0, 0, 0);
+      cpu_restart(processor, cia);
+! 
+    default:
+      error("internal error - system_call_interrupt - bad switch");
+! 
+    }
+  }
+  
+--- 398,417 ----
   
     case USER_ENVIRONMENT:
     case VIRTUAL_ENVIRONMENT:
@@ -287,6 +326,15 @@
       cpu_restart(processor, cia+4);
   
     case OPERATING_ENVIRONMENT:
+      cia = perform_oea_interrupt(processor, cia+4, 0x00c00, 0, 0, 0, 0);
+      cpu_restart(processor, cia);
+! #ifndef NEW_MEM_MAP
+    default:
+      error("internal error - system_call_interrupt - bad switch");
+! #endif  // NEW_MEM_MAP
+    }
+  }
+  
 *** gdb-10.2.ppc-elf/sim/ppc/main.c	2021-12-14 14:55:33.000000000 +0900
 --- gdb-10.2.ppc-elf.new/sim/ppc/main.c	2021-12-14 15:00:57.000000000 +0900
 ***************
