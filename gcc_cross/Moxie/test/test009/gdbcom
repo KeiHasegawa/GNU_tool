@@ -1,11 +1,23 @@
 set prompt (moxie-elf-gdb) 
 target sim
 load
-sim memory-region 0x3ff000,0x1000
-b *0x1030
+sim memory-region 0x3ff010,0x1000
+sim memory-region 0x61b4,0x1000
 b main
-b _sbrk
 b puts
+b _sbrk
+b _fstat
+b _isatty
+b _write
+b _exit
+command
+quit
+end
 run
-#where
-#quit
+c
+c
+c
+c
+c
+c
+c
