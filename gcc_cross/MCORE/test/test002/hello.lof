@@ -1,15 +1,14 @@
 Reading symbols from hello.elf...
 Connected to the simulator.
-Loading section .text, size 0x1d84 lma 0x100
-Loading section .rodata, size 0x10 lma 0x1e84
-Loading section .rodata.str1.4, size 0x2 lma 0x1e94
-Loading section .data, size 0x840 lma 0x1e98
+Loading section .text, size 0x30d4 lma 0x100
+Loading section .rodata, size 0x14 lma 0x31d4
+Loading section .data, size 0x83c lma 0x31e8
 Start address 0x100
-Transfer rate: 77488 bits in <1 sec.
+Transfer rate: 117024 bits in <1 sec.
 Breakpoint 1 at 0x100: file start.S, line 3.
 Breakpoint 2 at 0x11e: file start.S, line 21.
 Breakpoint 3 at 0x138: file hello.c, line 5.
-Breakpoint 4 at 0x346: file ../../../.././newlib/libc/stdio/puts.c, line 128.
+Breakpoint 4 at 0x40a: file ../../../.././newlib/libc/stdio/puts.c, line 129.
 Breakpoint 5 at 0x186: file dummy.c, line 15.
 Breakpoint 6 at 0x1ca: file dummy.c, line 27.
 Breakpoint 7 at 0x1dc: file dummy.c, line 30.
@@ -24,24 +23,24 @@ Breakpoint 1, start () at start.S:3
 Breakpoint 3, main () at hello.c:5
 5	  printf("hello world\n");
 
-Breakpoint 4, puts (s=0x1e84 "hello world")
-    at ../../../.././newlib/libc/stdio/puts.c:128
-128	{
+Breakpoint 4, puts (s=0x31d4 "hello world")
+    at ../../../.././newlib/libc/stdio/puts.c:129
+129	  return _puts_r (_REENT, s);
 
-Breakpoint 10, _fstat (fd=1, st=0x4f18) at dummy.c:6
+Breakpoint 10, _fstat (fd=1, st=0x59b0) at dummy.c:6
 6	  memset(st, 0, sizeof*st);
 
 Breakpoint 5, _sbrk (incr=1048) at dummy.c:15
 15	  char* ret =  &heap + delta;
 
-Breakpoint 5, _sbrk (incr=3048) at dummy.c:15
+Breakpoint 5, _sbrk (incr=232) at dummy.c:15
 15	  char* ret =  &heap + delta;
 
 Breakpoint 11, _isatty (fd=1) at dummy.c:22
 22	  return 1;
 
 Breakpoint 6, _write (fd=1, 
-    buf=0x3008 "hello world\n", '\314' <repeats 187 times>, <incomplete sequence \314>..., len=12) at dummy.c:27
+    buf=0x3b08 "hello world\n", '\314' <repeats 187 times>, <incomplete sequence \314>..., len=12) at dummy.c:27
 27	  return len;
 
 Breakpoint 2, _exit () at start.S:21

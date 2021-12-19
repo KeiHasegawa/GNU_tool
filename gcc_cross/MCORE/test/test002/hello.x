@@ -8,9 +8,9 @@ SECTIONS {
 	 }
 	 _bss_end = .;
 
-	 . = 0x3000;
+	 . = 0x3b00;
 	 heap = .;
 
-	 . = 0x5000;
+	 . = 0x5b00;
 	 stack = .;
 }
