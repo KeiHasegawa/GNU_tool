@@ -1,8 +1,54 @@
 Reading symbols from hello.elf...
 Connected to the simulator.
-Breakpoint 1 at 0x1800284: file hello.c, line 5.
+Loading section .init, size 0x24 lma 0x1800094
+Loading section .text, size 0x5c20 lma 0x18000b8
+Loading section .fini, size 0x20 lma 0x1805cd8
+Loading section .rodata, size 0xe lma 0x1805cf8
+Loading section .eh_frame_hdr, size 0x214 lma 0x1805d08
+Loading section .eh_frame, size 0xa78 lma 0x1816000
+Loading section .ctors, size 0x8 lma 0x1816a78
+Loading section .dtors, size 0x8 lma 0x1816a80
+Loading section .fixup, size 0x41c lma 0x1816a88
+Loading section .got2, size 0xcc lma 0x1816ea4
+Loading section .data, size 0x83c lma 0x1816f70
+Loading section .sdata, size 0x14 lma 0x18177ac
+Start address 0x18002b4
+Transfer rate: 242224 bits in <1 sec.
+Breakpoint 1 at 0x18002b4: file crt0.S, line 62.
+Breakpoint 2 at 0x1800284: file hello.c, line 5.
+Breakpoint 3 at 0x18005a8: file ../../../.././newlib/libc/stdio/puts.c, line 129.
+Breakpoint 4 at 0x1805bb0: file ../../.././libgloss/rs6000/../fstat.c, line 25.
+Breakpoint 5 at 0x1805a84: file ../../.././libgloss/rs6000/sim-sbrk.c, line 24.
+Breakpoint 6 at 0x1805bf0: file ../../.././libgloss/rs6000/../isatty.c, line 25.
+Breakpoint 7 at 0x1805af8: file ../../.././libgloss/rs6000/simulator.S, line 20.
 
-Breakpoint 1, main () at hello.c:5
+Breakpoint 1, _start () at crt0.S:62
+62		bl	.Laddr			/* get current address */
+
+Breakpoint 2, main () at hello.c:5
 5	  printf("hello world\n");
-hello world
-[Inferior 1 (process 42000) exited normally]
+
+Breakpoint 3, puts (s=0x1805cf8 "hello world")
+    at ../../../.././newlib/libc/stdio/puts.c:129
+129	  return _puts_r (_REENT, s);
+
+Breakpoint 4, fstat (fd=1, buf=0xfffffe0c)
+    at ../../.././libgloss/rs6000/../fstat.c:25
+25	  buf->st_mode = S_IFCHR;	/* Always pretend to be a tty */
+
+Breakpoint 5, sbrk (incr=1048) at ../../.././libgloss/rs6000/sim-sbrk.c:24
+24	  char *oldbrk = curbrk;
+
+Breakpoint 5, sbrk (incr=960) at ../../.././libgloss/rs6000/sim-sbrk.c:24
+24	  char *oldbrk = curbrk;
+
+Breakpoint 6, isatty (fd=1) at ../../.././libgloss/rs6000/../isatty.c:25
+25	  return (1);
+
+Breakpoint 7, _exit () at ../../.././libgloss/rs6000/simulator.S:20
+20		li	r0, 1
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]

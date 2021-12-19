@@ -5,6 +5,7 @@ core: 4 byte write to unmapped address 0x0 at 0x18002b4
 Program received signal SIGSEGV, Segmentation fault.
 _start () at sim-crt0.S:25
 
-のようになる. アドレス 0 への書き込みがあるが, sim-crt0.S が不明なので
-とりあえず fail の扱いにしておく.
+のようになる. アドレス 0 への書き込みがあるが, sim-crt0.S 
+ではスタックポインタ r1 の初期化を行なっていないのでこのようになってしまう.
+
 

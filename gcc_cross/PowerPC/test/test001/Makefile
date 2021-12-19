@@ -4,7 +4,10 @@ PREFIX = /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
 
 hello.elf:hello.c
 	ppc-elf-gcc -g -o hello.elf hello.c \
-	$(PREFIX)/ppc-elf/lib/sim-crt0.o -lc -lsim
+	$(PREFIX)/ppc-elf/lib/crt0.o -lc -lsim
+
+#$(PREFIX)/ppc-elf/lib/sim-crt0.o
+#$(PREFIX)/ppc-elf/lib/crt0.o
 
 hello.objdump:hello.elf
 	ppc-elf-objdump -x -d $< > $@

@@ -1,8 +1,25 @@
 set prompt (ppc-elf-gdb) 
 target sim
 load
+sim memory-region 0xfffff000,0x1000
+sim memory-region 0x1817828,0x1000
+b _start
+dir /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ppc-elf/ppc-elf/libgloss/rs6000/../../.././libgloss/rs6000
 b main
-run
-continue
+b puts
+b fstat
+b sbrk
+b isatty
+#b write
+b _exit
+command
 quit
-
+end
+run
+c
+c
+c
+c
+c
+c
+c
