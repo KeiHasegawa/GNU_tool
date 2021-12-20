@@ -1,5 +1,5 @@
 *** gdb-10.2.rx-elf/sim/common/sim-load.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.rx-elf.new/sim/common/sim-load.c	2021-12-16 18:13:47.000000000 +0900
+--- gdb-10.2.rx-elf.new/sim/common/sim-load.c	2021-12-21 06:51:05.000000000 +0900
 ***************
 *** 133,143 ****
 --- 133,154 ----
@@ -15,7 +15,7 @@
   	    }
   	}
 + #ifdef NEW_MEM_MAP
-+         else if (strcmp(s->name, "B") == 0) {
++         else if ((s->flags & SEC_ALLOC) || strcmp(s->name, "B") == 0) {
 +           bfd_vma lma = lma_p ? bfd_section_lma(s) : bfd_section_vma(s);
 +           bfd_size_type size = bfd_section_size(s);
 +           sim_do_command(sd, "memory-fill 0xcc");
