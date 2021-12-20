@@ -1,34 +1,47 @@
 Reading symbols from hello.elf...
 Connected to the simulator.
-Loading section .text, size 0x2ae0 lma 01000000 vma 01000000
-Loading section .vectors, size 0x30 lma ffffffd0 vma ffffffd0
-Breakpoint 1 at 0x100014e: file hello.c, line 5.
-Breakpoint 2 at 0x100016e: file dummy.c, line 6.
-Breakpoint 3 at 0x1000195: file dummy.c, line 15.
-Breakpoint 4 at 0x10001cc: file dummy.c, line 22.
-Breakpoint 5 at 0x10001e6: file dummy.c, line 27.
-Breakpoint 6 at 0x1000210: file ../../../.././newlib/libc/stdlib/exit.c, line 60.
+Loading section .text, size 0x2e56 lma 0x1000000
+Loading section .rodata, size 0x1c lma 0x1002e58
+Loading section .data, size 0x85c lma 0x1002e74
+Loading section .vectors, size 0x30 lma 0xffffffd0
+Start address 0x1000000
+Transfer rate: 112624 bits in <1 sec.
+Breakpoint 1 at 0x1000000: file ../../.././libgloss/rx/crt0.S, line 36.
+Breakpoint 2 at 0x100014e: file hello.c, line 5.
+Breakpoint 3 at 0x1000313: file ../../../.././newlib/libc/stdio/puts.c, line 129.
+Breakpoint 4 at 0x100016e: file dummy.c, line 6.
+Breakpoint 5 at 0x1000195: file dummy.c, line 15.
+Breakpoint 6 at 0x10001cc: file dummy.c, line 22.
+Breakpoint 7 at 0x10001e6: file dummy.c, line 27.
+Breakpoint 8 at 0x1000213: file ../../../.././newlib/libc/stdlib/exit.c, line 60.
 
-Breakpoint 1, main () at hello.c:5
+Breakpoint 1, start () at ../../.././libgloss/rx/crt0.S:36
+36		mvtc	#0, psw
+
+Breakpoint 2, main () at hello.c:5
 5	  printf("hello world\n");
 
-Breakpoint 2, fstat (fd=1, st=0x7ffff18) at dummy.c:6
+Breakpoint 3, puts (s=0x1002e5c "hello world")
+    at ../../../.././newlib/libc/stdio/puts.c:129
+129	  return _puts_r (_REENT, s);
+
+Breakpoint 4, fstat (fd=1, st=0x7fffe84) at dummy.c:6
 6	  memset(st, 0, sizeof*st);
 
-Breakpoint 3, sbrk (incr=1048) at dummy.c:15
+Breakpoint 5, sbrk (incr=1048) at dummy.c:15
 15	  char* ret =  &end + delta;
 
-Breakpoint 3, sbrk (incr=176) at dummy.c:15
+Breakpoint 5, sbrk (incr=1200) at dummy.c:15
 15	  char* ret =  &end + delta;
 
-Breakpoint 4, isatty (fd=1) at dummy.c:22
+Breakpoint 6, isatty (fd=1) at dummy.c:22
 22	  return 1;
 
-Breakpoint 5, write (fd=1, buf=0x1002b40 "hello world\n", len=12)
-    at dummy.c:27
+Breakpoint 7, write (fd=1, 
+    buf=0x1003740 "hello world\n", '\314' <repeats 187 times>, <incomplete sequence \314>..., len=12) at dummy.c:27
 27	  return len;
 
-Breakpoint 6, exit (code=0) at ../../../.././newlib/libc/stdlib/exit.c:60
+Breakpoint 8, exit (code=0) at ../../../.././newlib/libc/stdlib/exit.c:60
 60	    __call_exitprocs (code, NULL);
 A debugging session is active.
 

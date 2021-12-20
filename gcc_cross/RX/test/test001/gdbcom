@@ -1,22 +1,30 @@
 set prompt (rx-elf-gdb) 
 target sim
 load
-# 01002ae0 : __bssstart
-# 00000016 : __bsssize
-sim memory region 0x1002ae0:0x16
 
+# 08000000 : __stack
+sim memory-region 0x7fff000,0x1000
 
+# 01003738 : _end
+sim memory-region 0x1003738,0x1000
+
+b start
 b main
+b puts
 b fstat
 b sbrk
 b isatty
 b write
 b exit
-run
-continue
-continue
-continue
-continue
-continue
-continue
+command
 quit
+end
+run
+c
+c
+c
+c
+c
+c
+c
+c
