@@ -43,3 +43,24 @@ __sflush_r (struct _reent *ptr,
   register _READ_WRITE_BUFSIZE_TYPE n;  // この register があるせいで正しく動作しない.
   register _READ_WRITE_RETURN_TYPE t;   // この register があるせいで正しく動作しない.
 
+
+現状このテストを pass させるためには
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.rl78-elf.new/sim/common/sim-load.c
+
+の以下の部分が #if 1 にする必要がある.
+
+#ifdef NEW_MEM_MAP
+	      if (s->flags & SEC_DATA) {
+		if (s->flags & SEC_READONLY) {
+#if 0
+		  // below is necessary for passing
+		  // ~/lang/53_GNU_tool/gcc_cross/RL78/test/test001/
+		  lma |= 0xf0000;
+		  // But if above is add,
+		  // ~/lang/53_GNU_tool/gcc_cross/RL78/tool/sample.elf
+		  // will not work
+#endif		  
+		  sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
+
+さてどうしたものか.
