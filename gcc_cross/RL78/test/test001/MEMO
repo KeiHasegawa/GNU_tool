@@ -1,1 +1,45 @@
 メモリを断片で確保するようにしてからアクセスエラーで引っかかっている.
+
+_rl78_init の行番号情報がないが, crt0.S と同じファイルに函数の定義がある.
+
+
+以下の函数の呼び出しの前後で fp の値が
+
+  flags = __swhatbuf_r (ptr, fp, &size, &couldbetty);
+
+0xff0e6 から 0xfcccc になってしまう. そしてこの後数行実行し 0xf0409
+になり
+
+     fp->_flags |= __SMBF;
+
+を実行したとき 0xf0409 にアクセスしてエラーしている.
+
+これの原因の回避策として以下の函数の引数の宣言で register FILE  *fp を
+単に FILE* fp のように宣言すればよい.
+
+
+int
+__swsetup_r (struct _reent *ptr,
+       register FILE * fp)
+{
+  ...
+}
+
+__sfvwrite_r (struct _reent *ptr,
+       register FILE *fp,
+       register struct __suio *uio)
+{
+  ...
+}
+
+原因は調査中だがおそらく rl78-elf-gccc のバグでおそらく -O0 のときに再現すると予測される.
+
+同様のバグはローカル変数に対してもある.
+
+__sflush_r (struct _reent *ptr,
+       register FILE * fp)
+{
+  register unsigned char *p;            // この register があるせいで正しく動作しない.
+  register _READ_WRITE_BUFSIZE_TYPE n;  // この register があるせいで正しく動作しない.
+  register _READ_WRITE_RETURN_TYPE t;   // この register があるせいで正しく動作しない.
+

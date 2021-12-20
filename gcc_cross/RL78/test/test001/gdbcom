@@ -1,9 +1,59 @@
 set prompt (rl78-elf-gdb) 
 target sim
 load
+
+# 0xff396 : _end
+sim memory-region 0xff396,0x500
+
+# 0xffe20 : __stack
+sim memory-region 0xff8a0,0x580
+
+# UART
+# PER0
+sim memory-region 0xf00f0,1
+# SSR00
+sim memory-region 0xf0100,2
+# SMR00
+sim memory-region 0xf0110,2
+# SCR00
+sim memory-region 0xf0118,2
+# SS0
+sim memory-region 0xf0122,2
+# SPS0
+sim memory-region 0xf0126,2
+# SO0
+sim memory-region 0xf0128,2
+# SOE0
+sim memory-region 0xf012a,2
+# SOL0
+sim memory-region 0xf0134,2
+#SDR00
+sim memory-region 0xfff10,2
+# ??? related UART
+sim memory-region 0xfff01,1
+# ??? related UART
+sim memory-region 0xfff21,1
+
+#b start
+#b _rl78_init
+#b __sfvwrite_r
+#b __smakebuf_r
+#b __swhatbuf_r
+
 b main
-run
-step
-where
-finish
+b puts
+b _fstat
+b _sbrk
+b _isatty
+b _write
+b exit
+command
 quit
+end
+run
+c
+c
+c
+c
+c
+c
