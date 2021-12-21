@@ -1,0 +1,26 @@
+mn10300-elf-gdb --annotate=3 test013.elf
+
+のように実行:
+
+setjmp にブレークポイントをセットするとダイアログボックス
+
+Cannot find source file for break point location.
+Add directory to search path for source files using GDB command, dir.
+
+が表示される.
+
+mn10300-elf-gdb test013.elf
+
+のように実行すれば
+
+14	setjmp.S: そのようなファイルやディレクトリはありません.
+
+のようなメッセージが表示される.
+
+しかし不思議なことに longjmp のブレークポイントをセットするとエラーは発生しない.
+
+setjmp.S をリアセンブルしてみたが上のエラーを回避できていない. これは, おそらく
+mn10300-elf-as に問題がある.
+
+これ以外はできてきるが, 一応 fail の扱いにしておく.
+
