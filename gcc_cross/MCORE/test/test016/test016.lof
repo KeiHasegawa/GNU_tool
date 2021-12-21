@@ -1,0 +1,36 @@
+Reading symbols from test016.elf...
+Connected to the simulator.
+Loading section .text, size 0xfa lma 0x100
+Start address 0x100
+Transfer rate: 2000 bits in <1 sec.
+Breakpoint 1 at 0x168: file test016.c, line 17.
+Breakpoint 2 at 0x1ac: file setjmp.S, line 4.
+Breakpoint 3 at 0x1ce: file setjmp.S, line 24.
+Breakpoint 4 at 0x152: file test016.c, line 12.
+
+Breakpoint 1, main () at test016.c:17
+17	  int r = setjmp(buf);
+
+Breakpoint 2, setjmp () at setjmp.S:4
+4		stw	r8, (r2)
+#0  setjmp () at setjmp.S:4
+#1  0x00000170 in main () at test016.c:17
+
+Breakpoint 3, longjmp () at setjmp.S:24
+24		ldw	r8, (r2)
+#0  longjmp () at setjmp.S:24
+#1  0x00000132 in f (n=0, buf=0xfb4) at test016.c:6
+#2  0x0000013e in f (n=1, buf=0xfb4) at test016.c:7
+#3  0x0000013e in f (n=2, buf=0xfb4) at test016.c:7
+#4  0x0000013e in f (n=3, buf=0xfb4) at test016.c:7
+#5  0x0000013e in f (n=4, buf=0xfb4) at test016.c:7
+#6  0x0000013e in f (n=5, buf=0xfb4) at test016.c:7
+#7  0x00000184 in main () at test016.c:19
+{
+Breakpoint 4, g (n=123) at test016.c:12
+12	}
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
