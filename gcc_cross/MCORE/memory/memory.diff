@@ -1,0 +1,375 @@
+*** gdb-10.2.org/sim/common/sim-load.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.mcore-elf/sim/common/sim-load.c	2021-12-22 05:22:23.000000000 +0900
+***************
+*** 54,59 ****
+--- 54,60 ----
+     write the program sections at LMA interpreted as a virtual address.
+     This is still accommodated for backward compatibility reasons. */
+  
++ void set_code_area(bfd_vma addr, bfd_size_type size);
+  
+  bfd *
+  sim_load_file (SIM_DESC sd, const char *myname, host_callback *callback,
+***************
+*** 133,143 ****
+--- 134,153 ----
+  		}
+  	      data_count += size;
+  	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
++   	      if (s->flags & SEC_CODE)
++   		set_code_area(lma, size);
++        	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
+  	      do_write (sd, lma, buffer, size);
+  	      found_loadable_section = 1;
+  	      free (buffer);
+  	    }
+  	}
++         else if (s->flags & SEC_ALLOC) {
++           bfd_vma lma = lma_p ? bfd_section_lma(s) : bfd_section_vma(s);
++           bfd_size_type size = bfd_section_size(s);
++           sim_do_command(sd, "memory-fill 0xcc");
++           sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
++         }
+      }
+  
+    if (!found_loadable_section)
+*** gdb-10.2.org/sim/mcore/interp.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.mcore-elf/sim/mcore/interp.c	2021-12-22 05:38:44.000000000 +0900
+***************
+*** 268,285 ****
+  #define IMM5	((inst >> 4) & 0x1F)
+  #define IMM4	((inst) & 0xF)
+  
+! #define rbat(X)	sim_core_read_1 (cpu, 0, read_map, X)
+! #define rhat(X)	sim_core_read_2 (cpu, 0, read_map, X)
+! #define rlat(X)	sim_core_read_4 (cpu, 0, read_map, X)
+! #define wbat(X, D) sim_core_write_1 (cpu, 0, write_map, X, D)
+! #define what(X, D) sim_core_write_2 (cpu, 0, write_map, X, D)
+! #define wlat(X, D) sim_core_write_4 (cpu, 0, write_map, X, D)
+  
+  static int tracing = 0;
+  
+  #define ILLEGAL() \
+    sim_engine_halt (sd, cpu, NULL, pc, sim_stopped, SIM_SIGILL)
+  
+  static void
+  step_once (SIM_DESC sd, SIM_CPU *cpu)
+  {
+--- 268,458 ----
+  #define IMM5	((inst >> 4) & 0x1F)
+  #define IMM4	((inst) & 0xF)
+  
+! #define rbat(X)	sim_core_read_1 (cpu, cpu->regs.pc, read_map, X)
+! #define rhat(X)	sim_core_read_2 (cpu, cpu->regs.pc, read_map, X)
+! #define rlat(X)	sim_core_read_4 (cpu, cpu->regs.pc, read_map, X)
+! #define wbat(X, D) sim_core_write_1 (cpu, cpu->regs.pc, write_map, X, D)
+! #define what(X, D) sim_core_write_2 (cpu, cpu->regs.pc, write_map, X, D)
+! #define wlat(X, D) sim_core_write_4 (cpu, cpu->regs.pc, write_map, X, D)
+  
+  static int tracing = 0;
+  
+  #define ILLEGAL() \
+    sim_engine_halt (sd, cpu, NULL, pc, sim_stopped, SIM_SIGILL)
+  
++ #include <assert.h>
++ 
++ static const char* first_string(SIM_DESC sd, SIM_CPU* cpu)
++ {
++   uint32_t r2 = cpu->regs.gregs[2];
++   static char buf[1024];
++   for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i ) {
++     char c = rbat(r2+i);
++     buf[i] = c;
++     if (c == '\0')
++       return &buf[0]; // ok
++   }
++   assert(0 && "not enough buffer");
++   return &buf[0];
++ }
++ 
++ enum arg_class { NONE, WORD, DW, DF, LDF, STR };
++ 
++ static const char* get_part(const char* fmt, enum arg_class* how)
++ {
++   for ( ; *fmt ; ++fmt) {
++     char c = *fmt;
++     if (c == 'd' || c == 'i' || c == 'x' || c == 'u') {
++       if (*how == NONE)
++ 	*how = WORD;
++       return ++fmt;
++     }
++     if (c == 'c') {
++       *how = WORD;
++       return ++fmt;
++     }
++     if (c == 'f') {
++       char prev = *(fmt-1);
++       *how = prev == 'L' ? LDF : DF;
++       return ++fmt;
++     }
++     if (c == 's') {
++       *how = STR;
++       return ++fmt;
++     }
++     if (c == 'l') {
++       if (*how == NONE)
++ 	*how = WORD;
++       else
++ 	*how = DW;
++     }
++   }
++   assert(0 && "unexpected");
++   return fmt;
++ }
++ 
++ 
++ static unsigned int arg32(SIM_DESC sd, SIM_CPU* cpu, int nth)
++ {
++   assert(nth);
++   if (nth < 6)
++     return cpu->regs.gregs[nth+2];
++   int sp = cpu->regs.gregs[0];
++   int addr = sp + 4*(nth-6);
++   return rlat(addr);
++ }
++ 
++ static uint64_t arg64(SIM_DESC sd, SIM_CPU* cpu, int nth)
++ {
++   assert(nth);
++   if (nth < 5) {
++     uint64_t a = cpu->regs.gregs[nth+2];
++     uint32_t b = cpu->regs.gregs[nth+3];
++     return (a << 32) | b;
++   }
++   if (nth == 5) {
++     uint64_t a = cpu->regs.gregs[nth+2];
++     int sp = cpu->regs.gregs[0];
++     uint32_t b = rlat(sp);
++     return (a << 32) | b;
++   }
++   int sp = cpu->regs.gregs[0];
++   int addr = sp + 4*(nth-4);
++   uint64_t a = rlat(addr);
++   uint32_t b = rlat(addr+4);
++   return (a << 32) | b; 
++ }
++ 
++ static const char*
++ handle(SIM_DESC sd, SIM_CPU* cpu, const char* fmt, int* nth, int* ret)
++ {
++   char c = *fmt;
++   if (c != '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   const char* beg = fmt;
++   c = *++fmt;
++   if (c == '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   enum arg_class how = NONE;
++   const char* end = get_part(fmt, &how);
++   char part_fmt[256];
++   int n = end - beg;
++   assert(n + 1 < sizeof part_fmt/sizeof part_fmt[0]);
++   strncpy(&part_fmt[0], beg, n);
++   part_fmt[n] = '\0';
++   if (how == WORD) {
++     int arg = arg32(sd, cpu, (*nth)++);
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DW) {
++     uint64_t arg = arg64(sd, cpu, *nth);
++     *nth += 2;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DF || how == LDF) {
++     union {
++       uint64_t i;
++       double d;
++     } u = { arg64(sd, cpu, *nth) };
++     *nth += 2;
++     if (how == DF)
++       *ret += printf(part_fmt, u.d);
++     else
++       *ret += printf(part_fmt, (long double)u.d);
++     return end;
++   }
++   if (how == STR) {
++     uint32_t addr = arg32(sd, cpu, (*nth)++);
++     char buf[256];
++     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++       char c = rbat(addr+i);
++       buf[i] = c;
++       if (c == '\0') {
++ 	*ret += printf(part_fmt, &buf[0]);  // ok
++ 	return end;
++       }
++     }
++     assert(0 && "not enough buffer");
++     return end;
++   }
++   asm("int3");
++   return end;
++ }
++ 
++ static void do_printf(SIM_DESC sd, SIM_CPU* cpu)
++ {
++   const char* fmt = first_string(sd, cpu);
++   int argc = 1;
++   int ret = 0;
++   while (*fmt)
++     fmt = handle(sd, cpu, fmt, &argc, &ret);
++   cpu->regs.gregs[2] = ret;
++ }
++ 
++ static void do_puts(SIM_DESC sd, SIM_CPU* cpu)
++ {
++   const char* arg = first_string(sd, cpu);
++   int ret = puts(arg);
++   cpu->regs.gregs[2] = ret;
++ }
++ 
++ static void do_putchar(SIM_DESC sd, SIM_CPU* cpu)
++ {
++   int arg = cpu->regs.gregs[2];
++   int ret = putchar(arg);
++   cpu->regs.gregs[2] = ret;  
++ }
++ 
++ extern _Bool code_area(word addr);
++ 
+  static void
+  step_once (SIM_DESC sd, SIM_CPU *cpu)
+  {
+***************
+*** 299,305 ****
+    pc = CPU_PC_GET (cpu);
+  
+    /* Fetch the initial instructions that we'll decode. */
+!   ibuf = rlat (pc & 0xFFFFFFFC);
+    needfetch = 0;
+  
+    memops = 0;
+--- 472,481 ----
+    pc = CPU_PC_GET (cpu);
+  
+    /* Fetch the initial instructions that we'll decode. */
+!   if (code_area(pc) && code_area(pc+3))
+!     ibuf = rlat (pc & 0xFFFFFFFC);
+!   else
+!     ibuf = (rhat(pc & 0xFFFFFFFC) << 16) | 0x09f3;
+    needfetch = 0;
+  
+    memops = 0;
+***************
+*** 408,414 ****
+--- 584,592 ----
+  	      switch RD
+  		{
+  		case 0x0:				/* bkpt */
++ #if 0		  
+  		  pc -= 2;
++ #endif		  
+  		  sim_engine_halt (sd, cpu, NULL, pc - 2,
+  				   sim_stopped, SIM_SIGTRAP);
+  		  break;
+***************
+*** 736,742 ****
+  	  break;
+  	case 0x08:					/* illegal */
+  	case 0x09:					/* illegal*/
+! 	  ILLEGAL ();
+  	  break;
+  	case 0x0A:					/* movf */
+  	  if (C_OFF())
+--- 914,926 ----
+  	  break;
+  	case 0x08:					/* illegal */
+  	case 0x09:					/* illegal*/
+! 	  switch (inst) {
+! 	  case 0x9f0: exit(0);
+! 	  case 0x9f1: do_printf(sd, cpu); break;
+! 	  case 0x9f2: do_puts(sd, cpu); break;
+! 	  case 0x9f3: do_putchar(sd, cpu); break;
+! 	  default: ILLEGAL (); break;
+! 	  }
+  	  break;
+  	case 0x0A:					/* movf */
+  	  if (C_OFF())
+***************
+*** 1204,1210 ****
+  
+        if (needfetch)
+  	{
+! 	  ibuf = rlat (pc & 0xFFFFFFFC);
+  	  needfetch = 0;
+  	}
+      }
+--- 1388,1397 ----
+  
+        if (needfetch)
+  	{
+! 	  if (code_area(pc) && code_area(pc+3))
+! 	    ibuf = rlat (pc & 0xFFFFFFFC);
+! 	  else
+! 	    ibuf = (rhat(pc & 0xFFFFFFFC) << 16) | 0x09f3;
+  	  needfetch = 0;
+  	}
+      }
+***************
+*** 1406,1415 ****
+  
+        set_initial_gprs (cpu);	/* Reset the GPR registers.  */
+      }
+! 
+    /* Default to a 8 Mbyte (== 2^23) memory space.  */
+    sim_do_commandf (sd, "memory-size %#x", DEFAULT_MEMORY_SIZE);
+! 
+    return sd;
+  }
+  
+--- 1593,1602 ----
+  
+        set_initial_gprs (cpu);	/* Reset the GPR registers.  */
+      }
+! #if 0
+    /* Default to a 8 Mbyte (== 2^23) memory space.  */
+    sim_do_commandf (sd, "memory-size %#x", DEFAULT_MEMORY_SIZE);
+! #endif
+    return sd;
+  }
+  
+***************
+*** 1417,1422 ****
+--- 1604,1610 ----
+  sim_create_inferior (SIM_DESC sd, struct bfd *prog_bfd,
+  		     char * const *argv, char * const *env)
+  {
++ #if 0  
+    SIM_CPU *cpu = STATE_CPU (sd, 0);
+    char ** avp;
+    int nargs = 0;
+***************
+*** 1526,1531 ****
+        wlat (pointers, 0);
+        pointers += 4;
+      }
+! 
+    return SIM_RC_OK;
+  }
+--- 1714,1722 ----
+        wlat (pointers, 0);
+        pointers += 4;
+      }
+! #else
+!   SIM_CPU *cpu = STATE_CPU (sd, 0);
+!   CPU_PC_SET (cpu, bfd_get_start_address (prog_bfd));
+! #endif  
+    return SIM_RC_OK;
+  }
