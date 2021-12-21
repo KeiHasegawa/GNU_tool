@@ -7,31 +7,8 @@ In `sim_open' function, executed like below:
 ...
   sim_do_commandf (sd, "memory-size %#x", DEFAULT_MEMORY_SIZE);
 
-Except above, while loading target program, allocate memory like below:
-
-*** gdb-10.2.arm-elf/sim/common/sim-load.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.mcore-elf/sim/common/sim-load.c	2021-12-04 08:49:11.000000000 +0900
-***************
-*** 133,143 ****
---- 133,150 ----
-  		}
-  	      data_count += size;
-  	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
-+        	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
-  	      do_write (sd, lma, buffer, size);
-  	      found_loadable_section = 1;
-  	      free (buffer);
-  	    }
-  	}
-+         else if (s->flags & SEC_ALLOC) {
-+           bfd_vma lma = lma_p ? bfd_section_lma(s) : bfd_section_vma(s);
-+           bfd_size_type size = bfd_section_size(s);
-+           sim_do_command(sd, "memory-fill 0xcc");
-+           sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
-+         }
-      }
-  
-    if (!found_loadable_section)
+Except above, while loading target program, allocate memory by applying
+`memory.diff'. `mine.cpp' and `Makefile.mine' will be required.
 
 As this result, memory will be allocated for `.text', `.rodata', `.data'
 and `.bss' section.
