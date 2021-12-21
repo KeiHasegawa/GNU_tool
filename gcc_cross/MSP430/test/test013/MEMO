@@ -1,0 +1,13 @@
+setjmp と longjmp の行番号情報が正しくない.
+
+例によって setjmp.S の行番号情報が生成されていないようだったのでリアセンブルして
+libc.a を作成し直したが
+
+test013.elf を objdump に指定すると
+
+msp430-elf-objdump: 警告: The length field (0xfffffeb7) in the debug_line header is wrong - the section is too small
+
+のように警告メッセージが出力される. setjmp と longjmp の行番号が正しくないので
+ソースとの対応が取れていない. これ以外は期待した動作になっている.
+
+fail の扱いにしておく.
