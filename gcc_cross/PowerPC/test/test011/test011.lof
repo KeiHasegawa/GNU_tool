@@ -1,0 +1,39 @@
+Reading symbols from test011.elf...
+Connected to the simulator.
+Loading section .text, size 0x288 lma 0x100
+Loading section .eh_frame, size 0x88 lma 0x388
+Start address 0x100
+Transfer rate: 6272 bits in <1 sec.
+Breakpoint 1 at 0x1b0: file test011.c, line 17.
+Breakpoint 2 at 0x208: file ../../../../.././newlib/libc/machine/powerpc/setjmp.S, line 12.
+Breakpoint 3 at 0x2c4: file ../../../../.././newlib/libc/machine/powerpc/setjmp.S, line 145.
+Breakpoint 4 at 0x188: file test011.c, line 12.
+
+Breakpoint 1, main () at test011.c:17
+17	  int r = setjmp(buf);
+
+Breakpoint 2, setjmp ()
+    at ../../../../.././newlib/libc/machine/powerpc/setjmp.S:12
+12		addi	3,3,7		# align to 8 byte boundary
+#0  setjmp () at ../../../../.././newlib/libc/machine/powerpc/setjmp.S:12
+#1  0x000001bc in main () at test011.c:17
+
+Breakpoint 3, longjmp ()
+    at ../../../../.././newlib/libc/machine/powerpc/setjmp.S:145
+145		addi	3,3,7		# align to 8 byte boundary
+#0  longjmp () at ../../../../.././newlib/libc/machine/powerpc/setjmp.S:145
+#1  0x00000148 in f (n=0, buf=0xef0) at test011.c:6
+#2  0x0000015c in f (n=1, buf=0xef0) at test011.c:7
+#3  0x0000015c in f (n=2, buf=0xef0) at test011.c:7
+#4  0x0000015c in f (n=3, buf=0xef0) at test011.c:7
+#5  0x0000015c in f (n=4, buf=0xef0) at test011.c:7
+#6  0x0000015c in f (n=5, buf=0xef0) at test011.c:7
+#7  0x000001e0 in main () at test011.c:19
+
+Breakpoint 4, g (n=123) at test011.c:12
+12	}
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
