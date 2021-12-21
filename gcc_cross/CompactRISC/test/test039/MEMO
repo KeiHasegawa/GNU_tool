@@ -1,0 +1,29 @@
+newlib のリビルドをすることでリンクエラーを回避できる
+
+以下のようにすれば libc.a を setjmp.o 入りのものにすることができる.
+
+cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.cr16-elf/
+pushd ./cr16-elf/newlib/libc/machine/cr16/
+cr16-elf-gcc -E ../../../../.././newlib/libc/machine/cr16/setjmp.S > setjmp.S
+cr16-elf-as -o lib_a-setjmp.o setjmp.S -g
+popd
+ar r ./newlib/libc/libc.a ./cr16-elf/newlib/libc/machine/cr16/*.o
+
+pushd ./cr16-elf/int32/newlib/libc/machine/cr16/
+cr16-elf-gcc -mint32 -E ../../../../../.././newlib/libc/machine/cr16/setjmp.S > setjmp.S
+cr16-elf-as -o lib_a-setjmp.o setjmp.S -g
+popd
+ar r ./cr16-elf/int32/newlib/libc/libc.a ./cr16-elf/int32/newlib/libc/machine/cr16/*.o
+
+pushd ./cr16-elf/far-pic/newlib/libc/machine/cr16/
+cr16-elf-gcc -E ../../../../../.././newlib/libc/machine/cr16/setjmp.S > setjmp.S
+cr16-elf-as -o lib_a-setjmp.o setjmp.S -g
+popd
+ar r ./cr16-elf/far-pic/newlib/libc/libc.a ./cr16-elf/far-pic/newlib/libc/machine/cr16/*.o
+
+pushd ./cr16-elf/far-pic/int32/newlib/libc/machine/cr16
+cr16-elf-gcc -E -mint32 ../../../../../../.././newlib/libc/machine/cr16/setjmp.S > setjmp.S
+cr16-elf-as -o lib_a-setjmp.o setjmp.S -g
+popd
+ar r ./cr16-elf/far-pic/int32/newlib/libc/libc.a ./cr16-elf/far-pic/int32/newlib/libc/machine/cr16/*.o
+make install
