@@ -1,0 +1,15 @@
+setjmp, longjmp に対して undefined reference to のエラーが出る.
+newlib のビルドの方法が良くなかったらしい. M32C の newlib は Makefile.mine
+を独自で作ってビルドしたので, 以下のようにインストールし直した.
+
+cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf
+pushd ./m32c-elf/m32cm/newlib/libc/machine/m32c/
+rm -f lib_a-setjmp.o
+m32c-elf-gcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/newlib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/newlib/libc/include -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/libgloss/m32c -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/libgloss/libnosys -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/libgloss/m32c  -DPACKAGE_NAME=\"newlib\" -DPACKAGE_TARNAME=\"newlib\" -DPACKAGE_VERSION=\"4.1.0\" -DPACKAGE_STRING=\"newlib\ 4.1.0\" -DPACKAGE_BUGREPORT=\"\" -DPACKAGE_URL=\"\" -I. -I../../../../../.././newlib/libc/machine/m32c -Os -fno-builtin -DPREFER_SIZE_OVER_SPEED -DSMALL_MEMORY -DMISSING_SYSCALL_NAMES -DABORT_PROVIDED -DHAVE_INIT_FINI     -Os -fno-builtin -DPREFER_SIZE_OVER_SPEED -DSMALL_MEMORY -DMISSING_SYSCALL_NAMES -DABORT_PROVIDED -DHAVE_INIT_FINI   -Wa,-g -O0 -c -o lib_a-setjmp.o `test -f 'setjmp.S' || echo '../../../../../.././newlib/libc/machine/m32c/'`setjmp.S
+popd
+
+pushd newlib/libc
+m32c-elf-ar r libc.a argz/*.o ctype/*.o errno/*.o locale/*.o misc/*.o reent/*.o search/*.o signal/*.o ssp/*.o stdio/*.o stdlib/*.o string/*.o syscalls/*.o /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.m32c-elf/m32c-elf/m32cm/newlib/libc/machine/m32c/*.o
+
+cd ..
+make -f Makefile.mine install
