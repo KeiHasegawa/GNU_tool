@@ -1,0 +1,32 @@
+Reading symbols from test015.elf...
+Connected to the simulator.
+Loading section .text, size 0x1a8 lma 0x80000100
+Start address 0x80000100
+Transfer rate: 3392 bits in <1 sec.
+Breakpoint 1 at 0x800001cc: file test015.c, line 17.
+Breakpoint 2 at 0x80000238: file ../../../../.././newlib/libc/machine/iq2000/setjmp.S, line 8.
+Breakpoint 3 at 0x8000026c: file ../../../../.././newlib/libc/machine/iq2000/setjmp.S, line 31.
+Breakpoint 4 at 0x800001a0: file test015.c, line 12.
+
+Breakpoint 1, main () at test015.c:17
+17	  int r = setjmp(buf);
+
+Breakpoint 2, setjmp ()
+    at ../../../../.././newlib/libc/machine/iq2000/setjmp.S:8
+8		sw	r16,0(r4)	/* rs0 */
+#0  setjmp () at ../../../../.././newlib/libc/machine/iq2000/setjmp.S:8
+#1  0x800001e4 in main () at test015.c:17
+
+Breakpoint 3, longjmp ()
+    at ../../../../.././newlib/libc/machine/iq2000/setjmp.S:31
+31		lw	r16,0(r4)	/* rs0 */
+#0  longjmp () at ../../../../.././newlib/libc/machine/iq2000/setjmp.S:31
+#1  0x800001e4 in main () at test015.c:17
+
+Breakpoint 4, g (n=123) at test015.c:12
+12	}
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
