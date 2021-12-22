@@ -1,12 +1,27 @@
 set prompt (arm-elf-gdb) 
 target sim
 load
-#b main
-#b _fstat
-#b _sbrk
-#b _isatty
-#b _write
-#run
-#disassemble
-#c
-#quit
+# stack
+sim memory-region 0x7a000,0x1000
+# 0x001c9bc : end
+sim memory-region 0x1c9bc,0x1000
+
+b main
+b puts
+b _fstat
+b _sbrk
+b _isatty
+b _write
+b exit
+command
+quit
+end
+run
+c
+c
+c
+c
+c
+c
+c
+

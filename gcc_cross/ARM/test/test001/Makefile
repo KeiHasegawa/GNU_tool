@@ -1,4 +1,4 @@
-all:hello.objdump hello.lof TAGS
+all:hello.objdump hello.lof
 
 include ../Makefile.common
 
