@@ -41,7 +41,7 @@ Data memory
 |              |
 | I/O register |
 |              |
-| Stack pointer| 0x0005d
+| Stack pointer| 0x0003d
 |              |
 +--------------+ 0x00060
 |              |
@@ -57,6 +57,20 @@ Especially, I/O register area offset 0x3d is mapped to stack pointer,
 which is refered or upudated by `rcall', `ret', `push' and `pop'.
 The last 0x10000 - 0x60 bytes are used by a software freely.
 `SRAM' may means the whole of above.
+
+Register alias
+
+XL : r26
+XH : r27
+YL : r28
+YH : r29
+ZL : r30
+ZH : r31
+
+For some address, load/store instructions are executed like below:
+
+st  X, r24
+ld  r25, Y
 
 (*1) Simple sample
 

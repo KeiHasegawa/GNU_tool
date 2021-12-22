@@ -98,3 +98,8 @@ void xxx(int a, int b)
   if (a != b)
     clear_bss(0, (char*)0x10);
 }
+
+int yyy()
+{
+  return 0;
+}
