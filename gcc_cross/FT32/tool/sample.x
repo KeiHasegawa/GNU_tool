@@ -1,21 +1,25 @@
+MEMORY {
+       flash     (rx)   : ORIGIN = 0,        LENGTH = 0x40000
+       ram       (rw!x) : ORIGIN = 0x800000, LENGTH = 0x10000
+}
+
 SECTIONS {
-	 . = 0x100;
-	 .text : {}
+	 .text : {} > flash
 	 
 	 .data : {
-	 	 _data_start = .;
-	 }
- 	 _data_end = .;
+	       _data_start = .;  /* VMA */
+	       *(.data)
+	       *(.rodata)
+	       _data_end = .;    /* VMA */
+	 } > ram AT> flash
 	 
-	 .rodata : {
-	 	 _rodata_start = .;
-	 }
-	 _rodata_end = .;
-
-	 .bss : {
+	 .bss ADDR(.data) + SIZEOF(.data) : {
 	      _bss_start = .;
-	 }
-	 _bss_end = .;
+	      *(.bss)
+	      _bss_end = .;	      
+	 } > ram
+	 __data_load_start = LOADADDR(.data);                    /* LMA */
+	 __data_load_end = __data_load_start + SIZEOF(.data);    /* LMA */
 
 	 . = 0xf000;
 	 stack = .;

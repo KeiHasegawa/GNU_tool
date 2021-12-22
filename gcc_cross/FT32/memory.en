@@ -7,27 +7,28 @@ In `sim_open' function, allodated like below:
 
 Except above, while loading target program, allocate memory like below:
 
-*** gdb-10.2.arm-elf/sim/common/sim-load.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.ft32-elf/sim/common/sim-load.c	2021-12-03 14:31:52.000000000 +0900
+*** gdb-10.2.org/sim/common/sim-load.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.ft32-elf/sim/common/sim-load.c	2021-12-22 16:27:23.000000000 +0900
 ***************
 *** 133,143 ****
---- 133,152 ----
+--- 133,153 ----
   		}
   	      data_count += size;
   	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
 +      	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
-+ 	      if (s->flags &SEC_DATA)
-+ 		sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma+0x800000, size);
++ 	      bfd_vma vma = bfd_section_vma(s);
++ 	      if (lma != vma)
++ 		sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", vma, size);
   	      do_write (sd, lma, buffer, size);
   	      found_loadable_section = 1;
   	      free (buffer);
   	    }
   	}
 +         else if (s->flags & SEC_ALLOC) {
-+           bfd_vma lma = lma_p ? bfd_section_lma(s) : bfd_section_vma(s);
++           bfd_vma vma = bfd_section_vma(s);
 +           bfd_size_type size = bfd_section_size(s);
 +           sim_do_command(sd, "memory-fill 0xcc");
-+           sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma+0x800000, size);
++           sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", vma, size);
 +         }
       }
   
