@@ -110,7 +110,7 @@
   /* #endif  ASIM */
   #endif /* VALIDATE */
 *** gdb-10.2.org/sim/arm/armvirt.c	2020-09-13 11:33:41.000000000 +0900
---- gdb-10.2.arm-elf/sim/arm/armvirt.c	2021-12-10 08:48:32.000000000 +0900
+--- gdb-10.2.arm-elf/sim/arm/armvirt.c	2021-12-18 11:36:52.000000000 +0900
 ***************
 *** 21,27 ****
      table. The routines PutWord and GetWord implement this. Pages are never
@@ -309,8 +309,30 @@
   
   /***************************************************************************\
 ***************
+*** 279,284 ****
+--- 297,303 ----
+  
+  ARMword ARMul_LoadHalfWord (ARMul_State * state, ARMword address)
+  {
++ #ifndef NEW_MEM_MAP  
+    ARMword temp, offset;
+  
+    state->NumNcycles++;
+***************
+*** 287,292 ****
+--- 306,314 ----
+    offset = (((ARMword) state->bigendSig * 2) ^ (address & 2)) << 3;	/* bit offset into the word */
+  
+    return (temp >> offset) & 0xffff;
++ #else  // NEW_MEM_MAP
++   return sim_core_read_aligned_2(g_cpu, state->Reg[15], 0, address);
++ #endif  // NEW_MEM_MAP
+  }
+  
+  /***************************************************************************\
+***************
 *** 295,306 ****
---- 313,328 ----
+--- 317,332 ----
   
   ARMword ARMul_ReadByte (ARMul_State * state, ARMword address)
   {
@@ -337,7 +359,7 @@
   }
   
   /***************************************************************************\
---- 354,364 ----
+--- 358,368 ----
         ARMul_CLEARABORT;
       }
   #endif
@@ -351,7 +373,7 @@
   /***************************************************************************\
 ***************
 *** 385,393 ****
---- 410,422 ----
+--- 414,426 ----
     temp = ARMul_ReadWord (state, address);
     offset = (((ARMword) state->bigendSig * 2) ^ (address & 2)) << 3;	/* bit offset into the word */
   
@@ -381,7 +403,7 @@
   }
   
   /***************************************************************************\
---- 426,442 ----
+--- 430,446 ----
   void
   ARMul_WriteByte (ARMul_State * state, ARMword address, ARMword data)
   {
@@ -401,7 +423,7 @@
   /***************************************************************************\
 ***************
 *** 444,450 ****
---- 476,486 ----
+--- 480,490 ----
   
     state->NumNcycles++;
   
@@ -414,42 +436,54 @@
     return temp;
   }
 ***************
-*** 493,499 ****
---- 529,539 ----
+*** 485,507 ****
+--- 525,558 ----
+    ARMul_CLEARABORT;
+  }
+  
++ void swap(char* a, char* b)
++ {
++   char tmp = *a;
++   *a = *b;
++   *b = tmp;
++ }
+  
+  /* Read a byte.  Do not check for alignment or access errors.  */
+  
+  ARMword
+  ARMul_SafeReadByte (ARMul_State * state, ARMword address)
   {
++ #ifndef NEW_MEM_MAP  
     ARMword temp, offset;
   
-+ #ifndef NEW_MEM_MAP
     temp = GetWord (state, address, FALSE);
-+ #else // NEW_MEM_MAP
-+   asm("int3");
-+ #endif // NEW_MEM_MAP  
     offset = (((ARMword) state->bigendSig * 3) ^ (address & 3)) << 3;
   
     return (temp >> offset & 0xffL);
-***************
-*** 504,513 ****
---- 544,561 ----
++ #else // NEW_MEM_MAP
++   return sim_core_read_aligned_1(g_cpu, state->Reg[15], 0, address+0);
++ #endif // NEW_MEM_MAP  
+  }
+  
+  void
+  ARMul_SafeWriteByte (ARMul_State * state, ARMword address, ARMword data)
   {
++ #ifndef NEW_MEM_MAP
     ARMword temp, offset;
   
-+ #ifndef NEW_MEM_MAP
     temp = GetWord (state, address, FALSE);
-+ #else // NEW_MEM_MAP
-+   asm("int3");
-+ #endif // NEW_MEM_MAP  
-    offset = (((ARMword) state->bigendSig * 3) ^ (address & 3)) << 3;
-  
-+ #ifndef NEW_MEM_MAP
+***************
+*** 510,513 ****
+--- 561,567 ----
     PutWord (state, address,
   	   (temp & ~(0xffL << offset)) | ((data & 0xffL) << offset),
   	   FALSE);
 + #else // NEW_MEM_MAP
-+   asm("int3");
-+ #endif // NEW_MEM_MAP  
++   sim_core_write_aligned_1(g_cpu, state->Reg[15], 1, address, data);
++ #endif // NEW_MEM_MAP
   }
 *** gdb-10.2.org/sim/common/sim-load.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.arm-elf/sim/common/sim-load.c	2021-12-10 08:00:20.000000000 +0900
+--- gdb-10.2.arm-elf/sim/common/sim-load.c	2021-12-22 14:11:08.000000000 +0900
 ***************
 *** 54,59 ****
 --- 54,60 ----
@@ -480,11 +514,11 @@
   	}
 + #ifdef NEW_MEM_MAP
 +         else if (s->flags & SEC_ALLOC) {
-+           bfd_vma lma = lma_p ? bfd_section_lma(s) : bfd_section_vma(s);
++           bfd_vma vma = bfd_section_vma(s);
 +           bfd_size_type size = bfd_section_size(s);
 + 	  if (size) {
 + 	    sim_do_command(sd, "memory-fill 0xcc");
-+ 	    sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
++ 	    sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", vma, size);
 + 	  }
 +         }
 + #endif  // NEW_MEM_MAP
