@@ -1,0 +1,36 @@
+Reading symbols from test017.elf...
+Connected to the simulator.
+Loading section .text, size 0x20e lma 0x100
+Start address 0x100
+Transfer rate: 4208 bits in <1 sec.
+Breakpoint 1 at 0x19c: file test017.c, line 17.
+Breakpoint 2 at 0x1dc: file setjmp.S, line 4.
+Breakpoint 3 at 0x26e: file setjmp.S, line 83.
+Breakpoint 4 at 0x17c: file test017.c, line 12.
+
+Breakpoint 1, main () at test017.c:17
+17	  int r = setjmp(buf);
+
+Breakpoint 2, setjmp () at setjmp.S:4
+4		mov	r22, r30	; save r30
+#0  setjmp () at setjmp.S:4
+#1  0x000001a4 in main () at test017.c:17
+
+Breakpoint 3, longjmp () at setjmp.S:83
+83		mov	r30, r24	; set ZL
+#0  longjmp () at setjmp.S:83
+#1  0x0000014e in f (n=0, buf=0x80fecc) at test017.c:6
+#2  0x0000015e in f (n=1, buf=0x80fecc) at test017.c:7
+#3  0x0000015e in f (n=2, buf=0x80fecc) at test017.c:7
+#4  0x0000015e in f (n=3, buf=0x80fecc) at test017.c:7
+#5  0x0000015e in f (n=4, buf=0x80fecc) at test017.c:7
+#6  0x0000015e in f (n=5, buf=0x80fecc) at test017.c:7
+#7  0x000001c0 in main () at test017.c:19
+
+Breakpoint 4, g (n=123) at test017.c:12
+12	}
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]

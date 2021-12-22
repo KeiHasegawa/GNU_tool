@@ -1,0 +1,189 @@
+AVR の newlib は setjmp.S はないので作成した. そもそも AVR の newlib はサポート
+されていないので自前でビルドした経緯がある.
+
+引数に使用される r16, ..., r25 は保存の対象外. これ以外の
+r0, ..., r15, r26, ..., r31 と sp, sreg, 戻りアドレス
+を保存する.
+
+r0, ..., r31 は 1 バイト
+sp は 2 バイト
+sreg は 1 バイト
+戻りアドレスは 2 バイト.
+
+(32 - 10) + 2 + 1 + 2 = 27 バイト
+
+なので sizeof(jmp_buf) >= 27 である必要がある. 分かりやすいように
+sreg と戻りアドレスとの間には 1 バイトのギャップを作っておく.
+
+% cat /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.avr-elf/newlib/libc/machine/avr/setjmp.S
+	.text
+	.global setjmp
+setjmp:
+	mov	r22, r30	; save r30
+	mov	r23, r31	; save r31
+	mov	r30, r24	; set ZL
+	mov	r31, r25	; set ZH
+	st	Z, r0
+	adiw	ZL, 1
+	st	Z, r1
+	adiw	ZL, 1
+	st	Z, r2
+	adiw	ZL, 1
+	st	Z, r3
+	adiw	ZL, 1
+	st	Z, r4
+	adiw	ZL, 1
+	st	Z, r5
+	adiw	ZL, 1
+	st	Z, r6
+	adiw	ZL, 1
+	st	Z, r7
+	adiw	ZL, 1
+	st	Z, r8
+	adiw	ZL, 1
+	st	Z, r9
+	adiw	ZL, 1
+	st	Z, r10
+	adiw	ZL, 1
+	st	Z, r11
+	adiw	ZL, 1
+	st	Z, r12
+	adiw	ZL, 1
+	st	Z, r13
+	adiw	ZL, 1
+	st	Z, r14
+	adiw	ZL, 1
+	st	Z, r15
+	adiw	ZL, 1
+	st	Z, r26
+	adiw	ZL, 1
+	st	Z, r27
+	adiw	ZL, 1
+	st	Z, r28
+	adiw	ZL, 1
+	st	Z, r29
+	adiw	ZL, 1
+	st	Z, r22		; saved r30
+	adiw	ZL, 1
+	st	Z, r23		; saved r31
+	in	r24, 0x3d
+	adiw	ZL, 1
+	st	Z, r24
+	in	r25, 0x3e
+	adiw	ZL, 1
+	st	Z, r25
+	in	r22, 0x3f
+	adiw	ZL, 1
+	st	Z, r22
+
+	;;  save return address
+	mov	r16, r26	; save r26
+	mov	r17, r27	; save r27
+	mov	r26, r24	; set XL
+	mov	r27, r25	; set XH
+	adiw	XL, 1		; X points out return address
+	ld	r24, X
+	adiw	ZL, 2
+	st	Z, r24
+	adiw	XL, 1
+	ld	r25, X
+	adiw	ZL, 1
+	st	Z, r25
+	mov	r26, r16	; restore saved r26
+	mov	r27, r17	; restore saved r27
+	
+	ldi	r24, 0		; set return value of setjmp
+	ldi	r25, 0
+	ret
+
+	.global longjmp
+longjmp:
+	mov	r30, r24	; set ZL
+	mov	r31, r25	; set ZH
+	ld	r0, Z
+	adiw	ZL, 1
+	ld	r1, Z
+	adiw	ZL, 1
+	ld	r2, Z
+	adiw	ZL, 1
+	ld	r3, Z
+	adiw	ZL, 1
+	ld	r4, Z
+	adiw	ZL, 1
+	ld	r5, Z
+	adiw	ZL, 1
+	ld	r6, Z
+	adiw	ZL, 1
+	ld	r7, Z
+	adiw	ZL, 1
+	ld	r8, Z
+	adiw	ZL, 1
+	ld	r9, Z
+	adiw	ZL, 1
+	ld	r10, Z
+	adiw	ZL, 1
+	ld	r11, Z
+	adiw	ZL, 1
+	ld	r12, Z
+	adiw	ZL, 1
+	ld	r13, Z
+	adiw	ZL, 1
+	ld	r14, Z
+	adiw	ZL, 1
+	ld	r15, Z
+	adiw	ZL, 1
+	ld	r26, Z
+	adiw	ZL, 1
+	ld	r27, Z
+	adiw	ZL, 1
+	ld	r28, Z
+	adiw	ZL, 1
+	ld	r29, Z
+
+	mov	r16, r26	; save r26
+	mov	r17, r27	; save r27
+	mov	r26, r30	; set XL
+	mov	r27, r31	; set XH
+	adiw	XL, 1
+	ld	r30, X
+	adiw	XL, 1
+	ld	r31, X
+	adiw	XL, 1
+	ld	r18, X
+	out	0x3d, r18
+	adiw	XL, 1
+	ld	r19, X
+	out	0x3e, r19
+	adiw	XL, 1
+	ld	r20, X
+	out	0x3f, r20
+
+	;; restore return address
+	adiw	XL, 2
+	ld	r20, X
+	adiw	XL, 1
+	ld	r21, X		; (r20, r21) has return address
+	mov	r26, r18	; set XL
+	mov	r27, r19	; set XH
+	adiw	XL, 1
+	st	X, r20
+	adiw	XL, 1
+	st	X, r21
+
+	mov	r26, r16	; restore saved r26
+	mov	r27, r17	; restore saved r27
+	
+	mov	r24, r22
+	or	r24, r24
+	brne	.L1
+	mov	r25, r23	
+	or	r25, r25
+	brne	.L1
+	ldi	r22, 1
+.L1:
+	mov	r24, r22
+	mov	r25, r23
+	ret
+	
+	
+%
