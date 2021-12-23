@@ -3,6 +3,7 @@ PowerPC cross compile environment
 (*1) PowerPC
 (*2) Install with scrip
 (*3) Verification => OK
+(*4) Debug information of `sim-crt0.o'
 
 (*1) PowerPC
 
@@ -62,3 +63,10 @@ Dump of assembler code for function main:
 End of assembler dump.
 hello world
 [Inferior 1 (process 42000) exited normally]
+
+(*4) Debug information of `sim-crt0.o'
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ppc-elf/ppc-elf/libgloss/rs6000
+% ppc-elf-gcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ppc-elf/ppc-elf/newlib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ppc-elf/ppc-elf/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ppc-elf/newlib/libc/include -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ppc-elf/ppc-elf/libgloss/rs6000 -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ppc-elf/ppc-elf/libgloss/libnosys -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.ppc-elf/libgloss/rs6000    -g -O0 -mrelocatable-lib -mno-eabi -I. -I../../.././libgloss/rs6000/.. -g -O0 -E ../../.././libgloss/rs6000/sim-crt0.S > sim-crt0.s
+% ppc-elf-as -o sim-crt0.o -g sim-crt0.s
+
