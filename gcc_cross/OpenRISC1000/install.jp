@@ -3,6 +3,7 @@ OpenRISC 1000 のクロスコンパイル環境
 (*1) OpenRISC 1000
 (*2) スクリプトによるインストール
 (*3) 動作確認 => OK
+(*4) スタートアップルーチンのデバッグ情報
 
 (*1) OpenRISC 1000
 https://openrisc.io/or1k.html
@@ -72,3 +73,14 @@ End of assembler dump.
 hello world
 [Inferior 1 (process 42000) exited normally]
 %
+
+(*4) スタートアップルーチンのデバッグ情報
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.or1k-elf/or1k-elf/libgloss/or1k
+% or1k-elf-gcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.or1k-elf/or1k-elf/newlib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.or1k-elf/or1k-elf/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.or1k-elf/newlib/libc/include -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.or1k-elf/or1k-elf/libgloss/or1k -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.or1k-elf/or1k-elf/libgloss/libnosys -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.or1k-elf/libgloss/or1k    -O0 -g  -I. -I../../.././libgloss/or1k/.. `if [ -d ./../../newlib ]; then echo -I./../../newlib/targ-include -I../../.././libgloss/or1k/../../newlib/libc/include; fi` -I. -I../../.././libgloss/or1k/..  -E ../../.././libgloss/or1k/crt0.S > crt0.s
+% cat x
+#! /bin/sh
+
+or1k-elf-gcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.or1k-elf/or1k-elf/newlib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.or1k-elf/or1k-elf/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.or1k-elf/newlib/libc/include -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.or1k-elf/or1k-elf/libgloss/or1k -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.or1k-elf/or1k-elf/libgloss/libnosys -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.or1k-elf/libgloss/or1k    -O0 -g  -I. -I../../.././libgloss/or1k/.. `if [ -d ./../../newlib ]; then echo -I./../../newlib/targ-include -I../../.././libgloss/or1k/../../newlib/libc/include; fi` -I. -I../../.././libgloss/or1k/..  -E ../../.././libgloss/or1k/crt0.S > crt0.s
+% chmod +x x
+% ./x
