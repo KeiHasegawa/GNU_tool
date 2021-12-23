@@ -1,3 +1,30 @@
+*** gdb-10.2.ppc-elf/sim/common/sim-load.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.ppc-elf.new/sim/common/sim-load.c	2021-12-23 16:34:59.000000000 +0900
+***************
+*** 133,143 ****
+--- 133,154 ----
+  		}
+  	      data_count += size;
+  	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
++ #ifdef NEW_MEM_MAP
++        	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
++ #endif  // NEW_MEM_MAP
+  	      do_write (sd, lma, buffer, size);
+  	      found_loadable_section = 1;
+  	      free (buffer);
+  	    }
+  	}
++ #ifdef NEW_MEM_MAP
++         else if (s->flags & SEC_ALLOC) {
++           bfd_vma vma = bfd_section_vma(s);
++           bfd_size_type size = bfd_section_size(s);
++           sim_do_command(sd, "memory-fill 0xcc");
++           sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", vma, size);
++         }
++ #endif  // NEW_MEM_MAP
+      }
+  
+    if (!found_loadable_section)
 *** gdb-10.2.ppc-elf/sim/ppc/cpu.c	2021-04-25 13:06:26.000000000 +0900
 --- gdb-10.2.ppc-elf.new/sim/ppc/cpu.c	2021-12-15 09:14:38.000000000 +0900
 ***************
