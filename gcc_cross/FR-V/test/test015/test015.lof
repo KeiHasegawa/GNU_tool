@@ -1,0 +1,38 @@
+Reading symbols from test015.elf...
+Connected to the simulator.
+Loading section .text, size 0x25c lma 0x100
+Start address 0x100
+Transfer rate: 4832 bits in <1 sec.
+Breakpoint 1 at 0x1c8: file test015.c, line 17.
+Breakpoint 2 at 0x220: file ../../../../.././newlib/libc/machine/frv/setjmp.S, line 20.
+Breakpoint 3 at 0x2b8: file ../../../../.././newlib/libc/machine/frv/setjmp.S, line 73.
+Breakpoint 4 at 0x198: file test015.c, line 12.
+
+Breakpoint 1, main () at test015.c:17
+17	  int r = setjmp(buf);
+
+Breakpoint 2, setjmp ()
+    at ../../../../.././newlib/libc/machine/frv/setjmp.S:20
+20		stdi	gr16, @(gr8,0)
+#0  setjmp () at ../../../../.././newlib/libc/machine/frv/setjmp.S:20
+#1  0x000001d4 in main () at test015.c:17
+
+Breakpoint 3, longjmp ()
+    at ../../../../.././newlib/libc/machine/frv/setjmp.S:73
+73		lddi	@(gr8,0), gr16
+#0  longjmp () at ../../../../.././newlib/libc/machine/frv/setjmp.S:73
+#1  0x00000154 in f (n=0, buf=0xed8) at test015.c:6
+#2  0x00000168 in f (n=1, buf=0xed8) at test015.c:7
+#3  0x00000168 in f (n=2, buf=0xed8) at test015.c:7
+#4  0x00000168 in f (n=3, buf=0xed8) at test015.c:7
+#5  0x00000168 in f (n=4, buf=0xed8) at test015.c:7
+#6  0x00000168 in f (n=5, buf=0xed8) at test015.c:7
+#7  0x000001f8 in main () at test015.c:19
+
+Breakpoint 4, g (n=123) at test015.c:12
+12	}
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
