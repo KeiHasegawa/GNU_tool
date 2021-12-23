@@ -8,14 +8,33 @@ In `sim_open' function, executed like below:
 
 Except above, while loading target program, allocate memory like below:
 
-*** gdb-10.2.arm-elf/sim/common/sim-load.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.or1k-elf/sim/common/sim-load.c	2021-12-04 17:42:31.000000000 +0900
+*** gdb-10.2.org/sim/common/sim-load.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.or1k-elf/sim/common/sim-load.c	2021-12-23 16:02:17.000000000 +0900
+***************
+*** 53,59 ****
+     NOTE: For historical reasons, older hardware simulators incorrectly
+     write the program sections at LMA interpreted as a virtual address.
+     This is still accommodated for backward compatibility reasons. */
+! 
+  
+  bfd *
+  sim_load_file (SIM_DESC sd, const char *myname, host_callback *callback,
+--- 53,59 ----
+     NOTE: For historical reasons, older hardware simulators incorrectly
+     write the program sections at LMA interpreted as a virtual address.
+     This is still accommodated for backward compatibility reasons. */
+! void set_code_area(bfd_vma, bfd_size_type);
+  
+  bfd *
+  sim_load_file (SIM_DESC sd, const char *myname, host_callback *callback,
 ***************
 *** 133,143 ****
---- 133,150 ----
+--- 133,152 ----
   		}
   	      data_count += size;
   	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
++ 	      if (s->flags & SEC_CODE)
++ 		set_code_area(lma, size);
 +        	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
   	      do_write (sd, lma, buffer, size);
   	      found_loadable_section = 1;
@@ -23,15 +42,15 @@ Except above, while loading target program, allocate memory like below:
   	    }
   	}
 +         else if (s->flags & SEC_ALLOC) {
-+           bfd_vma lma = lma_p ? bfd_section_lma(s) : bfd_section_vma(s);
++           bfd_vma vma = bfd_section_vma(s);
 +           bfd_size_type size = bfd_section_size(s);
 +           sim_do_command(sd, "memory-fill 0xcc");
-+           sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
++           sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", vma, size);
 +         }
       }
   
     if (!found_loadable_section)
-
+    
 As this result, memory will be allocated for `.text', `.rodata', `.data'
 and `.bss' section.
 
