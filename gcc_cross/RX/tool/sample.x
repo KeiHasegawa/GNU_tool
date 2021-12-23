@@ -1,8 +1,13 @@
 SECTIONS {
 	 . = 0x1000;
-	 .text : {}
+	 P : {}
+	 C : {}
+	 D : {}
+	 B : {
+	      _bss_start = .;
+	 }
+	 _bss_end = .;
 
-	 .= 0xf000;
-	 .stack : {}
-	 PROVIDE(_stack = .);
+	 . = 0x20000;
+	 _stack = .;
 }

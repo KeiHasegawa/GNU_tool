@@ -1,6 +1,15 @@
 	.text
 	.global start
 start:
+	mov.L	#_bss_start, r6
+	mov.L	#_bss_end, r7
+.L1:	
+	cmp	r6, r7
+	beq	.L2	
+	mov.B	#0, [r6]
+	add	#1, r6, r6
+	bra	.L1
+.L2:
 	nop
 	mov.L	#_stack, r0
 	bsr	_main

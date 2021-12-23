@@ -47,6 +47,28 @@ void h2(int a, int b, int c, int d, int e)
   printf("%d %d %d %d %d\n", a, b, c, d, e);
 }
 
+int test_f3;
+
+void f3(int a)
+{
+  test_f3 = a;
+  printf("%d\n", test_f3);
+}
+
+int test_g3;
+
+void g3(void)
+{
+  printf("%x\n", test_g3);
+}
+
+int test_h3 = 456;
+
+void h3(void)
+{
+  printf("%d\n", test_h3);
+}
+
 int main()
 {
   f(5, 6);
@@ -59,30 +81,20 @@ int main()
   f2(1.0, 2.0, 3.0);
   g2(1LL, 2LL, 3LL);
   h2(1, 2, 3, 4, 5);
+  f3(123);
+  g3();
+  h3();
   return 0;
 }
 
-
-char* my_memcpy(char* dst, const char* src, int n)
+void clear_bss(char* b, char* e)
 {
-  char* r = dst;
-  while (n--)
-    *dst++=*src++;
-  return r;
+  while (b != e)
+    *b++ = 0;
 }
 
-char* my_memset(char* dst, int c, int n)
+void f4(int a)
 {
-  char* r = dst;
-  while (n--)
-    *dst++ = c;
-  return r;
-}
-
-int my_strlen(const char* s)
-{
-  int n = 0;
-  while (*s++)
-    ++n;
-  return n;
+  if (a)
+    g3();
 }
