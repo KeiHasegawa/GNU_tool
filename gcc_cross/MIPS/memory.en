@@ -19,8 +19,8 @@ In `sim_open' function, executed like below:
 
 Except above, while loading target program, allocate memory like below:
 
-*** gdb-10.2.arm-elf/sim/common/sim-load.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.mips-elf/sim/common/sim-load.c	2021-12-04 11:04:16.000000000 +0900
+*** gdb-10.2.org/sim/common/sim-load.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.mips-elf/sim/common/sim-load.c	2021-12-23 13:50:38.000000000 +0900
 ***************
 *** 133,143 ****
 --- 133,150 ----
@@ -34,15 +34,15 @@ Except above, while loading target program, allocate memory like below:
   	    }
   	}
 +         else if (s->flags & SEC_ALLOC) {
-+           bfd_vma lma = lma_p ? bfd_section_lma(s) : bfd_section_vma(s);
++           bfd_vma vma = bfd_section_vma(s);
 +           bfd_size_type size = bfd_section_size(s);
 +           sim_do_command(sd, "memory-fill 0xcc");
-+           sim_do_commandf(sd, "memory-region 0x%lx,0x%llx", (uint32_t)lma, size);
++           sim_do_commandf(sd, "memory-region 0x%lx,0x%llx", (uint32_t)vma, size);
 +         }
       }
   
     if (!found_loadable_section)
-
+ 
 As this result, memory will be allocated for `.text', `.rodata', `.data'
 and `.bss' section.
 
