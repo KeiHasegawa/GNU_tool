@@ -1,0 +1,43 @@
+Reading symbols from hello.elf...
+Connected to the simulator.
+Loading section .vectors, size 0x2000 lma 0x0
+Loading section .text, size 0x7d44 lma 0x2000
+Loading section .rodata, size 0x12 lma 0x9d44
+Loading section .eh_frame, size 0x4 lma 0xa000
+Loading section .init_array, size 0x4 lma 0xa004
+Loading section .fini_array, size 0x4 lma 0xa008
+Loading section .data, size 0xc70 lma 0xa00c
+Start address 0x100
+Transfer rate: 347792 bits in <1 sec.
+Breakpoint 1 at 0x2274: file hello.c, line 5.
+Breakpoint 2 at 0x2690: file ../../../.././newlib/libc/stdio/puts.c, line 129.
+Breakpoint 3 at 0x919c: file ../../.././libgloss/or1k/sbrk.c, line 34.
+Breakpoint 4 at 0x8574: file ../../.././libgloss/or1k/syscalls.c, line 77.
+Breakpoint 5 at 0x8634: file ../../.././libgloss/or1k/syscalls.c, line 98.
+Breakpoint 6 at 0x83b8: file ../../.././libgloss/or1k/syscalls.c, line 34.
+
+Breakpoint 1, main () at hello.c:5
+5	  printf("hello world\n");
+
+Breakpoint 2, puts (s=0x9d44 "hello world")
+    at ../../../.././newlib/libc/stdio/puts.c:129
+129	  return _puts_r (_REENT, s);
+
+Breakpoint 4, _fstat_r (reent=0xa018 <impure_data>, fildes=1, st=0x7fdee8)
+    at ../../.././libgloss/or1k/syscalls.c:77
+77		reent->_errno = ENOSYS;
+
+Breakpoint 3, _sbrk_r (reent=0xa018 <impure_data>, incr=1048)
+    at ../../.././libgloss/or1k/sbrk.c:34
+34		uint32_t sr_iee = or1k_interrupts_disable();
+
+Breakpoint 3, _sbrk_r (reent=0xa018 <impure_data>, incr=3420)
+    at ../../.././libgloss/or1k/sbrk.c:34
+34		uint32_t sr_iee = or1k_interrupts_disable();
+
+Breakpoint 6, _write_r (reent=0xa018 <impure_data>, fd=1, buf=0xae98, 
+    nbytes=12) at ../../.././libgloss/or1k/syscalls.c:34
+34		char* b = (char*) buf;
+hello world
+[Inferior 1 (process 42000) exited normally]
+(or1k-elf-gdb) 
