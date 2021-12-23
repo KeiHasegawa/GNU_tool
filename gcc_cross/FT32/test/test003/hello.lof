@@ -1,18 +1,18 @@
 Reading symbols from hello.elf...
 Connected to the simulator.
-Loading section .data, size 0x83c lma 0x4668
-Loading section .rodata, size 0x14 lma 0x4ea4
-Loading section .text, size 0x4568 lma 0x100
+Loading section .data, size 0x83c lma 0x466c
+Loading section .rodata, size 0x14 lma 0x4ea8
+Loading section .text, size 0x456c lma 0x100
 Start address 0x100
-Transfer rate: 159168 bits in <1 sec.
+Transfer rate: 159200 bits in <1 sec.
 Breakpoint 1 at 0x100: file start.S, line 3.
-Breakpoint 2 at 0x168: file start.S, line 39.
-Breakpoint 3 at 0x170: file hello.c, line 5.
-Breakpoint 4 at 0x2c4: file ../../../.././newlib/libc/stdio/puts.c, line 129.
-Breakpoint 5 at 0x45c8: file ../../../libgloss/ft32/sbrk.c, line 34.
-Breakpoint 6 at 0x4588: file ../../../libgloss/ft32/fstat.c, line 25.
-Breakpoint 7 at 0x45b4: file ../../../libgloss/ft32/isatty.c, line 25.
-Breakpoint 8 at 0x4648: file ../../../libgloss/ft32/sim-write.S, line 49.
+Breakpoint 2 at 0x16c: file start.S, line 40.
+Breakpoint 3 at 0x174: file hello.c, line 5.
+Breakpoint 4 at 0x2c8: file ../../../.././newlib/libc/stdio/puts.c, line 129.
+Breakpoint 5 at 0x45cc: file ../../../libgloss/ft32/sbrk.c, line 34.
+Breakpoint 6 at 0x458c: file ../../../libgloss/ft32/fstat.c, line 25.
+Breakpoint 7 at 0x45b8: file ../../../libgloss/ft32/isatty.c, line 25.
+Breakpoint 8 at 0x464c: file ../../../libgloss/ft32/sim-write.S, line 49.
 
 Breakpoint 1, start () at start.S:3
 3		ldk.l	$r0, _data_start
@@ -20,7 +20,7 @@ Breakpoint 1, start () at start.S:3
 Breakpoint 3, main () at hello.c:5
 5	  printf("hello world\n");
 
-Breakpoint 4, puts (s=0x804ea4 "hello world")
+Breakpoint 4, puts (s=0x804ea8 "hello world")
     at ../../../.././newlib/libc/stdio/puts.c:129
 129	  return _puts_r (_REENT, s);
 
@@ -30,7 +30,7 @@ Breakpoint 6, _fstat (fd=1, buf=0x806ef0) at ../../../libgloss/ft32/fstat.c:25
 Breakpoint 5, _sbrk (nbytes=1048) at ../../../libgloss/ft32/sbrk.c:34
 34	  if ((__heap_ptr + nbytes) < (&canary - 2000))
 
-Breakpoint 5, _sbrk (nbytes=3308) at ../../../libgloss/ft32/sbrk.c:34
+Breakpoint 5, _sbrk (nbytes=3304) at ../../../libgloss/ft32/sbrk.c:34
 34	  if ((__heap_ptr + nbytes) < (&canary - 2000))
 
 Breakpoint 7, _isatty (fd=1) at ../../../libgloss/ft32/isatty.c:25
@@ -40,8 +40,8 @@ Breakpoint 8, _write () at ../../../libgloss/ft32/sim-write.S:49
 49	        ldk.l   $r3,0x10000
 hello world
 
-Breakpoint 2, _exit () at start.S:39
-39		jmp	.
+Breakpoint 2, _exit () at start.S:40
+40		jmp	.
 A debugging session is active.
 
 	Inferior 1 [process 42000] will be killed.
