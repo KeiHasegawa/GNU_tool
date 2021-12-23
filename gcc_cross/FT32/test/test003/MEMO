@@ -4,3 +4,35 @@
 sbrk が呼び出されなくなっている. 以前は 2 回の呼び出しがあった.
 
 以前は sbrk(1048) の呼び出しが 1 回目.
+
+ft32-elf-gdb.new --annotate=3 hello.elf.new -x x
+ft32-elf-gdb.old --annotate=3 hello.elf.old -x y
+
+のように比較実行してみた. 違いが出るのは
+
+    bin = bin_at(idx);
+
+で
+
+new では
+(ft32-elf-gdb) p/x *bin
+$3 = {prev_size = 0x800660, size = 0x800660, fd = 0x800668, bk = 0x800668}
+(ft32-elf-gdb)
+
+old では
+(ft32-elf-gdb) p/x *bin
+$4 = {prev_size = 0x4ccc, size = 0x4ccc, fd = 0x4cd4, bk = 0x4cd4}
+(ft32-elf-gdb) p/x
+
+
+new では
+(ft32-elf-gdb) p/x __malloc_av_
+$4 = {0x0, 0x0, 0x800428, 0x800428, 0x800430, 0x800430, 0x800438, 0x800438,
+old では
+(ft32-elf-gdb) p __malloc_av_
+$5 = {0x800000, 0x800000, 0x804a94, 0x804a94, 0x804a9c, 0x804a9c, 0x804aa4, 
+
+new の __malloc_av_[0] や __malloc_av_[1] が 0 になっているのがおそらく間違い.
+
+=> ../test016 を参照. ステータスとしてはコンパイラに問題があるとしておく.
+

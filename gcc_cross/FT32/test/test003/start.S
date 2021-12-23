@@ -1,30 +1,21 @@
 	.text
 start:
-	ldk.l	$r0, _data_start
-	ldk.l	$r1, _data_end
+	ldk.l	$r0, __data_load_start
+	ldk.l	$r1, __data_load_end
+	ldk.l	$r2, _data_start
 .L1:
 	/* if r0 == r1 goto .L2 */	
 	cmp.l	$r0, $r1
 	jmpc	z,.L2
-	lpmi.b	$r2, $r0, 0
-	sti.b	$r0,0,$r2
+	lpmi.b	$r3, $r0, 0
+	sti.b	$r2,0,$r3
 	add.l	$r0,$r0,1
+	add.l	$r2,$r2,1
 	jmp	.L1
 .L2:
-	ldk.l	$r0, _rodata_start
-	ldk.l	$r1, _rodata_end
-.L3:
-	/* if r0 == r1 goto .L4 */
-	cmp.l	$r0, $r1
-	jmpc	z,.L4
-	lpmi.b	$r2, $r0, 0
-	sti.b	$r0,0,$r2
-	add.l	$r0,$r0,1
-	jmp	.L3
-.L4:	
 	ldk.l	$r0, _bss_start
 	ldk.l	$r1, _bss_end
-	ldk.b	$r2,0
+	ldk.b	$r2, 0
 .L5:
 	/* if r0 == r1 goto .L6 */
 	cmp.l	$r0, $r1
@@ -33,8 +24,8 @@ start:
 	add.l	$r0,$r0,1
 	jmp	.L5
 .L6:	
-	ldk.l	$sp,_stack
+	ldk.l	$sp,stack
 	call	main
 	nop
-_exit:
+exit:
 	jmp	.
