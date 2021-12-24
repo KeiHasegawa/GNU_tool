@@ -1,0 +1,16 @@
+	.text
+start:
+	nop
+	mov.l	label1,r15
+	mov.l	label2,r1
+	jsr	@r1
+	nop
+	trapa	#32
+
+	.align 2
+label1:
+	.long	stack
+label2:
+	.long	_main
+	
+	
