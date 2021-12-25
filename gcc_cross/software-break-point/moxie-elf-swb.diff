@@ -1,0 +1,492 @@
+*** gdb-10.2.org/gdb/infrun.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.moxie-elf/gdb/infrun.c	2021-12-26 06:37:57.000000000 +0900
+***************
+*** 5782,5787 ****
+--- 5782,5795 ----
+  
+  /* Come here when the program has stopped with a signal.  */
+  
++ #undef target_stopped_by_sw_breakpoint
++ bool target_stopped_by_sw_breakpoint(CORE_ADDR pc)
++ {
++   regcache* regcache = get_current_regcache();
++   const address_space* aspace = regcache->aspace();
++   return breakpoint_here_p(aspace, pc) == no_breakpoint_here;
++ }
++ 
+  static void
+  handle_signal_stop (struct execution_control_state *ecs)
+  {
+***************
+*** 6116,6122 ****
+  
+    /* Maybe this was a trap for a software breakpoint that has since
+       been removed.  */
+!   if (random_signal && target_stopped_by_sw_breakpoint ())
+      {
+        if (gdbarch_program_breakpoint_here_p (gdbarch,
+  					     ecs->event_thread->suspend.stop_pc))
+--- 6124,6130 ----
+  
+    /* Maybe this was a trap for a software breakpoint that has since
+       been removed.  */
+!   if (random_signal && target_stopped_by_sw_breakpoint (ecs->event_thread->suspend.stop_pc))
+      {
+        if (gdbarch_program_breakpoint_here_p (gdbarch,
+  					     ecs->event_thread->suspend.stop_pc))
+***************
+*** 6127,6133 ****
+  	  /* Re-adjust PC to what the program would see if GDB was not
+  	     debugging it.  */
+  	  regcache = get_thread_regcache (ecs->event_thread);
+! 	  decr_pc = gdbarch_decr_pc_after_break (gdbarch);
+  	  if (decr_pc != 0)
+  	    {
+  	      gdb::optional<scoped_restore_tmpl<int>>
+--- 6135,6141 ----
+  	  /* Re-adjust PC to what the program would see if GDB was not
+  	     debugging it.  */
+  	  regcache = get_thread_regcache (ecs->event_thread);
+! 	  decr_pc = 2;
+  	  if (decr_pc != 0)
+  	    {
+  	      gdb::optional<scoped_restore_tmpl<int>>
+*** gdb-10.2.org/sim/moxie/interp.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.moxie-elf/sim/moxie/interp.c	2021-12-26 06:45:35.000000000 +0900
+***************
+*** 152,159 ****
+  static INLINE void
+  wbat (sim_cpu *scpu, word pc, word x, word v)
+  {
+    address_word cia = CPU_PC_GET (scpu);
+!   
+    sim_core_write_aligned_1 (scpu, cia, write_map, x, v);
+  }
+  
+--- 152,163 ----
+  static INLINE void
+  wbat (sim_cpu *scpu, word pc, word x, word v)
+  {
++ #if 0  
+    address_word cia = CPU_PC_GET (scpu);
+! #else
+!   address_word cia = cpu.asregs.regs[PC_REGNO];
+! #endif
+!  
+    sim_core_write_aligned_1 (scpu, cia, write_map, x, v);
+  }
+  
+***************
+*** 162,169 ****
+  static INLINE void
+  wsat (sim_cpu *scpu, word pc, word x, word v)
+  {
+    address_word cia = CPU_PC_GET (scpu);
+!   
+    sim_core_write_aligned_2 (scpu, cia, write_map, x, v);
+  }
+  
+--- 166,176 ----
+  static INLINE void
+  wsat (sim_cpu *scpu, word pc, word x, word v)
+  {
++ #if 0  
+    address_word cia = CPU_PC_GET (scpu);
+! #else
+!   address_word cia = cpu.asregs.regs[PC_REGNO];
+! #endif  
+    sim_core_write_aligned_2 (scpu, cia, write_map, x, v);
+  }
+  
+***************
+*** 172,179 ****
+  static INLINE void
+  wlat (sim_cpu *scpu, word pc, word x, word v)
+  {
+    address_word cia = CPU_PC_GET (scpu);
+! 	
+    sim_core_write_aligned_4 (scpu, cia, write_map, x, v);
+  }
+  
+--- 179,189 ----
+  static INLINE void
+  wlat (sim_cpu *scpu, word pc, word x, word v)
+  {
++ #if 0  
+    address_word cia = CPU_PC_GET (scpu);
+! #else
+!   address_word cia = cpu.asregs.regs[PC_REGNO];
+! #endif
+    sim_core_write_aligned_4 (scpu, cia, write_map, x, v);
+  }
+  
+***************
+*** 182,189 ****
+  static INLINE int
+  rsat (sim_cpu *scpu, word pc, word x)
+  {
+    address_word cia = CPU_PC_GET (scpu);
+!   
+    return (sim_core_read_aligned_2 (scpu, cia, read_map, x));
+  }
+  
+--- 192,202 ----
+  static INLINE int
+  rsat (sim_cpu *scpu, word pc, word x)
+  {
++ #if 0  
+    address_word cia = CPU_PC_GET (scpu);
+! #else
+!   address_word cia = cpu.asregs.regs[PC_REGNO];
+! #endif  
+    return (sim_core_read_aligned_2 (scpu, cia, read_map, x));
+  }
+  
+***************
+*** 192,199 ****
+  static INLINE int
+  rbat (sim_cpu *scpu, word pc, word x)
+  {
+    address_word cia = CPU_PC_GET (scpu);
+!   
+    return (sim_core_read_aligned_1 (scpu, cia, read_map, x));
+  }
+  
+--- 205,215 ----
+  static INLINE int
+  rbat (sim_cpu *scpu, word pc, word x)
+  {
++ #if 0  
+    address_word cia = CPU_PC_GET (scpu);
+! #else
+!   address_word cia = cpu.asregs.regs[PC_REGNO];
+! #endif  
+    return (sim_core_read_aligned_1 (scpu, cia, read_map, x));
+  }
+  
+***************
+*** 202,209 ****
+  static INLINE int
+  rlat (sim_cpu *scpu, word pc, word x)
+  {
+    address_word cia = CPU_PC_GET (scpu);
+!   
+    return (sim_core_read_aligned_4 (scpu, cia, read_map, x));
+  }
+  
+--- 218,228 ----
+  static INLINE int
+  rlat (sim_cpu *scpu, word pc, word x)
+  {
++ #if 0  
+    address_word cia = CPU_PC_GET (scpu);
+! #else
+!   address_word cia = cpu.asregs.regs[PC_REGNO];
+! #endif  
+    return (sim_core_read_aligned_4 (scpu, cia, read_map, x));
+  }
+  
+***************
+*** 230,235 ****
+--- 249,425 ----
+    return hflags;
+  }
+  
++ #include <assert.h>
++ #include <string.h>
++ 
++ static const char* first_string(sim_cpu* scpu, int pc)
++ {
++   uint32_t r0 = cpu.asregs.regs[2];
++   static char buf[1024];
++   for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i ) {
++     char c = rbat(scpu, pc, r0+i);
++     buf[i] = c;
++     if (c == '\0')
++       return &buf[0]; // ok
++   }
++   assert(0 && "not enough buffer");
++   return &buf[0];
++ }
++ 
++ enum arg_class { NONE, WORD, DW, DF, LDF, STR };
++ 
++ static const char* get_part(const char* fmt, enum arg_class* how)
++ {
++   for ( ; *fmt ; ++fmt) {
++     char c = *fmt;
++     if (c == 'd' || c == 'i' || c == 'x' || c == 'u') {
++       if (*how == NONE)
++ 	*how = WORD;
++       return ++fmt;
++     }
++     if (c == 'c') {
++       *how = WORD;
++       return ++fmt;
++     }
++     if (c == 'f') {
++       char prev = *(fmt-1);
++       *how = prev == 'L' ? LDF : DF;
++       return ++fmt;
++     }
++     if (c == 's') {
++       *how = STR;
++       return ++fmt;
++     }
++     if (c == 'l') {
++       if (*how == NONE)
++ 	*how = WORD;
++       else
++ 	*how = DW;
++     }
++   }
++   assert(0 && "unexpected");
++   return fmt;
++ }
++ 
++ static unsigned int arg32(sim_cpu* scpu, int pc, int nth)
++ {
++   assert(nth);
++   if (nth < 6)
++     return cpu.asregs.regs[nth+2];
++   int sp = cpu.asregs.regs[1];
++   int addr = sp + 4*nth + 12;
++   return rlat(scpu, pc, addr);
++ }
++ 
++ static uint64_t arg64(sim_cpu* scpu, int pc, int nth)
++ {
++   assert(nth);
++   if (nth < 5) {
++     uint64_t a = cpu.asregs.regs[nth+2];
++     uint32_t b = cpu.asregs.regs[nth+3];
++     return (a << 32) | b;
++   }
++   if (nth == 5) {
++     uint64_t a = cpu.asregs.regs[nth+2];
++     int sp = cpu.asregs.regs[1];
++     uint32_t b = rlat(scpu, pc, sp);
++     return (a << 32) | b;
++   }
++   int sp = cpu.asregs.regs[1];
++   int addr = sp + 4*nth + 12;
++   uint64_t a = rlat(scpu, pc, addr);
++   uint32_t b = rlat(scpu, pc, addr+4);
++   return (a << 32) | b; 
++ }
++ 
++ static const char*
++ handle(sim_cpu* scpu, int pc, const char* fmt, int* nth, int* ret)
++ {
++   char c = *fmt;
++   if (c != '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   const char* beg = fmt;
++   c = *++fmt;
++   if (c == '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   enum arg_class how = NONE;
++   const char* end = get_part(fmt, &how);
++   char part_fmt[256];
++   int n = end - beg;
++   assert(n + 1 < sizeof part_fmt/sizeof part_fmt[0]);
++   strncpy(&part_fmt[0], beg, n);
++   part_fmt[n] = '\0';
++   if (how == WORD) {
++     int arg = arg32(scpu, pc, (*nth)++);
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DW) {
++     uint64_t arg = arg64(scpu, pc, *nth);
++     *nth += 2;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DF || how == LDF) {
++     union {
++       uint64_t i;
++       double d;
++     } u = { arg64(scpu, pc, *nth) };
++     *nth += 2;
++     if (how == DF)
++       *ret += printf(part_fmt, u.d);
++     else
++       *ret += printf(part_fmt, (long double)u.d);
++     return end;
++   }
++   if (how == STR) {
++     uint32_t addr = arg32(scpu, pc, (*nth)++);
++     char buf[256];
++     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++       char c = rbat(scpu, pc, addr+i);
++       buf[i] = c;
++       if (c == '\0') {
++ 	*ret += printf(part_fmt, &buf[0]);  // ok
++ 	return end;
++       }
++     }
++     assert(0 && "not enough buffer");
++     return end;
++   }
++   asm("int3");
++   return end;
++ }
++ 
++ static void do_printf(sim_cpu* scpu, int pc)
++ {
++   const char* fmt = first_string(scpu, pc);
++   int argc = 1;
++   int ret = 0;
++   while (*fmt)
++     fmt = handle(scpu, pc, fmt, &argc, &ret);
++   cpu.asregs.regs[2] = ret;
++ }
++ 
++ static void do_puts(sim_cpu* scpu, int pc)
++ {
++   const char* arg = first_string(scpu, pc);
++   int ret = puts(arg);
++   cpu.asregs.regs[2] = ret;
++ }
++ 
++ static void do_putchar(sim_cpu* scpu, int pc)
++ {
++   int r0 = cpu.asregs.regs[2];
++   int ret = putchar(r0);
++   cpu.asregs.regs[2] = ret;
++ }
++ 
+  /* TODO: Split this up into finger trace levels than just insn.  */
+  #define MOXIE_TRACE_INSN(str) \
+    TRACE_INSN (scpu, "0x%08x, %s, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x", \
+***************
+*** 257,267 ****
+    do 
+      {
+        opc = pc;
+! 
+        /* Fetch the instruction at pc.  */
+        inst = (sim_core_read_aligned_1 (scpu, cia, read_map, pc) << 8)
+  	+ sim_core_read_aligned_1 (scpu, cia, read_map, pc+1);
+! 
+        /* Decode instruction.  */
+        if (inst & (1 << 15))
+  	{
+--- 447,460 ----
+    do 
+      {
+        opc = pc;
+! #if 0
+        /* Fetch the instruction at pc.  */
+        inst = (sim_core_read_aligned_1 (scpu, cia, read_map, pc) << 8)
+  	+ sim_core_read_aligned_1 (scpu, cia, read_map, pc+1);
+! #else
+!       inst = (sim_core_read_aligned_1 (scpu, pc, read_map, pc) << 8)
+! 	+ sim_core_read_aligned_1 (scpu, pc, read_map, pc+1);
+! #endif      
+        /* Decode instruction.  */
+        if (inst & (1 << 15))
+  	{
+***************
+*** 343,350 ****
+  		  break;
+  		default:
+  		  {
+! 		    MOXIE_TRACE_INSN ("SIGILL3");
+! 		    sim_engine_halt (sd, scpu, NULL, pc, sim_stopped, SIM_SIGILL);
+  		    break;
+  		  }
+  		}
+--- 536,551 ----
+  		  break;
+  		default:
+  		  {
+! 		    switch (inst) {
+! 		    case 0xfff0: exit(0);
+! 		    case 0xfff1: do_printf(scpu, pc); break;
+! 		    case 0xfff2: do_puts(scpu, pc); break;
+! 		    case 0xfff3: do_putchar(scpu, pc); break;
+! 		    default:
+! 		      MOXIE_TRACE_INSN ("SIGILL3");
+! 		      sim_engine_halt (sd, scpu, NULL, pc, sim_stopped, SIM_SIGILL);
+! 		      break;
+! 		    }
+  		    break;
+  		  }
+  		}
+***************
+*** 1138,1144 ****
+--- 1339,1349 ----
+  	  long ival;
+  	  
+  	  /* misalignment safe */
++ #if 0	  
+  	  ival = moxie_extract_unsigned_integer (memory, 4);
++ #else
++ 	  ival = (memory[0] << 24) | (memory[1] << 16) | (memory[2] << 8) | memory[3];
++ #endif	  
+  	  cpu.asints[rn] = ival;
+  	}
+  
+***************
+*** 1218,1227 ****
+        free_state (sd);
+        return 0;
+      }
+! 
+    sim_do_command(sd," memory region 0x00000000,0x4000000") ; 
+    sim_do_command(sd," memory region 0xE0000000,0x10000") ; 
+! 
+    /* Check for/establish the a reference program image.  */
+    if (sim_analyze_program (sd,
+  			   (STATE_PROG_ARGV (sd) != NULL
+--- 1423,1432 ----
+        free_state (sd);
+        return 0;
+      }
+! #if 0
+    sim_do_command(sd," memory region 0x00000000,0x4000000") ; 
+    sim_do_command(sd," memory region 0xE0000000,0x10000") ; 
+! #endif
+    /* Check for/establish the a reference program image.  */
+    if (sim_analyze_program (sd,
+  			   (STATE_PROG_ARGV (sd) != NULL
+***************
+*** 1302,1308 ****
+  
+    if (prog_bfd != NULL)
+      cpu.asregs.regs[PC_REGNO] = bfd_get_start_address (prog_bfd);
+! 
+    /* Copy args into target memory.  */
+    avp = argv;
+    for (argc = 0; avp && *avp; avp++)
+--- 1507,1513 ----
+  
+    if (prog_bfd != NULL)
+      cpu.asregs.regs[PC_REGNO] = bfd_get_start_address (prog_bfd);
+! #if 0
+    /* Copy args into target memory.  */
+    avp = argv;
+    for (argc = 0; avp && *avp; avp++)
+***************
+*** 1337,1342 ****
+    wlat (scpu, 0, 4 + 4 + i * 4, 0);
+  
+    load_dtb (sd, DTB);
+! 
+    return SIM_RC_OK;
+  }
+--- 1542,1547 ----
+    wlat (scpu, 0, 4 + 4 + i * 4, 0);
+  
+    load_dtb (sd, DTB);
+! #endif
+    return SIM_RC_OK;
+  }
