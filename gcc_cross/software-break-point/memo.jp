@@ -128,7 +128,7 @@ run -q -x /home/khasegawa/lang/53_GNU_tool/gcc_cross/MN10300/test/test014/x /hom
   if (random_signal && target_stopped_by_sw_breakpoint ())
     {
 
-現状は成立していない.
+現状は mn10300-elf-gdb では成立していない.
 
 target_stopped_by_sw_breakpoint()
 
@@ -209,14 +209,21 @@ target_stopped_by_sw_breakpoint
 作に近い. 共通部分を書き替えるのはあまり良くないが影響範囲を考えるとこ
 うするのが落しどころのように思える.
 
- 	  decr_pc = gdbarch_decr_pc_after_break (gdbarch);
+#undef target_stopped_by_sw_breakpoint
+bool target_stopped_by_sw_breakpoint(COREADDR pc)
+{
+  // ブレークポイントのリストに pc のアドレスが含まれているならば false を
+  // そうでなければ true を返す
+}
 
- 	  decr_pc = 4; // ターゲット依存
+ 	  decr_pc = gdbarch_decr_pc_after_break (gdbarch);  // 修正前
+
+ 	  decr_pc = 4; // 修正後. ターゲット依存
 
 gdbarch_decr_pc_after_break (gdbarch) の戻り値を変更すると他の部分に
-影響する.
+影響してしまう.
 
-以下はソフトウェアブレークポイントのための命令
+以下はソフトウェアブレークポイントのためのアセンブリ
 
 aarch64		.word 0xd4200000
 arm		.word 0xe7ffdefe
@@ -232,7 +239,7 @@ lm32		break
 m32c		brk
 m32r		nop と trap	#0x1
 m68hc11		bgnd
-mcore
+mcore		bkpt
 microblaze
 mips
 mn10300		break
