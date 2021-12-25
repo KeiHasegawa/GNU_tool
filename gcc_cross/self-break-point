@@ -1,0 +1,167 @@
+ネイティブの gdb でどのように
+
+int main()
+{
+  asm("int3");
+  return 0;
+}
+
+に対して continue コマンドで pc を int3 命令の次の命令にセットしているか調査してみた. 
+
+08049142 <main>:
+ 8049142:	55                   	push   %ebp
+ 8049143:	89 e5                	mov    %esp,%ebp
+ 8049145:	cc                   	int3   
+ 8049146:	b8 00 00 00 00       	mov    $0x0,%eax
+
+なのでどこかで pc が 0x8049146 に変更されていると思われる.
+
+(gdb) b regcache::raw_write
+(gdb) command
+> x/4bx buf
+> c
+> end
+(gdb) run
+...
+Thread 1 "gdb" hit Breakpoint 3, regcache::raw_write (this=0x94662b8, regnum=8, buf=0xbfffebb0 "F\221\004\b") at regcache.c:826
+0xbfffebb0:	0x46	0x91	0x04	0x08
+...
+
+やはり書き替えている. しかもこれはけっこうな回数呼び出されている.
+
+(gdb) delete
+(gdb) b regcache::raw_write
+(gdb) command
+> if (*(int*)buf!=0x8049146)
+> c
+> end
+(gdb) run
+
+これで pc を 0x8049146 に書き変えている瞬間を捕えられている. このときのスタックは
+
+(gdb) where
+#0  regcache::raw_write (this=0x94349d0, regnum=8, buf=0xbfffebb0 "F\221\004\b") at regcache.c:826
+#1  0x088df68a in regcache::cooked_write (this=0x94349d0, regnum=8, buf=0xbfffebb0 "F\221\004\b") at regcache.c:862
+#2  0x088e219a in regcache::cooked_write<unsigned long long, void> (this=0x94349d0, regnum=8, val=134517062) at regcache.c:811
+#3  0x088df416 in regcache_cooked_write_unsigned (regcache=0x94349d0, regnum=8, val=134517062) at regcache.c:819
+#4  0x08775b21 in i386_linux_write_pc (regcache=0x94349d0, pc=134517062) at i386-linux-tdep.c:325
+#5  0x0874d74d in gdbarch_write_pc (gdbarch=0x93a6318, regcache=0x94349d0, val=134517062) at gdbarch.c:1961
+#6  0x088e0666 in regcache_write_pc (regcache=0x94349d0, pc=134517062) at regcache.c:1331
+#7  0x087acd9a in handle_signal_stop (ecs=0xbfffef20) at infrun.c:6140
+...
+(gdb)
+
+以下から呼び出されている:
+
+	      regcache_write_pc (regcache,
+				 ecs->event_thread->suspend.stop_pc + decr_pc);
+
+(gdb) p/x ecs->event_thread->suspend.stop_pc
+$2 = 0x8049145
+(gdb) p decr_pc
+$3 = 1
+(gdb)
+
+それっぽい.
+
+% cat z
+b infrun.c:5814
+command
+if (ecs->event_thread->suspend.stop_pc!=0x8049145)
+c
+end
+end
+run -q -x y a.out
+%
+
+(gdb) so z
+
+  ecs->event_thread->suspend.stop_pc
+    = regcache_read_pc (get_thread_regcache (ecs->event_thread));
+
+きている.
+
+mn10300-elf-gdb でも試してみた.
+
+int main()
+{
+  asm("break");
+  return 0;
+}
+
+
+00000113 <_main>:
+ 113:	cf 10       	movm	[a3],(sp)
+
+00000115 <.LCFI0>:
+ 115:	3f          	mov	sp,a3
+
+00000116 <.LCFI1>:
+ 116:	ff          	break	
+
+00000117 <.Loc.4.1>:
+ 117:	80 00       	mov	0,d0
+
+00000119 <.Loc.5.1>:
+ 119:	f2 fc       	mov	a3,sp
+ 11b:	df 10 04    	ret	[a3],4
+
+% cat x
+b infrun.c:5814
+command
+if (ecs->event_thread->suspend.stop_pc!=0x116)
+c
+end
+end
+run -q -x /home/khasegawa/lang/53_GNU_tool/gcc_cross/MN10300/test/test014/x /home/khasegawa/lang/53_GNU_tool/gcc_cross/MN10300/test/test014/test014.elf
+%
+
+(gdb) so x
+
+きている.
+
+なのであとは動作の比較を行なう.
+
+以下の条件が成立すればネイティブ gdb と同じ動作になるのだが,
+
+  if (random_signal && target_stopped_by_sw_breakpoint ())
+    {
+
+現状は成立していない.
+
+target_stopped_by_sw_breakpoint()
+
+はマクロ
+
+#define target_stopped_by_sw_breakpoint()		\
+  ((current_top_target ()->stopped_by_sw_breakpoint) ())
+
+だがこれの呼び出しが false になっている.
+
+ネイティブ gdb は
+
+bool
+linux_nat_target::stopped_by_sw_breakpoint ()
+{
+  struct lwp_info *lp = find_lwp_pid (inferior_ptid);
+
+が stopped_by_sw_breakpoint() の実体だが
+
+mn10300-elf-gdb では
+
+struct target_ops : public refcounted_object {
+...
+    virtual bool stopped_by_sw_breakpoint();
+...
+};
+
+bool
+target_ops::stopped_by_sw_breakpoint ()
+{
+  return this->beneath ()->stopped_by_sw_breakpoint ();
+}
+
+が実体で, これで false が返っているのが原因.
+
+いずれにしても gdb からセットしたブレークポイントなのか, プログラムに埋め込まれたブレー
+クポイントなのかを区別する必要がある.
