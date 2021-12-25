@@ -189,15 +189,17 @@
   
 ***************
 *** 479,484 ****
---- 481,493 ----
+--- 481,495 ----
       SEM_BRANCH_VIA_ADDR (current_cpu, sem_arg, opval, vpc);
       CGEN_TRACE_RESULT (current_cpu, abuf, "pc", 'x', opval);
     }
-+   if (FLD(f_r3) == 9) {
-+     switch (pc) {
-+     case 0x11c: do_printf(current_cpu); break;
-+     case 0x124: do_puts(current_cpu); break;
-+     case 0x12c: do_putchar(current_cpu); break;
++   if (getenv("USE_OR1K_PRINTF")) {
++     if (FLD(f_r3) == 9) {
++       switch (pc) {
++       case 0x11c: do_printf(current_cpu); break;
++       case 0x124: do_puts(current_cpu); break;
++       case 0x12c: do_putchar(current_cpu); break;
++       }
 +     }
 +   }
   }
