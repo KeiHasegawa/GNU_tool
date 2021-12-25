@@ -4,4 +4,5 @@ start:
 	call	!!%code(_main)
 	nop
 	brk1
+	nop
 	
