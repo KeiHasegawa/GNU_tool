@@ -6,7 +6,8 @@ int main()
   return 0;
 }
 
-に対して continue コマンドでの前後で pc を int3 命令の次の命令にセットしているか調査してみた. 
+に対して continue コマンドの前後でどのように pc を int3 命令の次の命令にセットしているか
+調査してみた. 
 
 08049142 <main>:
  8049142:	55                   	push   %ebp
@@ -205,3 +206,32 @@ type = class linux_nat_target : public inf_ptrace_target {
 target_stopped_by_sw_breakpoint
 
 を直接書き変える.
+
+
+aarch64		.word 0xd4200000
+arm		.word 0xe7ffdefe
+avr		break			(.word	0x9598)
+bfin		EMUEXCPT;
+cr16		excp	bpt
+cris		break	8
+frv		tira	gr0,1
+ft32		call	8
+h8300		sleep
+iq2000		break
+lm32		break
+m32c		brk
+m32r
+m68hc11
+mcore
+microblaze
+mips
+mn10300		break
+moxie
+msp430
+or1k
+ppc
+pru
+rl78
+rx
+sh
+v850

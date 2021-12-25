@@ -1,5 +1,5 @@
 *** gdb-10.2.org/gdb/infrun.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.mn10300-elf/gdb/infrun.c	2021-12-25 13:03:18.000000000 +0900
+--- gdb-10.2.lm32-elf/gdb/infrun.c	2021-12-25 15:08:02.000000000 +0900
 ***************
 *** 5782,5787 ****
 --- 5782,5795 ----
@@ -47,7 +47,26 @@
   	  /* Re-adjust PC to what the program would see if GDB was not
   	     debugging it.  */
   	  regcache = get_thread_regcache (ecs->event_thread);
-! 	  decr_pc = 1;
+! 	  decr_pc = 4;
   	  if (decr_pc != 0)
   	    {
   	      gdb::optional<scoped_restore_tmpl<int>>
+*** gdb-10.2.org/sim/lm32/lm32.c	2021-04-25 13:04:35.000000000 +0900
+--- gdb-10.2.lm32-elf/sim/lm32/lm32.c	2021-12-25 15:14:04.000000000 +0900
+***************
+*** 64,70 ****
+  	return 0;
+        }
+  
+!   return -1;
+  }
+  
+  
+--- 64,70 ----
+  	return 0;
+        }
+  
+!   return len;
+  }
+  
+  
