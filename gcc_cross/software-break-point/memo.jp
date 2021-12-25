@@ -6,7 +6,7 @@ int main()
   return 0;
 }
 
-に対して continue コマンドで pc を int3 命令の次の命令にセットしているか調査してみた. 
+に対して continue コマンドでの前後で pc を int3 命令の次の命令にセットしているか調査してみた. 
 
 08049142 <main>:
  8049142:	55                   	push   %ebp
@@ -120,7 +120,7 @@ run -q -x /home/khasegawa/lang/53_GNU_tool/gcc_cross/MN10300/test/test014/x /hom
 
 きている.
 
-なのであとは動作の比較を行なう.
+なのであとは動作の比較を行なってみた.
 
 以下の条件が成立すればネイティブ gdb と同じ動作になるのだが,
 
@@ -165,3 +165,43 @@ target_ops::stopped_by_sw_breakpoint ()
 
 いずれにしても gdb からセットしたブレークポイントなのか, プログラムに埋め込まれたブレー
 クポイントなのかを区別する必要がある.
+
+ネイティブの gdb では
+
+void
+_initialize_i386_tdep ()
+{
+...
+
+だけではなく
+
+void
+_initialize_i386_linux_nat ()
+{
+  linux_target = &the_i386_linux_nat_target;
+
+  /* Add the target.  */
+  add_inf_child_target (linux_target);
+}
+
+でも特別な初期化を行なっている.
+
+(gdb) ptype linux_target
+type = class linux_nat_target : public inf_ptrace_target {
+  public:
+...
+  virtual bool stopped_by_sw_breakpoint(void);
+
+これが linux_nat_target::stopped_by_sw_breakpoint() が呼び出される仕組みらしい.
+
+しかし釈然としないのは, gdb 自身は身に覚えのないブレークポイントによる停止が検出された
+のだから target_stopped_by_sw_breakpoint () を自力で計算することが
+できそうなものなのだが, 現状はそうはなっていない.
+
+停止しているアドレス, ブレークポイントのリスト
+
+から計算できそう. ネイティブ gdb と同じやり方でできなくもなさそうだが, 面倒なので
+
+target_stopped_by_sw_breakpoint
+
+を直接書き変える.
