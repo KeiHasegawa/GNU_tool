@@ -205,8 +205,18 @@ type = class linux_nat_target : public inf_ptrace_target {
 
 target_stopped_by_sw_breakpoint
 
-を直接書き変える.
+を直接書き変える. このページにあるパッチファイルを適用すれば意図した動
+作に近い. 共通部分を書き替えるのはあまり良くないが影響範囲を考えるとこ
+うするのが落しどころのように思える.
 
+ 	  decr_pc = gdbarch_decr_pc_after_break (gdbarch);
+
+ 	  decr_pc = 4; // ターゲット依存
+
+gdbarch_decr_pc_after_break (gdbarch) の戻り値を変更すると他の部分に
+影響する.
+
+以下はソフトウェアブレークポイントのための命令
 
 aarch64		.word 0xd4200000
 arm		.word 0xe7ffdefe
@@ -220,7 +230,7 @@ h8300		sleep
 iq2000		break
 lm32		break
 m32c		brk
-m32r
+m32r		trap	#0x1
 m68hc11
 mcore
 microblaze
