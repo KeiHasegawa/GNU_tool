@@ -1,20 +1,14 @@
 *** gdb-10.2.rl78-elf/sim/common/sim-load.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.rl78-elf.new/sim/common/sim-load.c	2021-12-16 16:40:25.000000000 +0900
+--- gdb-10.2.rl78-elf.new/sim/common/sim-load.c	2021-12-26 10:54:58.000000000 +0900
 ***************
 *** 133,143 ****
---- 133,163 ----
+--- 133,157 ----
   		}
   	      data_count += size;
   	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
 + #ifdef NEW_MEM_MAP
-+ 	      if ((s->flags & SEC_DATA) && !(s->flags & SEC_READONLY)) {
-+ #if 0		
-+ 		sim_do_commandf(sd, "memory-region 0x%lx,0x%lx",
-+ 				lma | 0xf0000, size);
-+ #else
-+ 		lma |= 0xf0000;
-+ #endif		
-+ 	      }
++  	      if ((s->flags & SEC_DATA) && !(s->flags & SEC_READONLY))
++  		lma |= 0xf0000;
 +        	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
 + #endif // NEW_MEM_MAP
   	      do_write (sd, lma, buffer, size);
@@ -24,18 +18,18 @@
   	}
 + #ifdef NEW_MEM_MAP
 +         else if (s->flags & SEC_ALLOC) {
-+           bfd_vma lma = lma_p ? bfd_section_lma(s) : bfd_section_vma(s);
++ 	  bfd_vma vma = bfd_section_vma(s);
++ 	  vma |= 0xf0000;
 +           bfd_size_type size = bfd_section_size(s);
 +           sim_do_command(sd, "memory-fill 0xcc");
-+ 	  lma |= 0xf0000;
-+           sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
++           sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", vma, size);
 +         }
 + #endif // NEW_MEM_MAP
       }
   
     if (!found_loadable_section)
 *** gdb-10.2.rl78-elf/sim/rl78/cpu.c	2021-12-09 17:47:36.000000000 +0900
---- gdb-10.2.rl78-elf.new/sim/rl78/cpu.c	2021-12-16 13:17:16.000000000 +0900
+--- gdb-10.2.rl78-elf.new/sim/rl78/cpu.c	2021-12-20 13:29:15.000000000 +0900
 ***************
 *** 28,33 ****
 --- 28,37 ----
@@ -123,7 +117,7 @@
       case RL78_Reg_None:
 ***************
 *** 115,120 ****
---- 124,154 ----
+--- 124,172 ----
       case RL78_Reg_PMC:	return memory[RL78_SFR_PMC];
       case RL78_Reg_MEM:	return memory[RL78_SFR_MEM];
       }
@@ -136,20 +130,38 @@
 +     return sim_core_read_aligned_1(g_sd->cpu[0], g_cia, read_map, RL78_SFR_PSW);
 +   if (regno == RL78_Reg_ES)
 +     return sim_core_read_aligned_1(g_sd->cpu[0], g_cia, read_map, RL78_SFR_ES);
++   if (regno == RL78_Reg_CS)
++     return sim_core_read_aligned_1(g_sd->cpu[0], g_cia, read_map, RL78_SFR_CS);
++   if (regno == RL78_Reg_PMC)
++     return sim_core_read_aligned_1(g_sd->cpu[0], g_cia, read_map, RL78_SFR_PMC);
 + 
 +   if (regno == RL78_Reg_None)  // for example. `bz label' instruction
 +     return 0;                  // refers this register.
 +   
 +   if (regno == RL78_Reg_AX)
 +     return sim_core_read_aligned_2(g_sd->cpu[0], g_cia, read_map, 0xffef8+0);
++   if (regno == RL78_Reg_X)
++     return sim_core_read_aligned_1(g_sd->cpu[0], g_cia, read_map, 0xffef8+0);
 +   if (regno == RL78_Reg_A)
 +     return sim_core_read_aligned_1(g_sd->cpu[0], g_cia, read_map, 0xffef8+1);
 +   if (regno == RL78_Reg_BC)
 +     return sim_core_read_aligned_2(g_sd->cpu[0], g_cia, read_map, 0xffef8+2);
++   if (regno == RL78_Reg_C)
++     return sim_core_read_aligned_1(g_sd->cpu[0], g_cia, read_map, 0xffef8+2);
++   if (regno == RL78_Reg_B)
++     return sim_core_read_aligned_1(g_sd->cpu[0], g_cia, read_map, 0xffef8+3);
 +   if (regno == RL78_Reg_DE)
 +     return sim_core_read_aligned_2(g_sd->cpu[0], g_cia, read_map, 0xffef8+4);
++   if (regno == RL78_Reg_E)
++     return sim_core_read_aligned_1(g_sd->cpu[0], g_cia, read_map, 0xffef8+4);
++   if (regno == RL78_Reg_D)
++     return sim_core_read_aligned_1(g_sd->cpu[0], g_cia, read_map, 0xffef8+5);
 +   if (regno == RL78_Reg_HL)
 +     return sim_core_read_aligned_2(g_sd->cpu[0], g_cia, read_map, 0xffef8+6);
++   if (regno == RL78_Reg_L)
++     return sim_core_read_aligned_1(g_sd->cpu[0], g_cia, read_map, 0xffef8+6);
++   if (regno == RL78_Reg_H)
++     return sim_core_read_aligned_1(g_sd->cpu[0], g_cia, read_map, 0xffef8+7);
 +   asm("int3");
 + #endif // NEW_MEM_MAP
   }
@@ -157,7 +169,7 @@
   extern unsigned char initted[];
 ***************
 *** 122,127 ****
---- 156,162 ----
+--- 174,180 ----
   SI
   set_reg (RL78_Register regno, SI val)
   {
@@ -167,7 +179,7 @@
       case RL78_Reg_None:
 ***************
 *** 175,180 ****
---- 210,257 ----
+--- 228,307 ----
       case RL78_Reg_MEM:	memory[RL78_SFR_MEM] = val; break;
       }
     return val;
@@ -184,6 +196,14 @@
 +   }
 +   if (regno == RL78_Reg_ES) {
 +     sim_core_write_aligned_1(g_sd->cpu[0], g_cia, write_map, RL78_SFR_ES, val);
++     return val;
++   }
++   if (regno == RL78_Reg_CS) {
++     sim_core_write_aligned_1(g_sd->cpu[0], g_cia, write_map, RL78_SFR_CS, val);
++     return val;
++   }
++   if (regno == RL78_Reg_PMC) {
++     sim_core_write_aligned_1(g_sd->cpu[0], g_cia, write_map, RL78_SFR_PMC, val);
 +     return val;
 +   }
 +   
@@ -203,12 +223,36 @@
 +     sim_core_write_aligned_2(g_sd->cpu[0], g_cia, write_map, 0xffef8+2, val);
 +     return val;
 +   }
++   if (regno == RL78_Reg_C) {
++     sim_core_write_aligned_1(g_sd->cpu[0], g_cia, write_map, 0xffef8+2, val);
++     return val;
++   }
++   if (regno == RL78_Reg_B) {
++     sim_core_write_aligned_1(g_sd->cpu[0], g_cia, write_map, 0xffef8+3, val);
++     return val;
++   }
 +   if (regno == RL78_Reg_DE) {
 +     sim_core_write_aligned_2(g_sd->cpu[0], g_cia, write_map, 0xffef8+4, val);
 +     return val;
 +   }
++   if (regno == RL78_Reg_E) {
++     sim_core_write_aligned_1(g_sd->cpu[0], g_cia, write_map, 0xffef8+4, val);
++     return val;
++   }
++   if (regno == RL78_Reg_D) {
++     sim_core_write_aligned_1(g_sd->cpu[0], g_cia, write_map, 0xffef8+5, val);
++     return val;
++   }
 +   if (regno == RL78_Reg_HL) {
 +     sim_core_write_aligned_2(g_sd->cpu[0], g_cia, write_map, 0xffef8+6, val);
++     return val;
++   }
++   if (regno == RL78_Reg_L) {
++     sim_core_write_aligned_1(g_sd->cpu[0], g_cia, write_map, 0xffef8+6, val);
++     return val;
++   }
++   if (regno == RL78_Reg_H) {
++     sim_core_write_aligned_1(g_sd->cpu[0], g_cia, write_map, 0xffef8+7, val);
 +     return val;
 +   }
 +   asm("int3");
@@ -218,7 +262,7 @@
   int
 ***************
 *** 290,296 ****
---- 367,377 ----
+--- 417,427 ----
   	    }
   	  a = REGISTER_ADDRESS + (i ^ 0x18);
   	  o = old_regs[i ^ 0x18] + old_regs[(i ^ 0x18) + 1] * 256;
@@ -232,7 +276,7 @@
   	  old_regs[(i ^ 0x18) + 1] = n >> 8;
 ***************
 *** 309,317 ****
---- 390,403 ----
+--- 440,453 ----
   	  else
   	    sprintf (buf, "r%d", i);
   #define TRB(name, idx) TB (name, memory[REGISTER_ADDRESS + (idx)], old_regs[idx])
@@ -249,7 +293,7 @@
         printf ("PSW: \033[31m");
 ***************
 *** 325,338 ****
---- 411,429 ----
+--- 461,479 ----
     TW ("SP", mem_get_hi (RL78_SFR_SP), old_sp);
     if (any)
       printf ("\n");
