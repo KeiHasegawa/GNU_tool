@@ -8,3 +8,4 @@ start:
 	jarl .+4, r31 ; add 4, r31 ; jmp r10
 	nop
 	.short 0xf840
+	nop
