@@ -1,0 +1,26 @@
+Native gdb handles software break point as I expect.
+
+int main()
+{
+  asm("int3");  // stop here. and `continue` command works well.
+  return 0;
+}
+
+So, I examined that before `continue' command or after `continue' command,
+how native gdb set the next address of `int3' instruction into `pc' register.
+
+To be omitted, finally I noticed that below condition satisfies
+at native gdb.
+
+  if (random_signal && target_stopped_by_sw_breakpoint ())
+    {
+
+But not satisfies at, for example, mn10300-elf-gdb.
+
+To make it simple, I decided to fix `target_stopped_by_sw_breakpoint' macro
+even though above is common part of gdb.
+
+Applying patch file on this web page, software break point works well.
+
+For rx-elf-gdb, no patch is necessary.
+
