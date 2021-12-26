@@ -1,4 +1,4 @@
-ネイティブの gdb でどのように
+ネイティブの gdb で
 
 int main()
 {
@@ -223,11 +223,13 @@ bool target_stopped_by_sw_breakpoint(COREADDR pc)
 gdbarch_decr_pc_after_break (gdbarch) の戻り値を変更すると他の部分に
 影響してしまう.
 
+不思議だが rx-elf-gdb は修正なしで期待した動きに近いものになっている.
+
 以下はソフトウェアブレークポイントのためのアセンブリ
 
-aarch64		.word 0xd4200000
-arm		.word 0xe7ffdefe
-avr		break			(.word	0x9598)
+aarch64		.word	0xd4200000
+arm		.word	0xe7ffdefe
+avr		break		アセンブラでは .word	0x9598 を使用する
 bfin		EMUEXCPT;
 cr16		excp	bpt
 cris		break	8
@@ -237,18 +239,18 @@ h8300		sleep
 iq2000		break
 lm32		break
 m32c		brk
-m32r		nop と trap	#0x1
+m32r		nop と trap	#0x1 の 2 命令
 m68hc11		bgnd
 mcore		bkpt
-microblaze
-mips
+microblaze	brki	r14, 96
+mips		break	5
 mn10300		break
-moxie
-msp430
-or1k
-ppc
-pru
-rl78
-rx
-sh
-v850
+moxie		brk
+msp430		clr.b	r3
+or1k		l.trap	0x1
+ppc		twge	2, 2
+pru		lmbd	r14, r27.w2, r26.w1
+rl78		brk1
+rx		.byte	0x00
+sh		trapa	#0xc3
+v850		.short	0xf840
