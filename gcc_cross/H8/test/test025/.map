@@ -1,0 +1,61 @@
+
+メモリ設定
+
+名前           原点             長さ             属性
+*default*        0x00000000         0xffffffff
+
+リンカスクリプトおよびメモリマップ
+
+LOAD start.o
+LOAD test025.o
+LOAD /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/h8300-elf/lib/h8300h/libc.a
+                0x00000100                . = 0x100
+
+.text           0x00000100       0x3a
+ .text          0x00000100        0xa start.o
+ .text          0x0000010a       0x30 test025.o
+                0x0000010a                f
+                0x0000012e                main
+
+.data           0x0000013a        0x0
+ .data          0x0000013a        0x0 start.o
+ .data          0x0000013a        0x0 test025.o
+
+.bss            0x0000013a        0x0
+ .bss           0x0000013a        0x0 start.o
+ .bss           0x0000013a        0x0 test025.o
+                0x00001000                . = 0x1000
+
+.stack
+                0x00001000                PROVIDE (stack = .)
+OUTPUT(test025.elf elf32-h8300)
+
+.debug_line     0x00000000       0x98
+ .debug_line    0x00000000       0x35 start.o
+ .debug_line    0x00000035       0x63 test025.o
+
+.debug_info     0x00000000       0x88
+ .debug_info    0x00000000       0x22 start.o
+ .debug_info    0x00000022       0x66 test025.o
+
+.debug_abbrev   0x00000000       0x7a
+ .debug_abbrev  0x00000000       0x14 start.o
+ .debug_abbrev  0x00000014       0x66 test025.o
+
+.debug_aranges  0x00000000       0x28
+ .debug_aranges
+                0x00000000       0x14 start.o
+ .debug_aranges
+                0x00000014       0x14 test025.o
+
+.debug_str      0x00000000       0x72
+ .debug_str     0x00000000       0x51 start.o
+ .debug_str     0x00000051       0x21 test025.o
+                                 0x5c (緩和前のサイズ)
+
+.debug_frame    0x00000000       0x50
+ .debug_frame   0x00000000       0x50 test025.o
+
+.comment        0x00000000       0x12
+ .comment       0x00000000       0x12 test025.o
+                                 0x13 (緩和前のサイズ)
