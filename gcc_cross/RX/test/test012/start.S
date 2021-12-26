@@ -6,5 +6,6 @@ start:
 	bsr	_main
 	nop
 	.byte	0x00
+	nop
 
 
