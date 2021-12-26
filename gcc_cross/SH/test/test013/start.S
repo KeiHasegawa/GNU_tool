@@ -5,7 +5,8 @@ start:
 	mov.l	label2,r1
 	jsr	@r1
 	nop
-	trapa	#32
+	trapa	#0xc3
+	nop
 
 	.align 2
 label1:

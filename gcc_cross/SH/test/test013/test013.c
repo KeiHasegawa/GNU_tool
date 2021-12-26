@@ -1,5 +1,5 @@
 int main()
 {
-  asm("trapa	#32");
+  asm("trapa	#0xc3");
   return 0;
 }
