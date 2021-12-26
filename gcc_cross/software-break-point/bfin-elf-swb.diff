@@ -1,5 +1,5 @@
 *** gdb-10.2.org/gdb/infrun.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.bfin-elf/gdb/infrun.c	2021-12-25 13:59:35.000000000 +0900
+--- gdb-10.2.bfin-elf/gdb/infrun.c	2021-12-26 12:31:33.000000000 +0900
 ***************
 *** 5782,5787 ****
 --- 5782,5795 ----
@@ -58,19 +58,25 @@
   	    {
   	      gdb::optional<scoped_restore_tmpl<int>>
 ***************
-*** 6138,6144 ****
+*** 6138,6147 ****
   		  (record_full_gdb_operation_disable_set ());
   
   	      regcache_write_pc (regcache,
 ! 				 ecs->event_thread->suspend.stop_pc + decr_pc);
   	    }
   	}
-        else
---- 6146,6152 ----
+!       else
+  	{
+  	  /* A delayed software breakpoint event.  Ignore the trap.  */
+  	  infrun_debug_printf ("delayed software breakpoint trap, ignoring");
+--- 6146,6155 ----
   		  (record_full_gdb_operation_disable_set ());
   
   	      regcache_write_pc (regcache,
 ! 				 ecs->event_thread->suspend.stop_pc);
   	    }
   	}
-        else
+!       else if (0)
+  	{
+  	  /* A delayed software breakpoint event.  Ignore the trap.  */
+  	  infrun_debug_printf ("delayed software breakpoint trap, ignoring");
