@@ -4,3 +4,4 @@ start:
 	bal (ra), _main@c
 	nop
 	excp	bpt
+	nop
