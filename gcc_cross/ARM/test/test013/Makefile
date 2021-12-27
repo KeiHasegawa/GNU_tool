@@ -1,16 +1,16 @@
-all:test013.objdump test013.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test013.elf:test013.o test013.x
+test.elf:test.o test.x
 	arm-elf-ld -o $@ $< -T $(basename $<).x
 
-test013.log:test013.elf
+test.log:test.elf
 	echo quit | wdog.exe -v arm-elf-gdb -q -x gdbcom $< > $@ 2>&1 &
 	sleep 1
 	kill -INT `ps -ef | grep arm-elf-gdb | awk '{print $$2}'`
 
-test013.lof:test013.log
+test.lof:test.log
 	grep -q 'Program received signal SIGINT, Interrupt.' $< || grep -q 'Program received signal SIGINT, Interrupt.' $<
 	touch $@
 
