@@ -1,28 +1,7 @@
-all:test007.objdump test007.lof
+all:test.objdump test.lof
 
-start.o:start.S
-	arm-elf-as -o $@ -g $<
+include ../Makefile.common
 
+test.elf:start.o test.o test.x
 
-test007.s:test007.c
-	arm-elf-gcc -o $@ -S $< -g
-
-test007.o:test007.s
-	arm-elf-as -o $@ $<
-
-test007.elf:start.o test007.o test007.x
-	arm-elf-ld -o $@ start.o test007.o -T test007.x -Map test007.map
-
-test007.objdump:test007.elf
-	arm-elf-objdump -x -d -g $< > $@
-
-test007.log:test007.elf gdbcom
-	wdog.exe -v arm-elf-gdb -q -x gdbcom $< > $@
-
-test007.lof:test007.log
-	wdog.exe -v diff $< $@
-	touch $@
-
-clean:
-	rm -f *.o *.s *.elf *.map *.objdump *.log *~
-
+test.lof:test.log
