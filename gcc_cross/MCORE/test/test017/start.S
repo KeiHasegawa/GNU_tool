@@ -5,4 +5,5 @@ start:
 	jbsr	main
 	nop
 	bkpt
+	nop
 
