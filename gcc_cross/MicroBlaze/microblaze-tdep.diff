@@ -1,0 +1,90 @@
+*** gdb-10.2.org/gdb/microblaze-tdep.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.microblaze-elf/gdb/microblaze-tdep.c	2021-12-28 14:40:03.000000000 +0900
+***************
+*** 38,43 ****
+--- 38,44 ----
+  #include "opcodes/microblaze-dis.h"
+  #include "microblaze-tdep.h"
+  #include "remote.h"
++ #include "gdbcore.h"
+  
+  #include "features/microblaze-with-stack-protect.c"
+  #include "features/microblaze.c"
+***************
+*** 588,593 ****
+--- 589,605 ----
+  			 struct type *type, struct regcache *regcache,
+  			 gdb_byte *readbuf, const gdb_byte *writebuf)
+  {
++   auto code = type->code();
++   switch (code) {
++   case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
++     if (readbuf) {
++       ULONGEST addr;
++       regcache_raw_read_unsigned(regcache, MICROBLAZE_RETVAL_REGNUM, &addr);
++       read_memory(addr, readbuf, TYPE_LENGTH(type));
++     }
++     return RETURN_VALUE_ABI_RETURNS_ADDRESS;
++   }
++   
+    if (readbuf)
+      microblaze_extract_return_value (type, regcache, readbuf);
+    if (writebuf)
+***************
+*** 646,651 ****
+--- 658,701 ----
+                                    tdesc_microblaze_with_stack_protect);
+  }
+  
++ #include "objfiles.h"
++ 
++ static CORE_ADDR
++ microblaze_push_dummy_code(gdbarch* arch, CORE_ADDR sp, CORE_ADDR funaddr,
++ 			   value **args, int nargs, type* value_type,
++ 			   CORE_ADDR* real_pc, CORE_ADDR* bp_addr,
++ 			   regcache* rc)
++ {
++   *real_pc = funaddr;
++   *bp_addr = entry_point_address() + 8;
++   return sp;
++ }
++ 
++ static void set_arg(int nth, value* arg, regcache* rc, CORE_ADDR sp)
++ {
++   auto val = value_contents(arg);
++   if (nth < 6) {
++     CORE_ADDR regval = extract_unsigned_integer(val, 4, BFD_ENDIAN_BIG);
++     regcache_cooked_write_unsigned(rc, MICROBLAZE_R5_REGNUM+nth, regval);
++     return;
++   }
++   CORE_ADDR addr = sp + 4 * nth;
++   write_memory(addr, val, 4);
++ }
++ 
++ static CORE_ADDR
++ microblaze_push_dummy_call(gdbarch* arch, value* func, regcache* rc,
++ 			   CORE_ADDR bp_addr, int nargs, value** argv,
++ 			   CORE_ADDR sp, function_call_return_method rm,
++ 			   CORE_ADDR struct_addr)
++ {
++   regcache_cooked_write_unsigned(rc, MICROBLAZE_R15_REGNUM, bp_addr - 8);
++   for (int i = 0 ; i != nargs ; ++i)
++     set_arg(i, argv[i], rc, sp);
++   regcache_cooked_write_unsigned(rc, MICROBLAZE_SP_REGNUM, sp);  
++   return sp;
++ }
++ 
+  static struct gdbarch *
+  microblaze_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
+  {
+***************
+*** 717,722 ****
+--- 767,774 ----
+  
+    /* Call dummy code.  */
+    set_gdbarch_call_dummy_location (gdbarch, ON_STACK);
++   set_gdbarch_push_dummy_code(gdbarch, microblaze_push_dummy_code);
++   set_gdbarch_push_dummy_call(gdbarch, microblaze_push_dummy_call);
+  
+    set_gdbarch_return_value (gdbarch, microblaze_return_value);
+    set_gdbarch_stabs_argument_has_addr

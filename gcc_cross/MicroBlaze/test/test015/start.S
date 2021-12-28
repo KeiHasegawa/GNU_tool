@@ -7,3 +7,4 @@ start:
       	brlid	r15, main
 	nop
 	brki	r14, 96
+	nop
