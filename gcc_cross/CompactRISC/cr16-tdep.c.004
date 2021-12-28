@@ -265,8 +265,8 @@ static const unsigned char* cr16_from_kind(gdbarch*, int, int* size)
 static void set_arg(int nth, value* arg, regcache* rc, CORE_ADDR sp)
 {
   auto val = value_contents(arg);
-  CORE_ADDR regval = extract_unsigned_integer(val, 2, BFD_ENDIAN_LITTLE);
   if (nth < 5) {
+    CORE_ADDR regval = extract_unsigned_integer(val, 2, BFD_ENDIAN_LITTLE);    
     regcache_cooked_write_unsigned(rc, 2+nth, regval);
     return;
   }
