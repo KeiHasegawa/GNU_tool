@@ -1,5 +1,5 @@
 *** gdb-10.2.org/gdb/ft32-tdep.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.ft32-elf/gdb/ft32-tdep.c	2021-12-28 10:40:19.000000000 +0900
+--- gdb-10.2.ft32-elf/gdb/ft32-tdep.c	2021-12-28 16:14:41.000000000 +0900
 ***************
 *** 417,424 ****
   		   struct type *valtype, struct regcache *regcache,
@@ -28,7 +28,7 @@
         if (readbuf != NULL)
 ***************
 *** 551,556 ****
---- 558,604 ----
+--- 558,611 ----
     ft32_frame_base_address
   };
   
@@ -45,6 +45,12 @@
 + }
 + 
 + #include <utility>
++ #include <numeric>
++ 
++ static int add_arg(int sum, value* arg)
++ {
++   return sum + 2;
++ }
 + 
 + static CORE_ADDR
 + ft32_push_dummy_call(gdbarch* arch, value* func, regcache* rc,
@@ -53,6 +59,7 @@
 + 		     CORE_ADDR struct_addr)
 + {
 +   using namespace std;
++   sp -= accumulate(&argv[0], &argv[nargs], 0, add_arg);
 +   if (sp & 3)
 +     sp &= 0xfffffffc;
 +   sp -= 4;
@@ -78,7 +85,7 @@
   static struct gdbarch *
 ***************
 *** 611,616 ****
---- 659,666 ----
+--- 666,673 ----
     set_gdbarch_address_class_type_flags_to_name
       (gdbarch, ft32_address_class_type_flags_to_name);
   
