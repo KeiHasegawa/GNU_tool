@@ -262,6 +262,13 @@ static const unsigned char* cr16_from_kind(gdbarch*, int, int* size)
   return &break_inst[0];
 }
 
+#include <numeric>
+
+static int add_arg(int sum, value* arg)
+{
+  return sum + 2;
+}
+
 static void set_arg(int nth, value* arg, regcache* rc, CORE_ADDR sp)
 {
   auto val = value_contents(arg);
@@ -280,6 +287,8 @@ cr16_push_dummy_call(gdbarch* arch, value* func, regcache* rc,
 		     function_call_return_method rm,
 		     CORE_ADDR struct_addr)
 {
+  using namespace std;
+  sp -= accumulate(&argv[0], &argv[nargs], 0, add_arg);
   regcache_cooked_write_unsigned(rc, 14, bp_addr >> 1);
   for (int i = 0 ; i != nargs ; ++i)
     set_arg(i, argv[i], rc, sp);
