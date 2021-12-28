@@ -327,7 +327,7 @@
   
   SI pc;
 *** gdb-10.2.rl78-elf/sim/rl78/gdb-if.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.rl78-elf.new/sim/rl78/gdb-if.c	2021-12-16 12:59:46.000000000 +0900
+--- gdb-10.2.rl78-elf.new/sim/rl78/gdb-if.c	2021-12-29 07:07:35.000000000 +0900
 ***************
 *** 43,49 ****
   
@@ -468,8 +468,8 @@
 +   // `x',`a', `c', `b', `e', `d', `l' and `h' register
 +   sim_do_command(sd, "memory-region 0xffee0,0x20");
 + 
-+   // `sp', `psw', `cs', `es' and `pmc' register
-+   sim_do_command(sd, "memory-region 0xffff8,0x7");
++   // `sp', `psw', `cs', `es', `pmc' and `mem' register
++   sim_do_command(sd, "memory-region 0xffff8,0x8");
 + 
 +   sim_cpu* cpu = sd->cpu[0];
 +   CPU_PC_FETCH(cpu) = my_pc_fetch;
