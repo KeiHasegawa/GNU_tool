@@ -7,3 +7,4 @@ start:
 	l.jal	main
 	l.nop
 	l.trap 0x1
+	l.nop
