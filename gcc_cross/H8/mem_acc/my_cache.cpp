@@ -22,6 +22,11 @@ extern "C" void set_cache(int pc, decoded_inst* inst)
   cache[pc] = *inst;
 }
 
+extern "C" void clear_cache(int pc)
+{
+  cache.erase(pc);
+}
+
 std::vector<std::pair<bfd_vma, bfd_size_type> > code_areas;
 
 bool match(std::pair<bfd_vma, bfd_size_type> p, bfd_vma x)
@@ -43,4 +48,3 @@ extern "C" void set_code_area(bfd_vma addr, bfd_size_type size)
   using namespace std;
   code_areas.push_back(make_pair(addr, size));
 }
-
