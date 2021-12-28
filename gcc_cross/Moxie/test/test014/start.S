@@ -5,3 +5,4 @@ start:
 	jsra	main
 	nop
 	brk
+	nop
