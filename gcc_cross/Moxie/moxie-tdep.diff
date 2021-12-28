@@ -1,0 +1,118 @@
+*** gdb-10.2.org/gdb/moxie-tdep.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.moxie-elf/gdb/moxie-tdep.c	2021-12-28 17:15:19.000000000 +0900
+***************
+*** 480,487 ****
+  		   struct type *valtype, struct regcache *regcache,
+  		   gdb_byte *readbuf, const gdb_byte *writebuf)
+  {
+!   if (TYPE_LENGTH (valtype) > 8)
+!     return RETURN_VALUE_STRUCT_CONVENTION;
+    else
+      {
+        if (readbuf != NULL)
+--- 480,493 ----
+  		   struct type *valtype, struct regcache *regcache,
+  		   gdb_byte *readbuf, const gdb_byte *writebuf)
+  {
+!   if (TYPE_LENGTH (valtype) > 8) {
+!     if (readbuf) {
+!       ULONGEST addr;
+!       regcache_raw_read_unsigned(regcache, RET1_REGNUM, &addr);
+!       read_memory(addr, readbuf, TYPE_LENGTH(valtype));
+!     }
+!     return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+!   }
+    else
+      {
+        if (readbuf != NULL)
+***************
+*** 562,568 ****
+--- 568,578 ----
+    if (cache->base == 0)
+      return;
+  
++ #if 0
+    *this_id = frame_id_build (cache->saved_sp, cache->pc);
++ #else
++   *this_id = frame_id_build (cache->base, cache->pc);
++ #endif
+  }
+  
+  /* Get the value of register regnum in the previous stack frame.  */
+***************
+*** 1045,1050 ****
+--- 1055,1117 ----
+    return 0;
+  }
+  
++ #include <numeric>
++ 
++ static int add_arg(int sum, value* arg)
++ {
++   return sum + 4;
++ }
++ 
++ static void set_arg(int nth, value* arg, regcache* rc, CORE_ADDR sp)
++ {
++   auto val = value_contents(arg);
++   if (nth < 6) {
++     CORE_ADDR regval = extract_unsigned_integer(val, 4, BFD_ENDIAN_BIG);
++     regcache_cooked_write_unsigned(rc, R0_REGNUM+nth, regval);
++     return;
++   }
++   CORE_ADDR addr = sp + 8 + 4 + 4 * nth;
++   write_memory(addr, val, 4);
++ }
++ 
++ static CORE_ADDR
++ moxie_push_dummy_call(gdbarch* arch, value* func, regcache* rc,
++ 		      CORE_ADDR bp_addr, int nargs, value** argv, CORE_ADDR sp,
++ 		      function_call_return_method rm,
++ 		      CORE_ADDR struct_addr)
++ {
++   using namespace std;
++   sp -= accumulate(&argv[0], &argv[nargs], 0, add_arg);
++   sp &= 0xfffffffc;
++   sp -= 8;
++   union {
++     uint32_t i;
++     gdb_byte c[4];
++   } u = { bp_addr };
++   int x = 1;
++   if (*(char*)&x) {
++     // gdb runs at a little endian processor
++     swap(u.c[0], u.c[3]);
++     swap(u.c[1], u.c[2]);
++   }
++   write_memory(sp, &u.c[0], 4);
++   sp -= 4;
++   ULONGEST fp;
++   regcache_cooked_read_unsigned(rc, MOXIE_FP_REGNUM, &fp);
++   u.i = fp;
++   if (*(char*)&x) {
++     // gdb runs at a little endian processor
++     swap(u.c[0], u.c[3]);
++     swap(u.c[1], u.c[2]);
++   }
++   write_memory(sp, &u.c[0], 4);
++   regcache_cooked_write_unsigned(rc, MOXIE_FP_REGNUM, sp);
++   for (int i = 0 ; i != nargs ; ++i)
++     set_arg(i, argv[i], rc, sp);
++   regcache_cooked_write_unsigned(rc, MOXIE_SP_REGNUM, sp);
++   return sp;
++ }
++ 
+  /* Allocate and initialize the moxie gdbarch object.  */
+  
+  static struct gdbarch *
+***************
+*** 1098,1103 ****
+--- 1165,1172 ----
+    /* Support reverse debugging.  */
+    set_gdbarch_process_record (gdbarch, moxie_process_record);
+  
++   set_gdbarch_push_dummy_call(gdbarch, moxie_push_dummy_call);
++   
+    return gdbarch;
+  }
+  
