@@ -4,3 +4,5 @@ start:
 	call	main
 	nop
 	call 8
+	nop
+	

@@ -10,6 +10,7 @@ SECTIONS {
 	       _data_start = .;  /* VMA */
 	       *(.data)
 	       *(.rodata)
+	       *(.rodata*)
 	       _data_end = .;    /* VMA */
 	 } > ram AT> flash
 	 
