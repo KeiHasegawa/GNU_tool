@@ -286,9 +286,15 @@ static const unsigned char* mcore_from_kind(gdbarch*, int kind, int* size)
   return &bkpt[0];
 }
 
+#include <numeric>
+
+static int add_arg(int sum, value* arg)
+{
+  return sum + 4;
+}
+
 static void set_arg(int nth, value* arg, regcache* rc, CORE_ADDR sp)
 {
-
   auto val = value_contents(arg);
   if (nth < 6) {
     CORE_ADDR regval = extract_unsigned_integer(val, 2, BFD_ENDIAN_LITTLE);    
@@ -305,11 +311,13 @@ mcore_push_dummy_call(gdbarch* arch, value* func, regcache* rc,
 		      function_call_return_method rm,
 		      CORE_ADDR struct_addr)
 {
+  using namespace std;
+  sp -= accumulate(&argv[0], &argv[nargs], 0, add_arg);
   regcache_cooked_write_unsigned(rc, 15, bp_addr);  
   for (int i = 0 ; i != nargs ; ++i)
     set_arg(i, argv[i], rc, sp);
   regcache_cooked_write_unsigned(rc, sp_regno, sp);  
-  return 0;
+  return sp;
 }
 
 static value*
