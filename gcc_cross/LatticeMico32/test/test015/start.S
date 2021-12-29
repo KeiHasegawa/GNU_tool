@@ -4,7 +4,5 @@ start:
 	ori      sp, sp, lo(stack)
 	calli    main
 	nop
-	break
-	nop
 _fstack:	
 	nop
