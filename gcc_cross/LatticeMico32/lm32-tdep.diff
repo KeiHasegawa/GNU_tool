@@ -1,0 +1,154 @@
+*** gdb-10.2.org/gdb/lm32-tdep.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.lm32-elf/gdb/lm32-tdep.c	2021-12-30 08:49:43.000000000 +0900
+***************
+*** 223,228 ****
+--- 223,297 ----
+  
+  /* Setup registers and stack for faking a call to a function in the 
+     inferior.  */
++ #include <cassert>
++ 
++ static void calc_sp(int* nth, value* arg, CORE_ADDR* sp)
++ {
++   auto arg_type = check_typedef(value_type(arg));
++   auto code = arg_type->code();
++   switch (code) {
++   case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
++     asm("int3");
++   }
++   int len = TYPE_LENGTH(arg_type);
++   if (len <= 4) {
++     if (*nth < 8) {
++       ++*nth;
++       return;
++     }
++     *sp -= 4;
++     ++*nth;
++     return;
++   }
++   
++   assert(len == 8);
++   if (*nth + 1 < 8) {
++     *nth += 2;
++     return;
++   }
++   *sp -= 8;
++ }
++ 
++ static void set_arg(int* nth, value* arg, CORE_ADDR sp, regcache* rc)
++ {
++   auto arg_type = check_typedef(value_type(arg));
++   auto code = arg_type->code();
++   switch (code) {
++   case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
++     asm("int3");
++   }
++ 
++   int len = TYPE_LENGTH(arg_type);  
++   auto contents = value_contents(arg);
++   auto val = extract_unsigned_integer(contents, len, BFD_ENDIAN_BIG);
++ 
++   if (len <= 4) {
++     if (*nth < 8) {
++       regcache_cooked_write_unsigned(rc, SIM_LM32_R1_REGNUM + *nth, val);
++       ++*nth;
++       return;
++     }
++     CORE_ADDR addr = sp + 4 + 4 * (*nth - 8);
++     ++*nth;
++     write_memory_unsigned_integer (addr, 4, BFD_ENDIAN_BIG, val);
++     return;
++   }
++ 
++   assert(len == 8);
++   uint32_t hi = val >> 32;
++   uint32_t lo = val;
++   if (*nth + 1 < 8) {
++     regcache_cooked_write_unsigned(rc, SIM_LM32_R1_REGNUM + *nth + 0, hi);
++     regcache_cooked_write_unsigned(rc, SIM_LM32_R1_REGNUM + *nth + 1, lo);
++     *nth += 2;
++     return;
++   }
++ 
++   CORE_ADDR addr = sp + 4 + 4 * (*nth - 8);
++   write_memory_unsigned_integer(addr + 0, 4, BFD_ENDIAN_BIG, hi);
++   write_memory_unsigned_integer(addr + 4, 4, BFD_ENDIAN_BIG, lo);
++   *nth += 2;
++ }
+  
+  static CORE_ADDR
+  lm32_push_dummy_call (struct gdbarch *gdbarch, struct value *function,
+***************
+*** 249,255 ****
+--- 318,329 ----
+        sp -= 4;
+      }
+  
++   int nth = 0;
++   for (i = 0 ; i != nargs ; ++i)
++     calc_sp(&nth, args[i], &sp);
++ 
+    /* Setup parameters.  */
++ #if 0
+    for (i = 0; i < nargs; i++)
+      {
+        struct value *arg = args[i];
+***************
+*** 290,295 ****
+--- 364,374 ----
+  	  sp -= 4;
+  	}
+      }
++ #else
++   nth = 0;
++   for (i = 0 ; i != nargs ; ++i)
++     set_arg(&nth, args[i], sp, regcache);
++ #endif  
+  
+    /* Update stack pointer.  */
+    regcache_cooked_write_signed (regcache, SIM_LM32_SP_REGNUM, sp);
+***************
+*** 321,329 ****
+--- 400,416 ----
+      {
+        /* 64-bit values are returned in a register pair.  */
+        regcache_cooked_read_unsigned (regcache, SIM_LM32_R1_REGNUM, &l);
++ #if 0      
+        memcpy (valbuf, &l, 4);
++ #else      
++       store_unsigned_integer (valbuf, 4, byte_order, l);
++ #endif      
+        regcache_cooked_read_unsigned (regcache, SIM_LM32_R2_REGNUM, &l);
++ #if 0      
+        memcpy (valbuf + 4, &l, 4);
++ #else
++       store_unsigned_integer (valbuf+4, 4, byte_order, l);
++ #endif      
+      }
+    else
+      {
+***************
+*** 372,379 ****
+  
+    if (code == TYPE_CODE_STRUCT
+        || code == TYPE_CODE_UNION
+!       || code == TYPE_CODE_ARRAY || TYPE_LENGTH (valtype) > 8)
+!     return RETURN_VALUE_STRUCT_CONVENTION;
+  
+    if (readbuf)
+      lm32_extract_return_value (valtype, regcache, readbuf);
+--- 459,472 ----
+  
+    if (code == TYPE_CODE_STRUCT
+        || code == TYPE_CODE_UNION
+!       || code == TYPE_CODE_ARRAY || TYPE_LENGTH (valtype) > 8) {
+!     if (readbuf) {
+!       ULONGEST addr;
+!       regcache_raw_read_unsigned (regcache, SIM_LM32_R1_REGNUM, &addr);
+!       read_memory (addr, readbuf, TYPE_LENGTH(valtype));
+!     }
+!     return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+!   }
+  
+    if (readbuf)
+      lm32_extract_return_value (valtype, regcache, readbuf);
