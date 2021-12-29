@@ -1,0 +1,142 @@
+arm-elf-gdb で p f(5, 6) をどのように処理しているか調査した.
+
+% cat x
+cd ~/lang/53_GNU_tool/gcc_cross/ARM/test/test016
+run -q -x gdbcom test016.elf
+%
+
+M-x gdb
+gdb --annotate=3 ./gdb
+(gdb) so x
+...
+Reading symbols from test016.elf...
+Connected to the simulator.
+Loading section .text, size 0x60 lma 0x100
+Start address 0x100
+Transfer rate: 768 bits in <1 sec.
+Breakpoint 1 at 0x14c: file test016.c, line 8.
+
+Breakpoint 1, main () at test016.c:8
+8	  return 0;
+$1 = 11
+...
+
+arm-elf-gdb はできていることを事前に知っていた. p コマンドが実行される
+ところは
+
+(gdb) b print_command
+
+とすればこのブレークポイントにヒットする. さらに
+
+(gdb) b sim_resume
+
+として sim_resume が呼び出されたときのスタックを確認してみた.
+
+(gdb) where
+#0  sim_resume (sd=0x8c60c10, step=0, siggnal=0) at ./../common/sim-resume.c:41
+#1  0x082d9013 in gdbsim_target::wait (this=0x8ad8350 <gdbsim_ops>, ptid=..., status=0xbfffec74, options=0) at remote-sim.c:966
+#2  0x083619c3 in target_wait (ptid=..., status=0xbfffec74, options=0) at target.c:2017
+#3  0x0821a4f2 in do_target_wait_1 (inf=0x8bfe340, ptid=..., status=0xbfffec74, options=0) at infrun.c:3544
+#4  0x0821a68a in operator() (__closure=0xbfffeb68, inf=0x8bfe340) at infrun.c:3606
+#5  0x0821a929 in do_target_wait (wait_ptid=..., ecs=0xbfffec60, options=1) at infrun.c:3619
+#6  0x0821b1db in fetch_inferior_event () at infrun.c:3905
+#7  0x08208799 in inferior_event_handler (event_type=INF_REG_EVENT) at inf-loop.c:42
+#8  0x08226585 in infrun_async_inferior_event_handler (data=0x0) at infrun.c:9215
+#9  0x080cc12c in check_async_event_handlers () at async-event.c:295
+#10 0x084dc77b in gdb_do_one_event () at event-loop.cc:194
+#11 0x0836f84c in wait_sync_command_done () at top.c:526
+#12 0x08209bc7 in run_inferior_call (real_pc=276, call_thread=<optimized out>, sm=0x8c7b9a0) at infcall.c:616
+#13 call_function_by_hand_dummy (function=<optimized out>, default_return_type=<optimized out>, args=..., dummy_dtor=<optimized out>, dummy_dtor_data=<optimized out>) at infcall.c:1278
+#14 0x0820b17e in call_function_by_hand (function=0x8c6b1b8, default_return_type=0x0, args=...) at infcall.c:743
+#15 0x081c9983 in eval_call (exp=exp@entry=0x8c68ec0, noside=noside@entry=EVAL_NORMAL, nargs=nargs@entry=2, argvec=0xbfffef40, function_name=0x8c4aea9 "f", default_return_type=0x0) at ./../gdbsupport/array-view.h:117
+--Type <RET> for more, q to quit, c to continue without paging--c
+#16 0x081cb237 in evaluate_funcall (expect_type=0x0, exp=<optimized out>, pos=<optimized out>, noside=<optimized out>) at eval.c:1233
+#17 0x081ccc43 in evaluate_subexp_standard (expect_type=0x0, exp=0x8c68ec0, pos=0xbffff0fc, noside=EVAL_NORMAL) at eval.c:1916
+#18 0x081c9c72 in evaluate_subexp (expect_type=0x0, exp=0x8c68ec0, pos=0xbffff0fc, noside=EVAL_NORMAL) at eval.c:78
+#19 0x081ca06d in evaluate_expression (exp=0x8c68ec0) at eval.c:138
+#20 0x082904a7 in print_command_1 (args=<optimized out>, voidprint=1) at /usr/local/include/c++/10.2.0/bits/unique_ptr.h:173
+#21 0x0811ffec in cmd_func (cmd=0x8bc7710, args=0x8c5d9fa "f(5, 6)", from_tty=0) at cli/cli-decode.c:2181
+#22 0x08371b3e in execute_command (p=<optimized out>, from_tty=0) at top.c:668
+#23 0x081d108c in command_handler (command=0x8c5d9f8 "p f(5, 6)") at event-top.c:588
+#24 0x0837014c in read_command_file (stream=0x8c4a980) at top.c:447
+#25 0x081265d1 in script_from_file (stream=0x8c4a980, file=0xbffff84b "gdbcom") at cli/cli-script.c:1622
+#26 0x0811ce94 in source_script_from_stream (file_to_open=0xbffff84b "gdbcom", file=0xbffff84b "gdbcom", stream=0x8c4a980) at cli/cli-cmds.c:700
+#27 source_script_with_search (file=0xbffff84b "gdbcom", file@entry=<error reading variable: value has been optimized out>, from_tty=<error reading variable: value has been optimized out>, search_path=<error reading variable: value has been optimized out>) at cli/cli-cmds.c:736
+#28 0x0824fe9a in catch_command_errors (command=<optimized out>, arg=<optimized out>, from_tty=<optimized out>) at main.c:457
+#29 0x08251b80 in captured_main_1 (context=<optimized out>) at main.c:1214
+#30 0x08251f7d in captured_main (data=0xbffff554) at main.c:1243
+#31 gdb_main (args=0xbffff554) at main.c:1268
+#32 0x08070c1c in main (argc=5, argv=0xbffff624) at gdb.c:32
+(gdb)
+
+print_command は直接の呼び出し元ではないらしい. しかし p f(5, 6) がきっ
+かけで sim_resume が呼び出されたことは推測できそう.
+
+sim_resume が呼び出されたときの pc(r15) は 0x114 であった. これは f の先頭アドレス.
+
+00000114 <f>:
+ 114:	e52db004 	push	{fp}		; (str fp, [sp, #-4]!)
+
+だから p f(5, 6) に先立って pc が f の先頭アドレスにセットされたという
+こと. 引数の 5 と 6 は r0, r1 レジスタにセットされる. 函数の戻りアドレスは
+lr(r14) レジスタにセットされる. このときは 0x100 にセットされていた.
+
+(gdb) b sim_engine_halt
+(gdb) c
+...
+Thread 1 "gdb" hit Breakpoint 5, sim_engine_halt (sd=0x8c60c10, last_cpu=0x8c60fd8, next_cpu=0x0, cia=256, reason=sim_stopped, sigrc=66) at ./../common/sim-engine.c:62
+(gdb)
+
+cia = 256 = 0x100 で sigrc = 66 はブレークポイントにヒットしたということ.
+
+つまり p f(5, 6) に対して 0x100 番地から f を引数 5 と 6 で呼び出すこ
+とをシミュレーションしたということ.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.arm-elf/gdb/arm-tdep.c
+
+にそれっぽい函数を発見した
+
+static CORE_ADDR
+arm_push_dummy_call (struct gdbarch *gdbarch, struct value *function,
+		     struct regcache *regcache, CORE_ADDR bp_addr, int nargs,
+		     struct value **args, CORE_ADDR sp,
+		     function_call_return_method return_method,
+		     CORE_ADDR struct_addr)
+{
+...
+
+print_command のブレークポイントにヒットした後まずここにきている.
+
+(gdb) where
+#0  arm_push_dummy_call (gdbarch=0x8c51788, function=0x8c6b1b8, regcache=0x8c69368, bp_addr=256, nargs=2, args=0xbfffef44, sp=4088, return_method=return_method_normal, struct_addr=0) at arm-tdep.c:3717
+#1  0x082098d3 in call_function_by_hand_dummy (function=<optimized out>, default_return_type=<optimized out>, args=..., dummy_dtor=<optimized out>, dummy_dtor_data=<optimized out>) at infcall.c:1178
+#2  0x0820b17e in call_function_by_hand (function=0x8c6b1b8, default_return_type=0x0, args=...) at infcall.c:743
+#3  0x081c9983 in eval_call (exp=exp@entry=0x8c68ec0, noside=noside@entry=EVAL_NORMAL, nargs=nargs@entry=2, argvec=0xbfffef40, function_name=0x8c4aea9 "f", default_return_type=0x0) at ./../gdbsupport/array-view.h:117
+#4  0x081cb237 in evaluate_funcall (expect_type=0x0, exp=<optimized out>, pos=<optimized out>, noside=<optimized out>) at eval.c:1233
+#5  0x081ccc43 in evaluate_subexp_standard (expect_type=0x0, exp=0x8c68ec0, pos=0xbffff0fc, noside=EVAL_NORMAL) at eval.c:1916
+#6  0x081c9c72 in evaluate_subexp (expect_type=0x0, exp=0x8c68ec0, pos=0xbffff0fc, noside=EVAL_NORMAL) at eval.c:78
+#7  0x081ca06d in evaluate_expression (exp=0x8c68ec0) at eval.c:138
+#8  0x082904a7 in print_command_1 (args=<optimized out>, voidprint=1) at /usr/lo
+
+やはり print_command は直接の呼び出し元ではないが p f(5, 6) がきっかけ
+になっているらしい.
+
+この函数で以下を実行している:
+
+  regcache_cooked_write_unsigned (regcache, ARM_LR_REGNUM, bp_addr);
+
+これで lr レジスタに bp_addr = 0x100 がセットされているというわけだ.
+
+さらにこの函数で以下を実行している:
+
+	      regcache_cooked_write_unsigned (regcache, argreg, regval);
+
+argreg = 0, regval = 5 なので r0 に 5 をここでセットしている.
+上と同じところで
+argreg = 1, regval = 6 で実行された. r1 に 6 をセットしている.
+
+そして最後に
+
+  regcache_cooked_write_unsigned (regcache, ARM_SP_REGNUM, sp);
+
+として, sp を更新していた.
