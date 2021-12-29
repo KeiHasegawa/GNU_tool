@@ -1,0 +1,82 @@
+int f(int a, int b)
+{
+  return a + b;
+}
+
+int main()
+{
+  return 0;
+}
+
+For above program, stopping at `main', execute like below:
+
+(arm-elf-gdb) p f(5, 6)
+$1 = 11
+(arm-elf-gdb)
+
+
+aarch64    : NG (*1) aarch64-elf-gdb fix
+arm        : OK
+avr        : OK
+bfin       : OK
+cr16       : NG 「CompactRISC」=>「cr16-tdep.c.004」
+cris       : NG (*2) cris-elf-gdb fix
+frv        : OK
+ft32       : NG 「FT32」=> 「ft32-tdep.c.diff」
+h8300      : OK
+iq2000     : OK
+lm32       : OK
+m32c       : OK
+m32r       : OK
+m68hc11    : OK
+mcore      : NG "MCORE" => "MCORE gdb" => mcore-tdep.c.005
+microblaze : NG "MicroBlaze" => microblaze-tdep.diff
+mips       : OK
+mn10300    : OK
+moxie      : NG "Moxie" => moxie-tdep.diff
+msp430     : OK
+or1k       : NG "OpenRISC1000" => or1k-tdep.diff
+ppc        : OK
+pru        : NG "PRU" => "PRU gdb" => pru-tdep.c.011
+rl78       : OK
+rx         : OK
+sh         : OK
+v850       : OK
+
+(*1) aarch64-elf-gdb fix
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.aarch64-elf/sim/aarch64/interp.c
+
+static int
+aarch64_reg_set (SIM_CPU *cpu, int regno, unsigned char *buf, int length)
+{
+  size_t size;
+  bfd_vma val;
+#if 0
+  if (!check_regno (regno))
+    return -1;
+#else
+  if (!check_regno (regno))
+    return 0;
+#endif  
+
+(*2) cris-elf-gdb fix
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.cris-elf/sim/cris/cris-tmpl.c
+
+int
+MY (f_store_register) (SIM_CPU *current_cpu, int rn,
+		      unsigned char *buf, int len ATTRIBUTE_UNUSED)
+{
+  if (rn == 15) {
+    current_cpu->cpu_data.hardware.h_pc = GETTSI (buf);
+    return 4;
+  }
+  XCONCAT3(crisv,BASENUM,f_h_gr_set) (current_cpu, rn, GETTSI (buf));
+#if 0  
+  return -1;
+#else
+  return len;
+#endif
+}
+
