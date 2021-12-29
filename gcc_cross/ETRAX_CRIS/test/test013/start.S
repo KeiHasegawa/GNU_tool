@@ -4,3 +4,4 @@ start:
 	Jsr _main
 	nop
 	break 8
+	nop
