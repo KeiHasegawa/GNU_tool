@@ -1,11 +1,9 @@
-all:hello.objdump hello.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-hello.elf:hello.c
-	or1k-elf-gcc -o $@ $< -g -Wl,-Map -Wl,hello.map
+test.elf:test.o test.x
+	or1k-elf-ld -o $@ test.o -T test.x -Map test.map
 
-hello.log:hello.elf
-	echo quit | wdog.exe -v or1k-elf-gdb -q -x gdbcom $< > $@
+test.lof:test.log
 
-hello.lof:hello.log
