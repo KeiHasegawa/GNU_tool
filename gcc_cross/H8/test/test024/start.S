@@ -4,3 +4,4 @@ start:
 	jsr	_main
 	nop
 	sleep
+	nop

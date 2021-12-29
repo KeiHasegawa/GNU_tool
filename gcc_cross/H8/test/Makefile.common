@@ -8,7 +8,7 @@ LIBC = /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/h8300-elf/lib/h
 
 %.elf : %.o
 	h8300-elf-ld -o $@ start.o $< $(LIBC) \
-	-T $(basename $<).x -Map $(basenanme $<).map
+	-T $(basename $<).x -Map $(basename $<).map
 
 %.objdump : %.elf
 	h8300-elf-objdump -x -t -d -g $< > $@
