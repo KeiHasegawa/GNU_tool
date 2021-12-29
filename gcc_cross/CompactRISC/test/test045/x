@@ -1,0 +1,16 @@
+set prompt (cr16-elf-gdb) 
+target sim
+load
+sim memory-region 0xe00,0x200
+b *0x10c
+run
+p $r2
+p *(long long*)$sp
+p $r3
+p $r4
+p *(long long*)($sp+8)
+p $r5
+p $r6
+p *(int*)($sp+16)
+p *(int*)($sp+18)
+
