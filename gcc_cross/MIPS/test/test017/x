@@ -1,0 +1,16 @@
+set prompt (mips-elf-gdb) 
+target sim
+load
+sim memory-region 0xa0020e00,0x200
+b *0xa0020020
+run
+p $r4
+p $r7
+p *(int*)($sp+16)
+p *(int*)($sp+20)
+p *(long long*)($sp+24)
+p *(int*)($sp+32)
+p *(int*)($sp+36)
+p *(int*)($sp+40)
+p *(long long*)($sp+48)
+quit
