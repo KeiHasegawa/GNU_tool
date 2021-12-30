@@ -1,5 +1,5 @@
 *** gdb-10.2.org/gdb/moxie-tdep.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.moxie-elf/gdb/moxie-tdep.c	2021-12-28 17:15:19.000000000 +0900
+--- gdb-10.2.moxie-elf/gdb/moxie-tdep.c	2021-12-30 13:16:30.000000000 +0900
 ***************
 *** 480,487 ****
   		   struct type *valtype, struct regcache *regcache,
@@ -41,27 +41,92 @@
   /* Get the value of register regnum in the previous stack frame.  */
 ***************
 *** 1045,1050 ****
---- 1055,1117 ----
+--- 1055,1185 ----
     return 0;
   }
   
-+ #include <numeric>
++ #include <cassert>
 + 
-+ static int add_arg(int sum, value* arg)
++ static void calc_sp(int* nth, value* arg, CORE_ADDR* sp)
 + {
-+   return sum + 4;
-+ }
++   auto arg_type = check_typedef(value_type(arg));
++   auto code = arg_type->code();
++   switch (code) {
++   case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
++     asm("int3");
++   }
 + 
-+ static void set_arg(int nth, value* arg, regcache* rc, CORE_ADDR sp)
-+ {
-+   auto val = value_contents(arg);
-+   if (nth < 6) {
-+     CORE_ADDR regval = extract_unsigned_integer(val, 4, BFD_ENDIAN_BIG);
-+     regcache_cooked_write_unsigned(rc, R0_REGNUM+nth, regval);
++   int len = TYPE_LENGTH(arg_type);
++   if (len <= 4) {
++     if (*nth < 6) {
++       *sp -= 4;
++       ++*nth;
++       return;
++     }
++     *sp -= 4;
++     ++*nth;
 +     return;
 +   }
-+   CORE_ADDR addr = sp + 8 + 4 + 4 * nth;
-+   write_memory(addr, val, 4);
++ 
++   assert(len == 8);
++   if (*nth + 1 < 6) {
++     *sp -= 8;
++     *nth += 2;
++     return;
++   }
++ 
++   *sp -= 8;
++   *nth += 2;
++ }
++ 
++ static void set_arg(int* nth, value* arg, regcache* rc, CORE_ADDR sp)
++ {
++   auto arg_type = check_typedef(value_type(arg));
++   auto code = arg_type->code();
++   switch (code) {
++   case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
++     asm("int3");
++   }
++ 
++   auto val = value_contents(arg);
++   int len = TYPE_LENGTH(arg_type);
++   if (len <= 4) {
++     if (*nth < 6) {
++       auto regval = extract_unsigned_integer(val, 4, BFD_ENDIAN_BIG);
++       regcache_cooked_write_unsigned(rc, R0_REGNUM+*nth, regval);
++       ++*nth;
++       return;
++     }
++     CORE_ADDR addr = sp + 8 + 4 + 4 * (*nth);
++     write_memory(addr, val, 4);
++     ++*nth;
++     return;
++   }
++ 
++   assert(len == 8);
++   if (*nth + 1 < 6) {
++     auto regval = extract_unsigned_integer(val, 8, BFD_ENDIAN_BIG);
++     uint32_t hi = regval >> 32;
++     regcache_cooked_write_unsigned(rc, R0_REGNUM+*nth+0, hi);
++     uint32_t lo = regval;
++     regcache_cooked_write_unsigned(rc, R0_REGNUM+*nth+1, lo);
++     *nth += 2;
++     return;
++   }
++ 
++   if (*nth == 5) {
++     auto regval = extract_unsigned_integer(val, 8, BFD_ENDIAN_BIG);
++     uint32_t hi = regval >> 32;
++     regcache_cooked_write_unsigned(rc, R0_REGNUM+*nth+0, hi);
++     CORE_ADDR addr = sp + 8 + 4 + 4 * (*nth);
++     write_memory(addr+4, val+4, 4);
++     *nth += 2;
++     return;
++   }
++ 
++   CORE_ADDR addr = sp + 8 + 4 + 4 * (*nth);
++   write_memory(addr, val, 8);
++   *nth += 2;
 + }
 + 
 + static CORE_ADDR
@@ -71,13 +136,15 @@
 + 		      CORE_ADDR struct_addr)
 + {
 +   using namespace std;
-+   sp -= accumulate(&argv[0], &argv[nargs], 0, add_arg);
 +   sp &= 0xfffffffc;
++   int nth = 0;
++   for (int i = 0 ; i != nargs ; ++i)
++     calc_sp(&nth, argv[i], &sp);
 +   sp -= 8;
 +   union {
 +     uint32_t i;
 +     gdb_byte c[4];
-+   } u = { bp_addr };
++   } u = { (uint32_t)bp_addr };
 +   int x = 1;
 +   if (*(char*)&x) {
 +     // gdb runs at a little endian processor
@@ -86,6 +153,7 @@
 +   }
 +   write_memory(sp, &u.c[0], 4);
 +   sp -= 4;
++   regcache_cooked_write_unsigned(rc, MOXIE_SP_REGNUM, sp);
 +   ULONGEST fp;
 +   regcache_cooked_read_unsigned(rc, MOXIE_FP_REGNUM, &fp);
 +   u.i = fp;
@@ -96,9 +164,9 @@
 +   }
 +   write_memory(sp, &u.c[0], 4);
 +   regcache_cooked_write_unsigned(rc, MOXIE_FP_REGNUM, sp);
++   nth = 0;
 +   for (int i = 0 ; i != nargs ; ++i)
-+     set_arg(i, argv[i], rc, sp);
-+   regcache_cooked_write_unsigned(rc, MOXIE_SP_REGNUM, sp);
++     set_arg(&nth, argv[i], rc, sp);
 +   return sp;
 + }
 + 
@@ -107,7 +175,7 @@
   static struct gdbarch *
 ***************
 *** 1098,1103 ****
---- 1165,1172 ----
+--- 1233,1240 ----
     /* Support reverse debugging.  */
     set_gdbarch_process_record (gdbarch, moxie_process_record);
   
