@@ -1,0 +1,138 @@
+*** gdb-10.2.org/gdb/mips-tdep.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.mips-elf/gdb/mips-tdep.c	2021-12-30 12:33:32.000000000 +0900
+***************
+*** 4776,4783 ****
+    int fp_return_type = 0;
+    int offset, regnum, xfer;
+  
+!   if (TYPE_LENGTH (type) > 2 * mips_abi_regsize (gdbarch))
+!     return RETURN_VALUE_STRUCT_CONVENTION;
+  
+    /* Floating point type?  */
+    if (tdep->mips_fpu_type != MIPS_FPU_NONE)
+--- 4776,4789 ----
+    int fp_return_type = 0;
+    int offset, regnum, xfer;
+  
+!   if (TYPE_LENGTH (type) > 2 * mips_abi_regsize (gdbarch)) {
+!     if (readbuf) {
+!       ULONGEST addr;
+!       regcache_raw_read_unsigned(regcache, MIPS_V0_REGNUM, &addr);
+!       read_memory(addr, readbuf, TYPE_LENGTH(type));
+!     }
+!     return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+!   }
+  
+    /* Floating point type?  */
+    if (tdep->mips_fpu_type != MIPS_FPU_NONE)
+***************
+*** 5187,5194 ****
+       specific exception to return COMPLEX results in the floating point
+       registers.]  */
+  
+!   if (TYPE_LENGTH (type) > 2 * MIPS64_REGSIZE)
+!     return RETURN_VALUE_STRUCT_CONVENTION;
+    else if (type->code () == TYPE_CODE_FLT
+  	   && TYPE_LENGTH (type) == 16
+  	   && tdep->mips_fpu_type != MIPS_FPU_NONE)
+--- 5193,5206 ----
+       specific exception to return COMPLEX results in the floating point
+       registers.]  */
+  
+!   if (TYPE_LENGTH (type) > 2 * MIPS64_REGSIZE) {
+!     if (readbuf) {
+!       ULONGEST addr;
+!       regcache_raw_read_unsigned(regcache, MIPS_V0_REGNUM, &addr);
+!       read_memory(addr, readbuf, TYPE_LENGTH(type));
+!     }
+!     return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+!   }
+    else if (type->code () == TYPE_CODE_FLT
+  	   && TYPE_LENGTH (type) == 16
+  	   && tdep->mips_fpu_type != MIPS_FPU_NONE)
+***************
+*** 5556,5562 ****
+  		      fprintf_unfiltered (gdb_stdlog, " longword_offset=%s",
+  					  paddress (gdbarch, longword_offset));
+  		    }
+! 
+  		  addr = sp + stack_offset + longword_offset;
+  
+  		  if (mips_debug)
+--- 5568,5578 ----
+  		      fprintf_unfiltered (gdb_stdlog, " longword_offset=%s",
+  					  paddress (gdbarch, longword_offset));
+  		    }
+! 		  
+! 		  if (len == 8) {
+! 		    if (stack_offset & 4)
+! 		      stack_offset += 4;
+! 		  }
+  		  addr = sp + stack_offset + longword_offset;
+  
+  		  if (mips_debug)
+***************
+*** 5620,5625 ****
+--- 5636,5647 ----
+  		    fprintf_filtered (gdb_stdlog, " - reg=%d val=%s",
+  				      argreg,
+  				      phex (regval, MIPS32_REGSIZE));
++ 		  if (len == 8) {
++ 		    if (argreg & 1) {
++ 		      ++argreg;
++ 		      stack_offset += MIPS32_REGSIZE;
++ 		    }
++ 		  }
+  		  regcache_cooked_write_unsigned (regcache, argreg, regval);
+  		  argreg++;
+  
+***************
+*** 5665,5672 ****
+    fval_reg = readbuf ? mips16 ? mips_fval_gpr : mips_fval_fpr : mips_fval_both;
+    if (type->code () == TYPE_CODE_STRUCT
+        || type->code () == TYPE_CODE_UNION
+!       || type->code () == TYPE_CODE_ARRAY)
+!     return RETURN_VALUE_STRUCT_CONVENTION;
+    else if (type->code () == TYPE_CODE_FLT
+  	   && TYPE_LENGTH (type) == 4 && tdep->mips_fpu_type != MIPS_FPU_NONE)
+      {
+--- 5687,5700 ----
+    fval_reg = readbuf ? mips16 ? mips_fval_gpr : mips_fval_fpr : mips_fval_both;
+    if (type->code () == TYPE_CODE_STRUCT
+        || type->code () == TYPE_CODE_UNION
+!       || type->code () == TYPE_CODE_ARRAY) {
+!     if (readbuf) {
+!       ULONGEST addr;
+!       regcache_raw_read_unsigned(regcache, MIPS_V0_REGNUM, &addr);
+!       read_memory(addr, readbuf, TYPE_LENGTH(type));
+!     }
+!     return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+!   }
+    else if (type->code () == TYPE_CODE_FLT
+  	   && TYPE_LENGTH (type) == 4 && tdep->mips_fpu_type != MIPS_FPU_NONE)
+      {
+***************
+*** 6111,6118 ****
+    fval_reg = readbuf ? mips16 ? mips_fval_gpr : mips_fval_fpr : mips_fval_both;
+    if (type->code () == TYPE_CODE_STRUCT
+        || type->code () == TYPE_CODE_UNION
+!       || type->code () == TYPE_CODE_ARRAY)
+!     return RETURN_VALUE_STRUCT_CONVENTION;
+    else if (fp_register_arg_p (gdbarch, type->code (), type))
+      {
+        /* A floating-point value.  If reading in or copying, then we get it
+--- 6139,6152 ----
+    fval_reg = readbuf ? mips16 ? mips_fval_gpr : mips_fval_fpr : mips_fval_both;
+    if (type->code () == TYPE_CODE_STRUCT
+        || type->code () == TYPE_CODE_UNION
+!       || type->code () == TYPE_CODE_ARRAY) {
+!     if (readbuf) {
+!       ULONGEST addr;
+!       regcache_raw_read_unsigned(regcache, MIPS_V0_REGNUM, &addr);
+!       read_memory(addr, readbuf, TYPE_LENGTH(type));
+!     }
+!     return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+!   }
+    else if (fp_register_arg_p (gdbarch, type->code (), type))
+      {
+        /* A floating-point value.  If reading in or copying, then we get it
