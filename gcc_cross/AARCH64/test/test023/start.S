@@ -6,4 +6,4 @@ _start:
 	bl	main
 	nop
 	.word 0xd4200000
-
+	nop
