@@ -1,5 +1,5 @@
 *** gdb-10.2.org/gdb/microblaze-tdep.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.microblaze-elf/gdb/microblaze-tdep.c	2021-12-28 14:40:03.000000000 +0900
+--- gdb-10.2.microblaze-elf/gdb/microblaze-tdep.c	2021-12-30 10:50:54.000000000 +0900
 ***************
 *** 38,43 ****
 --- 38,44 ----
@@ -32,10 +32,11 @@
     if (writebuf)
 ***************
 *** 646,651 ****
---- 658,701 ----
+--- 658,766 ----
                                     tdesc_microblaze_with_stack_protect);
   }
   
++ #include <cassert>
 + #include "objfiles.h"
 + 
 + static CORE_ADDR
@@ -49,16 +50,75 @@
 +   return sp;
 + }
 + 
-+ static void set_arg(int nth, value* arg, regcache* rc, CORE_ADDR sp)
++ static void calc_sp(int* nth, value* arg, CORE_ADDR* sp)
 + {
-+   auto val = value_contents(arg);
-+   if (nth < 6) {
-+     CORE_ADDR regval = extract_unsigned_integer(val, 4, BFD_ENDIAN_BIG);
-+     regcache_cooked_write_unsigned(rc, MICROBLAZE_R5_REGNUM+nth, regval);
++   auto arg_type = check_typedef(value_type(arg));
++   auto code = arg_type->code();
++   switch (code) {
++   case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
++     asm("int3");
++   }
++ 
++   int len = TYPE_LENGTH(arg_type);
++   if (len <= 4) {
++     ++*nth;
++     *sp -= 4;
 +     return;
 +   }
-+   CORE_ADDR addr = sp + 4 * nth;
-+   write_memory(addr, val, 4);
++ 
++   assert(len == 8);
++   *nth += 2;
++   *sp -= 8;
++ }
++ 
++ static void set_arg(int* nth, value* arg, regcache* rc, CORE_ADDR sp)
++ {
++   auto arg_type = check_typedef(value_type(arg));
++   auto code = arg_type->code();
++   switch (code) {
++   case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
++     asm("int3");
++   }
++ 
++   auto val = value_contents(arg);
++   int len = TYPE_LENGTH(arg_type);
++   if (len <= 4) {
++     if (*nth < 6) {
++       auto regval = extract_unsigned_integer(val, 4, BFD_ENDIAN_BIG);
++       regcache_cooked_write_unsigned(rc, MICROBLAZE_R5_REGNUM+*nth, regval);
++       ++*nth;
++       return;
++     }
++     CORE_ADDR addr = sp + 4 + 4 * (*nth);
++     write_memory(addr, val, 4);
++     ++*nth;
++     return;
++   }
++ 
++   assert(len == 8);
++   if (*nth + 1 < 6) {
++     auto regval = extract_unsigned_integer(val, 8, BFD_ENDIAN_BIG);
++     uint32_t hi = regval >> 32;
++     regcache_cooked_write_unsigned(rc, MICROBLAZE_R5_REGNUM+*nth+0, hi);
++     uint32_t lo = regval;
++     regcache_cooked_write_unsigned(rc, MICROBLAZE_R5_REGNUM+*nth+1, lo);
++     *nth += 2;
++     return;
++   }
++ 
++   if (*nth == 5) {
++     auto regval = extract_unsigned_integer(val, 8, BFD_ENDIAN_BIG);
++     uint32_t hi = regval >> 32;
++     regcache_cooked_write_unsigned(rc, MICROBLAZE_R5_REGNUM+*nth+0, hi);
++     CORE_ADDR addr = sp + 4 + 4 * (*nth);
++     write_memory(addr + 4, val + 4, 4);
++     *nth += 2;
++     return;
++   }
++ 
++   CORE_ADDR addr = sp + 4 + 4 * (*nth);
++   write_memory(addr, val, 8);
++   *nth += 2;
 + }
 + 
 + static CORE_ADDR
@@ -67,10 +127,15 @@
 + 			   CORE_ADDR sp, function_call_return_method rm,
 + 			   CORE_ADDR struct_addr)
 + {
++   using namespace std;
 +   regcache_cooked_write_unsigned(rc, MICROBLAZE_R15_REGNUM, bp_addr - 8);
++   int nth = 0;
 +   for (int i = 0 ; i != nargs ; ++i)
-+     set_arg(i, argv[i], rc, sp);
-+   regcache_cooked_write_unsigned(rc, MICROBLAZE_SP_REGNUM, sp);  
++     calc_sp(&nth, argv[i], &sp);
++   regcache_cooked_write_unsigned(rc, MICROBLAZE_SP_REGNUM, sp);
++   nth = 0;
++   for (int i = 0 ; i != nargs ; ++i)
++     set_arg(&nth, argv[i], rc, sp);
 +   return sp;
 + }
 + 
@@ -79,7 +144,7 @@
   {
 ***************
 *** 717,722 ****
---- 767,774 ----
+--- 832,839 ----
   
     /* Call dummy code.  */
     set_gdbarch_call_dummy_location (gdbarch, ON_STACK);
