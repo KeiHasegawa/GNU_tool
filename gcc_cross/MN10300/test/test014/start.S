@@ -7,3 +7,4 @@ start:
 	call _main,[],0
 	nop
 	break
+	nop
