@@ -281,23 +281,85 @@ static const unsigned char* pru_from_kind(gdbarch*, int kind, int* size)
   return &break_inst[0];
 }
 
-#include <numeric>
-
-static int add_arg(int sum, value* arg)
+static void calc_sp(int* nth, value* arg, CORE_ADDR* sp)
 {
-  return sum + 4;
-}
+  auto arg_type = check_typedef(value_type(arg));
+  auto code = arg_type->code();
+  switch (code) {
+  case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
+    asm("int3");
+  }
 
-static void set_arg(int nth, value* arg, regcache* rc, CORE_ADDR sp)
-{
-  auto val = value_contents(arg);
-  if (nth < 16) {
-    CORE_ADDR regval = extract_unsigned_integer(val, 4, BFD_ENDIAN_LITTLE);
-    regcache_cooked_write_unsigned(rc, 14+nth, regval);
+  int len = TYPE_LENGTH(arg_type);
+  if (len <= 4) {
+    if (*nth < 16) {
+      ++*nth;
+      return;
+    }
+    *sp -= 4;
+    ++*nth;
     return;
   }
-  CORE_ADDR addr = sp + 4 * (nth - 16);
-  write_memory(addr, val, 4);
+
+  assert(len == 8);
+  if (*nth + 1 < 16) {
+    *nth += 2;
+    return;
+  }
+
+  if (*nth == 15) {
+    *sp -= 8;
+    return;
+  }
+
+  *sp -= 8;
+  *nth += 2;
+}
+
+static void set_arg(int* nth, value* arg, regcache* rc, CORE_ADDR sp, int* adj)
+{
+  auto arg_type = check_typedef(value_type(arg));
+  auto code = arg_type->code();
+  switch (code) {
+  case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
+    asm("int3");
+  }
+
+  auto val = value_contents(arg);
+  int len = TYPE_LENGTH(arg_type);
+  if (len <= 4) {
+    if (*nth < 16) {
+      auto regval = extract_unsigned_integer(val, 4, BFD_ENDIAN_LITTLE);
+      regcache_cooked_write_unsigned(rc, 14+*nth, regval);
+      ++*nth;
+      return;
+    }
+    CORE_ADDR addr = sp + 4 * (*nth - 16) + *adj;
+    write_memory(addr, val, 4);
+    ++*nth;
+    return;
+  }
+
+  assert(len == 8);
+  if (*nth + 1 < 16) {
+    auto regval = extract_unsigned_integer(val, 8, BFD_ENDIAN_LITTLE);
+    uint32_t hi = regval >> 32;
+    uint32_t lo = regval;
+    regcache_cooked_write_unsigned(rc, 14+*nth+0, lo);
+    regcache_cooked_write_unsigned(rc, 14+*nth+1, hi);
+    *nth += 2;
+    return;
+  }
+
+  if (*nth == 15) {
+    *adj = 8;
+    write_memory(sp, val, 8);
+    return;
+  }
+
+  CORE_ADDR addr = sp + 4 * (*nth - 16) + *adj;
+  write_memory(addr, val, 8);
+  *nth += 2;
 }
 
 static CORE_ADDR
@@ -307,11 +369,15 @@ pru_push_dummy_call(gdbarch* arch, value* func, regcache* rc,
 		    CORE_ADDR struct_addr)
 {
   using namespace std;
-  sp -= accumulate(&argv[0], &argv[nargs], 0, add_arg);
   regcache_cooked_write_unsigned(rc, 3, bp_addr << 14);
+  int nth = 0;
   for (int i = 0 ; i != nargs ; ++i)
-    set_arg(i, argv[i], rc, sp);
+    calc_sp(&nth, argv[i], &sp);
   regcache_cooked_write_unsigned(rc, sp_regno, sp);
+  nth = 0;
+  int adj = 0;
+  for (int i = 0 ; i != nargs ; ++i)
+    set_arg(&nth, argv[i], rc, sp, &adj);
   return sp;
 }
 
