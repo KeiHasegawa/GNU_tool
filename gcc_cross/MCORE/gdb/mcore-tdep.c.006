@@ -286,16 +286,32 @@ static const unsigned char* mcore_from_kind(gdbarch*, int kind, int* size)
   return &bkpt[0];
 }
 
+static bool is_aggregate(type_code code)
+{
+  switch (code) {
+  case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
+    return true;
+  default:
+    return false;
+  }
+}
+
 static void calc_sp(int* nth, value* arg, CORE_ADDR* sp)
 {
   auto arg_type = check_typedef(value_type(arg));
   auto code = arg_type->code();
-  switch (code) {
-  case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
-    asm("int3");
+  int len = TYPE_LENGTH(arg_type);
+  if (is_aggregate(code)) {
+    int N = (len >> 2) + ((len & 3) ? 1 : 0);    
+    if (*nth + N <= 6) {
+      *nth += N;
+      return;
+    }
+    *sp -= len;
+    *nth += N;
+    return;
   }
   
-  int len = TYPE_LENGTH(arg_type);
   if (len <= 4) {
     if (*nth < 6) {
       ++*nth;
@@ -321,13 +337,34 @@ static void set_arg(int* nth, value* arg, regcache* rc, CORE_ADDR sp)
 {
   auto arg_type = check_typedef(value_type(arg));
   auto code = arg_type->code();
-  switch (code) {
-  case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
-    asm("int3");
-  }
-
   auto val = value_contents(arg);
   int len = TYPE_LENGTH(arg_type);
+
+  if (is_aggregate(code)) {
+    int N = (len >> 2) + ((len & 3) ? 1 : 0);    
+    if (*nth + N <= 6) {
+      for (int i = 0 ; i != N ; ++i) {
+	auto regval = extract_unsigned_integer(val+4*i, 4, BFD_ENDIAN_LITTLE);
+	regcache_cooked_write_unsigned(rc, 2+*nth+i, regval);
+      }
+      *nth += N;
+      return;
+    }
+    for (int i = 0 ; i != N ; ++i) {
+      if (*nth + i < 6) {
+	auto regval = extract_unsigned_integer(val+4*i, 4, BFD_ENDIAN_LITTLE);
+	regcache_cooked_write_unsigned(rc, 2+*nth+i, regval);
+      }
+      else {
+	CORE_ADDR addr = sp + 4 * (*nth + i - 6);
+	write_memory(addr, val + 4*i, len - 4*i);
+	break;
+      }
+    }
+    *nth += N;
+    return;
+  }
+
   if (len <= 4) {
     if (*nth < 6) {
       auto regval = extract_unsigned_integer(val, 4, BFD_ENDIAN_LITTLE);    
