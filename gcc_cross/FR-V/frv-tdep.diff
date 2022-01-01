@@ -1,0 +1,125 @@
+*** gdb-10.2.org/gdb/frv-tdep.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.frv-elf/gdb/frv-tdep.c	2022-01-01 12:53:43.000000000 +0900
+***************
+*** 290,295 ****
+--- 290,299 ----
+      return builtin_type (gdbarch)->builtin_float;
+    else if (reg == iacc0_regnum)
+      return builtin_type (gdbarch)->builtin_int64;
++   else if (reg == sp_regnum || reg == fp_regnum)
++     return builtin_type (gdbarch)->builtin_data_ptr;
++   else if (reg == pc_regnum || reg == lr_regnum)
++     return builtin_type (gdbarch)->builtin_func_ptr;
+    else
+      return builtin_type (gdbarch)->builtin_int32;
+  }
+***************
+*** 1189,1194 ****
+--- 1193,1220 ----
+      return addr;
+  }
+  
++ #include <numeric>
++ 
++ static bool is_aggregate(type_code code)
++ {
++   switch (code) {
++   case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
++     return true;
++   default:
++     return false;
++   }
++ }
++ 
++ static int aggregate_space(int s, value* arg)
++ {
++   auto arg_type = check_typedef(value_type(arg));
++   auto code = arg_type->code();
++   if (!is_aggregate(code))
++     return s;
++   int len = TYPE_LENGTH(arg_type);
++   return s + len;
++ }
++ 
+  static CORE_ADDR
+  frv_push_dummy_call (struct gdbarch *gdbarch, struct value *function,
+                       struct regcache *regcache, CORE_ADDR bp_addr,
+***************
+*** 1217,1229 ****
+  #endif
+  
+    stack_space = 0;
+!   for (argnum = 0; argnum < nargs; ++argnum)
+!     stack_space += align_up (TYPE_LENGTH (value_type (args[argnum])), 4);
+  
+    stack_space -= (6 * 4);
+    if (stack_space > 0)
+      sp -= stack_space;
+  
+    /* Make sure stack is dword aligned.  */
+    sp = align_down (sp, 8);
+  
+--- 1243,1263 ----
+  #endif
+  
+    stack_space = 0;
+!   for (argnum = 0; argnum < nargs; ++argnum) {
+!     if (is_aggregate(value_type (args[argnum])->code()))
+!       stack_space += 4;
+!     else
+!       stack_space += align_up (TYPE_LENGTH (value_type (args[argnum])), 4);
+!   }
+  
+    stack_space -= (6 * 4);
+    if (stack_space > 0)
+      sp -= stack_space;
+  
++   using namespace std;
++   CORE_ADDR asp = sp;
++   sp -= accumulate(&args[0], &args[nargs], 0, aggregate_space);
++ 
+    /* Make sure stack is dword aligned.  */
+    sp = align_down (sp, 8);
+  
+***************
+*** 1242,1251 ****
+        len = TYPE_LENGTH (arg_type);
+        typecode = arg_type->code ();
+  
+!       if (typecode == TYPE_CODE_STRUCT || typecode == TYPE_CODE_UNION)
+  	{
+! 	  store_unsigned_integer (valbuf, 4, byte_order,
+! 				  value_address (arg));
+  	  typecode = TYPE_CODE_PTR;
+  	  len = 4;
+  	  val = valbuf;
+--- 1276,1287 ----
+        len = TYPE_LENGTH (arg_type);
+        typecode = arg_type->code ();
+  
+!       if (is_aggregate(typecode))
+  	{
+! 	  asp -= len;
+! 	  store_unsigned_integer (valbuf, 4, byte_order, asp);
+! 	  auto cont = value_contents(arg);
+! 	  write_memory(asp, cont, len);
+  	  typecode = TYPE_CODE_PTR;
+  	  len = 4;
+  	  val = valbuf;
+***************
+*** 1348,1353 ****
+--- 1384,1397 ----
+    int struct_return = valtype->code () == TYPE_CODE_STRUCT
+  		      || valtype->code () == TYPE_CODE_UNION
+  		      || valtype->code () == TYPE_CODE_ARRAY;
++   if (struct_return) {
++     if (readbuf) {
++       ULONGEST addr;
++       regcache_raw_read_unsigned (regcache, 3, &addr);
++       read_memory (addr, readbuf, TYPE_LENGTH(valtype));
++     }
++     return RETURN_VALUE_ABI_RETURNS_ADDRESS;
++   }
+  
+    if (writebuf != NULL)
+      {
