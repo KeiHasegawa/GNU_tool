@@ -137,7 +137,14 @@ LatticeMico32 ABI
 (*8) Structure argument and return value
 
         When calling function which takes structure type argument,
-	registers are not used, just stack is used with offset 4.
+	if some of `r1', ..., `r8' are avairable and the argument can be
+	filled with them, they are used for passing the structure type
+	arugment. i.e. The 1st structure argument size is less than or
+	equal to 32 bytes, registers are used for passing the argument.
+
+	Otherwise, registers are not used and the argument are copied
+	to the stack. And the rest of arguments are passed by using stack
+	independently of its type.
 
 	For example,
 
@@ -145,7 +152,7 @@ LatticeMico32 ABI
 	void f(struct S s);
 
 	struct S s = { 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-	f(s);
+	f(s, 10, 11, 12);
 
 	At the start address of `f', stack layout becomes like below:
 
@@ -162,8 +169,14 @@ LatticeMico32 ABI
 	+------------------+
 	|         9        |
 	+------------------+ +40
-	|     ra_{old}     |
+	|        10        |
 	+------------------+ +44
+	|        11        |
+	+------------------+ +48
+	|        12        |
+	+------------------+ +52
+	|     ra_{old}     |
+	+------------------+ +56
 
 	where, ra_{old} is return address of the function, which call `f'.
 
