@@ -1,8 +1,8 @@
 	.text
 	.global start
 start:
-	ldi ZL, lo8(_etext)
-	ldi ZH, hi8(_etext)
+	ldi ZL, lo8(__data_load_start)
+	ldi ZH, hi8(__data_load_start)
 	ldi YL, lo8(__data_load_end)
 	ldi YH, hi8(__data_load_end)
 	ldi XL, lo8(__data_start)
