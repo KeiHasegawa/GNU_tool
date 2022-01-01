@@ -12,5 +12,6 @@ test038.log:test038.elf
 
 test038.lof:test038.log
 	grep -q 'Program received signal SIGINT, Interrupt.' $< || grep -q 'Program received signal SIGINT, Interrupt.' $<
+	echo PASS
 	touch $@
 
