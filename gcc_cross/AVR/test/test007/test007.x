@@ -1,18 +1,27 @@
+MEMORY {
+  text   (rx)   : ORIGIN = 0, LENGTH = 0x20000
+  data   (rw!x) : ORIGIN = 0x800060, LENGTH = 0x10000-0x60
+}
+
 SECTIONS {
-	 . = 0x100;
-	 .text : {}
-	 PROVIDE(_etext = .);
+	 .text : {
+	       *(.text)
+	       *(.text.libgcc.mul)
+	       *(.init4)	 
+	 }
 	 .data : {
-	 	 PROVIDE (__data_start = .) ;
+	 	 __data_start = .;  /* VMA */
 		 *(.data)
 		 *(.rodata)
-		 PROVIDE (__data_end = .) ;		 
-	 }
+		 __data_end = .;    /* VMA */
+	 } > data AT> text
+
+	 .bss ADDR(.data) + SIZEOF (.data) : AT (ADDR (.bss)) {
+	      __bss_start = .;
+	      *(.bss)
+	      __bss_end = . ;
+	 } > data
          __data_load_start = LOADADDR (.data);
-         __data_load_end = (__data_load_start + SIZEOF (.data));
-
-
-	 . = 0x1000;
-	 .stack : {}
-	 PROVIDE(stack = .);
+	 __data_load_start = LOADADDR(.data);                    /* LMA */
+	 __data_load_end = __data_load_start + SIZEOF(.data);    /* LMA */
 }
