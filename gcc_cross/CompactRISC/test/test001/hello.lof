@@ -1,0 +1,58 @@
+Reading symbols from hello.elf...
+Connected to the simulator.
+Loading section .text, size 0x3730 lma 0x100
+Loading section .data, size 0x7e0 lma 0x3844
+Loading section .rodata, size 0x14 lma 0x3830
+Start address 0x100
+Transfer rate: 129312 bits in <1 sec.
+Breakpoint 1 at 0x100: file start.S, line 3.
+Breakpoint 2 at 0x120: file start.S, line 16.
+Breakpoint 3 at 0x12c: file hello.c, line 5.
+Breakpoint 4 at 0x408: file ../../../.././newlib/libc/stdio/puts.c, line 129.
+Breakpoint 5 at 0x150: file dummy.c, line 6.
+Breakpoint 6 at 0x17e: file dummy.c, line 15.
+Breakpoint 7 at 0x1e2: file dummy.c, line 30.
+Breakpoint 8 at 0x1b4: file dummy.c, line 22.
+Breakpoint 9 at 0x1ee: file dummy.c, line 32.
+Breakpoint 10 at 0x1fa: file dummy.c, line 33.
+Breakpoint 11 at 0x1d0: file dummy.c, line 27.
+
+Breakpoint 1, start () at start.S:3
+3		movw	$_bss_start, r0
+
+Breakpoint 3, main () at hello.c:5
+5	  printf("hello world\n");
+
+Breakpoint 4, puts (s=0x3830 "hello world")
+    at ../../../.././newlib/libc/stdio/puts.c:129
+129	  return _puts_r (_REENT, s);
+
+Breakpoint 5, _fstat (fd=1, st=0xeeba) at dummy.c:6
+6	  memset(st, 0, sizeof*st);
+
+Breakpoint 6, _sbrk (size=1048) at dummy.c:15
+15	  char* ret = &heap + delta;
+#0  _sbrk (size=1048) at dummy.c:15
+#1  0x00002642 in _realloc_r (reent_ptr=0x0, oldmem=0x0, bytes=0)
+#2  0x76a00000 in ?? ()
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+
+Breakpoint 6, _sbrk (size=2792) at dummy.c:15
+15	  char* ret = &heap + delta;
+#0  _sbrk (size=2792) at dummy.c:15
+#1  0x00002642 in _realloc_r (reent_ptr=0x0, oldmem=0x0, bytes=0)
+#2  0x76a00000 in ?? ()
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+
+Breakpoint 8, _isatty (fd=1) at dummy.c:22
+22	  return 1;
+
+Breakpoint 11, _write (fd=1, 
+    buf=0x4108 "hello world\n", '\314' <repeats 188 times>..., len=12)
+    at dummy.c:27
+27	  return len;
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
