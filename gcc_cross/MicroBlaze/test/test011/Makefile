@@ -5,6 +5,6 @@ include ../Makefile.common
 test011.elf:start.o test011.o test011.x
 
 test011.log:test011.elf
-	echo quit | wdog.exe -v microblaze-elf-gdb -q -x gdbcom $< > $@ 2>&1
+	echo quit | wdog.exe -v microblaze-elf-gdb -q -x gdbcom $< > $@ 2>&1 || echo FAIL
 
 test011.lof:test011.log
