@@ -8,7 +8,7 @@ int _fstat(int fd, struct stat* st)
   return 0;
 }
 
-char* _malloc_r(int size)
+char* _sbrk(int size)
 {
   extern char heap;
   static int delta;
@@ -17,13 +17,9 @@ char* _malloc_r(int size)
   return ret;
 }
 
-void _free_r(void* ptr)
-{
-}
-
 int _isatty(int fd)
 {
-  return 0;
+  return 1;
 }
 
 int _write(int fd, const char* buf, int len)

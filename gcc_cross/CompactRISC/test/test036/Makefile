@@ -5,6 +5,6 @@ include ../Makefile.common
 test036.elf:start.o test036.o test036.x
 
 test036.log:test036.elf gdbcom
-	echo quit | wdog.exe -v cr16-elf-gdb -q -x gdbcom $< > $@ 2>&1
+	echo quit | wdog.exe -v cr16-elf-gdb -q -x gdbcom $< > $@ 2>&1 || echo FAIL
 
 test036.lof:test036.log

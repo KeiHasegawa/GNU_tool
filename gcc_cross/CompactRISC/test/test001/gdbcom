@@ -1,15 +1,17 @@
 set prompt (cr16-elf-gdb) 
 target sim
 load
-sim memory-region 0x2000,0x2000
+sim memory-region 0x4100,0x2000
 sim memory-region 0xe000,0x1000
 b start
 b end
 b main
 b puts
 b _fstat
-b _free_r
-b _malloc_r
+b _sbrk
+command
+where
+end
 b _close
 b _isatty
 b _lseek
@@ -19,4 +21,10 @@ command
 quit
 end
 run
-continue
+c
+c
+c
+c
+c
+c
+c

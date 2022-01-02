@@ -3,9 +3,12 @@ SECTIONS {
 	 .text : {}
 	 .rodata : {}
 	 .data : {}
-	 .bss : {}
+	 .bss : {
+	      _bss_start = .;
+	 }
+	 _bss_end = .;
 
-	 . = 0x2000;
+	 . = 0x4100;
  	 _heap = .;
 	 
 	 . = 0xf000;
