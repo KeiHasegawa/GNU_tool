@@ -1,0 +1,8 @@
+set prompt (avr-elf-gdb) 
+target sim
+load
+sim memory-region 0x80ef00,0x1000
+b main
+run
+p f((struct S){1, 2}, (struct S){3, 4}, (struct S){5, 6})
+quit
