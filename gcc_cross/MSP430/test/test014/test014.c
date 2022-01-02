@@ -1,5 +1,5 @@
 int main()
 {
-  asm("clr.b	r12");
+  asm("clr.b	r3");
   return 0;
 }
