@@ -52,11 +52,20 @@ static void
 cr16_extract_return_value(type* valtype, regcache* regs, gdb_byte *valbuf)
 {
   int len = TYPE_LENGTH(valtype);
-  assert(len == 2 || len == 4 || len == 8);
-  for (int regno = 0 ; len ; len -= 2, ++regno, valbuf += 2) {
+  for (int regno = 0 ; len > 0 ; len -= 2, ++regno, valbuf += 2) {
     ULONGEST tmp;
     regcache_cooked_read_unsigned(regs, regno, &tmp);
     store_unsigned_integer(valbuf, 2, BFD_ENDIAN_LITTLE, tmp);
+  }
+}
+
+static bool is_aggregate(type_code code)
+{
+  switch (code) {
+  case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
+    return true;
+  default:
+    return false;
   }
 }
 
@@ -65,21 +74,22 @@ cr16_return_value(gdbarch*, value* function, type* valtype, regcache* regcache,
 		  gdb_byte *readbuf, const gdb_byte *writebuf)
 {
   auto code = valtype->code();
-  switch (code) {
-  case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
-    if (readbuf) {
-      ULONGEST r0;
-      regcache_raw_read_unsigned(regcache, 0, &r0);
-      ULONGEST r1;
-      regcache_raw_read_unsigned(regcache, 1, &r1);
-      ULONGEST addr = (r1 << 8) | r0;
-      read_memory(addr, readbuf, TYPE_LENGTH(valtype));
+  if (is_aggregate(code)) {
+    int len = TYPE_LENGTH(valtype);
+    if (len > 8) {
+      if (readbuf) {
+	ULONGEST r0;
+	regcache_raw_read_unsigned(regcache, 0, &r0);
+	ULONGEST r1;
+	regcache_raw_read_unsigned(regcache, 1, &r1);
+	ULONGEST addr = (r1 << 16) | r0;
+	read_memory(addr, readbuf, TYPE_LENGTH(valtype));
+      }
+      return RETURN_VALUE_ABI_RETURNS_ADDRESS;
     }
-    return RETURN_VALUE_ABI_RETURNS_ADDRESS;
   }
 
-  if (writebuf)
-    asm("int3");
+  assert(!writebuf);
 
   if (readbuf)
     cr16_extract_return_value(valtype, regcache, readbuf);
@@ -266,16 +276,6 @@ static const unsigned char* cr16_from_kind(gdbarch*, int, int* size)
   return &break_inst[0];
 }
 
-static bool is_aggregate(type_code code)
-{
-  switch (code) {
-  case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
-    return true;
-  default:
-    return false;
-  }
-}
-
 static void calc_sp(int* nth, value* arg, CORE_ADDR* sp)
 {
   auto arg_type = check_typedef(value_type(arg));
@@ -286,7 +286,12 @@ static void calc_sp(int* nth, value* arg, CORE_ADDR* sp)
       *sp -= len;
       return;
     }
-    *nth += (len >> 1);
+    int N = len >> 1;
+    if (*nth + N < 5) {
+      *nth += N;
+      return;
+    }
+    *sp -= len;
     return;
   }
   
@@ -327,10 +332,19 @@ static void set_arg(int* nth, value* arg, regcache* rc, CORE_ADDR sp, int* adj)
       *adj += len;
       return;
     }
-    for ( ; len > 0 ; ++*nth, val += 2, len -= 2) {
-      auto regval = extract_unsigned_integer(val, 2, BFD_ENDIAN_LITTLE);
-      regcache_cooked_write_unsigned(rc, 2+*nth, regval);
+    int N = len >> 1;
+    if (*nth + N < 5) {
+      for ( ; len > 0 ; ++*nth, val += 2, len -= 2) {
+	auto regval = extract_unsigned_integer(val, 2, BFD_ENDIAN_LITTLE);
+	regcache_cooked_write_unsigned(rc, 2+*nth, regval);
+      }
+      return;
     }
+    CORE_ADDR addr = sp + *adj;
+    if (*nth > 5)
+      addr += 2 * (*nth - 5);
+    write_memory(addr, val, len);
+    *adj += len;
     return;
   }
 
@@ -383,6 +397,12 @@ cr16_push_dummy_call(gdbarch* arch, value* func, regcache* rc,
   for (int i = 0 ; i != nargs ; ++i)
     calc_sp(&nth, argv[i], &sp);
   regcache_cooked_write_unsigned(rc, sp_regno, sp);
+  if (rm == return_method_struct) {
+    uint16_t hi = struct_addr >> 16;
+    uint16_t lo = struct_addr;
+    regcache_cooked_write_unsigned(rc, 0, lo);
+    regcache_cooked_write_unsigned(rc, 1, hi);
+  }
   nth = 0;
   int adj = 0;
   for (int i = 0 ; i != nargs ; ++i)
