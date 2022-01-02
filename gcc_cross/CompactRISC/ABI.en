@@ -136,7 +136,28 @@ Compact RISC ABI
 
 (*8) Structure argument and return value
 
-	When calling function which takes structure type, no register is
-	used and stack is used.
-	When calling function which returns structure type, the adddress
-	for the return value is set to `r0' and `r1'.
+	When calling function which takes structure type, if the structure
+	size is less than or equal to 4 bytes, `r2', ..., `r6' registers
+	are used. If the structure size is greater thant 4 bytes, no register
+	is used and stack is used.
+
+	For example,
+
+	struct S { int a; int b; };
+	void f(struct S x, struct S y, struct S z, int a);
+	f((struct S){1, 2}, (struct S){3, 4}, (struct S){5, 6}, 7);
+
+	At the start address of `f', registers and stack becomes like below:
+
+	r2 = 1, r3 = 2, r4 = 3, r5 = 4, r6 = 7
+
+	+----------------+ <- sp
+	|       5        |
+	+----------------+ +2
+	|       6        |
+	+----------------+ +4
+
+	When calling function which returns structure type, if the structure
+	size is less than or equal to 8 bytes, `r0', ..., `r3' registers
+	are used. If the structure size is greater than 8 bytes, set
+	the address for return value into `r0' and `r1'.
