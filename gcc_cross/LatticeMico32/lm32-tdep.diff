@@ -1,5 +1,5 @@
 *** gdb-10.2.org/gdb/lm32-tdep.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.lm32-elf/gdb/lm32-tdep.c	2022-01-01 16:55:45.000000000 +0900
+--- gdb-10.2.lm32-elf/gdb/lm32-tdep.c	2022-01-03 11:50:47.000000000 +0900
 ***************
 *** 223,228 ****
 --- 223,329 ----
@@ -111,12 +111,24 @@
   static CORE_ADDR
   lm32_push_dummy_call (struct gdbarch *gdbarch, struct value *function,
 ***************
-*** 249,255 ****
---- 350,361 ----
-        sp -= 4;
-      }
+*** 239,244 ****
+--- 340,346 ----
+    /* Set the return address.  */
+    regcache_cooked_write_signed (regcache, SIM_LM32_RA_REGNUM, bp_addr);
   
 +   int nth = 0;
+    /* If we're returning a large struct, a pointer to the address to
+       store it at is passed as a first hidden parameter.  */
+    if (return_method == return_method_struct)
+***************
+*** 247,255 ****
+--- 349,362 ----
+        first_arg_reg++;
+        num_arg_regs--;
+        sp -= 4;
++       ++nth;
+      }
+  
 +   for (i = 0 ; i != nargs ; ++i)
 +     calc_sp(&nth, args[i], &sp);
 + 
@@ -127,12 +139,14 @@
         struct value *arg = args[i];
 ***************
 *** 290,295 ****
---- 396,406 ----
+--- 397,409 ----
   	  sp -= 4;
   	}
       }
 + #else
 +   nth = 0;
++   if (return_method == return_method_struct)
++     ++nth;
 +   for (i = 0 ; i != nargs ; ++i)
 +     set_arg(&nth, args[i], sp, regcache);
 + #endif  
@@ -141,7 +155,7 @@
     regcache_cooked_write_signed (regcache, SIM_LM32_SP_REGNUM, sp);
 ***************
 *** 321,329 ****
---- 432,448 ----
+--- 435,451 ----
       {
         /* 64-bit values are returned in a register pair.  */
         regcache_cooked_read_unsigned (regcache, SIM_LM32_R1_REGNUM, &l);
@@ -169,7 +183,7 @@
   
     if (readbuf)
       lm32_extract_return_value (valtype, regcache, readbuf);
---- 491,504 ----
+--- 494,507 ----
   
     if (code == TYPE_CODE_STRUCT
         || code == TYPE_CODE_UNION
