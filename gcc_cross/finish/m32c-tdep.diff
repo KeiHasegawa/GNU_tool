@@ -16,10 +16,10 @@
   
 !   if (m32c_return_by_passed_buf (valtype)) {
 !     if (readbuf) {
-!       ULONGEST fb;
-!       regcache_raw_read_unsigned (regcache, 8, &fb);
+!       ULONGEST sp_reg;
+!       regcache_raw_read_unsigned (regcache, 17, &sp_reg);
 !       gdb_byte tmp[2];
-!       read_memory (fb+6, &tmp[0], sizeof tmp);
+!       read_memory (sp_reg, &tmp[0], sizeof tmp);
 !       ULONGEST addr = (tmp[1] << 8) | tmp[0];
 !       read_memory (addr, readbuf, TYPE_LENGTH(valtype));
 !     }
