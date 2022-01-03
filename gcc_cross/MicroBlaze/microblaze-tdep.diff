@@ -1,5 +1,5 @@
 *** gdb-10.2.org/gdb/microblaze-tdep.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.microblaze-elf/gdb/microblaze-tdep.c	2022-01-02 09:41:40.000000000 +0900
+--- gdb-10.2.microblaze-elf/gdb/microblaze-tdep.c	2022-01-03 17:32:21.000000000 +0900
 ***************
 *** 38,43 ****
 --- 38,44 ----
@@ -32,7 +32,7 @@
     if (writebuf)
 ***************
 *** 646,651 ****
---- 658,800 ----
+--- 658,808 ----
                                     tdesc_microblaze_with_stack_protect);
   }
   
@@ -164,12 +164,20 @@
 +   using namespace std;
 +   regcache_cooked_write_unsigned(rc, MICROBLAZE_R15_REGNUM, bp_addr - 8);
 +   int nth = 0;
++   if (rm == return_method_struct)
++     ++nth;
 +   for (int i = 0 ; i != nargs ; ++i)
 +     calc_sp(&nth, argv[i], &sp);
 +   regcache_cooked_write_unsigned(rc, MICROBLAZE_SP_REGNUM, sp);
 +   nth = 0;
++   if (rm == return_method_struct) {
++     regcache_cooked_write_unsigned(rc, MICROBLAZE_R5_REGNUM, struct_addr);
++     ++nth;
++   }
 +   for (int i = 0 ; i != nargs ; ++i)
 +     set_arg(&nth, argv[i], rc, sp);
++   if (rm == return_method_struct)
++     regcache_cooked_write_unsigned(rc, MICROBLAZE_R3_REGNUM, struct_addr);
 +   return sp;
 + }
 + 
@@ -178,7 +186,7 @@
   {
 ***************
 *** 717,722 ****
---- 866,873 ----
+--- 874,881 ----
   
     /* Call dummy code.  */
     set_gdbarch_call_dummy_location (gdbarch, ON_STACK);
