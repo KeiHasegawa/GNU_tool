@@ -1,0 +1,80 @@
+*** gdb-10.2.org/gdb/m32c-tdep.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.m32c-elf.new/gdb/m32c-tdep.c	2022-01-03 14:51:43.000000000 +0900
+***************
+*** 2035,2041 ****
+  #endif
+        num_prototyped_args = func_type->num_fields ();
+    }
+! 
+    /* First, if the function returns an aggregate by value, push a
+       pointer to a buffer for it.  This doesn't affect the way
+       subsequent arguments are allocated to registers.  */
+--- 2035,2041 ----
+  #endif
+        num_prototyped_args = func_type->num_fields ();
+    }
+! #if 0
+    /* First, if the function returns an aggregate by value, push a
+       pointer to a buffer for it.  This doesn't affect the way
+       subsequent arguments are allocated to registers.  */
+***************
+*** 2045,2051 ****
+        sp -= ptr_len;
+        write_memory_unsigned_integer (sp, ptr_len, byte_order, struct_addr);
+      }
+! 
+    /* Push the arguments.  */
+    for (i = nargs - 1; i >= 0; i--)
+      {
+--- 2045,2051 ----
+        sp -= ptr_len;
+        write_memory_unsigned_integer (sp, ptr_len, byte_order, struct_addr);
+      }
+! #endif
+    /* Push the arguments.  */
+    for (i = nargs - 1; i >= 0; i--)
+      {
+***************
+*** 2091,2096 ****
+--- 2091,2103 ----
+  	}
+      }
+  
++   if (return_method == return_method_struct)
++     {
++       int ptr_len = TYPE_LENGTH (tdep->ptr_voyd);
++       sp -= ptr_len;
++       write_memory_unsigned_integer (sp, ptr_len, byte_order, struct_addr);
++     }
++   
+    /* This is the CFA we use to identify the dummy frame.  */
+    cfa = sp;
+  
+***************
+*** 2172,2179 ****
+    enum return_value_convention conv;
+    ULONGEST valtype_len = TYPE_LENGTH (valtype);
+  
+!   if (m32c_return_by_passed_buf (valtype))
+!     conv = RETURN_VALUE_STRUCT_CONVENTION;
+    else
+      conv = RETURN_VALUE_REGISTER_CONVENTION;
+  
+--- 2179,2195 ----
+    enum return_value_convention conv;
+    ULONGEST valtype_len = TYPE_LENGTH (valtype);
+  
+!   if (m32c_return_by_passed_buf (valtype)) {
+!     if (readbuf) {
+!       ULONGEST sp_reg;
+!       regcache_raw_read_unsigned (regcache, 17, &sp_reg);
+!       gdb_byte tmp[2];
+!       read_memory (sp_reg, &tmp[0], sizeof tmp);
+!       ULONGEST addr = (tmp[1] << 8) | tmp[0];
+!       read_memory (addr, readbuf, TYPE_LENGTH(valtype));
+!     }
+!     return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+!   }
+    else
+      conv = RETURN_VALUE_REGISTER_CONVENTION;
+  
