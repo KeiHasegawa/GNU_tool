@@ -4,4 +4,4 @@ start:
 	jsr.a	_main
 	nop
 	brk
-	
+	nop

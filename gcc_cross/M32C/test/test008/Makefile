@@ -6,6 +6,6 @@ test008.elf:test008.o test008.x
 	m32c-elf-ld -o $@ $< -T test008.x
 
 test008.log:test008.elf
-	echo quit | wdog.exe -v m32c-elf-gdb -q -x gdbcom $< > $@ 2>&1
+	echo quit | wdog.exe -v m32c-elf-gdb -q -x gdbcom $< > $@ 2>&1 || echo FAIL
 
 test008.lof:test008.log
