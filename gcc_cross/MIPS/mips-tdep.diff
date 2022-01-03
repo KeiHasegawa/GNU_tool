@@ -1,5 +1,5 @@
 *** gdb-10.2.org/gdb/mips-tdep.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.mips-elf/gdb/mips-tdep.c	2021-12-30 12:33:32.000000000 +0900
+--- gdb-10.2.mips-elf/gdb/mips-tdep.c	2022-01-03 18:11:19.000000000 +0900
 ***************
 *** 4776,4783 ****
     int fp_return_type = 0;
@@ -64,7 +64,7 @@
   					  paddress (gdbarch, longword_offset));
   		    }
 ! 		  
-! 		  if (len == 8) {
+! 		  if (len == 8 && typecode == TYPE_CODE_INT) {
 ! 		    if (stack_offset & 4)
 ! 		      stack_offset += 4;
 ! 		  }
@@ -77,7 +77,7 @@
   		    fprintf_filtered (gdb_stdlog, " - reg=%d val=%s",
   				      argreg,
   				      phex (regval, MIPS32_REGSIZE));
-+ 		  if (len == 8) {
++ 		  if (len == 8 && typecode == TYPE_CODE_INT) {
 + 		    if (argreg & 1) {
 + 		      ++argreg;
 + 		      stack_offset += MIPS32_REGSIZE;
