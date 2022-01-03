@@ -1,0 +1,8 @@
+set prompt (mn10300-elf-gdb) 
+target sim
+load
+sim memory-region 0xe00,0x204
+b main
+run
+p f((struct S){1, 2}, (struct S){3, 4}, (struct S){5, 6})
+quit
