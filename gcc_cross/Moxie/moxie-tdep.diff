@@ -1,7 +1,29 @@
 *** gdb-10.2.org/gdb/moxie-tdep.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.moxie-elf/gdb/moxie-tdep.c	2022-01-02 10:42:09.000000000 +0900
+--- gdb-10.2.moxie-elf/gdb/moxie-tdep.c	2022-01-04 06:56:33.000000000 +0900
 ***************
-*** 480,487 ****
+*** 61,67 ****
+  {
+    /* Align to the size of an instruction (so that they can safely be
+       pushed onto the stack.  */
+!   return sp & ~1;
+  }
+  
+  constexpr gdb_byte moxie_break_insn[] = { 0x35, 0x00 };
+--- 61,67 ----
+  {
+    /* Align to the size of an instruction (so that they can safely be
+       pushed onto the stack.  */
+!   return sp & ~3;
+  }
+  
+  constexpr gdb_byte moxie_break_insn[] = { 0x35, 0x00 };
+***************
+*** 475,487 ****
+  
+  /* Implement the "return_value" gdbarch method.  */
+  
+  static enum return_value_convention
+  moxie_return_value (struct gdbarch *gdbarch, struct value *function,
   		   struct type *valtype, struct regcache *regcache,
   		   gdb_byte *readbuf, const gdb_byte *writebuf)
   {
@@ -10,11 +32,27 @@
     else
       {
         if (readbuf != NULL)
---- 480,493 ----
+--- 475,504 ----
+  
+  /* Implement the "return_value" gdbarch method.  */
+  
++ static bool is_aggregate(type_code code)
++ {
++   switch (code) {
++   case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
++     return true;
++   default:
++     return false;
++   }
++ }
++ 
+  static enum return_value_convention
+  moxie_return_value (struct gdbarch *gdbarch, struct value *function,
   		   struct type *valtype, struct regcache *regcache,
   		   gdb_byte *readbuf, const gdb_byte *writebuf)
   {
-!   if (TYPE_LENGTH (valtype) > 8) {
+!   auto code = valtype->code();
+!   if (is_aggregate(code)) {
 !     if (readbuf) {
 !       ULONGEST addr;
 !       regcache_raw_read_unsigned(regcache, RET1_REGNUM, &addr);
@@ -27,7 +65,7 @@
         if (readbuf != NULL)
 ***************
 *** 562,568 ****
---- 568,578 ----
+--- 579,589 ----
     if (cache->base == 0)
       return;
   
@@ -41,23 +79,13 @@
   /* Get the value of register regnum in the previous stack frame.  */
 ***************
 *** 1045,1050 ****
---- 1055,1234 ----
+--- 1066,1240 ----
     return 0;
   }
   
 + #include <cassert>
 + #include <numeric>
 + #include <map>
-+ 
-+ static bool is_aggregate(type_code code)
-+ {
-+   switch (code) {
-+   case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
-+     return true;
-+   default:
-+     return false;
-+   }
-+ }
 + 
 + static int aggregate_space(int s, value* arg)
 + {
@@ -182,11 +210,12 @@
 + 		      CORE_ADDR struct_addr)
 + {
 +   using namespace std;
-+   sp &= 0xfffffffc;
 +   CORE_ADDR asp = sp;
 +   sp -= accumulate(&argv[0], &argv[nargs], 0, aggregate_space);
 +   map<int, CORE_ADDR> tbl;
 +   int nth = 0;
++   if (rm == return_method_struct)
++     ++nth;
 +   for (int i = 0 ; i != nargs ; ++i)
 +     calc_sp(&nth, argv[i], &sp, &asp, tbl);
 +   sp -= 8;
@@ -214,6 +243,10 @@
 +   write_memory(sp, &u.c[0], 4);
 +   regcache_cooked_write_unsigned(rc, MOXIE_FP_REGNUM, sp);
 +   nth = 0;
++   if (rm == return_method_struct) {
++     regcache_cooked_write_unsigned(rc, R0_REGNUM, struct_addr);
++     ++nth;
++   }
 +   for (int i = 0 ; i != nargs ; ++i)
 +     set_arg(&nth, argv[i], rc, sp, tbl);
 +   return sp;
@@ -224,7 +257,7 @@
   static struct gdbarch *
 ***************
 *** 1098,1103 ****
---- 1282,1289 ----
+--- 1288,1295 ----
     /* Support reverse debugging.  */
     set_gdbarch_process_record (gdbarch, moxie_process_record);
   
