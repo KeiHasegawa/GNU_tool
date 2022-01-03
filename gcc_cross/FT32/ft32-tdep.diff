@@ -1,7 +1,29 @@
 *** gdb-10.2.org/gdb/ft32-tdep.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.ft32-elf/gdb/ft32-tdep.c	2021-12-28 16:14:41.000000000 +0900
+--- gdb-10.2.ft32-elf/gdb/ft32-tdep.c	2022-01-03 10:13:50.000000000 +0900
 ***************
-*** 417,424 ****
+*** 71,77 ****
+  {
+    /* Align to the size of an instruction (so that they can safely be
+       pushed onto the stack.  */
+!   return sp & ~1;
+  }
+  
+  
+--- 71,77 ----
+  {
+    /* Align to the size of an instruction (so that they can safely be
+       pushed onto the stack.  */
+!   return sp & ~7;
+  }
+  
+  
+***************
+*** 412,424 ****
+  
+  /* Implement the "return_value" gdbarch method.  */
+  
+  static enum return_value_convention
+  ft32_return_value (struct gdbarch *gdbarch, struct value *function,
   		   struct type *valtype, struct regcache *regcache,
   		   gdb_byte *readbuf, const gdb_byte *writebuf)
   {
@@ -10,11 +32,27 @@
     else
       {
         if (readbuf != NULL)
---- 417,431 ----
+--- 412,442 ----
+  
+  /* Implement the "return_value" gdbarch method.  */
+  
++ static bool is_aggregate(type_code code)
++ {
++   switch (code) {
++   case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
++     return true;
++   default:
++     return false;
++   }
++ }
++ 
+  static enum return_value_convention
+  ft32_return_value (struct gdbarch *gdbarch, struct value *function,
   		   struct type *valtype, struct regcache *regcache,
   		   gdb_byte *readbuf, const gdb_byte *writebuf)
   {
-!   if (TYPE_LENGTH (valtype) > 8) {
+!   auto code = valtype->code();
+!   if (is_aggregate(code)) {
 !     if (readbuf) {
 !       ULONGEST addr;
 !       regcache_raw_read_unsigned (regcache, FT32_R0_REGNUM, &addr);
@@ -28,28 +66,148 @@
         if (readbuf != NULL)
 ***************
 *** 551,556 ****
---- 558,611 ----
+--- 569,752 ----
     ft32_frame_base_address
   };
   
-+ static void set_arg(int nth, value* arg, regcache* rc, CORE_ADDR sp)
++ #include <utility>
++ #include <cassert>
++ #include <numeric>
++ #include <map>
++ 
++ static int aggregate_space(int s, value* arg)
 + {
-+   auto val = value_contents(arg);
-+   if (nth < 6) {
-+     CORE_ADDR regval = extract_unsigned_integer(val, 4, BFD_ENDIAN_LITTLE);
-+     regcache_cooked_write_unsigned(rc, FT32_R0_REGNUM+nth, regval);
-+     return;
-+   }
-+   CORE_ADDR addr = sp + 4 + 4 * (nth - 6);
-+   write_memory(addr | 0x800000, val, 2);
++   auto arg_type = check_typedef(value_type(arg));
++   auto code = arg_type->code();
++   if (!is_aggregate(code))
++     return s;
++   int len = TYPE_LENGTH(arg_type);
++   return s + len;
 + }
 + 
-+ #include <utility>
-+ #include <numeric>
-+ 
-+ static int add_arg(int sum, value* arg)
++ static void calc_sp(int* nth, value* arg, CORE_ADDR* sp, CORE_ADDR* asp,
++ 		    std::map<int, CORE_ADDR>& tbl)
 + {
-+   return sum + 2;
++   auto arg_type = check_typedef(value_type(arg));
++   auto code = arg_type->code();
++   int len = TYPE_LENGTH(arg_type);
++   if (is_aggregate(code)) {
++     *asp -= len;
++     tbl[*nth] = *asp;
++     if (*nth < 6) {
++       ++*nth;
++       return;
++     }
++     *sp -= 4;
++     ++*nth;
++     return;
++   }
++ 
++   if (len <= 4) {
++     if (*nth < 6) {
++       ++*nth;
++       return;
++     }
++     *sp -= 4;
++     ++*nth;
++     return;
++   }
++ 
++   assert(len == 8);
++   if (*nth < 5) {
++     *nth += 2;
++     return;
++   }
++   if (*nth == 5) {
++     *nth += 1;
++     *sp -= 4;
++     return;
++   }
++   *sp -= 8;
++   *nth += 2;
++ }
++ 
++ static void set_arg(int* nth, value* arg, regcache* rc, CORE_ADDR sp,
++ 		    const std::map<int, CORE_ADDR>& tbl)
++ {
++   using namespace std;
++   auto arg_type = check_typedef(value_type(arg));
++   auto code = arg_type->code();
++   int len = TYPE_LENGTH(arg_type);
++   if (is_aggregate(code)) {
++     auto val = value_contents(arg);
++     auto p = tbl.find(*nth);
++     assert(p != end(tbl));
++     CORE_ADDR cp_addr = p->second;
++     write_memory(cp_addr | 0x800000, val, len);
++     if (*nth < 6) {
++       regcache_cooked_write_unsigned(rc, FT32_R0_REGNUM+*nth, cp_addr);
++       ++*nth;
++       return;
++     }
++     CORE_ADDR addr = sp + 4 + 4 * (*nth - 6);
++     union {
++       uint32_t i;
++       gdb_byte c[4];
++     } u = { (uint32_t)cp_addr };
++     int x = 1;
++     if (!*(char*)&x) {
++       // gdb runs at a big endian processor
++       swap(u.c[0], u.c[3]);
++       swap(u.c[1], u.c[2]);
++     }
++     write_memory(addr | 0x800000, &u.c[0], 4);
++     ++*nth;
++     return;
++   }
++ 
++   if (len <= 4) {
++     auto val = value_contents(arg);
++     if (*nth < 6) {
++       auto regval = extract_unsigned_integer(val, 4, BFD_ENDIAN_LITTLE);
++       regcache_cooked_write_unsigned(rc, FT32_R0_REGNUM+*nth, regval);
++       ++*nth;
++       return;
++     }
++     CORE_ADDR addr = sp + 4 + 4 * (*nth - 6);
++     ++*nth;
++     write_memory(addr | 0x800000, val, 4);
++     return;
++   }
++ 
++   assert(len == 8);
++   auto val = value_contents(arg);
++   if (*nth < 5) {
++     auto regval = extract_unsigned_integer(val, 8, BFD_ENDIAN_LITTLE);
++     uint32_t hi = regval >> 32;
++     uint32_t lo = regval;
++     regcache_cooked_write_unsigned(rc, FT32_R0_REGNUM+*nth+0, lo);
++     regcache_cooked_write_unsigned(rc, FT32_R0_REGNUM+*nth+1, hi);
++     *nth += 2;
++     return;
++   }
++   if (*nth == 5) {
++     auto regval = extract_unsigned_integer(val, 8, BFD_ENDIAN_LITTLE);
++     uint32_t lo = regval;    
++     regcache_cooked_write_unsigned(rc, FT32_R0_REGNUM+*nth, lo);
++     CORE_ADDR addr = sp + 4;
++     write_memory(addr | 0x800000, val+4, 4);
++     *nth += 2;
++     return;
++   }
++ 
++   CORE_ADDR addr = sp + 4 + 4 * (*nth - 6);
++   write_memory(addr | 0x800000, val, 8);
++   *nth += 2;
++ }
++ 
++ #include <iostream>
++ void debug(const std::map<int, CORE_ADDR>& tbl);
++ void debug(const std::map<int, CORE_ADDR>& tbl)
++ {
++   using namespace std;
++   for (auto p : tbl)
++     cout << p.first << ',' << "0x" << hex << p.second << '\n';
 + }
 + 
 + static CORE_ADDR
@@ -59,14 +217,20 @@
 + 		     CORE_ADDR struct_addr)
 + {
 +   using namespace std;
-+   sp -= accumulate(&argv[0], &argv[nargs], 0, add_arg);
-+   if (sp & 3)
-+     sp &= 0xfffffffc;
++   CORE_ADDR asp = sp;
++   sp -= accumulate(&argv[0], &argv[nargs], 0, aggregate_space);
++   map<int, CORE_ADDR> tbl;
++   int nth = 0;
++   if (rm == return_method_struct)
++     ++nth;
++   for (int i = 0 ; i != nargs ; ++i)
++     calc_sp(&nth, argv[i], &sp, &asp, tbl);
 +   sp -= 4;
++   regcache_cooked_write_unsigned(rc, FT32_SP_REGNUM, sp);
 +   union {
 +     uint32_t i;
 +     gdb_byte c[4];
-+   } u = { bp_addr };
++   } u = { (uint32_t)bp_addr };
 +   int x = 1;
 +   if (!*(char*)&x) {
 +     // gdb runs at a big endian processor
@@ -74,9 +238,13 @@
 +     swap(u.c[1], u.c[2]);
 +   }
 +   write_memory(sp | 0x800000, &u.c[0], 4);
++   nth = 0;
++   if (rm == return_method_struct) {
++     regcache_cooked_write_unsigned(rc, FT32_R0_REGNUM, struct_addr);
++     ++nth;
++   }
 +   for (int i = 0 ; i != nargs ; ++i)
-+     set_arg(i, argv[i], rc, sp);
-+   regcache_cooked_write_unsigned(rc, FT32_SP_REGNUM, sp);
++     set_arg(&nth, argv[i], rc, sp, tbl);
 +   return sp;
 + }
 + 
@@ -85,7 +253,7 @@
   static struct gdbarch *
 ***************
 *** 611,616 ****
---- 666,673 ----
+--- 807,814 ----
     set_gdbarch_address_class_type_flags_to_name
       (gdbarch, ft32_address_class_type_flags_to_name);
   

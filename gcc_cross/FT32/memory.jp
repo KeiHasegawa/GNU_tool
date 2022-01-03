@@ -34,4 +34,19 @@ sim_open で以下のように固定のメモリを確保している:
   
     if (!found_loadable_section)
 
+
+*** gdb-10.2.org/sim/common/sim-hrw.c	2021-04-25 13:04:35.000000000 +0900
+--- gdb-10.2.ft32-elf/sim/common/sim-hrw.c	2022-01-03 09:27:26.000000000 +0900
+***************
+*** 27,32 ****
+--- 27,34 ----
+  sim_read (SIM_DESC sd, SIM_ADDR mem, unsigned char *buf, int length)
+  {
+    SIM_ASSERT (STATE_MAGIC (sd) == SIM_MAGIC_NUMBER);
++   if (0xe000 <= mem && mem < 0xf000)
++     mem |= 0x800000;
+    return sim_core_read_buffer (sd, NULL, read_map,
+  			       buf, mem, length);
+  }
+
 .bss は 0xcc で初期化される. スタックは別途割り当てる必要がある.

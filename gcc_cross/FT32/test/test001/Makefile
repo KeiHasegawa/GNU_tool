@@ -1,4 +1,5 @@
 all:
+	wdog.exe -v diff hello.log hello.lof
 
 #all:hello.objdump hello.log
 
