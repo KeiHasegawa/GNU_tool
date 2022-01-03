@@ -1,11 +1,11 @@
-all:test000.objdump test000.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test000.o:test000.S
-	m68hc11-elf-as -o test000.o -g test000.S
+test.o:test.S
+	m68hc11-elf-as -o test.o -g test.S
 
-test000.elf:test000.o test000.x
-	m68hc11-elf-ld -o test000.elf test000.o -T test000.x -Map test000.map
+test.elf:test.o test.x
+	m68hc11-elf-ld -o test.elf test.o -T test.x -Map test.map
 
-test000.lof:test000.log
+test.lof:test.log
