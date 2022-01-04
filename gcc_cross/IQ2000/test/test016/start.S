@@ -7,5 +7,5 @@ start:
 	jalr	%31,%3
 	nop
 	break
-	
+	nop
 	
