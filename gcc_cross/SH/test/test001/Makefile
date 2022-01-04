@@ -1,4 +1,4 @@
-all:hello.objdump hello.log
+all:hello.objdump hello.lof
 
 include ../Makefile.common
 
