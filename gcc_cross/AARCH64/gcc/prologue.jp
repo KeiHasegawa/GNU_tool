@@ -16,3 +16,66 @@ aarch64_expand_prologue (void)
 {
 
 函数のプロローグに対してこの函数が呼び出される.
+
+int f(int a, int b){ return a + b; }
+
+をコンパイルしてみると最初に(実は 2 つ目だが)生成された rtx_insn は以下であった.
+
+  if (aarch64_uimm12_shift (moffset))
+    {
+      insn = emit_insn (gen_add3_insn (dest, src, GEN_INT (offset)));
+      RTX_FRAME_RELATED_P (insn) = frame_related_p;
+      return;
+    }
+
+(gdb) p debug_insn_slim(insn)
+   20: sp:DI=sp:DI-0x10
+$8 = void
+(gdb) p offset
+$9 = -16
+(gdb)
+
+ここでフレームサイズ 16 は gcc の共通部分で計算してくれている. とはいえ, 別のプロセッサ
+のコンパイラであれば 0 であったり, 4 や 8 であったりすることもある. ここでは深く追求しない.
+
+ここで大事なことは, フレームサイズからプロローグ部分のアセンブリを生成するのではなく
+一旦 rtx_insn を生成し, 最後にこれを AARCH64 のアセンブリに変換するということである.
+
+結果的に上の rtx_insn に対してコンパイラは
+
+	sub	sp, sp, #16
+
+を生成している.
+
+同様に aarch64_expand_epilogue では
+
+   24: sp:DI=sp:DI+0x10
+
+のような rtx_insn を生成している. そして結果的にこれに対してコンパイラは
+
+	add	sp, sp, 16
+
+を生成している.
+
+2022.01.04 14:58
+に気付いたが
+
+% cat zz
+b final.c:2020
+command
+silent
+p insn
+p debug_insn_slim(insn)
+c
+end
+%
+
+(gdb) so zz
+(gdb) run -o a.s a.c
+
+のようにしてみたところ aarch64-elf-gcc ではものすごく実行に時間がかかっ
+ているが, arm-elf-gcc では今まで経験してきた期待したスピードで動作して
+いる.
+
+たぶんだが aarch64-elf-gcc のいくつかの .o ファイルの生成に -g3 を指定
+していることが原因だと思われる. ビルドし直したら期待した速度で動作している.
