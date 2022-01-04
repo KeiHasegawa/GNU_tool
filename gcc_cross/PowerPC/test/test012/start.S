@@ -5,3 +5,4 @@ start:
 	bl main
 	nop	
 	twge 2, 2
+	nop	
