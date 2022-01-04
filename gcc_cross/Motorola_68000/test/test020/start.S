@@ -6,3 +6,4 @@ start:
 	bsr	main
 	nop
 	bgnd	
+	nop
