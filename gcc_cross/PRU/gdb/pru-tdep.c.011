@@ -68,23 +68,34 @@ pru_extract_return_value(type* valtype, regcache* regs, gdb_byte *valbuf)
   store_unsigned_integer(valbuf+4, 4, BFD_ENDIAN_LITTLE, tmp);
 }
 
+static bool is_aggregate(type_code code)
+{
+  switch (code) {
+  case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
+    return true;
+  default:
+    return false;
+  }
+}
+
 static return_value_convention
 pru_return_value(gdbarch*, value* function, type* valtype, regcache* regcache,
 		 gdb_byte *readbuf, const gdb_byte *writebuf)
 {
   auto code = valtype->code();
-  switch (code) {
-  case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
-    if (readbuf) {
-      ULONGEST addr;
-      regcache_raw_read_unsigned(regcache, 14, &addr);
-      read_memory(addr, readbuf, TYPE_LENGTH(valtype));
+  if (is_aggregate(code)) {
+    int len = TYPE_LENGTH(valtype);
+    if (len > 8) {
+      if (readbuf) {
+	ULONGEST addr;
+	regcache_raw_read_unsigned(regcache, 14, &addr);
+	read_memory(addr, readbuf, len);
+      }
+      return RETURN_VALUE_ABI_RETURNS_ADDRESS;
     }
-    return RETURN_VALUE_ABI_RETURNS_ADDRESS;
   }
 
-  if (writebuf)
-    asm("int3");
+  assert(!writebuf);
 
   if (readbuf)
     pru_extract_return_value(valtype, regcache, readbuf);
@@ -281,16 +292,6 @@ static const unsigned char* pru_from_kind(gdbarch*, int kind, int* size)
   return &break_inst[0];
 }
 
-static bool is_aggregate(type_code code)
-{
-  switch (code) {
-  case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
-    return true;
-  default:
-    return false;
-  }
-}
-
 static void calc_sp(int* nth, value* arg, CORE_ADDR* sp)
 {
   auto arg_type = check_typedef(value_type(arg));
@@ -395,10 +396,16 @@ pru_push_dummy_call(gdbarch* arch, value* func, regcache* rc,
   using namespace std;
   regcache_cooked_write_unsigned(rc, 3, bp_addr << 14);
   int nth = 0;
+  if (rm == return_method_struct)
+    ++nth;
   for (int i = 0 ; i != nargs ; ++i)
     calc_sp(&nth, argv[i], &sp);
   regcache_cooked_write_unsigned(rc, sp_regno, sp);
   nth = 0;
+  if (rm == return_method_struct) {
+    regcache_cooked_write_unsigned(rc, 14, struct_addr);
+    ++nth;
+  }
   int adj = 0;
   for (int i = 0 ; i != nargs ; ++i)
     set_arg(&nth, argv[i], rc, sp, &adj);
