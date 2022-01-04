@@ -8,6 +8,6 @@ hello.elf:hello.c
 	m32r-elf-gcc -g -o hello.elf hello.c
 
 hello.log:hello.elf
-	echo quit | wdog.exe -v m32r-elf-gdb -q -x gdbcom $< > $@ 2>&1
+	echo quit | wdog.exe -v m32r-elf-gdb -q -x gdbcom $< > $@ 2>&1 || echo FAIL
 
 hello.lof:hello.log

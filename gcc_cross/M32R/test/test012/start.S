@@ -4,3 +4,4 @@ start:
 	bl main
 	nop	
 	trap #0x1
+	nop
