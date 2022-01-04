@@ -57,25 +57,392 @@ $9 = -16
 
 を生成している.
 
-2022.01.04 14:58
-に気付いたが
+(*) arm-elf-gcc
 
-% cat zz
-b final.c:2020
-command
-silent
-p insn
-p debug_insn_slim(insn)
-c
-end
-%
+同様のことを arm-elf-gcc で試してみた:
+プロローグで生成している rtx_insn は以下
 
-(gdb) so zz
-(gdb) run -o a.s a.c
+   20: {[pre sp:SI+=0xfffffffffffffffc]=unspec[fp:SI] 0;}
+      REG_FRAME_RELATED_EXPR sequence{sp:SI=sp:SI-0x4;[sp:SI]=fp:SI;}
+   21: fp:SI=sp:SI+0
+   22: sp:SI=sp:SI-0x8
+   23: [scratch]=unspec[sp:SI,fp:SI] 3
 
-のようにしてみたところ aarch64-elf-gcc ではものすごく実行に時間がかかっ
-ているが, arm-elf-gcc では今まで経験してきた期待したスピードで動作して
-いる.
+そしてこれに対して以下を生成している
 
-たぶんだが aarch64-elf-gcc のいくつかの .o ファイルの生成に -g3 を指定
-していることが原因だと思われる. ビルドし直したら期待した速度で動作している.
+	str	fp, [sp, #-4]!
+	add	fp, sp, #0
+	sub	sp, sp, #8
+
+(*) avr-elf-gcc
+
+生成している rtx_insn
+   20: [__SP_L__:HI--]=r28:QI
+   21: [__SP_L__:HI--]=r29:QI
+      REG_DEAD r29:QI
+   25: __SP_L__:HI=__SP_L__:HI-0x4
+      REG_CFA_ADJUST_CFA __SP_L__:HI=__SP_L__:HI-0x4
+   26: r28:HI=__SP_L__:HI
+
+変換されたアセンブリ
+	push r28
+	push r29
+	rcall .
+	rcall .
+	in r28,__SP_L__
+	in r29,__SP_H__
+
+(*) bfin-elf-gcc
+
+生成している rtx_insn
+   22: {[SP:SI-0x4]=RETS:SI;[SP:SI-0x8]=FP:SI;FP:SI=SP:SI-0x8;SP:SI=SP:SI-0x8;}
+
+変換されたアセンブリ
+	LINK 0;
+
+(*) cr16-elf-gcc
+
+生成している rtx_insn
+
+   21: sp:SI=sp:SI-0x4
+      REG_FRAME_RELATED_EXPR sequence{sp:SI=sp:SI-0x4;[sp:SI]=r13:SI;}
+   22: sp:SI=sp:SI-0x8
+   23: r13:SI=sp:SI
+
+変換されたアセンブリ
+	push	$2, r13
+	addd	$-8, (sp)
+
+これはピンときていない. 一体どいう書き替えを行なっているのか...
+
+(*) cris-elf-gcc
+
+生成している rtx_insn
+
+   19: sp:SI=sp:SI-0x4
+   20: [sp:SI]=r8:SI
+   21: r8:SI=sp:SI
+   22: sp:SI=sp:SI-0x8
+
+変換されたアセンブリ
+
+	subq 4,$sp
+	move.d $r8,[$sp]
+	move.d $sp,$r8
+	subq 8,$sp
+
+(*) frv-elf-gcc
+
+生成している rtx_insn
+
+   20: {sp:SI=sp:SI-0x18;unspec/v[0] 5;}
+      REG_FRAME_RELATED_EXPR sp:SI=sp:SI-0x18
+   21: [sp:SI+0x8]=fp:SI
+      REG_FRAME_RELATED_EXPR [sp:SI+0x8]=fp:SI
+   22: fp:SI=sp:SI+0x8
+      REG_FRAME_RELATED_EXPR fp:SI=sp:SI+0x8
+   23: gr5:SI=lr:SI
+   24: [fp:SI+0x8]=gr5:SI
+      REG_FRAME_RELATED_EXPR [sp:SI+0x10]=lr:SI
+
+変換されたアセンブリ
+
+	addi sp,#-24,sp
+	sti fp, @(sp,8)
+	addi sp,#8,fp
+	movsg lr, gr5
+	sti gr5, @(fp,8)
+
+(*) ft32-elf-gcc
+
+生成している rtx_insn
+
+   20: {$fp:SI=$sp:SI;$sp:SI=$sp:SI-0x8;}
+
+変換されたアセンブリ
+	link   $fp,8
+
+(*) h8300-elf-gcc
+
+生成している rtx_insn
+
+   22: [--sp:HI]=r6:HI
+      REG_INC sp:HI
+   23: r6:HI=sp:HI
+   31: sp:HI=sp:HI-0x2
+   32: sp:HI=sp:HI-0x2
+
+変換されたアセンブリ
+
+	mov.w	r6,@-r7
+	mov.w	r7,r6
+	subs	#2,r7
+	subs	#2,r7
+
+(*) iq2000-elf-gcc
+
+生成している rtx_insn
+
+   21: %29:SI=%29:SI-0x10
+      REG_FRAME_RELATED_EXPR %29:SI=%29:SI-0x10
+   22: [%29:SI+0x8]=%27:SI
+      REG_FRAME_RELATED_EXPR [%29:SI+0x8]=%27:SI
+   23: %27:SI=%29:SI
+   24: unspec/v[0] 0
+
+変換されたアセンブリ
+
+	addiu	%29,%29,-16
+	sw	%27,8(%29)
+	or	%27,%0,%29
+
+(*) lm32-elf-gcc
+
+生成している rtx_insn
+
+   20: sp:SI=sp:SI-0x10
+   21: [sp:SI+0x8]=fp:SI
+   22: [sp:SI+0x4]=ra:SI
+   23: fp:SI=sp:SI
+   24: fp:SI=fp:SI+0x10
+   25: unspec/v[0] 1
+
+変換されたアセンブリ
+
+	addi     sp, sp, -16
+	sw       (sp+8), fp
+	sw       (sp+4), ra
+	or       fp, sp, r0
+	addi     fp, fp, 16
+
+(*) m32c-elf-gcc
+
+生成している rtx_insn
+
+   20: {[sp:HI-0x2]=fb:HI;fb:HI=sp:HI-0x2;sp:HI=sp:HI-0x6;}
+
+変換されたアセンブリ
+
+	enter	#6-2
+
+(*) m32r-elf-gcc
+
+生成している rtx_insn
+
+   20: [--sp:SI]=fp:SI
+   21: sp:SI=sp:SI-0x8
+   22: fp:SI=sp:SI
+
+変換されたアセンブリ
+
+	push fp
+	addi sp,#-8
+	mv fp,sp
+
+(*) m68hc11-elf-gcc
+
+生成している rtx_insn
+
+   29 y:HI=*_.frame:HI
+   30 [--sp:HI]=y:HI
+      REG_INC: sp:HI
+      REG_INC: sp:HI
+   31 [--sp:HI]=x:HI
+      REG_INC: sp:HI
+      REG_INC: sp:HI
+   32 [--sp:HI]=x:HI
+      REG_INC: sp:HI
+      REG_INC: sp:HI
+   33 *_.frame:HI=sp:HI
+      REG_INC: sp:HI
+
+
+変換されたアセンブリ
+
+	ldy	*_.frame
+	pshy
+	pshx
+	pshx
+	sts	*_.frame
+
+(*) mcore-elf-gcc
+
+生成している rtx_insn
+
+   20: sp:SI=sp:SI-0x10
+   21: [sp:SI+0x8]=r8:SI
+   22: r8:SI=sp:SI
+
+変換されたアセンブリ
+
+	subi	sp,16
+	stw	r8,(sp,8)
+	mov	r8,sp
+
+(*) microblaze-elf-gcc
+
+生成している rtx_insn
+
+   22: r1:SI=r1:SI-0x8
+   23: [r1:SI+0x4]=r19:SI
+   24: r19:SI=r1:SI
+
+変換されたアセンブリ
+
+	addik	r1,r1,-8
+	swi	r19,r1,4
+	addk	r19,r1,r0
+
+(*) mips-elf-gcc
+
+生成している rtx_insn
+
+   23: $sp:SI=$sp:SI-0x8
+   24: clobber [$sp:SI]
+   25: [$sp:SI+0x4]=$fp:SI
+      REG_FRAME_RELATED_EXPR [$sp:SI+0x4]=$fp:SI
+   26: $fp:SI=$sp:SI
+
+変換されたアセンブリ
+
+	addiu	$sp,$sp,-8
+	sw	$fp,4($sp)
+	move	$fp,$sp
+
+(*) mn10300-elf-gcc
+
+生成している rtx_insn
+
+   21: {sp:SI=sp:SI-0x4;[sp:SI-0x4]=a3:SI;}
+   22: a3:SI=sp:SI
+
+変換されたアセンブリ
+
+	movm [a3],(sp)
+	mov sp,a3
+
+(*) moxie-elf-gcc
+
+生成している rtx_insn
+
+なし
+
+変換されたアセンブリ
+
+なし
+
+(*) msp430-elf-gcc
+
+生成している rtx_insn
+
+   20: unspec/v[0] 0
+   21: R1:HI=R1:HI-0x4
+   22: unspec/v[0] 1
+
+変換されたアセンブリ
+
+	SUB.W	#4, R1
+
+(*) or1k-elf-gcc
+
+生成している rtx_insn
+
+   21: {r1:SI=r1:SI-0x10;clobber [scratch];}
+   22: [r1:SI+0x8]=r2:SI
+   23: r2:SI=r1:SI+0x10
+   24: [r1:SI+0xc]=r9:SI
+
+変換されたアセンブリ
+
+	l.addi	r1, r1, -16
+	l.sw	8(r1), r2
+	l.addi	r2, r1, 16
+	l.sw	12(r1), r9
+
+(*) ppc-elf-gcc
+
+生成している rtx_insn
+
+   20: {[%1:SI-0x20]=%1:SI;%1:SI=%1:SI-0x20;}
+      REG_FRAME_RELATED_EXPR %1:SI=%1:SI-0x20
+   21: [%1:SI+0x1c]=%31:SI
+   22: %31:SI=%1:SI
+
+変換されたアセンブリ
+
+	stwu 1,-32(1)
+	stw 31,28(1)
+	mr 31,1
+
+(*) pru-elf-gcc
+
+生成している rtx_insn
+
+   24: r2.b0:SI=r2.b0:SI-0xc
+   25: {[r2.b0:SI+0x8]=r4.b0:QI;[r2.b0:SI+0x9]=r4.b1:QI;[r2.b0:SI+0xa]=r4.b2:QI;[r2.b0:SI+0xb]=r4.b3:QI;}
+   26: r4.b0:SI=r2.b0:SI+0xc
+
+変換されたアセンブリ
+
+	sub	r2, r2, 12
+	sbbo	r4.b0, r2, 8, 4
+	add	r4, r2, 12
+
+(*) rl78-elf-gcc
+
+生成している rtx_insn
+
+なし
+
+変換されたアセンブリ
+
+なし
+
+(*) rx-elf-gcc
+
+生成している rtx_insn
+
+   20: {r0:SI=r0:SI-0x4;[r0:SI-0x4]=r10:SI;}
+   21: {r0:SI=r0:SI-0x4;[r0:SI-0x4]=r6:SI;}
+   22: {r6:SI=r0:SI-0x8;clobber cc:CC;}
+   23: r0:SI=r6:SI
+
+変換されたアセンブリ
+
+	push.l	r10
+	push.l	r6
+	add	#-8, r0, r6
+	mov.L	r6, r0
+
+(*) sh-elf-gcc
+
+生成している rtx_insn
+
+   25: [--r15:SI]=r14:SI
+      REG_INC r15:SI
+   26: r15:SI=r15:SI-0x8
+   27: r14:SI=r15:SI
+
+変換されたアセンブリ
+
+	mov.l	r14,@-r15
+	add	#-8,r15
+	mov	r15,r14
+
+(*) v850-elf-gcc
+
+生成している rtx_insn
+
+   20: {sp:SI=sp:SI-0x4;clobber psw:CC;}
+   21: [sp:SI]=r29:SI
+   22: {sp:SI=sp:SI-0x8;clobber psw:CC;}
+   23: r29:SI=sp:SI
+
+変換されたアセンブリ
+
+	add -4,sp
+	st.w r29,0[sp]
+	add -8,sp
+	mov sp,r29
+
+
