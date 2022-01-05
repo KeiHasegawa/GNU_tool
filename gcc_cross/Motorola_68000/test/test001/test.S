@@ -11,7 +11,6 @@ start:
 	bsr	main
 end:
 	bra	.
-	nop
 	
 	.mode mlong
 	.sect	.text
