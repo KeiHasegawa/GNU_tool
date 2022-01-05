@@ -1,11 +1,11 @@
-all:test016.objdump test016.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test016.elf:test016.o
-	m68hc11-elf-ld -o $@ $< -T test016.x
+test.elf:test.o
+	m68hc11-elf-ld -o $@ $< -T test.x
 
-test016.log:test016.elf
+test.log:test.elf
 	echo quit | wdog.exe -v m68hc11-elf-gdb -q -x gdbcom $< > $@ 2>&1 || echo FAIL
 
-test016.lof:test016.log
+test.lof:test.log
