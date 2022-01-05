@@ -1,0 +1,59 @@
+*** gdb-10.2.org/gdb/m68hc11-tdep.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.m68hc11-elf/gdb/m68hc11-tdep.c	2022-01-05 10:08:26.000000000 +0900
+***************
+*** 1012,1018 ****
+          }
+        else
+          {
+!           fprintf_filtered (file, "0x%04x ", (unsigned) rval);
+            if (regno != HARD_PC_REGNUM && regno != HARD_SP_REGNUM
+                && regno != SOFT_FP_REGNUM && regno != M68HC12_HARD_PC_REGNUM)
+              print_longest (file, 'd', 1, rval);
+--- 1012,1018 ----
+          }
+        else
+          {
+!           fprintf_filtered (file, "0x%04x ", (uint16_t) rval);
+            if (regno != HARD_PC_REGNUM && regno != HARD_SP_REGNUM
+                && regno != SOFT_FP_REGNUM && regno != M68HC12_HARD_PC_REGNUM)
+              print_longest (file, 'd', 1, rval);
+***************
+*** 1222,1227 ****
+--- 1222,1233 ----
+      case M68HC12_HARD_PC_REGNUM:
+        return builtin_type (gdbarch)->builtin_uint32;
+  
++     case HARD_PC_REGNUM:
++       return builtin_type (gdbarch)->builtin_func_ptr;
++ 
++     case HARD_SP_REGNUM:
++       return builtin_type (gdbarch)->builtin_data_ptr;
++       
+      default:
+        return builtin_type (gdbarch)->builtin_uint16;
+      }
+***************
+*** 1293,1300 ****
+    if (valtype->code () == TYPE_CODE_STRUCT
+        || valtype->code () == TYPE_CODE_UNION
+        || valtype->code () == TYPE_CODE_ARRAY
+!       || TYPE_LENGTH (valtype) > 4)
+!     return RETURN_VALUE_STRUCT_CONVENTION;
+    else
+      {
+        if (readbuf != NULL)
+--- 1299,1312 ----
+    if (valtype->code () == TYPE_CODE_STRUCT
+        || valtype->code () == TYPE_CODE_UNION
+        || valtype->code () == TYPE_CODE_ARRAY
+!       || TYPE_LENGTH (valtype) > 4) {
+!     if (readbuf) {
+!       ULONGEST addr;
+!       regcache_raw_read_unsigned (regcache, HARD_D_REGNUM, &addr);
+!       read_memory (addr, readbuf, TYPE_LENGTH(valtype));
+!     }
+!     return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+!   }
+    else
+      {
+        if (readbuf != NULL)
