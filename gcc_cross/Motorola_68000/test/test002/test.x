@@ -6,6 +6,5 @@ SECTIONS {
 	 .text : {}
 
 	 . = 0xfff0;
-	 .stack : {}
-	 PROVIDE(stack = .);
+	 stack = .;
 }
