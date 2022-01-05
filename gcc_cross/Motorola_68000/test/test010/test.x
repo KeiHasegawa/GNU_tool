@@ -3,12 +3,10 @@ SECTIONS {
 	 .softregs : {}
 
 	 . = 0x0500;
-	 .heap : {}
- 	 PROVIDE(heap = .);
+ 	 heap = .;
 	 . = 0x1000;
-	 .stack : {}
-	 PROVIDE(stack = .);	 
-
+	 stack = .;
+	 
 	 . = 0x1040;
 	 .text : {}
 }
