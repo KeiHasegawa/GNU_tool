@@ -4,6 +4,6 @@ m68hc11-elf-as -o start.o -g start.S || exit 1
 #m68hc11-elf-gcc -o sample.o -c -g sample.c || exit 1
 m68hc11-elf-gcc -o sample.s -S sample.c || exit 1
 m68hc11-elf-as -o sample.o -g sample.s || exit 1
-m68hc11-elf-ld -o sample.elf start.o sample.o /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/m68hc11-elf/3.4.4/libgcc.a -T sample.x || exit 1
+m68hc11-elf-ld -o sample.elf start.o sample.o /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/m68hc11-elf/4.2.0/libgcc.a -T sample.x || exit 1
 m68hc11-elf-objdump -x -d sample.elf > sample.objdump || exit 1
 m68hc11-elf-run --memory-region 0xef00,0x1100 sample.elf
