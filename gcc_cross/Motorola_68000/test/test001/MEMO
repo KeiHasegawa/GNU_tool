@@ -2,7 +2,7 @@
 
 ではスタックポインタの指す領域に現在のプログラムカウンタ(それは次の命令を指している)
 を保存して main にジャンプする.
-test001.elf では sp = 0xffef なので
+test.elf では sp = 0xffef なので
 
 0xffee +-----------+ <- sp_{new}
        |           |
@@ -18,7 +18,7 @@ main 函数の先頭で
 
 	ldx	*_.frame
 
-のようなコードがあるが. test001.elf の場合 _.frame = 0x10 なので
+のようなコードがあるが. test.elf の場合 _.frame = 0x10 なので
 
         x = *(uint16_t*)0x10
 
@@ -89,7 +89,7 @@ main 函数の先頭で
 
 	sty	*_.frame
 
-これは test001.elf の場合 _.frame = 0x10 なので
+これは test.elf の場合 _.frame = 0x10 なので
 
         *(uint16_t*)0x10 = y;
 

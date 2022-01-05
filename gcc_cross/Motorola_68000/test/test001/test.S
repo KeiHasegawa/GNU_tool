@@ -10,8 +10,7 @@ start:
 	txs
 	bsr	main
 end:
-	nop
-	nop
+	bra	.
 	nop
 	
 	.mode mlong
