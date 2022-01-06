@@ -1,4 +1,4 @@
-int printf(const char* fmt, ...);
+#include <stdio.h>
 
 void f(int a, int b)
 {
@@ -9,5 +9,6 @@ int main()
 {
   printf("hasegawa");
   printf("\n");
+  f(5, 6);
   return 0;
 }
