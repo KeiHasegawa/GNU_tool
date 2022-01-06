@@ -1,5 +1,6 @@
-Motorola 68000 の ABI
+Motorola 68HC11 の ABI
 
+(*0) レジスタ
 (*1) 函数呼び出し
 (*2) 函数復帰
 (*3) プロローグ
@@ -9,6 +10,35 @@ Motorola 68000 の ABI
 (*7) 浮動少数点数を引数にとる函数, 返す函数
 (*8) 構造体を引数にとる函数, 構造体を返す函数
 
+(*0) レジスタ
+
+pc : プログラムカウンタ
+sp : スタックポインタ
+ccr : Condition Code Register
+
+        7 6 5 4 3 2 1 0
+       +-+-+-+-+-+-+-+-+
+       |S|X|H|I|N|Z|V|C|
+       +-+-+-+-+-+-+-+-+
+
+       S : Stop disable
+       X : X-interrupt mask
+       H : Half carry flag
+       I : I-interrupt mask
+       N : Negative
+       Z : Zero
+       O : Overflow
+       C : Carry
+
+d : D レジスタ 16 ビット
+x : X レジスタ 16 ビット
+y : Y レジスタ 16 ビット
+d, x, y が汎用レジスタ. 勿論命令によって指定できたりできなかったりする. 
+
+a : d の上位 8 ビット
+b : d の下位 8 ビット
+
+_.frame : レジスタではない. メモリの特定のアドレスをフレームポインタとして使用している.
 
 (*1) 函数呼び出し
 
@@ -111,9 +141,11 @@ Motorola 68000 の ABI
 	|        13        |
 	+------------------+ +15
 
-        函数の戻り値は d レジスタにセットされる.
 	sizeof(int) = 2 の場合はスタックのオフセットは 4 ではなくて 2
 	ずつずれる.
+
+        函数の戻り値は d レジスタにセットされる. sizeof(int) = 4 の場
+	合は x レジスタに上位 2 バイトがセットされる.
 
 (*6) long long を引数にとる函数, 返す函数
 
@@ -146,7 +178,7 @@ Motorola 68000 の ABI
         sizeof(float) = 4
 	sizeof(double) = sizeof(long double) = 8
 
-        Motorola 68000 には FPU がないのでソフトウェアで浮動少数点数演算を行なう.
+        Motorola 68HC11 には FPU がないのでソフトウェアで浮動少数点数演算を行なう.
 	float の第 1 引数に対して X, Y レジスタが使用される. 残りはスタックに
 	積まれる.
 	float を返す函数は X, Y レジスタに値がセットされる.
