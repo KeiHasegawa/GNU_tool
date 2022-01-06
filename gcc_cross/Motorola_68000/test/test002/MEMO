@@ -4,3 +4,146 @@ step コマンドで f にステップインしたときパラメータの表示
 
 Call Frame Instruction op 48 in vendor extension space is not handled on this architecture.
 
+もしかするとコンパイラの問題かもしれないが, 間違った値を表示しているのはデバッガなのだから
+デバッガのバグとしておく.
+
+cr16-tdep.c, mcore-tdep.c, pru-tdep.c などは自前で作成したが, 変数を表示する
+部分を作成した覚えは全くなかった.
+
+f の先頭アドレスでは
+a の値は (x レジスタ << 16) | (d レジスタ) の値を見るのが正しい
+b の値は *(int*)($sp+3) を見るのが正しい.
+
+
+f のプロローグをスキップしたところでは以下のようになっている.
+
+          +---------------+ 0xffde
+          |               |            <- sp_{new}
+          +---------------+ 0xffe0
+          |       x(0)    | 
+          +---------------+ 0xffe2
+          |       d(5)    | 
+          +---------------+ 0xffe4
+          | _.frame_{old} |            <- sp_{old}
+          +---------------+ 0xffe6
+          |    0x00ce     |
+          +---------------+ 0xffe8
+          |               |
+          |       6       |
+          +---------------+ 0xffec
+
+ここで 0x00ce は f の戻りアドレス
+
+a の値は *(int*)($sp+1)
+b の値は *(int*)($sp+9)
+
+を見るのが正しい.
+現状では
+
+b の値は *(int*)($sp+2) を見ているらしくこの結果 0x5fff = 1535 と表示している.
+このずれを考えると a は *(int*)($sp-6) を見ているらしく
+0xcccccccc = -858993460 と表示している.
+
+
+f のブレークポイントにヒットした後で sim_read によりシミュレータのメモリを読みにくる
+のでその部分を調査してみる.
+
+f のブレークポイントは sim_engine_halt の呼び出しにより検出される. この後の最初の
+sim_read の呼び出しはアドレス 0x10 から 2 バイト読み出している.
+
+おそらくこれは _.frame を読み出している. このときの where コマンドは以下:
+
+(gdb) where
+#0  sim_read (sd=0x8d571d8, mem=16, buf=0x8d5d720 "", length=2) at ./../common/sim-hrw.c:29
+#1  0x0836ec91 in gdbsim_xfer_memory (target=0x8bdeaac <gdbsim_ops>, readbuf=0x8d5d720 "", writebuf=0x0, memaddr=16, len=2, xfered_len=0xbfffe4b8) at remote-sim.c:1065
+#2  0x0836ed42 in gdbsim_target::xfer_partial (this=0x8bdeaac <gdbsim_ops>, object=TARGET_OBJECT_MEMORY, annex=0x0, readbuf=0x8d5d720 "", writebuf=0x0, offset=16, len=2, xfered_len=0xbfffe4b8) at remote-sim.c:1091
+#3  0x08415ea9 in raw_memory_xfer_partial (ops=0x8bdeaac <gdbsim_ops>, readbuf=0x8d5d720 "", writebuf=0x0, memaddr=16, len=2, xfered_len=0xbfffe4b8) at target.c:918
+#4  0x0841623c in memory_xfer_partial_1 (ops=0x8bdeaac <gdbsim_ops>, object=TARGET_OBJECT_MEMORY, readbuf=0x8d5d720 "", writebuf=0x0, memaddr=16, len=2, xfered_len=0xbfffe4b8) at target.c:1055
+#5  0x084162d5 in memory_xfer_partial (ops=0x8bdeaac <gdbsim_ops>, object=TARGET_OBJECT_MEMORY, readbuf=0x8d5d720 "", writebuf=0x0, memaddr=16, len=2, xfered_len=0xbfffe4b8) at target.c:1084
+#6  0x08416559 in target_xfer_partial (ops=0x8bdeaac <gdbsim_ops>, object=TARGET_OBJECT_MEMORY, annex=0x0, readbuf=0x8d5d720 "", writebuf=0x0, offset=16, len=2, xfered_len=0xbfffe4b8) at target.c:1141
+#7  0x08416dc2 in target_read_partial (ops=0x8bdeaac <gdbsim_ops>, object=TARGET_OBJECT_MEMORY, annex=0x0, buf=0x8d5d720 "", offset=16, len=2, xfered_len=0xbfffe4b8) at target.c:1387
+#8  0x08416ecf in target_read (ops=0x8bdeaac <gdbsim_ops>, object=TARGET_OBJECT_MEMORY, annex=0x0, buf=0x8d5d720 "", offset=16, len=2) at target.c:1427
+#9  0x0841685f in target_read_memory (memaddr=16, myaddr=0x8d5d720 "", len=2) at target.c:1230
+#10 0x082a6c0f in m68hc11_pseudo_register_read (gdbarch=0x8d4c200, regcache=0x8d65278, regno=9, buf=0x8d5d720 "") at m68hc11-tdep.c:316
+#11 0x0822fa1c in gdbarch_pseudo_register_read (gdbarch=0x8d4c200, regcache=0x8d65278, cookednum=9, buf=0x8d5d720 "") at gdbarch.c:2002
+#12 0x08361d83 in readable_regcache::cooked_read (this=0x8d65278, regnum=9, buf=0x8d5d720 "") at regcache.c:724
+#13 0x08361ed2 in readable_regcache::cooked_read_value (this=0x8d65278, regnum=9) at regcache.c:747
+#14 0x083a7dd0 in sentinel_frame_prev_register (this_frame=0x8cb0dc0, this_prologue_cache=0x8cb0dcc, regnum=9) at sentinel-frame.c:53
+#15 0x08221ee1 in frame_unwind_register_value (next_frame=0x8cb0dc0, regnum=9) at frame.c:1279
+
+--Type <RET> for more, q to quit, c to continue without paging--c
+frame-begin 16 0x82222c3
+#16 0x082222c3 in frame_unwind_register_unsigned (next_frame=0x8cb0dc0, regnum=9) at frame.c:1370
+#17 0x082223cd in get_frame_register_unsigned (frame=0x8cb0e3c, regnum=9) at frame.c:1395
+#18 0x082a768d in m68hc11_frame_unwind_cache (this_frame=0x8cb0e3c, this_prologue_cache=0x8cb0e48) at m68hc11-tdep.c:792
+#19 0x082a79da in m68hc11_frame_this_id (this_frame=0x8cb0e3c, this_prologue_cache=0x8cb0e48, this_id=0x8cb0e78) at m68hc11-tdep.c:869
+#20 0x082207a1 in compute_frame_id (fi=0x8cb0e3c) at frame.c:590
+#21 0x0822097c in get_frame_id (fi=0x8cb0e3c) at frame.c:638
+#22 0x0821feb8 in scoped_restore_selected_frame::scoped_restore_selected_frame (this=0xbfffe8ac) at frame.c:320
+#23 0x083c8a48 in print_frame_args (fp_opts=..., func=0x8d43ba0, frame=0x8cb0e3c, num=-1, stream=0x8d2ee38) at stack.c:750
+#24 0x083c9e18 in print_frame (fp_opts=..., frame=0x8cb0e3c, print_level=0, print_what=SRC_AND_LOC, print_args=1, sal=...) at stack.c:1394
+#25 0x083c94b3 in print_frame_info (fp_opts=..., frame=0x8cb0e3c, print_level=0, print_what=SRC_AND_LOC, print_args=1, set_current_sal=1) at stack.c:1119
+#26 0x083c7b06 in print_stack_frame (frame=0x8cb0e3c, print_level=0, print_what=SRC_AND_LOC, set_current_sal=1) at stack.c:366
+#27 0x0827811c in print_stop_location (ws=0xbfffec94) at infrun.c:8121
+#28 0x0827816c in print_stop_event (uiout=0x8d0dc08, displays=true) at infrun.c:8137
+#29 0x0845ae16 in tui_on_normal_stop (bs=0x8d2ee68, print_frame=1) at tui/tui-interp.c:98
+
+続く sim_read の呼び出しはアドレス 0x88 から 1 バイト読み出している. 0x88 は f の
+先頭アドレス. where コマンドの結果からフレーム ID を計算しているらしい.
+この後アドレス 0x95 まで読み出し続けている.
+
+さらにsim_read の呼び出しはアドレス 0xffc0 から 64 バイト読み出している.
+これは a や b があるスタックの領域.
+
+
+stack.c:840
+	      nsym = lookup_symbol_search_name (sym->search_name (),
+						b, VAR_DOMAIN).symbol;
+
+ここで引数の a や b に対して何らかの処理をしている.
+
+
+static void
+print_frame_arg (const frame_print_options &fp_opts,
+		 const struct frame_arg *arg)
+{
+
+で止めたときの
+
+(gdb) p *arg->sym
+$18 = {<general_symbol_info> = {m_name = 0x8d45ec4 "a", value = {ivalue = 0, 
+      block = 0x0, bytes = 0x0, address = 0, common_block = 0x0, 
+      chain = 0x0}, language_specific = {obstack = 0x0, 
+      demangled_name = 0x0}, m_language = language_c, ada_mangled = 0, 
+    section = -1}, <allocate_on_obstack> = {<No data fields>}, 
+  type = 0x8d43454, owner = {symtab = 0x8d4343c, arch = 0x8d4343c}, 
+  domain = VAR_DOMAIN, aclass_index = 17, is_objfile_owned = 1, 
+  is_argument = 1, is_inlined = 0, maybe_copied = 0, subclass = SYMBOL_NONE, 
+  line = 1, aux_value = 0x8d43c04, hash_next = 0x0}
+(gdb)
+
+ここで a がきている. bytes や address が 0 のまま.
+
+(gdb) p/x *arg->val
+$22 = {lval = 0x1, modifiable = 0x1, lazy = 0x1, initialized = 0x1, 
+  stack = 0x1, location = {address = 0xffd9, reg = {regnum = 0xffd9, 
+      next_frame_id = {stack_addr = 0x0, code_addr = 0x0, special_addr = 0x0, 
+        stack_status = 0x0, code_addr_p = 0x0, special_addr_p = 0x0, 
+        artificial_depth = 0x0}}, internalvar = 0xffd9, xm_worker = 0xffd9, 
+    computed = {funcs = 0xffd9, closure = 0x0}}, offset = 0x0, bitsize = 0x0, 
+  bitpos = 0x0, reference_count = 0x1, parent = {m_obj = 0x0}, 
+
+おそらく address = 0xffd9 を見ているらしい.
+
+b に対しては address = 0xffe1 であった. やはり $sp+2 を見ているらしい.
+このアドレス計算をどのように行なっているか調べてみる.
+
+と, ここまで書いて分かったのだがおそらくフレームポインタ相対でオフセット
+いくつのようにしているはずなのでおそらくコンパイラに問題がある.
+
+試しに gcc を 4.2.0 から 3.4.4 にしてみたところ...
+期待通り引数を表示できている.
+
+
+
+
