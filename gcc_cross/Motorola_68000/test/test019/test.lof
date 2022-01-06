@@ -1,0 +1,38 @@
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x173 lma 0x1040
+Start address 0x1040
+Transfer rate: 2968 bits in <1 sec.
+Breakpoint 1 at 0x10e6: file test.c, line 17.
+Breakpoint 2 at 0x1140: file ../../../../.././newlib/libc/machine/m68hc11/setjmp.S, line 35.
+Breakpoint 3 at 0x1175: file ../../../../.././newlib/libc/machine/m68hc11/setjmp.S, line 84.
+Breakpoint 4 at 0x10d4: file test.c, line 11.
+
+Breakpoint 1, main () at test.c:17
+17	  int r = setjmp(buf);
+
+Breakpoint 2, setjmp ()
+    at ../../../../.././newlib/libc/machine/m68hc11/setjmp.S:35
+35		xgdx
+#0  setjmp () at ../../../../.././newlib/libc/machine/m68hc11/setjmp.S:35
+#1  0x000010ee in main () at test.c:17
+
+Breakpoint 3, longjmp ()
+    at ../../../../.././newlib/libc/machine/m68hc11/setjmp.S:84
+84		xgdx
+#0  longjmp () at ../../../../.././newlib/libc/machine/m68hc11/setjmp.S:84
+#1  0x00001094 in f (n=0, buf=0xf78) at test.c:6
+#2  0x000010b4 in f (n=1, buf=0xf78) at test.c:7
+#3  0x000010b4 in f (n=2, buf=0xf78) at test.c:7
+#4  0x000010b4 in f (n=3, buf=0xf78) at test.c:7
+#5  0x000010b4 in f (n=4, buf=0xf78) at test.c:7
+#6  0x000010b4 in f (n=5, buf=0xf78) at test.c:7
+#7  0x0000111d in main () at test.c:19
+
+Breakpoint 4, g (n=123) at test.c:11
+11	{
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
