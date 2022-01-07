@@ -71,7 +71,7 @@ static const char *const initial_reg_names[] = REGISTER_NAMES;
   enum reg_class x_reg_class_subclasses[N_REG_CLASSES][N_REG_CLASSES];
 
     レジスタアロケーションアルゴリズムで参照される. FIRST_PSEUDO_REGISTER 未満のどの
-    レジスタ番号に対しても対応する reg_class のメンバが存在する.
+    レジスタ番号に対しても対応する reg_class のメンバが存在する. そのように宣言する.
 
     reg_class のメンバには以下が含まれている必要がある:
 
@@ -97,14 +97,14 @@ static const char *const initial_reg_names[] = REGISTER_NAMES;
 
     setup_reg_classes (i, GENERAL_REGS, ALL_REGS, GENERAL_REGS);
 
-
 (*) N_REG_CLASSES
 
 参照箇所の 1 つ gcc/hard-reg-set.h
 
   HARD_REG_SET x_reg_class_contents[N_REG_CLASSES];
 
-    enum reg_class のメンバ LIM_REG_CLASSES と等しくする.
+    enum reg_class のメンバ LIM_REG_CLASSES と等しくする. constexpr に
+    よる宣言も OK.
 
 (*) REG_CLASS_CONTENTS
 
@@ -401,3 +401,12 @@ void ASM_OUTPUT_ALIGN(FILE* fp, int n)
       INITIAL_ELIMINATION_OFFSET (ep->from, ep->to, ep->offset);
 
       調査中.
+
+(*) DEFAULT_SIGNED_CHAR
+
+参照箇所の 1 つ gcc/opts.c
+
+  opts->x_flag_signed_char = DEFAULT_SIGNED_CHAR;
+
+      char が signed char と同じ範囲の値を取るか, あるいは unsigned char と同じ範囲の
+      値を取るかを指定する. constexpr による宣言も OK.
