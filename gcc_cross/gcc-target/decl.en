@@ -1,0 +1,60 @@
+gcc target depend declarations refered from gcc common part
+
+(*) REGISTER_NAMES
+
+One of refered part : gcc/reginfo.c
+
+static const char *const initial_reg_names[] = REGISTER_NAMES;
+
+    Specify register names with macro style. Make the `n'th element
+    the name of `n'th register.
+
+    For exaple, there are 16 GPR `r0', `r1', ..., `r15' on the target
+    processor, and they are all registers which appear assembler source
+    file generated this compiler. And more, target program uses `r14' as
+    frame pointer and `r15' as stack pointer.
+    Then declare like below:
+
+#define REGISTER_NAMES { "r0", "r1", "r2", "r3", "r4", "r5", "r6", \
+    "r7", "r8", "r9", "r10", "r11", "r12", "r13, "fp", "sp" }
+
+#define FRAME_POINTER_REGNUM 14
+#define STACK_POINTER_REGNUM 15
+
+    "fp" and "sp" are outputed to assembler files instead of `r14'
+    and `r15' respectively.
+
+(*) STACK_POINTER_REGNUM
+
+One of refered part : gcc/c-family/c-cppbuiltin.c
+
+      builtin_define_with_int_value ("__LIBGCC_STACK_POINTER_REGNUM__",
+				     STACK_POINTER_REGNUM);
+
+    Declare the same value with stack pointer register number. We can
+    declare as `constexpr'.
+
+(*) FRAME_POINTER_REGNUM
+
+One of refered part : gcc/rtl.h
+
+#if FRAME_POINTER_REGNUM == ARG_POINTER_REGNUM
+
+    Declare the same value with frame pointer register number. Like above,
+    it is refered at preprocessor directive. So it must be a macro value.
+
+(*) ARG_POINTER_REGNUM
+
+    Declare the same value with the first register number which is
+    used for passing the argument to function. If no register is used
+    for passing the argument to function, declare the same value
+    with FRAME_POINTER_REGNUM. Samely, it must be a macro value.
+
+(*) FIRST_PSEUDO_REGISTER
+
+One of refered part : gcc/hard-reg-set.h
+
+          return (*regno < FIRST_PSEUDO_REGISTER);
+
+    Declare the same value with the number of elements of `REGISTER_NAMES',
+    `FIXED_REGISTERS' and `CALL_USED_REGISTERS'. We can declare as `constexpr'.
