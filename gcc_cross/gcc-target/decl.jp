@@ -1,10 +1,44 @@
-gcc の共通ソースファイルから参照される定数
+共通ソースファイルから参照されるターゲット固有部の宣言
 
 (*) REGISTER_NAMES
 
-参照箇所の 1 つ
+参照箇所の 1 つ ???
 
-    生成されるアセンブラに出現するレジスタの名前の列を指定する.
+    生成されるアセンブラに出現するレジスタの名前の列をマクロで指定する.
+    レジスタ番号 n のレジスタ名が n 番目の要素になるようにする.
+    例えばターゲットプロセッサが r0, r1, ..., r15 という名前の GPR があり,
+    これらだけがアセンブラに出現するレジスタで, r14 をフレームポインタ
+    r15 をスタックポインタとする場合
+
+#define REGISTER_NAMES { "r0", "r1", "r2", "r3", "r4", "r5", "r6", \
+    "r7", "r8", "r9", "r10", "r11", "r12", "r13, "fp", "sp" }
+
+#define FRAME_POINTER_REGNUM 14
+#define STACK_POINTER_REGNUM 15
+
+    のように宣言する. "fp" はフレームポインタの名前としてアセンブラ出力に使用され
+    "sp" はスタックポインタの名前としてアセンブラ出力に使用される.
+
+(*) STACK_POINTER_REGNUM
+
+参照箇所の 1 つ ???
+
+    スタックポインタのレジスタ番号と等しくなるようにする. constexpr による宣言でも OK.
+
+(*) FRAME_POINTER_REGNUM
+
+参照箇所の 1 つ gcc/rtl.h
+
+#if FRAME_POINTER_REGNUM == ARG_POINTER_REGNUM
+
+    フレームポインタのレジスタ番号と等しくなるようにする.
+    プリプロセッサのディレクティブで参照されるためマクロでなくてはならない.
+
+(*) ARG_POINTER_REGNUM
+
+    函数を呼び出すときに引数を渡すための最初のレジスタ番号と等しくなるようにする.
+    レジスタを使用しないのであれば FRAME_POINTER_REGNUM と等しくなるようにする.
+    プリプロセッサで参照されるためマクロでなくてはならない.
 
 (*) FIRST_PSEUDO_REGISTER
 
@@ -13,23 +47,50 @@ gcc の共通ソースファイルから参照される定数
           return (*regno < FIRST_PSEUDO_REGISTER);
 
     初期化指定子 REGISTER_NAMES, FIXED_REGISTERS, CALL_USED_REGISTERS の要素数
-    と等しくする. constexpr でも OK.
+    と等しくする. constexpr による宣言でも OK.
 
-(*) STACK_POINTER_REGNUM
+(*) REGNO_REG_CLASS
 
-(*) FRAME_POINTER_REGNUM
+参照箇所の 1 つ gcc/calls.c
 
-参照箇所の 1 つ gcc/rtl.h
+      && targetm.class_likely_spilled_p (REGNO_REG_CLASS (REGNO (x))))
 
-#if FRAME_POINTER_REGNUM == ARG_POINTER_REGNUM
+      extern reg_class REGNO_REG_CLASS(int); の宣言を追加するとよい.
 
-    プリプロセッサのディレクティブで参照されるためマクロでなくてはならない.
-    constexpr による宣言は期待しない結果になる.
+      レジスタ番号から次に述べる enum reg_class への変換を行なう.
 
-(*) ARG_POINTER_REGNUM
+(*) enum reg_class
 
-    プリプロセッサで参照されるためマクロでなくてはならない.
+参照箇所の 1 つ gcc/hard-reg-set.h
 
+  enum reg_class x_reg_class_subclasses[N_REG_CLASSES][N_REG_CLASSES];
+
+    レジスタアロケーションアルゴリズムで参照される. FIRST_PSEUDO_REGISTER 未満のどの
+    レジスタ番号に対しても対応する reg_class のメンバが存在する.
+
+    reg_class のメンバには以下が含まれている必要がある:
+
+    o NO_REGS
+        参照箇所の 1 つ tm-preds.h(生成されるファイル)
+
+  return NO_REGS;
+
+    o GENERAL_REGS
+        参照箇所の 1 つ insn-preds.c(生成されるファイル)
+
+    case CONSTRAINT_r: return GENERAL_REGS;
+
+    o LIM_REG_CLASSES
+        参照箇所の 1 つ gcc/ira.c
+
+      alloc_reg_class_subclasses[i][j] = LIM_REG_CLASSES;
+
+      enum reg_class の最後のメンバにする必要がある.
+
+    o ALL_REGS
+        参照箇所の 1 つ gcc/ira.c
+
+    setup_reg_classes (i, GENERAL_REGS, ALL_REGS, GENERAL_REGS);
 
 (*) N_REG_CLASSES
 
@@ -37,7 +98,15 @@ gcc の共通ソースファイルから参照される定数
 
   HARD_REG_SET x_reg_class_contents[N_REG_CLASSES];
 
-    enum reg_class のメンバ数と等しくする.
+    enum reg_class のメンバ LIM_REG_CLASSES と等しくする.
+
+(*) BASE_REG_CLASS
+
+参照箇所の 1 つ gcc/addresses.h
+
+  return BASE_REG_CLASS;
+      
+      調査中. enum reg_class のいずれかに等しくなるようにする.
 
 (*) UNITS_PER_WORD
 
@@ -45,7 +114,7 @@ gcc の共通ソースファイルから参照される定数
 
 #define BITS_PER_WORD (BITS_PER_UNIT * UNITS_PER_WORD)
 
-    いわゆるワードサイズと等しくする. 32 ビットプロセッサならば 4.
+    いわゆるワードサイズと等しくする. 32 ビットプロセッサならば通常は 4.
 
 (*) CUMULATIVE_ARGS
 
@@ -82,11 +151,30 @@ extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
 
       ロード/ストアをワード境界をまたいで発行できないのならば 1 を指定する.
 
+(*) BITS_BIG_ENDIAN
+
+参照箇所の 1 つ gcc/combine.c
+
+	      if (BITS_BIG_ENDIAN)
+
+      調査中.
+
 (*) BYTES_BIG_ENDIAN
 
 参照箇所の 1 つ gcc/c/c-typeck.c
 
 	      if (BYTES_BIG_ENDIAN)
+
+      調査中.
+
+(*) WORDS_BIG_ENDIAN
+
+参照箇所の 1 つ gcc/c-family/c-pragma.c
+
+  if (BYTES_BIG_ENDIAN != WORDS_BIG_ENDIAN)
+
+      調査中.
+
 
 (*) FUNCTION_BOUNDARY
 
@@ -117,13 +205,7 @@ extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
 #define TARGET_CPU_CPP_BUILTINS() builtin_define_std("hasegawa")
 
       のようにすればよい. builtin_define_std や builtin_define は libbackend.a
-      の外で定義される.
-
-(*) WORDS_BIG_ENDIAN
-
-参照箇所の 1 つ gcc/c-family/c-pragma.c
-
-  if (BYTES_BIG_ENDIAN != WORDS_BIG_ENDIAN)
+      の外で定義されるため.
 
 (*) BIGGEST_ALIGNMENT
 
@@ -203,14 +285,6 @@ extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
       
       調査中.
 
-(*) BASE_REG_CLASS
-
-参照箇所の 1 つ gcc/addresses.h
-
-  return BASE_REG_CLASS;
-      
-      調査中. enum reg_class のいずれかに等しくなるようにする.
-
 (*) REGNO_OK_FOR_BASE_P
 
 参照箇所の 1 つ gcc/addresses.h
@@ -219,13 +293,96 @@ extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
 
       調査中. extern bool REGNO_OK_FOR_BASE_P(int); の宣言を追加するとよい.
 
+(*) SLOW_BYTE_ACCESS
 
-(*) REGNO_REG_CLASS
+参照箇所の 1 つ gcc/dojump.c
 
-参照箇所の 1 つ gcc/calls.c
+      if (! SLOW_BYTE_ACCESS
 
-      && targetm.class_likely_spilled_p (REGNO_REG_CLASS (REGNO (x))))
+      調査中.
 
-      extern reg_class REGNO_REG_CLASS(int); の宣言を追加するとよい.
+(*) ASM_OUTPUT_ALIGN
 
-      レジスタ番号から reg_class への変換を行なう.
+参照箇所の 1 つ gcc/dwarf2out.c
+
+		ASM_OUTPUT_ALIGN (asm_out_file, floor_log2 (PTR_SIZE));
+
+      extern void ASM_OUTPUT_ALIGN(FILE*, int); の宣言を追加して, その
+      定義を以下のようにすればよい:
+
+void ASM_OUTPUT_ALIGN(FILE* fp, int n)
+{
+  fprintf(fp, "	.align	%d\n", n);
+}
+
+      もしくはマクロにしてもよい.
+
+(*) FIRST_PARM_OFFSET
+
+参照箇所の 1 つ gcc/defaults.h
+
+  (FIRST_PARM_OFFSET (FNDECL) + crtl->args.pretend_args_size)
+
+      調査中. extern int FIRST_PARM_OFFSET(tree); の宣言を追加するとよい.
+
+(*) CASE_VECTOR_MODE
+
+参照箇所の 1 つ gcc/expr.c
+
+			       gen_int_mode (GET_MODE_SIZE (CASE_VECTOR_MODE),
+					     Pmode));
+
+      調査中. Pmode や SImode と同じ scalar_int_mode 型として宣言する
+      必要がある.
+
+(*) ASM_APP_ON
+
+参照箇所の 1 つ gcc/final.c
+
+      fputs (ASM_APP_ON, asm_out_file);
+
+      プログラムにインラインアセンブラが出現したときに始まりのマークとしてこの文字列が生成
+      ファイルに書き込まれる.
+
+(*) ASM_APP_OFF
+
+参照箇所の 1 つ gcc/final.c
+
+      fputs (ASM_APP_OFF, asm_out_file);
+
+      ASM_APP_ON と対で生成ファイルに書き込まれる. インラインアセンブラの終りのマークとし
+      てこの文字列が生成ファイルに書き込まれる.
+
+(*) FUNCTION_PROFILER
+
+参照箇所の 1 つ gcc/final.c
+
+  FUNCTION_PROFILER (file, current_function_funcdef_no);
+
+      プロファイルオプションを指定されたときに参照される. プロファイルのための特別な
+      コードを生成する. extern void FUNCTION_PROFILER(FILE*, int); の
+      宣言を追加するとよい.
+
+(*) REGNO_OK_FOR_INDEX_P
+
+参照箇所の 1 つ gcc/ira-costs.c
+
+  return regno >= FIRST_PSEUDO_REGISTER || REGNO_OK_FOR_INDEX_P (regno);
+
+      調査中.
+
+(*) INDEX_REG_CLASS
+
+参照箇所の 1 つ gcc/ira-costs.c
+
+    rclass = INDEX_REG_CLASS;
+
+      調査中.
+
+(*) INITIAL_ELIMINATION_OFFSET
+
+参照箇所の 1 つ gcc/lra-eliminations.c
+
+      INITIAL_ELIMINATION_OFFSET (ep->from, ep->to, ep->offset);
+
+      調査中.
