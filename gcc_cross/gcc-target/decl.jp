@@ -2,7 +2,9 @@
 
 (*) REGISTER_NAMES
 
-参照箇所の 1 つ ???
+参照箇所の 1 つ gcc/reginfo.c
+
+static const char *const initial_reg_names[] = REGISTER_NAMES;
 
     生成されるアセンブラに出現するレジスタの名前の列をマクロで指定する.
     レジスタ番号 n のレジスタ名が n 番目の要素になるようにする.
@@ -92,6 +94,7 @@
 
     setup_reg_classes (i, GENERAL_REGS, ALL_REGS, GENERAL_REGS);
 
+
 (*) N_REG_CLASSES
 
 参照箇所の 1 つ gcc/hard-reg-set.h
@@ -99,6 +102,15 @@
   HARD_REG_SET x_reg_class_contents[N_REG_CLASSES];
 
     enum reg_class のメンバ LIM_REG_CLASSES と等しくする.
+
+(*) REG_CLASS_CONTENTS
+
+参照箇所の 1 つ gcc/reginfo.c
+
+static const unsigned int_reg_class_contents[N_REG_CLASSES][N_REG_INTS]
+  = REG_CLASS_CONTENTS;
+
+      ビットマップを指定する. 執筆中.
 
 (*) BASE_REG_CLASS
 

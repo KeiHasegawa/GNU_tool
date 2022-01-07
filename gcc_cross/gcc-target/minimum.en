@@ -314,4 +314,130 @@ rtx gen_movsi (rtx operand0, rtx operand1)
 
 (*) genextract
 
+(define_expand "movsi"
+  [(set (match_operand:SI 0 "general_operand")
+        (match_operand:SI 1 "general_operand"))]
+  ""
+  "
+  emit_insn(gen_rtx_SET(operands[0], operands[1]));
+  DONE;
+  ")
+
+(define_insn "jump"
+   [(set (pc) (label_ref (match_operand 0 "" "")))]
+   "1"
+   "jump	%l0")
+
+For above, generates like below:
+
+void
+insn_extract (rtx_insn *insn)
+{
+  rtx *ro = recog_data.operand;
+  ...
+  switch (INSN_CODE (insn))
+    {
+    default:
+      // error
+    case 1: /* jump */
+      ro[0] = *(ro_loc[0] = &XEXP (XEXP (pat, 1), 0));
+      break;
+    }
+}
+
+Note that no output about `movsi'. i.e. the output depends on `define_insn'
+but doesn't depend on `define_expand'.
+
+(*) gencfn-macros
+
+generates macro definition of CASE_CFN_XXX.
+
+(*) genoutput
+
+(define_expand "movsi"
+  [(set (match_operand:SI 0 "general_operand")
+        (match_operand:SI 1 "general_operand"))]
+  ""
+  "
+  emit_insn(gen_rtx_SET(operands[0], operands[1]));
+  DONE;
+  ")
+
+(define_insn "jump"
+   [(set (pc) (label_ref (match_operand 0 "" "")))]
+   "1"
+   "jump	%l0")
+
+For above, generates oke below:
+
+
+static const struct insn_operand_data operand_data[] = {
+  { 0,               "", E_VOIDmode, 0, 0, 0, 0 },
+  { 0,               "", E_VOIDmode, 0, 0, 1, 0 },
+  { general_operand, "", E_SImode,   0, 0, 1, 1 },
+  { general_operand, "", E_SImode,   0, 0, 1, 1 },
+};
+
+const struct insn_data_d insn_data[] = {
+  /* <internal>:0 */
+  { "*placeholder_for_nothing",
+     { 0 }, { 0 }, &operand_data[0], 0, 0, 0, 0, 0},
+  { "jump",
+     { "jump	%l0" }, { (insn_gen_fn::stored_funcptr) gen_jump },
+     &operand_data[1], 1, 1, 0, 0, 1
+  },
+  { "movsi",
+    { 0 },              { (insn_gen_fn::stored_funcptr) gen_movsi },
+     &operand_data[2], 2, 2, 0, 0, 0
+  }
+};
+
+(*) genpeep
+
+Refer to "define_peep".
+
+(*) genrecog
+
+(define_insn "jump" [(set (pc) (label_ref (match_operand 0 "" "")))] "foo"
+"jump	%l0")
+
+For above, generates like below:
+
+
+int recog(rtx x1, rtx_insn *insn,int *pnum_clobbers)
+{
+  rtx * const operands = &recog_data.operand[0];
+  recog_data.insn = NULL;
+  if (GET_CODE (x1) != SET)
+    return -1;
+  rtx x2 = XEXP (x1, 1);
+  if (GET_CODE (x2) != LABEL_REF)
+    return -1;
+  rtx x3 = XEXP (x1, 0);
+  if (GET_CODE (x3) != PC)
+    return -1;
+  rtx x4 = XEXP (x2, 0);
+  operands[0] = x4;
+  if (!(foo))
+    return -1;
+  return 1; /* jump */
+}
+
+But,
+
+(define_expand "movsi"
+  [(set (match_operand:SI 0 "general_operand")
+        (match_operand:SI 1 "general_operand"))]
+  ""
+  "")
+
+For above, generates function code which just returns -1.
+
+(*) genenums
+
+Under investigation.
+
+(*) genchecksum
+
+generates checksum by reading `.o' and `.a' files.
 
