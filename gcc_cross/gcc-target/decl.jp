@@ -1,0 +1,94 @@
+gcc の共通ソースファイルから参照される定数
+
+(*) FIRST_PSEUDO_REGISTER
+
+参照箇所の 1 つ gcc/hard-reg-set.h
+
+          return (*regno < FIRST_PSEUDO_REGISTER);
+
+    初期化指定子 REGISTER_NAMES, FIXED_REGISTERS, CALL_USED_REGISTERS の要素数
+    と等しくする.
+
+(*) N_REG_CLASSES
+
+参照箇所の 1 つ gcc/hard-reg-set.h
+
+  HARD_REG_SET x_reg_class_contents[N_REG_CLASSES];
+
+    enum reg_class のメンバ数と等しくする.
+
+(*) UNITS_PER_WORD
+
+参照箇所の 1 つ gcc/defaults.h
+
+#define BITS_PER_WORD (BITS_PER_UNIT * UNITS_PER_WORD)
+
+    いわゆるワードサイズと等しくする. 32 ビットプロセッサならば 4.
+
+(*) CUMULATIVE_ARGS
+
+参照箇所の 1 つ gcc/emit-rtl.h
+
+  CUMULATIVE_ARGS info;
+
+    通常は ??? に必要な構造体を宣言する.
+
+(*) MOVE_MAX
+
+参照箇所の 1 つ gcc/defaults.h
+
+#define MOVE_MAX_PIECES   MOVE_MAX
+
+    ロード/ストア命令で指定できる最大バイト数と等しくする. 32 ビットプロセッサ
+    で 8 バイトのロード/ストアがないのであれば 4 を指定する.
+
+(*) STRICT_ALIGNMENT
+
+参照箇所の 1 つ gcc/c/c-typeck.c
+
+      if ((STRICT_ALIGNMENT || warn_cast_align == 2)
+
+      ロード/ストアをワード境界をまたいで発行できないのならば 1 を指定する.
+
+(*) BYTES_BIG_ENDIAN
+
+参照箇所の 1 つ gcc/c/c-typeck.c
+
+	      if (BYTES_BIG_ENDIAN)
+
+(*) FUNCTION_BOUNDARY
+
+参照箇所の 1 つ gcc/c-family/c-common.c
+
+	  value = size_int (FUNCTION_BOUNDARY / BITS_PER_UNIT);
+
+      調査中.
+
+(*) TRAMPOLINE_SIZE
+
+参照箇所の 1 つ gcc/c-family/c-cppbuiltin.c
+
+      builtin_define_with_int_value ("__LIBGCC_TRAMPOLINE_SIZE__",
+				     TRAMPOLINE_SIZE);
+			     
+      調査中.
+
+
+(*) TARGET_CPU_CPP_BUILTINS
+
+参照箇所の 1 つ gcc/c-family/c-cppbuiltin.c
+
+  TARGET_CPU_CPP_BUILTINS ();
+
+      固有のプリディファインをセットする. 函数として宣言を追加しても良いのだが
+
+#define TARGET_CPU_CPP_BUILTINS() builtin_define_std("hasegawa")
+
+      のようにすればよい. builtin_define_std や builtin_define は libbackend.a
+      の外で定義される.
+
+(*) WORDS_BIG_ENDIAN
+
+参照箇所の 1 つ gcc/c-family/c-pragma.c
+
+  if (BYTES_BIG_ENDIAN != WORDS_BIG_ENDIAN)
