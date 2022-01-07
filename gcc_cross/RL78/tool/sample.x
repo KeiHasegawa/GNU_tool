@@ -1,8 +1,11 @@
 SECTIONS {
 	 . = 0x100;
-	 .text : {}
-	 .data : {}
+	 .text : {
+	       *(.text)
+	       *(.plt)
+	 }
 	 .rodata : {}
+	 .data : {}
 	 .bss : {
 	      _bss_start = .;
 	 }

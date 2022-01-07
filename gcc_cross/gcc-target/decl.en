@@ -58,3 +58,136 @@ One of refered part : gcc/hard-reg-set.h
 
     Declare the same value with the number of elements of `REGISTER_NAMES',
     `FIXED_REGISTERS' and `CALL_USED_REGISTERS'. We can declare as `constexpr'.
+
+(*) FIXED_REGISTERS
+
+One of refered part : gcc/reginfo.c
+
+static const char initial_fixed_regs[] = FIXED_REGISTERS;
+
+    Declare macro value so that the number of its elements is equal to
+    that of `REGISTER_NAMES'. If `n'th register is not changed between
+    before and after calling function, `n'th element is 1, otherwise 0.
+
+(*) CALL_USED_REGISTERS
+
+One of refered part : gcc/reginfo.c
+
+static const char initial_call_used_regs[] = CALL_USED_REGISTERS;
+
+    Declare macro value so that the number of its elements is equal to
+    that of `REGISTER_NAMES'. If `n'th register may be changed while
+    calling function, `n'th element is 1, otherwise 0.
+
+(*) REGNO_REG_CLASS
+
+One of refered part : gcc/calls.c
+
+      && targetm.class_likely_spilled_p (REGNO_REG_CLASS (REGNO (x))))
+
+      Add the declaration and implement it:
+
+      extern reg_class REGNO_REG_CLASS(int regno);
+
+      This function converts register number to enum reg_class describe at
+      next section.
+
+(*) enum reg_class
+
+One of refered part : gcc/hard-reg-set.h
+
+  enum reg_class x_reg_class_subclasses[N_REG_CLASSES][N_REG_CLASSES];
+
+      `reg_class' is refered at register allocation algorithm. There is
+      a corresponding member at `reg_class' to any register number which
+      is less than `FIRST_PSEUDO_REGISTER'.
+
+      `reg_class' contains below member:
+
+    o NO_REGS
+        One of refered part : tm-preds.h(generated file)
+
+  return NO_REGS;
+
+    o GENERAL_REGS
+        One of refered part : insn-preds.c(generated file)
+
+    case CONSTRAINT_r: return GENERAL_REGS;
+
+    o LIM_REG_CLASSES
+        One of refered part : gcc/ira.c
+
+      alloc_reg_class_subclasses[i][j] = LIM_REG_CLASSES;
+
+      This must be the last member of `reg_class'.
+
+    o ALL_REGS
+        One of refered part : gcc/ira.c
+
+    setup_reg_classes (i, GENERAL_REGS, ALL_REGS, GENERAL_REGS);
+
+(*) N_REG_CLASSES
+
+One of refered part : gcc/hard-reg-set.h
+
+  HARD_REG_SET x_reg_class_contents[N_REG_CLASSES];
+
+    Declare the same value with `LIM_REG_CLASSES' of `reg_class'. We can
+    declare as `constexpr'.
+
+(*) REG_CLASS_CONTENTS
+
+One of refered part : gcc/reginfo.c
+
+static const unsigned int_reg_class_contents[N_REG_CLASSES][N_REG_INTS]
+  = REG_CLASS_CONTENTS;
+
+      Declare bitmap macro. Now writing.
+
+(*) BASE_REG_CLASS
+
+One of refered part : gcc/addresses.h
+
+  return BASE_REG_CLASS;
+      
+      Under investigating. It must be the same with one of `reg_class'
+      member. We can declare as `constexpr'.
+
+(*) UNITS_PER_WORD
+
+One of refered part : gcc/defaults.h
+
+#define BITS_PER_WORD (BITS_PER_UNIT * UNITS_PER_WORD)
+
+    Declare as the same with word size. i.e. For 32 bit processor,
+    It becomes 4 normally. We can declare as `constexpr'.
+
+(*) CUMULATIVE_ARGS
+
+One of refered part : gcc/emit-rtl.h
+
+  CUMULATIVE_ARGS info;
+
+    `INIT_CUMULATIVE_ARGS' described next section refers this declaration.
+
+(*) INIT_CUMULATIVE_ARGS
+
+One of refered part : gcc/calls.c
+
+  INIT_CUMULATIVE_ARGS (args_so_far_v, funtype, NULL_RTX, fndecl, n_named_args);
+
+      Under investigating. Add below declaration:
+
+extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
+
+(*) MOVE_MAX
+
+One of refered part : gcc/defaults.h
+
+#define MOVE_MAX_PIECES   MOVE_MAX
+
+    Declare as the same value which can be maximum bytes specified at
+    load/store instruction. If target processor is 32 bit and there is
+    no 8 bytes load/store instruction, declare as 4. We can declare as
+    `constexpr'.
+

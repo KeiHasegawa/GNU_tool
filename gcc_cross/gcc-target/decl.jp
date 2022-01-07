@@ -78,7 +78,7 @@ static const char initial_call_used_regs[] = CALL_USED_REGISTERS;
 
       && targetm.class_likely_spilled_p (REGNO_REG_CLASS (REGNO (x))))
 
-      extern reg_class REGNO_REG_CLASS(int); の宣言を追加するとよい.
+      extern reg_class REGNO_REG_CLASS(int regno); の宣言を追加するとよい.
 
       レジスタ番号から次に述べる enum reg_class への変換を行なう.
 
@@ -139,7 +139,8 @@ static const unsigned int_reg_class_contents[N_REG_CLASSES][N_REG_INTS]
 
   return BASE_REG_CLASS;
       
-      調査中. enum reg_class のいずれかに等しくなるようにする.
+      調査中. enum reg_class のいずれかに等しくなるようにする. constexpr に
+      よる宣言も OK.
 
 (*) UNITS_PER_WORD
 
@@ -147,7 +148,8 @@ static const unsigned int_reg_class_contents[N_REG_CLASSES][N_REG_INTS]
 
 #define BITS_PER_WORD (BITS_PER_UNIT * UNITS_PER_WORD)
 
-    いわゆるワードサイズと等しくする. 32 ビットプロセッサならば通常は 4.
+    いわゆるワードサイズと等しくする. 32 ビットプロセッサならば通常は 4. constexpr に
+    よる宣言も OK.
 
 (*) CUMULATIVE_ARGS
 
@@ -174,7 +176,8 @@ extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
 #define MOVE_MAX_PIECES   MOVE_MAX
 
     ロード/ストア命令で指定できる最大バイト数と等しくする. 32 ビットプロセッサ
-    で 8 バイトのロード/ストアがないのであれば 4 を指定する.
+    で 8 バイトのロード/ストアがないのであれば 4 を指定する. constexpr に
+    よる宣言も OK.
 
 (*) STRICT_ALIGNMENT
 
@@ -428,3 +431,22 @@ void ASM_OUTPUT_ALIGN(FILE* fp, int n)
 
       char が signed char と同じ範囲の値を取るか, あるいは unsigned char と同じ範囲の
       値を取るかを指定する. constexpr による宣言も OK.
+
+以下はコンパイル時には必要ないが実行時にエラーを起こさないために必要な宣言
+
+(*) PRINT_OPERAND
+
+参照箇所の 1 つ : gcc/targhooks.c
+
+  PRINT_OPERAND (stream, x, code);
+
+以下の宣言を追加する:
+
+extern void hasegawa_print_operand(FILE*, rtx, int);
+#define PRINT_OPERAND hasegawa_print_operand
+
+(*)
+
+函数呼び出しをするのに必要な宣言(?)
+
+文字列リテラルを扱うのに必要な宣言(?)

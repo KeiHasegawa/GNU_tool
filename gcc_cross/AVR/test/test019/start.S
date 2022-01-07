@@ -41,4 +41,4 @@ label2:
 	rcall	main
 	nop
 	.word	0x9598
-	
+	nop

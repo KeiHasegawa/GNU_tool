@@ -6,3 +6,4 @@ start:
 	nop;
 	nop;
 	EMUEXCPT;
+	nop;

@@ -6,6 +6,6 @@ test.elf:test.o test.x
 	arm-elf-ld -o $@ $< -T $(basename $<).x
 
 test.log:test.elf
-	echo quit | wdog.exe -v arm-elf-gdb -q -x gdbcom $< > $@ 2>&1
+	echo quit | wdog.exe -v arm-elf-gdb -q -x gdbcom $< > $@ 2>&1 || echo FAIL
 
 test.lof:test.log
