@@ -54,6 +54,24 @@ static const char *const initial_reg_names[] = REGISTER_NAMES;
     初期化指定子 REGISTER_NAMES, FIXED_REGISTERS, CALL_USED_REGISTERS の要素数
     と等しくする. constexpr による宣言でも OK.
 
+(*) FIXED_REGISTERS
+
+参照箇所の 1 つ gcc/reginfo.c
+
+static const char initial_fixed_regs[] = FIXED_REGISTERS;
+
+    レジスタ番号 n のレジスタが函数呼び出しの前後で変わらないのであれば 1 そうでなければ 0
+    となるようにマクロ指定する. REGISTER_NAMES と要素数が等しくなければならない.
+
+(*) CALL_USED_REGISTERS
+
+参照箇所の 1 つ gcc/reginfo.c
+
+static const char initial_call_used_regs[] = CALL_USED_REGISTERS;
+
+    レジスタ番号 n のレジスタが函数呼び出しの間で変更されうるのであれば 1 そうでなければ 0
+    をマクロ指定する. REGISTER_NAMES と要素数が等しくなければならない.
+
 (*) REGNO_REG_CLASS
 
 参照箇所の 1 つ gcc/calls.c

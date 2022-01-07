@@ -1,0 +1,609 @@
+libbackend.a のソースの一部を生成するツール
+
+cc1 等のビルドの過程で
+
+build/genxxx ... > tmp-xxx.c
+move-if-change tmp-xxx.c insn-xxx.c
+
+のようにツールによりファイルを生成し, それをコンパイルして libbackend.a を作成し,
+cc1 のリンクで参照される. 以下はこのツールについてのメモ.
+
+(*) genmodes
+
+入力ファイルはなし
+
+-h オプションで enum machine_mode の宣言を生成する.
+-i オプションで mode_size_inline(machine_mode), mode_nunits_inline(machine_mode)
+   などのインライン函数の定義を生成する.
+-m オプションで
+
+const char *const mode_name[NUM_MACHINE_MODES] =
+{
+  "VOID",
+  "BLK",
+
+の定義などを生成する.
+
+(*) genmddeps
+
+.md ファイルの依存関係を生成する.
+
+(*) gengtype
+
+このプログラムの目的は不明だが, ターゲット依存の .md ファイルとは無関係らしい.
+
+(*) genconstants
+
+(define_constants [(AAA 123) (BBB 456)])
+
+に対して
+
+#define AAA 123
+#define BBB 456
+
+を生成する. AAA や BBB は .md ファイルで定数を書くことができる場所で使用することができる.
+だから
+
+STACK_POINTER_REGNUM
+FRAME_POINTER_REGNUM
+
+などはこれを使用するとよい.
+
+(*) gengenrtl
+
+マクロ gen_rtx_SET(x, y) の定義などを生成する. .md ファイルとは無関係.
+genrtl ではなくて gengenrtl である. 
+
+(*) genpreds
+
+オプションなしで
+
+(define_predicate "func" (match_code "subreg,reg,mem") "hoge();")
+
+に対して以下のように出力する:
+
+static inline int
+func_1 (rtx op ATTRIBUTE_UNUSED, machine_mode mode ATTRIBUTE_UNUSED)
+{
+  return hoge();
+}
+
+int
+func (rtx op, machine_mode mode ATTRIBUTE_UNUSED)
+{
+  switch (GET_CODE (op))
+    {
+    case SUBREG:
+    case REG:
+    case MEM:
+      break;
+    default:
+      return false;
+    }
+  return ((func_1 (op, mode))) && ((mode == VOIDmode || GET_MODE (op) == mode));
+}
+
+これは op が SUBREG, REG, MEM 以外ならば false をそうでなければ, ざっくりと言うと
+
+hoge(op, mode)
+
+を返すコードを生成する.
+
+-h オプション
+
+func の函数宣言を生成する.
+
+-c オプション
+
+(define_memory_constraint "xyz" "mannual string" (match_test "func(op)"))
+
+に対して
+
+static inline bool satisfies_constraint_xyz(rtx op)
+{
+  return func(op);
+}
+
+のようなコードを生成する. 但し define_register_constraint に関しては何も生成しない.
+通常は op がメモリであることを限定するのだから
+
+(define_memory_constraint "xyz"
+  "manual string"
+  (and (match_code "mem")
+       (match_test "func(op)")))
+
+のように使用しこの結果
+
+static inline bool satisfies_constraint_xyz(rtx op)
+{
+  return (GET_CODE(op) == MEM) && func(op);
+}
+
+のようなコードが生成される.
+
+(*) genconditions
+
+このプログラムは .md ファイルを読み込んで C++ ファイルを生成する. このファイルを
+gencondmd.cpp とすれば
+
+g++ -o gencondmd gencondmd.o ...
+
+のように次に述べる gencondmd を生成する. 例えば .md ファイルが
+
+(define_insn "jump" [(set (pc) (label_ref (match_operand 0 "" "")))] "foo"
+"jump	%l0")
+
+であるとすれば
+
+static const struct c_test insn_conditions[] = {
+  { "foo",  __builtin_constant_p (foo)  ? (int) (foo)  : -1 },
+};
+
+のようなソースを出力する.
+
+(*) gencondmd
+
+上の genconditions の結果から以下を生成する:
+
+(define_conditions [(-1 "foo")])
+
+(*) genflags
+
+(define_expand "movsi"
+  [(set (match_operand:SI 0 "general_operand")
+        (match_operand:SI 1 "general_operand"))]
+  "456"
+  "
+  emit_insn(gen_rtx_SET(operands[0], operands[1]));
+  DONE;
+  ")
+
+のような入力に対して以下のような出力をする.
+
+#define HAVE_movsi (456)
+extern rtx        gen_movsi (rtx, rtx);
+
+(*) genattr
+
+一応 .md ファイルを読み込んでいるようだが m68hc11.md と hasegawa.md とで差分が確認できない.
+
+(*) genattr-common
+
+これも genattr 同様で差分は確認できていない. しかし, どうやら遅延分岐が関係しているらしい.
+
+(*) gencodes
+
+enum insn_code の宣言を出力する. 例えば以下に対して
+
+(define_expand "movsi"
+  [(set (match_operand:SI 0 "general_operand")
+        (match_operand:SI 1 "general_operand"))]
+  ""
+  "
+  emit_insn(gen_rtx_SET(operands[0], operands[1]));
+  DONE;
+  ")
+
+(define_insn "jump"
+   [(set (pc) (label_ref (match_operand 0 "" "")))]
+   "123"
+   "jump	%l0")
+
+以下の宣言を生成する
+
+enum insn_code {
+  CODE_FOR_nothing = 0,
+  CODE_FOR_jump = 1,
+  CODE_FOR_movsi = 2
+};
+
+const unsigned int NUM_INSN_CODES = 3;
+
+(*) genconfig
+
+命令セットに conditional move があるかなどの宣言. どのように使用されるかは未調査.
+
+(*) gentarget-def
+
+(define_insn "jump"
+   [(set (pc) (label_ref (match_operand 0 "" "")))]
+   "123"
+   "jump	%l0")
+
+のような入力に対して以下を出力している(抜粋):
+
+static bool
+target_have_jump (void)
+{
+  return 123;
+}
+
+static rtx_insn *
+target_gen_jump (rtx x0)
+{
+  gcc_checking_assert (targetm.have_jump ());
+  return insnify (gen_jump (x0));
+}
+
+#undef TARGET_HAVE_JUMP
+#define TARGET_HAVE_JUMP target_have_jump
+#undef TARGET_GEN_JUMP
+#define TARGET_GEN_JUMP target_gen_jump
+
+(*) gencheck
+
+入力ファイルなし. マクロ XXX_CHECK(t) の宣言を出力する. t は tree 型.
+
+(*) genhooks
+
+入力ファイルなし. hasegawa.c で定義されている
+
+gcc_target targetm = TARGET_INITIALIZER;
+
+のマクロを生成する.
+
+./genfhooks -d ../.././gcc/doc/tm.texi.in > tmp-tm.texi
+
+のように使用され, ドキュメントの生成にも使用されるようである.
+
+(*) genopinit
+
+./genoptinit -hfoo.h -cfoo.c
+
+のように動かす.
+
+(define_expand "movsi"
+  [(set (match_operand:SI 0 "general_operand")
+        (match_operand:SI 1 "general_operand"))]
+  ""
+  "
+  emit_insn(gen_rtx_SET(operands[0], operands[1]));
+  DONE;
+  ")
+
+の入力に対して以下のように出力する.
+
+static const struct optab_pat pats[NUM_OPTAB_PATTERNS] = {
+  { 0x810006, CODE_FOR_movsi },
+};
+
+void
+init_all_optabs (struct target_optabs *optabs)
+{
+  bool *ena = optabs->pat_enable;
+  ena[0] = HAVE_movsi;
+}
+...
+
+最も重要なツールの 1 つ.
+
+
+(*) genattrtab
+
+build/genattrtab x.md -Aa.c -Db.c -Lc.c
+
+のように動かす. md ファイルがいまひとつどのように依存しているか不明だが
+
+a.c : 遅延分岐に関する函数の定義が生成される.
+
+b.c : ??? ほぼ空
+
+c.c : ??? ほぼ空
+
+(*) genautomata
+
+入力ファイルに依存しているようだがほぼ空の出力
+
+(*) genemit
+
+(define_expand "movsi"
+  [(set (match_operand:SI 0 "general_operand")
+        (match_operand:SI 1 "general_operand"))]
+  ""
+  "
+  emit_insn(gen_rtx_SET(operands[0], operands[1]));
+  DONE;
+  ")
+
+(define_insn "jump"
+   [(set (pc) (label_ref (match_operand 0 "" "")))]
+   "1"
+   "jump	%l0")
+
+
+のような入力に対して以下を生成する. おそらくこれが最も重要なツールの 1 つ.
+
+rtx gen_jump (rtx operand0)
+{
+  return gen_rtx_SET(pc_rtx, gen_rtx_LABEL_REF (VOIDmode, operand0));
+}
+
+rtx gen_movsi (rtx operand0, rtx operand1)
+{
+  {
+    rtx operands[2];
+    operands[0] = operand0;
+    operands[1] = operand1;
+#define DONE return (_val = get_insns (), end_sequence (), _val)
+    emit_insn(gen_rtx_SET(operands[0], operands[1]));
+    DONE;
+  } 
+
+  emit_insn (gen_rtx_SET (operand0, operand1));
+  _val = get_insns();
+  end_sequence ();
+  return _val;
+}
+
+(*) genextract
+
+(define_expand "movsi"
+  [(set (match_operand:SI 0 "general_operand")
+        (match_operand:SI 1 "general_operand"))]
+  ""
+  "
+  emit_insn(gen_rtx_SET(operands[0], operands[1]));
+  DONE;
+  ")
+
+(define_insn "jump"
+   [(set (pc) (label_ref (match_operand 0 "" "")))]
+   "1"
+   "jump	%l0")
+
+のような入力に対して以下を生成:
+
+void
+insn_extract (rtx_insn *insn)
+{
+  rtx *ro = recog_data.operand;
+  ...
+  switch (INSN_CODE (insn))
+    {
+    default:
+      // エラー
+    case 1: /* jump */
+      ro[0] = *(ro_loc[0] = &XEXP (XEXP (pat, 1), 0));
+      break;
+    }
+}
+
+ここで movsi についての出力はない. つまり define_insn は出力結果に影響するが,
+define_expand は出力結果と無関係のようである.
+
+(*) gencfn-macros
+
+入力ファイルなし. CASE_CFN_XXX のマクロを生成する.
+
+(*) genmatch
+
+./genmatch --gimple ../.././gcc/match.pd
+
+のように動かすらしいが .md ファイルを入力としていない.
+
+(*) genoutput
+
+(define_expand "movsi"
+  [(set (match_operand:SI 0 "general_operand")
+        (match_operand:SI 1 "general_operand"))]
+  ""
+  "
+  emit_insn(gen_rtx_SET(operands[0], operands[1]));
+  DONE;
+  ")
+
+(define_insn "jump"
+   [(set (pc) (label_ref (match_operand 0 "" "")))]
+   "1"
+   "jump	%l0")
+
+のような入力に対して
+
+static const struct insn_operand_data operand_data[] = {
+  { 0,               "", E_VOIDmode, 0, 0, 0, 0 },
+  { 0,               "", E_VOIDmode, 0, 0, 1, 0 },
+  { general_operand, "", E_SImode,   0, 0, 1, 1 },
+  { general_operand, "", E_SImode,   0, 0, 1, 1 },
+};
+
+const struct insn_data_d insn_data[] = {
+  /* <internal>:0 */
+  { "*placeholder_for_nothing",
+     { 0 }, { 0 }, &operand_data[0], 0, 0, 0, 0, 0},
+  { "jump",
+     { "jump	%l0" }, { (insn_gen_fn::stored_funcptr) gen_jump },
+     &operand_data[1], 1, 1, 0, 0, 1
+  },
+  { "movsi",
+    { 0 },              { (insn_gen_fn::stored_funcptr) gen_movsi },
+     &operand_data[2], 2, 2, 0, 0, 0
+  }
+};
+
+のようなテーブルデータを出力する. おそらくこれが最も重要なツールの 1 つ.
+
+(*) genpeep
+
+define_peep を参照.
+
+(*) genrecog
+
+(define_insn "jump" [(set (pc) (label_ref (match_operand 0 "" "")))] "foo"
+"jump	%l0")
+
+のような入力に対して
+
+int recog(rtx x1, rtx_insn *insn,int *pnum_clobbers)
+{
+  rtx * const operands = &recog_data.operand[0];
+  recog_data.insn = NULL;
+  if (GET_CODE (x1) != SET)
+    return -1;
+  rtx x2 = XEXP (x1, 1);
+  if (GET_CODE (x2) != LABEL_REF)
+    return -1;
+  rtx x3 = XEXP (x1, 0);
+  if (GET_CODE (x3) != PC)
+    return -1;
+  rtx x4 = XEXP (x2, 0);
+  operands[0] = x4;
+  if (!(foo))
+    return -1;
+  return 1; /* jump */
+}
+
+のようなコードを出力している. しかし
+
+(define_expand "movsi"
+  [(set (match_operand:SI 0 "general_operand")
+        (match_operand:SI 1 "general_operand"))]
+  ""
+  "")
+
+のような入力に対して -1 以外を返すようなコードは生成されていない.
+おそらくこれが最も重要なツールの 1 つ.
+
+(*) genenums
+
+(define_enum_attr "hoge" "foo" 0)
+
+のような入力に対して意味のある宣言は生成されず. 不明.
+
+(*) genchecksum
+
+入力ファイルはアセンブラの出力 .o やアーカイブファイル .a でこのチェックサムを作っている.
+
+(*) RTX と RTL
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.hasegawa-elf/gcc/rtl.def
+
+RTX : Register Transfer eXpression
+RTL : Register Transfer Language
+
+この rtl.def 自体も gcc をビルドするのに関係しているようではあるが, まずは .md ファイルがど
+のように書かれるべきかをこれを見て学習する.
+
+2021.11.02 9:33 現在
+
+int f(int x, int y)
+{
+  return x + y;
+}
+
+二項の +, -, *, /, %, <<, >>, &, ^, | に対しても動作している.
+単項の -, ~ に対しても動作している.
+函数を呼び出すこともできている.
+
+単項の &, * は特に対処が必要なかった. 添字参照演算子も特に対応が必要なかった.
+メンバ参照演算子 . -> も対応の必要がなかった.
+後置の ++, -- も必要がなかった.
+
+修正は必要だったが文字列リテラルを扱うことができている. 浮動少数点数リテラルも扱うことが
+できている. コンパウンドリテラルも修正は必要だったができている.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/gcc-1.42/config/i386.md
+
+を見ると分かるがこのときは
+
+define_insn がほとんどで define_expand は 4 つのみ. 
+また他のターゲットコンパイラでは define_peephole も使用している.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/gcc-2.7.2.3/config/
+
+になると
+
+define_attr
+define_asm_attributes
+define_delay
+define_function_unit
+define_split
+
+が追加されている.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/gcc-2.95.3/gcc/config/
+
+では特に何も追加されていない.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/gcc-3.0.1/gcc/config/
+
+になると以下が追加されている
+
+define_constants
+define_cond_exec
+define_insn_and_split
+define_peephole2
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/gcc-4.0.0/gcc/config/
+
+になると以下が追加されている.
+
+define_mode_macro
+define_automaton
+define_cpu_unit
+define_reservation
+define_bypass
+define_predicate
+define_special_predicate
+define_query_cpu_unit
+define_mode_attr
+define_code_macro
+define_code_attr
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/gcc-5.1.0/gcc/config/
+
+になると以下が追加されている.
+
+define_register_constraint
+define_memory_constraint
+define_constraint
+define_code_iterator
+define_c_enum
+define_mode_iterator
+define_int_iterator
+define_int_attr
+define_address_constraint
+define_enum
+define_enum_attr
+define_subst
+define_subst_attr
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/gcc-6.1.0/gcc/config/
+
+になると以下が追加されている
+
+define_special_memory_constraint
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/gcc-7.1.0/gcc/config/
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/gcc-8.1.0/gcc/config/
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/gcc-9.1.0/gcc/config/
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/gcc-10.2.0.org/gcc/config/
+
+では何も追加されていない.
+
+(*) .md ファイルの修正に伴なうリコンパイルが必要なもの
+
+.md ファイルを修正したときに生成されたファイルに変更がなければ生成ファイルを更新しないような
+工夫(move-if-change スクリプト)はあるものの, 大抵は全コンパイルが make によって必要
+と判断されてしまう.
+
+しかし, .md ファイルを更新したときに影響範囲を予測できるのならば大幅にリコンパイルを省略
+できる.
+
+insn-target-def.h
+insn-flags.h
+insn-emit.c
+insn-output.c
+insn-recog.c
+insn-opinit.{c,h}
+insn-codes.h
+insn-extract.c
+
+を生成し直して .c ファイルをリコンパイルし libbackend.a を作成し, cc1 をリンクすれば
+大抵はうまくいく.
+
+しかし場合によって
+
+lra.c
+
+やその他のリコンパイルも必要になる. 影l響範囲を予測できないのならば残念だが全ビルドしておく
+のが安全.
