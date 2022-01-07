@@ -1,5 +1,11 @@
 gcc の共通ソースファイルから参照される定数
 
+(*) REGISTER_NAMES
+
+参照箇所の 1 つ
+
+    生成されるアセンブラに出現するレジスタの名前の列を指定する.
+
 (*) FIRST_PSEUDO_REGISTER
 
 参照箇所の 1 つ gcc/hard-reg-set.h
@@ -7,7 +13,23 @@ gcc の共通ソースファイルから参照される定数
           return (*regno < FIRST_PSEUDO_REGISTER);
 
     初期化指定子 REGISTER_NAMES, FIXED_REGISTERS, CALL_USED_REGISTERS の要素数
-    と等しくする.
+    と等しくする. constexpr でも OK.
+
+(*) STACK_POINTER_REGNUM
+
+(*) FRAME_POINTER_REGNUM
+
+参照箇所の 1 つ gcc/rtl.h
+
+#if FRAME_POINTER_REGNUM == ARG_POINTER_REGNUM
+
+    プリプロセッサのディレクティブで参照されるためマクロでなくてはならない.
+    constexpr による宣言は期待しない結果になる.
+
+(*) ARG_POINTER_REGNUM
+
+    プリプロセッサで参照されるためマクロでなくてはならない.
+
 
 (*) N_REG_CLASSES
 
@@ -31,7 +53,17 @@ gcc の共通ソースファイルから参照される定数
 
   CUMULATIVE_ARGS info;
 
-    通常は ??? に必要な構造体を宣言する.
+    次に述べる INIT_CUMULATIVE_ARGS に必要な構造体を宣言する.
+
+(*) INIT_CUMULATIVE_ARGS
+
+参照箇所の 1 つ gcc/calls.c
+
+  INIT_CUMULATIVE_ARGS (args_so_far_v, funtype, NULL_RTX, fndecl, n_named_args);
+
+      調査中. 以下の宣言を追加するとよい:
+      
+extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
 
 (*) MOVE_MAX
 
@@ -92,3 +124,108 @@ gcc の共通ソースファイルから参照される定数
 参照箇所の 1 つ gcc/c-family/c-pragma.c
 
   if (BYTES_BIG_ENDIAN != WORDS_BIG_ENDIAN)
+
+(*) BIGGEST_ALIGNMENT
+
+参照箇所の 1 つ gcc/defaults.h
+
+#define ATTRIBUTE_ALIGNED_VALUE BIGGEST_ALIGNMENT
+
+      調査中.
+
+(*) ATTRIBUTE_ALIGNED_VALUE
+
+参照箇所の 1 つ gcc/c-family/c-attribs.c
+
+    align_expr = size_int (ATTRIBUTE_ALIGNED_VALUE / BITS_PER_UNIT);
+
+      調査中.
+
+(*) Pmode
+
+参照箇所の 1 つ gcc/optabs.h
+
+  create_expand_operand (op, EXPAND_ADDRESS, value, Pmode, false);
+
+      ポインタの加算, 減算が 4 バイトの加算, 減算ならば Pmode を SImode に
+      に define する. 8 バイトの加算, 減算ならば DImode に, 2 バイトの加算,
+      減算ならば HImode に define する.
+
+(*) MAX_REGS_PER_ADDRESS
+
+参照箇所の 1 つ gcc/reload.h
+
+#define MAX_RELOADS (2 * MAX_RECOG_OPERANDS * (MAX_REGS_PER_ADDRESS + 1))
+
+      調査中.
+
+(*) FUNCTION_ARG_REGNO_P
+
+参照箇所の 1 つ gcc/alias.c
+
+    if (FUNCTION_ARG_REGNO_P (OUTGOING_REGNO (i))
+
+      調査中. 以下の宣言をしておく:
+
+      extern bool FUNCTION_ARG_REGNO_P(int regno);
+
+      regno が函数を呼び出すときに引数を渡すのに使用されるかどうかを判定する.
+
+(*) ELIMINABLE_REGS
+
+参照箇所の 1 つ gcc/builtins.c
+
+      static const struct elims {const int from, to;} elim_regs[] = ELIMINABLE_REGS;
+      
+      調査中.
+
+(*) STACK_BOUNDARY
+
+参照箇所の 1 つ gcc/defaults.h
+
+#define MAX_STACK_ALIGNMENT STACK_BOUNDARY
+      
+      調査中.
+
+(*) PARM_BOUNDARY
+
+参照箇所の 1 つ gcc/builtins.c
+
+  set_mem_align (dest, PARM_BOUNDARY);
+      
+      調査中.
+
+(*) FUNCTION_MODE
+
+参照箇所の 1 つ gcc/builtins.c
+
+    function = memory_address (FUNCTION_MODE, function);
+      
+      調査中.
+
+(*) BASE_REG_CLASS
+
+参照箇所の 1 つ gcc/addresses.h
+
+  return BASE_REG_CLASS;
+      
+      調査中. enum reg_class のいずれかに等しくなるようにする.
+
+(*) REGNO_OK_FOR_BASE_P
+
+参照箇所の 1 つ gcc/addresses.h
+
+  return REGNO_OK_FOR_BASE_P (regno);
+
+      調査中. extern bool REGNO_OK_FOR_BASE_P(int); の宣言を追加するとよい.
+
+
+(*) REGNO_REG_CLASS
+
+参照箇所の 1 つ gcc/calls.c
+
+      && targetm.class_likely_spilled_p (REGNO_REG_CLASS (REGNO (x))))
+
+      extern reg_class REGNO_REG_CLASS(int); の宣言を追加するとよい.
+
+      レジスタ番号から reg_class への変換を行なう.

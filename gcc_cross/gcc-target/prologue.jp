@@ -19,11 +19,11 @@ aarch64_expand_prologue (void)
 
 int f(int a, int b){ return a + b; }
 
-をコンパイルしてみると最初に(実は 2 つ目だが)生成された rtx_insn は以下であった.
+をコンパイルしてみると aarch64_expand_prologue で最初に生成された rtx_insn は以下であった.
 
   if (aarch64_uimm12_shift (moffset))
     {
-      insn = emit_insn (gen_add3_insn (dest, src, GEN_INT (offset)));
+      insn = emit_insn (gen_add3_insn (dest, src, GEN_INT (offset))); これ
       RTX_FRAME_RELATED_P (insn) = frame_related_p;
       return;
     }
