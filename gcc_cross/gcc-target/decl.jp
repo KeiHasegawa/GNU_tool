@@ -194,7 +194,7 @@ extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
 
 	      if (BITS_BIG_ENDIAN)
 
-      調査中.
+      調査中. constexpr による宣言も OK.
 
 (*) BYTES_BIG_ENDIAN
 
@@ -202,7 +202,7 @@ extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
 
 	      if (BYTES_BIG_ENDIAN)
 
-      調査中.
+      調査中. constexpr による宣言も OK.
 
 (*) WORDS_BIG_ENDIAN
 
@@ -210,7 +210,7 @@ extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
 
   if (BYTES_BIG_ENDIAN != WORDS_BIG_ENDIAN)
 
-      調査中.
+      調査中. constexpr による宣言も OK.
 
 
 (*) FUNCTION_BOUNDARY
@@ -219,7 +219,7 @@ extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
 
 	  value = size_int (FUNCTION_BOUNDARY / BITS_PER_UNIT);
 
-      調査中.
+      調査中. constexpr による宣言も OK.
 
 (*) TRAMPOLINE_SIZE
 
@@ -228,8 +228,7 @@ extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
       builtin_define_with_int_value ("__LIBGCC_TRAMPOLINE_SIZE__",
 				     TRAMPOLINE_SIZE);
 			     
-      調査中.
-
+      調査中. constexpr による宣言も OK.
 
 (*) TARGET_CPU_CPP_BUILTINS
 
@@ -250,7 +249,7 @@ extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
 
 #define ATTRIBUTE_ALIGNED_VALUE BIGGEST_ALIGNMENT
 
-      調査中.
+      調査中. constexpr による宣言も OK.
 
 (*) ATTRIBUTE_ALIGNED_VALUE
 
@@ -258,7 +257,7 @@ extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
 
     align_expr = size_int (ATTRIBUTE_ALIGNED_VALUE / BITS_PER_UNIT);
 
-      調査中.
+      調査中. constexpr による宣言も OK.
 
 (*) Pmode
 
@@ -266,9 +265,9 @@ extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
 
   create_expand_operand (op, EXPAND_ADDRESS, value, Pmode, false);
 
-      ポインタの加算, 減算が 4 バイトの加算, 減算ならば Pmode を SImode に
-      に define する. 8 バイトの加算, 減算ならば DImode に, 2 バイトの加算,
-      減算ならば HImode に define する.
+      ポインタが 4 バイトならば Pmode を SImode に define する. 8 バイトならば
+      DImode に, 2 バイトのならば HImode に define する. constexpr による宣言
+      も OK.
 
 (*) MAX_REGS_PER_ADDRESS
 

@@ -32,7 +32,7 @@ One of refered part : gcc/c-family/c-cppbuiltin.c
 				     STACK_POINTER_REGNUM);
 
     Declare the same value with stack pointer register number. We can
-    declare as `constexpr'.
+    declare using `constexpr'.
 
 (*) FRAME_POINTER_REGNUM
 
@@ -57,7 +57,8 @@ One of refered part : gcc/hard-reg-set.h
           return (*regno < FIRST_PSEUDO_REGISTER);
 
     Declare the same value with the number of elements of `REGISTER_NAMES',
-    `FIXED_REGISTERS' and `CALL_USED_REGISTERS'. We can declare as `constexpr'.
+    `FIXED_REGISTERS' and `CALL_USED_REGISTERS'. We can declare using
+    `constexpr'.
 
 (*) FIXED_REGISTERS
 
@@ -133,7 +134,7 @@ One of refered part : gcc/hard-reg-set.h
   HARD_REG_SET x_reg_class_contents[N_REG_CLASSES];
 
     Declare the same value with `LIM_REG_CLASSES' of `reg_class'. We can
-    declare as `constexpr'.
+    declare using `constexpr'.
 
 (*) REG_CLASS_CONTENTS
 
@@ -151,7 +152,7 @@ One of refered part : gcc/addresses.h
   return BASE_REG_CLASS;
       
       Under investigating. It must be the same with one of `reg_class'
-      member. We can declare as `constexpr'.
+      member. We can declare using `constexpr'.
 
 (*) UNITS_PER_WORD
 
@@ -160,7 +161,7 @@ One of refered part : gcc/defaults.h
 #define BITS_PER_WORD (BITS_PER_UNIT * UNITS_PER_WORD)
 
     Declare as the same with word size. i.e. For 32 bit processor,
-    It becomes 4 normally. We can declare as `constexpr'.
+    It becomes 4 normally. We can declare using `constexpr'.
 
 (*) CUMULATIVE_ARGS
 
@@ -188,7 +189,7 @@ One of refered part : gcc/defaults.h
 
     Declare as the same value which can be maximum bytes specified at
     load/store instruction. If target processor is 32 bit and there is
-    no 8 bytes load/store instruction, declare as 4. We can declare as
+    no 8 bytes load/store instruction, declare as 4. We can declare using
     `constexpr'.
 
 (*) STRICT_ALIGNMENT
@@ -198,7 +199,7 @@ One of refered part : gcc/c/c-typeck.c
       if ((STRICT_ALIGNMENT || warn_cast_align == 2)
 
       Declare as 1 if load/store instruction can be issued to the address
-      which strides across word boundary. We can declare as `constexpr'.
+      which strides across word boundary. We can declare using `constexpr'.
 
 (*) BITS_BIG_ENDIAN
 
@@ -206,7 +207,7 @@ One of refered part : gcc/combine.c
 
 	      if (BITS_BIG_ENDIAN)
 
-      Under investigating.
+      Under investigating. We can declare using `constexpr'.
 
 (*) BYTES_BIG_ENDIAN
 
@@ -214,7 +215,7 @@ One of refered part : gcc/c/c-typeck.c
 
 	      if (BYTES_BIG_ENDIAN)
 
-      Under investigating.
+      Under investigating. We can declare using `constexpr'.
 
 (*) WORDS_BIG_ENDIAN
 
@@ -222,6 +223,48 @@ One of refered part : gcc/c-family/c-pragma.c
 
   if (BYTES_BIG_ENDIAN != WORDS_BIG_ENDIAN)
 
-      Under investigating.
+      Under investigating. We can declare using `constexpr'.
 
+(*) FUNCTION_BOUNDARY
+
+One of refered part : gcc/c-family/c-common.c
+
+	  value = size_int (FUNCTION_BOUNDARY / BITS_PER_UNIT);
+
+      Under investigating. We can declare using `constexpr'.
+
+(*) TRAMPOLINE_SIZE
+
+One of refered part : gcc/c-family/c-cppbuiltin.c
+
+      builtin_define_with_int_value ("__LIBGCC_TRAMPOLINE_SIZE__",
+				     TRAMPOLINE_SIZE);
+			     
+      Under investigating. We can declare using `constexpr'.
+
+(*) TARGET_CPU_CPP_BUILTINS
+
+One of refered part : gcc/c-family/c-cppbuiltin.c
+
+  TARGET_CPU_CPP_BUILTINS ();
+
+      Add here own pre-defined macro like below:
+
+#define TARGET_CPU_CPP_BUILTINS() builtin_define_std("hasegawa")
+
+(*) BIGGEST_ALIGNMENT
+
+One of refered part : gcc/defaults.h
+
+#define ATTRIBUTE_ALIGNED_VALUE BIGGEST_ALIGNMENT
+
+      Under investigating. We can declare using `constexpr'.
+
+(*) ATTRIBUTE_ALIGNED_VALUE
+
+One of refered part : gcc/c-family/c-attribs.c
+
+    align_expr = size_int (ATTRIBUTE_ALIGNED_VALUE / BITS_PER_UNIT);
+
+      Under investigating. We can declare using `constexpr'.
 
