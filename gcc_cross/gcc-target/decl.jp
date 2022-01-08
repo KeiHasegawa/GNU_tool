@@ -186,6 +186,7 @@ extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
       if ((STRICT_ALIGNMENT || warn_cast_align == 2)
 
       ロード/ストアをワード境界をまたいで発行できないのならば 1 を指定する.
+      constexpr による宣言も OK.
 
 (*) BITS_BIG_ENDIAN
 
@@ -445,8 +446,15 @@ void ASM_OUTPUT_ALIGN(FILE* fp, int n)
 extern void hasegawa_print_operand(FILE*, rtx, int);
 #define PRINT_OPERAND hasegawa_print_operand
 
-(*)
+(*) TEXT_SECTION_ASM_OP, DATA_SECTION_ASM_OP, BSS_SECTION_ASM_OP
 
-函数呼び出しをするのに必要な宣言(?)
+参照箇所の 1 つ gcc/varasm.c
 
-文字列リテラルを扱うのに必要な宣言(?)
+#ifdef TEXT_SECTION_ASM_OP
+  text_section = get_unnamed_section (SECTION_CODE, output_section_asm_op,
+				      TEXT_SECTION_ASM_OP);
+#endif
+
+      文字列リテラルをマクロで指定する. .text, .data, .bss セクションに切り替えるとき
+      に生成する疑似命令を指定する. プリプロセッサのディレクティブで参照されているので
+      constexpr による宣言はできない.
