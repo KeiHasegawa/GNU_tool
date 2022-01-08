@@ -157,11 +157,11 @@ gen_prologue が呼び出されたときに
 ちょっと捻って
 
 (define_insn "prologue"
-  [(set (reg:SI 1) (reg:SI 2))]
+  [(set (reg:SI 0) (reg:SI 1))]
   ""
   "enter %0, %1")
 
-としてみた. レジスタ番号 1 が sp で 2 は fp であることに留意すると prologue の部分は
+としてみた. レジスタ番号 0 が sp で 1 は fp であることに留意すると prologue の部分は
 
    sp := fp
 
@@ -169,7 +169,7 @@ gen_prologue が呼び出されたときに
 このカラクリは
 
 1. gen_prologue という函数が呼ばれる
-2. [(set (reg:SI 1) (reg:SI 2))] が生成される
+2. [(set (reg:SI 0) (reg:SI 1))] が生成される
 3. gen_movsi で 2 で生成した 3 番地コードに対して sp := fp が出力される
 
 ということになる.
@@ -200,14 +200,14 @@ gen_prologue が呼び出されたときに
 ...
 
 (define_insn "prologue"
-  [(set (reg:SI 1) (reg:SI 2))]
+  [(set (reg:SI 0) (reg:SI 1))]
   ""
   "")
 ...
 
 const char* hasegawa_mov(rtx x, rtx y)
 {
-  if (REG_P(x) && REGNO(x) == 1 && REG_P(y) && REGNO(y) == 2)
+  if (REG_P(x) && REGNO(x) == 0 && REG_P(y) && REGNO(y) == 1)
     return "enter";
 
 のようにすれば少し無理やりだができる. define_insn で指定する 3 番地コー
@@ -230,5 +230,3 @@ const char* hasegawa_mov(rtx x, rtx y)
   [(set (operand0 (plus::SI (operand1, operand2))))]
 
 のような 3 番地コードを生成する.
-
-
