@@ -268,3 +268,191 @@ One of refered part : gcc/c-family/c-attribs.c
 
       Under investigating. We can declare using `constexpr'.
 
+(*) Pmode
+
+One of refered part : gcc/optabs.h
+
+  create_expand_operand (op, EXPAND_ADDRESS, value, Pmode, false);
+
+      If pointer size of the target compiler is 4, define as SImode.
+      If it is 8, define as DImode. If it is 2, define as HImode.
+      We can declare using `constexpr'.
+
+(*) MAX_REGS_PER_ADDRESS
+
+One of refered part : gcc/reload.h
+
+#define MAX_RELOADS (2 * MAX_RECOG_OPERANDS * (MAX_REGS_PER_ADDRESS + 1))
+
+      Under investigating. We can declare using `constexpr'.
+
+(*) FUNCTION_ARG_REGNO_P
+
+One of refered part : gcc/alias.c
+
+    if (FUNCTION_ARG_REGNO_P (OUTGOING_REGNO (i))
+
+      Under investigating. Add below declaration:
+
+      extern bool FUNCTION_ARG_REGNO_P(int regno);
+
+(*) ELIMINABLE_REGS
+
+One of refered part : gcc/builtins.c
+
+      static const struct elims {const int from, to;} elim_regs[] = ELIMINABLE_REGS;
+      
+      Under investigating.
+
+(*) STACK_BOUNDARY
+
+One of refered part : gcc/defaults.h
+
+#define MAX_STACK_ALIGNMENT STACK_BOUNDARY
+      
+      Under investigating. We can declare using `constexpr'.
+
+(*) PARM_BOUNDARY
+
+One of refered part : gcc/builtins.c
+
+  set_mem_align (dest, PARM_BOUNDARY);
+      
+      Under investigating. We can declare using `constexpr'.
+
+(*) FUNCTION_MODE
+
+One of refered part : gcc/builtins.c
+
+    function = memory_address (FUNCTION_MODE, function);
+      
+      Under investigating. Normally define as `QImode'. We can declare
+      using `constexpr'.
+
+(*) REGNO_OK_FOR_BASE_P
+
+One of refered part : gcc/addresses.h
+
+  return REGNO_OK_FOR_BASE_P (regno);
+
+      Under investigating. Add declaration like below:
+
+      extern bool REGNO_OK_FOR_BASE_P(int regno);
+
+(*) SLOW_BYTE_ACCESS
+
+One of refered part : gcc/dojump.c
+
+      if (! SLOW_BYTE_ACCESS
+
+      Under investigating. We can declare using `constexpr'.
+
+(*) ASM_OUTPUT_ALIGN
+
+One of refered part : gcc/dwarf2out.c
+
+		ASM_OUTPUT_ALIGN (asm_out_file, floor_log2 (PTR_SIZE));
+
+      Add declaration like blow:
+
+      extern void ASM_OUTPUT_ALIGN(FILE*, int);
+
+      And define the function like below:
+
+void ASM_OUTPUT_ALIGN(FILE* fp, int n)
+{
+  fprintf(fp, "	.align	%d\n", n);
+}
+
+      You can define as a macro.
+
+(*) FIRST_PARM_OFFSET
+
+One of refered part : gcc/defaults.h
+
+  (FIRST_PARM_OFFSET (FNDECL) + crtl->args.pretend_args_size)
+
+      Under investigating. Add declaration like below:
+
+      extern int FIRST_PARM_OFFSET(tree);
+
+
+(*) CASE_VECTOR_MODE
+
+One of refered part : gcc/expr.c
+
+			       gen_int_mode (GET_MODE_SIZE (CASE_VECTOR_MODE),
+					     Pmode));
+
+      Under investigating. Normally define the same value with `Pmode'.
+      We can declare using `constexpr'.
+
+(*) ASM_APP_ON
+
+One of refered part : gcc/final.c
+
+      fputs (ASM_APP_ON, asm_out_file);
+
+      When inline assembler appears at a program, the string defiend 
+      by `ASM_APP_ON' is written to the output file. We can declare using
+      `constexpr'.
+
+(*) ASM_APP_OFF
+
+One of refered part : gcc/final.c
+
+      fputs (ASM_APP_OFF, asm_out_file);
+
+      For `ASM_APP_ON', the strign defined by `ASM_APP_OFF' is written to
+      the output file as the end of inline assembler. We can declare using
+      `constexpr'.
+
+(*) FUNCTION_PROFILER
+
+One of refered part : gcc/final.c
+
+  FUNCTION_PROFILER (file, current_function_funcdef_no);
+
+      When specified profile option, this part is executed. So this
+      part should generate the special code for profile. Add declaration
+      like below:
+      
+      extern void FUNCTION_PROFILER(FILE*, int);
+
+(*) REGNO_OK_FOR_INDEX_P
+
+One of refered part : gcc/ira-costs.c
+
+  return regno >= FIRST_PSEUDO_REGISTER || REGNO_OK_FOR_INDEX_P (regno);
+
+      Under investigating.
+
+(*) INDEX_REG_CLASS
+
+One of refered part : gcc/ira-costs.c
+
+    rclass = INDEX_REG_CLASS;
+
+      Under investigating.
+
+(*) INITIAL_ELIMINATION_OFFSET
+
+One of refered part : gcc/lra-eliminations.c
+
+      INITIAL_ELIMINATION_OFFSET (ep->from, ep->to, ep->offset);
+
+      Under investigating.
+
+(*) DEFAULT_SIGNED_CHAR
+
+One of refered part : gcc/opts.c
+
+  opts->x_flag_signed_char = DEFAULT_SIGNED_CHAR;
+
+      If `char' value range is euqalt to that of `signed char', define
+      it as 1. We can declare using `constexpr'.
+
+
+
+
+

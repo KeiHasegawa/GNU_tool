@@ -275,7 +275,7 @@ extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
 
 #define MAX_RELOADS (2 * MAX_RECOG_OPERANDS * (MAX_REGS_PER_ADDRESS + 1))
 
-      調査中.
+      調査中. constexpr による宣言も OK.
 
 (*) FUNCTION_ARG_REGNO_P
 
@@ -303,7 +303,7 @@ extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
 
 #define MAX_STACK_ALIGNMENT STACK_BOUNDARY
       
-      調査中.
+      調査中. constexpr による宣言も OK.
 
 (*) PARM_BOUNDARY
 
@@ -311,7 +311,7 @@ extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
 
   set_mem_align (dest, PARM_BOUNDARY);
       
-      調査中.
+      調査中. constexpr による宣言も OK.
 
 (*) FUNCTION_MODE
 
@@ -319,7 +319,7 @@ extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
 
     function = memory_address (FUNCTION_MODE, function);
       
-      調査中.
+      調査中. 大抵は QImode に define している. constexpr による宣言も OK.
 
 (*) REGNO_OK_FOR_BASE_P
 
@@ -327,7 +327,7 @@ extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
 
   return REGNO_OK_FOR_BASE_P (regno);
 
-      調査中. extern bool REGNO_OK_FOR_BASE_P(int); の宣言を追加するとよい.
+      調査中. extern bool REGNO_OK_FOR_BASE_P(int regno); の宣言を追加するとよい.
 
 (*) SLOW_BYTE_ACCESS
 
@@ -335,7 +335,7 @@ extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
 
       if (! SLOW_BYTE_ACCESS
 
-      調査中.
+      調査中. constexpr による宣言も OK.
 
 (*) ASM_OUTPUT_ALIGN
 
@@ -368,8 +368,7 @@ void ASM_OUTPUT_ALIGN(FILE* fp, int n)
 			       gen_int_mode (GET_MODE_SIZE (CASE_VECTOR_MODE),
 					     Pmode));
 
-      調査中. Pmode や SImode と同じ scalar_int_mode 型として宣言する
-      必要がある.
+      調査中. 大抵は Pmode に define されている. constexpr による宣言も OK.
 
 (*) ASM_APP_ON
 
@@ -378,7 +377,7 @@ void ASM_OUTPUT_ALIGN(FILE* fp, int n)
       fputs (ASM_APP_ON, asm_out_file);
 
       プログラムにインラインアセンブラが出現したときに始まりのマークとしてこの文字列が生成
-      ファイルに書き込まれる.
+      ファイルに書き込まれる. constexpr による宣言も OK.
 
 (*) ASM_APP_OFF
 
@@ -387,7 +386,7 @@ void ASM_OUTPUT_ALIGN(FILE* fp, int n)
       fputs (ASM_APP_OFF, asm_out_file);
 
       ASM_APP_ON と対で生成ファイルに書き込まれる. インラインアセンブラの終りのマークとし
-      てこの文字列が生成ファイルに書き込まれる.
+      てこの文字列が生成ファイルに書き込まれる. constexpr による宣言も OK.
 
 (*) FUNCTION_PROFILER
 
@@ -432,7 +431,7 @@ void ASM_OUTPUT_ALIGN(FILE* fp, int n)
       char が signed char と同じ範囲の値を取るか, あるいは unsigned char と同じ範囲の
       値を取るかを指定する. constexpr による宣言も OK.
 
-以下はコンパイル時には必要ないが実行時にエラーを起こさないために必要な宣言
+以下は cc1 等のコンパイル時には必要ないが実行時にエラーを起こさないために必要な宣言
 
 (*) PRINT_OPERAND
 
