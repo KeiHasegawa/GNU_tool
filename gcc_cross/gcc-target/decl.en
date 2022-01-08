@@ -452,6 +452,29 @@ One of refered part : gcc/opts.c
       If `char' value range is euqalt to that of `signed char', define
       it as 1. We can declare using `constexpr'.
 
+Frome here, they are not ncessary for just building `cc1' etc, but are
+necessary for get rid of compile time error.
+
+(*) PRINT_OPERAND
+
+One of refered part : gcc/targhooks.c
+
+  PRINT_OPERAND (stream, x, code);
+
+      Add declaration like below:
+
+extern void hasegawa_print_operand(FILE*, rtx, int);
+#define PRINT_OPERAND hasegawa_print_operand
+
+(*) TEXT_SECTION_ASM_OP, DATA_SECTION_ASM_OP, BSS_SECTION_ASM_OP
+
+One of refered part : gcc/varasm.c
+
+      Define the string literal as a macro. Compiler refers these macro
+      when switching `.text', `.data', `.bss' section. These are
+      refered at preprocessor directive. So it must be a macro value.
+
+
 
 
 
