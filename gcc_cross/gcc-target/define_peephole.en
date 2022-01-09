@@ -1,0 +1,16 @@
+define_peephole
+
+According to gcc-10.2.0/gcc/rtl.def, we should use `define_peephole2'.
+
+But anyway, I tried like below:
+
+(define_peephole
+  [(set (match_operand:SI 0 "nonimmediate_operand" "")
+	(match_operand:SI 1 "general_operand" ""))]
+  ""
+  "peephole %0, %1")
+
+And envoked `cc1' with `-O1' or `-O2' or `-O3', above was applied
+for 4 bytes mov.
+
+
