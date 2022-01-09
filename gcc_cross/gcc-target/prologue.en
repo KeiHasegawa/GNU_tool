@@ -15,3 +15,42 @@ void
 aarch64_expand_prologue (void)
 {
 
+For function prologue of target program, this function is called.
+
+int f(int a, int b){ return a + b; }
+
+Compiling above code, `aarch64_expand_prologue' generates 1st rtx_insn at:
+
+  if (aarch64_uimm12_shift (moffset))
+    {
+      insn = emit_insn (gen_add3_insn (dest, src, GEN_INT (offset))); !!
+      RTX_FRAME_RELATED_P (insn) = frame_related_p;
+      return;
+    }
+
+(gdb) p debug_insn_slim(insn)
+   20: sp:DI=sp:DI-0x10
+$8 = void
+(gdb) p offset
+$9 = -16
+(gdb)
+
+The frame size is 16 which is calcurated at aarch64 own part, but it
+uses the result of gcc common part. Here, not pursuited.
+
+The most impotant is to generate rtx_insn once not to output prologue
+assembly code.
+
+Finally `cc1' generates for above `rtx_insn'
+
+	sub	sp, sp, #16
+
+Similarly, at `aarch64_expand_epilogue' generates rtx_insn like below:
+
+   24: sp:DI=sp:DI+0x10
+
+And finally, `cc1' generates for above `rtx_insn'
+
+	add	sp, sp, 16
+
+
