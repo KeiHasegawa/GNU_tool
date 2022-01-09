@@ -3,7 +3,7 @@ all:test.objdump test.lof
 include ../Makefile.common
 
 test.elf:test.o
-	m68hc11-elf-ld -o $@ $< -T test.x
+	m68hc11-elf-ld -o $@ $< -T ../default.x
 
 test.log:test.elf
 	echo quit | wdog.exe -v m68hc11-elf-gdb -q -x gdbcom $< > $@ 2>&1 || echo FAIL
