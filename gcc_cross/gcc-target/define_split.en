@@ -1,0 +1,46 @@
+define_split
+
+Think about below situation:
+
+int f(int x, int y)
+{
+  return x + y;
+}
+
+For above code, assume that `cc1' generates like below:
+
+f:
+	a := (fp)
+	b := (fp+4)
+	a := a + b
+
+Then add below into `.md' file:
+
+(define_split
+  [(set (match_operand:SI 0 "nonimmediate_operand" "")
+	(match_operand:SI 1 "general_operand" ""))]
+  "MEM_P(operands[1])"
+  [(set (match_dup 1) (match_dup 0))]
+  "asm(\"int3\");")
+
+Of cause, above is unreasonable. Anyway, `cc1' generates below code
+after break point is hit 2 times:
+
+f:
+	(fp) := a
+	(fp+4) := b
+	a := a + b
+
+Like above, source operand and destination operand is swapped.
+Again of cause, this is unreasonable. But we can understand the
+function of `define_split'. Where, 2nd operand of `define_split'
+is "MEP_P(operands[1])". If it just "", the rule is recursively applied
+for 4 bytes assign(move).
+
+Note that
+
+o `define_expand' rule is applied
+o `define_split' rule is applied
+o `define_insn' rule is applied
+
+
