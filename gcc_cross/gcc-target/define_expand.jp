@@ -30,16 +30,16 @@ hasegawa_addsi3_expand は gen_addsi3 すなわち define_insn により生成�
 
 例えば,
 
-レジスタ := メモリ + メモリ
+??? := メモリ + メモリ
 
 に対してメモリのオペランドをレジスタにロードするようにするには,
 
 bool hasegawa_addsi3_expand(rtx x, rtx y, rtx z)
 {
   if (MEM_P(y) && MEM_P(z)) {
-    rtx yy = gen_rtx_REG(E_SImode, A_REGS);
+    auto yy = gen_rtx_REG(E_SImode, A_REGNUM);
     emit_move_insn(yy, y);
-    rtx zz = gen_rtx_REG(E_SImode, B_REGS);
+    auto zz = gen_rtx_REG(E_SImode, B_REGNUM);
     emit_move_insn(zz, z);
     rtx add = gen_rtx_PLUS(E_SImode, yy, zz);
     emit_move_insn(x, add);

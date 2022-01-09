@@ -176,22 +176,31 @@ gen_prologue が呼び出されたときに
 
 (define_insn "prologue" ...)
 
-で第 3 オペランドに適切な式を指定すればこれでも一応 prologue のコード
-生成は可能であるが, 普通は 
+で第 3 オペランドに適切な式を指定すれば一応 prologue のコード
+生成は可能であるが, 普通は
 
 (define_expand "prologue" ...)
 
-を使用したほうが良い.
+を使用したほうが良い. 単純な理由だが, すべてのプロセッサでそのようにしているからだ.
 
 ところで函数のプロローグに対して define_insn だけを使用して
 
    enter
 
-とアセンブラ出力するためには,
+とアセンブラ出力するためには, 例えば以下のようにすればよい.
 
-(define_mode_iterator ALLI [BLK BI QI HI SI DI TI SF DF])
+// レジスタ番号 0 と 1 をプロローグのための特別なレジスタとして使用する
+#define REGISTER_NAMES      { "spec_0", "spec_1", "sp", "fp", ... }
 
-(define_insn "mov<mode>"
+;; プロローグに対して spec_0 := spec_1 を生成する
+(define_insn "prologue"
+  [(set (reg:SI 0) (reg:SI 1))]
+  ""
+  "")
+...
+
+;; 4 バイトの :=
+(define_insn "movsi"
   [(set (match_operand:ALLI 0 "nonimmediate_operand" "")
 	(match_operand:ALLI 1 "general_operand" ""))]
   ""
@@ -199,22 +208,21 @@ gen_prologue が呼び出されたときに
   return hasegawa_mov(operands[0], operands[1]);")
 ...
 
-(define_insn "prologue"
-  [(set (reg:SI 0) (reg:SI 1))]
-  ""
-  "")
-...
 
 const char* hasegawa_mov(rtx x, rtx y)
 {
   if (REG_P(x) && REGNO(x) == 0 && REG_P(y) && REGNO(y) == 1)
     return "enter";
 
-のようにすれば少し無理やりだができる. define_insn で指定する 3 番地コー
-ドは他で生成されないものである必要がある. そういう 3 番地コードを新規
+のようにすれば少し無理やりだができる. (define_insn "prologue" で指定す
+る 3 番地コード
+
+  [(set (reg:SI 0) (reg:SI 1))]
+
+は他で生成されないものである必要がある. そういう 3 番地コードを新規
 に作成してもよいが, やる意義が薄いので深くは追求しない.
 
-ところで
+改めて
 
 (define_insn "addsi3"
   [(set
