@@ -237,4 +237,19 @@ const char* hasegawa_movsi(rtx x, rtx y)
 
   [(set (operand0 (plus::SI (operand1, operand2))))]
 
-のような 3 番地コードを生成する.
+のような 3 番地コードを生成する. すなわち:
+
+
+rtx
+gen_addsi3 (rtx operand0,
+	rtx operand1,
+	rtx operand2)
+{
+...
+  emit_insn (gen_rtx_SET (operand0,
+	gen_rtx_PLUS (SImode,
+	operand1,
+	operand2)));
+...
+}
+
