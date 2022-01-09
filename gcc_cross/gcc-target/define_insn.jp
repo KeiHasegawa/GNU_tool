@@ -17,7 +17,7 @@ gcc の共通部分で 4 バイトの加算が生成され, それに対して�
 る必要になったとき, この部分の記述が参照されることになる.
 
 define_insn の直後の "addsi3" により生成される函数の名前は gen_addsi3
-のようになる. 実は addsi3 は
+のようになる(genflags, genemit, genoutput). 実は addsi3 は
 
 add
 si
@@ -30,11 +30,11 @@ insn-opinit.c:
 
   ena[31] = HAVE_addsi3;
 
-insn-flag.h:
+insn-flags.h:
 
 #define HAVE_addsi3 1
 
-のようにこの HAVE_addsi3 が gcc の共通ソースで参照されるからである.
+のようにこの HAVE_addsi3 が生成されたソースで参照されるからである.
 
 "nonimmediate_operand" の次の "" には "r" のように constraint と呼ばれる
 制限を記述することができる.
