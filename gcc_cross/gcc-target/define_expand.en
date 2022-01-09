@@ -1,6 +1,6 @@
 define_expand
 
-define_expand の最も簡単な使い方は以下:
+The most simple usage of `define_expand' is like below:
 
 (define_expand "addsi3"
   [(set
@@ -25,14 +25,14 @@ bool hasegawa_addsi3_expand(rtx x, rtx y, rtx z)
   ...
 }
 
-hasegawa_addsi3_expand は gen_addsi3 すなわち define_insn により生成される
-函数から呼び出される.
+`hasegawa_addsi3_expand' is called from `gen_addsi3' which is generated
+for `define_insn'
 
-例えば,
+For example,
 
-??? := メモリ + メモリ
+??? := memory + memory
 
-に対してメモリのオペランドをレジスタにロードするようにするには,
+For above, if you want to load memory operand into register:
 
 bool hasegawa_addsi3_expand(rtx x, rtx y, rtx z)
 {
@@ -47,15 +47,3 @@ bool hasegawa_addsi3_expand(rtx x, rtx y, rtx z)
   }
   return false;
 }
-
-のようにすればよい. 
-これだけの説明からすると, define_expand の部分を手書きの C++ のコードに
-すれば必ずしも必要ない. しかし, 便利だからこういう書き方をしているのだろうと思う.
-
-define_expand の構文は以下
-
-(define_expand sEssV)
-
-s : ダブルクォーテーションで囲まれた文字列
-E : 3 番地コード
-V : 属性. オプショナル
