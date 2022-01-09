@@ -45,10 +45,10 @@ One of refered part : gcc/rtl.h
 
 (*) ARG_POINTER_REGNUM
 
-    Declare the same value with the first register number which is
-    used for passing the argument to function. If no register is used
-    for passing the argument to function, declare the same value
-    with FRAME_POINTER_REGNUM. Samely, it must be a macro value.
+    Specify the register number which points to the function arguments
+    location at the stack. Normaly, declare the same value with
+    `FRAME_POINTER_REGNUM'. Precicely refer to `FIRST_PARM_OFFSET'.
+    Samely, it must be a macro value.
 
 (*) FIRST_PSEUDO_REGISTER
 
@@ -372,10 +372,41 @@ One of refered part : gcc/defaults.h
 
   (FIRST_PARM_OFFSET (FNDECL) + crtl->args.pretend_args_size)
 
-      Under investigating. Add declaration like below:
+One of refered part : gcc/function.c
 
-      extern int FIRST_PARM_OFFSET(tree);
+  in_arg_offset = FIRST_PARM_OFFSET (current_function_decl);
 
+      Add declaration like below:
+
+      extern int FIRST_PARM_OFFSET(tree func);
+
+      And implement this function so that the register defined as
+      `ARG_POINTER_REGNUM' points to first argument location of the
+      function `tree func' at stack.
+
+      Assume that the stack frame layout becomes like below and
+      define `ARG_POINTER_REGNUM' the same value with `FRAME_POINTER_REGNUM'
+
+      +----------------+ <- sp_{new}
+      |                | 
+      |                | 
+      ~   local area   ~ 
+      |                | 
+      |                | 
+   +0 +----------------+ <- fp_{new}
+      |    fp_{old}    | 
+   +4 +----------------+ <- sp_{old}
+      | return address | 
+   +8 +----------------+
+      |  1st argument  |
+      +----------------+
+      |  2nd argument  |
+      +----------------+
+
+      In this case, `FIRST_PARM_OFFSET' must return 8. If the function
+      return type is structure, 1st argument offset might not be 8.
+      So according to the argument `tree func' of `FIRST_PARM_OFFSET',
+      return value must be calcurated.
 
 (*) CASE_VECTOR_MODE
 

@@ -41,8 +41,9 @@ static const char *const initial_reg_names[] = REGISTER_NAMES;
 
 (*) ARG_POINTER_REGNUM
 
-    函数を呼び出すときに引数を渡すための最初のレジスタ番号と等しくなるようにする.
-    レジスタを使用しないのであれば FRAME_POINTER_REGNUM と等しくなるようにする.
+    函数が呼び出されたときに引数があるスタックの相対位置を示すレジスタを指定する.
+    普通は FRAME_POINTER_REGNUM と等しくなるようにする. FIRST_PARM_OFFSET
+    を参照.
     プリプロセッサで参照されるためマクロでなくてはならない.
 
 (*) FIRST_PSEUDO_REGISTER
@@ -359,7 +360,38 @@ void ASM_OUTPUT_ALIGN(FILE* fp, int n)
 
   (FIRST_PARM_OFFSET (FNDECL) + crtl->args.pretend_args_size)
 
-      調査中. extern int FIRST_PARM_OFFSET(tree); の宣言を追加するとよい.
+参照箇所の 1 つ gcc/function.c
+
+  in_arg_offset = FIRST_PARM_OFFSET (current_function_decl);
+
+      extern int FIRST_PARM_OFFSET(tree func); の宣言を追加するとよい.
+      もしくはマクロにしてもよい.  
+
+      函数の最初の引数があるスタックのアドレスを ARG_POINTER_REGNUM で定義
+      したレジスタが指すようにこの函数でオフセットを指定する.
+
+      仮にスタックフレームが以下のようになっているとする. そして ARG_POINTER_REGNUM
+      を FRAME_POINTER_REGNUM と等しくなるように宣言しているとする.
+
+      +----------------+ <- sp_{new}
+      |                | 
+      |                | 
+      ~   local area   ~ 
+      |                | 
+      |                | 
+   +0 +----------------+ <- fp_{new}
+      |    fp_{old}    | 
+   +4 +----------------+ <- sp_{old}
+      | return address | 
+   +8 +----------------+
+      |  1st argument  |
+      +----------------+
+      |  2nd argument  |
+      +----------------+
+
+      この場合は FIRST_PARM_OFFSET の戻り値は 8 になる. 函数が構造体を返す場合
+      等必ずしも最初の引数がオフセット 8 にならない場合は FIRST_PARM_OFFSET の
+      引数の tree func に応じて返す値を調整する必要がある.
 
 (*) CASE_VECTOR_MODE
 
