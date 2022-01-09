@@ -205,16 +205,16 @@ gen_prologue が呼び出されたときに
 	(match_operand:ALLI 1 "general_operand" ""))]
   ""
   "*
-  return hasegawa_mov(operands[0], operands[1]);")
+  return hasegawa_movsi(operands[0], operands[1]);")
 ...
 
 
-const char* hasegawa_mov(rtx x, rtx y)
+const char* hasegawa_movsi(rtx x, rtx y)
 {
   if (REG_P(x) && REGNO(x) == 0 && REG_P(y) && REGNO(y) == 1)
     return "enter";
 
-のようにすれば少し無理やりだができる. (define_insn "prologue" で指定す
+のようにすれば少し無理矢理だができる. (define_insn "prologue" で指定す
 る 3 番地コード
 
   [(set (reg:SI 0) (reg:SI 1))]
