@@ -61,8 +61,9 @@ static const char *const initial_reg_names[] = REGISTER_NAMES;
 
 static const char initial_fixed_regs[] = FIXED_REGISTERS;
 
-    レジスタ番号 n のレジスタが函数呼び出しの前後で変わらないのであれば 1 そうでなければ 0
-    となるようにマクロ指定する. REGISTER_NAMES と要素数が等しくなければならない.
+    レジスタ番号 n のレジスタをレジスタアロケーションアロゴリズムで使用できないならば 1
+    そうでなければ 0 となるようにマクロを指定する. REGISTER_NAMES と要素数が等しくな
+    ければならない.
 
 (*) CALL_USED_REGISTERS
 
@@ -132,7 +133,23 @@ static const char initial_call_used_regs[] = CALL_USED_REGISTERS;
 static const unsigned int_reg_class_contents[N_REG_CLASSES][N_REG_INTS]
   = REG_CLASS_CONTENTS;
 
-      ビットマップを指定する. 執筆中.
+      以下のようにビットマップを指定する.
+
+#define REGISTER_NAMES      { "sp", "fp", "a", "b" }
+
+enum reg_class {
+  NO_REGS, SP_REGS, FP_REGS, A_REGS, B_REGS,
+  GENERAL_REGS, ALL_REGS, LIM_REG_CLASSES
+};
+
+#define REG_CLASS_CONTENTS \
+/* NO_REGS */		{{ 0x00000000 }, \
+/* SP_REGS */		 { 0x00000001 }, \
+/* FP_REGS */		 { 0x00000002 }, \
+/* A_REGS */		 { 0x00000004 }, \
+/* B_REGS */		 { 0x00000008 }, \
+/* GENERAL_REGS */	 { 0x0000000c }, \
+/* ALL_REGS */           { 0x0000000f }}
 
 (*) BASE_REG_CLASS
 

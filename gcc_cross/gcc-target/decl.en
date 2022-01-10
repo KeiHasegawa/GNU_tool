@@ -67,8 +67,8 @@ One of refered part : gcc/reginfo.c
 static const char initial_fixed_regs[] = FIXED_REGISTERS;
 
     Declare macro value so that the number of its elements is equal to
-    that of `REGISTER_NAMES'. If `n'th register is not changed between
-    before and after calling function, `n'th element is 1, otherwise 0.
+    that of `REGISTER_NAMES'. If `n'th register are not available
+    for the register allocator, `n'th element is 1, otherwise 0.
 
 (*) CALL_USED_REGISTERS
 
@@ -143,7 +143,23 @@ One of refered part : gcc/reginfo.c
 static const unsigned int_reg_class_contents[N_REG_CLASSES][N_REG_INTS]
   = REG_CLASS_CONTENTS;
 
-      Declare bitmap macro. Now writing.
+      Declare bitmap macro like below:
+
+#define REGISTER_NAMES      { "sp", "fp", "a", "b" }
+
+enum reg_class {
+  NO_REGS, SP_REGS, FP_REGS, A_REGS, B_REGS,
+  GENERAL_REGS, ALL_REGS, LIM_REG_CLASSES
+};
+
+#define REG_CLASS_CONTENTS \
+/* NO_REGS */		{{ 0x00000000 }, \
+/* SP_REGS */		 { 0x00000001 }, \
+/* FP_REGS */		 { 0x00000002 }, \
+/* A_REGS */		 { 0x00000004 }, \
+/* B_REGS */		 { 0x00000008 }, \
+/* GENERAL_REGS */	 { 0x0000000c }, \
+/* ALL_REGS */           { 0x0000000f }}
 
 (*) BASE_REG_CLASS
 
