@@ -1,0 +1,21 @@
+define_mode_iterator
+
+使用例は以下:
+
+(define_mode_iterator ALLI [BLK BI QI HI SI DI TI SF DF])
+
+(define_insn "mov<mode>"
+  [(set (match_operand:ALLI 0 "nonimmediate_operand" "")
+	(match_operand:ALLI 1 "general_operand" ""))]
+  ""
+  "%0 := %1")
+
+これは全ての代入に対してのコード生成を定義していることになる. すなわち,
+
+gen_movblk, gen_movbi, gen_movqi, gen_movhi, gen_movsi, gen_movdi,
+gen_movti, gen_movsf, gen_movdf
+
+の全ての函数が生成されることになる.
+
+
+

@@ -1,0 +1,22 @@
+define_mode_iterator
+
+For example,
+
+(define_mode_iterator ALLI [BLK BI QI HI SI DI TI SF DF])
+
+(define_insn "mov<mode>"
+  [(set (match_operand:ALLI 0 "nonimmediate_operand" "")
+	(match_operand:ALLI 1 "general_operand" ""))]
+  ""
+  "%0 := %1")
+
+Above describes every assignment. i.e.
+
+gen_movblk, gen_movbi, gen_movqi, gen_movhi, gen_movsi, gen_movdi,
+gen_movti, gen_movsf, gen_movdf
+
+are generated.
+
+
+
+
