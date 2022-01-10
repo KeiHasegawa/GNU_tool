@@ -207,7 +207,8 @@ One of refered part : gcc/combine.c
 
 	      if (BITS_BIG_ENDIAN)
 
-      Under investigating. We can declare using `constexpr'.
+      Normally, define 0. Define 1 if most significant bit is lowest numbered.
+      We can declare using `constexpr'.
 
 (*) BYTES_BIG_ENDIAN
 
@@ -215,7 +216,8 @@ One of refered part : gcc/c/c-typeck.c
 
 	      if (BYTES_BIG_ENDIAN)
 
-      Under investigating. We can declare using `constexpr'.
+      Define 1 if most significant byte of a word is the lowest numbered.
+      We can declare using `constexpr'.
 
 (*) WORDS_BIG_ENDIAN
 
@@ -292,9 +294,12 @@ One of refered part : gcc/alias.c
 
     if (FUNCTION_ARG_REGNO_P (OUTGOING_REGNO (i))
 
-      Under investigating. Add below declaration:
+      Add below declaration:
 
       extern bool FUNCTION_ARG_REGNO_P(int regno);
+
+      retrun true if `regno' is a possible register number for function
+      argument passing.
 
 (*) ELIMINABLE_REGS
 

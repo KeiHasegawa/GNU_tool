@@ -195,7 +195,8 @@ extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
 
 	      if (BITS_BIG_ENDIAN)
 
-      調査中. constexpr による宣言も OK.
+      通常は 0 に define する. 符号ビットが最下位ビットならば 1 に define する.
+      constexpr による宣言も OK.
 
 (*) BYTES_BIG_ENDIAN
 
@@ -203,7 +204,7 @@ extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
 
 	      if (BYTES_BIG_ENDIAN)
 
-      調査中. constexpr による宣言も OK.
+      ビッグエンディアンならば 1 に define する. constexpr による宣言も OK.
 
 (*) WORDS_BIG_ENDIAN
 
@@ -211,8 +212,16 @@ extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
 
   if (BYTES_BIG_ENDIAN != WORDS_BIG_ENDIAN)
 
-      調査中. constexpr による宣言も OK.
+      マルチワードの並びがビッグエンディアンならば 1 に define する. すなわち 
+      0x123456789abcef0LL がメモリに配置されているとき以下のようになっている.
 
+      +------------+ +0
+      | 0x12345678 |
+      +------------+ +4
+      | 0x9abcdef0 |
+      +------------+ +8
+
+      constexpr による宣言も OK.
 
 (*) FUNCTION_BOUNDARY
 
@@ -284,11 +293,12 @@ extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
 
     if (FUNCTION_ARG_REGNO_P (OUTGOING_REGNO (i))
 
-      調査中. 以下の宣言をしておく:
+      以下の宣言をしておく:
 
       extern bool FUNCTION_ARG_REGNO_P(int regno);
 
-      regno が函数を呼び出すときに引数を渡すのに使用されるかどうかを判定する.
+      regno が函数を呼び出すときに引数を渡すのに使用されるならば true をそうでなければ
+      false を返す.
 
 (*) ELIMINABLE_REGS
 
@@ -390,8 +400,9 @@ void ASM_OUTPUT_ALIGN(FILE* fp, int n)
       +----------------+
 
       この場合は FIRST_PARM_OFFSET の戻り値は 8 になる. 函数が構造体を返す場合
-      等必ずしも最初の引数がオフセット 8 にならない場合は FIRST_PARM_OFFSET の
-      引数の tree func に応じて返す値を調整する必要がある.
+      等必ずしも最初の引数がオフセット 8 にならない場合は, 実装によっては
+      FIRST_PARM_OFFSET の引数の tree func に応じて返す値を調整する必要がある
+      かもしれない.
 
 (*) CASE_VECTOR_MODE
 
