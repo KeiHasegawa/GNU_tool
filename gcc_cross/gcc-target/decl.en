@@ -193,9 +193,44 @@ One of refered part : gcc/calls.c
 
   INIT_CUMULATIVE_ARGS (args_so_far_v, funtype, NULL_RTX, fndecl, n_named_args);
 
-      Under investigating. Add below declaration:
+      Add below declaration:
 
-extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
+      extern void INIT_CUMULATIVE_ARGS(CUMULATIVE_ARGS& cum,
+                                       tree fntype, rtx,
+                                       tree fundecl, int);
+
+      The frame size of function of target code is calculated from the local
+      variables declared at the function and the medium variables used
+      at the function.
+      Except of these, there is a mechanizum for chaing the frame size
+      for saving the arguments of the function into stack.
+
+      For example, think about compiler which passes 4 arguments
+      by using `r0', `r1', `r2', and `r3'.
+
+      int f(int a, int b, int c, int d, int e)
+      {
+        ...
+      }
+
+      For above function, the frame size may be added sizeof(int) * 4 bytes.
+      For this calculation, `cum' argument of `INIT_CUMULATIVE_ARGS'
+      is initialized. And for each argument, the function defined as
+
+      TARGET_FUNCTION_ARG_ADVANCE
+
+      macro is called. There, initialized value are updated. And also
+      for each argunmet, the function defined as
+
+      TARGET_FUNCTION_INCOMING_ARG
+
+      macro is called. There, return which register is used. For above `f',
+
+      a : r0
+      b : r1
+      c : r2
+      d : r3
+      e : not register
 
 (*) MOVE_MAX
 
@@ -427,7 +462,7 @@ One of refered part : gcc/function.c
       In this case, `FIRST_PARM_OFFSET' must return 8. If the function
       return type is structure, 1st argument offset might not be 8.
       So according to the argument `tree func' of `FIRST_PARM_OFFSET',
-      return value must be calcurated.
+      return value must be calculated.
 
 (*) CASE_VECTOR_MODE
 

@@ -175,7 +175,7 @@ enum reg_class {
 
   CUMULATIVE_ARGS info;
 
-    次に述べる INIT_CUMULATIVE_ARGS に必要な構造体を宣言する.
+    次に述べる INIT_CUMULATIVE_ARGS に必要な型を宣言する.
 
 (*) INIT_CUMULATIVE_ARGS
 
@@ -183,9 +183,43 @@ enum reg_class {
 
   INIT_CUMULATIVE_ARGS (args_so_far_v, funtype, NULL_RTX, fndecl, n_named_args);
 
-      調査中. 以下の宣言を追加するとよい:
+      以下の宣言を追加する:
       
-extern void INIT_CUMULATIVE_ARGS(const CUMULATIVE_ARGS&, tree, rtx, tree, int);
+      extern void INIT_CUMULATIVE_ARGS(CUMULATIVE_ARGS& cum,
+                                       tree fntype, rtx,
+                                       tree fundecl, int);
+
+      函数のフレームサイズはその函数で宣言されたローカル変数や中間変数から計算される.
+      この分とは別に, この函数はターゲットコードの函数がとる引数をスタックに保存する
+      ためにフレームサイズを変更する仕組みで使用される.
+
+      例えば, 最初の 4 つの引数を GPR の r0, r1, r2, r3 で渡すような ABI を
+      採用しているコンパイラに対して
+
+      int f(int a, int b, int c, int d, int e)
+      {
+        ...
+      }
+
+      のような函数に対しては, 最初の 4 つの引数に対して sizeof(int) * 4 分フレーム
+      サイズを変更する必要がある(かもしれない).
+      この計算を行なうために第 1 引数の cum の初期化を INIT_CUMULATIVE_ARGS で行なう.
+      各引数に対して
+
+      TARGET_FUNCTION_ARG_ADVANCE
+
+      のマクロで定義される函数が順に呼び出されるので INIT_CUMULATIVE_ARGS で初期化した
+      値を順次更新していく.
+
+      TARGET_FUNCTION_INCOMING_ARG
+
+      のマクロで定義される函数も順次呼び出されるので上で計算した値をもとにどのレジスタを
+      使用するのかを返すようにする. 上の f ならば
+
+      引数 a に対して r0 レジスタ, 引数 b に対して r1 レジスタ, 引数 c に対して
+      r2 レジスタ, 引数 d に対して r3 レジスタ, 引数 e に対してはレジスタを使用しない
+
+      ということを示すようにする.
 
 (*) MOVE_MAX
 
