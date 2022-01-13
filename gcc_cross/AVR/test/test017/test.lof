@@ -1,0 +1,36 @@
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x214 lma 0x0
+Start address 0x0
+Transfer rate: 4256 bits in <1 sec.
+Breakpoint 1 at 0xa2: file test.c, line 17.
+Breakpoint 2 at 0xe2: file setjmp.S, line 4.
+Breakpoint 3 at 0x174: file setjmp.S, line 83.
+Breakpoint 4 at 0x82: file test.c, line 12.
+
+Breakpoint 1, main () at test.c:17
+17	  int r = setjmp(buf);
+
+Breakpoint 2, setjmp () at setjmp.S:4
+4		mov	r22, r30	; save r30
+#0  setjmp () at setjmp.S:4
+#1  0x000000aa in main () at test.c:17
+
+Breakpoint 3, longjmp () at setjmp.S:83
+83		mov	r30, r24	; set ZL
+#0  longjmp () at setjmp.S:83
+#1  0x00000054 in f (n=0, buf=0x80fecc) at test.c:6
+#2  0x00000064 in f (n=1, buf=0x80fecc) at test.c:7
+#3  0x00000064 in f (n=2, buf=0x80fecc) at test.c:7
+#4  0x00000064 in f (n=3, buf=0x80fecc) at test.c:7
+#5  0x00000064 in f (n=4, buf=0x80fecc) at test.c:7
+#6  0x00000064 in f (n=5, buf=0x80fecc) at test.c:7
+#7  0x000000c6 in main () at test.c:19
+
+Breakpoint 4, g (n=123) at test.c:12
+12	}
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
