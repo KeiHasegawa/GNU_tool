@@ -5,7 +5,7 @@
 	arm-elf-gcc -o $@ $< -c -g
 
 %.elf : %.o 
-	arm-elf-ld -o $@ start.o $< -T $(basename $<).x
+	arm-elf-ld -o $@ ../default.o $< -T ../default.x
 
 %.objdump : %.elf
 	arm-elf-objdump -x -d -g $< > $@
