@@ -1,0 +1,24 @@
+set prompt (aarch64-elf-gdb) 
+target sim
+load
+# 0x80000 : _stack
+sim memory-region 0x7f000,0x1000
+# 0x415828 : end
+sim memory-region 0x415828,0x1000
+b main
+b puts
+b _sbrk
+b _isatty
+b _fstat
+b _write
+b _exit
+command
+quit
+end
+run
+continue
+continue
+continue
+continue
+continue
+continue

@@ -1,8 +1,8 @@
-all:hello.objdump hello.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-hello.elf:hello.o start.o dummy.o
-	aarch64-elf-ld -o $@ start.o $< dummy.o -Map $(basename $<).map -lc
+test.elf:test.o test.x
+	aarch64-elf-ld -o $@ $< -T $(basename $<).x
 
-hello.lof:hello.log
+test.lof:test.log
