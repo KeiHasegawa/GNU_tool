@@ -1,7 +1,8 @@
-all:test019.objdump test019.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test019.elf:test019.o test019.x start.o
+test.elf:test.o start.o
+	avr-elf-ld -o $@ start.o test.o -T ../default.x
 
-test019.lof:test019.log
+test.lof:test.log
