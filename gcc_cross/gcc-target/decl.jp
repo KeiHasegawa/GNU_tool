@@ -13,14 +13,20 @@ static const char *const initial_reg_names[] = REGISTER_NAMES;
     r15 をスタックポインタとする場合
 
 #define REGISTER_NAMES { "r0", "r1", "r2", "r3", "r4", "r5", "r6", \
-    "r7", "r8", "r9", "r10", "r11", "r12", "r13, "fp", "sp" }
+    "r7", "r8", "r9", "r10", "r11", "r12", "r13, "fp", "sp", "dummy" }
 
 #define FRAME_POINTER_REGNUM 14
 #define STACK_POINTER_REGNUM 15
 
     のように宣言する. "fp" はフレームポインタの名前としてアセンブラ出力に使用され
-    "sp" はスタックポインタの名前としてアセンブラ出力に使用される.
+    "sp" はスタックポインタの名前としてアセンブラ出力に使用される. 最後の "dummy"
+    必要だが, 簡単な理由を説明すると以下のマクロ
 
+#define HARD_REGISTER_NUM_P(REG_NO) ((REG_NO) < FIRST_PSEUDO_REGISTER)
+
+    で HARD_REGISTER_NUM_P(STACK_POINTER_REGNUM) を 1 に評価するためである.
+    最後の要素に対して 0 に評価されて問題ないならば上のような "dummy" は必要ない.
+ 
 (*) STACK_POINTER_REGNUM
 
 参照箇所の 1 つ gcc/c-family/c-cppbuiltin.c
@@ -428,10 +434,11 @@ void ASM_OUTPUT_ALIGN(FILE* fp, int n)
       extern int FIRST_PARM_OFFSET(tree func); の宣言を追加するとよい.
       もしくはマクロにしてもよい.  
 
-      函数の最初の引数があるスタックのアドレスを ARG_POINTER_REGNUM で定義
-      したレジスタが指すようにこの函数でオフセットを指定する.
+      函数の引数で, スタックを使用して渡す最初の引数があるスタックのアドレスを
+      ARG_POINTER_REGNUM で定義したレジスタが指すようにこの函数でオフセットを指定する.
 
-      仮にスタックフレームが以下のようになっているとする. そして ARG_POINTER_REGNUM
+      例えば, 函数呼び出しで引数は全てスタックを使用して渡す ABI のコンパイラで
+      スタックフレームが以下のようになっているとする. そして ARG_POINTER_REGNUM
       を FRAME_POINTER_REGNUM と等しくなるように宣言しているとする.
 
       +----------------+ <- sp_{new}
