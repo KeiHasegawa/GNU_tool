@@ -69,7 +69,7 @@
   	  /* A delayed software breakpoint event.  Ignore the trap.  */
   	  infrun_debug_printf ("delayed software breakpoint trap, ignoring");
 *** gdb-10.2.org/sim/cris/cris-tmpl.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.cris-elf/sim/cris/cris-tmpl.c	2021-12-25 14:36:05.000000000 +0900
+--- gdb-10.2.cris-elf/sim/cris/cris-tmpl.c	2021-12-28 09:37:15.000000000 +0900
 ***************
 *** 71,77 ****
   
@@ -98,8 +98,8 @@
   /* Accessor function for simulator internal use.
      Note the contents of BUF are in target byte order.  */
 ***************
-*** 87,92 ****
---- 88,97 ----
+*** 87,94 ****
+--- 88,103 ----
   MY (f_store_register) (SIM_CPU *current_cpu, int rn,
   		      unsigned char *buf, int len ATTRIBUTE_UNUSED)
   {
@@ -108,5 +108,11 @@
 +     return 4;
 +   }
     XCONCAT3(crisv,BASENUM,f_h_gr_set) (current_cpu, rn, GETTSI (buf));
++ #if 0  
     return -1;
++ #else
++   return len;
++ #endif
   }
+  
+  #if WITH_PROFILE_MODEL_P
