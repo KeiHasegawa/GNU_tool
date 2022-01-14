@@ -1,9 +1,9 @@
-all:test025.objdump test025.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test025.elf:test025.o test025.x Makefile
-	cr16-elf-ld -o $@ test025.o -T test025.x -Map test025.map \
+test.elf:test.o Makefile
+	cr16-elf-ld -o $@ test.o -T ../default.x -Map test.map \
 	--defsym label1=0xf \
 	--defsym label2=0x10 \
 	--defsym label3=0xfff \
@@ -16,10 +16,10 @@ test025.elf:test025.o test025.x Makefile
 
 
 
-test025.o.objdump:test025.o
+test.o.objdump:test.o
 	cr16-elf-objdump -d --dwarf=rawline,decodedline $< > $@
 
-test025.objdump:test025.elf
+test.objdump:test.elf
 	cr16-elf-objdump -d --dwarf=rawline,decodedline $< > $@
 
-test025.lof:test025.log
+test.lof:test.log
