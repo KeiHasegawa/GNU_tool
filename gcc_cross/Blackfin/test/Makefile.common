@@ -5,7 +5,7 @@
 	bfin-elf-gcc -o $@ $< -c -g
 
 %.elf : %.o
-	bfin-elf-ld -o $@ start.o $< -T $(basename $<).x
+	bfin-elf-ld -o $@ ../default.o $< -T ../default.x
 
 %.objdump : %.elf
 	bfin-elf-objdump -x -d -g $< > $@
