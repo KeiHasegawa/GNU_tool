@@ -1,0 +1,15 @@
+set prompt (aarch64-elf-gdb) 
+target sim
+load
+sim memory-region 0xe00,0x200
+b f
+run
+p $w0
+p $w1
+p/x $x29
+p/x $x30
+step
+x/4wx $sp
+finish
+p $w0
+quit
