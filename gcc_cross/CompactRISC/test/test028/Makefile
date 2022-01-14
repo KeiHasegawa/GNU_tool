@@ -1,18 +1,18 @@
-all:test028.objdump test028.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
 LIBC = /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/cr16-elf/lib/libc.a
 
-test028.elf:start.o test028.o test028.x Makefile
-	cr16-elf-ld -o $@ start.o test028.o -T test028.x \
-	-Map test028.map $(LIBC)
+test.elf:test.o ../default.o Makefile
+	cr16-elf-ld -o $@ ../default.o test.o -T ../default.x \
+	-Map test.map $(LIBC)
 
-test028.o.objdump:test028.o
+test.o.objdump:test.o
 	cr16-elf-objdump -d --dwarf=rawline,decodedline $< > $@
 
-test028.objdump:test028.elf
+test.objdump:test.elf
 	cr16-elf-objdump -d --dwarf=rawline,decodedline $< > $@
 
-test028.lof:test028.log
+test.lof:test.log
 
