@@ -5,7 +5,7 @@
 	cr16-elf-gcc -o $@ $< -c -g
 
 %.elf : %.o
-	cr16-elf-ld -o $@ start.o $< -T $(basename $<).x
+	cr16-elf-ld -o $@ ../default.o $< -T ../default.x
 
 %.objdump : %.elf
 	cr16-elf-objdump -x -d -g $< > $@

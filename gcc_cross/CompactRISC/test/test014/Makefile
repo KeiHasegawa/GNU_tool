@@ -1,12 +1,12 @@
-all:test014.objdump test014.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test014.a:test014a.o test014b.o test014c.o
-	ar r $@ test014a.o test014b.o test014c.o
+test.a:testa.o testb.o testc.o
+	ar r $@ testa.o testb.o testc.o
 
-test014.elf:start.o test014.o test014.a test014.x
-	cr16-elf-ld -o $@ start.o test014.o test014.a \
-	-T test014.x --defsym _heap=0x1000
+test.elf:test.o test.a ../default.o
+	cr16-elf-ld -o $@ ../default.o test.o test.a \
+	-T ../default.x --defsym _heap=0x1000
 
-test014.lof:test014.log
+test.lof:test.log
