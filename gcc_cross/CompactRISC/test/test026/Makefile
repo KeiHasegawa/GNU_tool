@@ -1,14 +1,14 @@
-all:test026.objdump test026.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test026.elf:start.o test026.o test026.x Makefile
-	cr16-elf-ld -o $@ start.o test026.o -T test026.x -Map test026.map
+test.elf:test.o ../default.o Makefile
+	cr16-elf-ld -o $@ ../default.o test.o -T ../default.x -Map test.map
 
-test026.o.objdump:test026.o
+test.o.objdump:test.o
 	cr16-elf-objdump -d --dwarf=rawline,decodedline $< > $@
 
-test026.objdump:test026.elf
+test.objdump:test.elf
 	cr16-elf-objdump -d --dwarf=rawline,decodedline $< > $@
 
-test026.lof:test026.log
+test.lof:test.log
