@@ -1,8 +1,8 @@
-all:test003.objdump test003.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test003.elf:test003.o test003.x
-	bfin-elf-ld -o $@ test003.o -T test003.x
+test.elf:test.o
+	bfin-elf-ld -o $@ test.o -T ../default.x
 
-test003.lof:test003.log
+test.lof:test.log
