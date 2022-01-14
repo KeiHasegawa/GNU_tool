@@ -1,7 +1,8 @@
-all:test012.objdump test012.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test012.elf:start.o test012.o
+test.elf:test.o ../default.o test.x
+	cr16-elf-ld -o $@ ../default.o $< -T test.x
 
-test012.lof:test012.log
+test.lof:test.log
