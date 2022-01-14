@@ -1,6 +1,6 @@
-#include "test016a.c"
-#include "test016b.c"
-#include "test016c.c"
+#include "testa.c"
+#include "testb.c"
+#include "testc.c"
 
 char* _sbrk_r(int size)
 {
