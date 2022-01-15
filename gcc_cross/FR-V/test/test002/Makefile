@@ -1,11 +1,8 @@
-all:start.elf start.lof
+all:test.elf test.lof
 
 include ../Makefile.common
 
-start.elf:start.o
-	frv-elf-ld -o $@ $< -T start.x -Map start.map
+test.elf:test.o
+	frv-elf-ld -o $@ $< -T ../default.x
 
-start.elf:Makefile
-start.elf:start.x
-
-start.lof:start.log
+test.lof:test.log
