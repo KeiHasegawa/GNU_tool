@@ -1,11 +1,11 @@
-all:test013.objdump test013.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test013.elf:test013.o test013.x
-	frv-elf-ld -o $@ $< -T test013.x
+test.elf:test.o
+	frv-elf-ld -o $@ $< -T ../default.x
 
-test013.log:test013.elf gdbcom
+test.log:test.elf gdbcom
 	echo quit | wdog.exe -v frv-elf-gdb -q -x gdbcom $< > $@ 2>&1 || echo FAIL
 
-test013.lof:test013.log
+test.lof:test.log
