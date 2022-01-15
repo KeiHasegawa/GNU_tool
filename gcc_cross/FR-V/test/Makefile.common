@@ -5,7 +5,7 @@
 	frv-elf-gcc -o $@ $< -c -g
 
 %.elf : %.o
-	frv-elf-ld -o $@ start.o $< -T $(basename $<).x
+	frv-elf-ld -o $@ ../default.o $< -T ../default.x
 
 %.objdump : %.elf
 	frv-elf-objdump -x -d -g $< > $@

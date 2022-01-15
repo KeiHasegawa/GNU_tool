@@ -1,8 +1,8 @@
-all:start.objdump start.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-start.elf:start.o start.x
-	frv-elf-ld -o start.elf start.o -T start.x -Map start.map
+test.elf:test.o
+	frv-elf-ld -o test.elf test.o -T ../default.x
 
-start.lof:start.log
+test.lof:test.log
