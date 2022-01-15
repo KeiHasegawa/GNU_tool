@@ -1,10 +1,10 @@
-all:test036.objdump test036.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test036.elf:start.o test036.o test036.x
+test.elf:test.o ../default.o
 
-test036.log:test036.elf gdbcom
+test.log:test.elf gdbcom
 	echo quit | wdog.exe -v cr16-elf-gdb -q -x gdbcom $< > $@ 2>&1 || echo FAIL
 
-test036.lof:test036.log
+test.lof:test.log
