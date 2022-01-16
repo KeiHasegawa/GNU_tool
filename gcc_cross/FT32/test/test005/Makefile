@@ -1,12 +1,8 @@
-all:test005.objdump test005.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-LIBGCC = /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/ft32-elf/10.2.0/libgcc.a
+test.elf:test.o ../default.o
 
-test005.elf:start.o test005.o test005.x
-	ft32-elf-ld -o $@ start.o test005.o \
-	$(LIBGCC) -T test005.x -Map test005.map
-
-test005.lof:test005.log
+test.lof:test.log
 
