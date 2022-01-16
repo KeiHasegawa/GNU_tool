@@ -1,11 +1,11 @@
-all:test009.objdump test009.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test009.elf:test009.o test009.x
-	ft32-elf-ld -o $@ $< -T test009.x 
+test.elf:test.o
+	ft32-elf-ld -o $@ $< -T ../default.x
 
-test009.log:test009.elf gdbcom
+test.log:test.elf gdbcom
 	echo quit | wdog.exe -v ft32-elf-gdb -q -x gdbcom $< > $@ 2>&1 || echo FAIL
 
-test009.lof:test009.log
+test.lof:test.log
