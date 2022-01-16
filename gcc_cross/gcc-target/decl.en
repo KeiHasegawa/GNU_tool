@@ -178,6 +178,15 @@ One of refered part : gcc/defaults.h
 
     Declare as the same with word size. i.e. For 32 bit processor,
     It becomes 4 normally. We can declare using `constexpr'.
+    If you have to declare not as 4, you also have to adjust some stuff.
+
+    1 : avr, pru, rl78
+    2 : cr16, h8300(*1), m32c, m68hc11
+    8 : aarch64, mips(*2), ppc(*2)
+
+    (*1) Depends on option. Without option, it becomes 2.
+    (*2) Depends on option, Without option, it becomes 4.
+
 
 (*) CUMULATIVE_ARGS
 
@@ -561,8 +570,38 @@ One of refered part : gcc/varasm.c
       when switching `.text', `.data', `.bss' section. These are
       refered at preprocessor directive. So it must be a macro value.
 
+(*) POINTER_SIZE
 
+One of refered part : gcc/defaults.h
 
+#ifndef POINTER_SIZE
+#define POINTER_SIZE BITS_PER_WORD
+#endif
 
+      If `Pmode' is declared that it is eqault to `DImode', then define
+      `POINTER_SIZE' as 8. It is refered at preprocessor directive. So
+      it must be a macro value.
 
+(*) INCOMING_RETURN_ADDR_RTX
 
+One of refered part : gcc/dwarf2cfi.c
+
+      initial_return_save (INCOMING_RETURN_ADDR_RTX);
+
+      When envoking `cc1' with `-g' option, above line is executed.
+      Specifiy return address is location at the start address of called
+      function.  For example, if the target machine has link register
+      like aarch64 `x30' register,
+
+// aarch64
+#define INCOMING_RETURN_ADDR_RTX gen_rtx_REG(Pmode, X30_REGNUM)
+
+      For example, if return address is located at stack pointed
+      out by stack pointer like m68hc11
+
+#define INCOMING_RETURN_ADDR_RTX \
+  gen_rtx_MEM(VOIDmode, gen_rtx_REG(VOIDmode, STACK_POINTER_REGNUM))
+
+      This is refered at preprocessor directive, so it must be
+      a macro. If `INCOMING_RETURN_ADDR_RTX' is not defined,
+      it is define so that runtime error occurs.
