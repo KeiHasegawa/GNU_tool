@@ -174,6 +174,14 @@ enum reg_class {
 
     いわゆるワードサイズと等しくする. 32 ビットプロセッサならば通常は 4. constexpr に
     よる宣言も OK.
+    この値を 4 以外にする場合は他の部分も調整が必要になる.
+
+    1 : avr, pru, rl78
+    2 : cr16, h8300(*1), m32c, m68hc11
+    8 : aarch64, mips(*2), ppc(*2)
+
+    (*1) オプションに依存するがオプションなしで 2
+    (*2) オプションに依存するがオプションなしで 4
 
 (*) CUMULATIVE_ARGS
 
@@ -557,3 +565,38 @@ extern void hasegawa_print_operand(FILE*, rtx, int);
       文字列リテラルをマクロで指定する. .text, .data, .bss セクションに切り替えるとき
       に生成する疑似命令を指定する. プリプロセッサのディレクティブで参照されているので
       constexpr による宣言はできない.
+
+(*) POINTER_SIZE
+
+参照箇所の 1 つ gcc/defaults.h
+
+#ifndef POINTER_SIZE
+#define POINTER_SIZE BITS_PER_WORD
+#endif
+
+      Pmode を DImode と等しくなるように宣言している場合は POINTER_SIZE が 8 と等しく
+      なるようにする. プリプロセッサのディレクティブで参照されているので
+      constexpr による宣言はできない.
+
+(*) INCOMING_RETURN_ADDR_RTX
+
+参照箇所の 1 つ gcc/dwarf2cfi.c
+
+      initial_return_save (INCOMING_RETURN_ADDR_RTX);
+
+      -g オプション付きで cc1 を起動したときに上を実行する. 函数が呼び出された直後に
+      戻りアドレスがどこにあるかを指定する. 例えば aarch64 のようにリンクレジスタである
+      x30 レジスタに戻りアドレスがあるのならば
+
+#define INCOMING_RETURN_ADDR_RTX gen_rtx_REG(Pmode, X30_REGNUM)
+
+      のように指定する.
+      例えば m68hc11 のようにスタックポインタが指しているところに戻りアドレスが
+      あるのならば
+
+#define INCOMING_RETURN_ADDR_RTX \
+  gen_rtx_MEM(VOIDmode, gen_rtx_REG(VOIDmode, STACK_POINTER_REGNUM))
+
+      のように指定する. プリプロセッサのディレクティブで参照されるのでマクロで
+      指定する必要がある. この定義がなければ, 実行時エラーするようにマクロが
+      定義される.
