@@ -1,0 +1,16 @@
+set prompt (ft32-elf-gdb) 
+target sim
+load
+sim memory-region 0x80ef00,0x1000
+b main
+run
+s
+p $r0
+p $r1
+x $sp
+s
+x/4wx $sp
+finish
+p $r0
+quit
+
