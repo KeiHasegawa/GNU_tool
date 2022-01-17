@@ -5,7 +5,7 @@
 	m32r-elf-gcc -o $@ $< -c -g
 
 %.elf : %.o
-	m32r-elf-ld -o $@ start.o $< -T $(basename $<).x
+	m32r-elf-ld -o $@ ../default.o $< -T ../default.x
 
 %.objdump : %.elf
 	m32r-elf-objdump -x -d -g $< > $@
