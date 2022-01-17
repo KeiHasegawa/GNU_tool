@@ -1,0 +1,35 @@
+*** gcc-10.2.0.org/gcc/config.gcc	2021-10-16 10:31:18.000000000 +0900
+--- gcc-10.2.0.aarch64-elf.mine/gcc/config.gcc	2022-01-05 17:48:34.000000000 +0900
+***************
+*** 315,330 ****
+  	tmake_file=m32c/t-m32c
+  	target_has_targetm_common=no
+          ;;
+! aarch64*-*-*)
+! 	cpu_type=aarch64
+! 	extra_headers="arm_fp16.h arm_neon.h arm_bf16.h arm_acle.h arm_sve.h"
+! 	c_target_objs="aarch64-c.o"
+! 	cxx_target_objs="aarch64-c.o"
+! 	d_target_objs="aarch64-d.o"
+! 	extra_objs="aarch64-builtins.o aarch-common.o aarch64-sve-builtins.o aarch64-sve-builtins-shapes.o aarch64-sve-builtins-base.o aarch64-sve-builtins-sve2.o cortex-a57-fma-steering.o aarch64-speculation.o falkor-tag-collision-avoidance.o aarch64-bti-insert.o"
+! 	target_gtfiles="\$(srcdir)/config/aarch64/aarch64-builtins.c \$(srcdir)/config/aarch64/aarch64-sve-builtins.h \$(srcdir)/config/aarch64/aarch64-sve-builtins.cc"
+! 	target_has_targetm_common=yes
+! 	;;
+  alpha*-*-*)
+  	cpu_type=alpha
+  	extra_options="${extra_options} g.opt"
+--- 315,328 ----
+  	tmake_file=m32c/t-m32c
+  	target_has_targetm_common=no
+          ;;
+! aarch64-*-elf*)
+!  	tm_file="dbxelf.h elfos.h usegas.h newlib-stdint.h aarch64/aarch64.h"
+!  	tm_p_file="aarch64/aarch64-protos.h"
+!  	md_file="aarch64/aarch64.md"
+!  	out_file="aarch64/aarch64.c"
+!  	tmake_file="aarch64/t-aarch64"
+!  	use_gcc_stdint=wrap
+!          ;;
+  alpha*-*-*)
+  	cpu_type=alpha
+  	extra_options="${extra_options} g.opt"

@@ -1,0 +1,59 @@
+cc1 model
+
+cc1 model of aarch64-elf-gcc can be built like below:
+
+% xz -d -c ../gcc-10.2.0.tar.xz | tar xf -
+% mv gcc-10.2.0 gcc-10.2.0.aarch64-elf.mine
+% cd gcc-10.2.0.aarch64-elf.mine
+% patch -p1 < ../gcc-10.2.0.aarch64-elf.mine.diff
+% rm -r -f gcc/config/aarch64
+% tar xvf ../aarch64-elf.mine.tar
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=aarch64-elf --with-newlib
+% make all-gcc
+
+At 32 bit linux environment, host-i686-pc-linux-gnu/gcc/cc1 was built.
+This `cc1' can generate code for the source like below:
+
+#include <stdio.h>
+
+int f(int a, int b)
+{
+  return a + b;
+}
+
+int main()
+{
+  printf("hello world %d\n", f(5, 6));
+  return 0;
+}
+
+We can confirm that the generated code works well by using simple printf
+(See "Test tool").
+
+And also can confirm it works well by using aarch64-elf-gdb
+
+Stop at `main' and issue
+
+step
+where
+finish
+
+commands like below:
+
+% aarch64-elf-gdb -x gdbcom sample.elf
+...
+Breakpoint 1, main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+f (a=5, b=6) at a.c:5
+5	  return a + b;
+#0  f (a=5, b=6) at a.c:5
+#1  0x00000000000001e8 in main () at a.c:10
+0x00000000000001e8 in main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+Value returned is $1 = 11
+...
+%
+
+Of cause, this `cc1' is just a model so that it just can generate
+code for int + int especially function arguments.
+
