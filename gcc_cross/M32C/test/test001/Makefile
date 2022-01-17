@@ -1,8 +1,8 @@
-all:test001.objdump test001.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test001.elf:test001.o test001.x
-	m32c-elf-ld -o test001.elf test001.o -T test001.x -Map test001.map
+test.elf:test.o
+	m32c-elf-ld -o $@ $< -T ../default.x
 
-test001.lof:test001.log
+test.lof:test.log
