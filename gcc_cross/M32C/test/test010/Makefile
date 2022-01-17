@@ -1,16 +1,16 @@
-all:test010.objdump test010.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test010.elf:test010.o test010.x
-	m32c-elf-ld -o $@ $< -T $(basename $<).x
+test.elf:test.o
+	m32c-elf-ld -o $@ $< -T ../default.x
 
-test010.log:test010.elf
+test.log:test.elf
 	echo quit | wdog.exe -v m32c-elf-gdb -q -x gdbcom $< > $@ 2>&1 &
 	sleep 1
 	kill -INT `ps -ef | grep m32c-elf-gdb | awk '{print $$2}'`
 
-test010.lof:test010.log
+test.lof:test.log
 	grep -q 'Program received signal SIGINT, Interrupt.' $< || grep -q 'Program received signal SIGINT, Interrupt.' $<
 	echo PASS
 	touch $@
