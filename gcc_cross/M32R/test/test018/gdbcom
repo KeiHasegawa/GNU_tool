@@ -1,0 +1,14 @@
+set prompt (m32r-elf-gdb) 
+target sim
+load
+sim memory-region 0xe00,0x200
+b main
+run
+s
+p $r0
+p $r1
+s
+x/2wx $sp
+finish
+p $r0
+quit
