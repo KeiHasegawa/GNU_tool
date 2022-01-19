@@ -2,3 +2,75 @@ cc1 の雛形
 
 「AARCH64」=>「cc1 の雛形」=>「メモ」 を参照.
 AARCH64 と同様の手順で cc1 の雛形をビルドすることができる.
+
+(*) 備考
+gcc-10.2.0.m68hc11-elf.mine.diff
+
+では残念ながら共通ソースの gcc/toplev.c にパッチを入れる必要があった.
+
+該当箇所をコンパイルアウトする必要があるのだがマクロ
+
+DWARF2_DEBUGGING_INFO
+
+が elfos.h で define されてしまう. そこで試しに config.gcc から
+
+tm_file="dbxelf.h elfos.h usegas.h newlib-stdint.h m68hc11/m68hc11.h"
+
+の部分を
+
+tm_file="dbxelf.h usegas.h newlib-stdint.h m68hc11/m68hc11.h"
+
+のように elfos.h を外してみた.
+
+この修正に伴なって
+
+m68hc11.h に以下の宣言を追加し
+
+extern void ASM_GENERATE_INTERNAL_LABEL(char* res, const char* label, int no);
+
+extern void ASM_OUTPUT_COMMON(FILE*, const char*, HOST_WIDE_INT, HOST_WIDE_INT);
+
+extern void ASM_OUTPUT_SKIP(FILE*, unsigned HOST_WIDE_INT);
+
+extern void ASM_OUTPUT_LOCAL(FILE* fp, const char* name,
+			     unsigned HOST_WIDE_INT size,
+			     unsigned HOST_WIDE_INT rounded);
+
+
+m68hc11.c に上の函数の定義を追加した
+
+void ASM_GENERATE_INTERNAL_LABEL(char* res, const char* label, int no)
+{
+  strcpy(res, label);
+  char tmp[4];
+  sprintf(tmp, "%d", no);
+  strcat(res, tmp);
+}
+
+void
+ASM_OUTPUT_COMMON(FILE* fp, const char* name, HOST_WIDE_INT x, HOST_WIDE_INT y)
+{
+  fprintf(fp, "%s %lldd %lld", name, x, y);
+}
+
+void ASM_OUTPUT_SKIP(FILE* fp, unsigned HOST_WIDE_INT size)
+{
+  fprintf(fp, "	.skip %lld\n", size);
+}
+
+void ASM_OUTPUT_LOCAL(FILE* fp, const char* name,
+		      unsigned HOST_WIDE_INT size,
+		      unsigned HOST_WIDE_INT rounded)
+{
+  fprintf(fp, "	%s %lld %lld", name, size, rounded);
+}
+
+しかし以下
+
+gcc/defaults.h:347
+
+#if !defined (DWARF2_UNWIND_INFO) && defined (INCOMING_RETURN_ADDR_RTX)
+#define DWARF2_UNWIND_INFO 1
+#endif
+
+で 1 に define されてしまいやはり単純には回避できない.
