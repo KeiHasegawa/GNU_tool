@@ -1,7 +1,8 @@
-all:test024.objdump test024.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test024.elf:test024.o test024.x start.o
+test.elf:test.o start.o
+	h8300-elf-ld -o $@ start.o $< -T ../default.x
 
-test024.lof:test024.log
+test.lof:test.log
