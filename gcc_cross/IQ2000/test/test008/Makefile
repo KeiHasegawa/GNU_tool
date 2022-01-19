@@ -2,7 +2,7 @@ all:test.objdump test.lof
 
 include ../Makefile.common
 
-test.elf:test.o test.x
-	iq2000-elf-ld -o test.elf test.o -T test.x -Map test.map
+test.elf:test.o
+	iq2000-elf-ld -o $@ $< -T ../default.x
 
 test.lof:test.log
