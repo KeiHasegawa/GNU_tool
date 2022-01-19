@@ -1,11 +1,11 @@
-all:test019.objdump test019.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test019.elf:test019.o test019.x
-	h8300-elf-ld -o $@ $< -T test019.x
+test.elf:test.o
+	h8300-elf-ld -o $@ $< -T ../default.x
 
-test019.log:test019.elf gdbcom
+test.log:test.elf gdbcom
 	echo quit | wdog.exe -v h8300-elf-gdb -q -x gdbcom $< > $@ 2>&1 || echo FAIL
 
-test019.lof:test019.log
+test.lof:test.log
