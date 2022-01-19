@@ -1,7 +1,8 @@
-all:test016.objdump test016.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test016.elf:test016.o test016.x start.o
+test.elf:test.o start.o
+	iq2000-elf-ld -o $@ start.o $< -T ../default.x
 
-test016.lof:test016.log
+test.lof:test.log
