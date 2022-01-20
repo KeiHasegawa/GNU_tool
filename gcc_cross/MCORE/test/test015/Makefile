@@ -1,16 +1,16 @@
-all:test015.objdump test015.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test015.elf:test015.o test015.x
-	mcore-elf-ld -o $@ $< -T $(basename $<).x
+test.elf:test.o
+	mcore-elf-ld -o $@ $< -T ../default.x
 
-test015.log:test015.elf
+test.log:test.elf
 	echo quit | wdog.exe -v mcore-elf-gdb -q -x gdbcom $< > $@ 2>&1 &
 	sleep 1
 	kill -INT `ps -ef | grep mcore-elf-gdb | awk '{print $$2}'`
 
-test015.lof:test015.log
+test.lof:test.log
 	grep -q 'Program received signal SIGINT, Interrupt.' $< || grep -q 'Program received signal SIGINT, Interrupt.' $<
 	echo PASS
 	touch $@

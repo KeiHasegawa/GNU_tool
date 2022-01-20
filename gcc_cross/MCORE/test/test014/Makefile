@@ -1,11 +1,11 @@
-all:test014.objdump test014.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test014.elf:test014.o test014.x
-	mcore-elf-ld -o $@ $< -T test014.x
+test.elf:test.o
+	mcore-elf-ld -o $@ $< -T ../default.x
 
-test014.log:test014.elf
+test.log:test.elf
 	echo quit | wdog.exe -v mcore-elf-gdb -q -x gdbcom $< > $@ 2>&1 || echo FAIL
 
-test014.lof:test014.log
+test.lof:test.log
