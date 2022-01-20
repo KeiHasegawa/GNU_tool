@@ -1,7 +1,8 @@
-all:test017.objdump test017.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test017.elf:test017.o test017.x start.o
+test.elf:test.o start.o
+	mcore-elf-ld -o $@ start.o $< -T ../default.x
 
-test017.lof:test017.log
+test.lof:test.log

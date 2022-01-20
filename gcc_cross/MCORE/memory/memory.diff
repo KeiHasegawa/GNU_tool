@@ -34,7 +34,7 @@
   
     if (!found_loadable_section)
 *** gdb-10.2.org/sim/mcore/interp.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.mcore-elf/sim/mcore/interp.c	2021-12-26 06:00:17.000000000 +0900
+--- gdb-10.2.mcore-elf/sim/mcore/interp.c	2022-01-20 14:17:47.000000000 +0900
 ***************
 *** 268,285 ****
   #define IMM5	((inst >> 4) & 0x1F)
@@ -263,7 +263,7 @@
 !   if (code_area(pc) && code_area(pc+3))
 !     ibuf = rlat (pc & 0xFFFFFFFC);
 !   else
-!     ibuf = (rhat(pc & 0xFFFFFFFE) << 16) | 0x09f3;
+!     ibuf = rhat(pc & 0xFFFFFFFE);
     needfetch = 0;
   
     memops = 0;
@@ -318,7 +318,7 @@
 ! 	  if (code_area(pc) && code_area(pc+3))
 ! 	    ibuf = rlat (pc & 0xFFFFFFFC);
 ! 	  else
-! 	    ibuf = (rhat(pc & 0xFFFFFFFE) << 16) | 0x09f3;
+! 	    ibuf = rhat(pc & 0xFFFFFFFE);
   	  needfetch = 0;
   	}
       }
