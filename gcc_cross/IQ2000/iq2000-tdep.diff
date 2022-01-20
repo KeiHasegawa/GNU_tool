@@ -1,0 +1,51 @@
+*** gdb-10.2.org/gdb/iq2000-tdep.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.iq2000-elf/gdb/iq2000-tdep.c	2022-01-20 09:30:44.000000000 +0900
+***************
+*** 564,571 ****
+  		     struct type *type, struct regcache *regcache,
+  		     gdb_byte *readbuf, const gdb_byte *writebuf)
+  {
+!   if (iq2000_use_struct_convention (type))
+!     return RETURN_VALUE_STRUCT_CONVENTION;
+    if (writebuf)
+      iq2000_store_return_value (type, regcache, writebuf);
+    else if (readbuf)
+--- 564,577 ----
+  		     struct type *type, struct regcache *regcache,
+  		     gdb_byte *readbuf, const gdb_byte *writebuf)
+  {
+!   if (iq2000_use_struct_convention (type)) {
+!     if (readbuf) {
+!       ULONGEST addr;
+!       regcache_raw_read_unsigned (regcache, E_FN_RETURN_REGNUM, &addr);
+!       read_memory (addr, readbuf, TYPE_LENGTH(type));
+!     }
+!     return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+!   }
+    if (writebuf)
+      iq2000_store_return_value (type, regcache, writebuf);
+    else if (readbuf)
+***************
+*** 579,585 ****
+  static struct type *
+  iq2000_register_type (struct gdbarch *gdbarch, int regnum)
+  {
+!   return builtin_type (gdbarch)->builtin_int32;
+  }
+  
+  static CORE_ADDR
+--- 585,598 ----
+  static struct type *
+  iq2000_register_type (struct gdbarch *gdbarch, int regnum)
+  {
+!   switch (regnum) {
+!   case E_SP_REGNUM: case E_FP_REGNUM:
+!     return builtin_type(gdbarch)->builtin_data_ptr;
+!   case E_PC_REGNUM: case E_LR_REGNUM:
+!     return builtin_type(gdbarch)->builtin_func_ptr;
+!   default:
+!     return builtin_type(gdbarch)->builtin_int32;
+!   }
+  }
+  
+  static CORE_ADDR
