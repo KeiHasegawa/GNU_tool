@@ -1,17 +1,18 @@
 /*
- * Check if function definition implicitly `int' assumed
- * is recognized.
+ * Check if declaration with `extern' is recognized
+ * after declaration without `extern'.
  */
+
 #include <stdio.h>
 
-int main()  /* function definition */
-{
-  f("hello world\n");  /* function call. Here, intentionally not refer
-			  declaraion of `f' */
-  return 0;
-}
+int a;         /* declaration without `extern' */
+extern int a;  /* declaration with `extern' */
+int *b = &a;
 
-void f(const char* msg)
+int main(void)
 {
-  printf("%s", msg);
+  extern int a;
+  printf("a = %d\n", a = 2);
+  printf("*b = %d\n", *b);
+  return 0;
 }

@@ -1,6 +1,8 @@
 	.text
 start:
 	nop
-	j	start
+	j	end+0x02000
+	nop
+end:
 	nop
 	
