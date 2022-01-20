@@ -34,7 +34,7 @@
   
     if (!found_loadable_section)
 *** gdb-10.2.org/sim/mcore/interp.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.mcore-elf/sim/mcore/interp.c	2022-01-20 14:17:47.000000000 +0900
+--- gdb-10.2.mcore-elf/sim/mcore/interp.c	2022-01-20 18:08:03.000000000 +0900
 ***************
 *** 268,285 ****
   #define IMM5	((inst >> 4) & 0x1F)
@@ -256,20 +256,24 @@
     needfetch = 0;
   
     memops = 0;
---- 472,481 ----
+--- 472,485 ----
     pc = CPU_PC_GET (cpu);
   
     /* Fetch the initial instructions that we'll decode. */
 !   if (code_area(pc) && code_area(pc+3))
 !     ibuf = rlat (pc & 0xFFFFFFFC);
-!   else
-!     ibuf = rhat(pc & 0xFFFFFFFE);
+!   else {
+!     if (pc & 2)
+!       ibuf = (rhat(pc & 0xFFFFFFFE) << 16) | 0x9f4;
+!     else
+!       ibuf = rhat(pc & 0xFFFFFFFE);
+!   }
     needfetch = 0;
   
     memops = 0;
 ***************
 *** 408,414 ****
---- 584,592 ----
+--- 588,596 ----
   	      switch RD
   		{
   		case 0x0:				/* bkpt */
@@ -288,7 +292,7 @@
   	  break;
   	case 0x0A:					/* movf */
   	  if (C_OFF())
---- 914,926 ----
+--- 918,930 ----
   	  break;
   	case 0x08:					/* illegal */
   	case 0x09:					/* illegal*/
@@ -311,14 +315,18 @@
   	  needfetch = 0;
   	}
       }
---- 1388,1397 ----
+--- 1392,1405 ----
   
         if (needfetch)
   	{
 ! 	  if (code_area(pc) && code_area(pc+3))
 ! 	    ibuf = rlat (pc & 0xFFFFFFFC);
-! 	  else
-! 	    ibuf = rhat(pc & 0xFFFFFFFE);
+! 	  else {
+! 	    if (pc & 2)
+! 	      ibuf = (rhat(pc & 0xFFFFFFFE) << 16) | 0x9f4;
+! 	    else
+! 	      ibuf = rhat(pc & 0xFFFFFFFE);
+! 	  }
   	  needfetch = 0;
   	}
       }
@@ -334,7 +342,7 @@
     return sd;
   }
   
---- 1593,1602 ----
+--- 1601,1610 ----
   
         set_initial_gprs (cpu);	/* Reset the GPR registers.  */
       }
@@ -347,7 +355,7 @@
   
 ***************
 *** 1417,1422 ****
---- 1604,1610 ----
+--- 1612,1618 ----
   sim_create_inferior (SIM_DESC sd, struct bfd *prog_bfd,
   		     char * const *argv, char * const *env)
   {
@@ -363,7 +371,7 @@
 ! 
     return SIM_RC_OK;
   }
---- 1714,1722 ----
+--- 1722,1730 ----
         wlat (pointers, 0);
         pointers += 4;
       }
