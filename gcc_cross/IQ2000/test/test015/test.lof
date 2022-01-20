@@ -1,36 +1,16 @@
 Reading symbols from test.elf...
 Connected to the simulator.
-Loading section .text, size 0x1b0 lma 0x80000100
+Loading section .text, size 0x4c lma 0x80000100
 Start address 0x80000100
-Transfer rate: 3456 bits in <1 sec.
-Breakpoint 1 at 0x800001c8: file test.c, line 17.
-Breakpoint 2 at 0x80000234: file ../../../../.././newlib/libc/machine/iq2000/setjmp.S, line 8.
-Breakpoint 3 at 0x8000026c: file ../../../../.././newlib/libc/machine/iq2000/setjmp.S, line 32.
-Breakpoint 4 at 0x8000019c: file test.c, line 12.
+Transfer rate: 608 bits in <1 sec.
 
-Breakpoint 1, main () at test.c:17
-17	  int r = setjmp(buf);
+Program received signal SIGTRAP, Trace/breakpoint trap.
+main () at test.c:4
+4	  return 0;
 
-Breakpoint 2, setjmp ()
-    at ../../../../.././newlib/libc/machine/iq2000/setjmp.S:8
-8		sw	r16,0(r4)	/* rs0 */
-#0  setjmp () at ../../../../.././newlib/libc/machine/iq2000/setjmp.S:8
-#1  0x800001e0 in main () at test.c:17
-
-Breakpoint 3, longjmp ()
-    at ../../../../.././newlib/libc/machine/iq2000/setjmp.S:32
-32		lw	r16,0(r4)	/* rs0 */
-#0  longjmp () at ../../../../.././newlib/libc/machine/iq2000/setjmp.S:32
-#1  0x80000150 in f (n=0, buf=0xef74) at test.c:6
-#2  0x8000016c in f (n=1, buf=0xef74) at test.c:7
-#3  0x8000016c in f (n=2, buf=0xef74) at test.c:7
-#4  0x8000016c in f (n=3, buf=0xef74) at test.c:7
-#5  0x8000016c in f (n=4, buf=0xef74) at test.c:7
-#6  0x8000016c in f (n=5, buf=0xef74) at test.c:7
-#7  0x80000208 in main () at test.c:19
-
-Breakpoint 4, g (n=123) at test.c:12
-12	}
+Program received signal SIGTRAP, Trace/breakpoint trap.
+start () at start.S:10
+10		nop
 A debugging session is active.
 
 	Inferior 1 [process 42000] will be killed.

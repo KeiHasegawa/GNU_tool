@@ -3,9 +3,11 @@ struct S {
   int b;
 };
 
-int f(struct S s)
+struct S f(struct S x, struct S y, struct S z)
 {
-  return s.a + s.b;
+  x.a += y.a + z.a;
+  x.b += y.b + z.b;
+  return x;
 }
 
 int main()
