@@ -1,0 +1,17 @@
+set prompt (iq2000-elf-gdb) 
+target sim
+load
+sim memory-region 0xee00,0x200
+b main
+run
+s
+p $r4
+p $r5
+p $sp
+p $fp
+p $r31
+s 6
+x/4wx $fp
+finish
+p $r2
+quit
