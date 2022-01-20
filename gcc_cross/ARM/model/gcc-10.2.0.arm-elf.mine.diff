@@ -1,0 +1,29 @@
+*** gcc-10.2.0.org/gcc/config.gcc	2021-10-16 10:31:18.000000000 +0900
+--- gcc-10.2.0.arm-elf.mine/gcc/config.gcc	2022-01-20 15:05:38.000000000 +0900
+***************
+*** 270,276 ****
+  	;;
+     arm*-wince-pe*			\
+   | arm*-*-ecos-elf			\
+-  | arm*-*-elf				\
+   | arm*-*-linux*			\
+   | arm*-*-uclinux*			\
+   | i[34567]86-go32-*			\
+--- 270,275 ----
+***************
+*** 3505,3510 ****
+--- 3504,3517 ----
+  	c_target_objs="m32c-pragma.o"
+  	cxx_target_objs="m32c-pragma.o"
+   	;;
++ arm*-*-elf)
++  	tm_file="dbxelf.h elfos.h usegas.h newlib-stdint.h arm/arm.h"
++  	tm_p_file="arm/arm-protos.h"
++  	md_file="arm/arm.md"
++  	out_file="arm/arm.c"
++  	tmake_file="arm/t-arm"
++  	use_gcc_stdint=wrap
++         ;;
+  *)
+  	echo "*** Configuration ${target} not supported" 1>&2
+  	exit 1
