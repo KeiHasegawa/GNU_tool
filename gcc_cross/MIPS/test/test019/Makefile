@@ -1,8 +1,7 @@
-all:start.objdump start.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-start.elf:start.o start.x
-	mips-elf-ld -o start.elf start.o -T start.x -Map start.map
+test.elf:test.o ../default.o
 
-start.lof:start.log
+test.lof:test.log

@@ -12,7 +12,6 @@ struct S f(struct S x, struct S y, struct S z)
 
 int main()
 {
-  struct S s = f((struct S){1, 2}, (struct S){3, 4}, (struct S){5, 6});
   return 0;
 }
 
