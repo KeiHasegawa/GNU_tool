@@ -15,3 +15,4 @@ clean:
 			cd ..; \
 		fi \
 	done
+	rm -f defult.o
