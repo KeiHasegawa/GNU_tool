@@ -1,0 +1,21 @@
+2022.01.21 14:30
+
+テスト項目の作成とリンカスクリプトの共通化の作業で以下のようにエラーメッセージが生成されているこ
+とに気付いた:
+
+mn10300-elf-as -o test.o test.S -g
+mn10300-elf-ld -o test.elf test.o -T test.x -Map test.map
+mn10300-elf-objdump -x -d -g test.elf > test.objdump
+wdog.exe -v mn10300-elf-gdb -q -x gdbcom test.elf > test.log
+mn10300-core: 4 byte write to unmapped address 0x7c at 0x104   # これ
+Warning, resuming but ignoring pending exception signal (11)   # これ
+mn10300-core: 4 byte write to unmapped address 0x7c at 0x107   # これ
+wdog.exe -v diff test.log test.lof
+touch test.lof
+
+これは MEMO に書いてあることも合わせればシミュレータが何か余計なことをしているのかも
+しれない.
+
+とりあえずリンカスクリプトの共通化はするが, 上の状況はそのままにしておく. また
+FAIL の扱いにしておく.
+
