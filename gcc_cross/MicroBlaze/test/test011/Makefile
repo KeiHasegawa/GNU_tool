@@ -1,10 +1,10 @@
-all:test011.objdump test011.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test011.elf:start.o test011.o test011.x
+test.elf:test.o ../default.o
 
-test011.log:test011.elf
+test.log:test.elf
 	echo quit | wdog.exe -v microblaze-elf-gdb -q -x gdbcom $< > $@ 2>&1 || echo FAIL
 
-test011.lof:test011.log
+test.lof:test.log
