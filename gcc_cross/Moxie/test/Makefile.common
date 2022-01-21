@@ -7,7 +7,7 @@
 LIBGCC = /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/moxie-elf/10.2.0/libgcc.a
 
 %.elf : %.o
-	moxie-elf-ld -o $@ start.o $< $(LIBGCC) -T $(basename $<).x
+	moxie-elf-ld -o $@ ../default.o $< $(LIBGCC) -T ../default.x
 
 %.objdump : %.elf
 	moxie-elf-objdump -x -d -g $< > $@
