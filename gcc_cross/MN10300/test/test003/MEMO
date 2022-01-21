@@ -1,0 +1,20 @@
+2022.01.21 14:40
+
+テスト項目の作成とリンカスクリプトの共通化の作業で以下に気付く:
+
+mn10300-elf-as -o test003.o test003.S -g
+mn10300-elf-ld -o test003.elf test003.o -T test003.x -Map test003.map
+mn10300-elf-objdump -x -d -g test003.elf > test003.objdump
+wdog.exe -v mn10300-elf-gdb -q -x gdbcom test003.elf > test003.log
+mn10300-core: 4 byte write to unmapped address 0xfffffffc at 0x100  # これ
+Warning, resuming but ignoring pending exception signal (11)        # これ
+mn10300-core: 4 byte write to unmapped address 0xfffffffc at 0x103  # これ
+wdog.exe -v diff test003.log test003.lof
+touch test003.lof
+
+これは
+
+../test006/MEMO.2
+
+と同じ現象. このテストも FAIL の扱いにしておく.
+
