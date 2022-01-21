@@ -15,4 +15,4 @@ clean:
 			cd ..; \
 		fi \
 	done
-	rm -f defult.o
+	rm -f default.o
