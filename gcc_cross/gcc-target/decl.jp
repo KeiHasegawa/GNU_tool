@@ -20,12 +20,12 @@ static const char *const initial_reg_names[] = REGISTER_NAMES;
 
     のように宣言する. "fp" はフレームポインタの名前としてアセンブラ出力に使用され
     "sp" はスタックポインタの名前としてアセンブラ出力に使用される. 最後の "dummy"
-    必要だが, 簡単な理由を説明すると以下のマクロ
+    はこの場合必要だが, 簡単な理由を説明すると以下のマクロ
 
 #define HARD_REGISTER_NUM_P(REG_NO) ((REG_NO) < FIRST_PSEUDO_REGISTER)
 
-    で HARD_REGISTER_NUM_P(STACK_POINTER_REGNUM) を 1 に評価するためである.
-    最後の要素に対して 0 に評価されて問題ないならば上のような "dummy" は必要ない.
+    で HARD_REGISTER_NUM_P(15) を 1 に評価するためである. 最後の要素に対して 0 に
+    評価されて問題ないならば上のような "dummy" は必要ない.
  
 (*) STACK_POINTER_REGNUM
 
