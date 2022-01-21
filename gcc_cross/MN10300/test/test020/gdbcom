@@ -1,0 +1,18 @@
+set prompt (mn10300-elf-gdb) 
+target sim
+load
+sim memory-region 0xe00,0x204
+b main
+run
+s
+p $d0
+p $d1
+p $sp
+p $a3
+s 4
+x/4wx $sp
+finish
+p $d0
+quit
+
+
