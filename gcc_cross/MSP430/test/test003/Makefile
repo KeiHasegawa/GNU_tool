@@ -1,8 +1,8 @@
-all:test003.objdump test003.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test003.elf:test003.o test003.x
-	msp430-elf-ld -o $@ test003.o -T test003.x -Map test003.map
+test.elf:test.o
+	msp430-elf-ld -o $@ $< -T ../default.x
 
-test003.lof:test003.log
+test.lof:test.log
