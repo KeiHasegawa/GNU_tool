@@ -1,7 +1,8 @@
-all:test015.objdump test015.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test015.elf:test015.o test015.x start.o
+test.elf:test.o start.o
+	microblaze-elf-ld -o $@ start.o $< -T ../default.x
 
-test015.lof:test015.log
+test.lof:test.log
