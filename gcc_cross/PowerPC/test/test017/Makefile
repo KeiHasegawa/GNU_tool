@@ -14,8 +14,8 @@ test.o.addr2line:test.o
 test.o.objdump:test.o
 	ppc-elf-objdump -x -d -g $< > $@
 
-test.elf:test.o test.x
-	ppc-elf-ld -o test.elf test.o -T test.x -Map test.map
+test.elf:test.o
+	ppc-elf-ld -o test.elf test.o -T ../default.x
 
 test.lof:test.log
 
