@@ -1,0 +1,17 @@
+set prompt (ppc-elf-gdb) 
+target sim
+load
+sim memory-region 0xe00,0x208
+b main
+run
+s
+p $r3
+p $r4
+p/x $sp
+p $fp
+p $lr
+s 7
+x/4wx $sp
+finish
+p $r3
+quit
