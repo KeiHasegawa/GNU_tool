@@ -7,7 +7,7 @@
 LIBC = /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ppc-elf/lib/libc.a
 
 %.elf : %.o
-	ppc-elf-ld -o $@ start.o $< $(LIBC) -T $(basename $<).x
+	ppc-elf-ld -o $@ ../default.o $< $(LIBC) -T ../default.x
 
 %.objdump : %.elf
 	ppc-elf-objdump -x -d -g $< > $@
