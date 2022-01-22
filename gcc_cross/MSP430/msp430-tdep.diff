@@ -1,5 +1,29 @@
 *** gdb-10.2.org/gdb/msp430-tdep.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.msp430-elf/gdb/msp430-tdep.c	2022-01-02 11:23:29.000000000 +0900
+--- gdb-10.2.msp430-elf/gdb/msp430-tdep.c	2022-01-22 09:25:52.000000000 +0900
+***************
+*** 159,164 ****
+--- 159,167 ----
+  static struct type *
+  msp430_register_type (struct gdbarch *gdbarch, int reg_nr)
+  {
++   if (reg_nr == MSP430_SP_RAW_REGNUM || reg_nr == MSP430_SP_REGNUM)
++     return builtin_type (gdbarch)->builtin_data_ptr;
++   
+    if (reg_nr < MSP430_NUM_REGS)
+      return builtin_type (gdbarch)->builtin_uint32;
+    else if (reg_nr == MSP430_PC_REGNUM)
+***************
+*** 173,178 ****
+--- 176,184 ----
+  static struct type *
+  msp430x_register_type (struct gdbarch *gdbarch, int reg_nr)
+  {
++   if (reg_nr == MSP430_SP_RAW_REGNUM || reg_nr == MSP430_SP_REGNUM)
++     return builtin_type (gdbarch)->builtin_data_ptr;
++ 
+    if (reg_nr < MSP430_NUM_REGS)
+      return builtin_type (gdbarch)->builtin_uint32;
+    else if (reg_nr == MSP430_PC_REGNUM)
 ***************
 *** 571,578 ****
   
@@ -10,7 +34,7 @@
   
     if (readbuf)
       {
---- 571,584 ----
+--- 577,590 ----
   
     if (TYPE_LENGTH (valtype) > 8
         || valtype->code () == TYPE_CODE_STRUCT
@@ -27,7 +51,7 @@
       {
 ***************
 *** 635,640 ****
---- 641,667 ----
+--- 647,673 ----
   }
   
   /* Implement the "push_dummy_call" gdbarch method.  */
@@ -57,7 +81,7 @@
   msp430_push_dummy_call (struct gdbarch *gdbarch, struct value *function,
 ***************
 *** 659,664 ****
---- 686,695 ----
+--- 692,701 ----
     gdb_assert (func_type->code () == TYPE_CODE_FUNC
   	      || func_type->code () == TYPE_CODE_METHOD);
   
@@ -70,7 +94,7 @@
     for (write_pass = 0; write_pass <= 1; write_pass++)
 ***************
 *** 695,702 ****
---- 726,741 ----
+--- 732,747 ----
   	      || arg_type->code () == TYPE_CODE_UNION)
   	    {
   	      /* Aggregates of any size are passed by reference.  */
