@@ -2,8 +2,8 @@ all:test.objdump test.lof
 
 include ../Makefile.common
 
-test.elf:test.o test.x
-	pru-elf-ld -o test.elf test.o -T test.x -Map test.map
+test.elf:test.o
+	pru-elf-ld -o $@ $< -T ../default.x
 
 test.lof:test.log
 
