@@ -1,10 +1,10 @@
-all:test022.objdump test022.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
 DIR = /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/pru-elf/lib
 
-test022.elf:test022.o test022.x start.o
-	pru-elf-ld -o $@ start.o $< -T $(basename $<).x -L$(DIR) -lc
+test.elf:test.o ../default.o
+	pru-elf-ld -o $@ ../default.o $< -T ../default.x -L$(DIR) -lc
 
-test022.lof:test022.log
+test.lof:test.log

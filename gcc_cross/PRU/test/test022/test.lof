@@ -1,0 +1,38 @@
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x128 lma 0x100
+Start address 0x100
+Transfer rate: 2368 bits in <1 sec.
+Breakpoint 1 at 0x1b0: file test.c, line 17.
+Breakpoint 2 at 0x208: file ../../../../.././newlib/libc/machine/pru/setjmp.s, line 35.
+Breakpoint 3 at 0x214: file ../../../../.././newlib/libc/machine/pru/setjmp.s, line 40.
+Breakpoint 4 at 0x190: file test.c, line 12.
+
+Breakpoint 1, main () at test.c:17
+17	  int r = setjmp(buf);
+
+Breakpoint 2, setjmp ()
+    at ../../../../.././newlib/libc/machine/pru/setjmp.s:35
+35		sbbo	r2, r14, 0, 4*12	/* SP, RA, FP, r5-r13 */
+#0  setjmp () at ../../../../.././newlib/libc/machine/pru/setjmp.s:35
+#1  0x000001bc in main () at test.c:17
+
+Breakpoint 3, longjmp ()
+    at ../../../../.././newlib/libc/machine/pru/setjmp.s:40
+40		lbbo	r2, r14, 0, 4*12	/* SP, RA, FP, r5-r13 */
+#0  longjmp () at ../../../../.././newlib/libc/machine/pru/setjmp.s:40
+#1  0x0000014c in f (n=0, buf=0xf3a) at test.c:6
+#2  0x00000168 in f (n=1, buf=0xf3a) at test.c:7
+#3  0x00000168 in f (n=2, buf=0xf3a) at test.c:7
+#4  0x00000168 in f (n=3, buf=0xf3a) at test.c:7
+#5  0x00000168 in f (n=4, buf=0xf3a) at test.c:7
+#6  0x00000168 in f (n=5, buf=0xf3a) at test.c:7
+#7  0x000001e4 in main () at test.c:19
+
+Breakpoint 4, g (n=123) at test.c:12
+12	}
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]

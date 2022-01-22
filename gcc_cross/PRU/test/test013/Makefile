@@ -1,7 +1,7 @@
-all:test013.objdump test013.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test013.elf:start.o test013.o test013.x
+test.elf:test.o ../default.o
 
-test013.lof:test013.log
+test.lof:test.log
