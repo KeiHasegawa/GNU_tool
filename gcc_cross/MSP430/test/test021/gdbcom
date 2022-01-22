@@ -1,0 +1,16 @@
+set prompt (msp430-elf-gdb) 
+target sim
+load
+sim memory-region 0xe00,0x200
+b main
+run
+step
+p $r12
+p $r13
+p $sp
+x/hx $sp
+s 3
+x/3hx $sp
+finish
+p $r12
+quit
