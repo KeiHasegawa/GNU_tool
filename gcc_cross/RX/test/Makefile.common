@@ -5,7 +5,7 @@
 	rx-elf-gcc -o $@ $< -c -g
 
 %.elf : %.o
-	rx-elf-ld -o $@ start.o $< -T $(basename $<).x
+	rx-elf-ld -o $@ ../default.o $< -T ../default.x
 
 %.objdump : %.elf
 	rx-elf-objdump -x -d -g $< > $@
