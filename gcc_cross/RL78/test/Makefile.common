@@ -9,8 +9,7 @@ LIBGCC =/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/rl78-e
 LIBC = /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/rl78-elf/lib/libc.a
 
 %.elf : %.o
-	rl78-elf-ld -o $@ start.o $< $(LIBGCC) $(LIBC) \
-	-T $(basename $<).x
+	rl78-elf-ld -o $@ ../default.o $< $(LIBGCC) $(LIBC) -T ../default.x
 
 %.objdump : %.elf
 	rl78-elf-objdump -x -d -g $< > $@
