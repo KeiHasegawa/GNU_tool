@@ -1,0 +1,16 @@
+set prompt (rx-elf-gdb) 
+target sim
+load
+sim memory-region 0x1e00,0x200
+b main
+run
+s
+p $r1
+p $r2
+p $sp
+x/wx $sp
+s 7
+x/5wx $sp
+finish
+p $r1
+quit
