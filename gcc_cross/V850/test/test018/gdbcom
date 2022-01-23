@@ -1,0 +1,17 @@
+set prompt (v850-elf-gdb) 
+target sim
+load
+sim memory-region 0xe00,0x200
+b main
+run
+s
+p $r6
+p $r7
+p/x $sp
+p/x $r29
+p/x $r31
+s 7
+x/4wx $sp
+finish
+p $r10
+quit
