@@ -1,0 +1,33 @@
+r8	=	0xffef0
+r16	=	0xffee8
+r24	=	0xffee0
+r9	=	0xffef1
+r17	=	0xffee9
+r25	=	0xffee1
+r10	=	0xffef2
+r18	=	0xffeea
+r26	=	0xffee2
+r11	=	0xffef3
+r19	=	0xffeeb
+r27	=	0xffee3
+r12	=	0xffef4
+r20	=	0xffeec
+r28	=	0xffee4
+r13	=	0xffef5
+r21	=	0xffeed
+r29	=	0xffee5
+r14	=	0xffef6
+r22	=	0xffeee
+r30	=	0xffee6
+r15	=	0xffef7
+r23	=	0xffeef
+r31	=	0xffee7
+	.text
+	.global	_f
+_f:
+	movw	ax, [sp+6]
+	movw	hl, ax
+	movw	ax, [sp+4]
+	addw	ax, hl
+	movw	r8, ax
+	ret
