@@ -1,10 +1,10 @@
-all:test008.objdump test008.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test008.elf:start.o test008.o test008.x
+test.elf:test.o ../default.o
 
-test008.log:test008.elf
+test.log:test.elf
 	echo quit | wdog.exe -v v850-elf-gdb -q -x gdbcom $< > $@ 2>&1 || echo FAIL
 
-test008.lof:test008.log
+test.lof:test.log
