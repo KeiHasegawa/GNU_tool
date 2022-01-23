@@ -11,7 +11,7 @@ AVR の ABI
 (*8) 構造体を引数にとる函数, 構造体を返す函数
 
 
-(*0) 命令用メモリとデータ用メモリ, メモリマップドレジスタ, スタックポインタ
+(*0) 命令用メモリとデータ用メモリ, メモリマップドレジスタ, スタックポインタ, ステータスレジスタ
 
         「AVR プログラミング」を参照.
 
@@ -56,15 +56,15 @@ AVR の ABI
 
 	push r28
 	push r29
-	in r28,__SP_L__
-	in r29,__SP_H__
-	subi r28,-128
-	sbc r29,__zero_reg__
-	in __tmp_reg__,__SREG__
+	in r28, 0x3d
+	in r29, 0x3e
+	subi r28, -128
+	sbc r29, r1
+	in r0, 0x3f
 	cli
-	out __SP_H__,r29
-	out __SREG__,__tmp_reg__
-	out __SP_L__,r28
+	out 0x3e, r29
+	out 0x3f, r0
+	out 0x3d, r28
 
 	上は 128 バイトのローカルエリアを使用する函数のプロローグ.
 
@@ -84,15 +84,17 @@ AVR の ABI
 	|          address    |	
         +---------------------+
 
+	r28, r29 フレームポインタとして使用している.
+
 (*4) エピローグ
 
-	subi r28,-128
-	sbci r29,-1
-	in __tmp_reg__,__SREG__
+	subi r28, -128
+	sbci r29, -1
+	in r0, 0x3f
 	cli
-	out __SP_H__,r29
-	out __SREG__,__tmp_reg__
-	out __SP_L__,r28
+	out 0x3e, r29
+	out 0x3f, r0
+	out 0x3d, r28
 	pop r29
 	pop r28
 	ret

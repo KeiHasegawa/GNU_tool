@@ -1,8 +1,8 @@
-all:test013.objdump test013.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test013.elf:test013.o
-	rl78-elf-ld -o $@ $< -T $(basename $<).x
+test.elf:test.o
+	rl78-elf-ld -o $@ $< -T ../default.x
 
-test013.lof:test013.log
+test.lof:test.log

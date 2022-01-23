@@ -1,18 +1,18 @@
-all:test003.objdump test003.lof
+all:test.objdump test.lof
 
-test003.o:test003.S
-	rl78-elf-as -o test003.o -g test003.S
+test.o:test.S
+	rl78-elf-as -o test.o -g test.S
 
-test003.elf:test003.o test003.x
-	rl78-elf-ld -o test003.elf test003.o -T test003.x -Map test003.map
+test.elf:test.o test.x
+	rl78-elf-ld -o test.elf test.o -T test.x -Map test.map
 
-test003.objdump:test003.elf
-	rl78-elf-objdump -x -d -g test003.elf > test003.objdump
+test.objdump:test.elf
+	rl78-elf-objdump -x -d -g test.elf > test.objdump
 
-test003.log:test003.elf gdbcom
+test.log:test.elf gdbcom
 	wdog.exe -v rl78-elf-gdb -q -x gdbcom $< > $@
 
-test003.lof:test003.log
+test.lof:test.log
 	wdog.exe -v diff $< $@
 	touch $@
 

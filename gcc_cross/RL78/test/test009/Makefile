@@ -1,11 +1,11 @@
-all:test009.objdump test009.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test009.elf:test009.o test009.x
-	rl78-elf-ld -o $@ $< -T $(basename $<).x
+test.elf:test.o
+	rl78-elf-ld -o $@ $< -T ../default.x
 
-test009.log:test009.elf
+test.log:test.elf
 	echo quit | wdog.exe -v rl78-elf-gdb -q -x gdbcom $< > $@ 2>&1 || echo FAIL
 
-test009.lof:test009.log
+test.lof:test.log

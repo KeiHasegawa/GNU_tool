@@ -14,8 +14,8 @@ test.o.addr2line:test.o
 	rl78-elf-addr2line -a 0x2 -e $< >> $@
 	rl78-elf-addr2line -a 0x3 -e $< >> $@
 
-test.elf:test.o test.x
-	rl78-elf-ld -o test.elf test.o -T test.x -Map test.map
+test.elf:test.o
+	rl78-elf-ld -o test.elf test.o -T ../default.x
 
 test.addr2line:test.elf
 	rl78-elf-addr2line -a 0x100 -e $< > $@
