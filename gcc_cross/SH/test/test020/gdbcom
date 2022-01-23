@@ -1,0 +1,16 @@
+set prompt (sh-elf-gdb) 
+target sim
+load
+sim memory-region 0xe00,0x200
+b main
+run
+s
+p $r4
+p $r5
+p/x $sp
+s 9
+x/4wx $sp
+finish
+p $r0
+quit
+
