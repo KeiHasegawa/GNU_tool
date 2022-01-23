@@ -9,7 +9,7 @@ LIBGCC = /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/v850-
 LIBC = /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/v850-elf/lib/libc.a
 
 %.elf : %.o
-	v850-elf-ld -o $@ start.o $< $(LIBGCC) $(LIBC) -T $(basename $<).x
+	v850-elf-ld -o $@ ../default.o $< $(LIBGCC) $(LIBC) -T ../default.x
 
 %.objdump : %.elf
 	v850-elf-objdump -x -d -g $< > $@
