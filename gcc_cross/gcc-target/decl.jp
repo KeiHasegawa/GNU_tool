@@ -26,6 +26,10 @@ static const char *const initial_reg_names[] = REGISTER_NAMES;
 
     で HARD_REGISTER_NUM_P(15) を 1 に評価するためである. 最後の要素に対して 0 に
     評価されて問題ないならば上のような "dummy" は必要ない.
+    また上記は後述する UNITS_PER_WORD が 4 の場合には正しいが
+
+    o AVR のように UNIT_PER_WORDS 1 で Pmode (後述)のサイズが 2 ならば dummy 
+      の数をもう一つ増やす必要がある.
  
 (*) STACK_POINTER_REGNUM
 
@@ -182,6 +186,8 @@ enum reg_class {
 
     (*1) オプションに依存するがオプションなしで 2
     (*2) オプションに依存するがオプションなしで 4
+
+    UINT16_TYPE, UINT32_TYPE, UINT64_TYPE のセクションを参照.
 
 (*) CUMULATIVE_ARGS
 
@@ -600,3 +606,71 @@ extern void hasegawa_print_operand(FILE*, rtx, int);
       のように指定する. プリプロセッサのディレクティブで参照されるのでマクロで
       指定する必要がある. この定義がなければ, 実行時エラーするようにマクロが
       定義される.
+
+(*) UINT16_TYPE, UINT32_TYPE, UINT64_TYPE
+
+      UNITS_PER_WORD を 1 や 2 にすると以下を実行したときに 0 番地アクセスする.
+
+c-common.c:4304:
+
+  char16_type_node = get_identifier (CHAR16_TYPE);
+
+      これのマクロ展開は複雑だが, 結果的に strlen(0) の呼び出しを引き起こしている.
+
+      CHAR16_TYPE はマクロで
+
+gcc/defaults.h:591
+
+#ifdef UINT_LEAST16_TYPE
+#define CHAR16_TYPE UINT_LEAST16_TYPE
+#else
+#define CHAR16_TYPE "short unsigned int"
+#endif
+
+      となっている. UINT_LEAST16_TYPE もやはりマクロで
+
+gcc/config/newlib-stdint.h:50
+
+#define UINT_LEAST16_TYPE (UINT16_TYPE ? UINT16_TYPE : UINT32_TYPE ? UINT32_TYPE : UINT64_TYPE ? UINT64_TYPE : 0)
+
+      となっている. そこで以下の宣言を追加する.
+
+#undef UINT16_TYPE
+#define UINT16_TYPE	"unsigned int"
+#undef UINT32_TYPE
+#define UINT32_TYPE	"long unsigned int"
+#undef UINT64_TYPE
+#define UINT64_TYPE	"long long unsigned int"
+
+      実は上の宣言に替えて次のセクションで述べるマクロを使用する方が分かり易い.
+
+(*) SHORT_TYPE_SIZE, INT_TYPE_SIZE, LONG_TYPE_SIZE, LONG_LONG_TYPE_SIZE
+
+      UNITS_PER_WORD を 4 以外にする場合は以下のように宣言する. 以下は AVR の例:
+
+constexpr int UNITS_PER_WORD  = 1;
+
+#define SHORT_TYPE_SIZE		16
+#define INT_TYPE_SIZE           16
+#define LONG_TYPE_SIZE		32
+#define LONG_LONG_TYPE_SIZE     64
+
+(*) FLOAT_TYPE_SIZE, DOUBLE_TYPE_SIZE, LONG_DOUBLE_TYPE_SIZE
+
+      UNITS_PER_WORD を 4 以外にする場合は以下のように宣言する. 以下は AVR の例:
+
+#define FLOAT_TYPE_SIZE         32
+#define DOUBLE_TYPE_SIZE        64
+#define LONG_DOUBLE_TYPE_SIZE   64
+
+(*) PREFERRED_DEBUGGING_TYPE
+
+      .debug_frame セクションを出したくない場合(?)以下のようにターゲット固有部で宣言する.
+
+#undef PREFERRED_DEBUGGING_TYPE
+#define PREFERRED_DEBUGGING_TYPE DBX_DEBUG
+
+      例えば gcc/config/avr/elf.h でこのように宣言している. .debug_frame セクション
+      が出力されてしまうと期待しない動作を gdb がしてしまうことがある.
+      試しに m68hc11 でもこの対応をしてみたが, 残念ながら gdb は期待通り動作していない.
+      そこまで単純ではないらしい.
