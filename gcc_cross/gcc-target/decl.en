@@ -9,20 +9,18 @@ static const char *const initial_reg_names[] = REGISTER_NAMES;
     Specify register names with macro style. Make the `n'th element
     the name of `n'th register.
 
-    For exaple, there are 16 GPR `r0', `r1', ..., `r15' on the target
-    processor, and they are all registers which appear assembler source
-    file generated this compiler. And more, target program uses `r14' as
-    frame pointer and `r15' as stack pointer.
-    Then declare like below:
+    For example, asume that there are 16 GPR `r0', `r1', ..., `r15' on
+    the target  processor and target program uses `r14' as frame pointer 
+    and `r15' as stack pointer. Then declare like below:
 
 #define REGISTER_NAMES { "r0", "r1", "r2", "r3", "r4", "r5", "r6", \
     "r7", "r8", "r9", "r10", "r11", "r12", "r13, "fp", "sp" }
 
-#define FRAME_POINTER_REGNUM 14
-#define STACK_POINTER_REGNUM 15
+#define FRAME_POINTER_REGNUM 14  // described below
+#define STACK_POINTER_REGNUM 15  // desrirbed below
 
-    "fp" and "sp" are output to assembler files instead of `r14'
-    and `r15' respectively.
+    "fp" and "sp" are refered from all gcc code as names of 14th, 15th 
+    register names respectively.
 
 (*) STACK_POINTER_REGNUM
 
@@ -90,8 +88,8 @@ One of refered part : gcc/calls.c
 
       extern reg_class REGNO_REG_CLASS(int regno);
 
-      This function converts register number to enum reg_class describe at
-      next section.
+      This function converts register number to enum reg_class described
+      at next section.
 
 (*) enum reg_class
 
@@ -103,7 +101,7 @@ One of refered part : gcc/hard-reg-set.h
       a corresponding member at `reg_class' to any register number which
       is less than `FIRST_PSEUDO_REGISTER'.
 
-      `reg_class' contains below member:
+      `reg_class' mustcontain below member:
 
     o NO_REGS
         One of refered part : tm-preds.h(generated file)
