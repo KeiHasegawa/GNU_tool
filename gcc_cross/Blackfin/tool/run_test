@@ -5,4 +5,4 @@ bfin-elf-gcc -o sample.s sample.c -S || exit 1
 bfin-elf-as -o sample.o -g sample.s || exit 1
 bfin-elf-ld -o sample.elf start.o sample.o /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/bfin-elf/10.2.0/libgcc.a -T sample.x || exit 1
 bfin-elf-objdump -x -d sample.elf > sample.objdump || exit 1
-#bfin-elf-run sample.elf
+bfin-elf-run --memory-fill 0xcc --memory-region 0x1f000,0x1000 sample.elf
