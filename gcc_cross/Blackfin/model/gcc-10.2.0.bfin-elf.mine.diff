@@ -1,0 +1,26 @@
+*** gcc-10.2.0.org/gcc/config.gcc	2021-10-16 10:31:18.000000000 +0900
+--- gcc-10.2.0.bfin-elf.mine/gcc/config.gcc	2022-01-08 12:06:41.000000000 +0900
+***************
+*** 1466,1474 ****
+  	extra_objs="avr-devices.o avr-log.o"
+  	;;
+  bfin*-elf*)
+! 	tm_file="${tm_file} dbxelf.h elfos.h newlib-stdint.h bfin/elf.h"
+! 	tmake_file=bfin/t-bfin-elf
+! 	use_collect2=no
+  	;;
+  bfin*-uclinux*)
+  	tm_file="${tm_file} dbxelf.h elfos.h bfin/elf.h gnu-user.h linux.h glibc-stdint.h bfin/uclinux.h"
+--- 1466,1477 ----
+  	extra_objs="avr-devices.o avr-log.o"
+  	;;
+  bfin*-elf*)
+! 	tm_file="dbxelf.h elfos.h usegas.h newlib-stdint.h bfin/bfin.h"
+!  	tm_p_file="bfin/bfin-protos.h"
+!  	md_file="bfin/bfin.md"
+!  	out_file="bfin/bfin.c"
+! 	tmake_file=bfin/t-bfin
+!  	use_gcc_stdint=wrap
+  	;;
+  bfin*-uclinux*)
+  	tm_file="${tm_file} dbxelf.h elfos.h bfin/elf.h gnu-user.h linux.h glibc-stdint.h bfin/uclinux.h"
