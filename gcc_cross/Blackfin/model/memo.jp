@@ -2,3 +2,1237 @@ cc1 の雛形
 
 「AARCH64」=>「cc1 の雛形」=>「メモ」 を参照.
 AARCH64 と同様の手順で cc1 の雛形をビルドすることができる.
+
+
+ARM や AARCH64 のスタックフレームではプロローグの終了でスタックポインタとフレームポインタ
+が同じアドレスを指していて, そこで函数の引数を呼び出された側で保存するときに, その領域も
+加算してフレームサイズ, すなわち函数 get_frame_size の戻り値が計算される.
+
+ARM のスタックフレーム
+
+	+----------------+ <- sp_{new}, fp_{new} 
+	|                |
+	|                |
+	|   local area   |
+	|                |
+	|                |
+	+----------------+ 
+	|    fp_{old}    |
+	+----------------+ 
+	|    lr_{old}    |
+	+----------------+ <- sp_{old}
+
+
+例えば
+
+int f(int a, int b)
+{
+...
+
+ならば a と b を保存するための 8 バイトがフレームのサイズに加算される. そして gcc 共通部分から
+
+[fp+0] := a を渡すために使用したレジスタ
+[fp+4] := b を渡すために使用したレジスタ
+
+のような rtx_insn が生成される. この場合が gcc の通常の動作であるがこれ以外のタイプの
+スタックフレームを実装する場合は工夫が必要になる.
+
+bfin のスタックフレームは以下のようになっている.
+
+	+----------------+ <- sp_{new}
+	|                |
+	|                |
+	|   local area   |
+	|                |
+	|                |
+	+----------------+ <- fp_{new}
+	|    fp_{old}    |
+	+----------------+ 
+	|   rets_{old}   |
+	+----------------+ <- sp_{old}
+	| 1st arg space  |
+	+----------------+
+	| 2nd arg space  |
+	+----------------+
+	| 3rd arg space  |
+	+----------------+
+
+o マクロ TARGET_LRA_P の宣言の追加.
+o マクロ OUTGOING_REG_PARM_STACK_SPACE の宣言の追加.
+o マクロ TARGET_LEGITIMATE_ADDRESS_P の定義となる函数の修正
+o マクロ ARG_POINTER_REGNUM REG_ARGP と ELIMINABLE_REGS の宣言の修正
+o マクロ REG_PARM_STACK_SPACE の宣言の追加
+o 函数 FIRST_PARM_OFFSET では 0 を返す
+o マクロ FRAME_GROWS_DOWNWARD を 1 に define する.
+
+以下は上記 (1) ... (6) を修正するに至った解析結果.
+
+函数 assign_parm_setup_stack で引数を保存するオフセットを決めているらしい.
+
+	  data->stack_parm
+	    = assign_stack_local (GET_MODE (data->entry_parm),
+				  GET_MODE_SIZE (GET_MODE (data->entry_parm)),
+				  align);
+
+(gdb) p debug_rtx(data->stack_parm)
+(mem/c:SI (plus:SI (reg/f:SI 19 virtual-stack-vars)
+        (const_int 4 [0x4])) [0  S4 A8])
+$287 = void
+(gdb)
+
+2 つ目の引数に対して現状上のようになっている.
+
+(&x_rtl)->x_frame_offset の初期値をセットできれば対応できそうなのだが, 方法が不明.
+函数を 2 つ書いてみてどのように 2 回目で初期化されるか確認してみるという手はある.
+しかし, 1 回目の函数に対して以下のようにクリアされている:
+
+void
+free_after_compilation (struct function *f)
+{
+  prologue_insn_hash = NULL;
+  epilogue_insn_hash = NULL;
+
+  free (crtl->emit.regno_pointer_align);
+
+  memset (crtl, 0, sizeof (struct rtl_data)); ここ
+
+ということはそもそも初期値をセットするということで回避できる問題ではないらしい.
+
+オリジナルの cc1 を調査してみた:
+
+$239 = (rtx_insn *) 0xb78775c4
+    2: [FP:SI+0x8]=R0:SI
+
+$241 = (rtx_insn *) 0xb78775e8
+    3: [FP:SI+0xc]=R1:SI
+
+上のようにフレームポインタ相対 8 と 12 に R0 と R1 とを保存している.
+これらの命令が生成されるのは以下:
+
+static void
+assign_parm_setup_stack (struct assign_parm_data_all *all, tree parm,
+		         struct assign_parm_data_one *data)
+{
+...
+	  emit_move_insn (dest, src);
+
+この時点で生成された命令は以下:
+
+(insn 2 0 0 (set (mem/c:SI (reg/f:SI 50 virtual-incoming-args) [1 a+0 S4 A32])
+        (reg:SI 0 R0 [ a ])) "b.c":2:1 -1
+     (nil))
+
+[virtual-incoming-args] := R0
+
+ということなのだろうがおそらくこれが
+
+[FP+8] := R0
+
+に変更されるということ. この瞬間を捕えたい.
+
+(gdb) p debug_rtx(dest)
+(mem/c:SI (reg/f:SI 50 virtual-incoming-args) [1 a+0 S4 A32])
+$456 = void
+(gdb)
+
+なのだから
+
+XEXP(dest, 0)
+
+すなわち
+
+(gdb) p debug_rtx(dest->u.fld[0].rt_rtx)
+(reg/f:SI 50 virtual-incoming-args)
+$460 = void
+(gdb)
+
+が変更されるということ.
+
+(gdb) p &dest->u.fld[0].rt_rtx
+$461 = (rtx *) 0xb78fddb8
+(gdb) watch *(int*)0xb78fddb8
+(gdb) c
+
+      XEXP (memref, 0) = addr;  ここでウォッチポイントがヒット
+      return memref;
+
+(gdb) p debug_rtx(addr)
+(reg/f:SI 43 ARGP)
+$462 = void
+(gdb)
+
+なんだかそれっぽい.
+
+(gdb) c
+ウォッチポイントにはヒットしないでコンパイルが終了.
+
+(reg/f:SI 43 ARGP)
+
+のレジスタ番号がどこかで書き替えられるのか, それともレジスタから PLUS すなわち
+
+FP:SI+0x8
+
+に変更されるということだろうかと考えた.
+
+(gdb) p addr->code
+REG
+(gdb) p &addr->code
+$502 = (rtx_code *) 0xb786e08c
+(gdb) watch *(int*)0xb786e08c
+Hardware watchpoint 8: *(int*)0xb786e08c
+(gdb) c
+このウォッチポイントにはヒットしない.
+
+(gdb) p addr->u.fld[0].rt_int
+$540 = 43                            # ARGP のレジスタ番号
+(gdb) p &addr->u.fld[0].rt_int
+$541 = (int *) 0xb786e094
+(gdb) watch *(int *) 0xb786e094
+Hardware watchpoint 9: *(int *) 0xb786e094
+(gdb) c
+このウォッチポイントにもヒットしない.
+
+これは, よく理解できていないらしい.
+
+もう一度改めて. 問題の rtx_insn が作成される瞬間は捕えられていて
+
+(gdb) p debug_rtx((rtx_def*)0xb7877360)
+(insn 2 0 0 (set (mem/c:SI (reg/f:SI 50 virtual-incoming-args) [1 a+0 S4 A32])
+        (reg:SI 0 R0 [ a ])) "b.c":2:1 -1
+     (nil))
+$591 = void
+(gdb) 
+
+である. これから PATTERN を取り出す. PATTERN は XEXEP(rtx, 3) なので
+                                                      |
+						+-----+
+                                                |
+                                                V
+(gdb) p debug_rtx(((rtx_def*)0xb7877360)->u.fld[3].rt_rtx)
+(set (mem/c:SI (reg/f:SI 50 virtual-incoming-args) [1 a+0 S4 A32])
+    (reg:SI 0 R0 [ a ]))
+$592 = void
+(gdb)
+
+期待したものになっている. さらにこれからデスティネーションを抜き出したいので 
+
+(gdb) p debug_rtx((((rtx_def*)0xb7877360)->u.fld[3].rt_rtx)->u.fld[0].rt_rtx)
+(mem/c:SI (reg/f:SI 50 virtual-incoming-args) [1 a+0 S4 A32])
+$593 = void
+(gdb)
+
+これも期待したもの. ということは...
+
+(gdb) p &((((rtx_def*)0xb7877360)->u.fld[3].rt_rtx)->u.fld[0].rt_rtx)
+$594 = (rtx *) 0xb78fddc8
+(gdb) watch *(int*)0xb78fddc8
+Hardware watchpoint 12: *(int*)0xb78fddc8
+(gdb) c
+
+1 回目にヒットしたのは前回と同じ.
+
+      XEXP (memref, 0) = addr;  ここでウォッチポイントがヒット
+      return memref;
+
+(gdb) c
+そして 2 回目にヒットしたのは
+
+  for (i = 0; i < n_dups; i++)
+    orig_dup[i] = *recog_data.dup_loc[i];
+
+  int n_operands = recog_data.n_operands;
+  for (i = 0; i < n_operands; i++)                ここで停止
+    {
+      orig_operand[i] = recog_data.operand[i];
+
+このとき
+
+(gdb) p debug_rtx((rtx_def*)0xb7877360)
+(insn 2 5 3 2 (set (nil)
+        (reg:SI 0 R0 [ a ])) "b.c":2:1 19 {*movsi_insn}
+     (expr_list:REG_DEAD (reg:SI 0 R0 [ a ])
+        (nil)))
+$595 = void
+(gdb)
+
+これはデスティネーションが nullptr になったが
+
+(gdb) c
+
+  /* Restore the old body.  */
+  for (i = 0; i < n_operands; i++)                 ここで停止
+    *recog_data.operand_loc[i] = orig_operand[i];
+
+(gdb) p debug_rtx((rtx_def*)0xb7877360)
+(insn 2 5 3 2 (set (mem/c:SI (reg/f:SI 43 ARGP) [1 a+0 S4 A32])
+        (nil)) "b.c":2:1 19 {*movsi_insn}
+     (expr_list:REG_DEAD (reg:SI 0 R0 [ a ])
+        (nil)))
+$596 = void
+(gdb)
+
+なんだかそれっぽい.
+
+(gdb) c
+
+	  *recog_data.operand_loc[i] = 0;  ここで停止.
+
+(gdb) p debug_rtx((rtx_def*)0xb7877360)
+(insn 2 5 3 2 (set (nil)
+        (reg:SI 0 R0 [ a ])) "b.c":2:1 19 {*movsi_insn}
+     (expr_list:REG_DEAD (reg:SI 0 R0 [ a ])
+        (nil)))
+$597 = void
+(gdb) c
+
+  check_eliminable_occurrences (old_body);
+
+  /* Substitute the operands; the new values are in the substed_operand
+     array.  */
+  for (i = 0; i < recog_data.n_operands; i++)         ここで停止
+    *recog_data.operand_loc[i] = substed_operand[i];
+
+(gdb) p debug_rtx((rtx_def*)0xb7877360)
+(insn 2 5 3 2 (set (mem/c:SI (plus:SI (reg/f:SI 15 FP)
+                (const_int 8 [0x8])) [1 a+0 S4 A32])
+        (nil)) "b.c":2:1 19 {*movsi_insn}
+     (expr_list:REG_DEAD (reg:SI 0 R0 [ a ])
+        (nil)))
+$598 = void
+(gdb) 
+
+これは [FP+8] := ...
+の部分が生成されている.
+
+(gdb) p debug_rtx(*recog_data.operand_loc[i-1])
+(mem/c:SI (plus:SI (reg/f:SI 15 FP)
+        (const_int 8 [0x8])) [1 a+0 S4 A32])
+$600 = void
+(gdb) p i
+$601 = 1
+(gdb) 
+
+ということは第 1 引数(i = 0)の処理をしたということなのだろう.
+
+つまり,
+
+static int
+eliminate_regs_in_insn (rtx_insn *insn, int replace)
+{
+...
+  rtx substed_operand[30];  // ローカル変数
+...
+  check_eliminable_occurrences (old_body);
+
+  /* Substitute the operands; the new values are in the substed_operand
+     array.  */
+  for (i = 0; i < recog_data.n_operands; i++)
+    *recog_data.operand_loc[i] = substed_operand[i]; ここで変更しているらしい.
+
+
+substed_operand[0] をどのように計算しているか調べればよい.
+
+自前の cc1 では上の函数は呼び出されていない. ということはまずはどのように計算しているか
+よりもどうすれば呼び出されるかを調査したほうが良さそうである.
+
+自前の cc1 では do_reload は呼び出されているが reload は呼び出されていない.
+だからなぜオリジナルの cc1 で呼び出されるか比較を行なう.
+
+static void
+do_reload (void)
+{
+...
+  if (ira_use_lra_p)
+    {
+    // 自前の cc1 はこっち
+    ...
+    }
+  else
+    {
+    // オリジナルの cc1 はこっち
+    ...
+    ここから reload() の呼び出し
+    }
+
+ira_use_lra_p は単なるグローバル変数で
+
+void
+initialize_rtl (void)
+{
+  auto_timevar tv (g_timer, TV_INITIALIZE_RTL);
+
+  /* Initialization done just once per compilation, but delayed
+     till code generation.  */
+  if (!rtl_initialized)
+    ira_init_once ();         この函数の中でセットされている.
+  rtl_initialized = true;
+
+オリジナルの cc1 で ira_init_once() が呼び出されていないのかと思ったが
+
+void
+ira_init_once (void)
+{
+  ira_init_costs_once ();
+  lra_init_once ();
+
+  ira_use_lra_p = targetm.lra_p ();      ここが仕掛けだった.
+}
+
+bfin.c
+
+#undef TARGET_LRA_P
+#define TARGET_LRA_P hook_bool_void_false
+
+上の修正を入れてリビルドして動作させたところ
+
+(gdb) run a.c
+Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.bfin-elf.mine/host-i686-pc-linux-gnu/gcc/cc1 a.c
+ f
+Analyzing compilation unit
+Performing interprocedural optimizations
+ <*free_lang_data> {heap 624k} <visibility> {heap 624k} <build_ssa_passes> {heap 624k} <opt_local_passes> {heap 816k} <remove_symbols> {heap 816k} <targetclone> {heap 816k} <free-fnsummary> {heap 816k} <emutls> {heap 816k}Streaming LTO
+ <whole-program> {heap 816k} <fnsummary> {heap 816k} <inline> {heap 816k} <free-fnsummary> {heap 816k} <single-use> {heap 816k} <comdats> {heap 816k}Assembling functions:
+ <materialize-all-clones> {heap 816k} f
+Program terminated with signal SIGKILL, Killed.
+The program no longer exists.
+(gdb)
+
+数回やってみても同じ. デバッガからではなくシェルから直接起動しても同じ.
+
+(gdb) b do_reload
+
+このブレークポイントにくる前に SIGKILL を受けている. SIGKILL を受ける
+前に C-c で割り込んだところ
+
+void
+init_reload (void)
+{
+...
+  while (memory_address_p (QImode, tem))         ここでループしていた
+    {
+      spill_indirect_levels++;
+      tem = gen_rtx_MEM (Pmode, tem);
+    }
+
+これを呼び出しているのは
+
+  if (!ira_use_lra_p)
+    init_reload ();
+
+なるほど, 上のループが終了する仕組みが必要.
+
+memory_address_p() の呼び出しは
+
+bfin_legitimate_address_p (mode=E_QImode, x=0xb78fd400, strict=false) at ../.././gcc/config/bfin/bfin.c:2722
+
+になっていた. そこで以下のように自前の cc1 を修正した.
+
+bool bfin_legitimate_address_p(machine_mode mode, rtx x, bool strict)
+{
+  (void)mode; (void)strict;
+  if (MEM_P(x))
+    return false;
+  return true;
+}
+
+これまで aarch64, arm, m68hc11 では true を返しておけば問題なかったが, 今回は
+ここが必要らしい. この函数の機能はおいおい調査することにする.
+
+これで eliminate_regs_in_insn が呼ばれるようになるわけではなかったが
+do_reload は呼び出されるようにはなった.
+
+オリジナルの cc1 では以下の条件が成立していないが, 自前の cc1 では条件が
+成立している.
+
+      if (maybe_ne (starting_frame_size, 0) && crtl->stack_alignment_needed)
+	{
+	  /* If we have a stack frame, we must align it now.  The
+	     stack size may be a part of the offset computation for
+	     register elimination.  So if this changes the stack size,
+	     then repeat the elimination bookkeeping.  We don't
+	     realign when there is no stack, as that will cause a
+	     stack frame when none is needed should
+	     TARGET_STARTING_FRAME_OFFSET not be already aligned to
+	     STACK_BOUNDARY.  */
+	  assign_stack_local (BLKmode, 0, crtl->stack_alignment_needed);
+	}
+
+しかしこれが直接 eliminate_regs_in_insn が呼び出されない理由ではないのでスルーしておく.
+
+      calculate_needs_all_insns (global);
+
+上の実行でオリジナルの cc1 では eliminate_regs_in_insn の呼び出しにつながるが
+自前の cc1 ではそうなっていない.
+
+static void
+calculate_needs_all_insns (int global)
+{
+...
+	  /* If needed, eliminate any eliminable registers.  */
+	  if (num_eliminable || num_eliminable_invariants)
+	    did_elimination = eliminate_regs_in_insn (insn, 0); ここだった
+
+自前の cc1 では上の if の条件が成立していないので呼び出されないということだった.
+オリジナルの cc1 では
+
+(gdb) p num_eliminable
+$609 = 1
+(gdb) p num_eliminable_invariants
+$610 = 0
+(gdb)
+
+なので num_eliminable が 1 にセットされる理由を調べてみる.
+
+  for (ep = reg_eliminate; ep < &reg_eliminate[NUM_ELIMINABLE_REGS]; ep++)
+    {
+      num_eliminable += ep->can_eliminate;  ここで 1 にしていた.
+      ep->from_rtx = gen_rtx_REG (Pmode, ep->from);
+      ep->to_rtx = gen_rtx_REG (Pmode, ep->to);
+    }
+
+(gdb) p *ep
+$612 = {from = 43, to = 15, initial_offset = {coeffs = {0}}, 
+  can_eliminate = 1, can_eliminate_previous = 1, offset = {coeffs = {0}}, 
+  previous_offset = {coeffs = {0}}, ref_outside_mem = 0, from_rtx = 0x0, 
+  to_rtx = 0x0}
+(gdb)
+
+#define ELIMINABLE_REGS				\
+{{ ARG_POINTER_REGNUM, STACK_POINTER_REGNUM},	\    これがポイントらしい
+ { ARG_POINTER_REGNUM, FRAME_POINTER_REGNUM},	\
+ { FRAME_POINTER_REGNUM, STACK_POINTER_REGNUM}}	\
+
+(define_constants
+...
+   (REG_ARGP 43)      これ
+..
+   (REG_LB1 49)])
+
+#define ARG_POINTER_REGNUM REG_ARGP     これ
+
+#define FIRST_PSEUDO_REGISTER 50
+
+ということは, 実在しないレジスタのはずなのに普通のレジスタであるかのように扱っているらしい.
+
+HOST_WIDE_INT
+bfin_initial_elimination_offset (int from, int to)
+{
+  HOST_WIDE_INT offset = 0;
+
+  if (from == ARG_POINTER_REGNUM)
+    offset = n_regs_saved_by_prologue () * 4;
+
+どうやら上の函数がポイントらしい. ここで 8 や 12 を返すのがポイントらしい.
+
+上の箇所を修正して
+
+  for (ep = reg_eliminate; ep < &reg_eliminate[NUM_ELIMINABLE_REGS]; ep++)
+    {
+      num_eliminable += ep->can_eliminate;              ここで
+      ep->from_rtx = gen_rtx_REG (Pmode, ep->from);
+      ep->to_rtx = gen_rtx_REG (Pmode, ep->to);
+    }
+
+num_eliminable が 1 になっていることを確認した. しかしまだオフセットは修正されていない.
+
+この修正により eliminate_regs_in_insn は呼び出されるようになった.
+この函数のローカル変数 substed_operand[0] がどのように計算されるかを調べてみる.
+
+eliminate_regs_in_insn
+
+が呼び出されたとき
+
+(gdb) p debug_insn_slim(insn)
+    2: [fp:SI]=R0:SI
+      REG_DEAD R0:SI
+$6 = void
+(gdb)
+
+であった. 一方オリジナルの cc1 では
+
+(gdb) p debug_insn_slim(insn)
+    2: [ARGP:SI]=R0:SI
+      REG_DEAD R0:SI
+$7 = void
+(gdb)
+
+なのでこれは呼び出された時点での insn が間違っていると考えられる.
+
+オリジナルの cc1 ではざっくりというと
+
+[virtual-incoming-args] := R0
+                 [ARGP] := R0
+                 [FP+8] := R0
+
+のように変化していたが自前の cc1 でどうなっているか確認する.
+
+
+問題の rtx_insn が最初に作られた状態(自前)
+
+(insn 2 1 0 (set (mem/c:SI (reg/f:SI 19 virtual-stack-vars) [1 a+0 S4 A8])
+        (reg:SI 0 R0 [ a ])) "a.c":2:1 -1
+
+オリジナル
+
+(insn 2 0 0 (set (mem/c:SI (reg/f:SI 50 virtual-incoming-args) [1 a+0 S4 A32])
+        (reg:SI 0 R0 [ a ])) "b.c":2:1 -1
+     (nil))
+
+もうこの時点で違っているように考えられる.
+
+そもそも virtual-stack-vars, virtual-incoming-args に違いがあるのだろうか.
+
+emit-rtl.c:6096
+
+  stack_pointer_rtx = gen_raw_REG (Pmode, STACK_POINTER_REGNUM);
+  frame_pointer_rtx = gen_raw_REG (Pmode, FRAME_POINTER_REGNUM);
+  hard_frame_pointer_rtx = gen_raw_REG (Pmode, HARD_FRAME_POINTER_REGNUM);
+  arg_pointer_rtx = gen_raw_REG (Pmode, ARG_POINTER_REGNUM);
+  virtual_incoming_args_rtx =
+    gen_raw_REG (Pmode, VIRTUAL_INCOMING_ARGS_REGNUM);
+  virtual_stack_vars_rtx =
+    gen_raw_REG (Pmode, VIRTUAL_STACK_VARS_REGNUM);
+
+マクロ展開の結果は以下:
+
+  (((&default_target_rtl)->x_global_rtl)[GR_STACK_POINTER]) = gen_raw_REG (Pmode, 14);
+  (((&default_target_rtl)->x_global_rtl)[GR_FRAME_POINTER]) = gen_raw_REG (Pmode, 15);
+  (((&default_target_rtl)->x_global_rtl)[GR_HARD_FRAME_POINTER]) = gen_raw_REG (Pmode, 15);
+  (((&default_target_rtl)->x_global_rtl)[GR_ARG_POINTER]) = gen_raw_REG (Pmode, 17);
+  (((&default_target_rtl)->x_global_rtl)[GR_VIRTUAL_INCOMING_ARGS]) =
+    gen_raw_REG (Pmode, ((FIRST_PSEUDO_REGISTER)));
+  (((&default_target_rtl)->x_global_rtl)[GR_VIRTUAL_STACK_ARGS]) =
+    gen_raw_REG (Pmode, (((FIRST_PSEUDO_REGISTER)) + 1));
+
+(gdb) p (int)GR_VIRTUAL_INCOMING_ARGS
+$21 = 3
+(gdb) p (int)GR_VIRTUAL_STACK_ARGS
+$22 = 4
+(gdb)
+
+というわけで 2 つは区別されてはいる.
+
+オリジナルの cc1 でも調べてみた:
+
+  (((&default_target_rtl)->x_global_rtl)[GR_STACK_POINTER]) = gen_raw_REG ((scalar_int_mode ((scalar_int_mode::from_int) E_SImode)), 14);
+  (((&default_target_rtl)->x_global_rtl)[GR_FRAME_POINTER]) = gen_raw_REG ((scalar_int_mode ((scalar_int_mode::from_int) E_SImode)), 15);
+  (((&default_target_rtl)->x_global_rtl)[GR_HARD_FRAME_POINTER]) = gen_raw_REG ((scalar_int_mode ((scalar_int_mode::from_int) E_SImode)), 15);
+  (((&default_target_rtl)->x_global_rtl)[GR_ARG_POINTER]) = gen_raw_REG ((scalar_int_mode ((scalar_int_mode::from_int) E_SImode)), 43);
+  (((&default_target_rtl)->x_global_rtl)[GR_VIRTUAL_INCOMING_ARGS]) =
+    gen_raw_REG ((scalar_int_mode ((scalar_int_mode::from_int) E_SImode)), ((50)));
+  (((&default_target_rtl)->x_global_rtl)[GR_VIRTUAL_STACK_ARGS]) =
+    gen_raw_REG ((scalar_int_mode ((scalar_int_mode::from_int) E_SImode)), (((50)) + 1));
+
+
+(gdb) p (int)GR_ARG_POINTER
+$13 = 2
+(gdb) p (int)GR_VIRTUAL_INCOMING_ARGS
+$14 = 3
+(gdb) p (int)GR_VIRTUAL_STACK_ARGS
+$16 = 4
+(gdb)
+
+ARG_POINTER_REGNUM に違いはあるものの問題はなさそう.
+
+オリジナルの cc1 ではなぜ
+
+[virtual-incoming-args] := R0
+
+であるのか. あるいは自前の cc1 で
+
+[virtual-stack-vars] := R0
+
+になるのか調査する.
+
+まずは自前の cc1. 問題の命令が作られたときは
+
+(gdb) p debug_rtx((rtx_insn *) 0xb7877360)
+(insn 2 0 0 (set (mem/c:SI (reg/f:SI 19 virtual-stack-vars) [1 a+0 S4 A8])
+        (reg:SI 0 R0 [ a ])) "a.c":2:1 -1
+     (nil))
+$28 = void
+
+この 19 が virtual-stack-vars レジスタの番号で
+
+FIRST_PSEUDO_REGISTER + 1 = 18 + 1 = 19
+
+ということ.
+
+(gdb) p debug_rtx(((rtx_insn *) 0xb7877360)->u.fld[3].rt_rtx)
+(set (mem/c:SI (reg/f:SI 19 virtual-stack-vars) [1 a+0 S4 A8])
+    (reg:SI 0 R0 [ a ]))
+$30 = void
+
+上のように PATTERN を取り出せている.
+
+(gdb) p debug_rtx((((rtx_insn *) 0xb7877360)->u.fld[3].rt_rtx)->u.fld[0].rt_rtx)
+(mem/c:SI (reg/f:SI 19 virtual-stack-vars) [1 a+0 S4 A8])
+$31 = void
+
+デスティネーションを上のように取り出せている.
+
+(gdb) p debug_rtx(((((rtx_insn *) 0xb7877360)->u.fld[3].rt_rtx)->u.fld[0].rt_rtx)->u.fld[0].rt_rtx)
+(reg/f:SI 19 virtual-stack-vars)
+$32 = void
+
+レジスタを上のように取り出せている.
+
+(gdb) p ((((((rtx_insn *) 0xb7877360)->u.fld[3].rt_rtx)->u.fld[0].rt_rtx)->u.fld[0].rt_rtx)->u.fld[0].rt_int)
+$33 = 19
+
+上のようにレジスタ番号を取り出せている.
+この rtx_insn を作り出しているのは以下:
+
+static void
+assign_parm_setup_stack (struct assign_parm_data_all *all, tree parm,
+		         struct assign_parm_data_one *data)
+{
+...
+	  emit_move_insn (dest, src);
+
+この dest の計算がオリジナルの cc1 と自前の cc1 とでは異なっているということ.
+オリジナルの cc1 でもここから問題の rtx_insn を作り出している.
+
+      dest = validize_mem (copy_rtx (data->stack_parm));
+
+ここで dest を計算している. 上を実行する直前
+
+(gdb) p debug_rtx(data->stack_parm)
+(mem/c:SI (reg/f:SI 19 virtual-stack-vars) [1 a+0 S4 A8])   自前の cc1 
+$37 = void
+(gdb)
+
+(gdb) p debug_rtx(data->stack_parm)
+(mem/c:SI (reg/f:SI 50 virtual-incoming-args) [1 a+0 S4 A32]) オリジナルの cc1  
+$23 = void
+(gdb)
+
+ここで違いが出ている.
+
+
+      if (data->stack_parm == 0) オリジナルの cc1 はこの条件が成立していない.
+	{
+	  ... 自前の cc1 はここで data->stack_parm を計算している
+        }
+
+      dest = validize_mem (copy_rtx (data->stack_parm));
+
+つまりこの函数が呼び出された時点で data->stack_parm に値がセットされている
+必要があったということ.
+
+static void
+assign_parm_find_stack_rtl (tree parm, struct assign_parm_data_one *data)
+{
+...
+  stack_parm = gen_rtx_MEM (data->arg.mode, stack_parm);
+
+オリジナルの cc1 では上の部分でこの値をセットしていた. 一方自前の cc1 ではこの
+函数は呼び出されていない.
+
+だからなぜ assign_parm_find_stack_rtl が呼び出されていないのか調べてみる.
+
+      /* Find out where stack space for this parameter might be.  */
+      if (assign_parm_is_stack_parm (&all, &data))
+	{
+	  assign_parm_find_stack_rtl (parm, &data);
+
+単純にこの if の条件が成立していないだけらしい.
+オリジナルの cc1 では
+
+
+  else if (all->reg_parm_stack_space > 0)
+    ;
+
+この条件が成立していて true が返っている. この値が更新されるのは
+
+static void
+assign_parms (tree fndecl)
+{
+  struct assign_parm_data_all all;  ローカル変数
+
+
+#ifdef INCOMING_REG_PARM_STACK_SPACE
+  all->reg_parm_stack_space
+    = INCOMING_REG_PARM_STACK_SPACE (current_function_decl);
+#endif
+
+こういうことらしい.
+
+オリジナルの cc1 では
+
+#define FIXED_STACK_AREA 12
+#define REG_PARM_STACK_SPACE(FNDECL) FIXED_STACK_AREA
+
+を bfin.h で宣言していて結果的に
+
+  all->reg_parm_stack_space
+    = 12;
+
+のようにマクロ展開されている. そこで自前の bfin.h にも以下を追加してみた.
+
+#define REG_PARM_STACK_SPACE(FNDECL) 12
+
+2022.01.26 11:55 ビルド開始.
+2022.01.26 12:26 終了. 30 分ほど費やすらしい.
+
+ビルドの途中で気付いたがオリジナルの bfin.h には以下のマクロも定義されている：
+
+/* Define this if the above stack space is to be considered part of the
+ * space allocated by the caller.  */
+#define OUTGOING_REG_PARM_STACK_SPACE(FNTYPE) 1
+
+ここで above は REG_PARM_STACK_SPACE のこと. 正しく動かない可能性はあるが
+必要になるまで追加しないでおく. と思ったが現状 get_frame_size() が 8 を返している
+からやはりこのマクロも宣言しておく必要がある.
+  => と思ったが結局必要にならなかったので追加しないことにする. get_frame_size() は
+     上の修正なしで 0 を返している.
+
+ビルドし直したところ assign_parm_find_stack_rtl が呼び出されるようになった.
+
+また dest の計算のところで
+
+(gdb) p debug_rtx(data->stack_parm)   # 第 1 引数
+(mem/c:SI (reg/f:SI 18 virtual-incoming-args) [1 a+0 S4 A8])
+$40 = void
+
+
+(gdb) p debug_rtx(data->stack_parm)   # 第 2 引数
+(mem/c:SI (plus:SI (reg/f:SI 18 virtual-incoming-args)
+        (const_int 4 [0x4])) [1 b+0 S4 A8])w
+$41 = void
+(gdb) 
+
+であることも確認した. ここまでは期待した動きであるが, 何やらコンパイルが終了しない.
+
+とりあえずそもそもの目標だった
+
+static int
+eliminate_regs_in_insn (rtx_insn *insn, int replace)
+{
+
+での insn を確認してみたところ
+
+(gdb) p debug_insn_slim(insn)
+    2: [ap:SI+0x8]=R0:SI
+      REG_DEAD R0:SI
+$48 = void
+(gdb)
+
+これは何やら余計に +0x8 が付いている.
+
+(gdb) finish
+(gdb) p debug_insn_slim(insn)
+    2: [fp:SI+0x10]=R0:SI
+      REG_DEAD R0:SI
+$50 = void
+(gdb)
+
+無限ループしてしまうのも問題だが, まずは eliminate_regs_in_insn が呼び出された
+時点での insn が
+
+    2: [ap:SI]=R0:SI
+
+になるように修正する.
+
+(gdb) p insn
+$53 = (rtx_insn *) 0xb7877360
+(gdb) watch *(int*)0xb7877360
+(gdb) run
+
+
+int FIRST_PARM_OFFSET(tree)
+{
+  return 8;  これが原因だった.
+}
+
+無限ループしている原因はまだ不明だが, 
+
+(gdb) run
+...
+(gdb) p debug_insn_slim(insn)
+    2: [ap:SI]=R0:SI
+      REG_DEAD R0:SI
+$65 = void
+(gdb) finish
+(gdb) p debug_insn_slim(insn)
+    2: [fp:SI+0x8]=R0:SI
+      REG_DEAD R0:SI
+$67 = void
+(gdb) c
+...
+(gdb) p debug_insn_slim(insn)
+    3: [ap:SI+0x4]=R1:SI
+      REG_DEAD R1:SI
+$68 = void
+(gdb) finish
+...
+(gdb) p debug_insn_slim(insn)
+    3: [fp:SI+0xc]=R1:SI
+      REG_DEAD R1:SI
+$70 = void
+(gdb)
+
+eliminate_regs_in_insn での変換が繰り返されていることに気付いた.
+
+
+bool
+reload (rtx_insn *first, int global)
+{
+...
+  /* This loop scans the entire function each go-round
+     and repeats until one repetition spills no additional hard regs.  */
+  for (;;)
+    {
+
+      if (! something_changed)       // このループを終了する条件を満していないらしい.
+	break;
+    }
+  ... 
+}
+
+オリジナルの cc1 でどうなるか調べてみた.
+
+   17: use R0:SI
+
+に対して eliminate_regs_in_insn が呼び出されて, そして reload のループに戻り
+そして somethign_changed が false で抜けている.
+
+自前の cc1 では以下が成立して
+
+      else if (!verify_initial_elim_offsets ())
+	something_changed = 1;
+
+そしてループを抜けられていない. これは
+
+void INITIAL_ELIMINATION_OFFSET(int from, int to, poly_int64_pod& offset)
+{
+
+の呼び出しをしていて, offset = 0 の初期化が抜けていた.
+これを修正して無限ループは回避できている.
+現状 hello world をコンパイルすると以下のようになっている.
+
+main:
+	LINK 0;
+	SP := SP + 4
+	R0 := *.LC0
+	R10 := call puts
+	SP := SP + -4
+	R0 := 0
+	R10 := R0
+	UNLINK;
+	rts
+
+SP := SP + 4 や SP := SP + -4 が生成されている. 理由は不明だが生成されてほしくない.
+
+SP := SP + 4 は以下から生成されていた.
+
+  adjust_stack_1 (adjust, true);
+
+(gdb) p debug_rtx(adjust)
+(const_int 4 [0x4])
+$198 = void
+(gdb) 
+
+これが直接の原因. そしてこれは
+
+rtx
+expand_call (tree exp, rtx target, int ignore)
+{
+...
+
+から呼び出されている.
+
+(gdb) p debug_tree(exp)
+...
+
+この結果を見れば
+
+  puts("hello world");
+
+の呼び出しが結果的にこの結果を招いているらしい.
+オリジナルの cc1 ではどうなっているか調べてみた.
+
+(gdb) b expand_call
+
+
+  else if (type_arg_types != 0
+	   && ! targetm.calls.pretend_outgoing_varargs_named (args_so_far))
+    /* Don't include the last named arg.  */
+    --n_named_args;      この行を実行しているのが自前の cc1. オリジナルは実行していない.
+
+
+targetm.calls.pretend_outgoing_varargs_named (args_so_far)
+
+の呼び出しが自前の cc1 は true であるのに対してオリジナルは false.
+これはオリジナルの cc1 で
+
+static void
+setup_incoming_varargs (cumulative_args_t cum,
+			const function_arg_info &, int *pretend_size,
+			int no_rtl)
+{
+...
+#undef TARGET_SETUP_INCOMING_VARARGS
+#define TARGET_SETUP_INCOMING_VARARGS setup_incoming_varargs
+
+のようにしているから. しかし今回の SP := SP + 4 の問題とは無関係らしいので
+スルーする.
+
+	  poly_int64 needed = adjusted_args_size.constant;
+
+以下はオリジナルの cc1 の結果
+(gdb) p needed
+$6 = {<poly_int_pod<1, long long>> = {coeffs = {12}}, <No data fields>}
+(gdb) 
+
+これに対して自前の cc1 の結果は
+
+(gdb) p needed
+$207 = {<poly_int_pod<1, long long>> = {coeffs = {0}}, <No data fields>}
+(gdb)
+
+OUTGOING_REG_PARM_STACK_SPACE
+
+このマクロは MEMO でもでてきたが, 1 に define されていないと
+
+      if (! OUTGOING_REG_PARM_STACK_SPACE ((!fndecl ? fntype : TREE_TYPE (fndecl))))
+	args_size->constant -= reg_parm_stack_space;
+
+で違いが出てくる.
+
+#define OUTGOING_REG_PARM_STACK_SPACE(FNTYPE) 1
+
+を bfin.h に追加してリビルド.
+上の修正を入れたが, SP := SP + 4 が出るのは回避できていない. まだ違いが出ているらしい.
+
+
+	  if (must_preallocate)
+	    {
+	      if (ACCUMULATE_OUTGOING_ARGS)
+		{
+		     // オリジナルの cc1 ではこちらが実行されている.
+		}
+
+
+#define ACCUMULATE_OUTGOING_ARGS 1
+
+この宣言が必要らしい. これはプリプロセッサのディレクティブで参照されているので
+マクロである必要がある.
+
+SP := SP + 4 や SP := SP + -4 が生成されないことを確認した.
+
+函数名にアンダースコア `_' を付加するには必要あることに気付いた.
+
+オリジナルの cc1 では
+
+#define ASM_OUTPUT_LABELREF(FILE,NAME) 	\
+    do {  fprintf (FILE, "_%s", NAME); \
+        } while (0)
+
+としている.
+
+もしかすると
+
+#define PRINT_OPERAND(FILE, RTX, CODE)	 print_operand (FILE, RTX, CODE)
+
+のように共通ルーチンを使用するのがいいのかも.
+今は自前の
+
+bfin_print_operand を使用している.
+
+       => 今回はそのまま自前のものを使用してそこで対応することにした.
+
+現状実行確認すると
+
+bfin-elf-run --memory-fill 0xcc --memory-region 0x1f000,0x1000 a.elf
+hello world 11
+program stopped with signal 11 (Segmentation fault).
+
+のようになる.
+
+_main:
+	LINK 0
+
+これが間違い. 呼び出された f で
+
+	LINK 0
+	[FP+8] = R0
+	[FP+12] = R1
+
+のようにしているから main のスタックを壊している.
+ということは, この 1 つ前のサンプル c.c ができていたのはたまたま.
+
+main のスタックは現状
+
+0x1fff8	+----------------+ <- sp_{new}, fp_{new}
+	|  0x00000000    |
+	+----------------+ 
+	|     0x12a      |
+0x20000	+----------------+ <- main が呼び出された時点での sp
+
+
+main が呼び出された時点で rets は 0x12a, fp は 0x00000000 なので
+
+	LINK 0
+
+を実行した直後は上のような状態になる.
+
+f のスタックは現状
+
+0x1fff0	+----------------+ <- sp, fp 
+	|     0x1fff8    |
+	+----------------+ 
+	|     0x194      |
+0x1fff8	+----------------+ <- f が呼び出された時点での sp, fp
+	|  0x00000000    |
+	+----------------+ 
+	|     0x12a      |
+0x20000	+----------------+ <- main が呼び出された時点での sp
+
+f が呼び出された時点では rets は 0x194 なので
+
+	LINK 0
+	
+を実行した直後は上のような状態になる. そして続く
+
+	[FP+8] = R0
+	[FP+12] = R1
+
+で 0x12a を潰している. この cc1 は雛形なので必ず 12 を確保してもよい.
+
+以下のようにすることで葉の函数ではこれまで通り
+
+	LINK 0
+
+のままで函数を呼び出す場合は
+
+	LINK 12
+
+のようにできている.
+
+void bfin_expand_prologue()
+{
+  auto size = get_frame_size();
+  auto out = crtl->outgoing_args_size;     これ
+  size += out;                             これ
+
+これで実行確認すると期待した結果になっている.
+
+-g オプションで a.c をコンパイルして a.elf を gdb で動作させると
+
+main のブレークポイントで停止できている.
+
+そこから step を実行すると f のプロローグをスキップできていない.
+
+bfin のレジスタの番号が合っていない可能性がある.
+
+cc1 のレジスタ番号
+
+sp   : 14
+fp   : 15
+rets : 16
+
+オリジナルの cc1 のレジスタ番号は
+
+#define REGISTER_NAMES { \
+  "R0", "R1", "R2", "R3", "R4", "R5", "R6", "R7", \
+  "P0", "P1", "P2", "P3", "P4", "P5", "SP", "FP", \
+  "I0", "I1", "I2", "I3", "B0", "B1", "B2", "B3", \
+  "L0", "L1", "L2", "L3", "M0", "M1", "M2", "M3", \
+  "A0", "A1", \
+  "CC", \
+  "RETS", "RETI", "RETX", "RETN", "RETE", "ASTAT", "SEQSTAT", "USP", \
+  "ARGP", \
+  "LT0", "LT1", "LC0", "LC1", "LB0", "LB1" \
+}
+
+だから
+
+sp   : 14
+fp   : 15
+rets : 35
+
+になっている. rets レジスタの番号が間違い.
+
+しかし, プロローグをスキップできていないのは別の理由のようにも思える.
+試しに f にブレークポイントをセットしてそこまで実行してみたところ適切に
+プロローグの部分をスキップできている.
+
+この現象はどこかで見たような... m68hc11-elf-gdb だった:
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.m68hc11-elf/gdb/MEMO
+
+そしてこのときは余計に出ていた .debug_frame セクションをはずすことだった.
+しかし今回のコンパイラの実装では
+
+void bfin_expand_prologue()
+{
+  auto size = get_frame_size();
+  auto out = crtl->outgoing_args_size;
+  size += out;
+  auto tmp = gen_rtx_CONST_INT(Pmode, size);
+  auto insn = gen_link(tmp);
+  insn = emit_insn(insn);
+  RTX_FRAME_RELATED_P(insn) = true;            これ
+  auto N = XVECLEN(PATTERN(insn), 0);
+  assert(N == 4);
+  for (int i = 0 ; i != N ; ++i) {
+    auto tmp = XVECEXP(PATTERN (insn), 0, i);
+    assert(GET_CODE(tmp) == SET);
+    RTX_FRAME_RELATED_P(tmp) = true;           これ
+  }
+}
+
+がっつり使用している.
+ということで調査の方法は参考にできるにしても, 対処はおそらく違っているはず.
+
+ところでできているオリジナルの cc1 と .debug_frame の内容が違っている.
+そこを合致させると良さそうだがもしかすると link で指定した式を正しいと思ったものに
+変更したのが影響しているのかもしれない.
+
+一旦 rets レジスタを上で述べたように修正して動作させたところ必要以上に
+スタックに一時変数と思われるものを保存するようになっている.
+
+また
+
+const char* bfin_addsi3(rtx x, rtx y, rtx z)
+{
+  int offy, offz;
+  if (REG_P(x) && fp_rel(y, &offy) && fp_rel(z, &offz)) {
+    // レジスタ := スタック + スタック
+    // 修正前はこれが成立していた
+
+
+const char* bfin_addsi3(rtx x, rtx y, rtx z)
+{
+  int offx, offy, offz;
+  if (fp_rel(x, &offx) && fp_rel(y, &offy) && fp_rel(z, &offz)) {
+    // スタック := スタック + スタック
+    // 修正後はこれが成立するようになっていた.
+    // 
+
+とはいえ, いずれもこれは gcc の都合なのでこれに対応する.
+そして -g なしで動作させてみたところ以下のようにメモリを破壊していることに気付いた.
+
+_f:
+	LINK 8
+	[FP+8] = R0
+	[FP+12] = R1
+	R3 = [FP+8]
+	R4 = [FP+12]
+	R3 = R3 + R4
+	[FP+0] = R3
+	R3 = [FP+0]         ここは FP を保存している領域
+	[FP+4] = R3
+	R0 = [FP+4]         ここは RETS を保存している領域
+	UNLINK
+	rts
+
+フレームポインタから相対オフセットは負の値になっていないと正しく動作しない.
+修正前にたまたま動作していたのは中間変数を使用する必要がなかったため.
+以下を追加してもう一度トライ
+
+#define FRAME_GROWS_DOWNWARD	     1
+
+そしてこの修正を行なったところ, 他の修正なしに gdb が期待通り動作していることを
+確認した.
