@@ -77,7 +77,7 @@ static const char *const initial_reg_names[] = REGISTER_NAMES;
     この仮想のレジスタ ap は HARD_REGISTER_NUM_P(16) が 0 になっても問題がないので
     最後のダミーの要素は上のように必要ないし, あっても問題ない.
     ap がどこを指すかを函数 INITIAL_ELIMINATION_OFFSET で指定する. このため
-    マクロ ELIMINABLE_REGS を以下のように修正する必要がある:
+    マクロ ELIMINABLE_REGS (後述)を以下のように修正する必要がある:
 
 #define ELIMINABLE_REGS				\
 {{ ARG_POINTER_REGNUM, STACK_POINTER_REGNUM},	\
@@ -399,14 +399,6 @@ enum reg_class {
       regno が函数を呼び出すときに引数を渡すのに使用されるならば true をそうでなければ
       false を返す.
 
-(*) ELIMINABLE_REGS
-
-参照箇所の 1 つ gcc/builtins.c
-
-      static const struct elims {const int from, to;} elim_regs[] = ELIMINABLE_REGS;
-      
-      調査中.
-
 (*) STACK_BOUNDARY
 
 参照箇所の 1 つ gcc/defaults.h
@@ -556,6 +548,16 @@ void ASM_OUTPUT_ALIGN(FILE* fp, int n)
     rclass = INDEX_REG_CLASS;
 
       調査中.
+
+
+(*) ELIMINABLE_REGS
+
+参照箇所の 1 つ gcc/builtins.c
+
+      static const struct elims {const int from, to;} elim_regs[] = ELIMINABLE_REGS;
+      
+      ARG_POINTER_REGNUM も参照. ARG_POINTER_REGNUM が FRAME_POINTER_REGNUM
+      と等しいのならば 
 
 (*) INITIAL_ELIMINATION_OFFSET
 
