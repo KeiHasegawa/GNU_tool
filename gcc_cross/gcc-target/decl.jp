@@ -54,6 +54,36 @@ static const char *const initial_reg_names[] = REGISTER_NAMES;
     も参照.
     プリプロセッサのディレクティブで参照されるためマクロでなくてはならない.
 
+    int f(int a, int b)
+    {
+      ...
+    }
+
+    のような f に対して f のプロローグの部分で a や b をスタックに保存するときに
+    例えば ARM や AARCH64 のように, フレームポインタの相対 0, 4 に保存して問題なければ
+    FRAME_POINTER_REGNUM と同じレジスタ番号, すなわちフレームポンタのレジスタ番号
+    を指定する.
+
+    Blackfin のように, そうではないスタックフレームを採用するコンパイラであれば仮想のレジスタ
+    を宣言する:
+
+#define REGISTER_NAMES { "r0", "r1", "r2", "r3", "r4", "r5", "r6", \
+    "r7", "r8", "r9", "r10", "r11", "r12", "r13, "fp", "sp", "ap" }
+
+#define FRAME_POINTER_REGNUM 14
+#define STACK_POINTER_REGNUM 15
+#define ARG_POINTER_REGNUM   16
+
+    この仮想のレジスタ ap は HARD_REGISTER_NUM_P(16) が 0 になっても問題がないので
+    最後のダミーの要素は上のように必要ないし, あっても問題ない.
+    ap がどこを指すかを函数 INITIAL_ELIMINATION_OFFSET で指定する. このため
+    マクロ ELIMINABLE_REGS を以下のように修正する必要がある:
+
+#define ELIMINABLE_REGS				\
+{{ ARG_POINTER_REGNUM, STACK_POINTER_REGNUM},	\
+ { ARG_POINTER_REGNUM, FRAME_POINTER_REGNUM},	\
+ { FRAME_POINTER_REGNUM, STACK_POINTER_REGNUM}}	\
+
 (*) FIRST_PSEUDO_REGISTER
 
 参照箇所の 1 つ gcc/hard-reg-set.h
