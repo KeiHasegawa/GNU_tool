@@ -26,7 +26,7 @@ static const char *const initial_reg_names[] = REGISTER_NAMES;
     評価されて問題ないならば上のような "dummy" は必要ない.
     また上記は後述する UNITS_PER_WORD が 4 の場合には正しいが
 
-    o AVR のように UNIT_PER_WORDS が 1 で Pmode (後述)のサイズが 2 ならば dummy
+    o AVR のように UNIT_PER_WORDS が 1 で Pmode (後述)のサイズが 2 ならばダミー
       の数をもう一つ増やす必要がある.
  
 (*) STACK_POINTER_REGNUM
@@ -64,8 +64,8 @@ static const char *const initial_reg_names[] = REGISTER_NAMES;
     FRAME_POINTER_REGNUM と同じレジスタ番号, すなわちフレームポンタのレジスタ番号
     を指定する.
 
-    Blackfin のように, そうではないスタックフレームを採用するコンパイラであれば仮想のレジスタ
-    を宣言する:
+    Blackfin のように, そうではないスタックフレームを採用するコンパイラであれば以下のよう
+    に仮想のレジスタ "ap" を宣言する:
 
 #define REGISTER_NAMES { "r0", "r1", "r2", "r3", "r4", "r5", "r6", \
     "r7", "r8", "r9", "r10", "r11", "r12", "r13, "fp", "sp", "ap" }
@@ -74,9 +74,9 @@ static const char *const initial_reg_names[] = REGISTER_NAMES;
 #define STACK_POINTER_REGNUM 15
 #define ARG_POINTER_REGNUM   16
 
-    この仮想のレジスタ ap は HARD_REGISTER_NUM_P(16) が 0 になっても問題がないので
+    この仮想のレジスタ "ap" は HARD_REGISTER_NUM_P(16) が 0 になっても問題がないので
     最後のダミーの要素は上のように必要ないし, あっても問題ない.
-    ap がどこを指すかを函数 INITIAL_ELIMINATION_OFFSET で指定する. このため
+    "ap" がどこを指すかを函数 INITIAL_ELIMINATION_OFFSET で指定する. このため
     マクロ ELIMINABLE_REGS (後述)を以下のように修正する必要がある:
 
 #define ELIMINABLE_REGS				\
@@ -223,7 +223,14 @@ enum reg_class {
 
   CUMULATIVE_ARGS info;
 
-    次に述べる INIT_CUMULATIVE_ARGS に必要な型を宣言する. 大抵は
+    次に述べる INIT_CUMULATIVE_ARGS に必要な型を宣言する.
+
+    struct CUMULATIVE_ARGS {
+      int nregs;
+      int offset;
+    };
+
+    としておけば十分である.
 
 (*) INIT_CUMULATIVE_ARGS
 
