@@ -1,30 +1,513 @@
-*** gdb-10.2.aarch64-elf/sim/avr/interp.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.avr-elf/sim/avr/interp.c	2021-11-14 09:07:06.000000000 +0900
+*** gdb-10.2.org/sim/avr/interp.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.avr-elf/sim/avr/interp.c	2022-01-29 11:32:11.000000000 +0900
 ***************
-*** 783,788 ****
---- 783,988 ----
+*** 202,207 ****
+--- 202,208 ----
+      OP_lds
+    };
+  
++ #ifndef NEW_MEM_MAP
+  struct avr_insn_cell
+  {
+    /* The insn (16 bits).  */
+***************
+*** 217,222 ****
+--- 218,243 ----
+  /* TODO: Should be moved to SIM_CPU.  */
+  static struct avr_insn_cell flash[MAX_AVR_FLASH];
+  static byte sram[MAX_AVR_SRAM];
++ #else  // NEW_MEM_MAP
++ void set_byte(int, uint8_t);
++ uint8_t get_byte(int);
++ 
++ sim_cpu* g_cpu;
++ int g_cia;
++ 
++ uint8_t get_sram(int addr)
++ {
++   addr |= 0x800000;
++   return sim_core_read_aligned_1(g_cpu, g_cia, read_map, addr);
++ }
++ 
++ void put_sram(int addr, uint8_t val)
++ {
++   addr |= 0x800000;
++   sim_core_write_aligned_1(g_cpu, g_cia, write_map, addr, val);
++ }
++ #endif  // NEW_MEM_MAP
++ 
+  
+  /* Sign extend a value.  */
+  static int sign_ext (word val, int nb_bits)
+***************
+*** 316,329 ****
+--- 337,359 ----
+  static inline word
+  read_word (unsigned int addr)
+  {
++ #ifndef NEW_MEM_MAP
+    return sram[addr] | (sram[addr + 1] << 8);
++ #else  // NEW_MEM_MAP
++   return get_sram(addr) | get_sram(addr+1) << 8;
++ #endif  // NEW_MEM_MAP
+  }
+  
+  static inline void
+  write_word (unsigned int addr, word w)
+  {
++ #ifndef NEW_MEM_MAP
+    sram[addr] = w;
+    sram[addr + 1] = w >> 8;
++ #else  // NEW_MEM_MAP
++   put_sram(addr, w);
++   put_sram(addr+1, w >> 8);
++ #endif  // NEW_MEM_MAP
+  }
+  
+  static inline word
+***************
+*** 345,360 ****
+--- 375,401 ----
+  static void
+  update_flags_logic (byte res)
+  {
++ #ifndef NEW_MEM_MAP 
+    sram[SREG] &= ~(SREG_S | SREG_V | SREG_N | SREG_Z);
+    if (res == 0)
+      sram[SREG] |= SREG_Z;
+    if (res & 0x80)
+      sram[SREG] |= SREG_N | SREG_S;
++ #else  // NEW_MEM_MAP
++   uint8_t v = get_sram(SREG);
++   v &= ~(SREG_S | SREG_V | SREG_N | SREG_Z);
++   if (res == 0)
++     v |= SREG_Z;
++   if (res & 0x80)
++     v |= SREG_N | SREG_S;
++   put_sram(SREG, v);
++ #endif  // NEW_MEM_MAP
+  }
+  
+  static void
+  update_flags_add (byte r, byte a, byte b)
+  {
++ #ifndef NEW_MEM_MAP 
+    byte carry;
+  
+    sram[SREG] &= ~(SREG_H | SREG_S | SREG_V | SREG_N | SREG_Z | SREG_C);
+***************
+*** 371,380 ****
+--- 412,440 ----
+      sram[SREG] |= SREG_S;
+    if (r == 0)
+      sram[SREG] |= SREG_Z;
++ #else  // NEW_MEM_MAP
++   uint8_t v = get_sram(SREG);
++   v &= ~(SREG_H | SREG_S | SREG_V | SREG_N | SREG_Z | SREG_C);
++   if (r & 0x80)
++     v |= SREG_N;
++   uint8_t carry = (a & b) | (a & ~r) | (b & ~r);
++   if (carry & 0x08)
++     v |= SREG_H;
++   if (carry & 0x80)
++     v |= SREG_C;
++   if (((a & b & ~r) | (~a & ~b & r)) & 0x80)
++     v |= SREG_V;
++   if (!(v & SREG_N) ^ !(v & SREG_V))
++     v |= SREG_S;
++   if (r == 0)
++     v |= SREG_Z;
++   put_sram(SREG, v);
++ #endif  // NEW_MEM_MAP
+  }
+  
+  static void update_flags_sub (byte r, byte a, byte b)
+  {
++ #ifndef NEW_MEM_MAP 
+    byte carry;
+  
+    sram[SREG] &= ~(SREG_H | SREG_S | SREG_V | SREG_N | SREG_Z | SREG_C);
+***************
+*** 390,402 ****
+    if (!(sram[SREG] & SREG_N) ^ !(sram[SREG] & SREG_V))
+      sram[SREG] |= SREG_S;
+    /* Note: Z is not set.  */
+  }
+  
+  static enum avr_opcode
+  decode (unsigned int pc)
+  {
+    word op1 = flash[pc].op;
+! 
+    switch ((op1 >> 12) & 0x0f)
+      {
+      case 0x0:
+--- 450,482 ----
+    if (!(sram[SREG] & SREG_N) ^ !(sram[SREG] & SREG_V))
+      sram[SREG] |= SREG_S;
+    /* Note: Z is not set.  */
++ #else // NEW_MEM_MAP
++   uint v = get_sram(SREG);
++   v &= ~(SREG_H | SREG_S | SREG_V | SREG_N | SREG_Z | SREG_C);
++   if (r & 0x80)
++     v |= SREG_N;
++   uint8_t carry = (~a & b) | (b & r) | (r & ~a);
++   if (carry & 0x08)
++     v |= SREG_H;
++   if (carry & 0x80)
++     v |= SREG_C;
++   if (((a & ~b & ~r) | (~a & b & r)) & 0x80)
++     v |= SREG_V;
++   if (!(v & SREG_N) ^ !(v & SREG_V))
++     v |= SREG_S;
++   put_sram(SREG, v);
++ #endif // NEW_MEM_MAP 
+  }
+  
+  static enum avr_opcode
+  decode (unsigned int pc)
+  {
++ #ifndef NEW_MEM_MAP
+    word op1 = flash[pc].op;
+! #else // NEW_MEM_MAP
+!   int addr = pc << 1;
+!   word op1 = sim_core_read_aligned_2(g_cpu, addr, read_map, addr);
+! #endif  // NEW_MEM_MAP
+    switch ((op1 >> 12) & 0x0f)
+      {
+      case 0x0:
+***************
+*** 433,442 ****
+--- 513,530 ----
+          case 0x1:
+            return OP_cpc;
+          case 0x2:
++ #ifndef NEW_MEM_MAP
+            flash[pc].r = SREG_C;
++ #else  // NEW_MEM_MAP
++ 	  set_byte(pc, SREG_C);
++ #endif  // NEW_MEM_MAP
+            return OP_sbc;
+          case 0x3:
++ #ifndef NEW_MEM_MAP
+            flash[pc].r = 0;
++ #else  // NEW_MEM_MAP
++ 	  set_byte(pc, 0);
++ #endif  // NEW_MEM_MAP
+            return OP_add;
+          }
+        break;
+***************
+*** 448,457 ****
+--- 536,553 ----
+          case 0x1:
+            return OP_cp;
+          case 0x2:
++ #ifndef NEW_MEM_MAP
+            flash[pc].r = 0;
++ #else  // NEW_MEM_MAP
++ 	  set_byte(pc, 0);
++ #endif  // NEW_MEM_MAP
+            return OP_sub;
+          case 0x3:
++ #ifndef NEW_MEM_MAP
+            flash[pc].r = SREG_C;
++ #else  // NEW_MEM_MAP
++ 	  set_byte(pc, SREG_C);
++ #endif  // NEW_MEM_MAP
+            return OP_adc;
+          }
+        break;
+***************
+*** 484,495 ****
+--- 580,599 ----
+          {
+            if (op1 & 0x0008)
+              {
++ #ifndef NEW_MEM_MAP
+                flash[pc].r = get_q (op1);
++ #else  // NEW_MEM_MAP
++ 	      set_byte(pc, get_q (op1));
++ #endif  // NEW_MEM_MAP
+                return OP_std_Y;
+              }
+            else
+              {
++ #ifndef NEW_MEM_MAP
+                flash[pc].r = get_q (op1);
++ #else  // NEW_MEM_MAP
++ 	      set_byte(pc, get_q (op1));
++ #endif  // NEW_MEM_MAP
+                return OP_std_Z;
+              }
+          }
+***************
+*** 497,508 ****
+--- 601,620 ----
+          {
+            if (op1 & 0x0008)
+              {
++ #ifndef NEW_MEM_MAP
+                flash[pc].r = get_q (op1);
++ #else  // NEW_MEM_MAP
++ 	      set_byte(pc, get_q (op1));
++ #endif  // NEW_MEM_MAP
+                return OP_ldd_Y;
+              }
+            else
+              {
++ #ifndef NEW_MEM_MAP
+                flash[pc].r = get_q (op1);
++ #else  // NEW_MEM_MAP
++ 	      set_byte(pc, get_q (op1));
++ #endif  // NEW_MEM_MAP
+                return OP_ldd_Z;
+              }
+          }
+***************
+*** 579,588 ****
+--- 691,708 ----
+              case 0x3:
+                return OP_inc;
+              case 0x5:
++ #ifndef NEW_MEM_MAP
+                flash[pc].r = 0x80;
++ #else  // NEW_MEM_MAP
++ 	      set_byte(pc, 0x80);
++ #endif  // NEW_MEM_MAP
+                return OP_asr;
+              case 0x6:
++ #ifndef NEW_MEM_MAP
+                flash[pc].r = 0;
++ #else  // NEW_MEM_MAP
++ 	      set_byte(pc, 0);
++ #endif  // NEW_MEM_MAP
+                return OP_lsr;
+              case 0x7:
+                return OP_ror;
+***************
+*** 640,650 ****
+--- 760,778 ----
+                return OP_dec;
+              case 0xc:
+              case 0xd:
++ #ifndef NEW_MEM_MAP
+                flash[pc].r = ((op1 & 0x1f0) >> 3) | (op1 & 1);
++ #else  // NEW_MEM_MAP
++ 	      set_byte(pc, ((op1 & 0x1f0) >> 3) | (op1 & 1));
++ #endif  // NEW_MEM_MAP
+                return OP_jmp;
+              case 0xe:
+              case 0xf:
++ #ifndef NEW_MEM_MAP
+                flash[pc].r = ((op1 & 0x1f0) >> 3) | (op1 & 1);
++ #else  // NEW_MEM_MAP
++ 	      set_byte(pc, ((op1 & 0x1f0) >> 3) | (op1 & 1));
++ #endif  // NEW_MEM_MAP
+                return OP_call;
+              }
+            break;
+***************
+*** 668,674 ****
+--- 796,806 ----
+          }
+        break;
+      case 0xb:
++ #ifndef NEW_MEM_MAP
+        flash[pc].r = get_A (op1);
++ #else  // NEW_MEM_MAP
++       set_byte(pc, get_A (op1));
++ #endif  // NEW_MEM_MAP
+        if (((op1 >> 11) & 1) == 0)
+          return OP_in;
+        else
+***************
+*** 684,720 ****
+--- 816,876 ----
+          {
+          case 0:
+          case 1:
++ #ifndef NEW_MEM_MAP
+            flash[pc].r = 1 << (op1 & 7);
++ #else  // NEW_MEM_MAP
++ 	  set_byte(pc, 1 << (op1 & 7));
++ #endif  // NEW_MEM_MAP
+            return OP_brbs;
+          case 2:
+          case 3:
++ #ifndef NEW_MEM_MAP
+            flash[pc].r = 1 << (op1 & 7);
++ #else  // NEW_MEM_MAP
++ 	  set_byte(pc, 1 << (op1 & 7));
++ #endif  // NEW_MEM_MAP
+            return OP_brbc;
+          case 4:
+            if ((op1 & 8) == 0)
+              {
++ #ifndef NEW_MEM_MAP
+                flash[pc].r = 1 << (op1 & 7);
++ #else  // NEW_MEM_MAP
++ 	      set_byte(pc, 1 << (op1 & 7));
++ #endif  // NEW_MEM_MAP
+                return OP_bld;
+              }
+            break;
+          case 5:
+            if ((op1 & 8) == 0)
+              {
++ #ifndef NEW_MEM_MAP
+                flash[pc].r = 1 << (op1 & 7);
++ #else  // NEW_MEM_MAP
++ 	      set_byte(pc, 1 << (op1 & 7));
++ #endif  // NEW_MEM_MAP
+                return OP_bst;
+              }
+            break;
+          case 6:
+            if ((op1 & 8) == 0)
+              {
++ #ifndef NEW_MEM_MAP
+                flash[pc].r = 1 << (op1 & 7);
++ #else  // NEW_MEM_MAP
++ 	      set_byte(pc, 1 << (op1 & 7));
++ #endif  // NEW_MEM_MAP
+                return OP_sbrc;
+              }
+            break;
+          case 7:
+            if ((op1 & 8) == 0)
+              {
++ #ifndef NEW_MEM_MAP
+                flash[pc].r = 1 << (op1 & 7);
++ #else  // NEW_MEM_MAP
++ 	      set_byte(pc, 1 << (op1 & 7));
++ #endif  // NEW_MEM_MAP
+                return OP_sbrs;
+              }
+            break;
+***************
+*** 731,741 ****
+--- 887,906 ----
+    unsigned int sp = read_word (REG_SP);
+  
+    /* Big endian!  */
++ #ifndef NEW_MEM_MAP
+    sram[sp--] = cpu->pc;
+    sram[sp--] = cpu->pc >> 8;
++ #else  // NEW_MEM_MAP
++   put_sram(sp--, cpu->pc);
++   put_sram(sp--, cpu->pc >> 8);
++ #endif  // NEW_MEM_MAP
+    if (sd->avr_pc22)
+      {
++ #ifndef NEW_MEM_MAP
+        sram[sp--] = cpu->pc >> 16;
++ #else  // NEW_MEM_MAP
++       put_sram(sp--, cpu->pc >> 16);
++ #endif  // NEW_MEM_MAP
+        cpu->cycles++;
+      }
+    write_word (REG_SP, sp);
+***************
+*** 746,788 ****
+--- 911,1211 ----
+  static int
+  get_insn_length (unsigned int p)
+  {
++ #ifndef NEW_MEM_MAP
+    if (flash[p].code == OP_unknown)
+      flash[p].code = decode(p);
+    if (flash[p].code >= OP_2words)
+      return 2;
+    else
+      return 1;
++ #else  // NEW_MEM_MAP
++   return decode(p) >= OP_2words ? 2 : 1;
++ #endif  // NEW_MEM_MAP
+  }
+  
+  static unsigned int
+  get_z (void)
+  {
++ #ifndef NEW_MEM_MAP
+    return (sram[RAMPZ] << 16) | (sram[REGZ_HI] << 8) | sram[REGZ_LO];
++ #else  // NEW_MEM_MAP
++   return (get_sram(RAMPZ) << 16) | (get_sram(REGZ_HI) << 8) | get_sram(REGZ_LO);
++ #endif  // NEW_MEM_MAP
+  }
+  
+  static unsigned char
+  get_lpm (unsigned int addr)
+  {
++ #ifndef NEW_MEM_MAP
+    word w;
+  
+    w = flash[(addr >> 1) & PC_MASK].op;
+    if (addr & 1)
+      w >>= 8;
+    return w;
++ #else  // NEW_MEM_MAP
++   int cia = g_cpu->pc << 1;
++   return sim_core_read_aligned_1(g_cpu, cia, read_map, addr);
++ #endif  // NEW_MEM_MAP
+  }
+  
+  static void
+  gen_mul (SIM_CPU *cpu, unsigned int res)
+  {
+    write_word (0, res);
++ #ifndef NEW_MEM_MAP
+    sram[SREG] &= ~(SREG_Z | SREG_C);
+    if (res == 0)
+      sram[SREG] |= SREG_Z;
+    if (res & 0x8000)
+      sram[SREG] |= SREG_C;
++ #else // NEW_MEM_MAP
++   uint8_t v = get_sram(SREG);
++   v &= ~(SREG_Z | SREG_C);
++   if (res == 0)
++     v |= SREG_Z;
++   if (res & 0x8000)
++     v |= SREG_C;
++   put_sram(SREG, v);
++ #endif // NEW_MEM_MAP
     cpu->cycles++;
   }
   
 + #include <stdlib.h>
 + #include <assert.h>
 + 
-+ static int first_arg(SIM_CPU *cpu)
++ static int first_arg(SIM_CPU *cpu, _Bool ref_reg)
 + {
-+   CPUREG_FETCH_FN* fetch = CPU_REG_FETCH(cpu);  
-+   uint8_t r24, r25;
-+   fetch(cpu, 24, &r24, 1);
-+   fetch(cpu, 25, &r25, 1);
-+   int ret = (r25 << 8) | r24;
++   if (ref_reg) {
++     CPUREG_FETCH_FN* fetch = CPU_REG_FETCH(cpu);  
++     uint8_t r24, r25;
++     fetch(cpu, 24, &r24, 1);
++     fetch(cpu, 25, &r25, 1);
++     int ret = (r25 << 8) | r24;
++     return ret;
++   }
++ 
++   unsigned int sp = read_word(REG_SP);
++   int addr = sp+3;
++ #ifndef NEW_MEM_MAP
++   int ret = (sram[addr+1] << 8) | sram[addr];
++ #else // NEW_MEM_MAP
++   int ret = get_sram(addr+1) << 8 | get_sram(addr);
++ #endif // NEW_MEM_MAP
 +   return ret;
 + }
 + 
-+ static const char* first_string(SIM_CPU* cpu)
++ static const char* first_string(SIM_CPU* cpu, _Bool ref_reg)
 + {
-+   int addr = first_arg(cpu);
++   int addr = first_arg(cpu, ref_reg);
 +   static char buf[256];
 +   for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i ) {
++ #ifndef NEW_MEM_MAP
 +     char c = sram[addr+i];
++ #else  // NEW_MEM_MAP
++     char c = get_sram(addr+i);
++ #endif  // NEW_MEM_MAP
 +     buf[i] = c;
 +     if (c == '\0')
 +       return &buf[0]; // ok
@@ -73,7 +556,11 @@
 +   assert(nth);
 +   unsigned int sp = read_word(REG_SP);
 +   int addr = sp+3+2*nth;
++ #ifndef NEW_MEM_MAP
 +   int ret = (sram[addr+1] << 8) | sram[addr];
++ #else // NEW_MEM_MAP
++   int ret = get_sram(addr+1) << 8 | get_sram(addr);
++ #endif // NEW_MEM_MAP
 +   return ret;
 + }
 + 
@@ -82,8 +569,13 @@
 +   assert(nth);
 +   unsigned int sp = read_word(REG_SP);
 +   int addr = sp+3+2*nth;
++ #ifndef NEW_MEM_MAP
 +   int ret = (sram[addr+3] << 24) | (sram[addr+2] << 16) |
 +     (sram[addr+1] << 8) | sram[addr];
++ #else // NEW_MEM_MAP
++   int ret = (get_sram(addr+3) << 24) | (get_sram(addr+2) << 16) |
++     (get_sram(addr+1)<< 8) | get_sram(addr);
++ #endif // NEW_MEM_MAP
 +   return ret;
 + }
 + 
@@ -92,10 +584,17 @@
 +   assert(nth);
 +   unsigned int sp = read_word(REG_SP);
 +   int addr = sp+3+2*nth;
++ #ifndef NEW_MEM_MAP
 +   uint32_t a = (sram[addr+3] << 24) | (sram[addr+2] << 16) |
 +     (sram[addr+1] << 8) | sram[addr];
 +   uint64_t b = (sram[addr+7] << 24) | (sram[addr+6] << 16) |
 +     (sram[addr+5] << 8) | sram[addr+4];
++ #else // NEW_MEM_MAP
++   uint32_t a = (get_sram(addr+3) << 24) | (get_sram(addr+2) << 16) |
++     (get_sram(addr+1) << 8) | get_sram(addr);
++   uint64_t b = (get_sram(addr+7) << 24) | (get_sram(addr+6) << 16) |
++     (get_sram(addr+5) << 8) | get_sram(addr+4);
++ #endif   // NEW_MEM_MAP
 +   return (b << 32) | a;
 + }
 + 
@@ -155,7 +654,11 @@
 +     uint32_t addr = arg16(cpu, (*nth)++);
 +     char buf[256];
 +     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++ #ifndef NEW_MEM_MAP
 +       char c = sram[addr+i];
++ #else  // NEW_MEM_MAP
++       char c = get_sram(addr+i);
++ #endif  // NEW_MEM_MAP
 +       buf[i] = c;
 +       if (c == '\0') {
 + 	*ret += printf(part_fmt, &buf[0]);  // ok
@@ -171,7 +674,7 @@
 + 
 + static void do_printf(SIM_CPU* cpu)
 + {
-+   const char* fmt = first_string(cpu);
++   const char* fmt = first_string(cpu, FALSE);
 +   int argc = 1;
 +   int ret = 0;
 +   while (*fmt)
@@ -186,7 +689,7 @@
 + 
 + static void do_puts(SIM_CPU* cpu)
 + {
-+   const char* arg = first_string(cpu);
++   const char* arg = first_string(cpu, TRUE);
 +   int ret = puts(arg);
 +   CPUREG_STORE_FN* store = CPU_REG_STORE(cpu);
 +   uint8_t r24 = ret;
@@ -197,7 +700,7 @@
 + 
 + static void do_putchar(SIM_CPU* cpu)
 + {
-+   int arg = first_arg(cpu);
++   int arg = first_arg(cpu, TRUE);
 +   int ret = putchar(arg);
 +   CPUREG_STORE_FN* store = CPU_REG_STORE(cpu);
 +   uint8_t r24 = ret;
@@ -210,21 +713,1417 @@
   step_once (SIM_CPU *cpu)
   {
 ***************
-*** 793,798 ****
---- 993,1003 ----
-    byte res;
+*** 794,801 ****
+--- 1217,1231 ----
     byte r, d, vd;
   
-+ #if 0  
-+   if (cpu->pc == (0x12a>>1))
-+     asm("int3");
-+ #endif  
-+ 
    again:
++ #ifndef NEW_MEM_MAP
     code = flash[cpu->pc].code;
     op = flash[cpu->pc].op;
++ #else  // NEW_MEM_MAP
++   g_cpu = cpu;
++   g_cia = cpu->pc;
++   code = decode(cpu->pc);
++   op = sim_core_read_aligned_2(cpu, g_cia, read_map, g_cia << 1);
++ #endif  // NEW_MEM_MAP
+  
+  #if 0
+        if (tracing && code != OP_unknown)
 ***************
-*** 1497,1504 ****
+*** 846,852 ****
+--- 1276,1286 ----
+    switch (code)
+      {
+        case OP_unknown:
++ #ifndef	NEW_MEM_MAP
+  	flash[ipc].code = decode(ipc);
++ #else  // NEW_MEM_MAP
++ 	abort();
++ #endif  // NEW_MEM_MAP
+  	cpu->pc = ipc;
+  	cpu->cycles--;
+  	goto again;
+***************
+*** 856,867 ****
+--- 1290,1314 ----
+  
+        case OP_jmp:
+  	/* 2 words instruction, but we don't care about the pc.  */
++ #ifndef	NEW_MEM_MAP
+  	cpu->pc = ((flash[ipc].r << 16) | flash[ipc + 1].op) & PC_MASK;
++ #else  // NEW_MEM_MAP
++ 	{
++ 	  int cia = cpu->pc << 1;
++ 	  cpu->pc = (get_byte(ipc) << 16);
++ 	  int addr = (ipc+1) << 1;
++ 	  cpu->pc |= sim_core_read_aligned_2(cpu, cia, read_map, addr);
++ 	}
++ #endif  // NEW_MEM_MAP
+  	cpu->cycles += 2;
+  	break;
+  
+        case OP_eijmp:
++ #ifndef	NEW_MEM_MAP
+  	cpu->pc = ((sram[EIND] << 16) | read_word (REGZ)) & PC_MASK;
++ #else // NEW_MEM_MAP
++ 	cpu->pc = ((get_sram(EIND) << 16) | read_word (REGZ)) & PC_MASK;
++ #endif  // NEW_MEM_MAP
+  	cpu->cycles += 2;
+  	break;
+  
+***************
+*** 873,883 ****
+--- 1320,1344 ----
+        case OP_call:
+  	/* 2 words instruction.  */
+  	cpu->pc++;
++ #ifndef	NEW_MEM_MAP
+  	do_call (cpu, (flash[ipc].r << 16) | flash[ipc + 1].op);
++ #else  // NEW_MEM_MAP
++ 	{
++ 	  int cia = cpu->pc << 1;
++ 	  int addr = get_byte(ipc) << 16;
++ 	  int tmp = (ipc+1) << 1;
++ 	  addr |= sim_core_read_aligned_2(cpu, cia, read_map, tmp);
++ 	  do_call (cpu, addr);
++ 	}
++ #endif  // NEW_MEM_MAP
+  	break;
+  
+        case OP_eicall:
++ #ifndef	NEW_MEM_MAP
+  	do_call (cpu, (sram[EIND] << 16) | read_word (REGZ));
++ #else  // NEW_MEM_MAP
++ 	do_call (cpu, (get_sram(EIND) << 16) | read_word (REGZ));
++ #endif  // NEW_MEM_MAP
+  	break;
+  
+        case OP_icall:
+***************
+*** 889,895 ****
+--- 1350,1364 ----
+  	break;
+  
+        case OP_reti:
++ #ifndef	NEW_MEM_MAP
+  	sram[SREG] |= SREG_I;
++ #else // NEW_MEM_MAP
++ 	{
++ 	  uint8_t v = get_sram(SREG);
++ 	  v |= SREG_I;
++ 	  put_sram(SREG, v);
++ 	}
++ #endif // NEW_MEM_MAP
+  	/* Fall through */
+        case OP_ret:
+  	{
+***************
+*** 897,909 ****
+--- 1366,1387 ----
+  	  unsigned int sp = read_word (REG_SP);
+  	  if (sd->avr_pc22)
+  	    {
++ #ifndef	NEW_MEM_MAP
+  	      cpu->pc = sram[++sp] << 16;
++ #else // NEW_MEM_MAP
++ 	      cpu->pc = get_sram(++sp) << 16;
++ #endif // NEW_MEM_MAP
+  	      cpu->cycles++;
+  	    }
+  	  else
+  	    cpu->pc = 0;
++ #ifndef	NEW_MEM_MAP
+  	  cpu->pc |= sram[++sp] << 8;
+  	  cpu->pc |= sram[++sp];
++ #else // NEW_MEM_MAP
++ 	  cpu->pc |= get_sram(++sp) << 8;
++ 	  cpu->pc |= get_sram(++sp);
++ #endif // NEW_MEM_MAP
+  	  write_word (REG_SP, sp);
+  	}
+  	cpu->cycles += 3;
+***************
+*** 916,949 ****
+--- 1394,1464 ----
+  
+        case OP_bld:
+  	d = get_d (op);
++ #ifndef	NEW_MEM_MAP
+  	r = flash[ipc].r;
+  	if (sram[SREG] & SREG_T)
+  	  sram[d] |= r;
+  	else
+  	  sram[d] &= ~r;
++ #else  // NEW_MEM_MAP
++ 	r = get_byte(ipc);
++ 	{
++ 	  uint8_t v = get_sram(d);
++ 	  if (get_sram(SREG) & SREG_T)
++ 	    v |= r;
++ 	  else
++ 	    v &= ~r;
++ 	  put_sram(d, v);
++ 	}
++ #endif  // NEW_MEM_MAP
+  	break;
+  
+        case OP_bst:
++ #ifndef NEW_MEM_MAP	
+  	if (sram[get_d (op)] & flash[ipc].r)
+  	  sram[SREG] |= SREG_T;
+  	else
+  	  sram[SREG] &= ~SREG_T;
++ #else  // NEW_MEM_MAP
++ 	{
++ 	  uint8_t v = get_sram(SREG);
++ 	  if (get_sram(get_d (op)) & get_byte(ipc))
++ 	    v |= SREG_T;
++ 	  else
++ 	    v &= ~SREG_T;
++ 	  put_sram(SREG, v);
++ 	}
++ #endif  // NEW_MEM_MAP
+  	break;
+  
+        case OP_sbrc:
+        case OP_sbrs:
++ #ifndef	NEW_MEM_MAP
+  	if (((sram[get_d (op)] & flash[ipc].r) == 0) ^ ((op & 0x0200) != 0))
+  	  {
+  	    int l = get_insn_length (cpu->pc);
+  	    cpu->pc += l;
+  	    cpu->cycles += l;
+  	  }
++ #else  // NEW_MEM_MAP
++ 	if (((get_sram(get_d (op)) & get_byte(ipc)) == 0) ^ ((op & 0x0200) != 0))
++ 	  {
++ 	    int l = get_insn_length (cpu->pc);
++ 	    cpu->pc += l;
++ 	    cpu->cycles += l;
++ 	  }
++ #endif  // NEW_MEM_MAP
+  	break;
+  
+        case OP_push:
+  	{
+  	  unsigned int sp = read_word (REG_SP);
++ #ifndef	NEW_MEM_MAP
+  	  sram[sp--] = sram[get_d (op)];
++ #else  // NEW_MEM_MAP
++ 	  uint8_t v = get_sram(get_d (op));
++ 	  put_sram(sp--, v);
++ #endif  // NEW_MEM_MAP
+  	  write_word (REG_SP, sp);
+  	}
+  	cpu->cycles++;
+***************
+*** 952,969 ****
+--- 1467,1505 ----
+        case OP_pop:
+  	{
+  	  unsigned int sp = read_word (REG_SP);
++ #ifndef	NEW_MEM_MAP
+  	  sram[get_d (op)] = sram[++sp];
++ #else  // NEW_MEM_MAP
++ 	  uint8_t v = get_sram(++sp);
++ 	  put_sram(get_d (op), v);
++ #endif  // NEW_MEM_MAP
+  	  write_word (REG_SP, sp);
+  	}
+  	cpu->cycles++;
+  	break;
+  
+        case OP_bclr:
++ #ifndef	NEW_MEM_MAP
+  	sram[SREG] &= ~(1 << ((op >> 4) & 0x7));
++ #else  // NEW_MEM_MAP
++ 	{
++ 	  uint8_t v = get_sram(SREG);
++ 	  v &= ~(1 << ((op >> 4) & 0x7));
++ 	  put_sram(SREG, v);
++ 	}
++ #endif  // NEW_MEM_MAP
+  	break;
+  
+        case OP_bset:
++ #ifndef	NEW_MEM_MAP
+  	sram[SREG] |= 1 << ((op >> 4) & 0x7);
++ #else  // NEW_MEM_MAP
++ 	{
++ 	  uint8_t v = get_sram(SREG);
++ 	  v |= ~(1 << ((op >> 4) & 0x7));
++ 	  put_sram(SREG, v);
++ 	}
++ #endif  // NEW_MEM_MAP
+  	break;
+  
+        case OP_rjmp:
+***************
+*** 973,1029 ****
+--- 1509,1611 ----
+  
+        case OP_eor:
+  	d = get_d (op);
++ #ifndef	NEW_MEM_MAP
+  	res = sram[d] ^ sram[get_r (op)];
+  	sram[d] = res;
++ #else  // NEW_MEM_MAP
++ 	res = get_sram(d) ^ get_sram(get_r (op));
++ 	put_sram(d, res);
++ #endif  // NEW_MEM_MAP
+  	update_flags_logic (res);
+  	break;
+  
+        case OP_and:
+  	d = get_d (op);
++ #ifndef	NEW_MEM_MAP
+  	res = sram[d] & sram[get_r (op)];
+  	sram[d] = res;
++ #else  // NEW_MEM_MAP
++ 	res = get_sram(d) & get_sram(get_r (op));
++ 	put_sram(d, res);
++ #endif  // NEW_MEM_MAP
+  	update_flags_logic (res);
+  	break;
+  
+        case OP_andi:
+  	d = get_d16 (op);
++ #ifndef	NEW_MEM_MAP
+  	res = sram[d] & get_K (op);
+  	sram[d] = res;
++ #else  // NEW_MEM_MAP
++ 	res = get_sram(d) & get_K (op);
++ 	put_sram(d, res);
++ #endif  // NEW_MEM_MAP
+  	update_flags_logic (res);
+  	break;
+  
+        case OP_or:
+  	d = get_d (op);
++ #ifndef	NEW_MEM_MAP
+  	res = sram[d] | sram[get_r (op)];
+  	sram[d] = res;
++ #else  // NEW_MEM_MAP
++ 	res = get_sram(d) | get_sram(get_r (op));
++ 	put_sram(d, res);
++ #endif  // NEW_MEM_MAP
+  	update_flags_logic (res);
+  	break;
+  
+        case OP_ori:
+  	d = get_d16 (op);
++ #ifndef	NEW_MEM_MAP
+  	res = sram[d] | get_K (op);
+  	sram[d] = res;
++ #else  // NEW_MEM_MAP
++ 	res = get_sram(d) | get_K (op);
++ 	put_sram(d, res);
++ #endif  // NEW_MEM_MAP
+  	update_flags_logic (res);
+  	break;
+  
+        case OP_com:
+  	d = get_d (op);
++ #ifndef	NEW_MEM_MAP
+  	res = ~sram[d];
+  	sram[d] = res;
+  	update_flags_logic (res);
+  	sram[SREG] |= SREG_C;
++ #else  // NEW_MEM_MAP
++ 	res = ~get_sram(d);
++ 	put_sram(d, res);
++ 	update_flags_logic (res);
++ 	{
++ 	  uint8_t v = get_sram(SREG);
++ 	  v |= SREG_C;
++ 	  put_sram(SREG, v);
++ 	}
++ #endif  // NEW_MEM_MAP
+  	break;
+  
+        case OP_swap:
+  	d = get_d (op);
++ #ifndef	NEW_MEM_MAP
+  	vd = sram[d];
+  	sram[d] = (vd >> 4) | (vd << 4);
++ #else // NEW_MEM_MAP
++ 	vd = get_sram(d);
++ 	put_sram(d, (vd >> 4) | (vd << 4));
++ #endif // NEW_MEM_MAP
+  	break;
+  
+        case OP_neg:
+  	d = get_d (op);
++ #ifndef	NEW_MEM_MAP
+  	vd = sram[d];
++ #else // NEW_MEM_MAP
++ 	vd = get_sram(op);
++ #endif // NEW_MEM_MAP
+  	res = -vd;
++ #ifndef	NEW_MEM_MAP
+  	sram[d] = res;
+  	sram[SREG] &= ~(SREG_H | SREG_S | SREG_V | SREG_N | SREG_Z | SREG_C);
+  	if (res == 0)
+***************
+*** 1036,1045 ****
+--- 1618,1646 ----
+  	  sram[SREG] |= SREG_N | SREG_S;
+  	if ((res | vd) & 0x08)
+  	  sram[SREG] |= SREG_H;
++ #else // NEW_MEM_MAP
++ 	put_sram(d, res);
++ 	{
++ 	  uint8_t v = get_sram(SREG);
++ 	  v &= ~(SREG_H | SREG_S | SREG_V | SREG_N | SREG_Z | SREG_C);
++ 	  if (res == 0)
++ 	    v |= SREG_Z;
++ 	  else
++ 	    v |= SREG_C;
++ 	  if (res == 0x80)
++ 	    v |= SREG_V | SREG_N;
++ 	  else if (res & 0x80)
++ 	    v |= SREG_N | SREG_S;
++ 	  if ((res | vd) & 0x08)
++ 	    v |= SREG_H;
++ 	  put_sram(SREG, v);
++ 	}
++ #endif // NEW_MEM_MAP
+  	break;
+  
+        case OP_inc:
+  	d = get_d (op);
++ #ifndef NEW_MEM_MAP
+  	res = sram[d] + 1;
+  	sram[d] = res;
+  	sram[SREG] &= ~(SREG_S | SREG_V | SREG_N | SREG_Z);
+***************
+*** 1049,1058 ****
+--- 1650,1675 ----
+  	  sram[SREG] |= SREG_N | SREG_S;
+  	else if (res == 0)
+  	  sram[SREG] |= SREG_Z;
++ #else // NEW_MEM_MAP
++ 	res = get_sram(d) + 1;
++ 	put_sram(d, res);
++ 	{
++ 	  uint8_t v = get_sram(SREG);
++ 	  v &= ~(SREG_S | SREG_V | SREG_N | SREG_Z);
++ 	  if (res == 0x80)
++ 	    v |= SREG_V | SREG_N;
++ 	  else if (res & 0x80)
++ 	    v |= SREG_N | SREG_S;
++ 	  else if (res == 0)
++ 	    v |= SREG_Z;
++ 	  put_sram(SREG, v);
++ 	}
++ #endif // NEW_MEM_MAP
+  	break;
+  
+        case OP_dec:
+  	d = get_d (op);
++ #ifndef NEW_MEM_MAP
+  	res = sram[d] - 1;
+  	sram[d] = res;
+  	sram[SREG] &= ~(SREG_S | SREG_V | SREG_N | SREG_Z);
+***************
+*** 1062,1073 ****
+  	  sram[SREG] |= SREG_N | SREG_S;
+  	else if (res == 0)
+  	  sram[SREG] |= SREG_Z;
+  	break;
+  
+        case OP_lsr:
+        case OP_asr:
+  	d = get_d (op);
+! 	vd = sram[d];
+  	res = (vd >> 1) | (vd & flash[ipc].r);
+  	sram[d] = res;
+  	sram[SREG] &= ~(SREG_S | SREG_V | SREG_N | SREG_Z | SREG_C);
+--- 1679,1706 ----
+  	  sram[SREG] |= SREG_N | SREG_S;
+  	else if (res == 0)
+  	  sram[SREG] |= SREG_Z;
++ #else // NEW_MEM_MAP
++ 	res = get_sram(d) - 1;
++ 	put_sram(d, res);
++ 	{
++ 	  uint8_t v = get_sram(SREG);
++ 	  v &= ~(SREG_S | SREG_V | SREG_N | SREG_Z);
++ 	  if (res == 0x7f)
++ 	    v |= SREG_V | SREG_S;
++ 	  else if (res & 0x80)
++ 	    v |= SREG_N | SREG_S;
++ 	  else if (res == 0)
++ 	    v |= SREG_Z;
++ 	  put_sram(SREG, v);
++ 	}
++ #endif // NEW_MEM_MAP
+  	break;
+  
+        case OP_lsr:
+        case OP_asr:
+  	d = get_d (op);
+! #ifndef	NEW_MEM_MAP
+! 	vd = sram[d];	
+  	res = (vd >> 1) | (vd & flash[ipc].r);
+  	sram[d] = res;
+  	sram[SREG] &= ~(SREG_S | SREG_V | SREG_N | SREG_Z | SREG_C);
+***************
+*** 1079,1088 ****
+--- 1712,1740 ----
+  	  sram[SREG] |= SREG_V;
+  	if (res == 0)
+  	  sram[SREG] |= SREG_Z;
++ #else  // NEW_MEM_MAP
++ 	vd = get_sram(d);
++ 	res = (vd >> 1) | (vd & get_byte(ipc));
++ 	put_sram(d, res);
++ 	{
++ 	  uint8_t v = get_sram(SREG);
++ 	  v &= ~(SREG_S | SREG_V | SREG_N | SREG_Z | SREG_C);
++ 	  if (vd & 1)
++ 	    v |= SREG_C | SREG_S;
++ 	  if (res & 0x80)
++ 	    v |= SREG_N;
++ 	  if (!(v & SREG_N) ^ !(v & SREG_C))
++ 	    v |= SREG_V;
++ 	  if (res == 0)
++ 	    v |= SREG_Z;
++ 	  put_sram(SREG, v);
++ 	}
++ #endif  // NEW_MEM_MAP
+  	break;
+  
+        case OP_ror:
+  	d = get_d (op);
++ #ifndef NEW_MEM_MAP
+  	vd = sram[d];
+  	res = vd >> 1 | (sram[SREG] << 7);
+  	sram[d] = res;
+***************
+*** 1095,1143 ****
+  	  sram[SREG] |= SREG_V;
+  	if (res == 0)
+  	  sram[SREG] |= SREG_Z;
+  	break;
+  
+        case OP_mul:
+  	gen_mul (cpu, (word)sram[get_r (op)] * (word)sram[get_d (op)]);
+  	break;
+  
+        case OP_muls:
+  	gen_mul (cpu, (sword)(sbyte)sram[get_r16 (op)]
+  		      * (sword)(sbyte)sram[get_d16 (op)]);
+  	break;
+  
+        case OP_mulsu:
+  	gen_mul (cpu, (sword)(word)sram[get_r16_23 (op)]
+  		      * (sword)(sbyte)sram[get_d16_23 (op)]);
+  	break;
+  
+        case OP_fmul:
+  	gen_mul (cpu, ((word)sram[get_r16_23 (op)]
+  		       * (word)sram[get_d16_23 (op)]) << 1);
+  	break;
+  
+        case OP_fmuls:
+  	gen_mul (cpu, ((sword)(sbyte)sram[get_r16_23 (op)]
+  		       * (sword)(sbyte)sram[get_d16_23 (op)]) << 1);
+  	break;
+  
+        case OP_fmulsu:
+  	gen_mul (cpu, ((sword)(word)sram[get_r16_23 (op)]
+  		       * (sword)(sbyte)sram[get_d16_23 (op)]) << 1);
+  	break;
+  
+        case OP_adc:
+        case OP_add:
+  	r = sram[get_r (op)];
+  	d = get_d (op);
+  	vd = sram[d];
+  	res = r + vd + (sram[SREG] & flash[ipc].r);
+! 	sram[d] = res;
+  	update_flags_add (res, vd, r);
+  	break;
+  
+        case OP_sub:
+  	d = get_d (op);
+  	vd = sram[d];
+  	r = sram[get_r (op)];
+  	res = vd - r;
+--- 1747,1853 ----
+  	  sram[SREG] |= SREG_V;
+  	if (res == 0)
+  	  sram[SREG] |= SREG_Z;
++ #else // NEW_MEM_MAP
++ 	vd = get_sram(d);
++ 	res = vd >> 1 | (get_sram(SREG) << 7);
++ 	put_sram(d, res);
++ 	{
++ 	  uint8_t v = get_sram(SREG);
++ 	  v &= ~(SREG_S | SREG_V | SREG_N | SREG_Z | SREG_C);
++ 	  if (vd & 1)
++ 	    v |= SREG_C | SREG_S;
++ 	  if (res & 0x80)
++ 	    v |= SREG_N;
++ 	  if (!(v & SREG_N) ^ !(v & SREG_C))
++ 	    v |= SREG_V;
++ 	  if (res == 0)
++ 	    v |= SREG_Z;
++ 	  put_sram(SREG, v);
++ 	}
++ #endif // NEW_MEM_MAP
+  	break;
+  
+        case OP_mul:
++ #ifndef NEW_MEM_MAP
+  	gen_mul (cpu, (word)sram[get_r (op)] * (word)sram[get_d (op)]);
++ #else // NEW_MEM_MAP
++ 	gen_mul (cpu, (word)get_sram(get_r (op)) * (word)get_sram(get_d (op)));
++ #endif // NEW_MEM_MAP
+  	break;
+  
+        case OP_muls:
++ #ifndef NEW_MEM_MAP
+  	gen_mul (cpu, (sword)(sbyte)sram[get_r16 (op)]
+  		      * (sword)(sbyte)sram[get_d16 (op)]);
++ #else // NEW_MEM_MAP
++ 	gen_mul (cpu, (sword)(sbyte)get_sram(get_r16 (op))
++ 		 * (sword)(sbyte)get_sram(get_d16 (op)));
++ #endif // NEW_MEM_MAP
+  	break;
+  
+        case OP_mulsu:
++ #ifndef NEW_MEM_MAP
+  	gen_mul (cpu, (sword)(word)sram[get_r16_23 (op)]
+  		      * (sword)(sbyte)sram[get_d16_23 (op)]);
++ #else // NEW_MEM_MAP
++ 	gen_mul (cpu, (sword)(word)get_sram(get_r16_23 (op))
++ 		 * (sword)(sbyte)get_sram(get_d16_23 (op)));
++ #endif // NEW_MEM_MAP
+  	break;
+  
+        case OP_fmul:
++ #ifndef NEW_MEM_MAP
+  	gen_mul (cpu, ((word)sram[get_r16_23 (op)]
+  		       * (word)sram[get_d16_23 (op)]) << 1);
++ #else // NEW_MEM_MAP
++ 	gen_mul (cpu, ((word)get_sram(get_r16_23 (op))
++ 		       * (word)get_sram(get_d16_23 (op))) << 1);
++ #endif // NEW_MEM_MAP
+  	break;
+  
+        case OP_fmuls:
++ #ifndef NEW_MEM_MAP
+  	gen_mul (cpu, ((sword)(sbyte)sram[get_r16_23 (op)]
+  		       * (sword)(sbyte)sram[get_d16_23 (op)]) << 1);
++ #else // NEW_MEM_MAP
++ 	gen_mul (cpu, ((sword)(sbyte)get_sram(get_r16_23 (op))
++ 		       * (sword)(sbyte)get_sram(get_d16_23 (op))) << 1);
++ #endif // NEW_MEM_MAP
+  	break;
+  
+        case OP_fmulsu:
++ #ifndef NEW_MEM_MAP
+  	gen_mul (cpu, ((sword)(word)sram[get_r16_23 (op)]
+  		       * (sword)(sbyte)sram[get_d16_23 (op)]) << 1);
++ #else // NEW_MEM_MAP
++ 	gen_mul (cpu, ((sword)(word)get_sram(get_r16_23 (op))
++ 		       * (sword)(sbyte)get_sram(get_d16_23 (op))) << 1);
++ #endif // NEW_MEM_MAP
+  	break;
+  
+        case OP_adc:
+        case OP_add:
++ #ifndef NEW_MEM_MAP
+  	r = sram[get_r (op)];
++ #else // NEW_MEM_MAP
++ 	r = get_sram(get_r (op));
++ #endif // NEW_MEM_MAP
+  	d = get_d (op);
++ #ifndef	NEW_MEM_MAP
+  	vd = sram[d];
+  	res = r + vd + (sram[SREG] & flash[ipc].r);
+! 	sram[d] = res;	
+! #else  // NEW_MEM_MAP
+! 	vd = get_sram(d);
+! 	res = r + vd + (get_sram(SREG) & get_byte(ipc));
+! 	put_sram(d, res);
+! #endif  // NEW_MEM_MAP
+  	update_flags_add (res, vd, r);
+  	break;
+  
+        case OP_sub:
+  	d = get_d (op);
++ #ifndef	NEW_MEM_MAP
+  	vd = sram[d];
+  	r = sram[get_r (op)];
+  	res = vd - r;
+***************
+*** 1145,1154 ****
+--- 1855,1877 ----
+  	update_flags_sub (res, vd, r);
+  	if (res == 0)
+  	  sram[SREG] |= SREG_Z;
++ #else // NEW_MEM_MAP
++ 	vd = get_sram(d);
++ 	r = get_sram(get_r (op));
++ 	res = vd - r;
++ 	put_sram(d, res);
++ 	update_flags_sub (res, vd, r);
++ 	if (res == 0) {
++ 	  uint8_t v = get_sram(SREG);
++ 	  v |= SREG_Z;
++ 	  put_sram(SREG, v);
++ 	}
++ #endif // NEW_MEM_MAP
+  	break;
+  
+        case OP_sbc:
+  	{
++ #ifndef NEW_MEM_MAP
+  	  byte old = sram[SREG];
+  	  d = get_d (op);
+  	  vd = sram[d];
+***************
+*** 1158,1168 ****
+--- 1881,1906 ----
+  	  update_flags_sub (res, vd, r);
+  	  if (res == 0 && (old & SREG_Z))
+  	    sram[SREG] |= SREG_Z;
++ #else // NEW_MEM_MAP
++ 	  byte old = get_sram(SREG);
++ 	  d = get_d (op);
++ 	  vd = get_sram(d);
++ 	  r = get_sram(get_r (op));
++ 	  res = vd - r - (old & SREG_C);
++ 	  put_sram(d, res);
++ 	  update_flags_sub (res, vd, r);
++ 	  if (res == 0 && (old & SREG_Z)) {
++ 	    uint8_t v = get_sram(SREG);
++ 	    v |= SREG_Z;
++ 	    put_sram(SREG, v);
++ 	  }
++ #endif // NEW_MEM_MAP
+  	}
+  	break;
+  
+        case OP_subi:
+  	d = get_d16 (op);
++ #ifndef NEW_MEM_MAP
+  	vd = sram[d];
+  	r = get_K (op);
+  	res = vd - r;
+***************
+*** 1170,1179 ****
+--- 1908,1930 ----
+  	update_flags_sub (res, vd, r);
+  	if (res == 0)
+  	  sram[SREG] |= SREG_Z;
++ #else // NEW_MEM_MAP
++ 	vd = get_sram(d);
++ 	r = get_K (op);
++ 	res = vd - r;
++ 	put_sram(d, res);
++ 	update_flags_sub (res, vd, r);
++ 	if (res == 0) {
++ 	  uint8_t v = get_sram(SREG);
++ 	  v |= SREG_Z;
++ 	  put_sram(SREG, v);
++ 	}
++ #endif // NEW_MEM_MAP
+  	break;
+  
+        case OP_sbci:
+  	{
++ #ifndef NEW_MEM_MAP
+  	  byte old = sram[SREG];
+  
+  	  d = get_d16 (op);
+***************
+*** 1184,1207 ****
+--- 1935,1990 ----
+  	  update_flags_sub (res, vd, r);
+  	  if (res == 0 && (old & SREG_Z))
+  	    sram[SREG] |= SREG_Z;
++ #else // NEW_MEM_MAP
++ 	  byte old = get_sram(SREG);
++ 
++ 	  d = get_d16 (op);
++ 	  vd = get_sram(d);
++ 	  r = get_K (op);
++ 	  res = vd - r - (old & SREG_C);
++ 	  put_sram(d, res);
++ 	  update_flags_sub (res, vd, r);
++ 	  if (res == 0 && (old & SREG_Z)) {
++ 	    uint8_t v = get_sram(SREG);
++ 	    v |= SREG_Z;
++ 	    put_sram(SREG, v);
++ 	  }
++ #endif // NEW_MEM_MAP
+  	}
+  	break;
+  
+        case OP_mov:
++ #ifndef NEW_MEM_MAP
+  	sram[get_d (op)] = sram[get_r (op)];
++ #else // NEW_MEM_MAP
++ 	{
++ 	  uint8_t v = get_sram(get_r (op));
++ 	  put_sram(get_d (op), v); 
++ 	}
++ #endif // NEW_MEM_MAP
+  	break;
+  
+        case OP_movw:
+  	d = (op & 0xf0) >> 3;
+  	r = (op & 0x0f) << 1;
++ #ifndef NEW_MEM_MAP
+  	sram[d] = sram[r];
+  	sram[d + 1] = sram[r + 1];
++ #else // NEW_MEM_MAP
++ 	put_sram(d, get_sram(r));
++ 	put_sram(d + 1, get_sram(r + 1));
++ #endif // NEW_MEM_MAP
+  	break;
+  
+        case OP_out:
+  	d = get_A (op) + 0x20;
++ #ifndef NEW_MEM_MAP
+  	res = sram[get_d (op)];
+  	sram[d] = res;
++ #else // NEW_MEM_MAP
++ 	res = get_sram(get_d (op));
++ 	put_sram(d, res);
++ #endif // NEW_MEM_MAP
+  	if (d == STDIO_PORT)
+  	  putchar (res);
+  	else if (d == EXIT_PORT)
+***************
+*** 1212,1295 ****
+--- 1995,2171 ----
+  
+        case OP_in:
+  	d = get_A (op) + 0x20;
++ #ifndef NEW_MEM_MAP
+  	sram[get_d (op)] = sram[d];
++ #else // NEW_MEM_MAP
++ 	put_sram(get_d (op), get_sram(d));
++ #endif // NEW_MEM_MAP
+  	break;
+  
+        case OP_cbi:
+  	d = get_biA (op) + 0x20;
++ #ifndef NEW_MEM_MAP
+  	sram[d] &= ~(1 << get_b(op));
++ #else // NEW_MEM_MAP
++ 	{
++ 	  uint8_t v = get_sram(d);
++ 	  v &= ~(1 << get_b(op));
++ 	  put_sram(d, v);
++ 	}
++ #endif // NEW_MEM_MAP
+  	break;
+  
+        case OP_sbi:
+  	d = get_biA (op) + 0x20;
++ #ifndef NEW_MEM_MAP
+  	sram[d] |= 1 << get_b(op);
++ #else // NEW_MEM_MAP
++ 	{
++ 	  uint8_t v = get_sram(d);
++ 	  v |= 1 << get_b(op);
++ 	  put_sram(d, v);
++ 	}
++ #endif // NEW_MEM_MAP
+  	break;
+  
+        case OP_sbic:
++ #ifndef NEW_MEM_MAP
+  	if (!(sram[get_biA (op) + 0x20] & 1 << get_b(op)))
+  	  {
+  	    int l = get_insn_length (cpu->pc);
+  	    cpu->pc += l;
+  	    cpu->cycles += l;
+  	  }
++ #else // NEW_MEM_MAP
++ 	if (!(get_sram(get_biA (op) + 0x20) & 1 << get_b(op)))
++ 	  {
++ 	    int l = get_insn_length (cpu->pc);
++ 	    cpu->pc += l;
++ 	    cpu->cycles += l;
++ 	  }
++ #endif // NEW_MEM_MAP
+  	break;
+  
+        case OP_sbis:
++ #ifndef NEW_MEM_MAP
+  	if (sram[get_biA (op) + 0x20] & 1 << get_b(op))
+  	  {
+  	    int l = get_insn_length (cpu->pc);
+  	    cpu->pc += l;
+  	    cpu->cycles += l;
+  	  }
++ #else // NEW_MEM_MAP
++ 	if (get_sram(get_biA (op) + 0x20) & 1 << get_b(op))
++ 	  {
++ 	    int l = get_insn_length (cpu->pc);
++ 	    cpu->pc += l;
++ 	    cpu->cycles += l;
++ 	  }
++ #endif // NEW_MEM_MAP
+  	break;
+  
+        case OP_ldi:
+  	res = get_K (op);
+  	d = get_d16 (op);
++ #ifndef NEW_MEM_MAP
+  	sram[d] = res;
++ #else // NEW_MEM_MAP
++ 	put_sram(d, res);
++ #endif // NEW_MEM_MAP
+  	break;
+  
+        case OP_lds:
++ #ifndef	NEW_MEM_MAP
+  	sram[get_d (op)] = sram[flash[cpu->pc].op];
++ #else  // NEW_MEM_MAP
++ 	{
++ 	  int cia = cpu->pc << 1;
++ 	  uint16_t x = sim_core_read_aligned_2(cpu, cia, read_map, cia);
++ 	  uint8_t v = get_sram(x);
++ 	  put_sram(get_d (op), v); 
++ 	}
++ #endif  // NEW_MEM_MAP
+  	cpu->pc++;
+  	cpu->cycles++;
+  	break;
+  
+        case OP_sts:
++ #ifndef	NEW_MEM_MAP
+  	sram[flash[cpu->pc].op] = sram[get_d (op)];
++ #else  // NEW_MEM_MAP
++ 	{
++ 	  int cia = cpu->pc << 1;
++ 	  uint16_t x = sim_core_read_aligned_2(cpu, cia, read_map, cia);
++ 	  uint8_t v = get_sram(get_d (op));
++ 	  put_sram(x, v);
++ 	}
++ #endif  // NEW_MEM_MAP
+  	cpu->pc++;
+  	cpu->cycles++;
+  	break;
+  
+        case OP_cpse:
++ #ifndef	NEW_MEM_MAP
+  	if (sram[get_r (op)] == sram[get_d (op)])
+  	  {
+  	    int l = get_insn_length (cpu->pc);
+  	    cpu->pc += l;
+  	    cpu->cycles += l;
+  	  }
++ #else  // NEW_MEM_MAP
++ 	if (get_sram(get_r (op)) == get_sram(get_d (op)))
++ 	  {
++ 	    int l = get_insn_length (cpu->pc);
++ 	    cpu->pc += l;
++ 	    cpu->cycles += l;
++ 	  }
++ #endif  // NEW_MEM_MAP
+  	break;
+  
+        case OP_cp:
++ #ifndef	NEW_MEM_MAP
+  	r = sram[get_r (op)];
+  	d = sram[get_d (op)];
+  	res = d - r;
+  	update_flags_sub (res, d, r);
+  	if (res == 0)
+  	  sram[SREG] |= SREG_Z;
++ #else // NEW_MEM_MAP
++ 	r = get_sram(get_r (op));
++ 	d = get_sram(get_d (op));
++ 	res = d - r;
++ 	update_flags_sub (res, d, r);
++ 	if (res == 0) {
++ 	  uint8_t v = get_sram(SREG);
++ 	  v |= SREG_Z;
++ 	  put_sram(SREG, v);
++ 	}
++ #endif // NEW_MEM_MAP
+  	break;
+  
+        case OP_cpi:
+  	r = get_K (op);
++ #ifndef NEW_MEM_MAP
+  	d = sram[get_d16 (op)];
+  	res = d - r;
+  	update_flags_sub (res, d, r);
+  	if (res == 0)
+  	  sram[SREG] |= SREG_Z;
++ #else // NEW_MEM_MAP
++ 	d = get_sram(get_d16 (op));
++ 	res = d - r;
++ 	update_flags_sub (res, d, r);
++ 	if (res == 0) {
++ 	  uint8_t v = get_sram(SREG);
++ 	  v |= SREG_Z;
++ 	  put_sram(SREG, v);
++ 	}
++ #endif // NEW_MEM_MAP
+  	break;
+  
+        case OP_cpc:
+  	{
++ #ifndef NEW_MEM_MAP
+  	  byte old = sram[SREG];
+  	  d = sram[get_d (op)];
+  	  r = sram[get_r (op)];
+***************
+*** 1297,1343 ****
+--- 2173,2267 ----
+  	  update_flags_sub (res, d, r);
+  	  if (res == 0 && (old & SREG_Z))
+  	    sram[SREG] |= SREG_Z;
++ #else // NEW_MEM_MAP
++ 	  byte old = get_sram(SREG);
++ 	  d = get_sram(get_d (op));
++ 	  r = get_sram(get_r (op));
++ 	  res = d - r - (old & SREG_C);
++ 	  update_flags_sub (res, d, r);
++ 	  if (res == 0 && (old & SREG_Z)) {
++ 	    uint8_t v = get_sram(SREG);
++ 	    v |= SREG_Z;
++ 	    put_sram(SREG, v);
++ 	  }
++ #endif // NEW_MEM_MAP
+  	}
+  	break;
+  
+        case OP_brbc:
++ #ifndef	NEW_MEM_MAP
+  	if (!(sram[SREG] & flash[ipc].r))
+  	  {
+  	    cpu->pc = (cpu->pc + get_k (op)) & PC_MASK;
+  	    cpu->cycles++;
+  	  }
++ #else  // NEW_MEM_MAP
++ 	if (!(get_sram(SREG) & get_byte(ipc)))
++ 	  {
++ 	    cpu->pc = (cpu->pc + get_k (op)) & PC_MASK;
++ 	    cpu->cycles++;
++ 	  }
++ #endif  // NEW_MEM_MAP
+  	break;
+  
+        case OP_brbs:
++ #ifndef	NEW_MEM_MAP
+  	if (sram[SREG] & flash[ipc].r)
+  	  {
+  	    cpu->pc = (cpu->pc + get_k (op)) & PC_MASK;
+  	    cpu->cycles++;
+  	  }
++ #else  // NEW_MEM_MAP
++ 	if (get_sram(SREG) & get_byte(ipc))
++ 	  {
++ 	    cpu->pc = (cpu->pc + get_k (op)) & PC_MASK;
++ 	    cpu->cycles++;
++ 	  }
++ #endif  // NEW_MEM_MAP
+  	break;
+  
+        case OP_lpm:
++ #ifndef NEW_MEM_MAP
+  	sram[0] = get_lpm (read_word (REGZ));
++ #else // NEW_MEM_MAP
++ 	put_sram(0, get_lpm (read_word (REGZ)));
++ #endif // NEW_MEM_MAP
+  	cpu->cycles += 2;
+  	break;
+  
+        case OP_lpm_Z:
++ #ifndef NEW_MEM_MAP
+  	sram[get_d (op)] = get_lpm (read_word (REGZ));
++ #else // NEW_MEM_MAP
++ 	put_sram(get_d (op), get_lpm (read_word (REGZ)));
++ #endif // NEW_MEM_MAP
+  	cpu->cycles += 2;
+  	break;
+  
+        case OP_lpm_inc_Z:
++ #ifndef NEW_MEM_MAP
+  	sram[get_d (op)] = get_lpm (read_word_post_inc (REGZ));
++ #else // NEW_MEM_MAP
++ 	put_sram(get_d (op), get_lpm (read_word_post_inc (REGZ)));
++ #endif // NEW_MEM_MAP
+  	cpu->cycles += 2;
+  	break;
+  
+        case OP_elpm:
++ #ifndef NEW_MEM_MAP
+  	sram[0] = get_lpm (get_z ());
++ #else // NEW_MEM_MAP
++ 	put_sram(0, get_lpm (get_z ()));
++ #endif // NEW_MEM_MAP
+  	cpu->cycles += 2;
+  	break;
+  
+        case OP_elpm_Z:
++ #ifndef NEW_MEM_MAP
+  	sram[get_d (op)] = get_lpm (get_z ());
++ #else // NEW_MEM_MAP
++ 	put_sram(get_d (op), get_lpm (get_z ()));
++ #endif // NEW_MEM_MAP
+  	cpu->cycles += 2;
+  	break;
+  
+***************
+*** 1345,1446 ****
+  	{
+  	  unsigned int z = get_z ();
+  
+  	  sram[get_d (op)] = get_lpm (z);
+  	  z++;
+  	  sram[REGZ_LO] = z;
+  	  sram[REGZ_HI] = z >> 8;
+  	  sram[RAMPZ] = z >> 16;
+  	}
+  	cpu->cycles += 2;
+  	break;
+  
+        case OP_ld_Z_inc:
+  	sram[get_d (op)] = sram[read_word_post_inc (REGZ) & SRAM_MASK];
+  	cpu->cycles++;
+  	break;
+  
+        case OP_ld_dec_Z:
+  	sram[get_d (op)] = sram[read_word_pre_dec (REGZ) & SRAM_MASK];
+  	cpu->cycles++;
+  	break;
+  
+        case OP_ld_X_inc:
+  	sram[get_d (op)] = sram[read_word_post_inc (REGX) & SRAM_MASK];
+  	cpu->cycles++;
+  	break;
+  
+        case OP_ld_dec_X:
+! 	sram[get_d (op)] = sram[read_word_pre_dec (REGX) & SRAM_MASK];
+  	cpu->cycles++;
+  	break;
+  
+        case OP_ld_Y_inc:
+  	sram[get_d (op)] = sram[read_word_post_inc (REGY) & SRAM_MASK];
+  	cpu->cycles++;
+  	break;
+  
+        case OP_ld_dec_Y:
+  	sram[get_d (op)] = sram[read_word_pre_dec (REGY) & SRAM_MASK];
+  	cpu->cycles++;
+  	break;
+  
+        case OP_st_X:
+  	sram[read_word (REGX) & SRAM_MASK] = sram[get_d (op)];
+  	cpu->cycles++;
+  	break;
+  
+        case OP_st_X_inc:
+  	sram[read_word_post_inc (REGX) & SRAM_MASK] = sram[get_d (op)];
+  	cpu->cycles++;
+  	break;
+  
+        case OP_st_dec_X:
+  	sram[read_word_pre_dec (REGX) & SRAM_MASK] = sram[get_d (op)];
+  	cpu->cycles++;
+  	break;
+  
+        case OP_st_Z_inc:
+  	sram[read_word_post_inc (REGZ) & SRAM_MASK] = sram[get_d (op)];
+  	cpu->cycles++;
+  	break;
+  
+        case OP_st_dec_Z:
+  	sram[read_word_pre_dec (REGZ) & SRAM_MASK] = sram[get_d (op)];
+  	cpu->cycles++;
+  	break;
+  
+        case OP_st_Y_inc:
+  	sram[read_word_post_inc (REGY) & SRAM_MASK] = sram[get_d (op)];
+  	cpu->cycles++;
+  	break;
+  
+        case OP_st_dec_Y:
+  	sram[read_word_pre_dec (REGY) & SRAM_MASK] = sram[get_d (op)];
+  	cpu->cycles++;
+  	break;
+  
+        case OP_std_Y:
+  	sram[read_word (REGY) + flash[ipc].r] = sram[get_d (op)];
+  	cpu->cycles++;
+  	break;
+  
+        case OP_std_Z:
+  	sram[read_word (REGZ) + flash[ipc].r] = sram[get_d (op)];
+  	cpu->cycles++;
+  	break;
+  
+        case OP_ldd_Z:
+  	sram[get_d (op)] = sram[read_word (REGZ) + flash[ipc].r];
+  	cpu->cycles++;
+  	break;
+  
+        case OP_ldd_Y:
+  	sram[get_d (op)] = sram[read_word (REGY) + flash[ipc].r];
+  	cpu->cycles++;
+  	break;
+  
+        case OP_ld_X:
+  	sram[get_d (op)] = sram[read_word (REGX) & SRAM_MASK];
+  	cpu->cycles++;
+  	break;
+  
+--- 2269,2450 ----
+  	{
+  	  unsigned int z = get_z ();
+  
++ #ifndef NEW_MEM_MAP
+  	  sram[get_d (op)] = get_lpm (z);
+  	  z++;
+  	  sram[REGZ_LO] = z;
+  	  sram[REGZ_HI] = z >> 8;
+  	  sram[RAMPZ] = z >> 16;
++ #else // NEW_MEM_MAP
++ 	  put_sram(get_d (op), get_lpm (z));
++ 	  z++;
++ 	  put_sram(REGZ_LO, z);
++ 	  put_sram(REGZ_HI, z >> 8);
++ 	  put_sram(RAMPZ, z >> 16);
++ #endif // NEW_MEM_MAP
+  	}
+  	cpu->cycles += 2;
+  	break;
+  
+        case OP_ld_Z_inc:
++ #ifndef NEW_MEM_MAP
+  	sram[get_d (op)] = sram[read_word_post_inc (REGZ) & SRAM_MASK];
++ #else // NEW_MEM_MAP
++ 	put_sram(get_d (op), get_sram(read_word_post_inc (REGZ) & SRAM_MASK));
++ #endif // NEW_MEM_MAP
+  	cpu->cycles++;
+  	break;
+  
+        case OP_ld_dec_Z:
++ #ifndef NEW_MEM_MAP
+  	sram[get_d (op)] = sram[read_word_pre_dec (REGZ) & SRAM_MASK];
++ #else // NEW_MEM_MAP
++ 	put_sram(get_d (op), get_sram(read_word_pre_dec (REGZ) & SRAM_MASK));
++ #endif // NEW_MEM_MAP
+  	cpu->cycles++;
+  	break;
+  
+        case OP_ld_X_inc:
++ #ifndef NEW_MEM_MAP
+  	sram[get_d (op)] = sram[read_word_post_inc (REGX) & SRAM_MASK];
++ #else // NEW_MEM_MAP
++ 	put_sram(get_d (op), get_sram(read_word_post_inc (REGX) & SRAM_MASK));
++ #endif // NEW_MEM_MAP
+  	cpu->cycles++;
+  	break;
+  
+        case OP_ld_dec_X:
+! #ifndef NEW_MEM_MAP
+! 	sram[get_d (op)] = sram[read_word_pre_dec (REGX) & SRAM_MASK];	
+! #else // NEW_MEM_MAP
+! 	put_sram(get_d (op), get_sram(read_word_pre_dec (REGX) & SRAM_MASK));
+! #endif // NEW_MEM_MAP
+  	cpu->cycles++;
+  	break;
+  
+        case OP_ld_Y_inc:
++ #ifndef NEW_MEM_MAP
+  	sram[get_d (op)] = sram[read_word_post_inc (REGY) & SRAM_MASK];
++ #else // NEW_MEM_MAP
++ 	put_sram(get_d (op), get_sram(read_word_post_inc (REGY) & SRAM_MASK));
++ #endif // NEW_MEM_MAP
+  	cpu->cycles++;
+  	break;
+  
+        case OP_ld_dec_Y:
++ #ifndef NEW_MEM_MAP
+  	sram[get_d (op)] = sram[read_word_pre_dec (REGY) & SRAM_MASK];
++ #else // NEW_MEM_MAP
++ 	put_sram(get_d (op), get_sram(read_word_pre_dec (REGY) & SRAM_MASK));
++ #endif // NEW_MEM_MAP
+  	cpu->cycles++;
+  	break;
+  
+        case OP_st_X:
++ #ifndef NEW_MEM_MAP
+  	sram[read_word (REGX) & SRAM_MASK] = sram[get_d (op)];
++ #else // NEW_MEM_MAP
++ 	put_sram(read_word (REGX) & SRAM_MASK, get_sram(get_d (op)));
++ #endif // NEW_MEM_MAP
+  	cpu->cycles++;
+  	break;
+  
+        case OP_st_X_inc:
++ #ifndef NEW_MEM_MAP
+  	sram[read_word_post_inc (REGX) & SRAM_MASK] = sram[get_d (op)];
++ #else // NEW_MEM_MAP
++ 	put_sram(read_word_post_inc (REGX) & SRAM_MASK, get_sram(get_d (op)));
++ #endif // NEW_MEM_MAP
+  	cpu->cycles++;
+  	break;
+  
+        case OP_st_dec_X:
++ #ifndef NEW_MEM_MAP
+  	sram[read_word_pre_dec (REGX) & SRAM_MASK] = sram[get_d (op)];
++ #else // NEW_MEM_MAP
++ 	put_sram(read_word_pre_dec (REGX) & SRAM_MASK, get_sram(get_d (op)));
++ #endif // NEW_MEM_MAP
+  	cpu->cycles++;
+  	break;
+  
+        case OP_st_Z_inc:
++ #ifndef NEW_MEM_MAP
+  	sram[read_word_post_inc (REGZ) & SRAM_MASK] = sram[get_d (op)];
++ #else // NEW_MEM_MAP
++ 	put_sram(read_word_post_inc (REGZ) & SRAM_MASK, get_sram(get_d (op)));
++ #endif // NEW_MEM_MAP
+  	cpu->cycles++;
+  	break;
+  
+        case OP_st_dec_Z:
++ #ifndef NEW_MEM_MAP
+  	sram[read_word_pre_dec (REGZ) & SRAM_MASK] = sram[get_d (op)];
++ #else // NEW_MEM_MAP
++ 	put_sram(read_word_pre_dec (REGZ) & SRAM_MASK, get_sram(get_d (op)));
++ #endif // NEW_MEM_MAP
+  	cpu->cycles++;
+  	break;
+  
+        case OP_st_Y_inc:
++ #ifndef NEW_MEM_MAP
+  	sram[read_word_post_inc (REGY) & SRAM_MASK] = sram[get_d (op)];
++ #else // NEW_MEM_MAP
++ 	put_sram(read_word_post_inc (REGY) & SRAM_MASK, get_sram(get_d (op)));
++ #endif // NEW_MEM_MAP
+  	cpu->cycles++;
+  	break;
+  
+        case OP_st_dec_Y:
++ #ifndef NEW_MEM_MAP
+  	sram[read_word_pre_dec (REGY) & SRAM_MASK] = sram[get_d (op)];
++ #else // NEW_MEM_MAP
++ 	put_sram(read_word_pre_dec (REGY) & SRAM_MASK, get_sram(get_d (op)));
++ #endif // NEW_MEM_MAP
+  	cpu->cycles++;
+  	break;
+  
+        case OP_std_Y:
++ #ifndef	NEW_MEM_MAP
+  	sram[read_word (REGY) + flash[ipc].r] = sram[get_d (op)];
++ #else  // NEW_MEM_MAP
++ 	put_sram(read_word (REGY) + get_byte(ipc), get_sram(get_d (op)));  
++ #endif  // NEW_MEM_MAP
+  	cpu->cycles++;
+  	break;
+  
+        case OP_std_Z:
++ #ifndef	NEW_MEM_MAP
+  	sram[read_word (REGZ) + flash[ipc].r] = sram[get_d (op)];
++ #else  // NEW_MEM_MAP
++ 	put_sram(read_word (REGZ) + get_byte(ipc), get_sram(get_d (op)));
++ #endif  // NEW_MEM_MAP
+  	cpu->cycles++;
+  	break;
+  
+        case OP_ldd_Z:
++ #ifndef	NEW_MEM_MAP
+  	sram[get_d (op)] = sram[read_word (REGZ) + flash[ipc].r];
++ #else  // NEW_MEM_MAP
++ 	put_sram(get_d (op), get_sram(read_word (REGZ) + get_byte(ipc)));
++ #endif  // NEW_MEM_MAP
+  	cpu->cycles++;
+  	break;
+  
+        case OP_ldd_Y:
++ #ifndef	NEW_MEM_MAP
+  	sram[get_d (op)] = sram[read_word (REGY) + flash[ipc].r];
++ #else  // NEW_MEM_MAP
++ 	put_sram(get_d (op), get_sram(read_word (REGY) + get_byte(ipc)));
++ #endif  // NEW_MEM_MAP
+  	cpu->cycles++;
+  	break;
+  
+        case OP_ld_X:
++ #ifndef NEW_MEM_MAP
+  	sram[get_d (op)] = sram[read_word (REGX) & SRAM_MASK];
++ #else // NEW_MEM_MAP
++ 	put_sram(get_d (op), get_sram(read_word (REGX) & SRAM_MASK));
++ #endif // NEW_MEM_MAP
+  	cpu->cycles++;
+  	break;
+  
+***************
+*** 1453,1459 ****
+  	  d = get_d24 (op);
+  	  wr = read_word (d);
+  	  wres = wr - wk;
+! 
+  	  sram[SREG] &= ~(SREG_S | SREG_V | SREG_N | SREG_Z | SREG_C);
+  	  if (wres == 0)
+  	    sram[SREG] |= SREG_Z;
+--- 2457,2463 ----
+  	  d = get_d24 (op);
+  	  wr = read_word (d);
+  	  wres = wr - wk;
+! #ifndef NEW_MEM_MAP
+  	  sram[SREG] &= ~(SREG_S | SREG_V | SREG_N | SREG_Z | SREG_C);
+  	  if (wres == 0)
+  	    sram[SREG] |= SREG_Z;
+***************
+*** 1465,1470 ****
+--- 2469,2489 ----
+  	    sram[SREG] |= SREG_V;
+  	  if (((~wres & wr) ^ wres) & 0x8000)
+  	    sram[SREG] |= SREG_S;
++ #else // NEW_MEM_MAP
++ 	  uint8_t v = get_sram(SREG);
++ 	  v &= ~(SREG_S | SREG_V | SREG_N | SREG_Z | SREG_C);
++ 	  if (wres == 0)
++ 	    v |= SREG_Z;
++ 	  if (wres & 0x8000)
++ 	    v |= SREG_N;
++ 	  if (wres & ~wr & 0x8000)
++ 	    v |= SREG_C;
++ 	  if (~wres & wr & 0x8000)
++ 	    v |= SREG_V;
++ 	  if (((~wres & wr) ^ wres) & 0x8000)
++ 	    v |= SREG_S;
++ 	  put_sram(SREG, v);
++ #endif // NEW_MEM_MAP
+  	  write_word (d, wres);
+  	}
+  	cpu->cycles++;
+***************
+*** 1480,1485 ****
+--- 2499,2505 ----
+  	  wr = read_word (d);
+  	  wres = wr + wk;
+  
++ #ifndef NEW_MEM_MAP
+  	  sram[SREG] &= ~(SREG_S | SREG_V | SREG_N | SREG_Z | SREG_C);
+  	  if (wres == 0)
+  	    sram[SREG] |= SREG_Z;
+***************
+*** 1491,1504 ****
+  	    sram[SREG] |= SREG_V;
+  	  if (((wres & ~wr) ^ wres) & 0x8000)
+  	    sram[SREG] |= SREG_S;
+  	  write_word (d, wres);
+  	}
+  	cpu->cycles++;
   	break;
   
         case OP_bad:
@@ -233,7 +2132,28 @@
         default:
   	sim_engine_halt (CPU_STATE (cpu), cpu, NULL, cpu->pc, sim_signalled, SIM_SIGILL);
         }
---- 1702,1716 ----
+--- 2511,2546 ----
+  	    sram[SREG] |= SREG_V;
+  	  if (((wres & ~wr) ^ wres) & 0x8000)
+  	    sram[SREG] |= SREG_S;
++ #else // NEW_MEM_MAP
++ 	  uint8_t v = get_sram(SREG);
++ 	  v &= ~(SREG_S | SREG_V | SREG_N | SREG_Z | SREG_C);
++ 	  if (wres == 0)
++ 	    v |= SREG_Z;
++ 	  if (wres & 0x8000)
++ 	    v |= SREG_N;
++ 	  if (~wres & wr & 0x8000)
++ 	    v |= SREG_C;
++ 	  if (wres & ~wr & 0x8000)
++ 	    v |= SREG_V;
++ 	  if (((wres & ~wr) ^ wres) & 0x8000)
++ 	    v |= SREG_S;
++ 	  put_sram(SREG, v);
++ #endif // NEW_MEM_MAP
+  	  write_word (d, wres);
+  	}
+  	cpu->cycles++;
   	break;
   
         case OP_bad:
@@ -250,8 +2170,139 @@
   	sim_engine_halt (CPU_STATE (cpu), cpu, NULL, cpu->pc, sim_signalled, SIM_SIGILL);
         }
 ***************
+*** 1523,1529 ****
+  	sim_events_process (sd);
+      }
+  }
+! 
+  int
+  sim_write (SIM_DESC sd, SIM_ADDR addr, const unsigned char *buffer, int size)
+  {
+--- 2565,2571 ----
+  	sim_events_process (sd);
+      }
+  }
+! #ifndef NEW_MEM_MAP
+  int
+  sim_write (SIM_DESC sd, SIM_ADDR addr, const unsigned char *buffer, int size)
+  {
+***************
+*** 1595,1618 ****
+        return size;
+      }
+  }
+! 
+  static int
+  avr_reg_store (SIM_CPU *cpu, int rn, unsigned char *memory, int length)
+  {
+    if (rn < 32 && length == 1)
+      {
+!       sram[rn] = *memory;
+        return 1;
+      }
+    if (rn == AVR_SREG_REGNUM && length == 1)
+      {
+        sram[SREG] = *memory;
+        return 1;
+      }
+    if (rn == AVR_SP_REGNUM && length == 2)
+      {
+        sram[REG_SP] = memory[0];
+        sram[REG_SP + 1] = memory[1];
+        return 2;
+      }
+    if (rn == AVR_PC_REGNUM && length == 4)
+--- 2637,2673 ----
+        return size;
+      }
+  }
+! #endif // NEW_MEM_MAP
+  static int
+  avr_reg_store (SIM_CPU *cpu, int rn, unsigned char *memory, int length)
+  {
+    if (rn < 32 && length == 1)
+      {
+! #ifndef NEW_MEM_MAP
+!       sram[rn] = *memory;      
+! #else // NEW_MEM_MAP
+!       put_sram(rn, *memory);
+! #endif // NEW_MEM_MAP
+        return 1;
+      }
+    if (rn == AVR_SREG_REGNUM && length == 1)
+      {
++ #ifndef NEW_MEM_MAP
+        sram[SREG] = *memory;
++ #else // NEW_MEM_MAP
++       put_sram(SREG, *memory);
++ #endif // NEW_MEM_MAP
+        return 1;
+      }
+    if (rn == AVR_SP_REGNUM && length == 2)
+      {
++ #ifndef NEW_MEM_MAP
+        sram[REG_SP] = memory[0];
+        sram[REG_SP + 1] = memory[1];
++ #else // NEW_MEM_MAP
++       put_sram(REG_SP, memory[0]);
++       put_sram(REG_SP + 1, memory[1]);
++ #endif // NEW_MEM_MAP
+        return 2;
+      }
+    if (rn == AVR_PC_REGNUM && length == 4)
+***************
+*** 1630,1647 ****
+--- 2685,2715 ----
+  {
+    if (rn < 32 && length == 1)
+      {
++ #ifndef NEW_MEM_MAP
+        *memory = sram[rn];
++ #else // NEW_MEM_MAP
++       *memory = get_sram(rn);
++ #endif // NEW_MEM_MAP
+        return 1;
+      }
+    if (rn == AVR_SREG_REGNUM && length == 1)
+      {
++ #ifndef NEW_MEM_MAP
+        *memory = sram[SREG];
++ #else // NEW_MEM_MAP
++       *memory = get_sram(SREG);
++ #endif // NEW_MEM_MAP
+        return 1;
+      }
+    if (rn == AVR_SP_REGNUM && length == 2)
+      {
++ #ifndef NEW_MEM_MAP
+        memory[0] = sram[REG_SP];
+        memory[1] = sram[REG_SP + 1];
++ #else // NEW_MEM_MAP
++       memory[0] = get_sram(REG_SP);
++       memory[1] = get_sram(REG_SP + 1);
++ #endif // NEW_MEM_MAP
+        return 2;
+      }
+    if (rn == AVR_PC_REGNUM && length == 4)
+***************
+*** 1749,1756 ****
+--- 2817,2829 ----
+      }
+  
+    /* Clear all the memory.  */
++ #ifndef NEW_MEM_MAP
+    memset (sram, 0, sizeof (sram));
+    memset (flash, 0, sizeof (flash));
++ #else  // NEW_MEM_MAP
++   //  r0, ..., r31 and I/O
++   sim_do_command(sd, "memory-region 0x800000,0x60");
++ #endif  // NEW_MEM_MAP
+  
+    return sd;
+  }
+***************
 *** 1767,1773 ****
---- 1979,1989 ----
+--- 2840,2850 ----
       addr = bfd_get_start_address (abfd);
     else
       addr = 0;
