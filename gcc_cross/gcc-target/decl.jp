@@ -129,7 +129,7 @@ static const char initial_call_used_regs[] = CALL_USED_REGISTERS;
   enum reg_class x_reg_class_subclasses[N_REG_CLASSES][N_REG_CLASSES];
 
     レジスタアロケーションアルゴリズムで参照される. FIRST_PSEUDO_REGISTER 未満のどの
-    レジスタ番号に対しても対応する reg_class のメンバが存在する. そのように宣言する.
+    レジスタ番号に対しても対応する reg_class のメンバが存在するように宣言する.
 
     reg_class のメンバには以下が含まれている必要がある:
 
@@ -173,21 +173,18 @@ static const unsigned int_reg_class_contents[N_REG_CLASSES][N_REG_INTS]
 
       以下のようにビットマップを指定する.
 
-#define REGISTER_NAMES      { "sp", "fp", "a", "b" }
+#define REGISTER_NAMES      { "sp", "fp", "a", "b", "pc" }
 
 enum reg_class {
-  NO_REGS, SP_REGS, FP_REGS, A_REGS, B_REGS,
+  NO_REGS, SPECIAL_REGS,
   GENERAL_REGS, ALL_REGS, LIM_REG_CLASSES
 };
 
 #define REG_CLASS_CONTENTS \
 /* NO_REGS */		{{ 0x00000000 }, \
-/* SP_REGS */		 { 0x00000001 }, \
-/* FP_REGS */		 { 0x00000002 }, \
-/* A_REGS */		 { 0x00000004 }, \
-/* B_REGS */		 { 0x00000008 }, \
+/* SPECIAL_REGS */	 { 0x00000013 }, \
 /* GENERAL_REGS */	 { 0x0000000c }, \
-/* ALL_REGS */           { 0x0000000f }}
+/* ALL_REGS */           { 0x0000001f }}
 
 (*) BASE_REG_CLASS
 
@@ -711,3 +708,57 @@ constexpr int UNITS_PER_WORD  = 1;
       が出力されてしまうと期待しない動作を gdb がしてしまうことがある.
       試しに m68hc11 でもこの対応をしてみたが, 残念ながら gdb は期待通り動作していない.
       そこまで単純ではないらしい.
+
+(*) STACK_GROWS_DOWNWARD
+
+参照箇所の 1 つ gcc/defaults.h
+
+#ifndef STACK_GROWS_DOWNWARD
+#define STACK_GROWS_DOWNWARD 0
+#endif
+
+      大抵は 1 に define する. プリプロセッサのディレクティブで使用されるので
+      マクロでなくてはならない. アドレスの低い方にスタックが成長するならば
+      1 に define する.
+
+(*) FRAME_GROWS_DOWNWARD
+
+参照箇所の 1 つ gcc/defaults.h
+
+#ifndef FRAME_GROWS_DOWNWARD
+#define FRAME_GROWS_DOWNWARD 0
+#endif
+
+      スタックフレームの構造が Blackfin コンパイラのようにフレームポインタがフレームの
+      底を指すのならば 1  に define する:
+
+	+----------------+ <- sp
+	|                |
+	|                |
+	~                ~            Blackfin のスタックフレーム
+	|                |
+	|                |
+	+----------------+ <- fp
+	|    fp_{old}    |
+	+----------------+ 
+	|   rets_{old}   |
+	+----------------+
+
+      ARM や AARCH64 のコンパイラのようにフレームポインタがプロローグの終了時に
+      スタックポインタと同じアドレスを指すのならば 0 に define するか, define
+      しない.
+
+
+	+----------------+ <- sp, fp 
+	|                |
+	|                |
+	~   local area   ~             ARM のスタックフレーム
+	|                |
+	|                |
+	+----------------+ 
+	|    fp_{old}    |
+	+----------------+ 
+	|    lr_{old}    |
+	+----------------+
+
+            
