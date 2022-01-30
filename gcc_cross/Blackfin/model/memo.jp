@@ -57,15 +57,15 @@ bfin のスタックフレームは以下のようになっている.
 	| 3rd arg space  |
 	+----------------+
 
-o マクロ TARGET_LRA_P の宣言の追加.
-o マクロ OUTGOING_REG_PARM_STACK_SPACE の宣言の追加.
-o マクロ TARGET_LEGITIMATE_ADDRESS_P の定義となる函数の修正
-o マクロ ARG_POINTER_REGNUM REG_ARGP と ELIMINABLE_REGS の宣言の修正
-o マクロ REG_PARM_STACK_SPACE の宣言の追加
-o 函数 FIRST_PARM_OFFSET では 0 を返す
-o マクロ FRAME_GROWS_DOWNWARD を 1 に define する.
+(1) マクロ TARGET_LRA_P の宣言の追加.
+(2) マクロ TARGET_LEGITIMATE_ADDRESS_P の定義となる函数の修正
+(3) マクロ ARG_POINTER_REGNUM REG_ARGP と ELIMINABLE_REGS の宣言の修正
+(4) マクロ REG_PARM_STACK_SPACE の宣言の追加
+(5) 函数 FIRST_PARM_OFFSET では 0 を返す
+(6) マクロ OUTGOING_REG_PARM_STACK_SPACE の宣言の追加.
+(7) マクロ FRAME_GROWS_DOWNWARD を 1 に define する.
 
-以下は上記 (1) ... (6) を修正するに至った解析結果.
+以下は上記を修正するに至った解析結果.
 
 函数 assign_parm_setup_stack で引数を保存するオフセットを決めているらしい.
 
@@ -522,7 +522,7 @@ bfin_initial_elimination_offset (int from, int to)
   if (from == ARG_POINTER_REGNUM)
     offset = n_regs_saved_by_prologue () * 4;
 
-どうやら上の函数がポイントらしい. ここで 8 や 12 を返すのがポイントらしい.
+どうやら上の函数がポイントらしい. ここで 8 を返すのがポイントらしい.
 
 上の箇所を修正して
 
@@ -787,6 +787,9 @@ assign_parms (tree fndecl)
   => と思ったが結局必要にならなかったので追加しないことにする. get_frame_size() は
      上の修正なしで 0 を返している.
 
+     => さらに後述するが, この宣言がないとオリジナルの cc1 と動作に違いがでるという
+        理由から入れることにはなった.
+
 ビルドし直したところ assign_parm_find_stack_rtl が呼び出されるようになった.
 
 また dest の計算のところで
@@ -909,6 +912,8 @@ void INITIAL_ELIMINATION_OFFSET(int from, int to, poly_int64_pod& offset)
 
 の呼び出しをしていて, offset = 0 の初期化が抜けていた.
 これを修正して無限ループは回避できている.
+
+
 現状 hello world をコンパイルすると以下のようになっている.
 
 main:
@@ -993,12 +998,12 @@ $207 = {<poly_int_pod<1, long long>> = {coeffs = {0}}, <No data fields>}
 
 OUTGOING_REG_PARM_STACK_SPACE
 
-このマクロは MEMO でもでてきたが, 1 に define されていないと
+このマクロは修正しないということで戦術したが,  1 に define されていないと
 
       if (! OUTGOING_REG_PARM_STACK_SPACE ((!fndecl ? fntype : TREE_TYPE (fndecl))))
 	args_size->constant -= reg_parm_stack_space;
 
-で違いが出てくる.
+で違いが出てくる. なので以下のように宣言を追加することにした.
 
 #define OUTGOING_REG_PARM_STACK_SPACE(FNTYPE) 1
 
