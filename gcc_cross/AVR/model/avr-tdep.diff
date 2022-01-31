@@ -1,0 +1,50 @@
+*** gdb-10.2.org/gdb/avr-tdep.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.avr-elf/gdb/avr-tdep.c	2022-01-31 14:58:47.000000000 +0900
+***************
+*** 826,832 ****
+  	  vpc += 2;
+  	  insn = extract_unsigned_integer (&prologue[vpc], 2, byte_order);
+  	  vpc += 2;
+! 	  locals_size += ((insn & 0xf) | ((insn & 0xf00) >> 4)) << 8;
+  	}
+        else
+          return pc_beg + vpc;
+--- 826,835 ----
+  	  vpc += 2;
+  	  insn = extract_unsigned_integer (&prologue[vpc], 2, byte_order);
+  	  vpc += 2;
+! 	  if (insn == 0x09d1) /* sbc	r29, r1(__zero_reg__) */
+! 	    ;
+! 	  else
+! 	    locals_size += ((insn & 0xf) | ((insn & 0xf00) >> 4)) << 8;
+  	}
+        else
+          return pc_beg + vpc;
+***************
+*** 941,948 ****
+    if ((valtype->code () == TYPE_CODE_STRUCT
+         || valtype->code () == TYPE_CODE_UNION
+         || valtype->code () == TYPE_CODE_ARRAY)
+!       && TYPE_LENGTH (valtype) > 8)
+!     return RETURN_VALUE_STRUCT_CONVENTION;
+  
+    if (TYPE_LENGTH (valtype) <= 2)
+      lsb_reg = 24;
+--- 944,960 ----
+    if ((valtype->code () == TYPE_CODE_STRUCT
+         || valtype->code () == TYPE_CODE_UNION
+         || valtype->code () == TYPE_CODE_ARRAY)
+!       && TYPE_LENGTH (valtype) > 8) {
+!     if (readbuf) {
+!       ULONGEST r24;
+!       regcache_raw_read_unsigned (regcache, 24, &r24);
+!       ULONGEST r25;
+!       regcache_raw_read_unsigned (regcache, 25, &r25);
+!       ULONGEST addr = 0x800000 | (r25 << 8) | r24;
+!       read_memory (addr, readbuf, TYPE_LENGTH(valtype));
+!     }
+!     return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+!   }
+  
+    if (TYPE_LENGTH (valtype) <= 2)
+      lsb_reg = 24;

@@ -2,3 +2,1966 @@ cc1 の雛形
 
 「AARCH64」=>「cc1 の雛形」=>「メモ」 を参照.
 AARCH64 と同様の手順で cc1 の雛形をビルドすることができる.
+
+(*1) UNITS_PER_WORD を 1 にした場合に必要になる修正
+     => SHORT_TYPE_SIZE, INT_TYPE_SIZE, LONG_TYPE_SIZE, LONG_LONG_TYPE_SIZE,
+        FLOAT_TYPE_SIZE, DOUBLE_TYPE_SIZE, LONG_DOUBLE_TYPE_SIZE
+        の定義を追加する.
+        REG_NAMES の最後の 2 つがダミーの要素になる.
+
+(*2) Pmode を HImode にすると予期しない rtx_insn が生成される
+     => md ファイルに
+
+       (define_insn "addhi3" ...)
+
+       を入れていないのならば gcc は addhi3 相当のコードを addsi3 を使って rtx_insn 
+       の列を生成する.
+
+(*3) hello world のコンパイルでエラーになる
+     => マクロ TARGET_ADDR_SPACE_POINTER_MODE を定義
+
+(*4) printf の引数はスタック渡しなので push 命令を生成する
+     => マクロ PUSH_ROUNDING を定義
+
+(*5) 函数の引数をフレームポインタ相対 0, 2, ... ではなくて 1, 3, ...
+     となるような rtx_insn を生成する.
+     => マクロ TARGET_STARTING_FRAME_OFFSET を定義
+
+(*6) where コマンドで意図しないアドレスに gdb がアクセスする
+     => gdb のターゲット固有部の修正.
+
+(*1) UNITS_PER_WORD を 1 にした場合に必要になる修正
+
+AVR は 8 ビットマイコンだから UNITS_PER_WORD を 1 にする必要がある.
+
+constexpr int UNITS_PER_WORD = 4;
+
+を
+
+constexpr int UNITS_PER_WORD = 1;
+
+のように修正すると cc1 の実行時, 以下の部分でエラー 0 番地アクセスする.
+
+c-common.c:4304:
+
+  char16_type_node = get_identifier (CHAR16_TYPE);
+
+この部分のプリプロセスの結果は以下:
+
+  c_global_trees[CTI_CHAR16_TYPE] = (__builtin_constant_p (((((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 16 ? "short unsigned int" : ((8) * UNITS_PER_WORD) == 16 ? "unsigned int" : (8) == 16 ? "unsigned char" : 0) ? (((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 16 ? "short unsigned int" : ((8) * UNITS_PER_WORD) == 16 ? "unsigned int" : (8) == 16 ? "unsigned char" : 0) : ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) ? ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) : (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) ? (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) : 0)) ? get_identifier_with_length ((((((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 16 ? "short unsigned int" : ((8) * UNITS_PER_WORD) == 16 ? "unsigned int" : (8) == 16 ? "unsigned char" : 0) ? (((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 16 ? "short unsigned int" : ((8) * UNITS_PER_WORD) == 16 ? "unsigned int" : (8) == 16 ? "unsigned char" : 0) : ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) ? ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) : (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) ? (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) : 0)), strlen (((((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 16 ? "short unsigned int" : ((8) * UNITS_PER_WORD) == 16 ? "unsigned int" : (8) == 16 ? "unsigned char" : 0) ? (((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 16 ? "short unsigned int" : ((8) * UNITS_PER_WORD) == 16 ? "unsigned int" : (8) == 16 ? "unsigned char" : 0) : ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) ? ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) : (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) ? (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) : 0))) : get_identifier (((((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 16 ? "short unsigned int" : ((8) * UNITS_PER_WORD) == 16 ? "unsigned int" : (8) == 16 ? "unsigned char" : 0) ? (((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 16 ? "short unsigned int" : ((8) * UNITS_PER_WORD) == 16 ? "unsigned int" : (8) == 16 ? "unsigned char" : 0) : ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) ? ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) : (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) ? (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) : 0)));
+
+これは人間が読める感じではないが, strlen に 0 を渡しているのが原因であることが分かる.
+さてこれを回避するためにはどうすればよいか.
+
+CHAR16_TYPE はマクロで
+
+$macro $def CHAR16_TYPE "../.././gcc/defaults.h" 591 ;
+
+#ifdef UINT_LEAST16_TYPE
+#define CHAR16_TYPE UINT_LEAST16_TYPE
+#else
+#define CHAR16_TYPE "short unsigned int"
+#endif
+
+となっている.
+UINT_LEAST16_TYPE もやはりマクロで
+
+$macro $def UINT_LEAST16_TYPE "../.././gcc/config/newlib-stdint.h" 50
+
+#define UINT_LEAST16_TYPE (UINT16_TYPE ? UINT16_TYPE : UINT32_TYPE ? UINT32_TYPE : UINT64_TYPE ? UINT64_TYPE : 0)
+
+となっている. そこで以下の宣言を追加してみた.
+
+#undef UINT16_TYPE
+#define UINT16_TYPE	"unsigned int"
+#undef UINT32_TYPE
+#define UINT32_TYPE	"unsigned long"
+#undef UINT64_TYPE
+#define UINT64_TYPE	"unsigned long long"
+
+UINT32_TYPE や UINT64_TYPE はこの部分を回避するためだけであれば必要なさそうだが, 
+おそらくどこかで参照されると思われる. 上の宣言を追加してもう一度ビルドし直して簡単な函数を
+コンパイルしてみると該当箇所でのエラーは回避できたが
+
+  char32_type_node = get_identifier (CHAR32_TYPE);
+  char32_type_node = TREE_TYPE (identifier_global_value (char32_type_node));
+
+上の 2 つ目の行で 0 番地アクセスする. 上のプリプロセス結果は
+
+  c_global_trees[CTI_CHAR32_TYPE] = (__builtin_constant_p (("unsigned long" ? "unsigned long" : "unsigned long long" ? "unsigned long long" : 0)) ? get_identifier_with_length ((("unsigned long" ? "unsigned long" : "unsigned long long" ? "unsigned long long" : 0)), strlen (("unsigned long" ? "unsigned long" : "unsigned long long" ? "unsigned long long" : 0))) : get_identifier (("unsigned long" ? "unsigned long" : "unsigned long long" ? "unsigned long long" : 0)));
+  c_global_trees[CTI_CHAR32_TYPE] = ((identifier_global_value (c_global_trees[CTI_CHAR32_TYPE]))->typed.type);
+
+
+(gdb) p c_global_trees[CTI_CHAR32_TYPE]
+$2 = (tree) 0xb787be40
+(gdb) p identifier_global_value($2)
+$3 = (tree_node *) 0x0
+(gdb)
+
+ということがエラーの原因らしい.
+
+(gdb) p debug_tree($2)
+ <identifier_node 0xb787be40 unsigned long>
+$4 = void
+(gdb)
+
+これは期待したもの.
+
+tree
+identifier_global_value	(tree t)
+{
+  struct c_binding *b;
+
+  for (b = I_SYMBOL_BINDING (t); b; b = b->shadowed)
+    if (B_IN_FILE_SCOPE (b) || B_IN_EXTERNAL_SCOPE (b))
+      return b->decl;
+
+  return NULL_TREE;
+}
+
+最初の for がループせずに直ちにリターンしている. さてこれは一体どのようにエラーを回避するべき
+なのかサッパリである.
+
+この前にエラーを回避していた以下
+
+  char16_type_node = get_identifier (CHAR16_TYPE);
+  char16_type_node = TREE_TYPE (identifier_global_value (char16_type_node));
+
+に対して identifier_global_value の戻り値は 0 でないことを確認した. それは当たり前で
+0 ならばここで 0 番地アクセスしていたはずだから.
+
+
+  char16_type_node = get_identifier (CHAR16_TYPE);
+
+この get_identifier でステップインしてみると, 実際は get_identifier_with_length
+でそこでの戻り値は
+
+
+(gdb) p debug_tree($12)
+ <identifier_node 0xb787bba0 unsigned int
+    symbol <type_decl 0xb7883160 unsigned int
+        type <integer_type 0xb7a69420 unsigned int public unsigned QI
+            size <integer_cst 0xb786e44c constant 8>
+            unit-size <integer_cst 0xb786e460 constant 1>
+            align:8 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb7a69420 precision:8 min <integer_cst 0xb786e62c 0> max <integer_cst 0xb786e604 255>>
+        VOID (null):0:0
+        align:1 warn_if_not_align:0>>
+$13 = void
+(gdb)
+
+このようになっていた. 一方エラーする直前の get_identifier の呼び出しの戻り値は
+
+(gdb) p debug_tree($14)
+ <identifier_node 0xb787be40 unsigned long>
+$15 = void
+(gdb)
+
+のようになっている. 何か様子が違っている.
+
+(gdb) p debug_tree(get_identifier_with_length("unsigned int", 12))
+ <identifier_node 0xb787bba0 unsigned int
+    symbol <type_decl 0xb7883160 unsigned int
+        type <integer_type 0xb7a69420 unsigned int public unsigned QI
+            size <integer_cst 0xb786e44c constant 8>
+            unit-size <integer_cst 0xb786e460 constant 1>
+            align:8 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb7a69420 precision:8 min <integer_cst 0xb786e62c 0> max <integer_cst 0xb786e604 255>>
+        VOID (null):0:0
+        align:1 warn_if_not_align:0>>
+$26 = void
+(gdb) p debug_tree(get_identifier_with_length("unsigned long", 13))
+ <identifier_node 0xb787be40 unsigned long>
+$27 = void
+(gdb)
+
+unsigned long に対して unsigned int とは違う状態になっているらしい.
+
+
+(gdb) p get_identifier_with_length("unsigned int", 12)
+$28 = (tree_node *) 0xb787bba0
+(gdb) watch *(int*)0xb787bba0
+(gdb) run
+...
+
+
+  record_builtin_type (RID_LONG, "long int", long_integer_type_node);
+  record_builtin_type (RID_UNSIGNED, "unsigned int", unsigned_type_node);
+  record_builtin_type (RID_MAX, "long unsigned int",
+		       long_unsigned_type_node);
+
+
+ここで作成していた. ということは...
+
+(gdb) p debug_tree(get_identifier_with_length("long unsigned int", 17))
+ <identifier_node 0xb787bbd0 long unsigned int
+    symbol <type_decl 0xb78831b8 long unsigned int
+        type <integer_type 0xb7a694e0 long unsigned int public unsigned QI
+            size <integer_cst 0xb786e44c constant 8>
+            unit-size <integer_cst 0xb786e460 constant 1>
+            align:8 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb7a694e0 precision:8 min <integer_cst 0xb786e67c 0> max <integer_cst 0xb786e654 255>>
+        VOID (null):0:0
+        align:1 warn_if_not_align:0>>
+$38 = void
+(gdb)
+
+これが正解ということらしい. 同様に unsigned long long は正しくなくて
+
+long long unsigned int
+
+が正解. avr.h を以下のように修正した.
+
+#undef UINT16_TYPE
+#define UINT16_TYPE	"unsigned int"
+#undef UINT32_TYPE
+#define UINT32_TYPE	"long unsigned int"
+#undef UINT64_TYPE
+#define UINT64_TYPE	"long long unsigned int"
+
+実は上の宣言に替えて
+
+#define SHORT_TYPE_SIZE		16
+#define INT_TYPE_SIZE           16
+#define LONG_TYPE_SIZE		32
+#define LONG_LONG_TYPE_SIZE     64
+
+とするほうが良いことに後で気付いた. このカラクリは
+
+$macro $ref SHORT_TYPE_SIZE "../.././gcc/config/newlib-stdint.h" 41 ;
+
+#define UINT16_TYPE (SHORT_TYPE_SIZE == 16 ? "short unsigned int" : INT_TYPE_SIZE == 16 ? "unsigned int" : CHAR_TYPE_SIZE == 16 ? "unsigned char" : 0)
+
+のようになっているからである.
+
+UINT16_TYPE の修正を最初にした(SHORT_TYPE_SIZE ではない修正はしていない)
+リビルドして上のエラーは回避できたが以下のようにエラーしている:
+
+(gdb) run
+Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.avr-elf.mine/host-i686-pc-linux-gnu/gcc/cc1 a.c
+<built-in>: internal compiler error: in cpp_iec_559_value, at c-family/c-cppbuiltin.c:778
+0x85048fa cpp_iec_559_value
+	../.././gcc/c-family/c-cppbuiltin.c:778
+0x85057af c_cpp_builtins(cpp_reader*)
+	../.././gcc/c-family/c-cppbuiltin.c:1116
+0x851a407 c_finish_options
+	../.././gcc/c-family/c-opts.c:1439
+0x8519d10 c_common_parse_file()
+	../.././gcc/c-family/c-opts.c:1184
+Please submit a full bug report,
+
+
+  const struct real_format *ffmt
+    = REAL_MODE_FORMAT (TYPE_MODE (float_type_node));  ここ
+  const struct real_format *dfmt
+    = REAL_MODE_FORMAT (TYPE_MODE (double_type_node));
+
+これは確か m68hc11 の cc1 でもエラーしていた. 今回は一応エラーの内容と回避方法を確認しておく.
+上の部分のプリプロセスの結果は以下:
+
+  const struct real_format *ffmt
+    = (real_format_for_mode[(((enum mode_class) mode_class[((((enum tree_code) ((global_trees[TI_FLOAT_TYPE]))->base.code) == VECTOR_TYPE) ? vector_type_mode (global_trees[TI_FLOAT_TYPE]) : (global_trees[TI_FLOAT_TYPE])->type_common.mode)]) == MODE_DECIMAL_FLOAT) ? (((((((enum tree_code) ((global_trees[TI_FLOAT_TYPE]))->base.code) == VECTOR_TYPE) ? vector_type_mode (global_trees[TI_FLOAT_TYPE]) : (global_trees[TI_FLOAT_TYPE])->type_common.mode)) - MIN_MODE_DECIMAL_FLOAT) + (MAX_MODE_FLOAT - MIN_MODE_FLOAT + 1)) : ((enum mode_class) mode_class[((((enum tree_code) ((global_trees[TI_FLOAT_TYPE]))->base.code) == VECTOR_TYPE) ? vector_type_mode (global_trees[TI_FLOAT_TYPE]) : (global_trees[TI_FLOAT_TYPE])->type_common.mode)]) == MODE_FLOAT ? ((((((enum tree_code) ((global_trees[TI_FLOAT_TYPE]))->base.code) == VECTOR_TYPE) ? vector_type_mode (global_trees[TI_FLOAT_TYPE]) : (global_trees[TI_FLOAT_TYPE])->type_common.mode)) - MIN_MODE_FLOAT) : ((fancy_abort ("../.././gcc/c-family/c-cppbuiltin.c", 778, __FUNCTION__)), 0)]);
+
+(gdb) p real_format_for_mode
+$1 = {0x9343760 <ieee_single_format>, 0x93438a0 <ieee_double_format>, 
+  0x9343d80 <decimal_single_format>, 0x9343de0 <decimal_double_format>, 
+  0x9343e40 <decimal_quad_format>}
+(gdb)
+
+なので配列の添字が
+
+  const struct real_format *ffmt = real_format_for_mode[0];
+  const struct real_format *dfmt = real_format_for_mode[1];
+
+のようになっていれば期待している動作.
+
+$macro $def float_type_node "../.././gcc/tree.h" 4058 ;
+
+#define float_type_node			global_trees[TI_FLOAT_TYPE]
+#define double_type_node		global_trees[TI_DOUBLE_TYPE]
+#define long_double_type_node		global_trees[TI_LONG_DOUBLE_TYPE]
+
+(gdb) p debug_tree(global_trees[TI_FLOAT_TYPE])
+ <real_type 0xb7a69ba0 float VOID
+    size <integer_cst 0xb786e4c4 type <integer_type 0xb7a690c0 bitsizetype> constant 0>
+    unit-size <integer_cst 0xb786e474 type <integer_type 0xb7a69060 sizetype> constant 0>
+    align:8 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb7a69ba0 precision:8
+    pointer_to_this <pointer_type 0xb7a69cc0>>
+$3 = void
+(gdb) p &global_trees[TI_FLOAT_TYPE]
+$4 = (tree *) 0x96f93ec <global_trees+140>
+(gdb) watch *(int*)0x96f93ec
+(gdb) run
+...
+  float_type_node = make_node (REAL_TYPE);
+  TYPE_PRECISION (float_type_node) = FLOAT_TYPE_SIZE;      ここいらだった
+  layout_type (float_type_node);
+
+  double_type_node = make_node (REAL_TYPE);
+  TYPE_PRECISION (double_type_node) = DOUBLE_TYPE_SIZE;
+  layout_type (double_type_node);
+
+  long_double_type_node = make_node (REAL_TYPE);
+  TYPE_PRECISION (long_double_type_node) = LONG_DOUBLE_TYPE_SIZE;
+  layout_type (long_double_type_node);
+
+
+$macro $def FLOAT_TYPE_SIZE "../.././gcc/defaults.h" 507 ;
+
+#ifndef FLOAT_TYPE_SIZE
+#define FLOAT_TYPE_SIZE BITS_PER_WORD
+#endif
+
+#ifndef DOUBLE_TYPE_SIZE
+#define DOUBLE_TYPE_SIZE (BITS_PER_WORD * 2)
+#endif
+
+#ifndef LONG_DOUBLE_TYPE_SIZE
+#define LONG_DOUBLE_TYPE_SIZE (BITS_PER_WORD * 2)
+#endif
+
+というわけで以下の宣言が必要:
+
+#define FLOAT_TYPE_SIZE         32
+#define DOUBLE_TYPE_SIZE        64
+#define LONG_DOUBLE_TYPE_SIZE   64
+
+上の宣言を追加してリビルド. cc1 の実行時に以下のエラー:
+
+a.c: In function ‘f’:
+a.c:4:1: error: unrecognizable insn:
+    4 | }
+      | ^
+(insn 22 21 23 (set (reg/f:SI 28 r28)
+        (reg/f:SI 33 sp)) "a.c":2:1 -1
+     (nil))
+during RTL pass: final
+a.c:4:1: internal compiler error: in extract_insn, at recog.c:2294
+0x8a17194 _fatal_insn(char const*, rtx_def const*, char const*, int, char const*)
+
+(gdb) b
+(gdb) run
+...
+      icode = recog_memoized (insn);
+      if (icode < 0)
+	fatal_insn_not_found (insn);  ここでエラー
+
+(gdb) p debug_insn_slim(insn)
+   22: r28:SI=sp:SI
+$5 = void
+(gdb)
+
+エラーしている原因を調査してみる
+
+(gdb) p insn
+$6 = (rtx_insn *) 0xb7877534
+(gdb) delete
+(gdb) b recog.c:2292
+(gdb) command
+>if (insn!=0xb7877534)
+ >c
+ >end
+>end
+(gdb) run
+...
+
+
+            case E_SImode:
+              if (nonimmediate_operand (operands[0], E_SImode)
+                  && general_operand (operands[1], E_SImode))
+                return 5; /* movsi */
+              break;
+
+上の general_operand(operands[1], E_SImode)) で 0 が返っているのが直接の
+原因
+
+(gdb) p debug_rtx(operands[1])
+(reg/f:SI 33 sp)
+$12 = void
+(gdb) 
+
+general_operand(operands[1], E_SImode)) で 0 が返る原因は
+
+  if (!HARD_REGISTER_NUM_P (end_regno - 1))
+    return false;                             ここ
+
+(gdb) p end_regno
+$16 = 37
+(gdb)
+
+  end_regno = end_hard_regno (mode, regno);
+
+end_hard_regno はインライン函数
+
+static inline unsigned int
+end_hard_regno (machine_mode mode, unsigned int regno)
+{
+  return regno + hard_regno_nregs (regno, mode);
+}
+
+hard_regno_nregs もインライン函数
+
+inline __attribute__ ((always_inline)) unsigned char
+hard_regno_nregs (unsigned int regno, machine_mode mode)
+{
+  return (&default_target_regs)->x_hard_regno_nregs[regno][mode];
+}
+
+
+(gdb) p (&default_target_regs)->x_hard_regno_nregs[regno][mode]
+$23 = 4 '\004'
+(gdb)
+
+なので 33 + 4 = 37 になっている. 36 が期待値なのだが...
+
+(gdb) p &(&default_target_regs)->x_hard_regno_nregs[regno][mode]
+$24 = (unsigned char *) 0x96ed00d <default_target_regs+1293> "\004\b\020\001\002\004\b\020\001\002\004\b\020\002\004\b\020\002\004\b\020\004\b\004\b\020\002\004\b\020 \b\020"
+(gdb) watch *(char*)0x96ed00d
+(gdb) run
+...
+void
+init_reg_modes_target (void)
+{
+  int i, j;
+
+  for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
+    for (j = 0; j < MAX_MACHINE_MODE; j++)
+      this_target_regs->x_hard_regno_nregs[i][j]
+	= targetm.hard_regno_nregs (i, (machine_mode) j);  ここでセットしていた.
+
+
+targetm.hard_regno_nregs の呼び出しは以下:
+
+unsigned int
+default_hard_regno_nregs (unsigned int, machine_mode mode)
+{
+  /* Targets with variable-sized modes must provide their own definition
+     of this hook.  */
+  return CEIL (GET_MODE_SIZE (mode).to_constant (), UNITS_PER_WORD);
+}
+
+なるほど, これが REG_NAMES にダミーの要素が 1 つではなくて 2 つ必要な理由になる.
+上のマクロ展開は以下:
+
+unsigned int
+default_hard_regno_nregs (unsigned int, machine_mode mode)
+{
+
+
+  return (((GET_MODE_SIZE (mode).to_constant ()) + (UNITS_PER_WORD) - 1) / (UNITS_PER_WORD));
+}
+
+今回はダミーの数を 2 つにして回避した.
+
+(*2) Pmode を HImode にすると予期しない rtx_insn が生成される
+
+int f(int a, int b){ return a + b; }
+
+に対して
+
+    4: NOTE_INSN_FUNCTION_BEG
+$175 = void
+$176 = (rtx_insn *) 0xb78773a8
+    7: clobber r20:SI
+$177 = void
+$178 = (rtx_insn *) 0xb78773cc
+    8: r22:HI=[r28:HI]
+$179 = void
+$180 = (rtx_insn *) 0xb78773f0
+    9: clobber r16:SI
+$181 = void
+$182 = (rtx_insn *) 0xb7877414
+   10: r18:HI=[r28:HI+0x2]
+$183 = void
+$184 = (rtx_insn *) 0xb7877438
+   11: r16:SI=r20:SI+r16:SI
+$185 = void
+$186 = (rtx_insn *) 0xb787745c
+   12: r16:HI=r18:HI
+$187 = void
+$188 = (rtx_insn *) 0xb78774ec
+   19: r24:HI=r16:HI
+$189 = void
+$190 = (rtx_insn *) 0xb7877510
+   20: use r24:HI
+
+のように r20 や r16 が値をセットされずに使用されているように見える. これは一体?
+
+reg_class, REG_CLASS_NAMES, REG_CLASS_CONTENTS を修正してもう一度トライ.
+
+2022.01.24 回避できていないことを確認
+
+よく分からない. r16 や r20 を選択できないように
+
+
+#define FIXED_REGISTERS \
+  {   1,     1,     1,     1,     1,     1,     1,     1, \
+      1,     1,     1,     1,     1,     1,     1,     1, \
+      1,     1,     1,     1,     1,     1,     0,     0, \
+      0,     0,     1,     1,     1,     1,     1,     1, \
+      1,     1,     1,     1 }
+
+のようにしてみた. しかし以下のようにだめらしい.
+
+$17 = (rtx_insn *) 0xb78fb9a0
+    4: NOTE_INSN_FUNCTION_BEG
+$18 = void
+$19 = (rtx_insn *) 0xb78773a8
+    7: clobber [r28:HI+0x4]
+$20 = void
+$21 = (rtx_insn *) 0xb78773cc
+    8: [r28:HI+0x6]=[r28:HI]
+$22 = void
+$23 = (rtx_insn *) 0xb78773f0
+    9: clobber r22:SI
+$24 = void
+$25 = (rtx_insn *) 0xb7877414
+   10: r24:HI=[r28:HI+0x2]
+$26 = void
+$27 = (rtx_insn *) 0xb7877438
+   11: r22:SI=[r28:HI+0x4]+r22:SI
+
+
+[r28:HI+0x4] が初期化されずに参照されている.
+   => 後で気付いたが初期化されていないわけではなくて addhi3 がないため addsi3 を
+      代わりに使用してコードを捻り出している.
+
+reg_class の宣言が間違えているらしい. 現状は以下:
+
+enum reg_class {
+  NO_REGS, R0_15, R16_25, R26_27, FP_REGS, R30_31, SREG_REGS, SP_REGS,
+  DUMMY_REGS,
+  GENERAL_REGS, ALL_REGS, LIM_REG_CLASSES
+};
+
+まとめて R0_15 や R16_25 や R26_27 のようにしているのがだめなのかもしれない.
+
+2022.01.24 18:00 頃
+
+enum reg_class {
+  NO_REGS, R0_REGS, R1_REGS, R2_REGS, R3_REGS,
+  R4_REGS, R5_REGS, R6_REGS, R7_REGS,
+  R8_REGS, R9_REGS, R10_REGS, R11_REGS,
+  R12_REGS, R13_REGS, R14_REGS, R15_REGS,
+  R16_REGS, R17_REGS, R18_REGS, R19_REGS,
+  R20_REGS, R21_REGS, R22_REGS, R23_REGS,
+  R24_REGS, R25_REGS, R26_REGS, R27_REGS,
+  R28_REGS, R29_REGS, R30_REGS, R31_REGS,
+  SREG_REGS, SP_REGS, DUMMY0_REGS, DUMMY1_REGS,
+  GENERAL_REGS, ALL_REGS, LIM_REG_CLASSES
+};
+
+のように r0, ..., r31 をそれぞれに分けた. しかし
+
+$63 = (rtx_insn *) 0xb78fb9a0
+    4: NOTE_INSN_FUNCTION_BEG
+$64 = void
+$65 = (rtx_insn *) 0xb78773a8
+    7: clobber [r28:HI+0x4]
+$66 = void
+$67 = (rtx_insn *) 0xb78773cc
+    8: [r28:HI+0x6]=[r28:HI]
+$68 = void
+$69 = (rtx_insn *) 0xb78773f0
+    9: clobber r20:SI
+$70 = void
+$71 = (rtx_insn *) 0xb7877414
+   10: r22:HI=[r28:HI+0x2]
+$72 = void
+$73 = (rtx_insn *) 0xb7877438
+   11: r20:SI=[r28:HI+0x4]+r20:SI
+
+のように r20 が初期化されないで参照されている. さてこれは一体?
+
+2022.01.25 6:20 試しに
+
+r0, r1, r2, r3
+
+だけが選択される(つもりの)ようにしてみた. また引数に使用されるレジスタも
+r0 と r2 だけになるようにしてみた.
+
+しかし以下のように [r28:HI+0x4] が初期化されずに使用されているようである.
+   => 先述したが初期化されていないわけではなくて addhi3 がないため addsi3 を
+      代わりに使用してコードを捻り出している.
+
+$110 = void
+$111 = (rtx_insn *) 0xb78773a8
+    7: clobber [r28:HI+0x4]
+$112 = void
+$113 = (rtx_insn *) 0xb78773cc
+    8: [r28:HI+0x6]=[r28:HI]
+$114 = void
+$115 = (rtx_insn *) 0xb78773f0
+    9: clobber [r28:HI+0x8]
+$116 = void
+$117 = (rtx_insn *) 0xb7877414
+   10: [r28:HI+0xa]=[r28:HI+0x2]
+$118 = void
+$119 = (rtx_insn *) 0xb7877438
+   11: [r28:HI+0x4]=[r28:HI+0x4]+[r28:HI+0x8]
+$120 = void
+$121 = (rtx_insn *) 0xb787745c
+   12: [r28:HI+0x4]=[r28:HI+0x6]
+
+2022.01.25 7:00
+
+以下の修正を入れてみた.
+
+#if 0
+#undef PREFERRED_DEBUGGING_TYPE
+#define PREFERRED_DEBUGGING_TYPE DBX_DEBUG
+#endif
+
+ビルドしている途中で気付いたが, オリジナルの cc1 は上が有効でできているから
+これが直接の原因ではないらしい.
+
+そして横道に逸れるが, m68hc11 でうやむやにしていたスタックポインタやフレームポインタ
+の 1 ずれている問題を以下のように rtx_insn のレベルで対処している.
+
+$15 = (rtx_insn *) 0xb78775a0
+    2: [r28:HI+0x1]=r24:HI
+      REG_DEAD r24:HI
+$16 = void
+$17 = (rtx_insn *) 0xb78775c4
+    3: [r28:HI+0x3]=r22:HI
+      REG_DEAD r22:HI
+
+とはいえ, m68hc11 では d, x, y レジスタと sp レジスタのスワップが 1 ずれているから
+即, avr の方式を m68hc11 に導入できるわけではないらしい.
+
+2022.01.25 8:47 に 7:00 に入れた修正も機能していないことを確認した. さてどうしたものか.
+
+本来はそもそも
+
+$159 = (rtx_insn *) 0xb78773a8
+    7: clobber [r28:HI+0x4]
+
+のように出るのが期待しない. なのでまずはこれが出てしまう直接の原因を調査するべき.
+
+
+static rtx
+widen_operand (rtx op, machine_mode mode, machine_mode oldmode,
+	       int unsignedp, int no_extend)
+{
+...
+  emit_clobber (result);  ここで出している.
+  
+オリジナルの cc1 では widen_operand は呼び出されていない.
+
+rtx
+expand_binop (machine_mode mode, optab binoptab, rtx op0, rtx op1,
+	      rtx target, int unsignedp, enum optab_methods methods)
+{
+...
+	    xop0 = widen_operand (xop0, wider_mode, mode, unsignedp, no_extend);
+
+expand_binop ならばオリジナルの cc1 でも呼び出されている. なので動作の比較をしてみる.
+
+
+	icode = optab_handler (binoptab, mode);
+
+オリジナルの cc1 では
+
+icode = CODE_FOR_addhi3
+
+であったが自前のものでは
+
+icode = CODE_FOR_nothing
+
+になっている. addhi3 が必要ということ.
+
+2022.01.25 11:51 上で回避できたことを確認した.
+
+(*) hello world のコンパイルでエラーする
+
+以下でエラー
+
+rtx
+convert_memory_address_addr_space_1 (scalar_int_mode to_mode ATTRIBUTE_UNUSED,
+				     rtx x, addr_space_t as ATTRIBUTE_UNUSED,
+				     bool in_const ATTRIBUTE_UNUSED,
+				     bool no_emit ATTRIBUTE_UNUSED)
+{
+#ifndef POINTERS_EXTEND_UNSIGNED
+  gcc_assert (GET_MODE (x) == to_mode || GET_MODE (x) == VOIDmode); ここ
+  return x;
+#else /* defined(POINTERS_EXTEND_UNSIGNED) */
+  scalar_int_mode pointer_mode, address_mode, from_mode;
+
+
+上の gcc_assert で停止して
+
+(gdb) p debug_rtx(x)
+(symbol_ref/f:HI ("*.LC0") [flags 0x2] <var_decl 0xb792a540 *.LC0>)
+$1 = void
+(gdb) p to_mode
+$2 = {m_mode = E_QImode}
+(gdb)
+
+ということでエラーになっている.
+オリジナルの cc1 で試してみたところ convert_memory_address_addr_space_1 は
+呼び出されていない.
+
+自前の cc1 で convert_memory_address_addr_space_1 が呼び出されたときのスタックは
+
+
+(gdb) where
+#0  convert_memory_address_addr_space_1 (to_mode=..., x=0xb7966240, as=0 '\000', in_const=false, no_emit=false) at ../.././gcc/explow.c:302
+#1  0x0869bd4d in convert_memory_address_addr_space (to_mode=..., x=0xb7966240, as=0 '\000') at ../.././gcc/explow.c:404
+#2  0x086cefef in expand_expr_addr_expr (exp=0xb7922aa0, target=0x0, tmode=E_QImode, modifier=EXPAND_NORMAL) at ../.././gcc/expr.c:8198
+#3  0x086d949e in expand_expr_real_1 (exp=0xb7922aa0, target=0x0, tmode=E_VOIDmode, modifier=EXPAND_NORMAL, alt_rtl=0x0, inner_reference_p=false) at ../.././gcc/expr.c:11368
+#4  0x086cf33e in expand_expr_real (exp=0xb7922aa0, target=0x0, tmode=E_VOIDmode, modifier=EXPAND_NORMAL, alt_rtl=0x0, inner_reference_p=false) at ../.././gcc/expr.c:8363
+#5  0x08574e51 in expand_normal (exp=0xb7922aa0) at ../.././gcc/expr.h:288
+#6  0x085763c2 in precompute_register_parameters (num_actuals=1, args=0x97984d8, reg_parm_seen=0xbfffe580) at ../.././gcc/calls.c:982
+#7  0x0857d250 in expand_call (exp=0xb7910da0, target=0xb7870430, ignore=1) at ../.././gcc/calls.c:4398
+--Type <RET> for more, q to quit, c to continue without paging--
+
+expand_normal はオリジナルでも呼び出されているので動作の比較を行なってみる.
+
+
+  if (rmode != new_tmode)
+    result = convert_memory_address_addr_space (new_tmode, result, as);
+
+オリジナルの cc1 では上の if の条件が成立していない. 一方自前の cc1 では成立している.
+
+(gdb) p rmode
+$1 = E_HImode
+
+が期待値らしい. 自前の cc1 では
+
+(gdb) p new_tmode
+$5 = {m_mode = E_QImode}
+(gdb)
+
+なので new_tmode の計算方法を確認してみる.
+
+  scalar_int_mode new_tmode = (tmode == pointer_mode
+			       ? pointer_mode
+			       : address_mode);
+
+オリジナルはこうなっている.
+
+#define FUNCTION_MODE HImode
+
+以下のように変更してみる.
+
+constexpr auto FUNCTION_MODE = QImode;
+                                |
+                                V
+constexpr auto FUNCTION_MODE = HImode;
+
+上の修正を入れてみたがエラーは回避できていない.
+
+
+  if (tmode == VOIDmode)
+    tmode = TYPE_MODE (TREE_TYPE (exp));  ここを実行したとき
+
+オリジナルの cc1 は tmode = E_HImode で期待した結果だが自前の cc1 では
+tmode = E_QImode になっている.
+
+オリジナルの cc1
+(gdb) p debug_tree(exp)
+ <addr_expr 0xb796f488
+    type <pointer_type 0xb78825a0
+        type <integer_type 0xb7882540 char readonly QI
+            size <integer_cst 0xb786e80c constant 8>
+            unit-size <integer_cst 0xb786e820 constant 1>
+            align:8 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb7882540 precision:8 min <integer_cst 0xb786e848 -128> max <integer_cst 0xb786e870 127>
+            pointer_to_this <pointer_type 0xb78825a0>>
+        unsigned HI
+        size <integer_cst 0xb786e6f4 constant 16>
+        unit-size <integer_cst 0xb786e708 constant 2>
+        align:8 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb78825a0>
+    constant
+    arg:0 <array_ref 0xb7937860 type <integer_type 0xb7882540 char>
+       
+        arg:0 <string_cst 0xb7937840 type <array_type 0xb796ade0>
+            readonly constant static "hello world\000">
+        arg:1 <integer_cst 0xb786ea8c constant 0>>>
+$5 = void
+(gdb) 
+
+自前の cc1
+
+(gdb) p debug_tree(exp)
+ <addr_expr 0xb7922aa0
+    type <pointer_type 0xb7882420
+        type <integer_type 0xb78823c0 char readonly unsigned QI
+            size <integer_cst 0xb786e564 constant 8>
+            unit-size <integer_cst 0xb786e578 constant 1>
+            align:8 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb78823c0 precision:8 min <integer_cst 0xb786e5b4 0> max <integer_cst 0xb786e5a0 255>
+            pointer_to_this <pointer_type 0xb7882420>>
+        unsigned QI size <integer_cst 0xb786e564 8> unit-size <integer_cst 0xb786e578 1>
+        align:8 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb7882420>
+    constant
+    arg:0 <array_ref 0xb7910ba0 type <integer_type 0xb78823c0 char>
+       
+        arg:0 <string_cst 0xb7910b80 type <array_type 0xb795a780>
+            readonly constant static "hello world\000">
+        arg:1 <integer_cst 0xb786e7bc constant 0>>>
+$12 = void
+(gdb) 
+
+分かりずらいが以下のような違いがある
+
+オリジナル
+        unsigned HI
+
+自前
+        unsigned QI
+
+該当箇所のマクロ展開は
+
+    tmode = ((((enum tree_code) ((((exp)->typed.type)))->base.code) == VECTOR_TYPE) ? vector_type_mode (((exp)->typed.type)) : (((exp)->typed.type))->type_common.mode);
+
+オリジナル
+(gdb) p (((exp)->typed.type))->type_common.mode
+$8 = E_HImode
+(gdb) 
+
+自前
+(gdb) p (((exp)->typed.type))->type_common.mode
+$14 = E_QImode
+(gdb)
+
+ということらしい. この値をセットしている部分を調べてみる.
+
+  TREE_TYPE (t) = to_type;
+  SET_TYPE_MODE (t, mode);                       ここらしい.
+  TYPE_REF_CAN_ALIAS_ALL (t) = can_alias_all;
+
+(gdb) p mode
+$16 = E_QImode
+(gdb)
+
+それっぽい.
+
+tree
+build_pointer_type (tree to_type)
+{
+  addr_space_t as = to_type == error_mark_node? ADDR_SPACE_GENERIC
+					      : TYPE_ADDR_SPACE (to_type);
+  machine_mode pointer_mode = targetm.addr_space.pointer_mode (as); ここが仕掛け
+  return build_pointer_type_for_mode (to_type, pointer_mode, false);
+}
+
+
+オリジナルで以下のようにしていた:
+
+#undef  TARGET_ADDR_SPACE_POINTER_MODE
+#define TARGET_ADDR_SPACE_POINTER_MODE avr_addr_space_pointer_mode
+
+FUNCTION_MODE の修正は元に戻しておく. 本当に必要になったら修正する.
+
+
+(*4) printf の引数はスタック渡しなので push 命令を生成する
+
+f の先頭にきたときスタックは以下のようになっている.
+
+	+---------------+
+        |    0xcccc     | <- 0xfef9
+	+---------------+
+	|    0x0049     |
+	+---------------+
+	|    0x00c2     |
+	+---------------+
+	|    0x001d     |
+	+---------------+
+	
+
+0x49 << 1 = 0x92 は f の戻りアドレス
+0xc2 は main のフレームポインタの値
+0x1d << 1 = 0x3a は main の戻りアドレス
+
+最初の 2 命令
+
+	push r28
+	push r29
+
+で以下のようになる.
+
+	+---------------+
+        |    0xcccc     | <- 0xfef7
+	+---------------+
+        |    0xfefb     |
+	+---------------+
+	|    0x0049     |
+	+---------------+
+	|    0x00c2     |
+	+---------------+
+	|    0x001d     |
+	+---------------+
+
+続く 2 命令
+
+	in	r28, 0x3d
+	in	r29, 0x3e
+
+でフレームポインタの値がスタックポインタの値と同じ 0xfef7 になる.
+続く 2 命令
+
+	subi	r28, 4
+	sbc	r29, r1
+
+でフレームポインタから 4 が引かれ 0xfef3 になる.
+続く 2 命令
+
+	out	0x3e, r29
+	out	0x3d, r28
+
+でスタックポインタとフレームポインタが同じアドレスを指すようになる:
+
+	+---------------+
+        |    0xcccc     | <- 0xfef3
+	+---------------+
+        |    0xcccc     |
+	+---------------+
+        |    0xcccc     |
+	+---------------+
+        |    0xfefb     |
+	+---------------+
+	|    0x0049     |
+	+---------------+
+	|    0x00c2     |
+	+---------------+
+	|    0x001d     |
+	+---------------+
+	
+printf を呼び出そうとして気付いたが AVR の ABI を正しく理解していたこ
+とに気付いた.
+
+可変個引数を取る函数はスタックで引数を渡すのが正しい.
+
+そこで
+
+avr_function_incoming_arg
+
+で nullptr を返すように修正したところ
+
+  printf("%d\n", 123);
+
+に対して以下のようなコードが生成されている:
+
+	sp := sp + 4
+	r20 := sp + -4
+	(r20+2) := 123
+	(r20) := *.LC0
+	rcall	printf
+	sp := sp + -4
+
+期待していたものは
+
+	sp := sp - 4
+	(r20+2) := 123
+	(r20) := *.LC0
+	rcall	printf
+	sp := sp + 4
+
+であった. sp := sp + 4 が生成される原因を調査する.
+ところで同様の問題は hasegawa-elf-gcc でも起こっている.
+
+void g(int a, int b, int c);
+
+void f(int a, int b, int c)
+{
+  g(a, b, c);
+}
+
+に対して g の呼び出し部分に生成されたコードは
+
+	sp := sp + 12
+	a := sp + -12
+	(a+8) := (fp+16)
+	(a+4) := (fp+12)
+	(a) := (fp+8)
+	call g
+	sp := sp + -12
+
+
+以下の宣言が必要らしい.
+
+#define STACK_GROWS_DOWNWARD 1
+
+  printf("%d\n", 123);
+
+に対して現状以下のコードが出ている
+
+	sp := sp + -4
+	mov	r20, r33
+	mov	r21, r34
+	(r20+2) := 123
+	(r20) := *.LC0
+	rcall	printf
+	sp := sp + 4
+
+ここで
+
+	mov	r20, r33
+	mov	r21, r34
+
+は
+	r20 := sp
+
+の展開結果で正しくないのだが
+
+	sp := sp - 4
+	r20 := sp
+	(r20+2) : 123
+	(r20) : = *.LC0
+	rcall	printf
+	sp := sp + 4
+
+なのでこれは期待した結果. そこでオリジナルの cc1 と同じように push 命令を生成したい.
+
+#ifdef PUSH_ROUNDING
+      if (args_addr == 0 && PUSH_ARGS)
+	emit_single_push_insn (mode, x, type);
+      else
+#endif
+
+#define PUSH_ROUNDING(X)	(X)
+
+ここがポイントらしい.
+
+現状 a.elf を実行すると不正メモリアクセスが発生する.
+
+avr-elf-run ではなくて avr-elf-gdb で実行を確認すると printf の呼び出し前までは期待通り
+動作している.
+
+printf の呼び出しが正しくなさそう.
+
+	mov	r20, r24
+	mov	r21, r25
+	push	r21                    ここが反対
+	push	r20                    ここが反対
+	ldi	r16, lo8(.LC0)
+	ldi	r17, hi8(.LC0)
+	push	r17                    ここが反対
+	push	r16                    ここが反対
+	
+
+これを修正して hello world 11 ができている.
+
+(*5) 函数の引数をフレームポインタ相対 0, 2, ... ではなくて 1, 3, ...
+     となるような rtx_insn を生成する.
+
+現状 -g オプションでビルドした a.elf を avr-elf-gdb で実行すると main
+のブレークポイントで停止できている.
+
+また step コマンドで f のプロローグを適切にスキップできている.
+引数の a と b が正しく表示できていない:
+
+f (a=1484, b=1536) at a.c:5
+5	  return a + b;
+
+
+(avr-elf-gdb) p/x 1484
+$1 = 0x5cc
+(avr-elf-gdb) p/x 1536
+$2 = 0x600
+(avr-elf-gdb)
+
+であるからこれは 1 バイトずれているように見える.
+
+オリジナルの cc1 の生成した a.elf のダンプの結果は
+
+int16 f (int16 a /* 0x1 */, int16 b /* 0x3 */)
+
+のように, 何となくそれっぽい. そして自前の cc1 のダンプの結果は
+
+int16 f (int16 a /* 0x0 */, int16 b /* 0x2 */)
+
+なのでここが原因らしい.
+
+オリジナルの cc1 のアセンブラ生成結果
+
+	.stabs	"a:p(0,1)",160,0,1,1
+	.stabs	"b:p(0,1)",160,0,1,3
+
+これは自前の cc1 のアセンブラ生成結果
+
+	.stabs	"a:p(0,1)",160,0,3,0
+	.stabs	"b:p(0,1)",160,0,3,2
+
+0 と 2 を 1 と 3 に修正すると期待した結果にはなる. まずはこれを修正する.
+
+int f(int a, int b)
+{
+  return a + b;
+}
+
+をコンパイルするとオリジナルの cc1 では
+
+    1: NOTE_INSN_DELETED
+$2 = void
+$3 = (rtx_insn *) 0xb790e680
+    5: NOTE_INSN_BASIC_BLOCK 2
+$4 = void
+$5 = (rtx_insn *) 0xb78774ec
+   20: [__SP_L__:HI--]=r28:QI
+$6 = void
+$7 = (rtx_insn *) 0xb7877510
+   21: [__SP_L__:HI--]=r29:QI
+      REG_DEAD r29:QI
+$8 = void
+
+$9 = (rtx_insn *) 0xb78775a0
+   25: __SP_L__:HI=__SP_L__:HI-0x4
+      REG_CFA_ADJUST_CFA __SP_L__:HI=__SP_L__:HI-0x4
+$10 = void
+$11 = (rtx_insn *) 0xb78775c4
+   26: r28:HI=__SP_L__:HI
+$12 = void
+$13 = (rtx_insn *) 0xb790e860
+   27: NOTE_INSN_PROLOGUE_END
+$14 = void
+$15 = (rtx_insn *) 0xb7877360
+    2: [r28:HI+0x1]=r24:HI                              これ
+      REG_DEAD r24:HI
+$16 = void
+$17 = (rtx_insn *) 0xb7877384
+    3: [r28:HI+0x3]=r22:HI                              これ
+      REG_DEAD r22:HI
+$18 = void
+$19 = (rtx_insn *) 0xb790e660
+    4: NOTE_INSN_FUNCTION_BEG
+
+のように第 1 引数と第 2 引数をフレームポインタ(r28)のオフセット 1 と 3 に
+保存するような rtx_insn が生成されている. つまり現実をそのまま表現している.
+
+自前の cc1 はこの部分が
+
+    2: [r28:HI]=r24:HI
+
+    3: [r28:HI]=r22:HI
+
+のようになっている. それを
+
+  int offset;
+  if (fp_rel(x, &offset) && REG_P(y)) {
+    int regno = REGNO(y);
+    fprintf(asm_out_file, "	std	Y+%d, r%d\n", offset+2, regno+1);
+    fprintf(asm_out_file, "	std	Y+%d, r%d\n", offset+1, regno);
+    return "";
+  }
+
+のようにしているから辻褄が合っている. とりあえずオリジナルの cc1 のように
+
+    2: [r28:HI+0x1]=r24:HI                              これ
+
+    3: [r28:HI+0x3]=r22:HI                              これ
+
+に修正すれば一時的には正しいコードが生成できなくなるがそれはそれでしょうがない.
+
+これを修正するには ARG_POINTER_REGNUM の導入が簡単そうに思えるがどうだろうか.
+
+2022.01.30 8:20 "dummy0" を "ap" (ARG_POINTER_REGNUM )にした.
+
+2022.01.30 11:00 Blackfin の memo.jp を参考に avr.h を以下のように修正
+
+#define ELIMINABLE_REGS				\
+{{ ARG_POINTER_REGNUM, STACK_POINTER_REGNUM},	\
+ { ARG_POINTER_REGNUM, FRAME_POINTER_REGNUM},	\
+ { FRAME_POINTER_REGNUM, STACK_POINTER_REGNUM}}	\
+
+extern void INITIAL_ELIMINATION_OFFSET(int, int, poly_int64_pod&);
+#define REG_PARM_STACK_SPACE(FNDECL) 10
+
+この段階で
+
+static int
+eliminate_regs_in_insn (rtx_insn *insn, int replace)
+{
+
+で期待する insn がきて期待する変換ができている.
+hello world のプログラムの実行で puts の呼び出しの前後で
+
+sp := sp - 2
+
+puts 呼び出し
+
+sp := sp + 2
+
+のように余計な sp の演算が出ているので以下を追加
+
+#define ACCUMULATE_OUTGOING_ARGS 1
+
+リビルド中.
+
+2022.01.30 11:45 上を確認したところ余計な sp の演算はなくなって hello world はできている.
+この時点での a.c だが
+
+	rcall	f
+	mov	r20, r24
+	mov	r21, r25
+	(sp+12) := r20
+	(sp+10) := *.LC0
+	rcall	printf
+
+のようなコードが出ている. ここは push を生成したいところだったのだがそ
+れができていない.
+
+
+以下のように
+
+#define ACCUMULATE_OUTGOING_ARGS 1
+
+をやめて
+
+extern int avr_accumulate_outgoing_args();
+#define ACCUMULATE_OUTGOING_ARGS avr_accumulate_outgoing_args()
+
+int avr_accumulate_outgoing_args()
+{
+  (void)cfun;
+  return 0;
+}
+
+のようにした. 函数にしたのはあまり意味はない.
+
+これにより
+
+hello world のプログラムの実行で puts の呼び出しの前後で
+
+sp := sp - 2
+
+puts 呼び出し
+
+sp := sp + 2
+
+のように余計な sp の演算が出てしまうようにはなる. puts ではなくて printf を呼び出すときに
+引数をスタック渡しにするためこうする必要があった.
+
+現状 a.elf は f の呼び出しから戻ってこれていないが
+引数の a と b を保存するときに f の戻りアドレスを破壊しているため.
+
+f が呼び出された直後
+
+	+---------------+
+	|     0xcccc	| <- sp
+	+---------------+
+	|     0x004d    |
+	+---------------+
+
+のようになっている. 0x4d << 1 = 0x9a でこれが f の戻りアドレス.
+
+f:
+	push	r28
+	push	r29
+	in	r28, 0x3d
+	in	r29, 0x3e
+	out	0x3e, r29          # フレームサイズが 4 なのに 4 になっていない.
+	out	0x3d, r28
+
+これは
+
+#define REG_PARM_STACK_SPACE(FNDECL) avr_reg_param_stack_space(FNDECL)
+
+とすることで, 上のマクロの値を 0 より大きい値にすることによって
+
+Blackfin の cc1 の雛形のメモにあるように
+
+(gdb) p debug_rtx(data->stack_parm)   # 第 1 引数
+(mem/c:SI (reg/f:SI 18 virtual-incoming-args) [1 a+0 S4 A8])
+$40 = void
+
+
+(gdb) p debug_rtx(data->stack_parm)   # 第 2 引数
+(mem/c:SI (plus:SI (reg/f:SI 18 virtual-incoming-args)
+        (const_int 4 [0x4])) [1 b+0 S4 A8])w
+$41 = void
+
+のようにするための修正であった. 実際 Blackfin のコンパイラでコンパイルした
+
+int f(int a, int b){ return a + b; }
+
+はフレームサイズが 0 だからだ.
+
+ということは REG_PARM_STACK_SPACE マクロ以外の方法で
+
+virtual-stack-vars 相対ではなくて
+
+virtual-incoming-args 相対にする必要がある.
+
+現状では間違った方法で以下の if の条件を成立させている
+
+      /* Find out where stack space for this parameter might be.  */
+      if (assign_parm_is_stack_parm (&all, &data))
+	{
+	  assign_parm_find_stack_rtl (parm, &data);
+
+と思ったがそもそもこの条件を成立させることが正しいのかもう一度考えるべき.
+実際オリジナルの cc1 はこの条件は成立していない.
+
+だから AVR の場合は Blackfin と異なる方法で
+
+virtual-stack-vars 相対ではなくて
+
+virtual-incoming-args 相対にする必要がある.
+
+まずはオリジナルの cc1 がどのように
+
+    2: [r28:HI+0x1]=r24:HI
+
+    3: [r28:HI+0x3]=r22:HI
+
+のようにフレームポインタ相対 1 に第 1 引数を
+フレームポインタ相対 3 に第 2 引数を保存しているか調べてみる.
+
+最初はこのように生成されていた.
+
+    2: [r37:HI]=r24:HI
+
+この命令を生成しているのは
+
+	assign_parm_setup_stack (&all, parm, &data);
+
+であった. 37 番の
+
+#define ARG_POINTER_REGNUM 34
+
+なのでこれとは違っている.
+
+    2: [r37:HI]=r24:HI
+
+のデスティネーションが変更されるはずなのでその瞬間を捕える.
+
+37 番は以下のように virtual-stack-vars であった.
+
+(gdb) p debug_rtx(((rtx_insn*)0xb7877360)->u.fld[3].rt_rtx)
+(set (mem/c:HI (reg/f:HI 37 virtual-stack-vars) [1 a+0 S2 A8])
+    (reg:HI 24 r24 [ a ]))
+$106 = void
+(gdb) 
+
+おそらくこれのデスティネーションが書き替えられる. ということはこれは Blackfin の
+ものとは別の実装ということか.
+
+
+(gdb) p debug_rtx((((rtx_insn*)0xb7877360)->u.fld[3].rt_rtx)->u.fld[0].rt_rtx)
+(mem/c:HI (reg/f:HI 37 virtual-stack-vars) [1 a+0 S2 A8])
+$108 = void
+(gdb)
+
+であるからまずはこのアドレスにウォッチポイントをかけてみる.
+
+
+(gdb) p &((((rtx_insn*)0xb7877360)->u.fld[3].rt_rtx)->u.fld[0].rt_rtx)
+$109 = (rtx *) 0xb791d008
+(gdb) watch *(int*)0xb791d008
+Hardware watchpoint 8: *(int*)0xb791d008
+(gdb)
+
+1 回目は nullptr に書き替えられたが 2 回目は
+
+(gdb) p debug_rtx((((rtx_insn*)0xb7877360)->u.fld[3].rt_rtx)->u.fld[0].rt_rtx)
+(mem/c:HI (plus:HI (reg/f:HI 28 r28)
+        (const_int 1 [0x1])) [1 a+0 S2 A8])
+$110 = void
+(gdb)
+
+なのでフレームポインタ相対 1 に変更されている.
+変更した函数は elimination_costs_in_insn(rtx_insn* insn)
+この函数にきたとき引数の insn は
+
+オリジナルの cc1
+(gdb) p debug_rtx(insn)
+(insn 2 5 3 2 (set (mem/c:HI (plus:HI (reg/f:HI 28 r28)
+                (const_int 1 [0x1])) [1 a+0 S2 A8])
+        (reg:HI 24 r24 [ a ])) "b.c":2:1 68 {*movhi}
+     (expr_list:REG_DEAD (reg:HI 24 r24 [ a ])
+        (nil)))
+$111 = void
+(gdb) 
+
+自前の cc1
+(gdb) p debug_rtx(insn)
+(insn 2 5 3 2 (set (mem/c:HI (reg/f:HI 28 r28) [1 a+0 S2 A8])
+        (reg:HI 24 r24 [ a ])) "b.c":2:1 2 {movhi}
+     (expr_list:REG_DEAD (reg:HI 24 r24 [ a ])
+        (nil)))
+$567 = void
+(gdb)
+
+もうこの時点で違っている. だからまずは何故違っているかを調査する.
+
+以下は自前の cc1
+
+(gdb) b elimination_costs_in_insn
+(gdb) run b.c
+...
+(gdb) p debug_rtx(insn)
+(insn 2 5 3 2 (set (mem/c:HI (reg/f:HI 28 r28) [1 a+0 S2 A8])
+        (reg:HI 24 r24 [ a ])) "b.c":2:1 2 {movhi}
+     (expr_list:REG_DEAD (reg:HI 24 r24 [ a ])
+        (nil)))
+$1 = void
+(gdb) p insn
+$2 = (rtx_insn *) 0xb7877360
+(gdb) delete
+(gdb) watch *(int*)0xb7877360
+(gdb) run
+...
+
+作っているのは以下だった:
+static void
+assign_parms (tree fndecl)
+{
+...
+	assign_parm_setup_stack (&all, parm, &data);
+
+
+この時点で作成された rtx_insn は以下:
+(gdb) p debug_rtx((rtx_insn *) 0xb7877360)
+(insn 2 1 3 (set (mem/c:HI (reg/f:HI 37 virtual-stack-vars) [1 a+0 S2 A8])
+        (reg:HI 24 r24 [ a ])) "b.c":2:1 -1
+     (nil))
+$10 = void
+(gdb)
+
+同様のことをオリジナルの cc1 で確かめてみた:
+
+(gdb) b elimination_costs_in_insn
+(gdb) run b.c
+...
+(gdb) p debug_rtx(insn)
+(insn 2 5 3 2 (set (mem/c:HI (plus:HI (reg/f:HI 28 r28)
+                (const_int 1 [0x1])) [1 a+0 S2 A8])
+        (reg:HI 24 r24 [ a ])) "b.c":2:1 68 {*movhi}
+     (expr_list:REG_DEAD (reg:HI 24 r24 [ a ])
+        (nil)))
+$1 = void
+(gdb) p insn
+$2 = (rtx_insn *) 0xb7877360
+(gdb) delete
+(gdb) watch *(int*)0xb7877360
+(gdb) run
+...
+
+作っているのは自前の cc1 と同じところで, このとき作成されたのは
+
+(gdb) p debug_rtx((rtx_insn *) 0xb7877360)
+(insn 2 1 0 (set (mem/c:HI (reg/f:HI 37 virtual-stack-vars) [1 a+0 S2 A8])
+        (reg:HI 24 r24 [ a ])) "b.c":2:1 -1
+     (nil))
+$8 = void
+(gdb)
+
+ここまではオリジナルと自前のもので動作は同じ
+自前のものがどのように書き替えられるか確認した.
+
+(gdb) p debug_rtx(((rtx_insn *) 0xb7877360)->u.fld[3].rt_rtx)
+(set (mem/c:HI (reg/f:HI 37 virtual-stack-vars) [1 a+0 S2 A8])
+    (reg:HI 24 r24 [ a ]))
+$11 = void
+(gdb) p debug_rtx((((rtx_insn *) 0xb7877360)->u.fld[3].rt_rtx)->u.fld[0].rt_rtx)
+(mem/c:HI (reg/f:HI 37 virtual-stack-vars) [1 a+0 S2 A8])
+$12 = void
+(gdb) p &((((rtx_insn *) 0xb7877360)->u.fld[3].rt_rtx)->u.fld[0].rt_rtx)
+$13 = (rtx *) 0xb78f9a38
+(gdb) watch *(int*)0xb78f9a38
+(gdb) c
+...
+(gdb) c
+...
+(gdb) p debug_rtx((rtx_insn *) 0xb7877360)
+(insn 2 5 3 2 (set (mem/c:HI (reg/f:HI 28 r28) [1 a+0 S2 A8])
+        (nil)) "b.c":2:1 2 {movhi}
+     (expr_list:REG_DEAD (reg:HI 24 r24 [ a ])
+        (nil)))
+$14 = void
+(gdb)
+
+static void
+elimination_costs_in_insn (rtx_insn *insn)
+{
+...
+  for (i = 0; i < n_operands; i++)
+    *recog_data.operand_loc[i] = orig_operand[i];  ここ
+
+同様のことをオリジナルの cc1 で確認してみた.
+
+(gdb) p debug_rtx(((rtx_insn *) 0xb7877360)->u.fld[3].rt_rtx)
+(set (mem/c:HI (reg/f:HI 37 virtual-stack-vars) [1 a+0 S2 A8])
+    (reg:HI 24 r24 [ a ]))
+$9 = void
+(gdb) p debug_rtx((((rtx_insn *) 0xb7877360)->u.fld[3].rt_rtx)->u.fld[0].rt_rtx)
+(mem/c:HI (reg/f:HI 37 virtual-stack-vars) [1 a+0 S2 A8])
+$10 = void
+(gdb) p &((((rtx_insn *) 0xb7877360)->u.fld[3].rt_rtx)->u.fld[0].rt_rtx)
+$11 = (rtx *) 0xb791d008
+(gdb) watch *(int*)0xb791d008
+(gdb) c
+...
+(gdb) c
+...
+(gdb) p debug_rtx((rtx_insn *) 0xb7877360)
+(insn 2 5 3 2 (set (mem/c:HI (plus:HI (reg/f:HI 28 r28)
+                (const_int 1 [0x1])) [1 a+0 S2 A8])
+        (nil)) "b.c":2:1 68 {*movhi}
+     (expr_list:REG_DEAD (reg:HI 24 r24 [ a ])
+        (nil)))
+$12 = void
+(gdb)
+
+書き替えている場所は自前の cc1 と同じ. しかしこれはおそらくウォッチポ
+イントをかけているアドレスが違う.
+
+以下はオリジナルの cc1
+(gdb) delete
+(gdb) watch *(int*)0xb7877360
+(gdb) run
+...
+(gdb) p debug_rtx((rtx_insn*)0xb7877360)
+(insn 2 1 0 (set (mem/c:HI (reg/f:HI 37 virtual-stack-vars) [1 a+0 S2 A8])
+        (reg:HI 24 r24 [ a ])) "b.c":2:1 -1
+     (nil))
+$23 = void
+(gdb) p debug_rtx(((rtx_insn*)0xb7877360)->u.fld[3].rt_rtx)
+(set (mem/c:HI (reg/f:HI 37 virtual-stack-vars) [1 a+0 S2 A8])
+    (reg:HI 24 r24 [ a ]))
+$24 = void
+(gdb) p debug_rtx((((rtx_insn*)0xb7877360)->u.fld[3].rt_rtx)->u.fld[0].rt_rtx)
+(mem/c:HI (reg/f:HI 37 virtual-stack-vars) [1 a+0 S2 A8])
+$25 = void
+(gdb) p debug_rtx(((((rtx_insn*)0xb7877360)->u.fld[3].rt_rtx)->u.fld[0].rt_rtx)->u.fld[0].rt_rtx)
+(reg/f:HI 37 virtual-stack-vars)
+$26 = void
+(gdb) p &(((((rtx_insn*)0xb7877360)->u.fld[3].rt_rtx)->u.fld[0].rt_rtx)->u.fld[0].rt_rtx)
+$27 = (rtx *) 0xb78f9a28
+(gdb) watch *(int*)0xb78f9a28
+(gdb) c
+...
+  if (inplace)
+    {
+      XEXP (memref, 0) = addr;       ここだった. これは以前見た気がする
+      return memref;
+    }
+(gdb) 
+(gdb) p debug_rtx((rtx_insn*)0xb7877360)
+(insn 2 5 3 2 (set (mem/c:HI (reg/f:HI 28 r28) [1 a+0 S2 A8])
+        (reg:HI 24 r24 [ a ])) "b.c":2:1 2 {movhi}
+     (nil))
+$28 = void
+(gdb)
+
+こういうこと. 同じことをオリジナルの cc1 でやってみる. 今気付いたが
+アドレスは同じであった.
+
+(gdb) delete
+(gdb) watch *(int*)0xb7877360
+...
+
+
+(gdb) p debug_rtx((rtx_insn*)0xb7877360)
+(insn 2 1 0 (set (mem/c:HI (reg/f:HI 37 virtual-stack-vars) [1 a+0 S2 A8])
+        (reg:HI 24 r24 [ a ])) "b.c":2:1 -1
+     (nil))
+$18 = void
+(gdb) p debug_rtx(((((rtx_insn*)0xb7877360)->u.fld[3].rt_rtx)->u.fld[0].rt_rtx)->u.fld[0].rt_rtx)
+(reg/f:HI 37 virtual-stack-vars)
+$19 = void
+(gdb) p &(((((rtx_insn*)0xb7877360)->u.fld[3].rt_rtx)->u.fld[0].rt_rtx)->u.fld[0].rt_rtx)
+$20 = (rtx *) 0xb7903f88
+(gdb) watch *(int*)0xb7903f88
+(gdb) c
+...
+  if (inplace)
+    {
+      XEXP (memref, 0) = addr;       同じところ.
+      return memref;
+    }
+(gdb) 
+(gdb) p debug_rtx((rtx_insn*)0xb7877360)
+(insn 2 5 3 2 (set (mem/c:HI (plus:HI (reg/f:HI 28 r28)
+                (const_int 1 [0x1])) [1 a+0 S2 A8])
+        (reg:HI 24 r24 [ a ])) "b.c":2:1 68 {*movhi}
+     (nil))
+$21 = void
+(gdb) 
+
+というわけであった.
+
+(gdb) p debug_rtx(addr)
+(plus:HI (reg/f:HI 28 r28)
+    (const_int 1 [0x1]))
+$22 = void
+(gdb)
+
+一方自前の cc1 は
+
+(gdb) p debug_rtx(addr)
+(reg/f:HI 28 r28)
+$31 = void
+(gdb)
+
+なので, これは addr の計算の仕方が正しくなかったということ.
+
+instantiate_virtual_regs_in_insn という函数からこの部分が呼び出されて
+いる.
+
+(gdb) b instantiate_virtual_regs_in_insn
+
+この函数での動作をオリジナルと自前の cc1 とで比較してみたところ
+
+	    rtx addr = XEXP (x, 0);
+
+	    if (!instantiate_virtual_regs_in_rtx (&addr))
+	      continue;
+
+最初の文の実行の段階ではどちらも
+
+(gdb) p debug_rtx(addr)
+(reg/f:HI 37 virtual-stack-vars)
+$36 = void
+
+であったが instantiate_virtual_regs_in_rtx の呼び出しで
+
+(gdb) p debug_rtx(addr)
+(reg/f:HI 28 r28)                     自前
+$37 = void
+(gdb)
+
+
+
+(gdb) p debug_rtx(addr)
+(plus:HI (reg/f:HI 28 r28)            オリジナル
+    (const_int 1 [0x1]))
+$33 = void
+(gdb)
+
+ということ. つまり instantiate_virtual_regs_in_rtx ができていないとい
+うこと.
+
+static bool
+instantiate_virtual_regs_in_rtx (rtx *loc)
+{
+...
+	      new_rtx = instantiate_new_reg (x, &offset);
+	      if (new_rtx)
+		{
+		  *loc = plus_constant (GET_MODE (x), new_rtx, offset);
+
+この部分を実行するとき offset = 1 になっているのがオリジナルの cc1 で
+自前のものは 0
+
+instantiate_new_reg ができていない.
+
+  else if (x == virtual_stack_vars_rtx)
+    new_rtx = frame_pointer_rtx, offset = var_offset;  ここ
+
+var_offset が自前のものは 0 だがオリジナルは 1 になっている.
+
+static unsigned int
+instantiate_virtual_regs (void)
+{
+  rtx_insn *insn;
+
+  /* Compute the offsets to use for this function.  */
+  in_arg_offset = FIRST_PARM_OFFSET (current_function_decl);
+  var_offset = targetm.starting_frame_offset ();  ここが仕組みっぽい.
+
+以下を avr.c に追加
+
+static HOST_WIDE_INT avr_starting_frame_offset()
+{
+  return 1;
+}
+
+#undef  TARGET_STARTING_FRAME_OFFSET
+#define TARGET_STARTING_FRAME_OFFSET avr_starting_frame_offset
+
+なるほどこのようにすれば ARG_POINTER_REGNUM は必要なさそう.
+まずはこれだけを追加l ARG_POINTER_REGNUM はそのまま.
+
+これで期待した動作を確認した. なんだかこれがお手軽でよい.
+
+以下を avr.c から削除
+
+#undef TARGET_LRA_P
+#define TARGET_LRA_P hook_bool_void_false
+
+これで期待した動作を確認した.
+
+以下のように元に戻した.
+
+bool avr_legitimate_address_p(machine_mode mode, rtx x, bool strict)
+{
+  (void)mode; (void)strict; (void)x;
+  return true;
+}
+
+(*6) where コマンドで意図しないアドレスに gdb がアクセスする
+
+現時点で
+
+a.c : hello world 11
+b.c : int f(int a, int b){ return a + b; } 
+c.c : hello world
+
+ができている.
+現状 -g オプションを指定して a.c をコンパイルし, a.elf を作成し avr-elf-gdb で
+実行すると main のブレークポイントで停止できている.
+
+また step コマンドで f のプロローグを適切にスキップできてる.
+そして a と b が正しく表示できている. つまり前回から改善されている.
+しかし where コマンドを実行すると
+
+#0  f (a=5, b=6) at a.c:5
+Backtrace stopped: Cannot access memory at address 0x818ff8
+
+のようになっている. これまで
+
+aarch64:
+#define INCOMING_RETURN_ADDR_RTX gen_rtx_REG(Pmode, X30_REGNUM)
+
+arm:
+#define INCOMING_RETURN_ADDR_RTX gen_rtx_REG(Pmode, LR_REGNUM)
+
+bfin:
+#define INCOMING_RETURN_ADDR_RTX gen_rtx_REG(Pmode, RETS_REGNUM)
+
+m68hc11:
+#define INCOMING_RETURN_ADDR_RTX \
+  gen_rtx_MEM(VOIDmode, gen_rtx_REG(VOIDmode, STACK_POINTER_REGNUM))
+
+これらの宣言がない状態でコンパイルするとコンパイル時に gcc_assert で失敗か gcc_abort
+していたように思えるが avr ではエラーせず何らかのアドレスを見ているらしい.
+
+		+---------------+
+		|		| <- sp
+		+---------------+
+		|return address	|
+		+---------------+
+
+AVR では上のように [sp+1] にビッグエンディアン形式で戻りアドレスを 1 ビットシフトした
+ものが書き込まれているのだが, これを gdb がどう扱っているかにもよる.
+
+オリジナルの cc1 では以下
+
+#define INCOMING_RETURN_ADDR_RTX   avr_incoming_return_addr_rtx ()
+
+rtx
+avr_incoming_return_addr_rtx (void)
+{
+  /* The return address is at the top of the stack.  Note that the push
+     was via post-decrement, which means the actual address is off by one.  */
+  return gen_frame_mem (HImode, plus_constant (Pmode, stack_pointer_rtx, 1));
+}
+
+しかしこれを追加したからといって正しく動くかどうかは不明. そもそも
+
+#undef PREFERRED_DEBUGGING_TYPE
+#define PREFERRED_DEBUGGING_TYPE DBX_DEBUG
+
+のようにしているから.
+
+普通なら gdb が 0x818ff8 をアクセスする理由を調べるのが正攻法.
+あるいは生成された a.s からそれっぽいことを記述する部分を見つけるとか.
+
+回り道かとは思うが gdb が 0x818ff8 をアクセスする理由を調べることにした.
+
+自前の cc1 でビルドした hello world 11 のプログラムで f にステップイン
+してから where コマンドを実行したとき
+
+#0  f (a=5, b=6) at a.c:5
+Backtrace stopped: Cannot access memory at address 0x818ff8
+
+のように 0x818ff8 にアクセスする理由を調査する.
+
+オリジナルの cc1 であれば勿論期待通り動作して
+
+#0  f (a=5, b=6) at a.c:5
+#1  0x0000008a in main () at a.c:10
+
+のようになる.
+
+where コマンドは
+
+(gdb) b backtrace_command
+
+がその入り口.
+
+(gdb) run
+...
+
+backtrace_command
+
+で停止した. そこから
+
+static CORE_ADDR
+avr_unwind_pc (struct gdbarch *gdbarch, struct frame_info *next_frame)
+{
+
+が呼び出されるだろうと山を張ってブレークポイントをセットしてみた. 
+まずはできているオリジナルの cc1
+
+(gdb) b avr_unwind_pc
+(gdb) c
+...
+(gdb) n
+(gdb) p/x pc
+$6 = 0x8a                        これは f の戻りアドレス
+(gdb) c
+Continuing.
+#0  f (a=5, b=6) at a.c:5
+#1  0x0000008a in main () at a.c:10    このタイミングで where の結果が表示
+
+ブレークポイントにヒット
+(gdb) 
+(gdb) n
+(gdb) p/x pc
+$7 = 0x3a               これは main の戻りアドレス
+(gdb) 
+
+という動作になっている.
+一方, 自前の cc1 で生成したものでは
+
+ブレークポイントにヒット
+(gdb) n
+ここで例外が投げられている.
+0x081baa8e in frame_unwind_pc (this_frame=0x8adbefc) at frame.c:979
+(gdb) n
+(gdb) p ex
+$2 = (const gdb_exception_error &) @0x8b8e490: {<gdb_exception> = {
+    reason = RETURN_ERROR, error = MEMORY_ERROR, 
+    message = {<std::__shared_ptr<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, (__gnu_cxx::_Lock_policy)2>> = {<std::__shared_ptr_access<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, (__gnu_cxx::_Lock_policy)2, false, false>> = {<No data fields>}, _M_ptr = 0x8b8e4e4, _M_refcount = {
+          _M_pi = 0x8b8e4d8}}, <No data fields>}}, <No data fields>}
+(gdb) 
+
+これからするとメモリアクセスでエラーしたっぽい.
+
+  pc = frame_unwind_register_unsigned (next_frame, AVR_PC_REGNUM);
+
+上の実行で例外がスローされている. この理由を調べる.
+
+ULONGEST
+frame_unwind_register_unsigned (frame_info *next_frame, int regnum)
+{
+  struct gdbarch *gdbarch = frame_unwind_arch (next_frame);
+  enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
+  int size = register_size (gdbarch, regnum);
+  struct value *value = frame_unwind_register_value (next_frame, regnum); ここで例外がスローされている.
+
+
+  /* Ask this frame to unwind its register.  */
+  value = next_frame->unwind->prev_register (next_frame,
+					     &next_frame->prologue_cache,
+					     regnum); ここで例外がスローされている.
+
+とここまでやって気付いたが
+
+(gdb) b __cxa_throw
+(gdb) c
+
+でスローする瞬間は捕えられる
+
+#4  0x08127850 in memory_error (err=TARGET_XFER_E_IO, memaddr=8491000) at /usr/local/include/c++/10.2.0/bits/basic_string.h:186
+
+上の函数で例外がスロされるきっかけになっているが
+
+(gdb) p/x 8491000
+$4 = 0x818ff8
+(gdb) 
+
+というわけでエラーしているアドレス.
+
+
+	  read_memory (info->saved_regs[AVR_PC_REGNUM].addr,
+                       buf, tdep->call_length);
+
+(gdb) p/x info->saved_regs[AVR_PC_REGNUM].addr
+$5 = 0x818ff8
+(gdb)
+
+これらしい. ということは, ココにこの値を書き込む瞬間を捕えたい.
+
+
+  if (info->prologue_type != AVR_PROLOGUE_MAIN)
+    info->saved_regs[AVR_PC_REGNUM].addr = info->prev_sp;  ここだった.
+
+このウォッチポイントは数回ヒットしたが -1 におそらく初期化した後,
+
+-1 -> 0x818ffe
+-1 -> 0x80fef8
+-1 -> 0x818ff8
+
+のように書き替えられていた.
+同じことをできているオリジナルの cc1 で試してみる.
+
+-1 -> 0x80fefe
+-1 -> 0x80fefa
+-1 -> 0x80fefa
+-1 -> 0x80fefa
+-1 -> 0x80fefe
+-1 -> 0x80fefe
+
+のようになった. 自前の 2 つ目はありうるとしても 1 個目と 3 個目の 0x81xxxx は
+間違いらしい.
+
+大本の値は以下で計算していた.
+
+  info->prev_sp = avr_make_saddr (prev_sp + 1);
+
+おそらく + 1 は例の補正.
+
+(gdb) p/x prev_sp
+$14 = 0x18ffd
+(gdb)
+
+というわけで prev_sp が正しくない.l
+
+static struct avr_unwind_cache *
+avr_frame_unwind_cache (struct frame_info *this_frame,
+                        void **this_prologue_cache)
+{
+...
+
+
+      this_base = get_frame_register_unsigned (this_frame, AVR_SP_REGNUM);
+      prev_sp = this_base + info->size;
+      ここで計算していた.
+
+(gdb) p/x this_base
+$15 = 0xfef9
+(gdb) p/x info->size
+$16 = 0x9104
+(gdb) 
+
+おそらく info->size が間違っているのだろう. オリジナルでも試してみた.
+
+
+(gdb) p/x this_base
+$18 = 0xfefb
+(gdb) p/x info->size
+$19 = 0x2
+(gdb)
+
+それっぽい. info->size をどのように計算しているか確認してみる.
+
+
+
+      info->size += locals_size;
+
+(gdb) p locals_size
+
+
+      else if ((insn & 0xf0f0) == 0x50c0)	/* subi r28,lo8(XX) */
+	{
+	  locals_size = (insn & 0xf) | ((insn & 0xf00) >> 4);
+	  vpc += 2;
+	  insn = extract_unsigned_integer (&prologue[vpc], 2, byte_order);
+	  vpc += 2;
+	  locals_size += ((insn & 0xf) | ((insn & 0xf00) >> 4)) << 8;
+	}
+
+これは...独自で locals_size を計算しているらしい.
+
+     sbiw r28,XX or subi r28,lo8(XX)
+                    sbci r29,hi8(XX)
+
+のようにコメントにあるから 2 命令目は sbci 命令と過程しているらしい.
+
++	  if (insn == 0x09d1) /* sbc	r29, r1(__zero_reg__) */
++	    ;
++	  else
+	    locals_size += ((insn & 0xf) | ((insn & 0xf00) >> 4)) << 8;
+
+上のようにパッチを入れて期待する動作を確認した.
