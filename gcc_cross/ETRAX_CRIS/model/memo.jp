@@ -1,0 +1,164 @@
+現時点で -g オプションを指定して a.elf を cris-elf-gdb で実行すると
+main のブレークポイントでプロローグの部分を適切にスキップして停止している.
+また step コマンドで f にステップインし, やはりプロローグの部分を適切にスキップ
+できている.
+また, a や b を適切に表示できている. 
+
+しかし where コマンドで以下のようになる:
+
+#0  f (a=5, b=6) at a.c:5
+#1  0x000001ce in main () at a.c:10
+Backtrace stopped: frame did not save the PC
+
+ここで気付いたことは,
+
+	  RTX_FRAME_RELATED_P(insn) = true;
+
+のようなことは一切行なっていないにも関わらずそこそこできているということ.
+
+例によってオリジナルの cc1 で生成したプログラムは期待通りできている.
+
+自前の cc1
+
+FRAME_POINTER_REGNUM    8
+STACK_POINTER_REGNUM	14
+SRP_REGNUM		16
+
+オリジナルの cc1
+FRAME_POINTER_REGNUM    8
+STACK_POINTER_REGNUM	14
+CRIS_SRP_REGNUM		16
+
+ここだけ見ると違いはなさそうである.
+
+エラーしているのは cris-elf-gdb なのでまずはなぜエラーになっているのか確認してみる.
+
+where コマンドは以下の函数で処理されているのでそこまで実行する.
+
+(gdb) b backtrace_command
+
+きている.
+
+おそらく以下の函数が呼び出されていると予想して以下のようにした.
+
+(gdb) b get_frame_pc
+(gdb) c
+...
+ブレークポイントにヒット
+(gdb) up
+
+CORE_ADDR
+get_frame_address_in_block (struct frame_info *this_frame)
+{
+  /* A draft address.  */
+  CORE_ADDR pc = get_frame_pc (this_frame);  ここから呼び出されていた
+
+このときの get_frame_pc の戻り値は 0x1ce であった.
+
+
+ 1c8:	3fbd 9801 0000      	jsr 198 <_f>
+ 1ce:	6ab6                	move.d r10,r11
+
+なのでこれは f の戻りアドレスということ.
+2, 3, 4, 5, 6, 7 回目も同じところから呼び出されて, やはり戻り値は 0x1ce になっていた.
+8, 9, 11, 12 回目も同じところから呼び出されて, 戻り値は 0x1ac になっていた.
+
+00000198 <_f>:
+ 198:	84e2                	subq 4,sp
+ 19a:	7eba                	move srp,[sp]
+ 19c:	84e2                	subq 4,sp
+ 19e:	ee8b                	move.d r8,[sp]
+ 1a0:	6e86                	move.d sp,r8
+ 1a2:	88e2                	subq 8,sp
+ 1a4:	fc81 eaab           	move.d r10,[r8-4]
+ 1a8:	f881 ebbb           	move.d r11,[r8-8]
+ 1ac:	fc81 6aaa           	move.d [r8-4],r10    ここ
+ 1b0:	f881 2aaa           	add.d [r8-8],r10
+
+0x1ac は f のプロローグをスキップしたアドレス.
+
+10 回目は
+
+frame_show_address (frame=0x8d5bc3c, sal=...) at stack.c:333
+
+から呼び出されて, 戻り値は 0x1ac になっていた.
+
+13, 14, 16 回目は 2 回目と同じところから呼び出されて, 戻り値は 0x1ce になっていた.
+スタックを巻き戻しているっぽい.
+
+15 回目は 10 回目と同じところから呼び出されて, 戻り値は 0x1ce になっていた.
+
+17, 18 回目は 8 回目と同じところから呼び出されて, 戻り値は 0x1ac になっていた.
+
+とここで continue コマンドを実行したところ
+
+#1  0x000001ce in main () at a.c:10
+Backtrace stopped: frame did not save the PC
+
+のように表示された. 実は事前に何らかの例外がスローされるかと予想して
+
+(gdb) b __cxa_throw
+
+のようにしていたがこのブレークポイントにはヒットせず.
+
+また, この状況から想像するに main 函数で戻りアドレスを保存していないという意味のエラー
+メッセージなのかと思ったが, これはそれほどの根拠はない.
+
+オリジナルの cc1 の生成した a.s は
+
+_main:
+.LFB4:
+	.loc 1 9 1
+	subq 4,$sp
+.LCFI3:
+	move $srp,[$sp]
+	subq 4,$sp
+.LCFI4:
+	move.d $r8,[$sp]
+.LCFI5:
+	move.d $sp,$r8
+.LCFI6:
+	.loc 1 10 3
+
+のようになっている. 一方自前の cc1 の生成した a.s は
+
+_main:
+.LFB4:
+	.loc 1 9 1
+	subq	4, $sp
+	move	$srp, [$sp]
+	subq	4, $sp
+	move.d	$r8, [$sp]
+	move.d	$sp, $r8
+	.loc 1 10 3
+	moveq	6, $r11
+	moveq	5, $r10
+	Jsr	_f
+	move.d	$r10, $r11
+	move.d	.LC0, $r10
+	Jsr	_printf
+	.loc 1 11 10
+	clear.d	$r10
+	.loc 1 12 1
+	move.d	$r8, $sp
+	move.d	[$sp+], $r8
+	jump 	[$sp+]
+.LFE4:
+
+これはやはり
+
+	  RTX_FRAME_RELATED_P(insn) = true;
+
+相当が必要なのかと予想した. とは言ってもそれほどこれも根拠はない.
+
+と, ここでかつて調査した内容を思い出した.
+
+MCORE => MCORE の gcc
+
+やはり
+
+	  RTX_FRAME_RELATED_P(insn) = true;
+
+がないと .debug_frame セクションが正しく生成されず, この結果 gdb が正しく動作しない.
+それっぽいところに上を数箇所追加して正常動作を確認した.
+

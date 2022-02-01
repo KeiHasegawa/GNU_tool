@@ -1,0 +1,26 @@
+*** gcc-10.2.0.org/gcc/config.gcc	2021-10-16 10:31:18.000000000 +0900
+--- gcc-10.2.0.cris-elf.mine/gcc/config.gcc	2022-01-24 09:47:06.000000000 +0900
+***************
+*** 1509,1518 ****
+  	use_gcc_stdint=wrap
+  	;;
+  cris-*-elf | cris-*-none)
+! 	tm_file="dbxelf.h elfos.h newlib-stdint.h ${tm_file}"
+! 	tmake_file="cris/t-cris cris/t-elfmulti"
+! 	gas=yes
+! 	extra_options="${extra_options} cris/elf.opt"
+  	use_gcc_stdint=wrap
+  	;;
+  crisv32-*-linux* | cris-*-linux*)
+--- 1509,1519 ----
+  	use_gcc_stdint=wrap
+  	;;
+  cris-*-elf | cris-*-none)
+! 	tm_file="dbxelf.h elfos.h newlib-stdint.h cris/cris.h"
+! 	tm_p_file="cris/cris-protos.h"
+! 	md_file="cris/cris.md"
+! 	out_file="cris/cris.c"
+! 	tmake_file="cris/t-cris"
+  	use_gcc_stdint=wrap
+  	;;
+  crisv32-*-linux* | cris-*-linux*)
