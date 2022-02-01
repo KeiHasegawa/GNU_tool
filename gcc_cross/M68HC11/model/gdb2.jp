@@ -1,0 +1,168 @@
+2022.01.18 9:30
+
+まずは出来ている gcc 3.4.4 で試してみた:
+
+main 0x1094 -> 0x1099
+f    0x1064 -> 0x1076
+
+いずれにしても m68hc11_skip_prologue では find_pc_partial_function が true
+を返している.
+
+次は出来ていない自作のもの
+
+main 0x1099 -> 0x10a4
+
+f に対しては m68hc11_skip_prologue が呼び出されていない.
+
+何故呼び出されないのか調査してみた.
+
+3.4.4 の生成コードで f にステップインして m68hc11_skip_prologue が呼び出される
+理由は函数
+
+process_event_stop_test
+
+が main のブレークポイントにヒットした後 10 回呼び出されて, そして函数
+
+handle_step_into_function
+
+で
+
+   if (...)
+        skip_prologue(...)
+
+のように動作している. この 10 回は main のプロローグから f を呼び出すまでの
+命令数である. すなわち:
+
+00001094 <main>:
+    1094:	de 10       	ldx	*0x10 <_.frame>
+    1096:	3c          	pshx
+    1097:	9f 10       	sts	*0x10 <_.frame>
+
+00001099 <.LM5>:
+    1099:	cc 00 06    	ldd	#0x6 <_.frame-0xa>
+    109c:	37          	pshb
+    109d:	36          	psha
+    109e:	4f          	clra
+    109f:	5f          	clrb
+    10a0:	37          	pshb
+    10a1:	36          	psha
+    10a2:	cc 00 05    	ldd	#0x5 <_.frame-0xb>
+    10a5:	ce 00 00    	ldx	#0x0 <_.frame-0x10>
+    10a8:	8d ba       	bsr	0x1064 <f>
+
+ldd #0x6 から bsr f までが 10 命令.
+
+そしてさらに
+
+process_event_stop_test
+
+が呼び出されたときに
+
+infrun.c:6756
+
+  if (!frame_id_eq (get_stack_frame_id (frame),
+		    ecs->event_thread->control.step_stack_frame_id)
+      && (frame_id_eq (frame_unwind_caller_id (get_current_frame ()),
+		       ecs->event_thread->control.step_stack_frame_id)
+	  && (!frame_id_eq (ecs->event_thread->control.step_stack_frame_id,
+			    outer_frame_id)
+	      || (ecs->event_thread->control.step_start_function
+		  != find_pc_function (ecs->event_thread->suspend.stop_pc)))))
+    {
+
+の条件が成立することが期待値で 3.4.4 では出来ている.
+
+同様のことを自前のコンパイラが生成したコードで試してみた:
+
+00001099 <main>:
+    1099:	18 de 10    	ldy	*0x10 <_.frame>
+    109c:	18 3c       	pshy
+    109e:	18 3c       	pshy
+    10a0:	18 3c       	pshy
+    10a2:	9f 10       	sts	*0x10 <_.frame>
+
+000010a4 <.LM5>:
+    10a4:	18 30       	tsy
+    10a6:	18 8f       	xgdy
+    10a8:	c3 ff fc    	addd	#0xfffc <_stack+0xfc>
+    10ab:	18 8f       	xgdy
+    10ad:	18 35       	tys
+    10af:	18 30       	tsy
+    10b1:	18 8f       	xgdy
+    10b3:	18 8f       	xgdy
+    10b5:	cc 00 00    	ldd	#0x0 <.Lframe0>
+    10b8:	18 ed 00    	std	0x0,y
+    10bb:	cc 00 06    	ldd	#0x6 <.Lframe0+0x6>
+    10be:	18 ed 02    	std	0x2,y
+    10c1:	cc 00 00    	ldd	#0x0 <.Lframe0>
+    10c4:	8f          	xgdx
+    10c5:	cc 00 05    	ldd	#0x5 <.Lframe0+0x5>
+    10c8:	8d 9a       	bsr	0x1064 <f>
+
+この命令を実行し続け, そして f の先頭で infrun.c:6756 の条件が false になっている.
+だから結果的にプロローグの部分がスキップされていない. この条件のうち 1 つ目の条件
+
+      !frame_id_eq (get_stack_frame_id (frame),
+		    ecs->event_thread->control.step_stack_frame_id)
+
+は true になっている. 2 つ目の条件の一部
+
+          frame_id_eq (frame_unwind_caller_id (get_current_frame ()),
+		       ecs->event_thread->control.step_stack_frame_id)
+
+が false になっている. これが原因.
+
+(gdb) p/x frame_unwind_caller_id (get_current_frame ()) 
+$29 = {stack_addr = 0xfef3, code_addr = 0x0, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) p/x ecs->event_thread->control.step_stack_frame_id
+$30 = {stack_addr = 0xfef7, code_addr = 0x1099, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) 
+
+stack_addr = 0xfef3
+stack_addr = 0xfef7
+
+のように異なっている. 同様のことを出来ている 3.4.4 でも確認してみた.
+
+
+(gdb) p/x frame_unwind_caller_id (get_current_frame ())
+$54 = {stack_addr = 0xfeff, code_addr = 0x1094, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) p/x ecs->event_thread->control.step_stack_frame_id
+$55 = {stack_addr = 0xfeff, code_addr = 0x1094, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb)
+
+合致している. 出来ている 3.4.4 の生成コードでは
+
+                    sp
+main の先頭アドレス    0xfefd
+main のプロローグ後    0xfefb
+f    の先頭アドレス    0xfef5
+f    のプロローグ後    0xfeef
+
+のようになっている. 一方自前のコンパイラの生成コードでは
+
+main の先頭アドレス    0xfefd
+main のプロローグ後    0xfef7
+f    の先頭アドレス    0xfef1
+f    のプロローグ後    0xfeeb
+
+のようになっている.
+
+問題のところで get_current_frame() の stack_addr が
+
+3.4.4        の生成コードでは 0xfef7 になる.
+自前のコンパイラの生成コードでは 0xfef1 になる. 0xfef3 になるのがおそらく期待値.
+
+だがこの部分のみデバッガで書き替えても期待した動作にはならない. おそらくだが他にも
+原因があるのかも.
+
+MEMO.3 に続く.
+
+

@@ -1,0 +1,68 @@
+2022.01.23
+
+AVR の cc1 と同じように
+
+
+#if defined DWARF2_DEBUGGING_INFO || defined DWARF2_UNWIND_INFO
+      dwarf2out_frame_finish ();
+#endif
+
+の部分で .debug_frame を出さないようにするために
+
+#undef PREFERRED_DEBUGGING_TYPE
+#define PREFERRED_DEBUGGING_TYPE DBX_DEBUG
+
+を m68hc11.h に追加してみたところ引数 a や b のアドレスを 1 ずらす以下の函数が
+
+rtx m68hc11_delegitimize_address(rtx x)
+{
+  int offset;
+  if (!fp_rel(x, &offset))
+    return x;
+  offset += 1;        ここにはこない.
+  auto fp = frame_pointer_rtx;
+  auto off = gen_rtx_CONST_INT(Pmode, offset);
+  auto plus = gen_rtx_PLUS(HImode, fp, off);
+  auto mem = gen_rtx_MEM(Pmode, plus);
+  return mem;
+}
+
+結果的に機能していないことに気付く. これが a や b が正しく表示できていない理由と思われ
+たが....
+
+ところでオリジナルの m68hc11.h には
+
+#undef PREFERRED_DEBUGGING_TYPE
+#define PREFERRED_DEBUGGING_TYPE DWARF2_DEBUG
+
+とある. つまりこれは以下の函数で
+
+enum unwind_info_type
+default_debug_unwind_info (void)
+{
+  /* If the target wants to force the use of dwarf2 unwind info, let it.  */
+  /* ??? Change all users to the hook, then poison this.  */
+#ifdef DWARF2_FRAME_INFO
+  if (DWARF2_FRAME_INFO)
+    return UI_DWARF2;
+#endif
+
+  /* Otherwise, only turn it on if dwarf2 debugging is enabled.  */
+#ifdef DWARF2_DEBUGGING_INFO
+  if (write_symbols == DWARF2_DEBUG || write_symbols == VMS_AND_DWARF2_DEBUG)
+    return UI_DWARF2; ここ UI_DWARF2 が返るということ
+#endif
+
+  return UI_NONE;
+}
+
+そういえばオリジナルの gcc-3.4.4 の m68hc11 はそれなりに動作していたが, gcc-4.2.0
+の m68hc11 ではデバッグ情報を適切に生成できていなかった問題があった.
+
+そもそもオリジナルの m68hc11 の完成度に問題がある以上あまり参考にはできない.
+
+#undef PREFERRED_DEBUGGING_TYPE
+#define PREFERRED_DEBUGGING_TYPE DBX_DEBUG
+
+の導入はしないことにする.
+

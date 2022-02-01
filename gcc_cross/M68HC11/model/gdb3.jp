@@ -1,0 +1,188 @@
+ふとしたきっかけで gcc 3.4.4 では .debug_frame セクションが生成されて
+いないのに, 自前のものでは .debug_frame セクションが生成されていること
+に気付いた.
+
+そこで暫定的に toplev.c に以下の修正を入れて無理矢理 .debug_frame セク
+ションを生成されないようにした.
+
+      timevar_push (TV_SYMOUT);
++#if 0
+#if defined DWARF2_DEBUGGING_INFO || defined DWARF2_UNWIND_INFO
+      dwarf2out_frame_finish ();
+#endif
++#endif
+
+これで実行してみたところ
+
+Breakpoint 1, main () at a.c:10
+10	  printf("hello world %d\n", f(5,6));
+f (a=0, b=-905969664) at a.c:5
+5	  return a + b;
+#0  f (a=0, b=-905969664) at a.c:5
+#1  0x000010ca in main () at a.c:10
+0x000010ca in main () at a.c:10
+10	  printf("hello world %d\n", f(5,6));
+Value returned is $1 = 11
+
+のようになっている. まだできてはいないがプロローグの部分がスキップでき
+ている. ところで上のパッチだが回避の方法がなさそうである.
+
+=> 2022.01.19 6:50 config.gcc を修正してもう一度トライ
+config.gcc から
+
+tm_file="dbxelf.h elfos.h usegas.h newlib-stdint.h m68hc11/m68hc11.h"
+
+の部分を
+
+tm_file="dbxelf.h usegas.h newlib-stdint.h m68hc11/m68hc11.h"
+
+のように elfos.h を外してみた.
+
+この修正に伴なって
+
+m68hc11.h に以下の宣言を追加し
+
+extern void ASM_GENERATE_INTERNAL_LABEL(char* res, const char* label, int no);
+
+extern void ASM_OUTPUT_COMMON(FILE*, const char*, HOST_WIDE_INT, HOST_WIDE_INT);
+
+extern void ASM_OUTPUT_SKIP(FILE*, unsigned HOST_WIDE_INT);
+
+extern void ASM_OUTPUT_LOCAL(FILE* fp, const char* name,
+			     unsigned HOST_WIDE_INT size,
+			     unsigned HOST_WIDE_INT rounded);
+
+
+m68hc11.c に上の函数の定義を追加した
+
+void ASM_GENERATE_INTERNAL_LABEL(char* res, const char* label, int no)
+{
+  strcpy(res, label);
+  char tmp[4];
+  sprintf(tmp, "%d", no);
+  strcat(res, tmp);
+}
+
+void
+ASM_OUTPUT_COMMON(FILE* fp, const char* name, HOST_WIDE_INT x, HOST_WIDE_INT y)
+{
+  fprintf(fp, "%s %lldd %lld", name, x, y);
+}
+
+void ASM_OUTPUT_SKIP(FILE* fp, unsigned HOST_WIDE_INT size)
+{
+  fprintf(fp, "	.skip %lld\n", size);
+}
+
+void ASM_OUTPUT_LOCAL(FILE* fp, const char* name,
+		      unsigned HOST_WIDE_INT size,
+		      unsigned HOST_WIDE_INT rounded)
+{
+  fprintf(fp, "	%s %lld %lld", name, size, rounded);
+}
+
+しかし以下
+
+gcc/defaults.h:347
+
+#if !defined (DWARF2_UNWIND_INFO) && defined (INCOMING_RETURN_ADDR_RTX)
+#define DWARF2_UNWIND_INFO 1
+#endif
+
+で 1 に define されてしまいやはり回避できない.
+
+
+現状 a, b が正しく表示されないのは以下のように
+
+*_.frame 相対 0 と 8 になっているから.
+
+ <2><b6>: 省略番号: 6 (DW_TAG_formal_parameter)
+    <b7>   DW_AT_name        : a
+    <b9>   DW_AT_decl_file   : 1
+    <ba>   DW_AT_decl_line   : 3
+    <bb>   DW_AT_decl_column : 11
+    <bc>   DW_AT_type        : <0x4e>
+    <c0>   DW_AT_location    : 2 byte block: 79 0 	(DW_OP_breg9 (r9): 0)
+ <2><c3>: 省略番号: 6 (DW_TAG_formal_parameter)
+    <c4>   DW_AT_name        : b
+    <c6>   DW_AT_decl_file   : 1
+    <c7>   DW_AT_decl_line   : 3
+    <c8>   DW_AT_decl_column : 18
+    <c9>   DW_AT_type        : <0x4e>
+    <cd>   DW_AT_location    : 2 byte block: 79 8 	(DW_OP_breg9 (r9): 8)
+
+できている 3.4.4 では
+
+ <2><153>: 省略番号: 5 (DW_TAG_formal_parameter)
+    <154>   DW_AT_name        : a
+    <156>   DW_AT_decl_file   : 9
+    <157>   DW_AT_decl_line   : 3
+    <158>   DW_AT_type        : <0xaa>
+    <15c>   DW_AT_location    : 2 byte block: 91 1 	(DW_OP_fbreg: 1)
+ <2><15f>: 省略番号: 5 (DW_TAG_formal_parameter)
+    <160>   DW_AT_name        : b
+    <162>   DW_AT_decl_file   : 9
+    <163>   DW_AT_decl_line   : 3
+    <164>   DW_AT_type        : <0xaa>
+    <168>   DW_AT_location    : 2 byte block: 91 9 	(DW_OP_fbreg: 9)
+
+のようになっている.
+
+だから例えば
+
+	.string	"a"
+	.byte	0x1
+	.byte	0x3
+	.byte	0xb
+	.4byte	0x28
+	.uleb128 0x2
+	.byte	0x79
++	.sleb128 1
+-	.sleb128 0
+	.uleb128 0x6
+	.string	"b"
+	.byte	0x1
+	.byte	0x3
+	.byte	0x12
+	.4byte	0x28
+	.uleb128 0x2
+	.byte	0x79
++	.sleb128 9
+-	.sleb128 8
+
+のようにすれば期待した動作になる.
+
+
+このオフセットを表示している場所は
+
+dwarf2out.c:2253
+      dw2_asm_output_data_sleb128 (val1->v.val_int, NULL);
+
+である. a のオフセット 0 や b のオフセット 8 をセットしているところは
+
+static inline dw_loc_descr_ref
+new_loc_descr (enum dwarf_location_atom op, unsigned HOST_WIDE_INT oprnd1,
+	       unsigned HOST_WIDE_INT oprnd2)
+{
+...
+  descr->dw_loc_oprnd1.v.val_unsigned = oprnd1;  ここ
+  
+オフセットに 1 を加算するのに以下のようにした:
+
+rtx m68hc11_delegitimize_address(rtx x)
+{
+  int offset;
+  if (!fp_rel(x, &offset))
+    return x;
+  offset += 1;
+  auto fp = frame_pointer_rtx;
+  auto off = gen_rtx_CONST_INT(Pmode, offset);
+  auto plus = gen_rtx_PLUS(HImode, fp, off);
+  auto mem = gen_rtx_MEM(Pmode, plus);
+  return mem;
+}
+
+#undef TARGET_DELEGITIMIZE_ADDRESS
+#define TARGET_DELEGITIMIZE_ADDRESS m68hc11_delegitimize_address
+
+これで a や b の変数の値が正しく表示されるようになる.

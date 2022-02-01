@@ -1,0 +1,64 @@
+  char32_type_node = get_identifier (CHAR32_TYPE);
+
+で Segmentation Fault する.
+
+% ls c-family/c-common.o 
+c-family/c-common.o
+% rm -f c-family/c-common.o
+% make -n c-family/c-common.o
+...
+g++ -fno-PIE -c  -DIN_GCC_FRONTEND -DIN_GCC_FRONTEND -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H -I. -Ic-family -I../.././gcc -I../.././gcc/c-family -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber -I../.././gcc/../libbacktrace   -o c-family/c-common.o -MT c-family/c-common.o -MMD -MP -MF c-family/.deps/c-common.TPo ../.././gcc/c-family/c-common.c
+mv c-family/.deps/c-common.TPo c-family/.deps/c-common.Po
+% g++ -fno-PIE -E  -DIN_GCC_FRONTEND -DIN_GCC_FRONTEND -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H -I. -Ic-family -I../.././gcc -I../.././gcc/c-family -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber -I../.././gcc/../libbacktrace   -o c-family/c-common.i -MT c-family/c-common.o -MMD -MP -MF c-family/.deps/c-common.TPo ../.././gcc/c-family/c-common.c
+%
+
+c-family/c-common.i の該当箇所を確認したところ
+
+
+  c_global_trees[CTI_CHAR32_TYPE] = (__builtin_constant_p ((((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) ? ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) : (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) ? (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) : 0)) ? get_identifier_with_length (((((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) ? ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) : (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) ? (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) : 0)), strlen ((((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) ? ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) : (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) ? (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) : 0))) : get_identifier ((((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) ? ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) : (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) ? (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) : 0)));
+
+
+m68hc11.h に以下を追加
+
+#define SHORT_TYPE_SIZE		16
+#define INT_TYPE_SIZE           32
+#define LONG_TYPE_SIZE		32
+#define LONG_LONG_TYPE_SIZE     64
+
+INT_TYPE_SIZE のみが必要かと思ったが一応上全て追加してみた.
+
+constexpr int UNITS_PER_WORD = 2;
+
+なのでこういう問題が発生する. 4 ならば問題が発生しなかった.
+
+これでビルドして実行してみたところ
+
+<built-in>: internal compiler error: in cpp_iec_559_value, at c-family/c-cppbuiltin.c:778
+0x84bacfe cpp_iec_559_value
+	../.././gcc/c-family/c-cppbuiltin.c:778
+0x84bbbb3 c_cpp_builtins(cpp_reader*)
+	../.././gcc/c-family/c-cppbuiltin.c:1116
+0x84d0857 c_finish_options
+	../.././gcc/c-family/c-opts.c:1439
+0x84d0160 c_common_parse_file()
+	../.././gcc/c-family/c-opts.c:1184
+Please submit a full bug report,
+with preprocessed source if appropriate.
+Please include the complete backtrace with any bug report.
+See <https://gcc.gnu.org/bugs/> for instructions.
+
+のようになる.
+
+  const struct real_format *ffmt
+    = REAL_MODE_FORMAT (TYPE_MODE (float_type_node));
+
+この行を実行して上のようなエラーメッセージを出力しているらしい. さてこれは一体...
+以下を m68hc11.h に追加してみた:
+
+#define FLOAT_TYPE_SIZE         32
+#define DOUBLE_TYPE_SIZE        64
+#define LONG_DOUBLE_TYPE_SIZE   64
+
+
+
+

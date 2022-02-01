@@ -1,0 +1,636 @@
+2022.02.01 12:00
+
+avr の cc1 と同様に
+
+#undef PREFERRED_DEBUGGING_TYPE
+#define PREFERRED_DEBUGGING_TYPE DBX_DEBUG
+
+とし,
+
+#define INCOMING_RETURN_ADDR_RTX \
+  gen_rtx_MEM(VOIDmode, gen_rtx_REG(VOIDmode, STACK_POINTER_REGNUM))
+
+をやめる.
+
+これに伴なって toplev.c を元に戻した.
+
+#if 0      <= 削除
+#if defined DWARF2_DEBUGGING_INFO || defined DWARF2_UNWIND_INFO
+      dwarf2out_frame_finish ();
+#endif
+#endif     <= 削除
+
+またせっかくなので以下も追加
+
+#define STACK_GROWS_DOWNWARD 1
+
+とりあえずこれでビルド開始
+
+avr と同様に
+
+HOST_WIDE_INT m68hc11_starting_frame_offset()
+{
+  return 1;
+}
+
+#undef  TARGET_STARTING_FRAME_OFFSET
+#define TARGET_STARTING_FRAME_OFFSET m68hc11_starting_frame_offset
+
+を導入. これに伴なってフレームポインタ相対のコード生成で offset+1 や offset+3
+としているところを offset, offset+2 に修正した.
+
+またデバッグ情報を改竄している
+
+rtx m68hc11_delegitimize_address(rtx x)
+
+はもはや必要ないので.
+
+rtx m68hc11_delegitimize_address(rtx x)
+{
+  int offset;
+  if (!fp_rel(x, &offset))
+    return x;
+  offset += 1;
+  auto fp = frame_pointer_rtx;
+  auto off = gen_rtx_CONST_INT(Pmode, offset);
+  auto plus = gen_rtx_PLUS(HImode, fp, off);
+  auto mem = gen_rtx_MEM(Pmode, plus);
+  return mem;
+}
+
+#undef TARGET_DELEGITIMIZE_ADDRESS
+#define TARGET_DELEGITIMIZE_ADDRESS m68hc11_delegitimize_address
+
+を削除.
+
+2022.02.01 13:00 の段階で hello world 11 のサンプルが
+
+hello world -905969659
+
+の結果になっている. 修正し切れていなかったらしい.
+
+f を呼び出して勿論戻ってこれてはいるのだが結果が誤り.
+
+(m68hc11-elf-gdb) info register
+PC=0x10cc  SP=0xfef3  FP=0xfef7 
+CCR=0x08   ----N---   u> != < <= 
+D=0x0005 5 X=0xca00 -13824 Y=0xfef4 -268
+(m68hc11-elf-gdb)
+
+X に 11 がくるのが正しい.
+
+f の先頭アドレスでは X = 0, D = 5 だから第 1 引数は渡されている.
+
+0xfef0	+------------------+ 
+	|                  | <- sp
+0xfef2	+------------------+
+	|      0x10ca      |
+0xfef4	+------------------+
+	|                  |
+	|        6         |
+0xfef8	+------------------+
+
+上を確認した. つまり 6 も正しく渡されている.
+
+最初の 2 命令
+
+	ldy	*_.frame
+	pshy
+
+で以下のようになる
+
+
+0xfeee	+------------------+ 
+	|                  | <- sp
+0xfef0	+------------------+ 
+	|      0xfef7      |
+0xfef2	+------------------+
+	|      0x10ca      |
+0xfef4	+------------------+
+	|                  |
+	|        6         |
+0xfef8	+------------------+
+
+続く 2 命令
+
+	pshy
+	pshy
+
+で以下のようになる.
+
+0xfeea	+------------------+ 
+	|                  | <- sp
+0xfeec	+------------------+ 
+	|      0xfef7      |
+0xfeee	+------------------+ 
+	|      0xfef7      |
+0xfef0	+------------------+ 
+	|      0xfef7      |
+0xfef2	+------------------+
+	|      0x10ca      |
+0xfef4	+------------------+
+	|                  |
+	|        6         |
+0xfef8	+------------------+
+
+続く
+
+	sts	*_.frame
+
+で *_.frame = 0xfeeb になる. ここは 1 ずれるわけではない.
+
+続く
+	ldy	*_.frame
+	stx	1, y
+	ldy	*_.frame
+	std	3, y
+
+で引数 a = 5 が保存され以下のようになる.
+
+0xfeea	+------------------+ 
+	|                  | <- sp, _*.frame
+0xfeec	+------------------+ 
+	|                  |
+	|        5         |
+0xfef0	+------------------+ 
+	|      0xfef7      |
+0xfef2	+------------------+
+	|      0x10ca      |
+0xfef4	+------------------+
+	|                  |
+	|        6         |
+0xfef8	+------------------+
+
+続く
+
+	ldy	*_.frame
+	ldx	1, y
+	ldd	3, y
+
+で X = 0, D = 5 になる.
+と, ここまできて
+
+int FIRST_PARM_OFFSET(tree func)
+{
+  (void)func;
+  return 8;     間違い 9 が正しい
+}
+
+に気付く.
+
+この修正で hello world 11 ができている.
+
+-g オプションの試験で現状
+
+Breakpoint 1, main () at a.c:10
+10	  printf("hello world %d\n", f(5,6));
+f (a=-905969664, b=-858993648) at a.c:5
+5	  return a + b;
+#0  f (a=-905969664, b=-858993648) at a.c:5
+#1  0x000010ca in main () at a.c:10
+0x000010ca in main () at a.c:10
+10	  printf("hello world %d\n", f(5,6));
+Value returned is $1 = 11
+hello world 11
+
+のようになる. a と b の値が間違えている.
+
+Breakpoint 1, f (a=-905969664, b=-858993648) at a.c:5
+(m68hc11-elf-gdb) p/x -905969664
+$1 = 0xca000000
+(m68hc11-elf-gdb) p/x -858993648
+$2 = 0xcccccc10
+(m68hc11-elf-gdb)
+
+なのでこれは違うところを見ている.
+プロローグは適切にスキップできている.
+
+
+(m68hc11-elf-gdb) info register
+PC=0x107b  SP=0xfeeb  FP=0xfeeb 
+CCR=0x01   -------C   u<= != >= > 
+D=0x0005 5 X=0x0000 0 Y=0xfeeb -277
+(m68hc11-elf-gdb) p *(int*)(0xfeeb+1)            フレームポインタ相対 1 に a
+$7 = 5
+(m68hc11-elf-gdb) p *(int*)(0xfeeb+9)	         フレームポインタ相対 9 に b
+$8 = 6
+(m68hc11-elf-gdb) 
+
+生成された a.s の一部は以下
+
+	.stabs	"a:p(0,1)",160,0,3,1
+	.stabs	"b:p(0,1)",160,0,3,9
+	.globl	f
+	.type	f, @function
+f:
+
+a.objdump の一部は以下
+
+int32 f (int32 a /* 0x1 */, int32 b /* 0x9 */)
+
+ということはシミュレータが本来 0xfeeb を gdb に返すべき場面で
+0xfef2 を返している可能性がある.
+
+0xfeea	+------------------+ 
+	|                  | <- sp, _*.frame
+0xfeec	+------------------+ 
+	|                  |
+	|        5         |
+0xfef0	+------------------+ 
+	|      0xfef7      |
+0xfef2	+------------------+ <- この値を返していると a の値は 0xca000000
+	|      0x10ca      |
+0xfef4	+------------------+
+	|                  |
+	|        6         |
+0xfef8	+------------------+
+
+そこで m68hc11-elf-gdb で調べてみた. f で停止して
+
+(m68hc11-elf-gdb) p a
+
+とする. これで -905969664 が結果である原因を調査する.
+
+(gdb) b print_command
+(gdb) run
+
+とすれば p コマンドをデバッグできる.
+
+(gdb) b sim_fetch_register
+
+(gdb) c
+Continuing.
+$1 = -905969664
+
+というわけで別にレジスタの値はここでは問い合わせないらしい.
+
+(gdb) delete
+(gdb) b print_command
+(gdb) run
+(gdb) b m68hc11_frame_unwind_cache
+(gdb) c
+
+ブレークポイントにヒット.
+このときは
+
+  if ((*this_prologue_cache))
+    return (struct m68hc11_unwind_cache *) (*this_prologue_cache);
+
+この if の条件が成立してすぐに戻っている.
+ということはおそらくレジスタの値の問い合わせはすでに行なわれていてもおかしくない.
+
+(gdb) delete
+(gdb) b m68hc11_frame_unwind_cache
+(gdb) run
+...
+ブレークポイントにヒット
+(gdb) where
+#0  m68hc11_frame_unwind_cache (this_frame=0x8cb0e2c, this_prologue_cache=0x8cb0e38) at m68hc11-tdep.c:770
+#1  0x082a79da in m68hc11_frame_this_id (this_frame=0x8cb0e2c, this_prologue_cache=0x8cb0e38, this_id=0x8cb0e68) at m68hc11-tdep.c:869
+#2  0x082207a1 in compute_frame_id (fi=0x8cb0e2c) at frame.c:590
+#3  0x0822097c in get_frame_id (fi=0x8cb0e2c) at frame.c:638
+#4  0x0821feb8 in scoped_restore_selected_frame::scoped_restore_selected_frame (this=0xbfffe87c) at frame.c:320
+#5  0x083c8a48 in print_frame_args (fp_opts=..., func=0x8d435d0, frame=0x8cb0e2c, num=-1, stream=0x8d2eea8) at stack.c:750
+#6  0x083c9e18 in print_frame (fp_opts=..., frame=0x8cb0e2c, print_level=0, print_what=SRC_AND_LOC, print_args=1, sal=...) at stack.c:1394
+#7  0x083c94b3 in print_frame_info (fp_opts=..., frame=0x8cb0e2c, print_level=0, print_what=SRC_AND_LOC, print_args=1, set_current_sal=1) at stack.c:1119
+--Type <RET> for more, q to quit, c to continue without paging--c
+#8  0x083c7b06 in print_stack_frame (frame=0x8cb0e2c, print_level=0, print_what=SRC_AND_LOC, set_current_sal=1) at stack.c:366
+#9  0x0827811c in print_stop_location (ws=0xbfffec64) at infrun.c:8121
+#10 0x0827816c in print_stop_event (uiout=0x8d0dc78, displays=true) at infrun.c:8137
+#11 0x0845ae16 in tui_on_normal_stop (bs=0x8d5dd38, print_frame=1) at tui/tui-interp.c:98
+#12 0x0809ca98 in std::__invoke_impl<void, void (*&)(bpstats*, int), bpstats*, int> (__f=@0x8c5a8a0: 0x845ad80 <tui_on_normal_stop(bpstats*, int)>) at /usr/local/include/c++/10.2.0/bits/invoke.h:60
+#13 0x0809c57a in std::__invoke_r<void, void (*&)(bpstats*, int), bpstats*, int> (__fn=@0x8c5a8a0: 0x845ad80 <tui_on_normal_stop(bpstats*, int)>) at /usr/local/include/c++/10.2.0/bits/invoke.h:153
+#14 0x0809c0d9 in std::_Function_handler<void (bpstats*, int), void (*)(bpstats*, int)>::_M_invoke(std::_Any_data const&, bpstats*&&, int&&) (__functor=..., __args#0=@0xbfffed64: 0x8d5dd38, __args#1=@0xbfffed68: 1) at /usr/local/include/c++/10.2.0/bits/std_function.h:291
+#15 0x0827c812 in std::function<void (bpstats*, int)>::operator()(bpstats*, int) const (this=0x8c5a8a0, __args#0=0x8d5dd38, __args#1=1) at /usr/local/include/c++/10.2.0/bits/std_function.h:622
+#16 0x0827bdd7 in gdb::observers::observable<bpstats*, int>::notify (this=0x8c13328 <gdb::observers::normal_stop>, args#0=0x8d5dd38, args#1=1) at ./../gdbsupport/observable.h:106
+#17 0x082788a3 in normal_stop () at infrun.c:8415
+#18 0x0826ec7c in fetch_inferior_event () at infrun.c:3967
+#19 0x08256d9a in inferior_event_handler (event_type=INF_REG_EVENT) at inf-loop.c:42
+#20 0x08279dff in infrun_async_inferior_event_handler (data=0x0) at infrun.c:9215
+#21 0x080aa0e4 in check_async_event_handlers () at async-event.c:295
+#22 0x08587c8b in gdb_do_one_event () at event-loop.cc:194
+#23 0x0843913f in wait_sync_command_done () at top.c:526
+#24 0x084391b0 in maybe_wait_sync_command_done (was_sync=0) at top.c:543
+#25 0x08439687 in execute_command (p=0x8d454eb "", from_tty=0) at top.c:670
+#26 0x0820a4c5 in command_handler (command=0x8d454e8 "run") at event-top.c:588
+#27 0x08439002 in read_command_file (stream=0x8d461c0) at top.c:447
+#28 0x08142cce in script_from_file (stream=0x8d461c0, file=0xbffff81d "gdbcom.2") at cli/cli-script.c:1622
+#29 0x0812c2c5 in source_script_from_stream (stream=0x8d461c0, file=0xbffff81d "gdbcom.2", file_to_open=0xbffff81d "gdbcom.2") at cli/cli-cmds.c:700
+#30 0x0812c39e in source_script_with_search (file=0xbffff81d "gdbcom.2", from_tty=1, search_path=0) at cli/cli-cmds.c:736
+#31 0x0812c3f1 in source_script (file=0xbffff81d "gdbcom.2", from_tty=1) at cli/cli-cmds.c:746
+#32 0x082b11e0 in catch_command_errors (command=0x812c3db <source_script(char const*, int)>, arg=0xbffff81d "gdbcom.2", from_tty=1) at main.c:457
+#33 0x082b2561 in captured_main_1 (context=0xbffff514) at main.c:1214
+#34 0x082b2792 in captured_main (data=0xbffff514) at main.c:1243
+#35 0x082b27fa in gdb_main (args=0xbffff514) at main.c:1268
+#36 0x0806bda7 in main (argc=5, argv=0xbffff5e4) at gdb.c:32
+(gdb) 
+
+
+#5  0x083c8a48 in print_frame_args (fp_opts=..., func=0x8d435d0, frame=0x8cb0e2c, num=-1, stream=0x8d2eea8) at stack.c:750
+
+がポイントになりそう.
+
+(gdb) b sim_fetch_register
+(gdb) c
+(gdb) c
+(gdb) c
+
+Breakpoint 1, f (a=-905969664, b=-858993648) at a.c:5
+5	  return a + b;
+
+やはり sim_fetch_register はきていない.
+
+(gdb) delete
+(gdb) b print_frame_args
+(gdb) run
+
+ブレークポイントにヒット
+static void
+print_frame_args (const frame_print_options &fp_opts,
+		  struct symbol *func, struct frame_info *frame,
+		  int num, struct ui_file *stream)
+{
+...
+      ALL_BLOCK_SYMBOLS (b, iter, sym)
+        {
+	  struct frame_arg arg, entryarg;
+
+何やらループしているらしいが, 全ての引数に対して以下を実行というところだろうか.
+
+
+(gdb) p *sym
+$3 = {<general_symbol_info> = {m_name = 0x8d5141c "a", value = {ivalue = 1, 
+      block = 0x1, bytes = 0x1 <error: Cannot access memory at address 0x1>, 
+      address = 1, common_block = 0x1, chain = 0x1}, language_specific = {
+      obstack = 0x0, demangled_name = 0x0}, m_language = language_c, 
+    ada_mangled = 0, 
+    section = -1}, <allocate_on_obstack> = {<No data fields>}, 
+  type = 0x8d435f8, owner = {symtab = 0x8d438dc, arch = 0x8d438dc}, 
+  domain = VAR_DOMAIN, aclass_index = 4, is_objfile_owned = 1, 
+  is_argument = 1, is_inlined = 0, maybe_copied = 0, subclass = SYMBOL_NONE, 
+  line = 3, aux_value = 0x0, hash_next = 0x0}
+(gdb)
+
+		long current_offset = SYMBOL_VALUE (sym);
+
+(gdb) p current_offset
+$4 = 1                    これは期待した結果 
+
+		current_offset =
+		  ((current_offset + arg_size + sizeof (int) - 1)
+		   & ~(sizeof (int) - 1));
+
+(gdb) p current_offset
+$5 = 8                    8 に変更されてしまった...
+
+とはいえこれはローカル変数.
+
+
+	    read_frame_arg (fp_opts, sym, frame, &arg, &entryarg);
+
+(gdb) p *sym
+$11 = {<general_symbol_info> = {m_name = 0x8d5141c "a", value = {ivalue = 1, 
+      block = 0x1, bytes = 0x1 <error: Cannot access memory at address 0x1>, 
+      address = 1, common_block = 0x1, chain = 0x1}, language_specific = {
+      obstack = 0x0, demangled_name = 0x0}, m_language = language_c, 
+    ada_mangled = 0, 
+    section = -1}, <allocate_on_obstack> = {<No data fields>}, 
+  type = 0x8d435f8, owner = {symtab = 0x8d438dc, arch = 0x8d438dc}, 
+  domain = VAR_DOMAIN, aclass_index = 4, is_objfile_owned = 1, 
+  is_argument = 1, is_inlined = 0, maybe_copied = 0, subclass = SYMBOL_NONE, 
+  line = 3, aux_value = 0x0, hash_next = 0x0}
+(gdb) p/x *frame
+$13 = {level = 0x0, pspace = 0x8cf76c0, aspace = 0x8cf7b68, 
+  prologue_cache = 0x8cb0ea4, unwind = 0x87f2600, prev_arch = {p = 0x0, 
+    arch = 0x0}, prev_pc = {status = 0x0, masked = 0x0, value = 0x0}, 
+  prev_func = {addr = 0x0, status = 0x0}, this_id = {p = 0x2, value = {
+      stack_addr = 0xfef3, code_addr = 0x1064, special_addr = 0x0, 
+      stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+      artificial_depth = 0x0}}, base = 0x0, base_cache = 0x0, 
+  next = 0x8cb0db0, prev_p = 0x0, prev = 0x0, stop_reason = 0x0, 
+  stop_string = 0x0}
+(gdb)
+
+この sym は第 1 引数の a であることは疑いようがない. そして 
+
+(gdb) p/x frame->this_id.value.stack_addr
+$17 = 0xfef3
+(gdb) p/x frame->this_id.value.code_addr
+$18 = 0x1064
+(gdb)
+
+であるが
+
+00001064 <f>:
+
+なのだから函数 f でありながら main のスタックポインタの値を保持している.
+これが間違い.
+
+これを計算している部分を突き止める.
+
+しかしその前に試しに
+
+(gdb) set frame->this_id.value.stack_addr=0xfeeb   # f のものに変更してみる.
+(gdb) c
+Continuing.
+Breakpoint 1, f (a=-905969664, b=-858993648warning: Unable to restore previously selected frame.
+) at a.c:5
+5	  return a + b;
+$1 = -905969664
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
+[Thread 0xb6dffb70 (LWP 16100) exited]
+[Thread 0xb7704b70 (LWP 16099) exited]
+[Inferior 1 (process 16029) exited normally]
+(gdb) 
+
+そこだけ違っているわけではないらしい.
+
+(gdb) run
+ブレークポイントにヒット
+(gdb) p/x frame->this_id.value.stack_addr
+$23 = 0x0                                      まだセットはされていない.
+(gdb) p &frame->this_id.value.stack_addr
+$24 = (CORE_ADDR *) 0x8cb0e68
+(gdb) watch *(int*)0x8cb0e68
+Hardware watchpoint 8: *(int*)0x8cb0e68        ウォッチ
+(gdb) c
+...
+static void
+m68hc11_frame_this_id (struct frame_info *this_frame,
+                       void **this_prologue_cache,
+                       struct frame_id *this_id)
+{
+  struct m68hc11_unwind_cache *info
+    = m68hc11_frame_unwind_cache (this_frame, this_prologue_cache);
+  CORE_ADDR base;
+  CORE_ADDR func;
+  struct frame_id id;
+
+  /* The FUNC is easy.  */
+  func = get_frame_func (this_frame);
+
+  /* Hopefully the prologue analysis either correctly determined the
+     frame's base (which is the SP from the previous frame), or set
+     that base to "NULL".  */
+  base = info->prev_sp;
+  if (base == 0)
+    return;
+
+  id = frame_id_build (base, func);
+  (*this_id) = id;                       ここだった.
+}
+
+
+func = 0x1064 でこれは f のアドレス.
+
+  base = info->prev_sp;
+
+としているからこれは前のフレームのスタックを拾っている...
+
+試しに以下のパッチを入れてみた:
+
+  if (base == 0)
+    return;
++#if 1
++  base = get_frame_sp(this_frame);
++#endif
+  id = frame_id_build (base, func);
+
+だめらしい.
+
+自力で開発した cr16-tdep.c
+
+static void cr16_frame_this_id(frame_info* frame, void **ptr, frame_id* id)
+{
+  auto pf = reinterpret_cast<cr16_frame*>(*ptr);
+  if (!pf)
+    *ptr = pf = cr16_frame_create(frame);
+  
+  if (!pf->available)
+    *id = frame_id_build_unavailable_stack(pf->prologue.start);
+  else
+    *id = frame_id_build(pf->prev_sp, pf->prologue.start);
+}
+
+ということは似たようなことをしている. prev_sp を見るのは間違いではなさそう.
+むしろプロローグのスタートアドレスを指定するのが正しいようである.
+
+自分で作成しただけあって PRU, MCORE もほぼそういう作りになっている.
+
+
+00001064 <f>:
+    1064:	18 de 10    	ldy	*0x10 <_.frame>
+    1067:	18 3c       	pshy
+    1069:	18 3c       	pshy
+    106b:	18 3c       	pshy
+    106d:	9f 10       	sts	*0x10 <_.frame>
+    106f:	18 de 10    	ldy	*0x10 <_.frame>
+    1072:	cd ef 01    	stx	0x1,y
+    1075:	18 de 10    	ldy	*0x10 <_.frame>
+    1078:	18 ed 03    	std	0x3,y               ここまでがプロローグ
+    107b:	18 de 10    	ldy	*0x10 <_.frame>
+
+0x107b - 0x1064 = 0x17
+
+試しに以下のように修正してみた:
+
+  if (func == 0x1064) {
+    asm("int3");
+    func = 0x107b;
+  }
+  else {
+    asm("int3");
+  }
+
+  id = frame_id_build (base, func);
+
+だめらしい. cr16, pru, mcore もいずれも .debug_frame を生成していたから同じではないの
+かもしれない.
+
+と思ったが cr16_frame_create は多少はプロローグに依存してそうだからそういう観点で
+
+m68hc11_frame_unwind_cache
+
+を調べてみる. いや, 今回の修正でプロローグは変更なしだからここは関係ないのか.
+
+gcc-3.4.4 で生成した a.elf は 
+
+#define PREFERRED_DEBUGGING_TYPE DBX_DEBUG
+
+ではないから単純に比較するわけにはいかない. さてどうしたものか.
+
+一旦自前の cc1 から
+
+#define PREFERRED_DEBUGGING_TYPE DBX_DEBUG
+
+をはずす. これに伴なって
+
+#define INCOMING_RETURN_ADDR_RTX \
+  gen_rtx_MEM(VOIDmode, gen_rtx_REG(VOIDmode, STACK_POINTER_REGNUM))
+
+を元に戻す
+
+ついでだが使用されていなかった
+
+
+extern void NOTICE_UPDATE_CC(rtx pat, rtx_insn* insn);
+
+void NOTICE_UPDATE_CC(rtx pat, rtx_insn* insn)
+{
+  asm("int3");
+  (void)pat;
+  (void)insn;
+}
+
+を削除.
+
+2022.02.01 17:25 ビルド開始
+
+2022.02.01 18:05 ビルド終了.
+
+./zconfirm.1 は勿論期待通り動作.
+
+./zconfirm はまだだが
+
+% m68hc11-elf-gdb a.elf -x gdbcom.2
+
+で正しく a や b を表示できている.
+以下は a.objdump の結果
+
+ <2><b6>: 省略番号: 6 (DW_TAG_formal_parameter)
+    <b7>   DW_AT_name        : a
+    <b9>   DW_AT_decl_file   : 1
+    <ba>   DW_AT_decl_line   : 3
+    <bb>   DW_AT_decl_column : 11
+    <bc>   DW_AT_type        : <0x4e>
+    <c0>   DW_AT_location    : 2 byte block: 79 1 	(DW_OP_breg9 (r9): 1)
+ <2><c3>: 省略番号: 6 (DW_TAG_formal_parameter)
+    <c4>   DW_AT_name        : b
+    <c6>   DW_AT_decl_file   : 1
+    <c7>   DW_AT_decl_line   : 3
+    <c8>   DW_AT_decl_column : 18
+    <c9>   DW_AT_type        : <0x4e>
+    <cd>   DW_AT_location    : 2 byte block: 79 9 	(DW_OP_breg9 (r9): 9)
+
+現状 ./zconfirm で期待通り動作していないのは f にステップインしてプロ
+ローグの部分が適切にスキップされていない.
+
+この現象はどれかの自前のコンパイラで見た気がするが思い出せない.
+
+しょうがないから一から調べる.
+と思ったが m68hc11-elf-gdb のディレクトリに記録が残されていた.
+このときは .debug_frame セクションを出さないようにしていた. そこで
+
+#if 0      <= 元に戻す
+#if defined DWARF2_DEBUGGING_INFO || defined DWARF2_UNWIND_INFO
+      dwarf2out_frame_finish ();
+#endif
+#endif     <= 元に戻す
+
+上のように修正したところ期待通り動作している.
+
+やはりこの部分は回避できていない.

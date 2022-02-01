@@ -1,0 +1,237 @@
+2022.01.13 06.47
+
+昨日の夕方に y レジスタをスクラッチレジスタのように無差別に使用することを思い付き,
+
+#define REGISTER_NAMES      { "sp", "fp", "d", "x" }
+
+のように y レジスタを外してみたところ
+
+int f(int a, int b){ return a + b; }
+
+のコンパイルでエラーしてしまう.
+
+      icode = recog_memoized (insn);
+      if (icode < 0)
+	fatal_insn_not_found (insn);    ここでエラーする.
+
+
+このときの insn は
+
+(gdb) p debug_insn_slim(insn)
+   14: x:SI=r11:SI
+$1197 = void
+(gdb)
+
+のようなもの. 試しに recg_memoized にステップインして負の値が返却される理由を確認
+してみた:
+
+
+            case E_SImode:
+              if (nonimmediate_operand (operands[0], E_SImode)
+                  && general_operand (operands[1], E_SImode))
+                return 5; /* *m68hc11.md:52 */
+              break;
+
+直接の原因は上の if が成立しないから: 
+
+(gdb) p debug_rtx(operands[0])
+(reg/i:SI 3 x)
+$1202 = void
+(gdb) p debug_rtx(operands[1])
+(reg:SI 11 [ <retval> ])
+$1203 = void
+(gdb) p nonimmediate_operand (operands[0], E_SImode)
+$1204 = 0
+(gdb) p general_operand (operands[1], E_SImode)
+p general_operand (operands[1], E_SImode)
+$1205 = 1
+(gdb) 
+
+つまり if の最初の条件が成立していないらしい.
+
+(reg/i:SI 3 x)
+
+の /i は immediate を表しているらしい. だから nonimmediate_operand で false
+が返っているというわけだ. さてこれは一体.
+
+まずは 
+
+(reg/i:SI 3 x)
+
+がどのタイミングで生成されるのか確認する.
+
+(gdb) p debug_rtx(x3)
+(reg/i:SI 3 x)
+$1225 = void
+(gdb) p x3
+$1226 = (rtx) 0xb78e9c80
+(gdb) watch *(int*)0xb78e9c80
+Hardware watchpoint 22: *(int*)0xb78e9c80
+(gdb) run
+...
+
+
+rtx m68hc11_function_value(const_tree ret_type, const_tree, bool)
+{
+...
+  return gen_rtx_REG(mode, X_REGNUM);    ここだった.
+}
+
+それはそうなる. おそらくここで /i の属性がどこかで付加されるのが期待しない動作.
+
+debug_rtx で /i が表示されるのは以下
+
+      if (RTX_FLAG (in_rtx, return_val))
+	fputs ("/i", m_outfile);
+
+
+/i は immediate の意味ではなかった. 戻り値ということらしい.
+なのでこのフラグが付加されるのは期待した動作.
+
+
+      icode = recog_memoized (insn);  ここで命令をダンプしてみた:
+      if (icode < 0)
+	fatal_insn_not_found (insn);
+
+
+(gdb) p debug_insn_slim(insn)
+    2: [r5:HI]=x:HI
+$1249 = void
+(gdb) c
+Continuing.
+
+Breakpoint 21, extract_insn (insn=0xb7877384) at ../.././gcc/recog.c:2292
+(gdb) p debug_insn_slim(insn)
+    3: [r5:HI+0x2]=d:HI
+$1250 = void
+(gdb) c
+Continuing.
+
+Breakpoint 21, extract_insn (insn=0xb78773a8) at ../.././gcc/recog.c:2292
+(gdb) p debug_insn_slim(insn)
+    7: r10:SI=[r5:HI]+[r4:HI]
+$1251 = void
+(gdb) c
+Continuing.
+
+Breakpoint 21, extract_insn (insn=0xb78773f0) at ../.././gcc/recog.c:2292
+(gdb) p debug_insn_slim(insn)
+   10: r11:SI=r10:SI
+$1252 = void
+(gdb) c
+Continuing.
+
+Breakpoint 21, extract_insn (insn=0xb7877438) at ../.././gcc/recog.c:2292
+(gdb) p debug_insn_slim(insn)
+   14: x:SI=r11:SI
+$1253 = void
+(gdb) 
+
+こうなっている. しょうがないから一旦 y を元に戻してみた.
+そして同じことをやってみた:
+
+(gdb) p debug_insn_slim(insn)
+    2: [r6:HI]=x:HI
+$1 = void
+(gdb) c
+Continuing.
+
+Breakpoint 1, extract_insn (insn=0xb7877384) at ../.././gcc/recog.c:2292
+(gdb) p debug_insn_slim(insn)
+    3: [r6:HI+0x2]=d:HI
+$2 = void
+(gdb) c
+Continuing.
+
+Breakpoint 1, extract_insn (insn=0xb78773a8) at ../.././gcc/recog.c:2292
+(gdb) p debug_insn_slim(insn)
+    7: r11:SI=[r6:HI]+[r5:HI]
+$3 = void
+(gdb) c
+Continuing.
+
+Breakpoint 1, extract_insn (insn=0xb78773f0) at ../.././gcc/recog.c:2292
+(gdb) p debug_insn_slim(insn)
+   10: r12:SI=r11:SI
+$4 = void
+(gdb) c
+Continuing.
+
+Breakpoint 1, extract_insn (insn=0xb7877438) at ../.././gcc/recog.c:2292
+(gdb) p debug_insn_slim(insn)
+   14: x:SI=r12:SI
+$5 = void
+(gdb) c
+Continuing.
+
+Breakpoint 1, extract_insn (insn=0xb7877480) at ../.././gcc/recog.c:2292
+(gdb) p debug_insn_slim(insn)
+    0: fp:BLK=fp:BLK
+$6 = void
+(gdb) 
+...
+エラーしていない. また少しずつ番号はずれている.
+insn=0xb7877438 に対して recg_memoized から負の値が返らない理由を調べてみる.
+
+            case E_SImode:
+              if (nonimmediate_operand (operands[0], E_SImode)
+                  && general_operand (operands[1], E_SImode))
+                return 5; /* *m68hc11.md:52 */
+              break;
+
+(gdb) p nonimmediate_operand (operands[0], E_SImode)
+$11 = 1
+(gdb) p general_operand (operands[1], E_SImode)
+$12 = 1
+(gdb) p debug_rtx(operands[0])
+(reg/i:SI 3 x)
+$13 = void
+(gdb) 
+
+見た目は y ありでもなしでも debug_rtx(operands[0]) の結果は同じだが
+nonimmediate_operand (operands[0], E_SImode) の結果が
+
+y ありなら 1
+y なしなら 0
+
+ということになっている. これは一体...
+
+まずは y ありで 1 が返る理由を調べる.
+
+int
+nonimmediate_operand (rtx op, machine_mode mode)
+{
+  return (general_operand (op, mode) && ! CONSTANT_P (op));
+}
+
+勿論 general_operand (op, mode) は 1 であるし op->code = REG なので 1 が返る.
+これは当り前.
+
+y なしで 1 が返る理由を調べてみたところ以下の函数で
+
+mode=E_SImode, regno=3(X_REGNUM) で false が返っているのが原因.
+
+static inline bool
+in_hard_reg_set_p (const_hard_reg_set regs, machine_mode mode,
+		   unsigned int regno)
+{
+
+
+  if (!HARD_REGISTER_NUM_P (end_regno - 1))
+    return false;   ここで返っている.
+
+(gdb) p end_regno
+$25 = 5
+
+
+#define HARD_REGISTER_NUM_P(REG_NO) ((REG_NO) < FIRST_PSEUDO_REGISTER)
+
+なので, これでいくと REGISTER_NAMES の最後の要素が表わすレジスタに対する
+レジスタ番号 x に対して
+
+HARD_REGISTER_NUM_P(x)
+
+は false になってしまう. これは意図しない結果. 最後の要素を GPR に含めないダミーの
+要素にすれば良さそう.
+
+
