@@ -361,8 +361,7 @@ extern "C" void modify_deleted_line(bfd* abfd, bfd_byte* buf)
   auto line_range = bfd_get_8(abfd, buf); buf += 1;
   (void)line_range;
   auto opc_base = bfd_get_8(abfd, buf); buf += 1;
-  int narg[20];
-  assert(opc_base < sizeof narg/sizeof narg[0]);  
+  int narg[opc_base];
   for (int i = 0 ; i != int(opc_base-1) ; ++i) {
     narg[i] = bfd_get_8(abfd, buf); buf += 1;
   }
