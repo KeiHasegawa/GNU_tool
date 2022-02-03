@@ -1,0 +1,26 @@
+*** gcc-10.2.0.org/gcc/config.gcc	2021-10-16 10:31:18.000000000 +0900
+--- gcc-10.2.0.cr16-elf.mine/gcc/config.gcc	2022-01-24 09:31:30.000000000 +0900
+***************
+*** 1496,1504 ****
+          use_gcc_stdint=provide
+          ;;
+  cr16-*-elf)
+!         tm_file="elfos.h ${tm_file} newlib-stdint.h"
+!         tmake_file="${tmake_file} cr16/t-cr16 "
+!         use_collect2=no
+          ;;
+  crisv32-*-elf | crisv32-*-none)
+  	tm_file="dbxelf.h elfos.h newlib-stdint.h ${tm_file}"
+--- 1496,1507 ----
+          use_gcc_stdint=provide
+          ;;
+  cr16-*-elf)
+!         tm_file="dbxelf.h elfos.h usegas.h newlib-stdint.h cr16/cr16.h"
+! 	tm_p_file="cr16/cr16-protos.h"
+!  	md_file="cr16/cr16.md"
+! 	out_file="cr16/cr16.c"
+!         tmake_file="cr16/t-cr16"
+!         use_gcc_stdint=wrap
+          ;;
+  crisv32-*-elf | crisv32-*-none)
+  	tm_file="dbxelf.h elfos.h newlib-stdint.h ${tm_file}"

@@ -1,0 +1,370 @@
+cc1 の雛形
+
+「AARCH64」=>「cc1 の雛形」=>「メモ」 を参照.
+AARCH64 と同様の手順で cc1 の雛形をビルドすることができる.
+
+
+以下開発記録
+
+2022.02.02 13:55
+
+加算をする函数 b.c のコンパイルはできている.
+hello world c.c のコンパイルもできている.
+
+hello world 11 はまだ.
+
+Compact RISC の ABI では可変個引数を取る函数はレジスタを使用せずスタックで渡す.
+
+現状以下のように生成されている
+
+	addd	$-6, (sp)
+	movd	(sp), (r2)
+	(mem:HI (plus:SI (reg:SI 2 r2 [27])
+        (const_int 4 [0x4])) [0  S2 A8]) := 0(r13)
+	(mem:SI (reg:SI 2 r2 [27]) [0  S4 A8]) := *.LC0
+	bal	(ra), _printf@c
+	addd	$6, (sp)
+
+つまり以下のようになっているということ:
+
+	sp := sp - 6
+	r2 := sp
+	[r2+4] := [fp]
+	[r2] := *.L0
+	r0 : = call printf
+	sp := sp + 6
+
+オリジナルの cc1 でもそうしているように push を生成したい.
+
+avr と同じように
+
+cr16.h:
+#define PUSH_ROUNDING(X)	(X)
+
+cr16.md:
+(define_insn "pushhi1"
+  [(match_operand:HI 0 "" "")]
+  ""
+  "*
+  return cr16_pushhi1(operands[0]);")
+
+(define_insn "pushsi1"
+  [(match_operand:SI 0 "" "")]
+  ""
+  "*
+  return cr16_pushsi1(operands[0]);")
+
+としてみてビルドし直した. 第 1 引数に対して cr16_pushsi1 が呼び出されるのが
+期待値だったがどちらも cr16_pushhi1 が呼び出されている.
+
+第 1 引数に対して cr16_pushhi1 が呼び出されたとき
+(gdb) p debug_rtx(x)
+(symbol_ref/f:SI ("*.LC0") [flags 0x2] <var_decl 0xb792a6e4 *.LC0>)
+$505 = void
+(gdb) 
+
+のようになっている. これは一体?
+今のところ不明なのでこれも cr16_pushhi1 で処理しておく.
+
+現状 hello world 11 が動作するようになった.
+
+-g オプションを指定してみたところリンカのバグが発火してしまった.
+現状 CompactRISC のテストは 48 個あってそのうち 46 が pass. 2 個が fail.
+2 個の fail はアセンブラレベルの next とブレークポイントの対応が取れていないという不思議
+なバグ
+
+~/lang/53_GNU_tool/gcc_cross/CompactRISC/test/test011/MEMO
+
+だが, おそらくこれらは今回のリンカのバグとは関係ないだろうからこの後リンカを修正して
+2/48 を目指す. => 修正してレベルダウンないことを確認した.
+
+現状 hello world 11 のプログラムは
+
+o main のブレークポイントで停止できていて, プロローグを適切にスキップできている.
+o f にステップインできていて, やはりプロローグを適切にスキップできている.
+o 引数の a や b を正しく表示できている.
+
+しかし where コマンドを実行すると
+
+#0  f (a=5, b=6) at a.c:5
+#1  0x00000194 in main () at a.c:10
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+
+のようになる. この段階では
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+のことはしていないが, やはりそこそこ動作している.
+
+cr16_expand_prologue
+
+で生成しているいくつかの rtx_insn に
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+のようにしてみたが where コマンドの結果は残念ながら変化なし. まだできていない.
+.debug_frame セクションをオリジナルのものと比較してみる.
+
+オリジナルの cc1 
+00000000 0000000c ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -2
+  Return address column: 14
+
+  DW_CFA_def_cfa: r15 ofs 0
+
+自前の cc1
+
+00000000 0000000f ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -2
+  Return address column: 17
+
+  DW_CFA_def_cfa: r15 ofs 0
+  DW_CFA_register: r17 in r14
+
+おそらく最初の 0xc と 0xf の違いは長さと思われるので
+
+  Return address column: XX
+
+の部分の違いについて調べてみる.
+
+自前の cc1
+% cat b.c
+int f(int a, int b)
+{
+  return a + b;
+}
+% ./cc1 -g -quiet b.c
+% cr16-elf-as -o b.o b.s
+% cr16-elf-objdump -g b.o
+...
+00000000 0000000f ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -2
+  Return address column: 17
+
+  DW_CFA_def_cfa: r15 ofs 0
+  DW_CFA_register: r17 in r14
+...
+
+オリジナルの cc1 で同様のことを試してみた:
+
+00000000 0000000c ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -2
+  Return address column: 14
+
+  DW_CFA_def_cfa: r15 ofs 0
+
+違いが出ている.
+
+自前の cc1
+.LSCIE0:
+	.4byte	0xffffffff
+	.byte	0x3
+	.string	""
+	.uleb128 0x1
+	.sleb128 -2
+	.uleb128 0x11   これ
+
+オリジナルの cc1
+.LSCIE0:
+	.long	0xffffffff
+	.byte	0x3
+	.string	""
+	.uleb128 0x1
+	.sleb128 -2
+	.uleb128 0xe    これ
+
+この違いが出る理由を調べてみる.
+
+(gdb) delete
+(gdb) b dwarf2out_frame_finish
+(gdb) run -g -quiet b.c
+...
+ブレークポイントにヒット
+(gdb) set asm_out_file=stdout
+(gdb) n
+
+  if (targetm.debug_unwind_info () == UI_DWARF2)
+    output_call_frame_info (0);  これを実行して問題の 0x11 が出ている.
+
+もう一度同様に実行. 今度は write にブレークポイントをセットすれば
+以下を発見した:
+
+    dw2_asm_output_data_uleb128 (return_reg, "CIE RA Column");
+
+このとき return_reg は 17 だった. return_reg の計算の仕方が間違えている.
+
+  return_reg = DWARF2_FRAME_REG_OUT (DWARF_FRAME_RETURN_COLUMN, for_eh);
+
+オリジナルの cc1 の cr16.h に以下を発見
+
+#define DWARF_FRAME_RETURN_COLUMN	\
+  DWARF_FRAME_REGNUM (RETURN_ADDRESS_REGNUM)
+
+おそらくこれが関係している. プリプロセスの結果を確認するため以下のようにして dwarf2out.i
+を生成した.
+
+% g++ -fno-PIE -E   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H -I. -I. -I../.././gcc -I../.././gcc/. -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber -I../.././gcc/../libbacktrace   -o dwarf2out.i -MT dwarf2out.o -MMD -MP -MF ./.deps/dwarf2out.TPo ../.././gcc/dwarf2out.c
+
+該当箇所は以下のようにマクロ展開されていた.
+
+  return_reg = ((14));
+
+同様のことを自前の cc1 で試してみると以下のようになっていた.
+
+  return_reg = (FIRST_PSEUDO_REGISTER);
+
+これは動きそうにはない(最初はそう思ったが実はこれでも動く). 自前の cc1 に以下を追加:
+
+#define DWARF_FRAME_RETURN_COLUMN  DWARF_FRAME_REGNUM(RA_REGNUM)
+
+プリプロセスの結果は期待したものになっていた. おそらく UNITS_PER_WORD
+が 2 であることが影響しているのかもしれないが今回はそこまで追求しないでおく.
+
+2022.02.03 9:20 リビルド開始.
+2022.02.03 10:05 動作確認 => NG.
+
+おそらく修正前の
+
+00000000 0000000f ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -2
+  Return address column: 17
+
+  DW_CFA_def_cfa: r15 ofs 0
+  DW_CFA_register: r17 in r14
+
+これも辻褄は合っていて r14 に戻りアドレスがあるということを間接的にだ
+が表現している.
+
+以下はオリジナルの b.c をコンパイルして objdump した結果
+
+00000000 <_f>:
+   0:	1d 01       	push	$0x2,r13
+   2:	bf 60 f8 ff 	addd	$0xfff8:m,(sp)
+   6:	fd 55       	movd	(sp),(r13)
+   8:
+
+00000010 00000024 00000000 FDE cie=00000000 pc=00000000..0000001e
+  DW_CFA_advance_loc4: 2 to 00000002
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_offset: r13 at cfa-4
+  DW_CFA_advance_loc4: 4 to 00000006
+  DW_CFA_def_cfa_offset: 12
+  DW_CFA_advance_loc4: 2 to 00000008
+  DW_CFA_def_cfa_register: r13
+  DW_CFA_nop
+
+自前の cc1 では葉の函数でも必ず戻りアドレスを保存しているので単純な比
+較はできないが上は
+
+アドレス 2 までに
+スタックポインタを元の位置から 4 にして
+フレームポインタ(r13)をスタックポインタ相対 -4 に保存している.
+	push	$2, r13
+
+アドレス 6 までに
+スタックポインタを元の位置から 12 にしている
+	addd	$-8, (sp)
+
+アドレス 8 までに
+フレームポインタ := スタックポインタ
+	movd	(sp), (r13)
+
+ということを表現している.
+
+一方自前の cc1 は
+
+00000000 <_f>:
+   0:	9d 01       	push	$0x2,r13,RA
+   2:	bf 60 fc ff 	addd	$0xfffc:m,(sp)
+   6:	fd 55       	movd	(sp),(r13)
+   8:
+
+00000010 0000001a 00000000 FDE cie=00000000 pc=001a0000..001a0204
+  DW_CFA_nop
+  DW_CFA_offset: r13 at cfa-8
+  DW_CFA_offset: r14 at cfa-4
+  DW_CFA_def_cfa_offset: 8
+  DW_CFA_advance_loc4: 4 to 001a0004
+  DW_CFA_def_cfa_offset: 12
+
+なんだか良く分からないのだが pc=... の部分も様子が違っている.
+
+	     push	$0x2,r13,RA
+
+に対する部分が間違えているというよりも, アドレスに関する部分が間違えている.  
+
+
+ 	.2byte	.LFB0
+ 	.2byte	.LFE0-.LFB0
+
+これを
+
+ 	.long	.LFB0
+ 	.long	.LFE0-.LFB0
+
+のようにすれば一応期待したものになっている.
+
+
+DWARF2_ADDR_SIZE が 2 になっているらしい. これも UNIT_PER_WORDS の影響
+だろうか. マクロ展開されたものは UNIT_PER_WORDS を参照していたが
+
+#define POINTER_SIZE 32
+
+これも原因らしい. そしておそらく pushsi1 が呼び出されなかったのもこれ
+が原因らしい(実は違っていた).
+
+2022.02.03 11:25 一旦
+
+#define DWARF_FRAME_RETURN_COLUMN  DWARF_FRAME_REGNUM(RA_REGNUM)
+
+を削除して
+
+#define POINTER_SIZE 32
+
+だけを追加する. おそらく hello world 11 が動作しなくなるがそれはそれでよし.
+
+2022.02.03 12:30
+
+リビルドした cc1 で確認したが cr16_pushsi1 が呼び出されることはなかった.
+これは別の問題らしい.
+生成された .debug_frame を確認した.
+
+.debug_frame セクションの内容(a.elf より読み込んだもの):
+
+
+00000000 00000010 ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -2
+  Return address column: 17
+
+  DW_CFA_def_cfa: r15 ofs 0
+  DW_CFA_register: r17 in r14         もとの状態
+  DW_CFA_nop
+
+00000014 0000001e 00000000 FDE cie=00000000 pc=0000016e..00000188
+  DW_CFA_advance_loc4: 2 to 00000170
+  DW_CFA_offset: r13 at cfa-8
+  DW_CFA_offset: r14 at cfa-4
+  DW_CFA_def_cfa_offset: 8
+  DW_CFA_advance_loc4: 4 to 00000174
+  DW_CFA_def_cfa_offset: 12            期待した形
+
+これで gdb が期待した動作をしている.
+
