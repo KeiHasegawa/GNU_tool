@@ -1,8 +1,139 @@
-*** gdb-10.2.aarch64-elf/sim/msp430/msp430-sim.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.msp430-elf/sim/msp430/msp430-sim.c	2021-11-26 14:50:21.000000000 +0900
+*** gdb-10.2.org/sim/msp430/msp430-sim.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.msp430-elf/sim/msp430/msp430-sim.c	2022-02-03 16:46:57.000000000 +0900
+***************
+*** 132,138 ****
+    CPU_PC_STORE (MSP430_CPU (sd)) = msp430_pc_store;
+    CPU_REG_FETCH (MSP430_CPU (sd)) = msp430_reg_fetch;
+    CPU_REG_STORE (MSP430_CPU (sd)) = msp430_reg_store;
+! 
+    /* Allocate memory if none specified by user.
+       Note - these values match the memory regions in the libgloss/msp430/msp430[xl]-sim.ld scripts.  */
+    if (sim_core_read_buffer (sd, MSP430_CPU (sd), read_map, &c, 0x2, 1) == 0)
+--- 132,138 ----
+    CPU_PC_STORE (MSP430_CPU (sd)) = msp430_pc_store;
+    CPU_REG_FETCH (MSP430_CPU (sd)) = msp430_reg_fetch;
+    CPU_REG_STORE (MSP430_CPU (sd)) = msp430_reg_store;
+! #if 0
+    /* Allocate memory if none specified by user.
+       Note - these values match the memory regions in the libgloss/msp430/msp430[xl]-sim.ld scripts.  */
+    if (sim_core_read_buffer (sd, MSP430_CPU (sd), read_map, &c, 0x2, 1) == 0)
+***************
+*** 145,151 ****
+      sim_do_commandf (sd, "memory-region 0x10000,0x80000"); /* HIGH FLASH RAM.  */
+    if (sim_core_read_buffer (sd, MSP430_CPU (sd), read_map, &c, 0x90000, 1) == 0)
+      sim_do_commandf (sd, "memory-region 0x90000,0x70000"); /* HIGH ROM.  */
+! 
+    /* Check for/establish the a reference program image.  */
+    if (sim_analyze_program (sd,
+  			   (STATE_PROG_ARGV (sd) != NULL
+--- 145,151 ----
+      sim_do_commandf (sd, "memory-region 0x10000,0x80000"); /* HIGH FLASH RAM.  */
+    if (sim_core_read_buffer (sd, MSP430_CPU (sd), read_map, &c, 0x90000, 1) == 0)
+      sim_do_commandf (sd, "memory-region 0x90000,0x70000"); /* HIGH ROM.  */
+! #endif
+    /* Check for/establish the a reference program image.  */
+    if (sim_analyze_program (sd,
+  			   (STATE_PROG_ARGV (sd) != NULL
+***************
+*** 190,196 ****
+    unsigned char resetv[2];
+    int c;
+    int new_pc;
+! 
+    /* Set the PC to the default reset vector if available.  */
+    c = sim_core_read_buffer (sd, MSP430_CPU (sd), read_map, resetv, 0xfffe, 2);
+    new_pc = resetv[0] + 256 * resetv[1];
+--- 190,196 ----
+    unsigned char resetv[2];
+    int c;
+    int new_pc;
+! #if 0
+    /* Set the PC to the default reset vector if available.  */
+    c = sim_core_read_buffer (sd, MSP430_CPU (sd), read_map, resetv, 0xfffe, 2);
+    new_pc = resetv[0] + 256 * resetv[1];
+***************
+*** 198,204 ****
+    /* If the reset vector isn't initialized, then use the ELF entry.  */
+    if (abfd != NULL && !new_pc)
+      new_pc = bfd_get_start_address (abfd);
+! 
+    sim_pc_set (MSP430_CPU (sd), new_pc);
+    msp430_pc_store (MSP430_CPU (sd), new_pc);
+  
+--- 198,207 ----
+    /* If the reset vector isn't initialized, then use the ELF entry.  */
+    if (abfd != NULL && !new_pc)
+      new_pc = bfd_get_start_address (abfd);
+! #else
+!   assert(abfd);
+!   new_pc = bfd_get_start_address (abfd);
+! #endif  
+    sim_pc_set (MSP430_CPU (sd), new_pc);
+    msp430_pc_store (MSP430_CPU (sd), new_pc);
+  
+***************
+*** 217,224 ****
+    Get_Byte_Local_Data *ld = (Get_Byte_Local_Data *)vld;
+    char buf[1];
+    SIM_DESC sd = ld->sd;
+! 
+    sim_core_read_buffer (sd, MSP430_CPU (sd), read_map, buf, ld->gb_addr, 1);
+    ld->gb_addr ++;
+    return buf[0];
+  }
+--- 220,232 ----
+    Get_Byte_Local_Data *ld = (Get_Byte_Local_Data *)vld;
+    char buf[1];
+    SIM_DESC sd = ld->sd;
+! #if 0
+    sim_core_read_buffer (sd, MSP430_CPU (sd), read_map, buf, ld->gb_addr, 1);
++ #else
++   SIM_CPU* cpu = MSP430_CPU(sd);
++   sim_cia cia = msp430_pc_fetch(cpu);
++   buf[0] = sim_core_read_aligned_1(cpu, cia, read_map, ld->gb_addr);
++ #endif  
+    ld->gb_addr ++;
+    return buf[0];
+  }
+***************
+*** 678,698 ****
+--- 686,718 ----
+        switch (opc->size)
+  	{
+  	case 8:
++ #if 0	  
+  	  buf[0] = val;
+  	  sim_core_write_buffer (sd, MSP430_CPU (sd), write_map, buf, addr, 1);
++ #else
++ 	  sim_core_write_aligned_1 (MSP430_CPU (sd), MSP430_CPU (sd)->state.regs[0], write_map, addr, val);
++ #endif	  
+  	  break;
+  	case 16:
++ #if 0
+  	  buf[0] = val;
+  	  buf[1] = val >> 8;
+  	  sim_core_write_buffer (sd, MSP430_CPU (sd), write_map, buf, addr, 2);
++ #else
++ 	  sim_core_write_aligned_2 (MSP430_CPU (sd), MSP430_CPU (sd)->state.regs[0], write_map, addr, val);
++ #endif	  
+  	  break;
+  	case 20:
+  	case 32:
++ #if 0	  
+  	  buf[0] = val;
+  	  buf[1] = val >> 8;
+  	  buf[2] = val >> 16;
+  	  buf[3] = val >> 24;
+  	  sim_core_write_buffer (sd, MSP430_CPU (sd), write_map, buf, addr, 4);
++ #else
++ 	  sim_core_write_aligned_4 (MSP430_CPU (sd), MSP430_CPU (sd)->state.regs[0], write_map, addr, val);
++ #endif	  
+  	  break;
+  	default:
+  	  assert (! opc->size);
 ***************
 *** 1064,1072 ****
---- 1064,1077 ----
+--- 1084,1097 ----
       msp430_cio (sd);
   
     ld.sd = sd;
@@ -19,7 +150,7 @@
       {
 ***************
 *** 1494,1496 ****
---- 1499,1690 ----
+--- 1519,1716 ----
   	sim_events_process (sd);
       }
   }
@@ -185,6 +316,8 @@
 + {
 +   Get_Byte_Local_Data* p = (Get_Byte_Local_Data*)ptr;
 +   SIM_DESC sd = p->sd;
++   if (!sd)
++     return;
 +   const char* fmt = first_string(sd, MSP430_CPU(sd), TRUE);
 +   int argc = 1;
 +   int ret = 0;
@@ -198,6 +331,8 @@
 + {
 +   Get_Byte_Local_Data* p = (Get_Byte_Local_Data*)ptr;
 +   SIM_DESC sd = p->sd;
++   if (!sd)
++     return;
 +   const char* fmt = first_string(sd, MSP430_CPU(sd), FALSE);
 +   int ret = puts(fmt);
 +   REG_PUT(12, ret);
@@ -208,6 +343,8 @@
 + {
 +   Get_Byte_Local_Data* p = (Get_Byte_Local_Data*)ptr;
 +   SIM_DESC sd = p->sd;
++   if (!sd)
++     return;
 +   int arg = first_arg(sd, MSP430_CPU(sd), FALSE);
 +   int ret = putchar(arg);
 +   REG_PUT(12, ret);
