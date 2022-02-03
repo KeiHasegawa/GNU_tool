@@ -1,5 +1,5 @@
 *** gdb-10.2.org/gdb/msp430-tdep.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.msp430-elf/gdb/msp430-tdep.c	2022-01-22 09:25:52.000000000 +0900
+--- gdb-10.2.msp430-elf/gdb/msp430-tdep.c	2022-02-03 17:05:27.000000000 +0900
 ***************
 *** 159,164 ****
 --- 159,167 ----
@@ -25,6 +25,34 @@
       return builtin_type (gdbarch)->builtin_uint32;
     else if (reg_nr == MSP430_PC_REGNUM)
 ***************
+*** 283,289 ****
+  
+  struct msp430_get_opcode_byte_handle
+  {
+!   CORE_ADDR pc;
+  };
+  
+  /* Fetch a byte on behalf of the opcode decoder.  HANDLE contains
+--- 289,296 ----
+  
+  struct msp430_get_opcode_byte_handle
+  {
+!   void* sd;
+!   int pc;
+  };
+  
+  /* Fetch a byte on behalf of the opcode decoder.  HANDLE contains
+***************
+*** 365,370 ****
+--- 372,378 ----
+        struct msp430_get_opcode_byte_handle opcode_handle;
+        MSP430_Opcode_Decoded opc;
+  
++       opcode_handle.sd = 0;
+        opcode_handle.pc = pc;
+        bytes_read = msp430_decode_opcode (pc, &opc, msp430_get_opcode_byte,
+  					 &opcode_handle);
+***************
 *** 571,578 ****
   
     if (TYPE_LENGTH (valtype) > 8
@@ -34,7 +62,7 @@
   
     if (readbuf)
       {
---- 577,590 ----
+--- 579,592 ----
   
     if (TYPE_LENGTH (valtype) > 8
         || valtype->code () == TYPE_CODE_STRUCT
@@ -51,7 +79,7 @@
       {
 ***************
 *** 635,640 ****
---- 647,673 ----
+--- 649,675 ----
   }
   
   /* Implement the "push_dummy_call" gdbarch method.  */
@@ -81,7 +109,7 @@
   msp430_push_dummy_call (struct gdbarch *gdbarch, struct value *function,
 ***************
 *** 659,664 ****
---- 692,701 ----
+--- 694,703 ----
     gdb_assert (func_type->code () == TYPE_CODE_FUNC
   	      || func_type->code () == TYPE_CODE_METHOD);
   
@@ -94,7 +122,7 @@
     for (write_pass = 0; write_pass <= 1; write_pass++)
 ***************
 *** 695,702 ****
---- 732,747 ----
+--- 734,749 ----
   	      || arg_type->code () == TYPE_CODE_UNION)
   	    {
   	      /* Aggregates of any size are passed by reference.  */
