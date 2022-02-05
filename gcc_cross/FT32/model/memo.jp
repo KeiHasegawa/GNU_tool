@@ -1,0 +1,154 @@
+cc1 の雛形
+
+「AARCH64」=>「cc1 の雛形」=>「メモ」 を参照.
+AARCH64 と同様の手順で cc1 の雛形をビルドすることができる.
+
+(*) 備考
+ビルドの手順で AARCH64 では以下のようにパッチを適用する必要があったが
+
+% patch -p1 < ../gcc-10.2.0.aarch64-elf.mine.diff
+
+FR-V ではたまたま差分がなかったため, この手順は必要なし.
+
+また FR-V の雛形と同様に
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+のように .debug_frame セクションに意味のあるデバッグ情報を生成しなくても期待通り
+動作している.
+
+
+以下開発記録
+
+現状 hello world 11 のプログラムが正しく動作している.
+
+-g オプション付きでコンパイルしたものを ft32-elf-gdb の制御下で動作させてみた.
+現状では
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+のようなことは一切していないので .debug_frame は以下のようになっている:
+
+00000000 00000010 ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -4
+  Return address column: 33
+
+  DW_CFA_def_cfa: r31 ofs 0
+  DW_CFA_offset: r33 at cfa+0
+  DW_CFA_nop
+  DW_CFA_nop
+
+00000014 0000000c 00000000 FDE cie=00000000 pc=00000070..00000094
+
+00000024 0000000c 00000000 FDE cie=00000000 pc=00000094..000000c0
+
+main のブレークポイントで適切にプロローグをスキップして停止できている.
+f にステップインしてプロローグを適切にスキップできている.
+
+しかしこのとき以下のようになっている.
+
+f (a=<error reading variable: Cannot access memory at address 0xfffffc>, b=<error reading variable: Cannot access memory at address 0xfffff8>) at a.c:5
+
+以下は .debug_info の内容
+
+ <2><c9>: 省略番号: 6 (DW_TAG_formal_parameter)
+    <ca>   DW_AT_name        : a
+    <cc>   DW_AT_decl_file   : 1
+    <cd>   DW_AT_decl_line   : 3
+    <ce>   DW_AT_decl_column : 11
+    <cf>   DW_AT_type        : <0x83>
+    <d3>   DW_AT_location    : 2 byte block: 8d 7c 	(DW_OP_breg29 (r29): -4)
+ <2><d6>: 省略番号: 6 (DW_TAG_formal_parameter)
+    <d7>   DW_AT_name        : b
+    <d9>   DW_AT_decl_file   : 1
+    <da>   DW_AT_decl_line   : 3
+    <db>   DW_AT_decl_column : 18
+    <dc>   DW_AT_type        : <0x83>
+    <e0>   DW_AT_location    : 2 byte block: 8d 78 	(DW_OP_breg29 (r29): -8)
+
+これは期待したものだが, a や b を適切にアクセスできていない.
+
+現状 where コマンドの結果は以下のようになっている.
+
+(frv-elf-gdb) where
+#0  f (a=<error reading variable: Cannot access memory at address 0xfffffc>, b=<error reading variable: Cannot access memory at address 0xfffff8>) at a.c:5
+#1  0x000000a4 in main () at a.c:10
+(frv-elf-gdb)
+
+変数を正しく表示できていないことを除けばできているように見える.
+
+現状 finish コマンドの結果は以下のようになっている.
+
+(frv-elf-gdb) finish
+Run till exit from #0  f (a=<error reading variable: Cannot access memory at address 0xfffffc>, b=<error reading variable: Cannot access memory at address 0xfffff8>) at a.c:5
+0x000000a4 in main () at a.c:10
+Value returned is $1 = 11
+(frv-elf-gdb)
+
+変数を正しく表示できていないことを除けばできているように見える.
+
+フレームポインタの値を
+0x1000000
+
+として gdb が計算してそこから 4 を引いた
+
+0xfffffc
+
+を a のアドレスであると考えているということなのかも.
+
+(frv-elf-gdb) p &a
+$1 = (int *) 0xfffffc
+(frv-elf-gdb)
+
+それっぽい.
+
+できているオリジナルの cc1 では以下のようになっている.
+
+ <2><c9>: 省略番号: 6 (DW_TAG_formal_parameter)
+    <ca>   DW_AT_name        : a
+    <cc>   DW_AT_decl_file   : 1
+    <cd>   DW_AT_decl_line   : 3
+    <ce>   DW_AT_decl_column : 11
+    <cf>   DW_AT_type        : <0x83>
+    <d3>   DW_AT_location    : 2 byte block: 70 7c 	(DW_OP_breg0 (r0): -4)
+ <2><d6>: 省略番号: 6 (DW_TAG_formal_parameter)
+    <d7>   DW_AT_name        : b
+    <d9>   DW_AT_decl_file   : 1
+    <da>   DW_AT_decl_line   : 3
+    <db>   DW_AT_decl_column : 18
+    <dc>   DW_AT_type        : <0x83>
+    <e0>   DW_AT_location    : 2 byte block: 70 78 	(DW_OP_breg0 (r0): -8)
+
+オリジナルの ft32.md
+
+(define_constants [
+  (FP_REG 0)
+  (SP_REG 1)
+  (CC_REG 35)
+])
+
+#define FT32_FP     0
+#define FT32_SP     1
+
+#define STACK_POINTER_REGNUM FT32_SP
+
+#define FRAME_POINTER_REGNUM FT32_FP
+
+#define REGISTER_NAMES {        \
+  "$fp", "$sp", "$r0", "$r1",   \
+
+なるほどこういう事情があったのか.
+
+まずは, 0 番, 1 番のレジスタはフレームポインタとスタックポインタにする必要があるということ.
+これをしないで ft32-elf-gdb を修正してもよいのだがそれはそれで面倒なのでこうしておく.
+
+29 番のレジスタを 0  番のレジスタ
+31 番のレジスタを 1  番のレジスタ
+1  番のレジスタを 2  番のレジスタ
+...
+30 番のレジスタを 31 番のレジスタ
+
+のような不自然なことをしているから本当は良くない.
