@@ -1,0 +1,61 @@
+cc1 の雛形
+
+「AARCH64」=>「cc1 の雛形」=>「メモ」 を参照.
+AARCH64 と同様の手順で cc1 の雛形をビルドすることができる.
+
+以下開発記録.
+
+現状 hello world 11 のプログラムが動作している.
+
+この段階では
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+のようにしている rtx_insn はない. -g オプション付きで hello world 11
+をコンパイルした結果 .debug_frame は以下のようになっている.
+
+00000000 000e ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -2
+  Return address column: 9
+
+  DW_CFA_def_cfa: r7 ofs 0
+  DW_CFA_offset: r9 at cfa+0
+
+00000012 0008 00000000 FDE cie=00000000 pc=01d0..01f2
+
+0000001e 001e 00000000 FDE cie=00000000 pc=01f2..021e
+  DW_CFA_advance_loc4: 18 to 0204
+  DW_CFA_def_cfa_offset: 2
+  DW_CFA_advance_loc4: 6 to 020a
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_advance_loc4: 10 to 0214
+  DW_CFA_def_cfa_offset: 0
+  DW_CFA_nop
+
+main 函数に対しても何らかの情報が出ている. これについては今は深く追求しないが
+M68HC11 => cc1 の雛形 => 3rd.jp で解析されている.
+
+-g オプション付きでコンパイルしたものを h8300-elf-gdb の制御のもとで動作させてみた.
+
+main のブレークポイントでプロローグを適切にスキップできていて停止できている.
+f にステップインしたときにプロローグの部分をスキップできていない.
+プロローグをスキップした段階では a や b を適切に表示できている.
+この状態で where コマンドを実行した結果は
+
+(h8300-elf-gdb) where
+#0  f (a=5, b=6) at a.c:5
+#1  0x00000006 in ?? ()
+Backtrace stopped: frame did not save the PC
+(h8300-elf-gdb)
+
+のようになっている. おそらく b = 6 をスタックに保存して, そこに戻りアドレスがあるとして
+表示しているらしい.
+
+プロローグで生成している全ての rtx_insn に
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+としてみたところ期待通り h8300-elf-gdb が動作している.
