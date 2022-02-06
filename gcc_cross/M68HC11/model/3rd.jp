@@ -1,0 +1,1768 @@
+.debug_frame を生成すると gdb が期待した動作をしない件の調査
+
+現状以下のようになっている.
+
+00000000 000e ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -2
+  Return address column: 11
+
+  DW_CFA_def_cfa: r3 ofs 0
+  DW_CFA_offset: r11 at cfa+0
+
+これの意味は 11 番のレジスタに戻りアドレスが格納されていて, それは 3 番のレジスタの
+オフセット 0 にあるということである. これがおそらく正しくない.
+
+函数呼び出し命令でスタックに戻りアドレスを格納する h8300 では次のようになっている.
+
+00000000 0010 ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: 2
+  Return address column: 12
+
+  DW_CFA_def_cfa: r7 ofs 2
+  DW_CFA_offset_extended_sf: r12 at cfa-2
+  DW_CFA_nop
+
+h8300 では FIRST_PSEUDO_REGISTER が 12 である. つまり gcc では, 戻りアドレスが
+スタックに積まれてくる場合, (最初の)疑似レジスタに戻りアドレスが格納されていて
+それがスタックポインタ (h8300 ならば r7) の相対位置にあるということを .debug_frame
+で表現していて, それを gdb が解釈するという仕組みになっている.
+
+m68hc11 の場合の期待値は以下のようになると考えた
+
+00000000 0010 ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -1
+  Return address column: 11
+
+  DW_CFA_offset_extended_sf: r11 at cfa-1
+  DW_CFA_def_cfa: r3 ofs 2
+
+h8300 では以下のようなデータを生成している
+
+	.byte	0xc	; DW_CFA_def_cfa
+	.uleb128 0x7	; r7
+	.uleb128 0x2	; ofs 2
+
+	.byte	0x11	; DW_CFA_offset_extended_sf
+	.uleb128 0xc	; r12 (at cfa-2)
+	.sleb128 -1
+
+これを生成しているのは
+
+  FOR_EACH_VEC_ELT (*cie_cfi_vec, i, cfi)
+    output_cfi (cfi, NULL, for_eh);
+
+とりあえず以下のように m68hc11.h を修正してリビルド
+
+extern rtx m68hc11_incoming_return_addr_rtx();
+#define INCOMING_RETURN_ADDR_RTX m68hc11_incoming_return_addr_rtx()
+
+#define DWARF_CIE_DATA_ALIGNMENT	2
+
+多分 DWARF_CIE_DATA_ALIGNMENT は必要ないかもしれないが h8300 のように
+
+  DW_CFA_def_cfa: r7 ofs 2
+  DW_CFA_offset_extended_sf: r12 at cfa-2
+  DW_CFA_nop
+
+のようになることをとりあえず目指してみた.
+2022.02.03 14:17
+
+やはり cfa-2 の 2 と DWARF_CIE_DATA_ALIGNMENT とは無関係らしい.
+ということで以下のコンテナにどこで値がセットされているか
+
+  FOR_EACH_VEC_ELT (*cie_cfi_vec, i, cfi)
+    output_cfi (cfi, NULL, for_eh);
+
+h8300 で調べてみる.
+
+  loc.offset = DEFAULT_INCOMING_FRAME_SP_OFFSET;
+  def_cfa_1 (&loc);
+
+ここだった. ここでオフセット 2 になっている.
+
+2 個目はお馴染みの
+
+      initial_return_save (INCOMING_RETURN_ADDR_RTX);
+
+これからすると,
+
+  DW_CFA_offset_extended_sf: r11 at cfa-1
+  DW_CFA_def_cfa: r3 ofs 2
+
+のように順番を変更するのは少し難しそう.
+
+以下を追加してみた:
+
+#define INCOMING_RETURN_ADDR_RTX gen_rtx_MEM(Pmode, stack_pointer_rtx)
+#define INCOMING_FRAME_SP_OFFSET (-1)
+
+リビルド開始 2022.02.03 14:26
+
+ビルド後動作を確認してみたところ
+
+./cc1 -o b.s b.c -g -quiet || exit 1
+./cc1 -o b.s b.c -g -quiet
+b.c:7:1: internal compiler error: in div_data_align, at dwarf2cfi.c:400
+    7 | }
+      | ^
+0x85da469 div_data_align
+	../.././gcc/dwarf2cfi.c:400
+0x85dfb10 output_cfi(dw_cfi_node*, dw_fde_node*, int)
+
+だめらしい.
+
+div_data_align (HOST_WIDE_INT off)  off=-1 にいなっていて 
+{
+  HOST_WIDE_INT r = off / DWARF_CIE_DATA_ALIGNMENT;
+  gcc_assert (r * DWARF_CIE_DATA_ALIGNMENT == off);   ここでエラー
+  return r;
+}
+
+ということはとりあえず 
+
+#define DWARF_CIE_DATA_ALIGNMENT	2
+#define INCOMING_FRAME_SP_OFFSET	2
+
+のように修正してみる. もう一度リビルド. 2022.02.03 15:00
+
+実行確認すると以下のようになった:
+
+Breakpoint 1, main () at a.c:10
+10	  printf("hello world %d\n", f(5,6));
+f (a=-858993460, b=0) at a.c:4
+4	{
+#0  f (a=-858993460, b=0) at a.c:4
+#1  0x00000010 in ?? ()
+#2  0x00000000 in ?? ()
+
+そして finish コマンドで不正メモリアクセスしている.
+
+まず f にステップインしてプロローグが適切にスキップできていない.
+適切にスキップできていれば a と b の値は正しく表示できている.
+
+
+f にブレークポイントをセットしてそこまで実行し, where コマンドを実行すると
+
+Breakpoint 1, f (a=5, b=6) at a.c:5
+(m68hc11-elf-gdb) where
+#0  f (a=5, b=6) at a.c:5
+#1  0x0000f710 in ?? ()
+#2  0x00000000 in ?? ()
+(m68hc11-elf-gdb)
+
+のようになっている.
+
+% cat c.c
+int f(int a, int b)
+{
+  return a + b;
+}
+% ./cc1 -o c.s c.c -g -quiet
+% m68hc11-elf-as -o c.o c.s
+% m68hc11-elf-objdump -d -g c.o > c.objdump
+
+00000000 <f>:
+   0:	18 de 00    	ldy	*0x0 <f>
+   3:	18 3c       	pshy
+   5:	18 3c       	pshy
+   7:	18 3c       	pshy
+   9:	9f 00       	sts	*0x0 <f>
+   b:	18 de 00    	ldy	*0x0 <f>
+   e:	cd ef 01    	stx	0x1,y
+  11:	18 de 00    	ldy	*0x0 <f>
+  14:	18 ed 03    	std	0x3,y
+
+00000017 <.LM2>:
+...
+
+
+00000014 0026 00000000 FDE cie=00000000 pc=0000..0035
+  DW_CFA_advance_loc4: 5 to 0005
+  DW_CFA_def_cfa_offset: 4         <----------------- 2 の間違い
+  DW_CFA_offset_extended_sf: r2 at cfa-4        <---- 2 の間違い
+  DW_CFA_advance_loc4: 2 to 0007
+  DW_CFA_def_cfa_offset: 6               <----------- 4 の間違い
+  DW_CFA_offset_extended_sf: r2 at cfa-6   <--------- 4 の間違い
+  DW_CFA_advance_loc4: 2 to 0009
+  DW_CFA_def_cfa_offset: 8         <----------------- 6 の間違い
+  DW_CFA_offset_extended_sf: r2 at cfa-8  <---------- 6 の間違い
+
+と思ったが... 一旦以下を削除する.
+
+#define DWARF_CIE_DATA_ALIGNMENT	2
+#define INCOMING_FRAME_SP_OFFSET	2
+
+2022.02.04 9:30 リビルド開始.
+
+10:50 以下を確認
+00000000 000e ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -2
+  Return address column: 11
+
+  DW_CFA_def_cfa: r3 ofs 0
+  DW_CFA_offset: r11 at cfa+0     # +0 に戻ったが
+
+00000012 0024 00000000 FDE cie=00000000 pc=0000..0035
+  DW_CFA_advance_loc4: 5 to 0005
+  DW_CFA_def_cfa_offset: 2              # むしろこっちが期待値
+  DW_CFA_offset: r2 at cfa-2            # 
+  DW_CFA_advance_loc4: 2 to 0007
+  DW_CFA_def_cfa_offset: 4              # むしろこっちが期待値
+  DW_CFA_offset: r2 at cfa-4            #
+  DW_CFA_advance_loc4: 2 to 0009
+  DW_CFA_def_cfa_offset: 6              # むしろこっちが期待値
+  DW_CFA_offset: r2 at cfa-6            #
+  DW_CFA_nop
+
+そして f にステップインしたときプロローグをスキップできていないのは相変わらずだが,
+f にブレークポイントをセットしてそこまで実行したときに, 適切にプロローグを
+スキップできていて where コマンドの結果は
+
+(m68hc11-elf-gdb) where
+#0  f (a=5, b=6) at a.c:5
+#1  0x0000f710 in ?? ()
+#2  0x000010ca in main () at a.c:10
+(m68hc11-elf-gdb)
+
+のようになっている. おしい.
+
+f の先頭アドレスで sp = 0xfef1 で
+
+0xfef0	+---------------+
+  	|     0x0000	| <- sp
+0xfef2	+---------------+
+	|     0x10ca	|
+0xfef4	+---------------+
+
+のようになっている. 最初の 2 命令
+
+        	ldy	_*.frame
+           	pshy
+
+を実行すると
+
+0xfeee	+---------------+
+  	|     0x0000	| <- sp
+0xfef0	+---------------+
+  	|     0xfef7	| <- sp_{old}
+0xfef2	+---------------+
+	|     0x10ca	|
+0xfef4	+---------------+
+
+
+のようになる. そこで where を実行したとき, gdb には戻りアドレスは
+
+	      [sp_{old}]
+
+にあるとデバッグ情報にあるので 0xf710 から呼び出されたというような結果になる.
+しかしそこから何故 0x10ca が次に割り出されているのかは今の段階では全く不明.
+
+そこで以下のように修正
+
+extern rtx m68hc11_incoming_return_addr_rtx();
+#define INCOMING_RETURN_ADDR_RTX	m68hc11_incoming_return_addr_rtx()
+
+rtx m68hc11_incoming_return_addr_rtx()
+{
+  auto sp = stack_pointer_rtx;
+  auto plus = gen_rtx_PLUS(Pmode, sp, gen_rtx_CONST_INT(Pmode, 1));
+  return gen_rtx_MEM(Pmode, plus);
+}
+
+ビルド開始 11:04
+
+11:37 動作確認
+
+コンパイル時に以下のエラーになる.
+
+c.c:4:1: internal compiler error: in div_data_align, at dwarf2cfi.c:400
+    4 | }
+      | ^
+
+static inline HOST_WIDE_INT
+div_data_align (HOST_WIDE_INT off)
+{
+  HOST_WIDE_INT r = off / DWARF_CIE_DATA_ALIGNMENT;
+  gcc_assert (r * DWARF_CIE_DATA_ALIGNMENT == off);   ここでエラー
+  return r;
+}
+
+
+(gdb) p off
+$1 = 1
+(gdb) p r
+$2 = 0
+(gdb)
+
+なので
+
+DWARF_CIE_DATA_ALIGNMENT を 1 に define することでこのエラーは回避できそうだが.
+
+11:40 リビルド開始
+
+12:22 以下を確認
+
+00000000 000e ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: 1
+  Return address column: 11
+
+  DW_CFA_def_cfa: r3 ofs 0
+  DW_CFA_offset: r11 at cfa+1         # 期待通り
+
+00000012 0026 00000000 FDE cie=00000000 pc=0000..0035
+  DW_CFA_advance_loc4: 5 to 0005
+  DW_CFA_def_cfa_offset: 2
+  DW_CFA_offset_extended_sf: r2 at cfa-2  # 期待通り
+  DW_CFA_advance_loc4: 2 to 0007
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_offset_extended_sf: r2 at cfa-4  # 期待通り
+  DW_CFA_advance_loc4: 2 to 0009
+  DW_CFA_def_cfa_offset: 6
+  DW_CFA_offset_extended_sf: r2 at cfa-6  # 期待通り
+
+この段階でやはり f にステップインしたときプロローグの部分を適切にスキップできていないが,
+f にブレークポイントをセットしてそこで where コマンドを実行した結果は
+
+(m68hc11-elf-gdb) where
+#0  f (a=5, b=6) at a.c:5
+#1  0x000010ca in main () at a.c:10
+(m68hc11-elf-gdb)
+
+のように正しい.
+
+現段階での問題点は
+
+o 上の状態から finish コマンドを実行すると期待しない動作をしている
+  f の戻りアドレスで停止できていない.
+  
+o f にステップインしたときプロローグの部分を適切にスキップできていない
+
+
+.debug_frame の情報に fp がスタックのどこに保存されているという情報がないので
+
+  // x := *_.frame
+  auto fp = frame_pointer_rtx;
+  auto x = gen_rtx_REG(HImode, Y_REGNUM);
+  auto move = emit_move_insn(x, fp);
+  RTX_FRAME_RELATED_P(move) = true;         これを追加
+
+これで実行してみたところ以下の assert でエラー
+
+	      /* Saving a register in a register.  */
+	      gcc_assert (!fixed_regs [REGNO (dest)]
+			  /* For the SPARC and its register window.  */
+			  || (dwf_regno (src) == DWARF_FRAME_RETURN_COLUMN));
+
+そこで以下のように y レジスタを fixed_regs[2] を 0 に修正. 
+
+#define REGISTER_NAMES \
+  { "d", "x", "y", "sp", "pc", "a", "b", "ccr", "z", "*_.frame", "dummy"  }
+#define FIXED_REGISTERS \
+  {  0,   0,   0,   1,    1,    1,   1,   1,     1,     1,         1  }
+               ^^
+
+2022.02.04 12:35 リビルド
+
+13:10 以下を確認
+
+% ./zconfirm.1
+...
+hello world 11
+
+また以下を確認
+
+00000012 0026 00000000 FDE cie=00000000 pc=0000..0035
+  DW_CFA_advance_loc4: 5 to 0005
+  DW_CFA_def_cfa_offset: 2
+  DW_CFA_offset_extended_sf: r9 at cfa-2	# r9(*_.frame) になっている
+  DW_CFA_advance_loc4: 2 to 0007
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_offset_extended_sf: r2 at cfa-4
+  DW_CFA_advance_loc4: 2 to 0009
+  DW_CFA_def_cfa_offset: 6
+  DW_CFA_offset_extended_sf: r2 at cfa-6
+
+しかしこの修正をしても f にステップインしたときに適切にプロローグをスキップするかどうかには
+関係がなかった.
+
+プロローグで出している *_.frame := sp に対しても
+RTX_FRAME_RELATED_P を true にしてみた:
+
+    ~last()
+    {
+      // *_.frame := sp
+      auto fp = frame_pointer_rtx;
+      auto sp = stack_pointer_rtx;
+      auto insn = emit_move_insn(fp, sp);
+      RTX_FRAME_RELATED_P(insn) = true;     これ
+
+この修正により
+
+f にステップインしたときにプロローグの分をスキップできるようになっている.
+
+しかし where コマンドを実行すると
+
+(m68hc11-elf-gdb) where
+#0  f (a=5, b=6) at a.c:5
+#1  0x000010ca in main () at a.c:10
+Backtrace stopped: previous frame inner to this frame (corrupt stack?)
+(m68hc11-elf-gdb)
+
+のように今までに見たことがあるが実は異なるエラーメッセージが出ている.
+
+現時点での問題点は
+
+o where コマンドで上のようにエラーメッセージが出る.
+o finish コマンドで適切に停止できていない
+
+m68hc11-elf-gdb から where コマンドのエラーメッセージを確認してみた.
+
+(gdb) b __cxa_allocate_exception 
+(gdb) run
+...
+ブレークポイントにヒット
+
+      else if (status == TARGET_XFER_EOF)
+	memory_error (TARGET_XFER_E_IO, memaddr + xfered_total); ここから呼び出されていた
+
+(gdb) p/x memaddr
+$1 = 0x605
+(gdb) p length
+$2 = 2
+(gdb) 
+
+つまり where コマンドで 0x605, 0x606 を読み出してエラーしたということ.
+なぜこのアドレスにアクセスしたのか調べてみる.
+
+Loading section .text, size 0xd7 lma 0x1040
+Loading section .rodata, size 0x10 lma 0x1117
+
+なのでプログラムのレイアウトは
+
+0x1040	+---------------+
+	|		|
+	~    .text	~
+	|		|
+0x1117	+---------------+
+	|    .rodata	|
+0x1127	+---------------+
+	|		|
+	~		~
+	|		|
+0xef00	+---------------+
+	|		|
+	|		|
+	|		|
+	|		|
+	|		|
+0xfff0	+---------------+ <- sp_{initial}
+	
+のようなもの 0x605 や 0x606 は where コマンドでもアクセスされない.
+
+(m68hc11-elf-gdb) b *0x1064  # f    の先頭アドレス
+(m68hc11-elf-gdb) b *0x1099  # main の先頭アドレス
+
+main の先頭では
+
+0xfefc	+---------------+
+	|    0xcccc	| <- sp
+0xfefe	+---------------+
+	|    0x1059	|
+0xff00	+---------------+
+	|    0xcccc	|
+0xff02	+---------------+
+
+のようになっている. つまり 0xfefc が 0x605 に変更されれば 0x605 番地にアクセス
+する可能性はある. しかしそれであれば main から戻るときに 0x605 番地にプログラムの
+遷移が移るはずで, そうはなっていないからこの可能性はない.
+
+実際 f で where コマンドを実行する前に以下のように確認したが 0xfefe は壊されていない.
+
+(m68hc11-elf-gdb) x/hx 0xfefe
+0xfefe:	0x1059
+(m68hc11-elf-gdb) where
+#0  f (a=5, b=6) at a.c:5
+#1  0x000010ca in main () at a.c:10
+Backtrace stopped: previous frame inner to this frame (corrupt stack?)
+(m68hc11-elf-gdb) 
+
+もう一度 m68hc11-elf-gdb の内部から
+
+  try
+    {
+      retval = call_site_find_chain_1 (gdbarch, caller_pc, callee_pc);
+    }
+  catch (const gdb_exception_error &e)
+
+この行を実行して例外がスロー. このとき
+
+
+(gdb) p/x caller_pc
+$2 = 0x1059
+(gdb) p/x callee_pc
+$3 = 0x10a4
+(gdb)
+
+0x1059 は main の戻りアドレス. 0x10a4 は main のプロローグをスキップしたアドレス.
+
+00001099 <main>:
+    1099:	18 de 10    	ldy	*0x10 <_.frame>
+    109c:	18 3c       	pshy
+    109e:	18 3c       	pshy
+    10a0:	18 3c       	pshy
+    10a2:	9f 10       	sts	*0x10 <_.frame>
+
+000010a4 <.LM5>:
+
+例の
+
+      retval = call_site_find_chain_1 (gdbarch, caller_pc, callee_pc);
+
+は数回呼び出されるのかと想像したが, 実は最初の実行でそのまま例外がスローされいた.
+
+試しに
+
+    ~last()
+    {
+      // *_.frame := sp
+      auto fp = frame_pointer_rtx;
+      auto sp = stack_pointer_rtx;
+      auto insn = emit_move_insn(fp, sp);
+      RTX_FRAME_RELATED_P(insn) = true;     これ
+
+を元に戻してみた. そして
+
+(gdb) run -q -x gdbcom.2 a.elf
+
+のようにして f のブレークポイントまで実行し
+
+(m68hc11-elf-gdb) where
+
+としてみたところ...
+
+      retval = call_site_find_chain_1 (gdbarch, caller_pc, callee_pc);
+
+のブレークポイントにヒット
+(gdb) p/x caller_pc
+$12 = 0xcccc			# !!
+(gdb) p/x callee_pc
+$13 = 0x10c9
+(gdb)
+
+なんだかこれはだめなところを見ているらしい. そしてここでは別の例外がスローされている.
+そしてエラーメッセージは出ていない.
+
+つまり, エラーメッセージは出ていなかったがたまたまできているように見えているということ
+だったらしい.
+
+   => 例外がスローされたからといって間違いとは限らない.
+
+再び, 元に戻したものを最新の状態にした.
+
+    ~last()
+    {
+      // *_.frame := sp
+      auto fp = frame_pointer_rtx;
+      auto sp = stack_pointer_rtx;
+      auto insn = emit_move_insn(fp, sp);
+      RTX_FRAME_RELATED_P(insn) = true;  ここ
+      
+改めて
+
+(gdb) delete
+(gdb) b backtrace_command
+(gdb) run
+...
+ブレークポイントにヒット
+
+(gdb) fin
+Run till exit from #0  backtrace_command (arg=0x0, from_tty=0) at stack.c:2181
+#0  f (a=5, b=6) at a.c:5
+#1  0x000010ca in main () at a.c:10
+Backtrace stopped: previous frame inner to this frame (corrupt stack?)
+0x081330b5 in do_const_cfunc (c=0x8cdca90, args=0x0, from_tty=0) at cli/cli-decode.c:95
+(gdb)
+
+このタイミングでエラーメッセージが出ている.
+
+(gdb) run
+...
+ブレークポイントにヒット
+(gdb) b write
+(gdb) c
+...
+write のブレークポイントにヒット
+
+これで where の結果を表示しているところを調べてみた:
+
+  if (location_print || !sal.symtab)
+    print_frame (fp_opts, frame, print_level, print_what, print_args, sal);
+
+これっぽい.
+
+(gdb) delete
+(gdb) b print_frame
+(gdb) run
+...
+(gdb) fin
+...
+(gdb) c
+
+fin と c を繰り返して判明したことは print_frame でエラーしているわけではないということ.
+
+(gdb) delete
+(gdb) b stack.c:1121
+(gdb) run
+...
+ブレークポイントにヒット
+
+(gdb) c
+5	  return a + b;
+#0  f (a=5, b=6) at a.c:5
+
+(gdb) c
+#1  0x000010ca in main () at a.c:10
+
+(gdb) b __cxa_allocate_exception     # このタイミングでセット
+(gdb) c
+...
+__cxa_allocate_exception のブレークポイントにヒット
+(gdb) where
+(gdb) up 4
+
+struct call_site *
+call_site_for_pc (struct gdbarch *gdbarch, CORE_ADDR pc)
+{
+...
+  if (slot == NULL)
+    {
+      struct bound_minimal_symbol msym = lookup_minimal_symbol_by_pc (pc);
+
+      /* DW_TAG_gnu_call_site will be missing just if GCC could not determine
+	 the call target.  */
+      throw_error (NO_ENTRY_VALUE_ERROR,
+		   _("DW_OP_entry_value resolving cannot find "
+		     "DW_TAG_call_site %s in %s"),
+		   paddress (gdbarch, pc),
+		   (msym.minsym == NULL ? "???"
+		    : msym.minsym->print_name ()));     ここでエラーしているらしい.
+    }
+
+このコメントからすると DW_TAG_gnu_call_site を gcc が出していないということだろうか.
+
+自前の aarch64 ではできていたので, 自前の aarch64 の cc1 で生成した
+hello world 11 のプログラムを aarch64-elf-gdb で動作させ動きを比較してみることにした.
+
+aarch64 でも call_site_for_pc が同じタイミングで呼び出されそして
+
+      throw_error (NO_ENTRY_VALUE_ERROR,
+
+が実行されている. つまりここで例外がスローされるのは正しい動作らしい.
+
+だとすればやはり
+
+    ~last()
+    {
+      // *_.frame := sp
+      auto fp = frame_pointer_rtx;
+      auto sp = stack_pointer_rtx;
+      auto insn = emit_move_insn(fp, sp);
+      RTX_FRAME_RELATED_P(insn) = true;  ここ
+
+が影響してエラーメッセージが出たり出なかったりした理由をもう少し詳しく調べたくなる.
+上では単純に例外がスローされたからたまたまできていたと考えていた.
+
+1. 一旦上の元に戻した状態のコンパイラで hello world 11 を -g でビルドし
+   それを a.old.elf のようにリネームしておく. そして元に戻したものを現状に戻す.
+
+2. a.old.elf と a.new.elf とを m68hc11-elf-gdb で動作の比較を行なう.
+
+ということをやってみる.
+
+(gdb) run -q -x gdbcom.2 a.old.elf              # old
+...
+Breakpoint 1, f (a=5, b=6) at a.c:5
+5	  return a + b;
+#0  f (a=5, b=6) at a.c:5
+#1  0x000010ca in main () at a.c:10
+A debugging session is active.
+
+エラーメッセージは出ていない
+
+(gdb) run -q -x gdbcom.2 a.new.elf              # new
+...
+Breakpoint 1, f (a=5, b=6) at a.c:5
+5	  return a + b;
+#0  f (a=5, b=6) at a.c:5
+#1  0x000010ca in main () at a.c:10
+Backtrace stopped: previous frame inner to this frame (corrupt stack?)
+A debugging session is active.
+
+エラーメッセージが出ている.
+
+これで比較してみる.
+
+(gdb) delete
+(gdb) b stack.c:1121
+(gdb) run
+...
+ブレークポイントにヒット
+(gdb) c
+...
+#0  f (a=5, b=6) at a.c:5            これが表示される
+ブレークポイントにヒット
+(gdb) c
+...
+#1  0x000010ca in main () at a.c:10  これが表示される
+ブレークポイントにヒット
+(gdb) c
+...
+Backtrace stopped: previous frame inner to this frame (corrupt stack?) これ
+A debugging session is active.
+
+表示されるかされないかの違いがある.
+
+この後エラーメッセージが出る場合でも何らかの例外がスローされることはなかった.
+そして
+
+	  reason = get_frame_unwind_stop_reason (trailing);
+	  if (reason >= UNWIND_FIRST_ERROR)
+
+この部分で reason = UNWIND_INNER_ID になればエラーメッセージが出るし,
+reason = UNWIND_NO_REASON になればエラーメッセージが出ない, という違いになっている.
+
+エラーメッセージが出る場合の trailing は以下のようになっている:
+
+(gdb) p trailing
+$20 = (frame_info *) 0x8cb11b4
+(gdb) p *trailing
+$21 = {level = 1, pspace = 0x8cf76c0, aspace = 0x8cf7b68, 
+  prologue_cache = 0x8cb122c, unwind = 0x87bc080 <dwarf2_frame_unwind>, 
+  prev_arch = {p = true, arch = 0x8d4c2d8}, prev_pc = {status = CC_UNKNOWN, 
+    masked = false, value = 0}, prev_func = {addr = 0, status = CC_UNKNOWN}, 
+  this_id = {p = frame_id_status::COMPUTED, value = {stack_addr = 1540, 
+      code_addr = 4249, special_addr = 0, stack_status = FID_STACK_VALID, 
+      code_addr_p = 1, special_addr_p = 0, artificial_depth = 0}}, 
+  base = 0x0, base_cache = 0x0, next = 0x8cb0e2c, prev_p = true, prev = 0x0, 
+  stop_reason = UNWIND_INNER_ID, stop_string = 0x0}
+(gdb)
+
+trailing->stop_reason に値がセットされる瞬間を捕えたい. これのアドレスは 0x8cb1224
+
+(gdb) run
+...
+ブレークポイントにヒット
+(gdb) c
+...
+ブレークポイントにヒット
+(gdb) c
+...
+ブレークポイントにヒット
+(gdb) p *(unwind_stop_reason *) 0x8cb1224
+$24 = UNWIND_NO_REASON
+(gdb) watch *(unwind_stop_reason *) 0x8cb1224
+(gdb) c
+...
+ウォッチポイントにヒット
+
+      if (!morestack_name || strcmp (morestack_name, "__morestack") != 0)
+	{
+	  if (frame_debug)
+	    {
+	      fprintf_unfiltered (gdb_stdlog, "-> ");
+	      fprint_frame (gdb_stdlog, NULL);
+	      fprintf_unfiltered (gdb_stdlog,
+				  " // this frame ID is inner }\n");
+	    }
+	  this_frame->stop_reason = UNWIND_INNER_ID;  ここだった
+	  return NULL;
+	}
+
+(gdb) delete 11       一旦ウォッチポイントを削除 
+(gdb) run
+(gdb) c
+(gdb) c
+(gdb) c
+(gdb) b frame.c:2091
+(gdb) c
+...
+frame.c:2091 のブレークポイントにヒットして上の部分が実行される.
+
+エラーメッセージが表示されない a.old.elf の場合は
+
+  if (get_frame_type (this_frame) == NORMAL_FRAME
+      && this_frame->next->unwind->type == NORMAL_FRAME
+      && frame_id_inner (get_frame_arch (this_frame->next),
+			 get_frame_id (this_frame),
+			 get_frame_id (this_frame->next)))
+    {
+
+この if の条件が成立していない. エラーメッセージが出る場合は勿論条件が成立している.
+違いが出ているのは.
+
+if の条件の 3 つ目
+
+(gdb) p frame_id_inner (get_frame_arch (this_frame->next), get_frame_id (this_frame),get_frame_id (this_frame->next))
+
+が true になるか false になるかという違い.
+
+以下はエラーメッセージの出ない a.old.elf
+
+(gdb) p *this_frame
+$5 = {level = 1, pspace = 0x8cf76c0, aspace = 0x8cf7b68, 
+  prologue_cache = 0x8cb122c, unwind = 0x87bc080 <dwarf2_frame_unwind>, 
+  prev_arch = {p = true, arch = 0x8d4c2d8}, prev_pc = {status = CC_UNKNOWN, 
+    masked = false, value = 0}, prev_func = {addr = 0, status = CC_UNKNOWN}, 
+  this_id = {p = frame_id_status::COMPUTED, value = {stack_addr = 65275, 
+      code_addr = 4249, special_addr = 0, stack_status = FID_STACK_VALID, 
+      code_addr_p = 1, special_addr_p = 0, artificial_depth = 0}}, 
+  base = 0x0, base_cache = 0x0, next = 0x8cb0e2c, prev_p = true, prev = 0x0, 
+  stop_reason = UNWIND_NO_REASON, stop_string = 0x0}
+(gdb) p *this_frame->next
+$6 = {level = 0, pspace = 0x8cf76c0, aspace = 0x8cf7b68, 
+  prologue_cache = 0x8cb0ea4, unwind = 0x87bc080 <dwarf2_frame_unwind>, 
+  prev_arch = {p = true, arch = 0x8d4c2d8}, prev_pc = {status = CC_VALUE, 
+    masked = false, value = 4298}, prev_func = {addr = 4249, 
+    status = CC_VALUE}, this_id = {p = frame_id_status::COMPUTED, value = {
+      stack_addr = 65265, code_addr = 4196, special_addr = 0, 
+      stack_status = FID_STACK_VALID, code_addr_p = 1, special_addr_p = 0, 
+      artificial_depth = 0}}, base = 0x0, base_cache = 0x0, next = 0x8cb0db0, 
+  prev_p = true, prev = 0x8cb11b4, stop_reason = UNWIND_NO_REASON, 
+  stop_string = 0x0}
+(gdb)
+
+以下はエラーメッセージの出る a.new.elf
+
+(gdb) p *this_frame
+$28 = {level = 1, pspace = 0x8cf76c0, aspace = 0x8cf7b68, 
+  prologue_cache = 0x8cb122c, unwind = 0x87bc080 <dwarf2_frame_unwind>, 
+  prev_arch = {p = true, arch = 0x8d4c2d8}, prev_pc = {status = CC_UNKNOWN, 
+    masked = false, value = 0}, prev_func = {addr = 0, status = CC_UNKNOWN}, 
+  this_id = {p = frame_id_status::COMPUTED, value = {stack_addr = 1540, 
+      code_addr = 4249, special_addr = 0, stack_status = FID_STACK_VALID, 
+      code_addr_p = 1, special_addr_p = 0, artificial_depth = 0}}, 
+  base = 0x0, base_cache = 0x0, next = 0x8cb0e2c, prev_p = true, prev = 0x0, 
+  stop_reason = UNWIND_NO_REASON, stop_string = 0x0}
+(gdb) p *this_frame->next
+$29 = {level = 0, pspace = 0x8cf76c0, aspace = 0x8cf7b68, 
+  prologue_cache = 0x8cb0ea4, unwind = 0x87bc080 <dwarf2_frame_unwind>, 
+  prev_arch = {p = true, arch = 0x8d4c2d8}, prev_pc = {status = CC_VALUE, 
+    masked = false, value = 4298}, prev_func = {addr = 4249, 
+    status = CC_VALUE}, this_id = {p = frame_id_status::COMPUTED, value = {
+      stack_addr = 65265, code_addr = 4196, special_addr = 0, 
+      stack_status = FID_STACK_VALID, code_addr_p = 1, special_addr_p = 0, 
+      artificial_depth = 0}}, base = 0x0, base_cache = 0x0, next = 0x8cb0db0, 
+  prev_p = true, prev = 0x8cb11b4, stop_reason = UNWIND_NO_REASON, 
+  stop_string = 0x0}
+(gdb)
+
+函数 frame_id_inner で true が返る原因を調べてみる.
+
+a.old.elf も a.new.elf も以下の行を実行している.
+
+    inner = gdbarch_inner_than (gdbarch, l.stack_addr, r.stack_addr);
+
+a.old.elf
+
+stack_addr = 65275 = 0xfefb
+stack_addr = 65265 = 0xfef1
+
+a.new.elf
+stack_addr = 1540  = 0x604               これが間違い
+stack_addr = 65265 = 0xfef1
+
+明らかにスタックのアドレスではないものになっている.
+
+(gdb) p this_frame->this_id.value.stack_addr
+$35 = 1540
+(gdb) p &this_frame->this_id.value.stack_addr
+$36 = (CORE_ADDR *) 0x8cb11f0                       アドレスを確認
+(gdb) watch *(CORE_ADDR *) 0x8cb11f0
+(gdb) run
+
+
+以下でセットしていた.
+static void
+dwarf2_frame_this_id (struct frame_info *this_frame, void **this_cache,
+		      struct frame_id *this_id)
+{
+...
+  else
+    (*this_id) = frame_id_build (cache->cfa, get_frame_func (this_frame));
+}
+
+できている a.old.elf では
+
+
+(gdb) p/x this_frame->this_id.value.stack_addr
+$12 = 0xfefb
+(gdb) p &this_frame->this_id.value.stack_addr
+$13 = (CORE_ADDR *) 0x8cb11f0
+(gdb) watch *(CORE_ADDR *) 0x8cb11f0
+Hardware watchpoint 4: *(CORE_ADDR *) 0x8cb11f0
+(gdb) run
+...
+a.new.elf と同じところだった. ということは...
+
+a.new.elf
+(gdb) p/x cache->cfa
+$38 = 0x604
+(gdb) 
+
+a.old.elf
+(gdb) p/x cache->cfa
+$15 = 0xfefb
+(gdb)
+
+この値が違っていたとうこと. a.old.elf も a.new.elf も
+
+      switch (fs.regs.cfa_how)
+	{
+	case CFA_REG_OFFSET:
+	  cache->cfa = read_addr_from_reg (this_frame, fs.regs.cfa_reg);
+	     ここで計算している.
+	  if (fs.armcc_cfa_offsets_reversed)
+	    cache->cfa -= fs.regs.cfa_offset;
+	  else
+	    cache->cfa += fs.regs.cfa_offset;
+	  break;
+
+dwaf2/frame.o をビルドし直したところ数字は少し違っている.
+
+a.old.elf
+
+(gdb) p/x cache->cfa
+$21 = 0xfeeb
+(gdb)
+...
+(gdb) p/x cache->cfa
+$22 = 0xfef1
+(gdb) 
+
+a.new.elf
+
+(gdb) p/x cache->cfa
+$6 = 0xfeeb
+(gdb)
+...
+(gdb) p/x cache->cfa
+$7 = 0x5fe                 # ここが違っている
+(gdb)
+
+
+できている a.old.elf は
+	  cache->cfa = read_addr_from_reg (this_frame, fs.regs.cfa_reg);
+
+fs.regs.cfa_reg = 3
+
+一方できていない a.new.elf は
+
+fs.regs.cfa_reg = 9
+
+になっている. ということは
+
+
+  // x := *_.frame
+  auto fp = frame_pointer_rtx;
+  auto x = gen_rtx_REG(HImode, Y_REGNUM);
+  auto move = emit_move_insn(x, fp);
+  RTX_FRAME_RELATED_P(move) = true;  これが悪さをしている(?)
+
+上の RTX_FRAME_RELATED_P(move) = true; を削除したところ
+
+	  cache->cfa = read_addr_from_reg (this_frame, fs.regs.cfa_reg);
+
+の呼び出しにおいて
+fs.regs.cfa_reg = 3
+
+になるのかと思ったが結果はそうではなくて fs.regs.cfa_reg = 9 のまま
+
+a.new.2.elf
+(gdb) p/x cache->cfa
+$24 = 0xfeeb
+(gdb)
+...
+(gdb) p/x cache->cfa
+$25 = 0xfeeb
+(gdb)
+
+上のように 2 回目が異常なアドレスになることはなくなったが, おそらく期待値は
+
+0xfeeb ではなくて 0xfef1
+
+そしてエラーメッセージは変化して
+
+Backtrace stopped: frame did not save the PC
+
+のようになっている. 修正し切れてはいない.
+試しに 2 回目を
+
+(gdb) set cache->cfa=0xfef1
+
+のように変更してみたところエラーメッセージは表示されない.
+
+現状の .debug_frame は以下:
+
+00000000 000e ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: 1
+  Return address column: 11
+
+  DW_CFA_def_cfa: r3 ofs 0
+  DW_CFA_offset: r11 at cfa+1
+
+00000012 002e 00000000 FDE cie=00000000 pc=1064..1099
+  DW_CFA_advance_loc4: 5 to 1069
+  DW_CFA_def_cfa_offset: 2
+  DW_CFA_offset_extended_sf: r2 at cfa-2
+  DW_CFA_advance_loc4: 2 to 106b
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_offset_extended_sf: r2 at cfa-4
+  DW_CFA_advance_loc4: 2 to 106d
+  DW_CFA_def_cfa_offset: 6
+  DW_CFA_offset_extended_sf: r2 at cfa-6
+  DW_CFA_advance_loc4: 2 to 106f
+  DW_CFA_def_cfa_register: r9
+  DW_CFA_nop
+
+2022.02.05 11:55
+試しに
+  RTX_FRAME_RELATED_P(insn) = true;
+をすべて削除してみた.
+
+.debug_frame は以下:
+
+00000000 000e ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: 1
+  Return address column: 11
+
+  DW_CFA_def_cfa: r3 ofs 0
+  DW_CFA_offset: r11 at cfa+1
+
+00000012 0008 00000000 FDE cie=00000000 pc=1064..1099
+
+0000001e 0024 00000000 FDE cie=00000000 pc=1099..1117
+  DW_CFA_advance_loc4: 22 to 10af
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_advance_loc4: 38 to 10d5
+  DW_CFA_def_cfa_offset: 0
+  DW_CFA_advance_loc4: 20 to 10e9
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_advance_loc4: 31 to 1108
+  DW_CFA_def_cfa_offset: 0
+
+そもそも 0x1099 から 0x1117 の main でなぜこれらが出ているのかも不明.
+
+    10a4:	18 30       	tsy
+    10a6:	18 8f       	xgdy
+    10a8:	c3 ff fc    	addd	#0xfffc <_stack+0xfc>
+    10ab:	18 8f       	xgdy
+    10ad:	18 35       	tys
+    10af:	18 30       	tsy
+
+以下が関係しているらしい.
+
+	.4byte	.Lframe0
+	.2byte	.LFB1
+	.2byte	.LFE1-.LFB1
+	.byte	0x4
+	.4byte	.LCFI0-.LFB1
+	.byte	0xe
+	.uleb128 0x4
+	.byte	0x4
+	.4byte	.LCFI1-.LCFI0
+	.byte	0xe
+	.uleb128 0
+	.byte	0x4
+	.4byte	.LCFI2-.LCFI1
+	.byte	0xe
+	.uleb128 0x4
+	.byte	0x4
+	.4byte	.LCFI3-.LCFI2
+	.byte	0xe
+	.uleb128 0
+
+例によって
+
+(gdb) b dwarf2out_frame_finish
+(gdb) run -g a.c
+...
+
+  FOR_EACH_VEC_ELT (*fde_vec, i, fde)
+    {
+      unsigned int k;
+
+      /* Don't emit EH unwind info for leaf functions that don't need it.  */
+      if (for_eh && !fde_needed_for_eh_p (fde))
+	continue;
+
+      for (k = 0; k < (fde->dw_fde_second_begin ? 2 : 1); k++)
+	output_fde (fde, for_eh, k, section_start_label, fde_encoding,
+		    augmentation, any_lsda_needed, lsda_encoding);
+    }
+
+ここで出している.
+
+
+(gdb) p *fde_vec
+$1 = {m_vecpfx = {m_alloc = 4, m_using_auto_storage = 0, m_num = 2}, 
+  m_vecdata = {0xb7949d10}}
+(gdb) p fde_vec->m_vecpfx.m_num
+$2 = 2
+(gdb) p &fde_vec->m_vecpfx.m_num
+$3 = (unsigned int *) 0xb794b5d4
+(gdb) 
+
+なのでこのコンテナに要素が追加される瞬間を捕えてみる.
+
+dw_fde_ref
+dwarf2out_alloc_current_fde (void)
+{
+  dw_fde_ref fde;
+
+  fde = ggc_cleared_alloc<dw_fde_node> ();
+  fde->decl = current_function_decl;
+  fde->funcdef_number = current_function_funcdef_no;
+  fde->fde_index = vec_safe_length (fde_vec);
+  fde->all_throwers_are_sibcalls = crtl->all_throwers_are_sibcalls;
+  fde->uses_eh_lsda = crtl->uses_eh_lsda;
+  fde->nothrow = crtl->nothrow;
+  fde->drap_reg = INVALID_REGNUM;
+  fde->vdrap_reg = INVALID_REGNUM;
+
+  /* Record the FDE associated with this function.  */
+  cfun->fde = fde;
+  vec_safe_push (fde_vec, fde);  ここだった.
+
+  return fde;
+}
+
+(gdb) p debug_tree(cfun->decl)
+ <function_decl 0xb7945d00 f         # `f' らしい.
+...
+(gdb) c
+...
+同じところ
+(gdb) p debug_tree(cfun->decl)
+ <function_decl 0xb7945d80 main      # `main' らしい
+
+というわけで, コンテナのコンテナということらしい.
+
+(gdb) p debug_tree((fde_vec->m_vecdata[0])->decl)
+ <function_decl 0xb7945d00 f         # 最初のは f のもの
+
+(gdb) p debug_tree((fde_vec->m_vecdata[1])->decl)
+ <function_decl 0xb7945d80 main      # 2 個目は main のもの
+
+`f' のものが空でこれは期待したものだが, main のものが空でない理由を調
+べてみる.
+
+(gdb) delete
+(gdb) b dwarf2out.c:953
+(gdb) run -g a.c
+...
+
+  FOR_EACH_VEC_ELT (*fde_vec, i, fde)
+    {
+      unsigned int k;
+
+      /* Don't emit EH unwind info for leaf functions that don't need it.  */
+      if (for_eh && !fde_needed_for_eh_p (fde))
+	continue;
+
+      for (k = 0; k < (fde->dw_fde_second_begin ? 2 : 1); k++)
+ここ	output_fde (fde, for_eh, k, section_start_label, fde_encoding,
+		    augmentation, any_lsda_needed, lsda_encoding);
+    }
+
+i = 0 は `f'  に対するもの
+i = 1 は main に対するもの
+
+f の .debug_frame は空ではあるが一応「ここ」は実行されているようである.
+
+
+main のものに対しては以下で 
+    for (i = from; i < until; i++)
+      output_cfi ((*fde->dw_fde_cfi)[i], fde, for_eh);
+
+(gdb) p from
+$11 = 0
+(gdb) p until
+$12 = 8
+(gdb)
+
+のようになっている.
+
+(gdb) p fde->dw_fde_cfi
+$13 = (cfi_vec) 0xb78d6398
+(gdb) p *fde->dw_fde_cfi
+$14 = {m_vecpfx = {m_alloc = 8, m_using_auto_storage = 0, m_num = 8}, 
+  m_vecdata = {0xb794f744}}
+(gdb)
+
+このコンテナに値が入る瞬間を捕えたい.
+
+
+(gdb) p fde->dw_fde_cfi->m_vecpfx.m_num
+$16 = 8
+(gdb) p &fde->dw_fde_cfi->m_vecpfx.m_num
+$17 = (unsigned int *) 0xb78d639c
+(gdb)
+
+static void
+add_cfis_to_fde (void)
+{
+...
+	      /* Set the location counter to the new label.  */
+	      xcfi = new_cfi ();
+	      xcfi->dw_cfi_opc = DW_CFA_advance_loc4;
+	      xcfi->dw_cfi_oprnd1.dw_cfi_addr = label;
+	      vec_safe_push (fde->dw_fde_cfi, xcfi);
+
+ここらしい. 同じ函数の以下からもきていた.
+
+	      if (NOTE_P (insn) && NOTE_KIND (insn) == NOTE_INSN_CFI)
+		vec_safe_push (fde->dw_fde_cfi, NOTE_CFI (insn));
+
+(gdb) delete
+(gdb) b add_cfis_to_fde
+(gdb) run
+...
+ブレークポイントにヒット
+(gdb) p debug_tree(cfun->decl)
+ <function_decl 0xb7945d00 f
+
+最初は `f' に対してきている.
+
+(gdb) c
+...
+ブレークポイントにヒット
+(gdb) p debug_tree(cfun->decl)
+ <function_decl 0xb7945d80 main
+
+static void
+add_cfis_to_fde (void)
+{
+  dw_fde_ref fde = cfun->fde;
+  rtx_insn *insn, *next;
+
+  for (insn = get_insns (); insn; insn = next)
+    {
+...
+
+ということは函数で生成されるコードによっては .debug_frame が出るという
+ことで, おそらく `f' では他の函数を呼び出したりしていないから `f' の
+.debug_frame は空ということなのだと思われる.
+
+というわけで
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+を削除したからといって main で .debug_frame が空になるというわけではな
+いらしい.
+
+2022.02.05 11:55 で疑問に思った問題は 2022.02.05 15:20 に一応解決した.
+
+問題を元に戻して
+
+	  cache->cfa = read_addr_from_reg (this_frame, fs.regs.cfa_reg);
+
+の呼び出しで fs.regs.cfa_reg = 3 すなわち sp レジスタのレジスタ番号が
+正解であるが, 現状 fs.regs.cfa_reg = 9 すなわち *_.frame レジスタのレ
+ジスタ番号になっているのが間違い.
+
+fs.regs.cfa_reg に値がセットされる瞬間を捕える.
+
+fs はローカル変数だが
+
+  execute_cfa_program (fde, instr, fde->end, gdbarch,
+		       get_frame_address_in_block (this_frame), &fs,
+		       cache->per_objfile->objfile->text_section_offset ());
+
+ここを実行して 3 から 9 に変更されている.
+
+	    case DW_CFA_def_cfa_register:
+	      insn_ptr = safe_read_uleb128 (insn_ptr, insn_end, &reg);
+	      fs->regs.cfa_reg = dwarf2_frame_adjust_regnum (gdbarch, reg,
+                                                             eh_frame_p);
+	      fs->regs.cfa_how = CFA_REG_OFFSET;
+	      break;
+
+再帰的に同じ函数が呼び出されているらしい.
+
+where コマンドだけ正しく動けばよいのであれば
+
+    ~last()
+    {
+      // *_.frame := sp
+      auto fp = frame_pointer_rtx;
+      auto sp = stack_pointer_rtx;
+      auto insn = emit_move_insn(fp, sp);
+      RTX_FRAME_RELATED_P(insn) = true;     これ
+
+を削除すれば上述した fs.regs.cfa_reg の 3 が 9 に書き代わることはなくなるのだが, 
+これがないとプロローグをスキップできなくなってしまう.
+
+そもそも
+
+	+---------------+
+	|		| <- sp
+	+---------------+
+	|return  address|
+	+---------------+
+
+のようにスタックポインタが微妙なところを指しているのが特徴になっていて
+これが実装のポイントになっている.
+
+戻りアドレスが微妙なところにあるのを以下のように表現できている:
+
+extern rtx m68hc11_incoming_return_addr_rtx();
+#define INCOMING_RETURN_ADDR_RTX	m68hc11_incoming_return_addr_rtx()
+#define DWARF_CIE_DATA_ALIGNMENT	1
+
+rtx m68hc11_incoming_return_addr_rtx()
+{
+  auto sp = stack_pointer_rtx;
+  auto plus = gen_rtx_PLUS(Pmode, sp, gen_rtx_CONST_INT(Pmode, 1));
+  return gen_rtx_MEM(Pmode, plus);
+}
+
+現状 c.c の int f(int a, int b){ return a + b; } に対して
+
+00000012 002e 00000000 FDE cie=00000000 pc=0000..0035
+  DW_CFA_advance_loc4: 5 to 0005
+  DW_CFA_def_cfa_offset: 2
+  DW_CFA_offset_extended_sf: r2 at cfa-2
+
+のようになっているが
+
+00000012 002e 00000000 FDE cie=00000000 pc=0000..0035
+  DW_CFA_advance_loc4: 5 to 0005
+  DW_CFA_def_cfa_offset: 2
+  DW_CFA_offset_extended_sf: r9 at cfa-1
+                             ^^       ^^
+
+	+---------------+
+	|		| <- sp
+	+---------------+
+	|   *_.frame	|
+	+---------------+
+	|return  address|
+	+---------------+
+
+がおそらく正しい. つまり
+
+  // x := *_.frame
+  auto fp = frame_pointer_rtx;
+  auto x = gen_rtx_REG(HImode, Y_REGNUM);
+  auto move = emit_move_insn(x, fp);
+  RTX_FRAME_RELATED_P(move) = true;  これが悪さをしていると考えられていたが
+
+
+は実は必要で, -2 を -1 にするために
+
+	.byte	0xe
+	.uleb128 0x2
+	.byte	0x11
+	.uleb128 0x2
+	.sleb128 -1			ここ
+	.byte	0x4
+	.4byte	.LCFI1-.LCFI0
+	.byte	0xe
+	.uleb128 0x4
+	.byte	0x11
+	.uleb128 0x2
+	.sleb128 -3			ここ
+	.byte	0x4
+	.4byte	.LCFI2-.LCFI1
+	.byte	0xe
+	.uleb128 0x6
+	.byte	0x11
+	.uleb128 0x2
+	.sleb128 -5			ここ
+
+おそらく最初の 1 つのみが合っていれば大丈夫だがせっかくなので全部直す.
+cc1 のソースを修正する前に a.s を修正して a.S として保存し
+z3 スクリプト動作確認してみたところ, 期待した動作になっている!
+
+問題のデバッグ情報を生成している箇所は
+
+	output_fde (fde, for_eh, k, section_start_label, fde_encoding,
+		    augmentation, any_lsda_needed, lsda_encoding);
+
+さらにステップインしてくと
+
+    for (i = from; i < until; i++)
+      output_cfi ((*fde->dw_fde_cfi)[i], fde, for_eh);
+
+さらにステップインしていくと
+
+	case DW_CFA_offset_extended_sf:
+	  r = DWARF2_FRAME_REG_OUT (cfi->dw_cfi_oprnd1.dw_cfi_reg_num, for_eh);
+	  dw2_asm_output_data_uleb128 (r, NULL);
+	  off = div_data_align (cfi->dw_cfi_oprnd2.dw_cfi_offset);
+	  dw2_asm_output_data_sleb128 (off, NULL);  ここ
+	  break;
+
+off = -2, -4, -6 になっている. ここを -1, -3, -5 にしたい.
+
+
+cfi->dw_cfi_oprnd2.dw_cfi_offset
+
+に値をセットしているのは以下
+
+static void
+reg_save (unsigned int reg, unsigned int sreg, poly_int64 offset)
+{
+...
+      else if (offset.is_constant (&const_offset))
+	{
+	  if (need_data_align_sf_opcode (const_offset))
+	    cfi->dw_cfi_opc = DW_CFA_offset_extended_sf;
+	  else if (reg & ~0x3f)
+	    cfi->dw_cfi_opc = DW_CFA_offset_extended;
+	  else
+	    cfi->dw_cfi_opc = DW_CFA_offset;
+	  cfi->dw_cfi_oprnd2.dw_cfi_offset = const_offset;
+...
+
+引数の offset が -2 できている.
+
+この引数 offset の大元の値は
+
+	queue_reg_save (src, NULL_RTX, offset);
+
+でセットされていた.
+そして
+
+
+static void
+dwarf2out_frame_debug_expr (rtx expr)
+{
+...
+	  /* Rule 11 */
+	case PRE_INC:
+	case PRE_DEC:
+	case POST_DEC:
+	  offset = GET_MODE_SIZE (GET_MODE (dest));    ここで offset = 2 
+	  ...
+	  cur_trace->cfa_store.offset += offset;
+	  ...
+	  if (cur_cfa->reg == dw_stack_pointer_regnum)
+	    cur_cfa->offset = cur_trace->cfa_store.offset;
+
+	  if (GET_CODE (XEXP (dest, 0)) == POST_DEC)
+	    offset += -cur_trace->cfa_store.offset;
+	  else
+	    offset = -cur_trace->cfa_store.offset;     ここで offset = -2
+	  break;
+
+ここで offset = -2 に計算されている.
+
+cur_trace->cfa_store.offset を 0 にセットしているのは以下:
+
+static void
+create_pseudo_cfg (void)
+{
+...
+  ti.cfa_store = cie_cfi_row->cfa;
+  ti.cfa_temp.reg = INVALID_REGNUM;
+  trace_info.quick_push (ti);
+
+
+そしてこの cie_cfi_row->cfa をセットしているのは
+
+
+static void
+def_cfa_1 (dw_cfa_location *new_cfa)
+{
+...
+  cfi = def_cfa_0 (&cur_row->cfa, new_cfa);
+  if (cfi)
+    {
+      cur_row->cfa = *new_cfa;  ここ
+
+以下から呼び出されていた:
+
+  loc.offset = DEFAULT_INCOMING_FRAME_SP_OFFSET;
+  def_cfa_1 (&loc);
+
+
+#define DEFAULT_INCOMING_FRAME_SP_OFFSET -1
+
+のようにしてみた.
+
+リビルドしたもので確認したが, 単純に該当する部分のみが変更されるわけで
+はなかったため期待した動作にはなっていない.
+
+当然であるが a.S はできているから単純にこれと差分を確認してみるという
+こともできる.
+
+現状は f にステップインしたときにプロローグが適切にスキップできていない.
+
+.debug_frame は以下:
+
+00000000 000e ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: 1
+  Return address column: 11
+
+  DW_CFA_def_cfa_sf: r3 ofs 127
+  DW_CFA_offset: r11 at cfa+2          # これ
+
+ここは cfa+1 が期待値. DEFAULT_INCOMING_FRAME_SP_OFFSET の修正で
+変更されてしまったらしい. そこで以下のように修正した:
+
+
+rtx m68hc11_incoming_return_addr_rtx()
+{
+#if 0
+  auto sp = stack_pointer_rtx;
+  auto plus = gen_rtx_PLUS(Pmode, sp, gen_rtx_CONST_INT(Pmode, 1));
+  return gen_rtx_MEM(Pmode, plus);
+#else
+  return gen_rtx_MEM(Pmode, stack_pointer_rtx);
+#endif  
+}
+
+これの修正で以下のようになった
+
+00000000 000e ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: 1
+  Return address column: 11
+
+  DW_CFA_def_cfa_sf: r3 ofs 127     # よく見てみるとこれも違っている
+  DW_CFA_offset: r11 at cfa+1
+
+127 を出しているところを確認する.
+
+	.4byte	0xffffffff
+	.byte	0x3
+	.string	""
+	.uleb128 0x1
+	.sleb128 1
+	.uleb128 0xb
+	.byte	0x12
+	.uleb128 0x3
+	.sleb128 -1      <- これらしい. 0 が期待値.
+	.byte	0x8b
+	.uleb128 0x1
+	.align	1
+
+static void
+output_call_frame_info (int for_eh)
+{
+...
+  FOR_EACH_VEC_ELT (*cie_cfi_vec, i, cfi)
+    output_cfi (cfi, NULL, for_eh);
+
+ここで出している.
+
+
+(gdb) p cie_cfi_vec->m_vecdata[0]->dw_cfi_oprnd2.dw_cfi_offset
+$6 = -1
+(gdb) p &cie_cfi_vec->m_vecdata[0]->dw_cfi_oprnd2.dw_cfi_offset
+$7 = (long long *) 0xb78e0e30
+(gdb)
+
+      cfi->dw_cfi_oprnd2.dw_cfi_offset = const_offset;
+
+これは
+
+  loc.offset = DEFAULT_INCOMING_FRAME_SP_OFFSET;
+  def_cfa_1 (&loc);
+
+が原因. ということは DEFAULT_INCOMING_FRAME_SP_OFFSET を -1 にすると
+以下の 127 は不可避.
+
+  DW_CFA_def_cfa_sf: r3 ofs 127     # 不可避
+  DW_CFA_offset: r11 at cfa+1
+
+この状態でとりあえず試してみた.
+
+f にステップインしてプロローグを適切にスキップできるようにはなったが
+where コマンドを実行すると
+
+
+(m68hc11-elf-gdb) where
+#0  f (a=5, b=6) at a.c:5
+#1  0x000010ca in main () at a.c:10
+Backtrace stopped: previous frame inner to this frame (corrupt stack?)
+(m68hc11-elf-gdb)
+
+のようになる. そしてこれは例によって
+
+以下のように -2, -4, -6 を -1, -3, -5 に修正することによって
+
+> diff -c a.s a2.S
+*** a.s	2022-02-06 08:56:30.000000000 +0900
+--- a2.S	2022-02-06 08:54:44.000000000 +0900
+***************
+*** 144,164 ****
+  	.uleb128 0x2
+  	.byte	0x11
+  	.uleb128 0x9
+! 	.sleb128 -2
+  	.byte	0x4
+  	.4byte	.LCFI2-.LCFI1
+  	.byte	0xe
+  	.uleb128 0x4
+  	.byte	0x11
+  	.uleb128 0x2
+! 	.sleb128 -4
+  	.byte	0x4
+  	.4byte	.LCFI3-.LCFI2
+  	.byte	0xe
+  	.uleb128 0x6
+  	.byte	0x11
+  	.uleb128 0x2
+! 	.sleb128 -6
+  	.byte	0x4
+  	.4byte	.LCFI4-.LCFI3
+  	.byte	0xd
+--- 144,164 ----
+  	.uleb128 0x2
+  	.byte	0x11
+  	.uleb128 0x9
+! 	.sleb128 -1
+  	.byte	0x4
+  	.4byte	.LCFI2-.LCFI1
+  	.byte	0xe
+  	.uleb128 0x4
+  	.byte	0x11
+  	.uleb128 0x2
+! 	.sleb128 -3
+  	.byte	0x4
+  	.4byte	.LCFI3-.LCFI2
+  	.byte	0xe
+  	.uleb128 0x6
+  	.byte	0x11
+  	.uleb128 0x2
+! 	.sleb128 -5
+  	.byte	0x4
+  	.4byte	.LCFI4-.LCFI3
+  	.byte	0xd
+***************
+*** 181,201 ****
+  	.uleb128 0x2
+  	.byte	0x11
+  	.uleb128 0x9
+! 	.sleb128 -2
+  	.byte	0x4
+  	.4byte	.LCFI7-.LCFI6
+  	.byte	0xe
+  	.uleb128 0x4
+  	.byte	0x11
+  	.uleb128 0x2
+! 	.sleb128 -4
+  	.byte	0x4
+  	.4byte	.LCFI8-.LCFI7
+  	.byte	0xe
+  	.uleb128 0x6
+  	.byte	0x11
+  	.uleb128 0x2
+! 	.sleb128 -6
+  	.byte	0x4
+  	.4byte	.LCFI9-.LCFI8
+  	.byte	0xd
+--- 181,201 ----
+  	.uleb128 0x2
+  	.byte	0x11
+  	.uleb128 0x9
+! 	.sleb128 -1
+  	.byte	0x4
+  	.4byte	.LCFI7-.LCFI6
+  	.byte	0xe
+  	.uleb128 0x4
+  	.byte	0x11
+  	.uleb128 0x2
+! 	.sleb128 -3
+  	.byte	0x4
+  	.4byte	.LCFI8-.LCFI7
+  	.byte	0xe
+  	.uleb128 0x6
+  	.byte	0x11
+  	.uleb128 0x2
+! 	.sleb128 -5
+  	.byte	0x4
+  	.4byte	.LCFI9-.LCFI8
+  	.byte	0xd
+> 
+
+正常動作を確認できる. z4 スクリプト.
+これは以下のように push をしているのに問題がありそう.
+
+inline void gen_push(rtx x)
+{
+  assert(REG_P(x));
+  auto sp = stack_pointer_rtx;
+  auto pd = gen_rtx_PRE_DEC(HImode, sp);
+  auto mem = gen_rtx_MEM(Pmode, pd);
+  assert(is_push(mem));
+  auto insn = emit_move_insn(mem, x);
+  RTX_FRAME_RELATED_P(insn) = true;
+}
+
+一旦
+
+#define DEFAULT_INCOMING_FRAME_SP_OFFSET -1
+
+の修正は削除する. そして gen_push を別に定義することで修正する方針を取る.
+
+	pshy
+
+	; [sp-1] = y
+	; sp -= 2
+
+2022.02.06 12:08
+
+hello world 11 を m68hc11-elf-gdb の制御下で動作させ
+
+main のブレークポイントで停止し
+f にステップインし
+where コマンドでスタックを表示し
+finish コマンドで f から戻り
+c で続行することができている.
+
+ポイントはこれまでの push をやめて
+
+; [sp-1] = x or y
+; sp -= 2
+(define_insn "m68hc11_push"
+  [
+   (set (mem:HI (minus:HI (reg:HI STACK_POINTER_REGNUM) (const_int 1)))
+   	(match_operand:HI 0 "register_operand" ""))
+	
+   (set (reg:HI STACK_POINTER_REGNUM)
+        (minus:HI (reg:HI STACK_POINTER_REGNUM) (const_int 2)))
+  ]
+  ""
+  "psh%0")
+
+のように現実世界を表現したこと.
+
