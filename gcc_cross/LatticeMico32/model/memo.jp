@@ -1,0 +1,37 @@
+cc1 の雛形
+
+「AARCH64」=>「cc1 の雛形」=>「メモ」 を参照.
+AARCH64 と同様の手順で cc1 の雛形をビルドすることができる.
+
+(*) 備考
+ビルドの手順で AARCH64 では以下のようにパッチを適用する必要があったが
+
+% patch -p1 < ../gcc-10.2.0.aarch64-elf.mine.diff
+
+LatticeMico32 ではたまたま差分がなかったため, この手順は必要なし.
+
+開発記録
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+のような rtx_insn は生成していないが, lm32-elf-gdb で期待通り動作している.
+
+objdump の抜粋は以下:
+
+.debug_frame セクションの内容(a.elf より読み込んだもの):
+
+
+00000000 00000010 ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -4
+  Return address column: 33
+
+  DW_CFA_def_cfa: r28 ofs 0
+  DW_CFA_register: r33 in r29
+  DW_CFA_nop
+
+00000014 0000000c 00000000 FDE cie=00000000 pc=000001c0..000001f8
+
+00000024 0000000c 00000000 FDE cie=00000000 pc=000001f8..0000023c
