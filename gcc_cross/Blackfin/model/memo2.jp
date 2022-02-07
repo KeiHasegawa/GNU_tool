@@ -1,0 +1,56 @@
+AVR のコンパイラでは
+
+TARGET_STARTING_FRAME_OFFSET
+
+を使用することで函数の引数を保存する位置をフレームポインタからのオフセットを指定することがで
+きていたので Blackfin のコンパイラでもこれを使用して不明瞭な ARG_POINTER_REGNUM を
+使用しないで実装してみることにしたが, それほど単純ではない.
+
+HOST_WIDE_INT bfin_starting_frame_offset()
+{
+  return 12;
+}
+
+#undef  TARGET_STARTING_FRAME_OFFSET
+#define TARGET_STARTING_FRAME_OFFSET bfin_starting_frame_offset
+
+gcc_target targetm = TARGET_INITIALIZER;
+
+Blackfin のスタックフレームはフレームポインタがフレームの底を指しているため
+
+	+----------------+ <- sp_{new}
+	|                |
+	|                |
+	|   local area   |
+	|                |                ^
+	|                |                | フレームはこの方向に成長する
+	+----------------+ <- fp_{new}
+	|    fp_{old}    |
+	+----------------+ 
+	|   rets_{old}   |
+	+----------------+ <- sp_{old}
+	|    1st arg     |                | 函数の引数の位置はここから
+	+----------------+                V
+	|    2nd arg     |
+	+----------------+
+	|    3rd arg     |
+	+----------------+
+
+
+#define FRAME_GROWS_DOWNWARD  1
+
+としているから単純にはいかない.
+
+void f(int a, int b, int c) { ... }
+
+期待する結果:
+        LINK ...
+	[FP+8] = R0
+	[FP+12] = R1
+	[FP+16] = R2
+
+現状:
+        LINK ...
+	[FP+8] = R0
+	[FP+4] = R1
+	[FP+0] = R2
