@@ -7,7 +7,7 @@
 static const char *const initial_reg_names[] = REGISTER_NAMES;
 
     レジスタ番号 n のレジスタ名が n 番目の要素になるようにする.
-    例えばターゲットプロセッサが r0, r1, ..., r15 という名前の GPR があり,
+    例えばターゲットプロセッサに r0, r1, ..., r15 という名前のレジスタがあり,
     r14 をフレームポインタ r15 をスタックポインタとする場合
 
 #define REGISTER_NAMES { "r0", "r1", "r2", "r3", "r4", "r5", "r6", \
@@ -50,22 +50,40 @@ static const char *const initial_reg_names[] = REGISTER_NAMES;
 (*) ARG_POINTER_REGNUM
 
     函数が呼び出されたときに引数があるスタックの相対位置を示すレジスタを指定する.
-    普通は FRAME_POINTER_REGNUM と等しくなるようにする. FIRST_PARM_OFFSET
-    も参照.
-    プリプロセッサのディレクティブで参照されるためマクロでなくてはならない.
+
+	+---------------+ <- sp_{new}, <- fp_{new}
+	|  1st argument |
+	+---------------+
+	|  2nd argument |
+	+---------------+
+	|		|
+	|		|
+	+---------------+
+	|     fp_{old}  |
+	+---------------+
+	|     lr_{old}	|
+	+---------------+
+
+    以下の f に対して上のようなスタックフレームを採用すると仮定する:
 
     int f(int a, int b)
     {
       ...
     }
 
-    のような f に対して f のプロローグの部分で a や b をスタックに保存するときに
-    例えば ARM や AARCH64 のように, フレームポインタの相対 0, 4 に保存して問題なければ
-    FRAME_POINTER_REGNUM と同じレジスタ番号, すなわちフレームポンタのレジスタ番号
-    を指定する.
+    f のプロローグの部分でレジスタ渡しされた a と b をスタックに保存するときに
+    フレームポインタ相対 0, 4( = sizeof(int)) に保存して問題なければ
+    FRAME_POINTER_REGNUM と同じレジスタ番号, すなわちフレームポンタのレジスタ
+    番号を指定する.
 
-    Blackfin のように, そうではないスタックフレームを採用するコンパイラであれば以下のよう
-    に仮想のレジスタ "ap" を宣言する:
+    そうではなく AVR のようにフレームポインタ相対 1, 3 (sizeof(int) = 2)に保存する
+    必要があれば
+
+    TARGET_STARTING_FRAME_OFFSET
+
+    のマクロ(後述)を使用するのがお手軽である.
+
+    そうでなければ以下のように仮想のレジスタ "ap" を宣言する:
 
 #define REGISTER_NAMES { "r0", "r1", "r2", "r3", "r4", "r5", "r6", \
     "r7", "r8", "r9", "r10", "r11", "r12", "r13, "fp", "sp", "ap" }
@@ -76,13 +94,16 @@ static const char *const initial_reg_names[] = REGISTER_NAMES;
 
     この仮想のレジスタ "ap" は HARD_REGISTER_NUM_P(16) が 0 になっても問題がないので
     最後のダミーの要素は上のように必要ないし, あっても問題ない.
-    "ap" がどこを指すかを函数 INITIAL_ELIMINATION_OFFSET で指定する. このため
-    マクロ ELIMINABLE_REGS (後述)を以下のように修正する必要がある:
+    "ap" がどこを指すかを函数 INITIAL_ELIMINATION_OFFSET (後述)で指定する. このため
+    マクロ ELIMINABLE_REGS (後述)を以下のようにする必要がある:
 
 #define ELIMINABLE_REGS				\
 {{ ARG_POINTER_REGNUM, STACK_POINTER_REGNUM},	\
  { ARG_POINTER_REGNUM, FRAME_POINTER_REGNUM},	\
  { FRAME_POINTER_REGNUM, STACK_POINTER_REGNUM}}	\
+
+    但しこの修正のみ入れても期待する動作にはならない. 例えば Blackfin のコンパイラの
+    雛形のメモを参照.
 
 (*) FIRST_PSEUDO_REGISTER
 
@@ -561,7 +582,14 @@ void ASM_OUTPUT_ALIGN(FILE* fp, int n)
       static const struct elims {const int from, to;} elim_regs[] = ELIMINABLE_REGS;
       
       ARG_POINTER_REGNUM も参照. ARG_POINTER_REGNUM が FRAME_POINTER_REGNUM
-      と等しいのならば 
+      と等しいのならば以下のように宣言する.
+
+#define ELIMINABLE_REGS { {FRAME_POINTER_REGNUM, STACK_POINTER_REGNUM} }
+
+      これにより, フレームポインタからスタックポインタヘのオフセットが必要になったとき
+      に次のセクションで述べる函数が呼び出される.
+      cc1 のオプション -fomit-frame-pointer を指定すれば ARG_POINTER_REGNUM
+      が FRAME_POINTER_REGNUM と等しくても生成コードに違いが出てくる.
 
 (*) INITIAL_ELIMINATION_OFFSET
 
@@ -569,7 +597,16 @@ void ASM_OUTPUT_ALIGN(FILE* fp, int n)
 
       INITIAL_ELIMINATION_OFFSET (ep->from, ep->to, ep->offset);
 
-      調査中.
+      ELIMINABLE_REGS で指定したレジスタ番号のペアに対してオフセットを計算する
+      ときに呼び出される. ARG_POINTER_REGNUM が FRAME_POINTER_REGNUM
+      と等しくない, すなわち, Blackfin のコンパイラのように第 1, 第 2 引数を
+      フレームポインタ相対 0, 4 の位置には保存しないタイプのスタックフレームを採用
+      している場合
+
+      poly_int64_pod offset;
+      INITIAL_ELIMINATION_OFFSET (ARG_POINTER_REGNUM, FRAME_POINTER_REGNUM, offset);
+
+      のように呼び出しが発生するので呼び出された側で offset に適切な値をセットする.
 
 (*) DEFAULT_SIGNED_CHAR
 
