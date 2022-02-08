@@ -1,0 +1,724 @@
+cc1 の雛形
+
+「AARCH64」=>「cc1 の雛形」=>「メモ」 を参照.
+AARCH64 と同様の手順で cc1 の雛形をビルドすることができる.
+
+以下開発メモ
+
+現状 hello world 11 が動作している.
+
+また
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+のような rtx_insn は生成していない.
+-g オプション付きでコンパイルしたもの objdump は現状以下のようになっている.
+
+.debug_frame セクションの内容(a.elf より読み込んだもの):
+
+
+00000000 0000000e ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -2
+  Return address column: 10
+
+  DW_CFA_def_cfa: r8 ofs 0
+  DW_CFA_offset: r10 at cfa+0
+
+00000012 00000008 00000000 FDE cie=00000000 pc=0011056e..00110584
+
+0000001e 00000016 00000000 FDE cie=00000000 pc=001b057f..001b1283
+  DW_CFA_nop
+  DW_CFA_def_cfa_offset: 2
+  DW_CFA_advance_loc4: 10 to 001b0589
+  DW_CFA_def_cfa_offset: 0
+
+このまま m32c-elf-gdb で実行してみたところ
+
+Breakpoint 1 at 0x582
+
+Breakpoint 1, 0x00000582 in main ()
+Single stepping until exit from function main,
+which has no line number information.
+hello world 11
+printf () at start.S:22
+22		rts
+#0  printf () at start.S:22
+#1  0x00000594 in main ()
+0x00000594 in main ()
+
+のようになる.
+
+まず main 函数の行番号情報が出ていないように思える. しかし
+
+_main:
+.LFB4:
+	.loc 1 9 1
+	enter	#0
+	.loc 1 10 3
+
+のように生成されたファイルには行番号情報を生成する疑似命令が期待した通り生成されている.
+ということはアセンブラに問題があるのだろうか? しかしオリジナルの cc1 では期待通り動作
+はしている.
+
+さらに
+
+% m32c-elf-gdb -q -x gdbcom a.elf
+
+のように実行する分には問題はないのだが,
+
+M-x gdb
+m32c-elf-gdb --annotate=3 a.elf -x gdbcom.2
+
+のように emacs から実行すると
+
+(m32c-elf-gdb) 
+Debugger aborted
+
+のように異常終了してしまう.
+このときの gdbcom.2 は
+
+set prompt (m32c-elf-gdb) 
+target sim
+load
+sim memory-fill 0xcc
+sim memory-region 0xdff0,0x2000
+b main
+run
+
+のようにしている. gdbcom.2 を空のファイルにしてもやはり異常終了してしまう.
+そして上のものに
+
+step
+
+を追加すると異常終了するのは避けられている.
+そして停止したのは printf の rts 命令のところでであった.
+
+色々と問題はあるが, まずは main にセットしたブレークポイントが期待通り動作することを
+目指す.
+
+
+.debug_frame
+
+は関係がないのかと思ったがオリジナルの cc1 が生成したものは以下のようになっている.
+
+00000000 00000010 ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -1
+  Return address column: 13
+
+  DW_CFA_def_cfa: r12 ofs 3
+  DW_CFA_offset: r13 at cfa-3
+  DW_CFA_nop
+  DW_CFA_nop
+
+これはおそらく微妙な 3 バイトの戻りアドレスの情報を表現しているらしい.
+
+	+----------------------+ <- sp_{new}
+	|                      |
+	|                      |
+	|      local area      |
+	|                      |
+	|                      |
++0	+----------------------+ <- fb_{new}
+	|        fb_{old}      |
++2	+----------------------+ <- sp_[old}
+	|    return address    | これ
++5	+----------------------+ 
+
+そこで以下を入れてみた.
+
+#define INCOMING_FRAME_SP_OFFSET 3
+
+リビルドして確認したところ以下の gcc_assert でエラーしている:
+
+static inline HOST_WIDE_INT
+div_data_align (HOST_WIDE_INT off)
+{
+  HOST_WIDE_INT r = off / DWARF_CIE_DATA_ALIGNMENT;
+  gcc_assert (r * DWARF_CIE_DATA_ALIGNMENT == off);
+  return r;
+}
+
+このとき off = -3 で r = 1 だから DWARF_CIE_DATA_ALIGNMENT は 1 になっているのが
+おそらく正しい. オリジナルでは以下のようになっていた: 
+
+#define DWARF_CIE_DATA_ALIGNMENT -1
+
+自前の cc1 にもこれを追加. リビルドして以下を確認した:
+
+00000000 0000000e ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -1
+  Return address column: 10
+
+  DW_CFA_def_cfa: r8 ofs 3
+  DW_CFA_offset: r10 at cfa-3
+
+しかし予想通りではあったが, これで main のブレークポイントが期待通り動作するわけではなかった.
+
+
+オリジナルの cc1 で生成した a.elf では以下のようになっている:
+% addr2line -a 0x582 -e a.elf
+0x00000582
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/a.c:10
+%
+
+ここで 0x582 は main 函数のアドレスでこれは期待した結果.
+
+自前の cc1 でもたまたまではあるが main 函数のアドレスは 0x582 であった.
+自前の cc1 で生成した a.elf では
+
+% addr2line -a 0x582 -e a.elf
+0x00000582
+addr2line: DWARF error: mangled line number section
+??:?
+%
+
+のようになる.
+mangle : めった切りにする. 切りさいなむ. わからなくする. 台なしにする.
+
+自前の cc1 で生成した a.o に対して以下のようになった:
+% m32c-elf-objdump -d -g a.o > a.o.objdump
+% m32c-elf-addr2line -a 0x0 -e a.o
+0x00000000
+m32c-elf-addr2line: DWARF error: mangled line number section
+a.c:?
+%
+
+オリジナルの cc1 で同様のことをすると以下のようになる:
+% m32c-elf-addr2line -a 0x0 -e a.o
+0x00000000
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m32c-elf/host-i686-pc-linux-gnu/gcc/a.c:4
+%
+
+アドレス 0(オフセット 0) は函数 f のアドレスで, それは a.c:4 になるのが期待値で
+オリジナルの cc1 ではそうなっている.
+
+% cat b.c
+int f(int a, int b)
+{
+  return a + b;
+}
+% ./cc1 b.c -g
+% m32c-elf-as -o b.o b.s
+% m32c-elf-addr2line -a 0 -e b.o
+0x00000000
+m32c-elf-addr2line: DWARF error: mangled line number section
+b.c:?
+%
+
+単純な b.c でもできていない.
+
+自前の cc1
+
+.Ldebug_info0:
+...
+	.2byte	.LFB0
+	.2byte	.LFE0-.LFB0
+
+オリジナルの cc1
+.Ldebug_info0:
+...
+	.4byte	.LFB0
+	.4byte	.LFE0-.LFB0
+
+ここに違いがある. 違いは実は .debug_info に出ている.
+これは CompactRISC のコンパイラでもあった問題
+
+#define DWARF2_ADDR_SIZE	4
+
+これの修正で行番号情報が期待したものになり main のブレークポイントで期待通り
+停止できている.
+
+現状 f にステップインしたときにプロローグの部分は適切にスキップできているが
+以下のように a と b の値を表示できていない.
+
+Breakpoint 1, main () at a.c:10
+f (a=<error reading variable: Cannot access memory at address 0x4>, 
+    b=<error reading variable: Cannot access memory at address 0x2>) at a.c:5
+(m32c-elf-gdb) 
+
+自前の cc1 の .debug_info は以下
+
+    <ca>   DW_AT_name        : a
+    <cc>   DW_AT_decl_file   : 1
+    <cd>   DW_AT_decl_line   : 3
+    <ce>   DW_AT_decl_column : 11
+    <cf>   DW_AT_type        : <0x83>
+    <d3>   DW_AT_location    : 2 byte block: 77 7e 	(DW_OP_breg7 (r7): -2)
+ <2><d6>: 省略番号: 6 (DW_TAG_formal_parameter)
+    <d7>   DW_AT_name        : b
+    <d9>   DW_AT_decl_file   : 1
+    <da>   DW_AT_decl_line   : 3
+    <db>   DW_AT_decl_column : 18
+    <dc>   DW_AT_type        : <0x83>
+    <e0>   DW_AT_location    : 2 byte block: 77 7c 	(DW_OP_breg7 (r7): -4)
+
+オリジナルの cc1 の .debug_info は以下
+
+    <ca>   DW_AT_name        : a
+    <cc>   DW_AT_decl_file   : 1
+    <cd>   DW_AT_decl_line   : 3
+    <ce>   DW_AT_decl_column : 11
+    <cf>   DW_AT_type        : <0x83>
+    <d3>   DW_AT_location    : 2 byte block: 7b 7e 	(DW_OP_breg11 (r11): -2)
+ <2><d6>: 省略番号: 6 (DW_TAG_formal_parameter)
+    <d7>   DW_AT_name        : b
+    <d9>   DW_AT_decl_file   : 1
+    <da>   DW_AT_decl_line   : 3
+    <db>   DW_AT_decl_column : 18
+    <dc>   DW_AT_type        : <0x83>
+    <e0>   DW_AT_location    : 2 byte block: 7b 7c 	(DW_OP_breg11 (r11): -4)
+
+オリジナルの cc1
+
+#define AP_REGNO 11
+
+#define ARG_POINTER_REGNUM	AP_REGNO
+
+これが影響しているということだろうか. m32c-elf-gdb は 11 番のレジスタをどのように
+扱っているか.
+    => 特別に扱っているわけではなさそう.
+
+オリジナルの cc1 の .debug_frame
+
+00000000 00000010 ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -1
+  Return address column: 13
+
+  DW_CFA_def_cfa: r12 ofs 3
+  DW_CFA_offset: r13 at cfa-3
+  DW_CFA_nop
+  DW_CFA_nop
+
+00000014 00000018 00000000 FDE cie=00000000 pc=0000056e..0000057f
+  DW_CFA_advance_loc4: 3 to 00000571
+  DW_CFA_offset: r11 at cfa-5
+  DW_CFA_def_cfa: r11 ofs 5
+  DW_CFA_nop
+  DW_CFA_nop
+
+自前の cc1 の .debug_frame
+
+00000000 00000010 ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -1
+  Return address column: 10
+
+  DW_CFA_def_cfa: r8 ofs 3
+  DW_CFA_offset: r10 at cfa-3
+  DW_CFA_nop
+  DW_CFA_nop
+
+00000014 00000018 00000000 FDE cie=00000000 pc=0000056e..0000057f
+  DW_CFA_advance_loc4: 3 to 00000571
+  DW_CFA_def_cfa_offset: 9
+  DW_CFA_offset: r7 at cfa-3
+  DW_CFA_nop
+  DW_CFA_nop
+  DW_CFA_nop
+
+一旦
+
+#define INCOMING_FRAME_SP_OFFSET 3
+#define DWARF_CIE_DATA_ALIGNMENT -1
+
+を削除してみる.
+
+リビルドした cc1 で確認したところ objdump の結果は以下:
+
+00000000 00000010 ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -2
+  Return address column: 10
+
+  DW_CFA_def_cfa: r8 ofs 0
+  DW_CFA_offset: r10 at cfa+0
+  DW_CFA_nop
+  DW_CFA_nop
+
+00000014 00000018 00000000 FDE cie=00000000 pc=0000056e..0000057f
+  DW_CFA_advance_loc4: 3 to 00000571
+  DW_CFA_def_cfa_offset: 6
+  DW_CFA_offset: r7 at cfa+0
+  DW_CFA_nop
+  DW_CFA_nop
+  DW_CFA_nop
+
+m32c-elf-gdb による実行結果は
+
+Breakpoint 1, main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+f (a=<error reading variable: Cannot access memory at address 0x4>, 
+    b=<error reading variable: Cannot access memory at address 0x2>) at a.c:5
+5	  return a + b;
+#0  f (a=<error reading variable: Cannot access memory at address 0x4>, 
+    b=<error reading variable: Cannot access memory at address 0x2>) at a.c:5
+#1  0x0000058a in main () at a.c:10
+0x0000058a in main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+Value returned is $1 = 11
+hello world 11
+
+相変わらず a と b を正しく表示できていないが where と finish は期待通りの動きになっている.
+ということは
+
+INCOMING_FRAME_SP_OFFSET と DWARF_CIE_DATA_ALIGNMENT は削除するほうが良さそうに
+思える.
+
+f の先頭アドレスでは以下のようになっている.
+
+0xffe8	+---------------+ <- sp
+	|0x8a 0x05 0x00	|
+0xffeb	+---------------+
+
+0x058a は main から呼び出された f の戻りアドレス.
+
+最初の命令
+
+	enter	#4
+
+により
+
+0xffe2	+---------------+ <- sp
+	|		|
+0xffe4	+---------------+ 
+	|		|
+0xffe6	+---------------+ <- fb
+	|0xeb	0xff	|
+0xffe8	+---------------+ <- sp_{f の先頭アドレス}
+	|0x8a 0x05 0x00	|
+0xffeb	+---------------+
+
+0xffeb は f の先頭アドレスでの fb の値.
+
+続く 2 命令
+
+	mov.w	r1, -2[fb]
+	mov.w	r2, -4[fb]
+
+で以下のようになる.
+
+0xffe2	+---------------+ <- sp
+	|0x06	0x00	|
+0xffe4	+---------------+ 
+	|0x05	0x00	|
+0xffe6	+---------------+ <- fb
+	|0xeb	0xff	|
+0xffe8	+---------------+ <- sp_{f の先頭アドレス}
+	|0x8a 0x05 0x00	|
+0xffeb	+---------------+
+
+つまり
+
+00000014 00000018 00000000 FDE cie=00000000 pc=0000056e..0000057f
+  DW_CFA_advance_loc4: 3 to 00000571
+  DW_CFA_def_cfa_offset: 6
+  DW_CFA_offset: r7 at cfa+0   間違い
+  DW_CFA_nop
+  DW_CFA_nop
+  DW_CFA_nop
+
+cfa-2 が正しい.
+
+以下がまずいらしい.
+
+; sp := sp - 2
+; [sp] := fb
+; sp := sp - size
+(define_insn "enter"
+  [
+    (set (reg:HI STACK_POINTER_REGNUM)
+         (minus:HI (reg:HI STACK_POINTER_REGNUM) (const_int 2)))
+
+    (set (mem:HI (reg:HI STACK_POINTER_REGNUM)) (reg:HI FRAME_POINTER_REGNUM))
+
+    (set (reg:HI STACK_POINTER_REGNUM)
+         (minus:HI (reg:HI STACK_POINTER_REGNUM)
+         (match_operand:HI 0 "immediate_operand" "")))
+  ]
+  ""
+  "enter	#%0")
+
+以下のように修正:
+
+; [sp-2] := fb
+; sp := sp - (size+2)
+(define_insn "enter"
+  [
+    (set (mem:HI (minus:HI (reg:HI STACK_POINTER_REGNUM) (const_int 2)))
+         (reg:HI FRAME_POINTER_REGNUM))
+    (set (reg:HI STACK_POINTER_REGNUM)
+         (minus:HI (reg:HI STACK_POINTER_REGNUM)
+         (match_operand:HI 0 "immediate_operand" "")))
+  ]
+  ""
+  "*
+  return m32c_enter(operands[0]);")
+
+リビルドして生成結果を確認した.
+
+00000000 00000010 ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -2
+  Return address column: 10
+
+  DW_CFA_def_cfa: r8 ofs 0
+  DW_CFA_offset: r10 at cfa+0
+  DW_CFA_nop
+  DW_CFA_nop
+
+00000014 00000018 00000000 FDE cie=00000000 pc=0000056e..0000057f
+  DW_CFA_advance_loc4: 3 to 00000571
+  DW_CFA_def_cfa_offset: 6             # 期待した値
+  DW_CFA_offset: r7 at cfa-2           # 期待した値
+  DW_CFA_nop
+  DW_CFA_nop
+  DW_CFA_nop
+
+しかし f にステップインすると
+
+Breakpoint 2, f (a=<error reading variable: Cannot access memory at address 0x4>, b=<error reading variable: Cannot access memory at address 0x2>) at a.c:5
+(m32c-elf-gdb)
+
+のようになってしまう.
+
+新しく作成されたフレームで fb が指しているアドレスを指定していないのが間違いである
+ことに気付いた.
+
+; [sp-2] := fb
+; fb := sp - 2            これ
+; sp := sp - (size+2)
+(define_insn "enter"
+  [
+    (set (mem:HI (minus:HI (reg:HI STACK_POINTER_REGNUM) (const_int 2)))
+         (reg:HI FRAME_POINTER_REGNUM))
+    (set (reg:HI FRAME_POINTER_REGNUM)                             これ
+         (minus:HI (reg:HI STACK_POINTER_REGNUM) (const_int 2)))   これ
+    (set (reg:HI STACK_POINTER_REGNUM)
+         (minus:HI (reg:HI STACK_POINTER_REGNUM)
+         (match_operand:HI 0 "immediate_operand" "")))
+  ]
+  ""
+  "*
+  return m32c_enter(operands[0]);")
+
+リビルドして生成結果を確認した.
+
+00000014 00000018 00000000 FDE cie=00000000 pc=0000056e..0000057f
+  DW_CFA_advance_loc4: 3 to 00000571
+  DW_CFA_offset: r7 at cfa-2
+  DW_CFA_def_cfa: r7 ofs 2
+  DW_CFA_nop
+  DW_CFA_nop
+
+なんだか思ったものと違っている. 当然だが m32c-elf-gdb の動作も変わっていない.
+
+(gdb) b dwarf2out_frame_debug_expr
+(gdb) run -g b.c
+
+ちゃんと 3 つが評価されていることは確認した.
+そもそも以下であるが
+
+00000014 00000018 00000000 FDE cie=00000000 pc=0000056e..0000057f
+  DW_CFA_advance_loc4: 3 to 00000571
+  DW_CFA_offset: r7 at cfa-2
+  DW_CFA_def_cfa: r7 ofs 2
+  DW_CFA_nop
+  DW_CFA_nop
+
+0x571 は enter の次のアドレス
+
+0000056e <_f>:
+ 56e:	7c f2 04    	enter #0x4
+ 571
+
+sp (r8) が 6 減算された情報がない.
+fb (r7) が sp + 4 になっているという情報がない.
+
+オリジナルの cc1 で以下を見つけた
+(define_insn "prologue_enter_16"
+  [(set (mem:HI (plus:HI (reg:HI SP_REGNO) (const_int -2)))
+	(reg:HI FB_REGNO))
+   (set (reg:HI FB_REGNO)
+	(plus:HI (reg:HI SP_REGNO) (const_int -2)))
+   (set (reg:HI SP_REGNO)
+	(minus:HI (reg:HI SP_REGNO)
+	           (match_operand 0 "const_int_operand" "i")))
+   ]
+  "TARGET_A16"
+  {
+    /* This is due to binutils bug gas/4659.  */
+    if (INTVAL (operands[0]) == 2)
+      return "enter\t#0";
+    return "enter\t%0-2";
+  }
+
+それっぽい.
+
+; [sp-2] := fb
+; fb := sp - 2
+; sp := sp - (size+2)
+
+  [(set (mem:HI (plus:HI (reg:HI STACK_POINTER_REGNUM) (const_int -2)))
+	(reg:HI FRAME_POINTER_REGNUM))
+   (set (reg:HI FRAME_POINTER_REGNUM)
+	(plus:HI (reg:HI STACK_POINTER_REGNUM) (const_int -2)))
+   (set (reg:HI STACK_POINTER_REGNUM)
+	(minus:HI (reg:HI STACK_POINTER_REGNUM)
+	           (match_operand 0 "const_int_operand" "i")))
+   ]
+
+
+現状は
+
+; [sp-2] := fb
+; fb := sp - 2
+; sp := sp - (size+2)
+(define_insn "enter"
+  [
+    (set (mem:HI (minus:HI (reg:HI STACK_POINTER_REGNUM) (const_int 2)))
+         (reg:HI FRAME_POINTER_REGNUM))
+    (set (reg:HI FRAME_POINTER_REGNUM)
+         (minus:HI (reg:HI STACK_POINTER_REGNUM) (const_int 2)))
+    (set (reg:HI STACK_POINTER_REGNUM)
+         (minus:HI (reg:HI STACK_POINTER_REGNUM)
+         (match_operand:HI 0 "immediate_operand" "")))
+  ]
+  ""
+  "*
+  return m32c_enter(operands[0]);")
+
+
+minus と plus との違いはあるが同じに思える.
+
+だめもとだが一旦削除した以下を
+
+#define INCOMING_FRAME_SP_OFFSET 3
+#define DWARF_CIE_DATA_ALIGNMENT -1
+
+もう一度追加してみる.
+やっている途中で気付いたが,
+
+オリジナルの cc1
+00000000 00000010 ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -1
+  Return address column: 13
+
+  DW_CFA_def_cfa: r12 ofs 3         <- 12 番
+  DW_CFA_offset: r13 at cfa-3
+  DW_CFA_nop
+  DW_CFA_nop
+
+00000014 00000018 00000000 FDE cie=00000000 pc=0000056e..0000057f
+  DW_CFA_advance_loc4: 3 to 00000571
+  DW_CFA_offset: r11 at cfa-5
+  DW_CFA_def_cfa: r11 ofs 5        <- 11 番
+  DW_CFA_nop
+  DW_CFA_nop
+
+ってことは, 12 番がスタックポインタで 11 番がフレームポインタでないと辻褄が合わないように
+思える.
+
+m32c-elf-gdb を調べてみると
+  set_gdbarch_sp_regnum (arch, sp->num); sp->num = 29 になっている...
+
+ますます意味不明.
+
+そして以下の修正
+
+#define INCOMING_FRAME_SP_OFFSET 3
+#define DWARF_CIE_DATA_ALIGNMENT -1
+
+を行なったものを動作確認してみたところ, やはり
+
+f (a=<error reading variable: Cannot access memory at address 0x4>, 
+    b=<error reading variable: Cannot access memory at address 0x2>) at a.c:5
+
+のように a と b の表示の結果が正しくない.
+
+まずはオリジナルの cc1 と同じように出すために
+
+#define DWARF_FRAME_REGNUM(N) m32c_dwarf_frame_regnum (N)
+
+unsigned int
+m32c_dwarf_frame_regnum (int n)
+{
+  switch (n)
+
+のようにすれば良さそうではある.
+この修正を入れてリビルド後 m32c-elf-gdb で期待通りの動作を確認できている.
+
+.debug_frame は現状以下のようになっている:
+
+00000000 00000010 ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -1
+  Return address column: 20
+
+  DW_CFA_def_cfa: r12 ofs 3
+  DW_CFA_offset: r20 at cfa-3
+  DW_CFA_nop
+  DW_CFA_nop
+
+00000014 00000018 00000000 FDE cie=00000000 pc=0000056e..0000057f
+  DW_CFA_advance_loc4: 3 to 00000571
+  DW_CFA_offset: r11 at cfa-5
+  DW_CFA_def_cfa: r11 ofs 5
+  DW_CFA_nop
+  DW_CFA_nop
+
+現状以下の修正が入っている.
+
+#define INCOMING_FRAME_SP_OFFSET 3
+#define DWARF_CIE_DATA_ALIGNMENT -1
+
+これを削除してみた.
+
+2022.02.08 21:15 m32c-elf-gdb で期待通り動作していることを確認した.
+
+objdump の結果は以下
+
+.debug_frame セクションの内容(a.elf より読み込んだもの):
+
+
+00000000 00000010 ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -2
+  Return address column: 20
+
+  DW_CFA_def_cfa: r12 ofs 0
+  DW_CFA_offset: r20 at cfa+0
+  DW_CFA_nop
+  DW_CFA_nop
+
+00000014 00000018 00000000 FDE cie=00000000 pc=0000056e..0000057f
+  DW_CFA_advance_loc4: 3 to 00000571
+  DW_CFA_offset: r11 at cfa-2
+  DW_CFA_def_cfa: r11 ofs 2
+  DW_CFA_nop
+  DW_CFA_nop
+
