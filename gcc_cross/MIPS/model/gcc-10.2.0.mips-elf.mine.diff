@@ -1,0 +1,32 @@
+*** gcc-10.2.0.org/gcc/config.gcc	2021-10-16 10:31:18.000000000 +0900
+--- gcc-10.2.0.mips-elf.mine/gcc/config.gcc	2022-02-08 14:14:29.000000000 +0900
+***************
+*** 472,481 ****
+          ;;
+  mips*-*-*)
+  	cpu_type=mips
+- 	d_target_objs="mips-d.o"
+- 	extra_headers="loongson.h loongson-mmiintrin.h msa.h"
+- 	extra_objs="frame-header-opt.o"
+- 	extra_options="${extra_options} g.opt fused-madd.opt mips/mips-tables.opt"
+  	;;
+  nds32*)
+  	cpu_type=nds32
+--- 472,477 ----
+***************
+*** 2651,2657 ****
+  	tm_defines="${tm_defines} MIPS_ISA_DEFAULT=64 MIPS_CPU_STRING_DEFAULT=\\\"sb1\\\" MIPS_ABI_DEFAULT=ABI_O64"
+  	;;
+  mips-*-elf* | mipsel-*-elf* | mipsr5900-*-elf* | mipsr5900el-*-elf*)
+! 	tm_file="elfos.h newlib-stdint.h ${tm_file} mips/elf.h"
+  	tmake_file="mips/t-elf"
+  	;;
+  mips64r5900-*-elf* | mips64r5900el-*-elf*)
+--- 2647,2653 ----
+  	tm_defines="${tm_defines} MIPS_ISA_DEFAULT=64 MIPS_CPU_STRING_DEFAULT=\\\"sb1\\\" MIPS_ABI_DEFAULT=ABI_O64"
+  	;;
+  mips-*-elf* | mipsel-*-elf* | mipsr5900-*-elf* | mipsr5900el-*-elf*)
+! 	tm_file="elfos.h newlib-stdint.h ${tm_file}"
+  	tmake_file="mips/t-elf"
+  	;;
+  mips64r5900-*-elf* | mips64r5900el-*-elf*)
