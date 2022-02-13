@@ -1,0 +1,649 @@
+cc1 の雛形
+
+「AARCH64」=>「cc1 の雛形」=>「メモ」 を参照.
+AARCH64 と同様の手順で cc1 の雛形をビルドすることができる.
+
+以下開発メモ.
+MSP430 の ABI では可変個引数を取る函数はスタックで引数を渡す.
+
+#include <stdio.h>
+
+int f(int a, int b);
+
+int main()
+{
+  printf("hello world %d\n", f(5, 6));
+  return 0;
+}
+
+に対して main 函数ではオリジナルの cc1 はプロローグの部分でスタックポインタを 4 ずらしている.
+
+オリジナルの cc1 ではプロローグの部分で以下のようにしている:
+
+  fs = cfun->machine->framesize_locals + cfun->machine->framesize_outgoing;
+
+  increment_stack (- fs);
+
+しかし, 自前の cc1 では gcc のデフォルトの動作で実装することにする.
+MSP430 には PUSH 命令があるからこれを使うのがお手軽.
+
+現状 hello world 11 が動作している.
+
+-g オプションでコンパイルしたものを gdb で動作させると f にステップインできていない.
+つまり f を呼び出し, 戻り, printf を呼び出し, 戻り
+
+  return 0;
+
+で停止している. 現状
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+のような rtx_insn は生成していない. プロローグで生成している rtx_insn に対して
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+としてみたがやはり f にステップインできていない.
+
+オリジナルの cc1 の生成した .debug_frame は以下
+
+00000000 00000010 ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -2
+  Return address column: 0
+
+  DW_CFA_def_cfa: r1 ofs 2
+  DW_CFA_offset: r0 at cfa-2
+  DW_CFA_nop
+  DW_CFA_nop
+
+00000014 00000014 00000000 FDE cie=00000000 pc=00000576..0000058a
+  DW_CFA_advance_loc4: 2 to 00000578
+  DW_CFA_def_cfa_offset: 6
+  DW_CFA_nop
+
+自前の cc1 の生成した .debug_frame は以下:
+
+00000000 0000000e ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -2
+  Return address column: 17
+
+  DW_CFA_def_cfa: r1 ofs 0
+  DW_CFA_offset: r17 at cfa+0
+
+00000012 00000010 00000000 FDE cie=00000000 pc=00140576..0014077a
+  DW_CFA_nop
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_nop
+
+この違いも気にはなるが
+
+自前の cc1
+
+	.4byte	.LEFDE2-.LASFDE2
+.LASFDE2:
+	.4byte	.Lframe0
+	.2byte	.LFB4
+	.2byte	.LFE4-.LFB4
+
+オリジナルの cc1
+
+	.4byte	.LEFDE0-.LASFDE0
+.LASFDE0:
+	.4byte	.Lframe0
+	.4byte	.LFB3
+	.4byte	.LFE3-.LFB3
+
+なのでまずは以下を入れてみる.
+
+#define	DWARF2_ADDR_SIZE	4
+
+この修正で f にステップインできるようにはなったが引数の a や b が表示
+されていない.
+
+main のブレークポイントではソースファイルとの対応ができている. しかし f にブレークポイント
+をセットしてそこまで実行してみてもソースファイルとの対応がとれていない.
+
+以下は b.c
+
+int f(int a, int b)
+{
+  return a + b;
+}
+
+をコンパイルした結果:
+
+	.file	"b.c"
+	.text
+.Ltext0:
+	.align	0
+	.global	f
+	.type	f, @function
+f:
+.LFB0:
+.LM1:
+	SUB.W	#4, R1
+.LCFI0:
+	MOV.W	R12, @R1
+	MOV.W	R13, 2(R1)
+.LM2:
+	MOV.W	@R1, R12
+	ADD.W	2(R1), R12
+.LM3:
+	ADD.W	#4, R1
+	RET
+.LFE0:
+	.size	f, .-f
+
+行番号疑似命令 .loc が生成されていない. それならば何故 main のブレークポイントで
+ソースファイルとの対応がとれているのかは不明.
+
+しかし, まずは .loc が生成されるのが期待する動作なので, 何故生成されないかを調査するべき.
+
+オリジナルの cc1 では以下のように .loc が生成されている.
+
+$23 = (rtx_insn *) 0xb78774c8
+   19: R12:HI=[R1:HI+0x2]
+$24 = void
+	.loc 1 3 12
+	MOV.W	2(R1), R12
+
+final.c:2646
+
+	    (*debug_hooks->source_line) (last_linenum, last_columnnum,
+					 last_filename, last_discriminator,
+					 is_stmt);
+
+ここで出していた.
+
+自前の cc1 で以下の条件が成立せずに疑似命令が出ていない.
+
+  if (output_asm_line_debug_info ())
+    {
+
+
+  if (dwarf2out_as_loc_support == AUTODETECT_VALUE)
+    dwarf2out_as_loc_support
+      = dwarf2out_default_as_loc_support ();
+
+ここでどうなっているか.
+
+DWARF2_ASM_LINE_DEBUG_INFO
+
+のマクロの宣言が必要らしい. これまでは STACK_POINTER_REGNUM と
+FRAME_POINTE_REGNUM の値を等しくすることがなかったが, もしかするとこれ
+が影響している可能性はある.
+
+#define DWARF2_ASM_LINE_DEBUG_INFO	true
+
+を入れてリビルドしコンパイルしたところ .loc 疑似命令が生成されるように
+はなったが gdb による動作はまだ期待したものにはなっていない.
+
+そしてこのタイミングで気付いたがオリジナルの cc1 は以下のようになっている.
+
+#define STACK_POINTER_REGNUM		1
+
+#define FRAME_POINTER_REGNUM 		4 /* not usually used, call preserved */
+
+このようにしてもスタックポインタだけでコード生成するような仕組みがある
+らしい. -fomit-frame-pointer のオプションが必ずセットされているという
+ことか?
+
+さらにここで重要なことに気付いた. オリジナルの cc1 で生成したコードは
+gdb で期待した動作になっていない.
+
+~/lang/53_GNU_tool/gcc_cross/MSP430/test/test006/test.lof
+
+はもっと単純な例でこれはできている.
+
+~/lang/53_GNU_tool/gcc_cross/MSP430/tool/
+
+にある sample.c を -g でコンパイルし, sample.elf を gdb で実行すると
+f にステップインできない現象が再現している. しかも f 以外の函数はステッ
+プインできている.
+
+以下のようなテストプログラムに a.c をしてみた:
+#include <stdio.h>
+
+int f(int a, int b)
+{
+  return a + b;
+}
+
+int g(int a,  int b)
+{
+  return a - b;
+}
+
+int main()
+{
+  g(5, 6);
+  printf("hello world %d\n", f(5, 6));
+  return 0;
+}
+
+このテストプログラムをこれまで通り -g オプションでコンパイルして gdb
+で実行すると
+
+main のブレークポイントで停止できている.
+g にステップインできている. このとき引数 a と b も正しく表示できている.
+さらに where コマンドが期待通り動作している.
+さらに finish コマンドで期待通り動作している.
+しかし
+
+  printf("hello world %d\n", f(5, 6));
+
+の行で step コマンドを実行すると f ではなくて printf にステップインし
+ている.
+
+同様のこのとを自前の cc1 でやってみたところ, g にステップインしたとき
+プロローグを適切にスキップできていない. プロローグをスキップすれば a
+と b を正しく表示できている.
+where コマンドで以下のようになる.
+
+(msp430-elf-gdb) where
+#0  g (a=5, b=6) at a.c:10
+#1  0x000005aa in main () at a.c:15
+Backtrace stopped: frame did not save the PC
+(msp430-elf-gdb)
+
+いろいろ考えるところはあるが, まずはオリジナルの cc1 で -g オプション
+付きでコンパイルしたものが gdb で期待通り動作することを目指すべきだろう.
+
+=> MSP430 のリンカに問題があった. 修正してオリジナルの cc1 で 正常動作
+   を確認している.
+
+現状 ./zconfirm を実行すると以下のようになる.
+
+Breakpoint 1, main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+f (a=1434, b=1310) at a.c:4
+4	{
+#0  f (a=1434, b=1310) at a.c:4
+#1  0x0000059a in main () at a.c:10
+Backtrace stopped: frame did not save the PC
+hello world 11
+
+これはいろいろ問題はあるがまずはプロローグを適切にスキップできていない.
+プロローグを適切にスキップできていれば a や b を正しく表示できている.
+
+gdb 視点から調べてみたところプロローグをスキップする処理は main の先頭
+アドレスに対しては行なわれているが f の先頭アドレスに対しては行なわれ
+ていない.
+
+(gdb) delete
+(gdb) b step_command
+(gdb) run
+...
+ブレークポイントにヒット
+(gdb) b sim_write
+(gdb) c
+...
+sim_write のブレークポイントにヒット
+(gdb) p/x mem
+$7 = 0x58e                      これは main 函数のアドレス
+(gdb) c
+...
+sim_write のブレークポイントにヒット
+(gdb) p/x mem
+$8 = 0x58e                      これは main 函数のアドレス
+(gdb) c
+Continuing.
+f (a=1434, b=1310) at a.c:4
+4	{
+#0  f (a=1434, b=1310) at a.c:4
+#1  0x0000059a in main () at a.c:10
+Backtrace stopped: frame did not save the PC
+
+Thread 1 "gdb" hit Breakpoint 3, sim_write (sd=0x8b7ef00, mem=1422, buf=0x86c7221 <msp430_break_insn> "CC", length=2) at ./../common/sim-hrw.c:37
+(gdb)
+
+のようになっている. つまり f の先頭アドレスに内部ブレークポイントをセッ
+トしているわけではないらしい.
+
+static void
+process_event_stop_test (struct execution_control_state *ecs)
+{
+...
+  stop_pc_sal = find_pc_line (ecs->event_thread->suspend.stop_pc, 0);
+
+step_commmand が呼び出された後 sim_resume と process_event_stop_test
+が交互に 3 回呼び出される. その 3 回目で
+
+
+(gdb) p/x ecs->event_thread->suspend.stop_pc
+$10 = 0x57a
+(gdb) n
+(gdb) p/x stop_pc_sal
+$12 = {pspace = 0x8b306a0, symtab = 0x8b7c4f8, symbol = 0x0, section = 0x0, 
+  msymbol = 0x0, line = 0x4, pc = 0x57a, end = 0x584, explicit_pc = 0x0, 
+  explicit_line = 0x0, is_stmt = 0x1, prob = 0x0, objfile = 0x0}
+(gdb)
+
+おそらくこれで stop_pc_sal.pc = 0x584 になるのが期待値.
+
+0000057a <f>:
+ 57a:	21 82       	sub	#4,	r1	;r2 As==10
+
+0000057c <.LCFI0>:
+ 57c:	81 4c 00 00 	mov	r12,	0(r1)	;
+ 580:	81 4d 02 00 	mov	r13,	2(r1)	;
+
+00000584 <.Loc.5.1>:
+
+かと思ったが, できているオリジナルの cc1 の生成した a.elf で
+gdb の動作の比較を行なったところ
+
+  if (!frame_id_eq (get_stack_frame_id (frame),
+		    ecs->event_thread->control.step_stack_frame_id)
+      && (frame_id_eq (frame_unwind_caller_id (get_current_frame ()),
+		       ecs->event_thread->control.step_stack_frame_id)
+	  && (!frame_id_eq (ecs->event_thread->control.step_stack_frame_id,
+			    outer_frame_id)
+	      || (ecs->event_thread->control.step_start_function
+		  != find_pc_function (ecs->event_thread->suspend.stop_pc)))))
+    {
+
+
+この条件が成立しているのがオリジナルの cc1. 自前の cc1 では成立していない.
+
+自前の cc1 に対する結果は以下
+(gdb) p frame_id_eq (get_stack_frame_id (frame), ecs->event_thread->control.step_stack_frame_id)
+$18 = false
+(gdb) p frame_id_eq (frame_unwind_caller_id (get_current_frame ()), ecs->event_thread->control.step_stack_frame_id)
+$19 = false
+(gdb) p ecs->event_thread->control.step_start_function
+$20 = (symbol *) 0x8b7d184
+(gdb) p find_pc_function (ecs->event_thread->suspend.stop_pc)
+$21 = (symbol *) 0x8b7d278
+
+一方オリジナルの cc1 に対する結果は
+
+
+(gdb) p frame_id_eq (get_stack_frame_id (frame), ecs->event_thread->control.step_stack_frame_id)
+$1 = false
+(gdb) p frame_id_eq (frame_unwind_caller_id (get_current_frame ()), ecs->event_thread->control.step_stack_frame_id)
+$2 = true
+(gdb) p frame_id_eq (ecs->event_thread->control.step_stack_frame_id, outer_frame_id)
+$3 = false
+(gdb)
+
+なので
+
+frame_id_eq (frame_unwind_caller_id (get_current_frame ()), ecs->event_thread->control.step_stack_frame_id)
+
+が異なっている.
+
+
+以下はオリジナルの cc1 に対する結果 
+(gdb) p/x frame_unwind_caller_id (get_current_frame ())
+$5 = {stack_addr = 0xff00, code_addr = 0x58e, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) p/x ecs->event_thread->control.step_stack_frame_id
+$6 = {stack_addr = 0xff00, code_addr = 0x58e, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb)
+
+以下は自前の cc1 に対する結果
+(gdb) p/x frame_unwind_caller_id (get_current_frame ())
+$22 = {stack_addr = 0xfefc, code_addr = 0x58e, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) p/x ecs->event_thread->control.step_stack_frame_id
+$23 = {stack_addr = 0xfefe, code_addr = 0x58e, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb)
+
+さてどうしたものか. この後最初に気付いた
+
+  stop_pc_sal = find_pc_line (ecs->event_thread->suspend.stop_pc, 0);
+
+の呼び出しがあり, そして 0x57a は 0x57a のまま.
+
+自前の cc1 は printf の呼び出しに PUSH 命令を生成している.
+オリジナルの cc1 はプロローグの段階で呼び出す函数の引数の分をスタック
+に確保していて, プロローグ以降, エピローグ前まではスタックポインタが
+変化しないようにしている.
+
+これはフレームポインタを使用しないせいでこのような状況になっているよう
+にも思える. 実際 h8300 の自前のコンパイラでは push を使用していた.
+
+とりあえずオリジナルの cc1 がやっているようにプロローグとエピローグ
+でスタックポインタを函数呼び出しのための引数のスペースを作るように
+してみる.
+
+  fs = cfun->machine->framesize_locals + cfun->machine->framesize_outgoing;
+
+おそらく以下が必要
+
+#define ACCUMULATE_OUTGOING_ARGS 1
+
+そしてプロローグとエピローグで以下のように
+
+  auto size = get_frame_size();
+  size += crtl->outgoing_args_size;
+
+函数呼び出しのための引数のスペースを作るように
+してみる.
+
+以下は後で気付いたが以下の修正も必要だった.
+const char* msp430_movhi(rtx x, rtx y)
+{
+  int offset;
+  if (sp_rel(x, &offset) && REG_P(y))
+    return "MOV.W	%1, %0";
+
+  if (REG_P(x) && SYMBOL_REF_P(y))
+    return "MOV.W	#%1, %0";
+
+  if (REG_P(x) && CONST_INT_P(y))
+    return "MOV.W	#%1, %0";
+
++ if (sp_rel(x, &offset) && SYMBOL_REF_P(y))
++   return "MOV.W	#%1, %0";
+
+
+そして一旦以下を削除する.
+
+#define PUSH_ROUNDING(X)	(X)
+
+(define_insn "pushhi1"
+  [(match_operand:HI 0 "" "")]
+  ""
+  "*
+  return msp430_pushhi1(operands[0]);")
+
+const char* msp430_pushhi1(rtx x);
+
+const char* msp430_pushhi1(rtx x)
+{
+  if (REG_P(x))
+    return "PUSH	%0";
+
+  if (SYMBOL_REF_P(x))
+    return "PUSH	#%0";
+
+  return "push %0";
+}
+
+
+期待した通りに修正できたのだが, まだ f にステップインできていない.
+
+例の場所で確認してみた.
+
+(gdb) p/x frame_unwind_caller_id (get_current_frame ())
+$1 = {stack_addr = 0xfefc, code_addr = 0x58e, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) p/x ecs->event_thread->control.step_stack_frame_id
+$2 = {stack_addr = 0xfefe, code_addr = 0x58e, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb)
+
+これは状況は全く変わっていない. main 函数で printf を呼び出すときに
+PUSH 命令を出していたのは実は無関係だったということ.
+しかし上の 0xfefe というアドレスは 0xff00 - 2 からきているようにしか見
+えないが. 
+
+さてどうするべきか.
+
+(gdb) delete
+(gdb) b step_command
+(gdb) b infrun.c:6756
+(gdb) run
+...
+step_command のブレークポイントで停止
+(gdb) c
+...
+例のところのブレークポイントで停止
+(gdb) p/x ecs->event_thread->control.step_stack_frame_id
+$1 = {stack_addr = 0xfefe, code_addr = 0x58e, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) p/x ecs->event_thread->control.step_stack_frame_id.stack_addr
+$2 = 0xfefe
+(gdb) p &ecs->event_thread->control.step_stack_frame_id.stack_addr
+$3 = (CORE_ADDR *) 0x8ba2868
+(gdb) watch *(int*)0x8ba2868
+Hardware watchpoint 3: *(int*)0x8ba2868
+(gdb)
+
+この 0xfefe をセットしている瞬間を捕える.
+
+  tp->control.step_stack_frame_id = get_stack_frame_id (frame);  ここだった.
+
+
+(gdb) p/x *frame
+$6 = {level = 0x0, pspace = 0x8b306a0, aspace = 0x8b30b48, 
+  prologue_cache = 0x8ae9eec, unwind = 0x868a1e0, prev_arch = {p = 0x1, 
+    arch = 0x8b85300}, prev_pc = {status = 0x0, masked = 0x0, value = 0x0}, 
+  prev_func = {addr = 0x0, status = 0x0}, this_id = {p = 0x2, value = {
+      stack_addr = 0xfefe, code_addr = 0x58e, special_addr = 0x0, 
+      stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+      artificial_depth = 0x0}}, base = 0x0, base_cache = 0x0, 
+  next = 0x8ae9df8, prev_p = 0x0, prev = 0x0, stop_reason = 0x0, 
+  stop_string = 0x0}
+(gdb) p/x frame->this_id.value.stack_addr
+$10 = 0xfefe
+(gdb) p &frame->this_id.value.stack_addr
+$11 = (CORE_ADDR *) 0x8ae9eb0
+(gdb)
+
+こっちの 0xfefe をセットしている瞬間を捕える.
+
+static void
+dwarf2_frame_this_id (struct frame_info *this_frame, void **this_cache,
+		      struct frame_id *this_id)
+{
+...
+    (*this_id) = frame_id_build (cache->cfa, get_frame_func (this_frame));
+
+
+ここだった.
+
+(gdb) p/x cache->cfa
+$13 = 0xfefe
+(gdb) p &cache->cfa
+$14 = (CORE_ADDR *) 0x8ae9eec
+(gdb) 
+
+さらにこっちの 0xfefe をセットしている瞬間を捕える.
+
+ここだった.
+	case CFA_REG_OFFSET:
+0xfefa	  cache->cfa = read_addr_from_reg (this_frame, fs.regs.cfa_reg);
+	  if (fs.armcc_cfa_offsets_reversed)
+	    cache->cfa -= fs.regs.cfa_offset;
+	  else
+0xfefe	    cache->cfa += fs.regs.cfa_offset;
+	  break;
+
+オリジナルの cc1 は以下が定義されている.
+#define INCOMING_FRAME_SP_OFFSET		(TARGET_LARGE ? 4 : 2)
+
+しかしこれにはあまり根拠がない.
+同じことをオリジナルの cc1 の生成した a.elf に対してやってみた.
+
+	case CFA_REG_OFFSET:
+0xfefa	  cache->cfa = read_addr_from_reg (this_frame, fs.regs.cfa_reg);
+	  if (fs.armcc_cfa_offsets_reversed)
+	    cache->cfa -= fs.regs.cfa_offset;
+	  else
+0xff00	    cache->cfa += fs.regs.cfa_offset;
+	  break;
+
+
+ということはオリジナルの cc1
+(gdb) p fs.regs.cfa_offset
+$13 = 6
+(gdb) 
+
+自前の cc1
+(gdb) p fs.regs.cfa_offset
+$18 = 4
+(gdb)
+
+オリジナルの cc1
+00000014 00000014 00000000 FDE cie=00000000 pc=0000057a..0000058e
+  DW_CFA_advance_loc4: 2 to 0000057c
+  DW_CFA_def_cfa_offset: 6
+  DW_CFA_nop
+
+0000002c 00000014 00000000 FDE cie=00000000 pc=0000058e..000005b0
+  DW_CFA_advance_loc4: 2 to 00000590
+  DW_CFA_def_cfa_offset: 6
+  DW_CFA_nop
+
+自前の cc1
+00000014 00000014 00000000 FDE cie=00000000 pc=0000057a..0000058e
+  DW_CFA_advance_loc4: 2 to 0000057c
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_nop
+
+0000002c 00000014 00000000 FDE cie=00000000 pc=0000058e..000005b0
+  DW_CFA_advance_loc4: 2 to 00000590
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_nop
+
+なるほどこれっぽい. しかし実際は sp := sp - 4 のようにしているからここ
+は 4 であるのが期待値ではある.
+
+フレームポインタがないことが影響しているのだろうか.
+
+以下を入れてもう一度トライ
+
+#define INCOMING_FRAME_SP_OFFSET 2
+
+確認したところ gdb で期待通りの動作をしている. 結局 .debug_frame は以下
+のようになった.
+
+00000000 00000010 ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -2
+  Return address column: 17
+
+  DW_CFA_def_cfa: r1 ofs 2
+  DW_CFA_offset: r17 at cfa-2
+  DW_CFA_nop
+  DW_CFA_nop
+
+00000014 00000014 00000000 FDE cie=00000000 pc=0000057a..0000058e
+  DW_CFA_advance_loc4: 2 to 0000057c
+  DW_CFA_def_cfa_offset: 6
+  DW_CFA_nop
+
+0000002c 00000014 00000000 FDE cie=00000000 pc=0000058e..000005b0
+  DW_CFA_advance_loc4: 2 to 00000590
+  DW_CFA_def_cfa_offset: 6
+  DW_CFA_nop
+
