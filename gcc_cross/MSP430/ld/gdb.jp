@@ -1,0 +1,666 @@
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.msp430-elf/host-i686-pc-linux-gnu/gcc/a.elf
+
+を msp430-elf-gdb で実行すると f にステップインできない件の調査.
+
+実行すると以下のようになる:
+Breakpoint 1 at 0x58c: file a.c, line 10.
+
+Breakpoint 1, main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+hello world 11
+printf () at start.S:20
+20		RET
+#0  printf () at start.S:20
+#1  0x000005a6 in main () at a.c:10
+main () at a.c:11
+11	  return 0;
+
+上のログからは分かりにくいが f にステップインせず, printf で停止している.
+期待値は f のプロローグ部分をスキップした
+
+	SUB.W	#4, R1
+.LCFI0:
+	; end of prologue
+	MOV.W	R12, 2(R1)
+	MOV.W	R13, @R1
+ここで停止すること.
+
+しかし objdump の結果がなんだか正しくない.
+
+
+00000576 <f>:
+ 576:	21 82       	sub	#4,	r1	;r2 As==10
+
+00000578 <.LCFI0>:
+ 578:	
+0000057a <L0^A>:
+ 57a:	02 00       	mova	@r0,	r2	; これが正しくなさそう
+ 57c:	81 4d 00 00 	mov	r13,	0(r1)	;
+
+00000580 <.Loc.5.1>:
+ 580:	1c 41 02 00 	mov	2(r1),	r12	;
+ 584:	2c 51       	add	@r1,	r12	;
+
+これでいくと 0x580 で停止するのが期待値.
+
+(msp430-elf-gdb) b f
+Breakpoint 2 at 0x578
+(msp430-elf-gdb)
+
+まず 0x578 が期待値と異なる. また a.c:5 が対応していない.
+
+ところが, 以下のようにアドレス 0x580 を指定すれば
+
+(msp430-elf-gdb) b *0x580
+Breakpoint 1 at 0x580: file a.c, line 5.   # 行番号が対応している!
+(msp430-elf-gdb) run
+Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.msp430-elf/host-i686-pc-linux-gnu/gcc/a.elf 
+
+Breakpoint 1, f (a=5, b=6) at a.c:5
+(msp430-elf-gdb)
+
+ということは, おそらく f のプロローグ部分を適切にスキップできれば修正される可能性が多いに
+ある.
+
+(gdb) b b msp430_skip_prologue
+(gdb) run
+...
+static CORE_ADDR
+msp430_skip_prologue (struct gdbarch *gdbarch, CORE_ADDR pc)
+{
+...
+  /* Try to find the extent of the function that contains PC.  */
+  if (!find_pc_partial_function (pc, &name, &func_addr, &func_end))
+    return pc;
+
+  msp430_analyze_prologue (gdbarch, pc, func_end, &p);
+  return p.prologue_end;       ここで 0x578 が返っている.
+}
+
+
+そういえば msp430-elf-gcc で zconfirm による確認のときに
+
+      opcode_handle.sd = 0;
+      opcode_handle.pc = pc;
+
+などの修正を行なったがこれがおそらく正しくなかった可能性もある.
+
+一旦, このとき行なった修正を元に戻してみた. しかし f にブレークポイントを
+セットしてもやはり 0x580 ではなくて 0x578 にセットされている.
+
+そして気付いたことは以下
+
+int f(int a, int b)
+{
+  return a + b;
+}
+
+int g(int a, int b)
+{
+  return a - b;
+}
+
+int main()
+{
+  g(5, 6);
+  return 0;
+}
+
+は main で停止して g にステップインして where コマンドと finish コマンド
+が期待通り動作しているのだが, g ではなくて f にすると問題の現象が発生する.
+
+いずれにしても g はプロローグを適切にスキップできているが, f はできていない
+ということだろうか.
+
+objdump による逆アセンブル結果以下:
+
+00000576 <f>:
+ 576:	21 82       	sub	#4,	r1	;r2 As==10
+
+00000578 <.LCFI0>:
+ 578:	
+0000057a <L0^A>:
+ 57a:	02 00       	mova	@r0,	r2	; 
+ 57c:	81 4d 00 00 	mov	r13,	0(r1)	;
+
+...
+0000058a <g>:
+ 58a:	21 82       	sub	#4,	r1	;r2 As==10
+
+0000058c <.LCFI1>:
+ 58c:	81 4c 02 00 	mov	r12,	2(r1)	;  正しい
+ 590:	81 4d 00 00 	mov	r13,	0(r1)	;
+
+一方, disassemble コマンドによる結果は以下
+
+Dump of assembler code for function f:
+   0x00000576 <+0>:	sub	#4,	r1	;r2 As==10
+   0x00000578 <+2>:	mov	r12,	2(r1)	;   正しい
+   0x0000057c <+6>:	mov	r13,	0(r1)	;
+   0x00000580 <+10>:	mov	2(r1),	r12	;
+   0x00000584 <+14>:	add	@r1,	r12	;
+   0x00000586 <+16>:	add	#4,	r1	;r2 As==10
+   0x00000588 <+18>:	ret			
+End of assembler dump.
+Dump of assembler code for function g:
+   0x0000058a <+0>:	sub	#4,	r1	;r2 As==10
+   0x0000058c <+2>:	mov	r12,	2(r1)	;   正しい
+   0x00000590 <+6>:	mov	r13,	0(r1)	;
+   0x00000594 <+10>:	mov	2(r1),	r12	;
+   0x00000598 <+14>:	sub	@r1,	r12	;
+   0x0000059a <+16>:	add	#4,	r1	;r2 As==10
+   0x0000059c <+18>:	ret			
+End of assembler dump.
+
+g にブレークポイントをセットしたときに msp430_skip_prologue() の戻り値は 0x594
+になるのかと思っていたが実際は 0x58c であった.
+
+だから f と g でプロローグのスキップの仕方が違っているわけではない.
+
+      else if (opc.id == MSO_mov
+	       && opc.op[0].type == MSP430_Operand_Immediate
+	       && 12 <= opc.op[0].reg && opc.op[0].reg <= 15)
+	after_last_frame_setup_insn = next_pc;
+は
+      else if (opc.id == MSO_mov
+	       && opc.op[0].type == MSP430_Operand_Indirect
+	       && opc.op[0].reg == MSR_SP
+	       && 12 <= opc.op[1].reg && opc.op[1].reg <= 15)
+	after_last_frame_setup_insn = next_pc;
+
+の誤りのように思える.
+この修正を行なうことで f にブレークポイントをセットしたときにプロローグの部分をスキップ
+できるようになり, ソースファイルとの対応も取れている.
+
+しかし main 函数のブレークポイントで停止した状態で step コマンドを実行しても
+f にステップインできていない.
+
+step コマンドは以下の函数で処理されている:
+(gdb) b step_command
+(gdb) run
+...
+ブレークポイントにヒット
+(gdb) b sim_resume
+(gdb) c
+...
+Thread 1 "gdb" hit Breakpoint 3, sim_resume (sd=0x8b915f8, step=1, siggnal=0) at ./../common/sim-resume.c:41
+(gdb)
+
+この後 f の先頭アドレス 0x576 まで少なくとも実行するはず.
+
+(gdb) info b
+Num     Type           Disp Enb Address    What
+5       breakpoint     keep y   0x083a46de msp430-sim.c:1073
+	breakpoint already hit 3 times
+        if (opcode_pc!=0x576)
+          c
+        end
+(gdb) c
+...
+上のブレークポイントで停止
+(gdb) up
+(gdb) up
+
+#2  0x083a678e in sim_resume (sd=0x8b915f8, step=0, siggnal=0) at ./../common/sim-resume.c:89
+                                            ^^^^^^^
+(gdb)
+
+期待せず step = 0 になっている. ここが期待しない結果.
+
+0000059e <main>:
+ 59e:	7d 40 06 00 	mov.b	#6,	r13	;
+ 5a2:	7c 40 05 00 	mov.b	#5,	r12	;
+ 5a6:	b0 12 76 05 	call	#1398		;#0x0576
+
+sim_resume(step=1) の呼び出しが少なくとも 4 回連続するのが期待値.
+
+(gdb) info b
+Num     Type           Disp Enb Address    What
+2       breakpoint     keep y   0x081e7ea0 in step_command(char const*, int) at infcmd.c:793
+	breakpoint already hit 1 time
+6       breakpoint     keep y   0x0839f720 in sim_stop_reason at ./../common/sim-reason.c:31
+	breakpoint already hit 3 times
+8       breakpoint     keep y   0x083a46de in msp430_step_once at msp430-sim.c:1073
+	breakpoint already hit 3 times
+9       breakpoint     keep y   0x083a6620 in sim_resume at ./../common/sim-resume.c:41
+	breakpoint already hit 4 times
+(gdb) disable        # 一旦全部無効にして 
+(gdb) enable 2       # step_command のブレークポイントのみ有効にする
+(gdb) run
+...
+step_command のブレークポイントにヒット
+(gdb) enablel        # ここで全てのブレークポイントを有効にする
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 9, sim_resume (sd=0x8b915f8, step=1, siggnal=0) at ./../common/sim-resume.c:41
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 8, msp430_step_once (sd=0x8b915f8) at msp430-sim.c:1073
+(gdb) p/x opcode_pc
+$21 = 0x59e
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 6, sim_stop_reason (sd=0x8b915f8, reason=0xbfffec54, sigrc=0xbfffec50) at ./../common/sim-reason.c:31
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 9, sim_resume (sd=0x8b915f8, step=1, siggnal=0) at ./../common/sim-resume.c:41
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 8, msp430_step_once (sd=0x8b915f8) at msp430-sim.c:1073
+(gdb) p/x opcode_pc
+$22 = 0x5a2
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 6, sim_stop_reason (sd=0x8b915f8, reason=0xbfffec54, sigrc=0xbfffec50) at ./../common/sim-reason.c:31
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 9, sim_resume (sd=0x8b915f8, step=1, siggnal=0) at ./../common/sim-resume.c:41
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 8, msp430_step_once (sd=0x8b915f8) at msp430-sim.c:1073
+(gdb) p/x opcode_pc
+$23 = 0x5a6
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 6, sim_stop_reason (sd=0x8b915f8, reason=0xbfffec54, sigrc=0xbfffec50) at ./../common/sim-reason.c:31
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 9, sim_resume (sd=0x8b915f8, step=0, siggnal=0) at ./../common/sim-resume.c:41
+# ここで step=0 で呼び出されている.
+(gdb) c
+(gdb) p/x opcode_pc
+$24 = 0x576
+(gdb) 
+
+0000059e <main>:
+ 59e:	7d 40 06 00 	mov.b	#6,	r13	;
+ 5a2:	7c 40 05 00 	mov.b	#5,	r12	;
+ 5a6:	b0 12 76 05 	call	#1398		;#0x0576
+
+であるからこの 3 命令の先頭まで実行するのに sim_resume(step=1) で実行
+の再開を行なったが,
+
+00000576 <f>:
+ 576:	21 82       	sub	#4,	r1	;r2 As==10
+
+0x576 の先頭まで実行するのに sim_resume(step=0) で実行再開を行なっている.
+
+sim_resume() の引数は step 以下でセットされる.
+
+void
+gdbsim_target::resume_one_inferior (inferior *inf, bool step,
+				    gdb_signal siggnal)
+{
+  struct sim_inferior_data *sim_data
+    = get_sim_inferior_data (inf, SIM_INSTANCE_NOT_NEEDED);
+
+  if (sim_data)
+    {
+      sim_data->resume_siggnal = siggnal;
+      sim_data->resume_step = step;
+
+これが false で呼ばれてしまう原因を調べてみる.
+
+static void
+resume_1 (enum gdb_signal sig)
+{
+...
+  int step;
+...
+  step = currently_stepping (tp);   // (*1)
+...
+  else if (step)
+    step = maybe_software_singlestep (gdbarch, pc);  // (*2)
+
+  do_target_resume (resume_ptid, step, sig);  ここから呼び出されている.
+
+この step の計算方法を確認してみる.
+
+
+(gdb) delete
+(gdb) b step_command
+(gdb) run
+...
+ブレークポイントにヒット
+(gdb) b resume_1
+(gdb) c
+...
+resume_1 のブレークポイントにヒット
+
+1 回目上の (*1) で 1 に, (*2) で 1 になっている.
+2 回目も同じ.
+3 回目も同じ.
+4 回目は (*1) で 0 になっている. そして (*2) は実行されない.
+
+以下のように f でなくて g ならば期待通りステップインできているので
+その場合の動作を確認してみる.
+
+int f(int a, int b)
+{
+  return a + b;
+}
+
+int g(int a, int b)
+{
+  return a - b;
+}
+
+int main()
+{
+  g(5, 6);
+  return 0;
+}
+
+確認してみたところ f の場合と同様に 4 回目は step=0 と計算されていた.
+
+1, 2, 3 回目に sim_resume(step=1) で呼び出され,
+4 回目に sim_resume(step=0) で呼び出されるという動作は実は正しかったわ
+けで, 4 回目の sim_resume(step=0) の直前に内部ブレークポイントがセット
+されるが
+
+f の場合は
+
+  return 0;
+
+に内部ブレークポイントがセットされ
+
+g の場合は
+
+g のプロローグをスキップしたところ
+
+に内部ブレークポイントがセットされるという動作の違いが出ていたらしい.
+
+
+(gdb) info b
+Num     Type           Disp Enb Address    What
+12      breakpoint     keep y   0x081e7ea0 in step_command(char const*, int) at infcmd.c:793
+	breakpoint already hit 1 time
+13      breakpoint     keep y   0x081f2289 in resume_1(gdb_signal) at infrun.c:2260
+	breakpoint already hit 5 times
+(gdb) dele 13     # step_command のみにする
+(gdb) run
+...
+ブレークポイントにヒット
+(gdb) b sim_write
+
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 14, sim_write (sd=0x8b915f8, mem=1438, buf=0x86c7221 <msp430_break_insn> "CC", length=2) at ./../common/sim-hrw.c:37
+(gdb) p/x mem
+$45 = 0x59e
+(gdb)
+
+g の場合は内部ブレークポイントは 0x59e にセットされていた. これは main
+のアドレス.
+
+Thread 1 "gdb" hit Breakpoint 14, sim_write (sd=0x8b915f8, mem=1428, buf=0x86c7221 <msp430_break_insn> "CC", length=2) at ./../common/sim-hrw.c:37
+(gdb) p/x mem
+$46 = 0x594
+(gdb)
+
+g の場合は 2 つ目 0x594 でこれは g のプロローグをスキップしたアドレス.
+
+同じことを f でやってみる.
+
+f の場合は 1 つ目が 0x59e で main.  2 つ目が 0x5aa でやはり
+
+  return 0;
+
+のアドレス. だから f の場合なぜ 2 つ目が 0x5aa になるのかを調べてみる.
+
+
+static void
+insert_breakpoint_locations (void)
+{
+...
+  ALL_BP_LOCATIONS (bl, blp_tmp)
+    {
+...
+
+
+
+(gdb) p/x bl->target_info.reqstd_address
+$59 = 0x5aa
+(gdb) p &bl->target_info.reqstd_address
+$60 = (CORE_ADDR *) 0x8b98280
+(gdb) watch *(int*)0x8b98280
+(gdb) run
+...
+
+
+static int
+insert_bp_location (struct bp_location *bl,
+		    struct ui_file *tmp_error_stream,
+		    int *disabled_breaks,
+		    int *hw_breakpoint_error,
+		    int *hw_bp_error_explained_already)
+{
+...
+  bl->target_info.reqstd_address = bl->address;
+
+
+ここでセットしていた. そしてこれはさらに
+
+static struct bp_location *
+add_location_to_breakpoint (struct breakpoint *b,
+			    const struct symtab_and_line *sal)
+{
+...
+  loc->requested_address = sal->pc;
+
+ここセットしていた. そしてこれはさらに
+
+static void
+insert_step_resume_breakpoint_at_caller (struct frame_info *next_frame)
+{
+...
+  symtab_and_line sr_sal;
+  sr_sal.pc = gdbarch_addr_bits_remove (gdbarch,
+					frame_unwind_caller_pc (next_frame));
+  sr_sal.section = find_pc_overlay (sr_sal.pc);
+  sr_sal.pspace = frame_unwind_program_space (next_frame);
+
+  insert_step_resume_breakpoint_at_sal (gdbarch, sr_sal,
+					frame_unwind_caller_id (next_frame));
+}
+
+のように計算している. 同じことを f ではなくて g でやってみた.
+g では少なくとも insert_step_resume_breakpoint_at_caller は呼び出され
+ていない.
+
+
+	    if (execution_direction == EXEC_REVERSE)
+	      handle_step_into_function_backward (gdbarch, ecs);
+	    else
+	      handle_step_into_function (gdbarch, ecs);   ここだった.
+	    return;
+
+つまり g ではステップインしているが f ではステップインしない原因は	    
+
+static void
+process_event_stop_test (struct execution_control_state *ecs)
+{
+...
+      {
+	struct symtab_and_line tmp_sal;
+
+	tmp_sal = find_pc_line (ecs->stop_func_start, 0);
+これ	if (tmp_sal.line != 0
+	    && !function_name_is_marked_for_skip (ecs->stop_func_name,
+						  tmp_sal)
+	    && !inline_frame_is_marked_for_skip (true, ecs->event_thread))
+	  {
+	    if (execution_direction == EXEC_REVERSE)
+	      handle_step_into_function_backward (gdbarch, ecs);
+	    else
+	      handle_step_into_function (gdbarch, ecs);
+	    return;
+	  }
+      }
+
+上の if の条件が成立しているのが g で成立していないのが f. f で何故条
+件が成立しないのかを調べてみる.
+
+f の場合は tmp_sal.line = 0 になっている.
+
+struct symtab_and_line
+find_pc_line (CORE_ADDR pc, int notcurrent)  pc = 0x576 で呼び出されている
+{
+
+0x576 は f の先頭アドレス.
+
+以下は c.objdump の抜粋
+
+  Entry	Dir	時刻	サイズ	名前
+  1	0	0	0	start.S
+...
+  [0x00000108]  PC を固定サイズ 2 分進め 0x576 とします
+  [0x0000010b]  拡張命令コード 1: 列の終り
+
+これは偶然だろうか?
+
+> msp430-elf-addr2line -a 0x576 -e c.elf
+0x00000576
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.msp430-elf/host-i686-pc-linux-gnu/gcc/c.c:2
+>
+
+一応 addr2line では 0x576 に対して c.c:2 だとしている.
+しかし gdb が 0x576 に対して対応するソースファイルがないと判定している.
+
+struct symtab_and_line
+find_pc_sect_line (CORE_ADDR pc, struct obj_section *section, int notcurrent)
+{
+...
+  for (symtab *iter_s : compunit_filetabs (cust))
+    {
+      /* Find the best line in this symtab.  */
+      l = SYMTAB_LINETABLE (iter_s);
+...
+
+これは以前どこかでソースファイルとアドレスとの対応が取れていない状況が
+gdb 視点であって調査したことがあったことを今思い出した.
+
+以下は g の場合
+
+(gdb) p/x *first
+$99 = {line = 0x2, is_stmt = 0x1, pc = 0x576}    # これは f の先頭アドレス
+(gdb) p/x *(first+1)
+$100 = {line = 0x3, is_stmt = 0x1, pc = 0x580}l  # これは f のプロローグを
+                                                 # スキップしたアドレス
+(gdb)
+
+以下は f の場合
+
+(gdb) p/x *first
+$101 = {line = 0x3, is_stmt = 0x1, pc = 0x500}
+(gdb) p/x *(first+1)
+$102 = {line = 0x4, is_stmt = 0x1, pc = 0x504}
+(gdb)
+
+f の場合は start.S の行番号情報からマッチするものを探しているようになっている.
+
+  for (symtab *iter_s : compunit_filetabs (cust))
+    {
+      /* Find the best line in this symtab.  */
+      l = SYMTAB_LINETABLE (iter_s);
+
+g の場合:
+(gdb) p *iter_s
+$106 = {next = 0x0, compunit_symtab = 0x8b7e490, linetable = 0x8b7f07c, 
+  filename = 0x8b8c680 "c.c", language = language_c, 
+  fullname = 0x8bb0890 "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.msp430-elf/host-i686-pc-linux-gnu/gcc/c.c"}
+(gdb)
+
+f の場合
+(gdb) p *iter_s
+$105 = {next = 0x0, compunit_symtab = 0x8b7f1ac, linetable = 0x8bb86f0, 
+  filename = 0x8b8c68c "start.S", language = language_asm, fullname = 0x0}
+(gdb)
+
+というわけでおそらく cust の計算で違いが出ている.
+
+  cust = find_pc_sect_compunit_symtab (pc, section);
+
+f の場合
+(gdb) p cust
+$108 = (compunit_symtab *) 0x8b7f1ac
+(gdb)
+
+g の場合
+(gdb) p cust
+$109 = (compunit_symtab *) 0x8b7e490
+(gdb)
+
+f の場合に g の値と同じ値に cust を書き換えて続行させてみたが
+
+
+(gdb) c
+Continuing.
+0x00000576 in f ()
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
+[Thread 0xb6f32b70 (LWP 32428) exited]
+[Thre
+
+のようになっている. ここだけ修正してもうまくいかないらしい.
+
+ともあれ現状は cust の値が明かに正しくない.
+
+	  if (BLOCK_START (b) <= pc
+	      && BLOCK_END (b) > pc
+	      && (distance == 0
+		  || BLOCK_END (b) - BLOCK_START (b) < distance))
+	    {
+
+(gdb) p/x *b
+$122 = {startaddr = 0x500, endaddr = 0x57a, function = 0x0, superblock = 0x0, 
+  multidict = 0x8b7f264, namespace_info = 0x8b7f26c, ranges = 0x0}
+(gdb) 
+
+0x500 は start のアドレス
+0x57a は f の最初の sub 命令 + 2 のアドレス
+
+00000576 <f>:
+ 576:	21 82       	sub	#4,	r1	;r2 As==10
+
+00000578 <.LCFI0>:
+ 578:	
+0000057a <L0^A>:
+ 57a:	02 00       	mova	@r0,	r2	;
+ 57c:	81 4d 00 00 	mov	r13,	0(r1)	;
+
+これは例の objdump の結果が予期しないものになるやつ.
+いずれにしても
+
+0x500 <= 0x576 < 0x57a
+
+なのでこの条件が成立している.
+
+% msp430-elf-objdump -d -g -x c.o > c.o.objdump
+
+c.o.objdump の抜粋
+
+00000000 <f>:
+   0:	21 82       	sub	#4,	r1	;r2 As==10
+
+00000002 <.LCFI0>:
+   2:	81 4c 02 00 	mov	r12,	2(r1)	;
+   6:	81 4d 00 00 	mov	r13,	0(r1)	;
+
+期待したものになっている.
+ということはこれはリンカに問題がありそう.
+

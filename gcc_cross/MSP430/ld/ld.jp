@@ -1,0 +1,146 @@
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.msp430-elf/binutils/MEMO
+
+で判明したことは start.o の .text セクションのサイズが 0x7a であるのに
+
+0x500 に .text セクションを配置しようとして
+
+start.o の .text セクションが 0x500 から 0x57a に配置され
+a.o     の .text セクションが 0x57a から配置されされるのが期待値なのに
+                           0x576 から配置されされるのが原因.
+
+しかし改めてリンク後の memcpy の最後のアドレスを見てみると 0x576
+になっている.
+
+アセンブル時の start.o の memcpy の先頭アドレスは
+
+0000002e <memcpy>:
+...
+00000078 <.Loc.61.1>:
+  78:	30 41       	ret			
+
+0x2e で最後のアドレスが 0x7a になっている.
+
+一方リンク後は
+
+0000052c <memcpy>:
+...
+00000574 <.Loc.61.1>:
+ 574:	30 41       	ret			
+
+0x500 + 0x2c から 0x500 + 0x76
+
+と先頭アドレスも最後のアドレスもずれている.
+だからまずは memcpy の先頭アドレスが 0x52e ではなくて 0x52c になる理由を調べてみる.
+
+
+アセンブル後
+  12:	30 40 00 00 	br	#0x0000		;
+
+リンク後
+ 512:	fa 3f       	jmp	$-10     	;abs 0x508
+
+
+つまり br 命令(4 バイト)があったときに jmp 命令(2 バイト)に置き代えることができるのならば
+リンカが最適化しているらしいがこれがバグとなって現れたということ.
+
+この最適化をするのであれば .debug_info の
+
+    <10>   DW_AT_low_pc      : 0x500
+    <14>   DW_AT_high_pc     : 0x57a
+
+DW_AT_high_pc の値も変更する必要があるが, やっていなかったということ.
+今回は面倒なので単純にこの最適化をはずすことにする. と思ったが似た話は
+CompactRISC のリンカでもやっていた. そしてそれが問題なのかは不明だが
+
+~/lang/53_GNU_tool/gcc_cross/CompactRISC/test/test011/MEMO
+
+のような問題を引き起こしている可能性もある.
+
+まずはこの最適化の箇所を特定する.
+
+~/lang/53_GNU_tool/gcc_cross/MSP430/test/test022
+
+にコンパクトな環境を準備した.
+
+test.o の .text セクションは
+
+31400000 b0120000 03433040 0000
+                      ^^^^^^^^^
+br 命令は先頭から 11 バイト目から 4 バイト
+
+(gdb) b section.c:1523
+(gdb) run
+...
+(gdb) p section->name
+$13 = 0x8189b48 ".text"
+(gdb) p count
+$14 = 12
+(gdb) x/12bx location
+0x8189ae0:	0x31	0x40	0x00	0x10	0xb0	0x12	0x0c	0x05
+0x8189ae8:	0x03	0x43	0xfa	0x3f
+(gdb)
+
+0xfa 0x3f になっている. これをどこかで変更しているはず.
+
+
+(gdb) p/x ((char*)location)[10]
+$15 = 0xfa
+(gdb) p &((char*)location)[10]
+$16 = 0x8189aea "\372?"
+(gdb)
+
+これを変更している瞬間を捕える.
+
+最初 0x30 になっている. これは br 命令の最初の 1 バイト.
+そして次は 0x30 から 0x00 に変更していた. 0xfa ではないが.
+
+		    /* Fix the opcode right way.  */
+		    bfd_put_16 (abfd, opcode, contents + irel->r_offset - 2);
+		    irel->r_offset -= 2;
+
+		    /* Delete bytes.  */
+		    if (!msp430_elf_relax_delete_bytes (abfd, sec,
+							irel->r_offset + 2, 2))
+		      goto error_return;
+
+そしてそれっぽいところから変更している.
+次に 0x00 から 0xfa に変更している.
+
+static bfd_reloc_status_type
+msp430_final_link_relocate (reloc_howto_type *	   howto,
+			    bfd *		   input_bfd,
+			    asection *		   input_section,
+			    bfd_byte *		   contents,
+			    Elf_Internal_Rela *	   rel,
+			    bfd_vma		   relocation,
+			    struct bfd_link_info * info)
+{
+...
+    case R_MSP430_2X_PCREL:
+      ...
+      x = bfd_get_16 (input_bfd, contents);
+      x = (x & 0xfc00) | (srel & 0x3ff);
+      bfd_put_16 (input_bfd, x, contents);
+      /* Handle second jump instruction.  */
+      x = bfd_get_16 (input_bfd, contents - 2);
+      srel += 1;
+      x = (x & 0xfc00) | (srel & 0x3ff);
+      bfd_put_16 (input_bfd, x, contents - 2);
+      break;
+
+ということは 1 つ目のタイミングで .debug_info セクションを変更すれば良さそう.
+
+
+	/* Try to turn a 16-bit absolute branch into a 10-bit pc-relative
+	   branch.  */
+	if ((uses_msp430x_relocs (abfd)
+	     && ELF32_R_TYPE (irel->r_info) == R_MSP430X_ABS16)
+	    || (! uses_msp430x_relocs (abfd)
+		&& ELF32_R_TYPE (irel->r_info) == R_MSP430_16))
+	  {
+...
+                  ここで 1 つ目の処理
+
+
+今回はやはり面倒なのでこの部分をごっそりコンパイルアウトすることにした.
+正常動作を確認している.

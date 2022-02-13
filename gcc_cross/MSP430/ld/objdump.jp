@@ -1,0 +1,309 @@
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.msp430-elf/host-i686-pc-linux-gnu/gcc/a.elf
+
+を逆アセンブルしたとき
+
+00000576 <f>:
+ 576:	21 82       	sub	#4,	r1	;r2 As==10
+
+00000578 <.LCFI0>:
+ 578:	
+0000057a <L0^A>:
+ 57a:	02 00       	mova	@r0,	r2	;
+ 57c:	81 4d 00 00 	mov	r13,	0(r1)	;
+
+のように期待しない結果になる原因について調査してみる.
+期待する結果は
+
+00000576 <f>:
+ 576:	21 82       	sub	#4,	r1	;r2 As==10
+
+00000578 <.LCFI0>:
+ 578:	81 4c 02 00 	mov	r12,	2(r1)	;
+ 57c:	81 4d 00 00 	mov	r13,	0(r1)	;
+
+のようになる.
+単純に
+(gdb) run -d /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.msp430-elf/host-i686-pc-linux-gnu/gcc/a.elf> a.objdump
+
+のようにして再現している. 本当はリンカが生成した行番号情報に問題があることが判明しているが
+この段階から調査してみる.
+
+逆アセンブルは以下の函数で行なわれていた.
+
+static void
+disassemble_bytes (struct disassemble_info * inf,
+		   disassembler_ftype        disassemble_fn,
+		   bfd_boolean               insns,
+		   bfd_byte *                data,
+		   bfd_vma                   start_offset,
+		   bfd_vma                   stop_offset,
+		   bfd_vma		     rel_offset,
+		   arelent ***               relppp,
+		   arelent **                relppend)
+{
+
+この函数はラベル毎に呼び出されている.
+
+00000576 <f>:
+ 576:	21 82       	sub	#4,	r1	;r2 As==10
+
+00000578 <.LCFI0>:
+ 578:	
+0000057a <L0^A>:
+
+おそらく 0x57a のラベルがあるために上のような表示になっていて 0x578 から 4
+バイトは 81 4c 02 00 になっていてこれ自体は合っている.
+
+ラベルは以下の部分で表示している.
+
+	  pinfo->fprintf_func (pinfo->stream, "\n");
+	  objdump_print_addr_with_sym (abfd, section, sym, addr,
+				       pinfo, FALSE);
+	  pinfo->fprintf_func (pinfo->stream, ":\n");
+
+問題のラベルは以下で確認できる.
+(gdb) b objdump.c:3295
+(gdb) command
+>if (addr!=0x57a)
+ >c
+ >end
+>end
+(gdb) c
+
+なぜ 0x57a にラベルが置かれているかを調べてみる.
+
+
+static void
+disassemble_section (bfd *abfd, asection *section, void *inf)
+{
+...
+  while (addr_offset < stop_offset)
+    {
+...
+      addr = section->vma + addr_offset;
+...
+
+addr=0x57a の瞬間を捕える.
+
+b objdump.c:3193
+command
+if (addr!=0x57a)
+c
+end
+end
+
+きている.
+
+(gdb) p *sym
+$5 = {the_bfd = 0x81aca08, name = 0x81b427d "L0\001", value = 122, flags = 1, 
+  section = 0x81aec94, udata = {p = 0x0, i = 0}}
+(gdb)
+
+L0^A らしきものがある.
+
+sym は以下で計算されているらしい.
+
+  sym = (asymbol *) find_symbol_for_address (section->vma + addr_offset,
+                                             (struct disassemble_info *) inf,
+                                             &place);
+
+
+(gdb) p sym
+$6 = (asymbol *) 0x81b64c4
+(gdb)
+
+b objdump.c:3166
+command
+if (sym!=0x81b64c4)
+c
+end
+end
+
+これではひっかかっていない.
+
+一つ前のラベルで止める.
+
+b objdump.c:3193
+command
+if (addr!=0x578)
+c
+end
+end
+
+止められている.
+
+(gdb) b objdump.c:3166
+(gdb) c
+...
+これは思った動作と違うらしい.
+
+  while (addr_offset < stop_offset)
+    {
+...
+      addr = section->vma + addr_offset;
+...
+      このループの中で sym が更新されているらしい
+
+    }
+
+
+	    nextsym = sorted_syms[place];
+
+これで
+
+(gdb) p *nextsym
+$10 = {the_bfd = 0x81aaa08, name = 0x81b227d "L0\001", value = 122, 
+  flags = 1, section = 0x81acc94, udata = {p = 0x0, i = 0}}
+(gdb)
+
+のようになっている.
+
+
+(gdb) p *sorted_syms[58]
+$13 = {the_bfd = 0x81aaa08, name = 0x81b227d "L0\001", value = 122, 
+  flags = 1, section = 0x81acc94, udata = {p = 0x0, i = 0}}
+(gdb) p sorted_syms[58]
+$14 = (asymbol *) 0x81b44c4
+(gdb)
+
+ここを変更する瞬間を捕えてみる.
+
+      for (isym = isymbuf + 1, sym = symbase; isym < isymend; isym++, sym++)
+	{
+	  memcpy (&sym->internal_elf_sym, isym, sizeof (Elf_Internal_Sym));
+
+	  sym->symbol.the_bfd = abfd;
+	  sym->symbol.name = bfd_elf_sym_name (abfd, hdr, isym, NULL);
+	  sym->symbol.value = isym->st_value;
+
+これだった.
+
+(gdb) n
+(gdb) n
+(gdb) p *sym
+$16 = {symbol = {the_bfd = 0x81aaa08, name = 0x81b227d "L0\001", value = 0, 
+    flags = 0, section = 0x0, udata = {p = 0x0, i = 0}}, internal_elf_sym = {
+    st_value = 1402, st_size = 0, st_name = 373, st_info = 0 '\000', 
+    st_other = 0 '\000', st_target_internal = 0 '\000', st_shndx = 1}, 
+  tc_data = {hppa_arg_reloc = 0, mips_extr = 0x0, any = 0x0}, version = 0}
+(gdb) 
+
+
+(gdb) p/x *isym
+$18 = {st_value = 0x57a, st_size = 0x0, st_name = 0x175, st_info = 0x0, 
+  st_other = 0x0, st_target_internal = 0x0, st_shndx = 0x1}
+(gdb) p/x isym->st_value
+$23 = 0x57a
+(gdb) p &isym->st_value
+$24 = (bfd_vma *) 0x81b3778
+(gdb) 
+
+これをセットする瞬間を捕える.
+
+
+bfd_boolean
+elf_swap_symbol_in (bfd *abfd,
+		    const void *psrc,
+		    const void *pshn,
+		    Elf_Internal_Sym *dst)
+{
+...
+  if (signed_vma)
+    dst->st_value = H_GET_SIGNED_WORD (abfd, src->st_value);
+  else
+    dst->st_value = H_GET_WORD (abfd, src->st_value);  ここだった
+
+(gdb) p/x src->st_value
+$26 = {0x7a, 0x5, 0x0, 0x0}
+(gdb) p/x src->st_value[0]
+$27 = 0x7a
+(gdb) p &src->st_value[0]
+$28 = (unsigned char *) 0x81b3114 "z\005"
+(gdb) 
+
+これをセットする瞬間を捕える.
+
+      isymbuf = bfd_elf_get_elf_syms (abfd, hdr, symcount, 0,
+				      NULL, NULL, NULL);         ここだった
+
+
+  nread = abfd->iovec->bread (abfd, ptr, size);  ここ
+
+(gdb) p size
+$44 = 1424
+(gdb) x/1424bx ptr
+...
+0x81b3110:	0x75	0x01	0x00	0x00	0x7a	0x05	0x00	0x00
+
+
+
+(gdb) p ptr
+$45 = (void *) 0x81b2dd0
+(gdb) p 0x81b3110 - 0x81b2dd0
+$46 = 832
+(gdb) p/x *((char*)ptr+832+4)
+$47 = 0x7a
+(gdb) 
+
+おそらく何らかのセクションの 836 バイト目が 0x7a になっているということが原因.
+
+% msp430-elf-objdump -s /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.msp430-elf/host-i686-pc-linux-gnu/gcc/a.elf > a.objdump 
+
+
+セクション .debug_info の内容:
+ 0000 22000000 02000000 00000401 00000000  "...............
+ 0010 00050000 7a050000 00000000 08000000  ....z...........
+               ^^^^
+
+これが原因らしい.
+
+% msp430-elf-objdump -g /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.msp430-elf/host-i686-pc-linux-gnu/gcc/a.elf > a.objdump 
+
+  コンパイル単位 @ オフセット 0x0:
+   長さ:        0x22 (32-bit)
+   バージョン:    2
+   省略オフセット: 0x0
+   ポインタサイズ:4
+ <0><b>: 省略番号: 1 (DW_TAG_compile_unit)
+    <c>   DW_AT_stmt_list   : 0x0
+    <10>   DW_AT_low_pc      : 0x500
+    <14>   DW_AT_high_pc     : 0x57a            これ
+    <18>   DW_AT_name        : (間接文字列、オフセット: 0x0): start.S
+    <1c>   DW_AT_comp_dir    : (間接文字列、オフセット: 0x8): /home/khasegawa/lang/53_GNU_tool/gcc_cross/MSP430/tool
+
+0x57a の期待値は 0x576. どこかで 4 が余分に加算されているらしい.
+
+% msp430-elf-objdump -g ~/lang/53_GNU_tool/gcc_cross/MSP430/tool/start.o > start.o.objdump 
+
+.debug_info セクションの内容(/home/khasegawa/lang/53_GNU_tool/gcc_cross/MSP430/tool/start.o より読み込んだもの):
+
+  コンパイル単位 @ オフセット 0x0:
+   長さ:        0x22 (32-bit)
+   バージョン:    2
+   省略オフセット: 0x0
+   ポインタサイズ:4
+ <0><b>: 省略番号: 1 (DW_TAG_compile_unit)
+    <c>   DW_AT_stmt_list   : 0x0
+    <10>   DW_AT_low_pc      : 0x0
+    <14>   DW_AT_high_pc     : 0x7a
+
+これはリンカのバグかと思っていたが, 実はアセンブラの問題だったらしい.
+
+% msp430-elf-objdump -d ~/lang/53_GNU_tool/gcc_cross/MSP430/tool/start.o > start.o.objdump 
+
+
+00000076 <.Loc.60.1>:
+  76:	31 52       	add	#8,	r1	;r2 As==11
+
+00000078 <.Loc.61.1>:
+  78:	30 41       	ret			
+
+アセンブラの問題かと思ったがそうでもないらしい.
+
+start.o の .text セクションは  0x7a のサイズを持つので 0x57a になるの
+は正しい.
+
+それよりも f のアドレスが 0x576 になる, 言い換えれば a.o の .text セク
+ションが 0x576 になるのが間違い.
+
+
