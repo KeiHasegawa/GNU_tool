@@ -1,0 +1,120 @@
+cc1 の雛形
+
+「AARCH64」=>「cc1 の雛形」=>「メモ」 を参照.
+AARCH64 と同様の手順で cc1 の雛形をビルドすることができる.
+
+以下開発メモ
+現状 hello world 11 が動作している.
+
+この段階では
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+のような rtx_insn は生成していない.
+
+-g オプション付きで hello world 11 をコンパイルして gdb で動作確認したところ
+以下のように
+
+Breakpoint 1, main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+f (a=5, b=6) at a.c:5
+5	  return a + b;
+#0  f (a=5, b=6) at a.c:5
+#1  0x0000023c in main () at a.c:10
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+hello world 11
+
+main 函数で停止できている
+f にステップインできている
+
+しかし where コマンドでエラーメッセージが出ている.
+finish コマンドでおそらく main の呼び出し元に戻れていない.
+
+という状況. PRU はリンクレジスタが特徴あるので, そこを確認する.
+
+.debug_frame セクションの内容(d.elf より読み込んだもの):
+
+
+00000000 0000000c ffffffff CIE
+  Version:               1
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -1
+  Return address column: 132  <--- この 132 は以前調べた. アセンブラが勝手に出している.
+
+  DW_CFA_def_cfa: r16 ofs 0
+
+とりあえずプロローグで生成している rtx_insn に
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+のようにしたところ
+
+f:
+.LFB3:
+.LM1:
+	.cfi_startproc
+	sub	r2, r2, 14
+	.cfi_def_cfa_offset 14
+	sbbo	r3.b2, r2, 8, 6
+	.cfi_offset 3, -6
+	.cfi_offset 4, -5260744977822116702  ; ????
+
+のように予期しない値が生成されている. しかし上が -4 ならば期待した結果で
+
+d.S
+
+に -4 にしたものを作成して gdb で動作を確認したところ期待通り動作している.
+だから上の予期しない値を -4 になるようにするにはどうすればよいか調査してみる.
+
+これがまずいらしい.
+
+(set (mem:SI (plus:SI (reg/f:SI 2 r2)
+            (plus:SI (const_int 8 [0x8])
+                (const_int 2 [0x2]))) [0  S4 A8])
+    (reg/f:SI 4 r4))
+
+
+[r2+8+2] := r4
+
+のようにしているがこれが対応していないっぽい.
+
+現状
+; [sp+size] := hi(lr)
+; [sp+size+2] := fp
+(define_insn "sbbo"
+  [
+   (set (mem:HI (plus:SI (reg:SI STACK_POINTER_REGNUM)
+                         (match_operand:SI 0 "immediate_operand" "")))
+	(reg:HI LR_REGNUM))
+   (set (mem:SI (plus:SI (reg:SI STACK_POINTER_REGNUM)
+                         (plus:SI (match_dup 0)
+			          (const_int 2))))
+	(reg:SI FRAME_POINTER_REGNUM))			  
+  ]
+  ""
+  "sbbo	r3.b2, r2, %0, 6")
+
+であるが
+
+; [sp+size] := hi(lr)
+; [sp+size+2] := fp
+(define_insn "sbbo"
+  [
+   (set (mem:HI (plus:SI (reg:SI STACK_POINTER_REGNUM)
+                         (match_operand:SI 0 "immediate_operand" "")))
+	(reg:HI LR_REGNUM))
+   (set (mem:SI (plus:SI (reg:SI STACK_POINTER_REGNUM)
+                         (match_operand:SI 1 "immediate_operand" "")))
+	(reg:SI FRAME_POINTER_REGNUM))
+  ]
+  ""
+  "sbbo	r3.b2, r2, %0, 6")
+
+のように修正して
+
+  auto sz = gen_rtx_CONST_INT(Pmode, size);
+  auto sz2 = gen_rtx_CONST_INT(Pmode, size+2);
+  insn = emit_insn(gen_sbbo(sz, sz2));
+
+のように呼び出すことで正常動作を確認できている.
