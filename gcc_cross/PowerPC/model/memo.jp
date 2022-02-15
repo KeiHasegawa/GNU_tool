@@ -1,0 +1,46 @@
+cc1 の雛形
+
+「AARCH64」=>「cc1 の雛形」=>「メモ」 を参照.
+
+手順は以下. 削除するディレクトリは rs6000 であることに注意.
+
+% xz -d -c ../gcc-10.2.0.tar.xz | tar xf -
+% mv gcc-10.2.0 gcc-10.2.0.ppc-elf.mine
+% cd gcc-10.2.0.ppc-elf.mine
+% patch -p1 < ../gcc-10.2.0.ppc-elf.mine.diff
+% rm -r -f gcc/config/rs6000                         # rs6000
+% rm -r -f gcc/common/config/rs6000                  # rs6000
+% tar xvf ../ppc-elf.mine.tar
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=ppc-elf --with-newlib
+% make all-gcc
+
+残念ながらこの手順でビルドしても rs6000 ディレクトリのファイルを参照していてエラーしてしまう.
+
+cc1 をビルドするときに参照される
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.ppc-elf.mine/host-i686-pc-linux-gnu/gcc/Makefile
+
+を直接修正することにした. rs6000 のディレクトリを参照しているところを直接自前の ppc
+ディレクトリを参照するように変更する.
+この手間はかかるがビルドされた cc1 は期待通り動作している.
+
+
+[備考]
+上記の Makefile は
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.ppc-elf.mine/host-i686-pc-linux-gnu/gcc/
+% rm config.cache
+% cat aa
+#! /bin/csh -vf
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.ppc-elf.mine/gcc/configure --srcdir=../.././gcc --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --enable-languages=c,c++,fortran,lto,objc --program-transform-name=s/^/ppc-elf-/ --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=ppc-elf
+% ./aa
+
+とすれば生成し直すことができている.
+そしてこの Makefile はやはり
+
+gcc/config/powerpc
+gcc/common/config/powerpc
+
+以下のファイルを参照している.
+

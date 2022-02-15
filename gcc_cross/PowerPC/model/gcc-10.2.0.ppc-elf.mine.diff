@@ -1,0 +1,43 @@
+*** gcc-10.2.0.org/gcc/config.gcc	2021-10-16 10:31:18.000000000 +0900
+--- gcc-10.2.0.ppc-elf.mine/gcc/config.gcc	2022-02-12 08:08:10.000000000 +0900
+***************
+*** 502,525 ****
+  or1k*-*-*)
+  	cpu_type=or1k
+  	;;
+! powerpc*-*-*)
+! 	cpu_type=rs6000
+! 	extra_objs="rs6000-string.o rs6000-p8swap.o rs6000-logue.o rs6000-call.o"
+! 	extra_headers="ppc-asm.h altivec.h htmintrin.h htmxlintrin.h"
+! 	extra_headers="${extra_headers} bmi2intrin.h bmiintrin.h"
+! 	extra_headers="${extra_headers} xmmintrin.h mm_malloc.h emmintrin.h"
+! 	extra_headers="${extra_headers} mmintrin.h x86intrin.h"
+! 	extra_headers="${extra_headers} pmmintrin.h tmmintrin.h smmintrin.h"
+! 	extra_headers="${extra_headers} ppu_intrinsics.h spu2vmx.h vec_types.h si2vmx.h"
+! 	extra_headers="${extra_headers} amo.h"
+! 	case x$with_cpu in
+! 	    xpowerpc64|xdefault64|x6[23]0|x970|xG5|xpower[3456789]|xpower6x|xrs64a|xcell|xa2|xe500mc64|xe5500|xe6500|xfuture)
+! 		cpu_is_64bit=yes
+! 		;;
+! 	esac
+! 	extra_options="${extra_options} g.opt fused-madd.opt rs6000/rs6000-tables.opt"
+! 	target_gtfiles="$target_gtfiles \$(srcdir)/config/rs6000/rs6000-logue.c \$(srcdir)/config/rs6000/rs6000-call.c"
+! 	;;
+  pru-*-*)
+  	cpu_type=pru
+  	;;
+--- 502,515 ----
+  or1k*-*-*)
+  	cpu_type=or1k
+  	;;
+! ppc-*-elf*)
+!  	tm_file="dbxelf.h elfos.h usegas.h newlib-stdint.h ppc/ppc.h"
+!  	tm_p_file="ppc/ppc-protos.h"
+!  	md_file="ppc/ppc.md"
+!  	out_file="ppc/ppc.c"
+!  	tmake_file="ppc/t-ppc"
+! 	use_gcc_stdint=wrap
+!         ;;
+  pru-*-*)
+  	cpu_type=pru
+  	;;

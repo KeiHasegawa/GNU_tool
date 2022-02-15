@@ -1,0 +1,26 @@
+cc1 model
+
+cc1 model of ppc-elf-gcc can be built like below:
+
+% xz -d -c ../gcc-10.2.0.tar.xz | tar xf -
+% mv gcc-10.2.0 gcc-10.2.0.ppc-elf.mine
+% cd gcc-10.2.0.ppc-elf.mine
+% patch -p1 < ../gcc-10.2.0.ppc-elf.mine.diff
+% rm -r -f gcc/config/ppc                         # rs6000
+% rm -r -f gcc/common/config/ppc                  # rs6000
+% tar xvf ../ppc-elf.mine.tar
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=ppc-elf --with-newlib
+% make all-gcc
+
+Note that we have to remove `rs6000' directory, not `ppc' directory.
+
+Unfortunately, above way will cause build error because of refering to the
+files in `rs6000' directory.
+
+I directly fixed
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.ppc-elf.mine/host-i686-pc-linux-gnu/gcc/Makefile
+
+which is used for building `cc1'.
+
+Anyway, the built `cc1' works well as I expect.
