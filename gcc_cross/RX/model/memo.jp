@@ -1,0 +1,239 @@
+cc1 の雛形
+
+「AARCH64」=>「cc1 の雛形」=>「メモ」 を参照.
+AARCH64 と同様の手順で cc1 の雛形をビルドすることができる.
+
+以下開発メモ.
+
+現状 hello world 11 が動作している.
+また
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+のような rtx_insn は生成していない.
+
+-g オプション付きでコンパイルした hello world 11 を gdb で動作させると
+main 函数のブレークポイントで停止した状態で以下のように f にステップインしたとき
+プロローグを適切にスキップできていない.
+
+Breakpoint 1, main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+f (a=4165, b=-858993460) at a.c:4
+4	{
+
+プロローグで生成している rtx_insn に対して
+
+  RTX_FRAME_RELATED_P (insn) = true;
+
+としてみたが症状は変わらない.
+
+gdb 視点の調査をしてみた.
+
+オリジナルの cc1 により生成された a.elf であれば適切にプロローグをスキップ
+できているのでそれと動作を比較してみる.
+
+オリジナルの cc1
+(gdb) b step_command
+(gdb) run
+...
+step_command のブレークポイントにヒット
+(gdb) b rx_skip_prologue
+(gdb) c
+...
+rx_skip_prologue のブレークポイントにヒット
+(gdb) p/x pc
+$1 = 0x102a
+(gdb)
+
+0x102a は f の先頭アドレス. 期待した動作になっている.
+このときのスタックは以下のようになっている:
+(gdb) where
+#0  rx_skip_prologue (gdbarch=0x1861b5a0, pc=4138) at rx-tdep.c:369
+#1  0x080a9308 in gdbarch_skip_prologue_noexcept (gdbarch=0x1861b5a0, pc=4138) at arch-utils.c:1007
+#2  0x081f9a02 in handle_step_into_function (ecs=0xbffff0dc, gdbarch=0x1861b5a0) at infrun.c:7393
+#3  process_event_stop_test (ecs=0xbffff0dc) at infrun.c:6868
+#4  0x081fc142 in handle_inferior_event (ecs=<optimized out>) at infrun.c:5549
+#5  0x081fd210 in fetch_inferior_event () at infrun.c:3931
+#6  0x080a967c in check_async_event_handlers () at async-event.c:295
+#7  0x0848899b in gdb_do_one_event () at event-loop.cc:194
+--Type <RET> for more, q to quit, c to continue without paging--q
+Quit
+(gdb) 
+
+
+	tmp_sal = find_pc_line (ecs->stop_func_start, 0);
+	if (tmp_sal.line != 0
+	    && !function_name_is_marked_for_skip (ecs->stop_func_name,
+						  tmp_sal)
+	    && !inline_frame_is_marked_for_skip (true, ecs->event_thread))
+	  {
+	    if (execution_direction == EXEC_REVERSE)
+	      handle_step_into_function_backward (gdbarch, ecs);
+	    else
+ここ	      handle_step_into_function (gdbarch, ecs);
+	    return;
+	  }
+
+これは以前どこかで調べた気がする.
+自前の cc1 では step_command のブレークポイントにヒットした後
+rx_skip_prologue のブレークポイントにはヒットしないので何故呼び出され
+ないかを調査する.
+
+以下オリジナルの cc1
+
+(gdb) info b
+Num     Type           Disp Enb Address    What
+1       breakpoint     keep y   0x081e5d60 in step_command(char const*, int) at infcmd.c:793
+	breakpoint already hit 1 time
+2       breakpoint     keep y   0x082d3a00 in rx_skip_prologue(gdbarch*, CORE_ADDR) at rx-tdep.c:369
+	breakpoint already hit 2 times
+3       breakpoint     keep y   <MULTIPLE> 
+	breakpoint already hit 4 times
+3.1                         y   0x0805f659 in process_event_stop_test(execution_control_state*) at infrun.c:7645
+3.2                         y   0x081f7bc0 in process_event_stop_test(execution_control_state*) at infrun.c:6318
+(gdb) disable 2 3
+(gdb) run
+...
+step_command のブレークポイントにヒット
+(gdb) enable
+(gdb) c
+...
+process_event_stop_test のブレークポイントに 1 回目ヒット
+(gdb) c
+...
+process_event_stop_test のブレークポイントに 2 回目ヒット
+(gdb) c
+...
+process_event_stop_test のブレークポイントに 3 回目ヒット
+(gdb) c
+...
+rx_skip_prologue のブレークポイントにヒット
+(gdb)
+
+のような動作になっている.
+一方自前の cc1 では process_event_stop_test のブレークポイントに 3 回目ヒット
+するところまでは同じ動作であるが rx_skip_prologue のブレークポイントにヒット
+しない.
+
+だから process_event_stop_test のブレークポイントに 3 回目ヒットしたと
+きの動作を比較してみる.
+
+  if (!frame_id_eq (get_stack_frame_id (frame),
+		    ecs->event_thread->control.step_stack_frame_id)
+      && (frame_id_eq (frame_unwind_caller_id (get_current_frame ()),
+		       ecs->event_thread->control.step_stack_frame_id)
+	  && (!frame_id_eq (ecs->event_thread->control.step_stack_frame_id,
+			    outer_frame_id)
+	      || (ecs->event_thread->control.step_start_function
+		  != find_pc_function (ecs->event_thread->suspend.stop_pc)))))
+    {
+
+オリジナルの cc1 ではこの条件が成立するが自前の cc1 ではこの条件が成立
+しない. これも以前調べた気がする.
+
+オリジナルの cc1
+(gdb) p frame_id_eq (get_stack_frame_id (frame), ecs->event_thread->control.step_stack_frame_id)
+$2 = false
+(gdb) p frame_id_eq (frame_unwind_caller_id (get_current_frame ()), ecs->event_thread->control.step_stack_frame_id)
+$3 = true
+(gdb) p frame_id_eq (ecs->event_thread->control.step_stack_frame_id, outer_frame_id)
+$4 = false
+(gdb) 
+
+自前の cc1
+(gdb) p frame_id_eq (get_stack_frame_id (frame), ecs->event_thread->control.step_stack_frame_id)
+$2 = false
+(gdb) p frame_id_eq (frame_unwind_caller_id (get_current_frame ()), ecs->event_thread->control.step_stack_frame_id)
+$3 = false
+(gdb)
+
+自前の cc1 で成立しないのはこれが直接の原因であった.
+
+
+オリジナルの cc1
+(gdb) p/x ecs->event_thread->control.step_stack_frame_id
+$6 = {stack_addr = 0x20000, code_addr = 0x1046, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb)
+0x1046 は main 函数のスタートアドレス
+0x20000 は main 函数でのスタックポインタのアドレス+4
+
+自前の cc1
+(gdb) p/x ecs->event_thread->control.step_stack_frame_id
+$4 = {stack_addr = 0x1fffc, code_addr = 0x103a, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) 
+0x103a は main 函数のスタートアドレス
+0x1fffc は main 函数でのスタックポインタのアドレス
+
+オリジナルの cc1
+(gdb) p/x frame_unwind_caller_id (get_current_frame ())
+$7 = {stack_addr = 0x20000, code_addr = 0x1046, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) 
+
+自前の cc1
+(gdb) p/x frame_unwind_caller_id (get_current_frame ())
+p/x frame_unwind_caller_id (get_current_frame ())
+$5 = {stack_addr = 0x1fff8, code_addr = 0x103a, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb)
+
+この現象からコンパイラのマクロ
+
+INCOMING_FRAME_SP_OFFSET
+
+の宣言を追加することに決めた.
+
+#define INCOMING_FRAME_SP_OFFSET		4
+
+が鍵になっている可能性があると考えて上を追加
+
+追加前
+00000000 0000000e ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -4
+  Return address column: 17
+
+  DW_CFA_def_cfa: r0 ofs 0
+  DW_CFA_offset: r17 at cfa+0
+
+00000012 00000014 00000000 FDE cie=00000000 pc=0000102a..0000103a
+  DW_CFA_advance_loc4: 3 to 0000102d
+  DW_CFA_def_cfa_offset: 8
+  DW_CFA_nop
+
+0000002a 00000014 00000000 FDE cie=00000000 pc=0000103a..00001056
+  DW_CFA_advance_loc4: 3 to 0000103d
+  DW_CFA_def_cfa_offset: 8
+  DW_CFA_nop
+
+追加後
+
+00000000 0000000e ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -4
+  Return address column: 17
+
+  DW_CFA_def_cfa: r0 ofs 4
+  DW_CFA_offset: r17 at cfa-4
+
+00000012 00000014 00000000 FDE cie=00000000 pc=0000102a..0000103a
+  DW_CFA_advance_loc4: 3 to 0000102d
+  DW_CFA_def_cfa_offset: 12
+  DW_CFA_nop
+
+0000002a 00000014 00000000 FDE cie=00000000 pc=0000103a..00001056
+  DW_CFA_advance_loc4: 3 to 0000103d
+  DW_CFA_def_cfa_offset: 12
+  DW_CFA_nop
+
+この修正で gdb で期待通り動作している.
