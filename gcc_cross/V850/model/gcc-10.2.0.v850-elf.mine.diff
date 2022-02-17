@@ -1,0 +1,40 @@
+*** gcc-10.2.0.org/gcc/config.gcc	2021-10-16 10:31:18.000000000 +0900
+--- gcc-10.2.0.v850-elf.mine/gcc/config.gcc	2022-02-15 14:31:13.000000000 +0900
+***************
+*** 3419,3453 ****
+  	cxx_target_objs="v850-c.o"
+  	;;
+  v850*-*-*)
+- 	case ${target} in
+- 	v850e3v5-*-*)
+- 		target_cpu_default="TARGET_CPU_v850e3v5"
+- 		;;
+- 	v850e2v3-*-*)
+- 		target_cpu_default="TARGET_CPU_v850e2v3"
+- 		;;
+- 	v850e2-*-*)
+- 		target_cpu_default="TARGET_CPU_v850e2"
+- 		;;
+- 	v850e1-*-* | v850es-*-*)
+- 		target_cpu_default="TARGET_CPU_v850e1"
+- 		;;
+- 	v850e-*-*)
+- 		target_cpu_default="TARGET_CPU_v850e"
+- 		;;
+- 	v850-*-*)
+- 		target_cpu_default="TARGET_CPU_generic"
+- 		;;
+- 	esac
+  	tm_file="dbxelf.h elfos.h newlib-stdint.h v850/v850.h"
+- 	if test x$stabs = xyes
+- 	then
+- 		tm_file="${tm_file} dbx.h"
+- 	fi
+- 	use_collect2=no
+- 	c_target_objs="v850-c.o"
+- 	cxx_target_objs="v850-c.o"
+- 	use_gcc_stdint=wrap
+  	;;
+  vax-*-linux*)
+  	tm_file="${tm_file} dbxelf.h elfos.h gnu-user.h linux.h vax/elf.h vax/linux.h"
+--- 3419,3425 ----
