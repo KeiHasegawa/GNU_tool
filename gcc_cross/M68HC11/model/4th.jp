@@ -1,0 +1,38 @@
+2022.02.16 18:45
+
+REGISTER_NAMES 等を変更したところ m68hc11-elf-gdb の実行結果が期待しないものになってし
+まった. 具体的には f にステップインできていない.
+
+一旦
+
+#define       FRAME_POINTER_REGNUM    9
+
+になるように以下のように使用しないレジスタを追加してみる.
+
+#define REGISTER_NAMES \
+  { "d", "x", "y", "sp", "unuse0", "unuse1", "unuse2", "unuse3", "unuse4", \
+    "*_.frame", "dummy"  }
+#define FIXED_REGISTERS \
+  {  0,   0,   0,   1,    1,         1,        1,        1,        1,      \
+     1,          1}
+#define CALL_USED_REGISTERS \
+  {  1,   1,   1,   1,    1,         1,        1,        1,        1,      \
+     1,          1}
+
+constexpr int D_REGNUM              = 0;
+constexpr int X_REGNUM              = 1;
+constexpr int Y_REGNUM              = 2;
+#define       FRAME_POINTER_REGNUM    9
+#define       ARG_POINTER_REGNUM      FRAME_POINTER_REGNUM
+constexpr int DUMMY_REGNUM          = 10;
+constexpr int FIRST_PSEUDO_REGISTER = 11;
+
+上のようにしてビルド開始 2022.02.17 6:45
+2022.02.17 7:42 正常動作を確認. ということはデバッグ情報にあるフレームポインタを
+デバッガが利用していて, それが 9 番のレジスタである必要があったらしい.
+
+00000012 002e 00000000 FDE cie=00000000 pc=1064..1099
+  DW_CFA_advance_loc4: 5 to 1069
+  DW_CFA_def_cfa_offset: 2
+  DW_CFA_offset_extended_sf: r9 at cfa-1   これ
+  DW_CFA_advance_loc4: 2 to 106b
