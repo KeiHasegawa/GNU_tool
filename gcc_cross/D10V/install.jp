@@ -1,8 +1,8 @@
 D10V のクロスコンパイル環境 
 
 (*1) D10V
-三菱電機で開発されたメディアプロセッサらしいが, それ以上のことは不明.
-
+インターネットを "D10V" "三菱電機" のキーワードで検索するとそれらしい
+情報が出てくるがそれ以上のことは不明.
 
 (*2) スクリプトによるインストール
 
@@ -29,9 +29,143 @@ gcc-3.4.4/gcc/config/d30v
 
 というディレクトリはある.
 
+% bunzip2 -c ../gcc-3.4.4.tar.bz2 | tar xvf -
+% mv gcc-3.4.4 gcc-3.4.4.d10v-elf
+% cd gcc-3.4.4.d10v-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=d10v-elf
+% make all-gcc
+...
+checking if mkdir takes one argument... no
+*** Configuration d10v-unknown-elf not supported
+make: *** [Makefile:23331: configure-gcc] エラー 1
+%
+
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=d30v-elf --enable-obsolete
+% make all-gcc
+...
+gcc   -g -O2 -DIN_GCC -DCROSS_COMPILE  -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -pedantic -Wno-long-long    -DHAVE_CONFIG_H  -o jc1 \
+	java/parse.o java/class.o java/decl.o java/expr.o java/constants.o java/lang.o java/typeck.o java/except.o java/verify.o java/zextract.o java/jcf-io.o java/win32-host.o java/jcf-parse.o java/mangle.o java/mangle_name.o java/builtins.o java/resource.o java/jcf-write.o java/buffer.o java/check-init.o java/jcf-depend.o java/jcf-path.o java/xref.o java/boehm.o java/java-tree-inline.o mkdeps.o main.o libbackend.a -L../zlib -lz  ../libiberty/libiberty.a  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: java/parse.o: in function `do_java_lex':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.d10v-elf/gcc/java/lex.c:1612: undefined reference to `java_keyword'
+collect2: エラー: ld はステータス 1 で終了しました
+make[1]: *** [java/Make-lang.in:128: jc1] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.d10v-elf/gcc' から出ます
+make: *** [Makefile:23377: all-gcc] エラー 2
+% ls gcc/cc1
+gcc/cc1*
+% ls gcc/cc1plus
+gcc/cc1plus*
+% 
+
+一応 cc1 と cc1plus はできている.
+
+% make all-gcc LANGUAGES="c c++"
+...
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.d10v-elf/gcc/fixinc' に入ります
+/bin/tcsh ./genfixes machname.h
+SHELL=/bin/sh: コマンドが見つかりません.
+export: コマンドが見つかりません.
+if: 式構文?.
+make[2]: *** [Makefile:112: machname.h] エラー 1
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.d10v-elf/gcc/fixinc' から出ます
+make[1]: *** [Makefile:2556: fixinc.sh] エラー 2
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.d10v-elf/gcc' から出ます
+make: *** [Makefile:23377: all-gcc] エラー 2
+
+% setenv SHELL /bin/sh
+% make all-gcc LANGUAGES="c c++"
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.d10v-elf/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.d10v-elf/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/d30v-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/d30v-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/d30v-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/d30v-elf/sys-include -O2 -DIN_GCC -DCROSS_COMPILE   -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition  -isystem ./include  -I. -I. -I. -I./. -I./../include   -g0 -finhibit-size-directive -fno-inline-functions -fno-exceptions -fno-zero-initialized-in-bss -fno-unit-at-a-time  \
+  -Dinhibit_libc -c ./crtstuff.c -DCRT_BEGIN \
+  -o crtbegin.o
+/tmp/cc7K1UZz.s: Assembler messages:
+/tmp/cc7K1UZz.s:36: Error: too many memory references for `add'
+/tmp/cc7K1UZz.s:37: Error: no such instruction: `stw link,@(sp,r0)'
+...
+%
+
+アセンブルでエラーしている.
+
+% cd gcc
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.d10v-elf/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.d10v-elf/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/d30v-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/d30v-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/d30v-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/d30v-elf/sys-include -O2 -DIN_GCC -DCROSS_COMPILE   -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition  -isystem ./include  -I. -I. -I. -I./. -I./../include   -g0 -finhibit-size-directive -fno-inline-functions -fno-exceptions -fno-zero-initialized-in-bss -fno-unit-at-a-time  \
+  -Dinhibit_libc -c ./crtstuff.c -DCRT_BEGIN \
+  -o crtbegin.o
+
+エラーを再現できている.
+
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.d10v-elf/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.d10v-elf/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/d30v-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/d30v-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/d30v-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/d30v-elf/sys-include -O2 -DIN_GCC -DCROSS_COMPILE -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition -isystem ./include -I. -I. -I. -I./. -I./../include -g0 -finhibit-size-directive -fno-inline-functions -fno-exceptions -fno-zero-initialized-in-bss -fno-unit-at-a-time -Dinhibit_libc -c ./crtstuff.c -DCRT_BEGIN -o crtbegin.o -###
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.d10v-elf/gcc/specs から spec を読み込み中
+コンフィグオプション: ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=d30v-elf --enable-obsolete
+スレッドモデル: single
+gcc バージョン 3.4.4
+ "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.d10v-elf/gcc/cc1" "-quiet" "-I." "-I." "-I." "-I./." "-I./../include" "-iprefix" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.d10v-elf/gcc/../lib/gcc/d30v-elf/3.4.4/" "-isystem" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.d10v-elf/gcc/include" "-isystem" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/d30v-elf/bin/include" "-isystem" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/d30v-elf/lib/include" "-DIN_GCC" "-DCROSS_COMPILE" "-Dinhibit_libc" "-DCRT_BEGIN" "-isystem" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/d30v-elf/include" "-isystem" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/d30v-elf/sys-include" "-isystem" "./include" "./crtstuff.c" "-quiet" "-dumpbase" "crtstuff.c" "-auxbase-strip" "crtbegin.o" "-g0" "-O2" "-W" "-Wall" "-Wwrite-strings" "-Wstrict-prototypes" "-Wmissing-prototypes" "-Wold-style-definition" "-finhibit-size-directive" "-fno-inline-functions" "-fno-exceptions" "-fno-zero-initialized-in-bss" "-fno-unit-at-a-time" "-o" "/tmp/cceBvEAd.s"
+ "as" "-O" "-o" "crtbegin.o" "/tmp/cceBvEAd.s"
+
+おそらく as を起動しようとしてこのようになっている.
+と思ったが
+
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.d10v-elf/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.d10v-elf/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/d30v-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/d30v-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/d30v-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/d30v-elf/sys-include -O2 -DIN_GCC -DCROSS_COMPILE -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition -isystem ./include -I. -I. -I. -I./. -I./../include -g0 -finhibit-size-directive -fno-inline-functions -fno-exceptions -fno-zero-initialized-in-bss -fno-unit-at-a-time -Dinhibit_libc -S ./crtstuff.c -DCRT_BEGIN -o crtbegin.s
+% d10v-elf-as -o crtbegin.o crtbegin.s 
+crtbegin.s: Assembler messages:
+crtbegin.s:36: Error: bad opcode or operands
+crtbegin.s:36: Error: could not assemble: add sp
+crtbegin.s:37: Error: could not assemble: stw link,@(sp,r0)
+crtbegin.s:38: Error: could not assemble: ldbu r2,@(r0,(completed.1))
+crtbegin.s:39: Error: could not assemble: bratnz r2,.L1
+
+最初にエラーしているのは
+
+	add sp,sp,-8
+
+であった.
+% cat a.c
+int f(int a, int b)
+{
+  return a + b;
+}
+% ./cc1 a.c
+% d10v-elf-as a.s
+a.s: Assembler messages:
+a.s:7: Error: bad opcode or operands
+a.s:7: Error: could not assemble: add sp
+a.s:8: Error: could not assemble: stw r61,@(sp,8)
+a.s:9: Error: bad opcode or operands
+a.s:9: Error: could not assemble: or r61,r0
+a.s:10: Error: could not assemble: stw r2,@(r61,r0)
+a.s:11: Error: could not assemble: stw r3,@(r61,4)
+a.s:12: Error: could not assemble: ldw r3,@(r61,r0)
+a.s:13: Error: could not assemble: ldw r2,@(r61,4)
+a.s:14: Error: bad opcode or operands
+a.s:14: Error: could not assemble: add r2
+a.s:15: Error: bad opcode or operands
+a.s:15: Error: could not assemble: or sp
+a.s:16: Error: bad opcode or operands
+a.s:16: Error: could not assemble: add sp
+a.s:17: Error: could not assemble: ldw r61,@(sp+,r0)
+a.s:18: Error: bad opcode or operands
+a.s:18: Error: could not assemble: add sp
+%
+
+だめらしい.
+
+	.type	f, @function
+f:
+	add sp,sp,-16
+	stw r61,@(sp,8)
+	or r61,r0,sp
+
+binutils-2.36.1 を target=d30v-elf でインストールして生成された a.s を
+アセンブルしたところできている.
+
+改めて
+
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=d30v-elf --enable-obsolete
+% make all-gcc LANGUAGES="c c++"
+% make install-gcc LANGUAGES="c c++"
+
 (*3) gdb のインストール
 
-% xz -d -c ../gdb-10.2-1.src/gdb-10.2.tar.xz
+% xz -d -c ../gdb-10.2-1.src/gdb-10.2.tar.xz | tar xf -
 % mv gdb-10.2 gdb-10.2.d10v-elf
 % cd gdb-10.2.d10v-elf
 % ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=d10v-elf
@@ -45,3 +179,489 @@ make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GN
 
 上のようにエラーになってしまう.
 
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=d10v-elf --enable-obsolete
+% make all
+...
+checking for default auto-load safe-path... $debugdir:$datadir/auto-load
+*** Configuration d10v-unknown-elf is obsolete.
+*** Support has been REMOVED.
+make[1]: *** [Makefile:10038: configure-gdb] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d10v-elf' から出ます
+make: *** [Makefile:856: all] エラー 2
+%
+
+これでもエラーになってしまう.
+
+% cd gdb
+% cat x
+#! /bin/sh
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d10v-elf/gdb/configure --srcdir=.././gdb --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --enable-obsolete --program-transform-name=s/^/d10v-elf-/ --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=d10v-elf
+% chmod +x x
+% ./x
+...
+checking for default auto-load safe-path... $debugdir:$datadir/auto-load
+*** Configuration d10v-unknown-elf is obsolete.
+*** Support has been REMOVED.
+%
+
+エラーを再現できている.
+
+gdb-10.2.d10v-elf/gdb/configure.tgt
+
+case $targ in
+ *-*-irix* | \
+ *-*-solaris2.[01] | *-*-solaris2.[2-9]* | *-*-solaris2.10* | \
+ alpha*-*-osf* | \
+ alpha*-*-freebsd* | \
+ alpha*-*-kfreebsd*-gnu | \
+ d10v-*-* | \                       これを削除してもう一度トライ
+ hppa*-*-hiux* | \
+ i[34567]86-ncr-* | \
+ m68*-cisco*-* | \
+ m68*-tandem-* | \
+ m68*-*-os68k* | \
+ mips*-*-pe | \
+ rs6000-*-lynxos* | \
+ sh*-*-pe | \
+ hppa*-*-hpux* | \
+ ia64-*-hpux* | \
+ *-*-vxworks* | \
+ mt-*-* | \
+ null)
+    echo "*** Configuration $targ is obsolete." >&2
+    echo "*** Support has been REMOVED." >&2
+    exit 1
+    ;;
+esac
+
+% ./x
+エラーしていない
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d10v-elf
+% make all
+...
+gcc -DHAVE_CONFIG_H  -DWITH_DEFAULT_ALIGNMENT=STRICT_ALIGNMENT     -DDEFAULT_INLINE=0   -Wall -Wdeclaration-after-statement -Wpointer-arith -Wpointer-sign -Wno-unused -Wunused-value -Wunused-function -Wno-switch -Wno-char-subscripts -Wmissing-prototypes -Wdeclaration-after-statement -Wempty-body -Wmissing-parameter-type -Wold-style-declaration -Wold-style-definition -Wformat-nonliteral      -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes  -g -O2  -o run \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -ldl -lnsl  -L../../zlib -lz  
+...
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(interp.o):/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d10v-elf/sim/d10v/d10v_sim.h:273: multiple definition of `State'; nrun.o:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d10v-elf/sim/d10v/./d10v_sim.h:273: first defined here
+...
+%
+
+run のリンクでエラーしている.
+
+以下のように修正
+
+gdb-10.2.d10v-elf/sim/d10v/d10v_sim.h
+
+};
+
+extern struct _state State
+
+gdb-10.2.d10v-elf/sim/d10v/interp.c
+
+struct _state State;
+
+% make all
+エラーしなかった.
+
+% make install
+
+残念ながら d10v-tdep.c はない. しかし
+
+gdb-10.2.d10v-elf/gdb/ChangeLog-XXX
+
+にそのファイル名が出現しているから, 以前のバージョンにはあった可能性はある.
+
+また d30v で ChangeLog を検索するとひっかかる.
+
+% bunzip2 -c gdb-6.0.tar.bz2 | tar tvf - > gdb-6.0.tar.bz2.list
+
+gdb-6.0.tar.bz2.list から d10v-tdep.c があることを確認できる.
+
+sim/d10v
+sim/d30v
+
+% xz -d -c gdb-7.10.1-1.src/gdb-7.10.1.tar.xz  | tar tvf - > gdb-7.10.1.tar.xz.list
+
+gdb-7.10.1.tar.xz.list を確認したが
+
+sim/d30v
+
+は消えている.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% bunzip2 -c ../gdb-6.0.tar.bz2 | tar xf -
+% mv gdb-6.0 gdb-6.0.d30v-elf
+% cd gdb-6.0.d30v-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=d30v-elf
+% make all
+...
+checking compiler warning flags...  -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized
+checking for cygwin... no
+checking for X... libraries , headers 
+configure: error: *** Gdb does not support target d30v-unknown-elf
+make: *** [Makefile:21442: configure-gdb] エラー 1
+%
+
+% make configure-gcc
+...
+エラーは再現している.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d30v-elf/gdb/configure.tgt:
+d10v-*-*)		gdb_target=d10v ;;
+
+d30v-*-*)		gdb_target=d30v ;;     これを追加
+
+h8300-*-*)		gdb_target=h8300 ;;
+
+% make configure-gcc
+...
+エラーを回避できていない.
+
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d30v-elf/gdb/configure
+
+
+target_makefile_frag=${srcdir}/config/${gdb_target_cpu}/${gdb_target}.mt
+if test ! -f ${target_makefile_frag}; then
+{ echo "configure: error: "*** Gdb does not support target ${target}"" 1>&2; exit 1; }
+fi
+
+ここでエラーしているっぽい.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d30v-elf/gdb/config
+% mkdir d30v
+% cp d10v/d10v.mt d30v/d30v.mt
+d30v/d30v.mt を修正
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d30v-elf
+% make all
+
+gcc -c -g -O2    -I. -I. -I./config -DLOCALEDIR="\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/share/locale\"" -DHAVE_CONFIG_H -I./../include/opcode -I./../readline/.. -I../bfd -I./../bfd  -I./../include -I../intl -I./../intl  -DMI_OUT=1 -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized  arch-utils.c
+In file included from value.h:292,
+                 from breakpoint.h:26,
+                 from inferior.h:35,
+                 from gdbarch.h:41,
+                 from defs.h:1088,
+                 from arch-utils.c:23:
+arch-utils.c: 関数 ‘generic_register_size’ 内:
+gdbtypes.h:763:41: エラー: ‘->’ の無効な型の引数です (‘int’ 型です)
+  763 | #define TYPE_LENGTH(thistype) (thistype)->length
+
+
+    return TYPE_LENGTH (REGISTER_VIRTUAL_TYPE (regnum)); /* OK */
+
+REGISTER_VIRTUAL_TYPE_P の定義は以下:
+
+/* Default predicate for non- multi-arch targets. */
+#if (!GDB_MULTI_ARCH) && !defined (REGISTER_VIRTUAL_TYPE_P)
+#define REGISTER_VIRTUAL_TYPE_P() (0)
+#endif
+
+
+さてこのエラーどうやって回避するべきか...
+
+まずはできそうな d10v からやってみることにした.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/
+% bunzip2 -c ../gdb-6.0.tar.bz2 | tar xf -
+% mv gdb-6.0 gdb-6.0.d10v-elf
+% cd gdb-6.0.d10v-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=d10v-elf
+% make all
+...
+./../include/obstack.h:426:30: エラー: 増分の被演算子として左辺値が必要です
+  426 |    *((void **)__o->next_free)++ = ((void *)datum);   \
+
+
+   *((void **)__o->next_free)++ = ((void *)datum);
+
+この後置の ++ は何を ++ しているのか...
+
+   *((void **)__o->next_free)
+
+の型は void* でこれを ++ する.
+
+おそらく以下が正しい.
+
+   *((void **)__o->next_free) = ((void *)datum);			\
+   __o->next_free = (void*)((void **)__o->next_free + 1);		\
+
+
+...
+% make all
+...
+gcc -g -O2       \
+	-o gdb gdb.o main.o cli-dump.o cli-decode.o cli-script.o cli-cmds.o cli-setshow.o cli-utils.o cli-logging.o cli-interp.o mi-out.o mi-console.o mi-cmds.o mi-cmd-env.o mi-cmd-var.o mi-cmd-break.o mi-cmd-stack.o mi-cmd-file.o mi-cmd-disas.o mi-symbol-cmds.o mi-interp.o mi-main.o mi-parse.o mi-getopt.o libgdb.a \
+	  ../sim/d10v/libsim.a ../bfd/libbfd.a ../readline/libreadline.a ../opcodes/libopcodes.a  ../libiberty/libiberty.a     -ltermcap -lm   ../libiberty/libiberty.a  -ldl -rdynamic
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: ../sim/d10v/libsim.a(interp.o):/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d10v-elf/sim/d10v/interp.c:31: multiple definition of `text_end'; libgdb.a(exec.o):/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d10v-elf/gdb/exec.c:93: first defined here
+
+text_end を d10v_text_end に変更
+
+% make all
+
+成功.
+
+% make install
+
+0x100 番地に nop を数個置いたいつものプログラムを d10v-elf-gdb 経由で
+動かしてみたが, 期待通りには動作せず.
+
+0x100 番地にブレークポイントは置けているらしい. sim_write が
+
+#0  sim_write (sd=0x1, addr=260, buffer=0x82b9e2c <breakpoint> "/\220^", size=4) at interp.c:767
+
+のように呼び出されていることを確認した.
+
+(gdb) x/4bx buffer
+0x82b9e2c <breakpoint.5>:	0x2f	0x90	0x5e	0x00
+(gdb) 
+
+
+
+void
+sim_resume (sd, step, siggnal)
+     SIM_DESC sd;
+     int step, siggnal;
+{
+...
+      inst = get_longword( iaddr );   ここで inst = 0 になる.
+                                      期待値は 0x2f905e00
+
+強制的に inst を書き替えてみた.
+(gdb) set inst=0x2f905e00
+(gdb) n
+(gdb) 
+(gdb) 
+(gdb) 
+
+Hardware watchpoint 4: *(int*)0x82d447c  State.exception のアドレス
+
+Old value = 0
+New value = 5
+OP_5F20 () at simops.c:1144
+(gdb) c
+Continuing.
+
+Program received signal SIGTRAP, Trace/breakpoint trap.
+0x01000104 in ?? ()
+[Inferior 1 (process 3745) exited normally]
+
+そのうち直すとして, 当初の問題だった d30v の場合の
+
+gcc -c -g -O2    -I. -I. -I./config -DLOCALEDIR="\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/share/locale\"" -DHAVE_CONFIG_H -I./../include/opcode -I./../readline/.. -I../bfd -I./../bfd  -I./../include -I../intl -I./../intl  -DMI_OUT=1 -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized  arch-utils.c
+
+のビルドのエラーをどうやって回避していたかを改めて調査する.
+
+REGISTER_VIRTUAL_TYPE_P の定義が問題だった.
+
+#if (GDB_MULTI_ARCH > GDB_MULTI_ARCH_PARTIAL) || !defined (REGISTER_VIRTUAL_TYPE_P)
+#define REGISTER_VIRTUAL_TYPE_P() (gdbarch_deprecated_register_virtual_type_p (current_gdbarch))  // ここだった
+#endif
+
+以下のように違いが出ている.
+
+gdb-6.0.d10v-elf/gdb/config.h
+/* Multi-arch enabled. */
+#define GDB_MULTI_ARCH GDB_MULTI_ARCH_PURE
+
+
+gdb-6.0.d30v-elf/gdb/config.h
+/* Multi-arch enabled. */
+/* #undef GDB_MULTI_ARCH */
+
+% make
+...
+   *((void **)__o->next_free)++ = ((void *)datum);
+
+同じところでエラーになった. d10v と同じ対処をした.
+
+% make
+...
+make: *** 'gdb' に必要なターゲット '../sim/d30v/libsim.a' を make するルールがありません
+
+% cd sim/d30v
+Makefile.in から
+
+# OBSOLETE
+
+を削除
+% ./configure
+% make
+...
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d30v-elf/sim/igen' に入ります
+make[1]: *** ターゲットが指定されておらず, makefile も見つかりません.  中止.
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d30v-elf/sim/igen' から出ます
+make: *** [Makefile:775: ../igen/igen] エラー 2
+% cd ../igen
+% ./configure
+% cd ../d30v
+% make
+...
+../igen/igen \
+	-G gen-zero-r0 \
+	-G direct-access \
+	-G default-nia-minus-one \
+	-G conditional-issue \
+	-G verify-slot \
+	-G field-widths \
+	-F short,emul \
+	-B 32 \
+	-P "s_" \
+	-o ./dc-short \
+	-k ./ic-d30v \
+	-n ./d30v-insns -i tmp-insns \
+	-n s_icache.h    -hc tmp-icache.h \
+	-n s_icache.c    -c  tmp-icache.c \
+	-n s_semantics.h -hs tmp-semantics.h \
+	-n s_semantics.c -s  tmp-semantics.c \
+	-n s_idecode.h   -hd tmp-idecode.h \
+	-n s_idecode.c   -d  tmp-idecode.c \
+	-n s_model.h     -hm tmp-model.h \
+	-n s_model.c     -m  tmp-model.c \
+	-n s_support.h   -hf tmp-support.h \
+	-n s_support.c   -f  tmp-support.c 2>&1 | egrep -v "Discarding instruction|instruction field of type \`compute\' changed to \`cache\'|Instruction format is not 64 bits wide"
+  -G gen-zero-r0 \
+  -G direct-access \
+Option direct-access replaced by gen-direct-access
+  -G default-nia-minus-one \
+Option default-nia-minus-one replaced by gen-nia-invalid
+  -G conditional-issue \
+Option conditional-issue replaced by gen-conditional-issue
+  -G verify-slot \
+Option verify-slot replaced by gen-slot-verification
+  -G field-widths \
+  -F short,emul \
+  -B 32 \
+  -P s_ \
+  -o ./dc-short \
+  -k ./ic-d30v \
+  -n ./d30v-insns \
+  -i tmp-insns \
+illegal-instruction missing from insn table
+./../../move-if-change tmp-icache.h s_icache.h
+mv: 'tmp-icache.h' を stat できません: そのようなファイルやディレクトリはありません
+make: *** [Makefile:783: tmp-igen] エラー 1
+
+% cat x
+../igen/igen \
+	-G gen-zero-r0 \
+	-G direct-access \
+	-G default-nia-minus-one \
+	-G conditional-issue \
+	-G verify-slot \
+	-G field-widths \
+	-F short,emul \
+	-B 32 \
+	-P "s_" \
+	-o ./dc-short \
+	-k ./ic-d30v \
+	-n ./d30v-insns -i tmp-insns \
+	-n s_icache.h    -hc tmp-icache.h \
+	-n s_icache.c    -c  tmp-icache.c \
+	-n s_semantics.h -hs tmp-semantics.h \
+	-n s_semantics.c -s  tmp-semantics.c \
+	-n s_idecode.h   -hd tmp-idecode.h \
+	-n s_idecode.c   -d  tmp-idecode.c \
+	-n s_model.h     -hm tmp-model.h \
+	-n s_model.c     -m  tmp-model.c \
+	-n s_support.h   -hf tmp-support.h \
+	-n s_support.c   -f  tmp-support.c 2>&1 | egrep -v "Discarding instruction|instruction field of type \`compute\' changed to \`cache\'|Instruction format is not 64 bits wide"
+
+% sh x
+sh x
+  -G gen-zero-r0 \
+  -G direct-access \
+Option direct-access replaced by gen-direct-access
+  -G default-nia-minus-one \
+Option default-nia-minus-one replaced by gen-nia-invalid
+  -G conditional-issue \
+Option conditional-issue replaced by gen-conditional-issue
+  -G verify-slot \
+Option verify-slot replaced by gen-slot-verification
+  -G field-widths \
+  -F short,emul \
+  -B 32 \
+  -P s_ \
+  -o ./dc-short \
+  -k ./ic-d30v \
+  -n ./d30v-insns \
+  -i tmp-insns \
+illegal-instruction missing from insn table
+% echo $status
+0
+% 
+
+
+
+% cat x
+../igen/igen \
+	-G gen-zero-r0 \
+	-G direct-access \
+	-G default-nia-minus-one \
+	-G conditional-issue \
+	-G verify-slot \
+	-G field-widths \
+	-F short,emul \
+	-B 32 \
+	-P "s_" \
+	-o ./dc-short \
+	-k ./ic-d30v \
+	-n ./d30v-insns -i tmp-insns \
+	-n s_icache.h    -hc tmp-icache.h \
+	-n s_icache.c    -c  tmp-icache.c \
+	-n s_semantics.h -hs tmp-semantics.h \
+	-n s_semantics.c -s  tmp-semantics.c \
+	-n s_idecode.h   -hd tmp-idecode.h \
+	-n s_idecode.c   -d  tmp-idecode.c \
+	-n s_model.h     -hm tmp-model.h \
+	-n s_model.c     -m  tmp-model.c \
+	-n s_support.h   -hf tmp-support.h \
+	-n s_support.c   -f  tmp-support.c
+% sh x
+  -G gen-zero-r0 \
+  -G direct-access \
+Option direct-access replaced by gen-direct-access
+  -G default-nia-minus-one \
+Option default-nia-minus-one replaced by gen-nia-invalid
+  -G conditional-issue \
+Option conditional-issue replaced by gen-conditional-issue
+  -G verify-slot \
+Option verify-slot replaced by gen-slot-verification
+  -G field-widths \
+  -F short,emul \
+  -B 32 \
+  -P s_ \
+  -o ./dc-short \
+  -k ./ic-d30v \
+  -n ./d30v-insns \
+  -i tmp-insns \
+illegal-instruction missing from insn table
+% echo $status
+1
+%
+
+おそらく ../igen/igen でエラーしているから tmp-icache.h が生成されないと
+いったところ.
+
+ic-d30v
+
+から
+
+# OBSOLETE
+
+を削除してみた.
+
+% sh -v x
+
+d30v-insns
+
+から
+
+# OBSOLETE
+
+を削除してみた.
+
+% sh -v x
+
+エラーは回避できていない. 簡単には修正できないらしい.
