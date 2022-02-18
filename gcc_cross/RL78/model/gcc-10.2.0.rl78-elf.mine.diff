@@ -1,0 +1,28 @@
+*** gcc-10.2.0.org/gcc/config.gcc	2021-10-16 10:31:18.000000000 +0900
+--- gcc-10.2.0.rl78-elf.mine/gcc/config.gcc	2022-02-11 17:48:42.000000000 +0900
+***************
+*** 3069,3079 ****
+  	default_use_cxa_atexit=yes
+  	;;
+  rl78-*-elf*)
+! 	tm_file="dbxelf.h elfos.h newlib-stdint.h ${tm_file}"
+! 	target_has_targetm_common=no
+! 	c_target_objs="rl78-c.o"
+! 	cxx_target_objs="rl78-c.o"
+! 	tmake_file="${tmake_file} rl78/t-rl78"
+  	;;
+  rx-*-elf*)
+  	tm_file="dbxelf.h elfos.h newlib-stdint.h ${tm_file}"
+--- 3069,3080 ----
+  	default_use_cxa_atexit=yes
+  	;;
+  rl78-*-elf*)
+!  	tm_file="dbxelf.h elfos.h usegas.h newlib-stdint.h rl78/rl78.h"
+!  	tm_p_file="rl78/rl78-protos.h"
+!  	md_file="rl78/rl78.md"
+!  	out_file="rl78/rl78.c"
+!  	tmake_file="rl78/t-rl78"
+!  	use_gcc_stdint=wrap
+  	;;
+  rx-*-elf*)
+  	tm_file="dbxelf.h elfos.h newlib-stdint.h ${tm_file}"
