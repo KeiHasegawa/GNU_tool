@@ -1,0 +1,22 @@
+%.o : %.S
+	d10v-elf-as -o $@ -g $<
+
+%.o : %.c
+	d10v-elf-gcc -o $@ $< -c -g
+
+%.elf : %.o 
+	d10v-elf-ld -o $@ ../default.o $< -T ../default.x
+
+%.objdump : %.elf
+	d10v-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v d10v-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.o *.s *.elf *.map *.objdump *.log TAGS *~
+
