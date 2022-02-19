@@ -1,0 +1,119 @@
+簡単なプログラムを動かすまで.
+
+
+例によって 0x100 番地に nop 命令を数個配置してそれらをステップ実行できるようにする.
+これには AARCH64 での作業が参考になる.
+
+現状
+
+target sim
+
+コマンドが受け付けられていないので Makefile に以下を追加する.
+
+TDEPFILES= d10v-tdep.o
+SIM_OBS= remote-sim.o
+SIM= ../sim/d10v/libsim.a
+
+本当に必要なのは SIM_OBS の行のみだが TDEPFILES と SIM の行もいずれ必要になるので
+ついでに追加しておく.
+
+また
+
+SIM =
+
+のようになっている行は削除した.
+d10v-tdep.c は gdb-6.0 のものをコンパイルが通るように修正した. => d10v-tdep.c.000
+しかし, どうせ動かないと見越して CompactRSIC で作成した自前のものを cr16 を d10v
+に変更しただけのものにした.
+
+これだけの修正を行なうことで
+
+target sim
+
+が受け付けられるようになった.
+オリジナルの d10v のシミュレータは sim_write, sim_read を自前のものとしていたので
+これらをコンパイルアウトして,
+
+gdb-10.2.d10v-elf/sim/common/sim-hrw.c
+
+にある共通のものを使用することにした.
+またこれに伴なって
+
+gdb-10.2.d10v-elf/sim/common/sim-load.c
+
+に以下のパッチを入れた
+
+	      data_count += size;
+	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
++	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
+	      do_write (sd, lma, buffer, size);
+	      found_loadable_section = 1;
+	      free (buffer);
+	    }
+	}
++     else if (s->flags & SEC_ALLOC) {
++	bfd_vma vma = bfd_section_vma(s);
++	bfd_size_type size = bfd_section_size(s);
++	sim_do_command(sd, "memory-fill 0xcc");
++	sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", vma, size);
++     }
+
+これで load コマンドが期待通り動作するようになる.
+
+命令フェッチの部分を以下のように変更した:
+
+***************
+*** 926,935 ****
+  
+    /* TODO: Unindent this block.  */
+      {
+!       iaddr = imem_addr (sd, cpu, (uint32)PC << 2);
+!  
+!       inst = get_longword( iaddr ); 
+!  
+        State.pc_changed = 0;
+        ins_type_counters[ (int)INS_CYCLES ]++;
+        
+--- 926,934 ----
+  
+    /* TODO: Unindent this block.  */
+      {
+!       int cia = PC << 2;
+!       inst = sim_core_read_aligned_4(cpu, cia, read_map, cia);
+!       
+        State.pc_changed = 0;
+        ins_type_counters[ (int)INS_CYCLES ]++;
+
+ブレークポイントにヒットしたときプログラムカウンタを gdb からシミュレータに問い合わせて
+いる部分を修正した:
+
+***************
+*** 1205,1210 ****
+--- 1204,1215 ----
+  d10v_reg_fetch (SIM_CPU *cpu, int rn, unsigned char *memory, int length)
+  {
+    SIM_DESC sd = CPU_STATE (cpu);
++   if (rn == SIM_D10V_CR2_REGNUM) {
++     uint16_t val = CREG (rn - SIM_D10V_CR0_REGNUM);
++     WRITE_16 (memory, val << 2);
++     return 2;
++   }
++   
+    int size;
+    switch ((enum sim_d10v_regs) rn)
+      {
+***************
+*** 1229,1235 ****
+        break;
+      case SIM_D10V_CR0_REGNUM:
+      case SIM_D10V_CR1_REGNUM:
+-     case SIM_D10V_CR2_REGNUM:
+      case SIM_D10V_CR3_REGNUM:
+      case SIM_D10V_CR4_REGNUM:
+      case SIM_D10V_CR5_REGNUM:
+--- 1234,1239 ----
+
+これらの修正をすることで期待通り動作するようになる. この時点での d10v-tdep.c を
+d10v-tdep.c.001 としてアップロードしておく.
+
+
