@@ -1,0 +1,95 @@
+オリジナルの cc1 は 4 バイトの乗算はランタイムライブラリを呼び出すような実装になっている:
+
+f:
+	ldy	*_.frame
+	pshy
+	pshx
+	pshx
+	sts	*_.frame
+	ldy	*_.frame
+	std	3,y
+	stx	1,y
+	ldy	*_.frame
+	ldd	11,y
+	pshb
+	psha
+	ldd	9,y
+	pshb
+	psha
+	ldy	*_.frame
+	ldd	3,y
+	ldx	1,y
+	bsr	__mulsi3
+	puly                  sp := sp - 8
+	puly
+	puly
+	puly
+	puly                  y := *_.frame_{old}
+	sty	*_.frame
+	rts
+
+自前の cc1 でもこれを参考にしたい.
+オリジナルの cc1 では以下のようにランタイムライブラリ函数呼び出しの rtx_insn が
+生成されている.
+
+Breakpoint 1, final (first=0xb7c52120, file=0x8431310, optimize=0, prescan=0) at final.c:1572
+$39 = (rtx) 0xb7bcbfc0
+(call_insn/u 13 54 14 (set (reg:SI 0 x)
+        (call (mem:QI (symbol_ref:HI ("__mulsi3")) [0 S1 A8])
+            (const_int 4 [0x4]))) 182 {call_value} (nil)
+    (expr_list:REG_EH_REGION (const_int -1 [0xffffffff])
+        (nil))
+    (expr_list (use (reg:SI 0 x [ a ]))
+        (nil)))
+$40 = void
+
+以下で生成していた.
+
+gen_mulsi3 (rtx operand0,
+	rtx operand1,
+	rtx operand2)
+{
+  rtx _val = 0;
+  start_sequence ();
+  {
+    rtx operands[3];
+    operands[0] = operand0;
+    operands[1] = operand1;
+    operands[2] = operand2;
+m68hc11_emit_libcall ("__mulsi3", MULT, SImode, SImode, 3, operands);
+   DONE;
+    operand0 = operands[0];
+    operand1 = operands[1];
+    operand2 = operands[2];
+  }
+  emit_insn (gen_rtx_SET (VOIDmode,
+	operand0,
+	gen_rtx_MULT (SImode,
+	operand1,
+	operand2)));
+  _val = get_insns ();
+  end_sequence ();
+  return _val;
+}
+
+大元は以下
+
+(define_expand "mulsi3"
+  [(set (match_operand:SI 0 "nonimmediate_operand" "")
+	(mult:SI (match_operand:SI 1 "general_operand" "")
+		 (match_operand:SI 2 "general_operand" "")))]
+  ""
+  "m68hc11_emit_libcall (\"__mulsi3\", MULT, SImode, SImode, 3, operands);
+   DONE;")
+
+但しこれは gcc-3.4.4 の話.
+
+
+bfin.md で以下のようにしている.
+
+      rtx smulsi3_highpart_libfunc
+	= init_one_libfunc ("__smulsi3_highpart");
+
+      emit_library_call_value (smulsi3_highpart_libfunc,
+			       operands[0], LCT_NORMAL, SImode,
+			       operands[1], SImode, operands[2], SImode);

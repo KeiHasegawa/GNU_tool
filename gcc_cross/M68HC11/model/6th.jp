@@ -1,0 +1,81 @@
+#define PUSH_ROUNDING(X)	(X)
+
+を追加したところ f.c をコンパイルすることができなくなっている.
+
+main:
+	ldy	*_.frame
+	pshy
+	sts	*_.frame
+	(mem:SI (pre_dec:HI (reg/f:HI 3 sp)) [1  S4 A8]) := (const_int 6 [0x6])
+	ldd	#0
+	xgdx
+	ldd	#5
+	bsr	f
+
+一旦この修正を元に戻して以前はどうやっていたか確認する.
+
+main:
+	ldy	*_.frame
+	pshy
+	pshy
+	pshy
+	sts	*_.frame
+	tsy
+	xgdy
+	addd	#-4
+	xgdy
+	tys
+	tsy
+	xgdy
+	xgdy
+	ldd	#0
+	std	0,y
+	ldd	#6
+	std	2,y
+	ldd	#0
+	xgdx
+	ldd	#5
+	bsr	f
+
+ptr_d(x) のところだった. これは不自然だから
+
+#define PUSH_ROUNDING(X)	(X)
+
+を追加する.
+
+(define_insn "pushsi1"
+  [(match_operand:SI 0 "" "")]
+  ""
+  "*
+  return m68hc11_pushsi1(operands[0]);")
+
+これを追加したところ f.c のコンパイル結果に以下のようなものが表われている.
+
+函数 f の加算の部分
+	push (set (reg:SI 0 d [orig:17 _3 ] [17])
+    (plus:SI (mem/c:SI (mem/c:HI (plus:HI (reg/f:HI 9 *_.frame)
+                    (const_int 5 [0x5])) [2 %sfp+5 S2 A8]) [1 a+0 S4 A8])
+        (mem/c:SI (reg/f:HI 0 d [11]) [1 b+0 S4 A8])))
+
+
+
+そして以下も現われている.
+
+函数 main の f の呼び出し.
+	push (set (reg:SI 1 x)
+    (call (mem:QI (symbol_ref:HI ("f") [flags 0x3] <function_decl 0xb7938180 f>) [0 f S1 A8])
+        (const_int 4 [0x4])))
+
+一旦
+
+(define_insn "pushsi1"
+  [(match_operand:SI 0 "" "")]
+  ""
+  "*
+  return m68hc11_pushsi1(operands[0]);")
+
+を削除した. そして
+
+#define PUSH_ROUNDING(X)	(X)
+
+は残したまま. 20222.02.19 18:44 リビルド開始.
