@@ -379,13 +379,13 @@ d10v_address_to_pointer (struct type *type, gdb_byte *buf, CORE_ADDR addr)
   if (TYPE_TARGET_TYPE (type)->code() == TYPE_CODE_FUNC
       || TYPE_TARGET_TYPE (type)->code() == TYPE_CODE_METHOD)
     {
-      store_unsigned_integer (buf, TYPE_LENGTH (type), BFD_ENDIAN_LITTLE,
+      store_unsigned_integer (buf, TYPE_LENGTH (type), BFD_ENDIAN_BIG,
                               d10v_convert_iaddr_to_raw (addr));
     }
   else
     {
       /* Strip off any upper segment bits.  */
-      store_unsigned_integer (buf, TYPE_LENGTH (type), BFD_ENDIAN_LITTLE,
+      store_unsigned_integer (buf, TYPE_LENGTH (type), BFD_ENDIAN_BIG,
                               d10v_convert_daddr_to_raw (addr));
     }
 }
@@ -393,7 +393,7 @@ d10v_address_to_pointer (struct type *type, gdb_byte *buf, CORE_ADDR addr)
 static CORE_ADDR
 d10v_pointer_to_address (struct type *type, const gdb_byte* buf)
 {
-  CORE_ADDR addr = extract_unsigned_integer (buf, TYPE_LENGTH (type), BFD_ENDIAN_LITTLE);
+  CORE_ADDR addr = extract_unsigned_integer (buf, TYPE_LENGTH (type), BFD_ENDIAN_BIG);
   /* Is it a code address?  */
   if (TYPE_TARGET_TYPE (type)->code() == TYPE_CODE_FUNC
       || TYPE_TARGET_TYPE (type)->code() == TYPE_CODE_METHOD
@@ -430,7 +430,7 @@ d10v_store_return_value (struct type *type, struct regcache *regcache,
       && type->code() == TYPE_CODE_INT)
     {
       ULONGEST val = extract_unsigned_integer (valbuf, TYPE_LENGTH (type),
-					       BFD_ENDIAN_LITTLE);
+					       BFD_ENDIAN_BIG);
       regcache_cooked_write_unsigned (regcache, RET1_REGNUM, val);
     }
   else
@@ -536,7 +536,7 @@ d10v_skip_prologue (gdbarch* , CORE_ADDR pc)
 
   while (1)
     {
-      op = (unsigned long) read_memory_integer (pc, 4, BFD_ENDIAN_LITTLE);
+      op = (unsigned long) read_memory_integer (pc, 4, BFD_ENDIAN_BIG);
       if ((op & 0xC0000000) == 0xC0000000)
 	{
 	  /* long instruction */
@@ -1035,7 +1035,7 @@ d10v_push_dummy_call (struct gdbarch *gdbarch, CORE_ADDR func_addr,
       if (len <= 2 && regnum <= ARGN_REGNUM)
 	/* fits in a single register, do not align */
 	{
-	  val = extract_unsigned_integer (contents, len, BFD_ENDIAN_LITTLE);
+	  val = extract_unsigned_integer (contents, len, BFD_ENDIAN_BIG);
 	  regcache_cooked_write_unsigned (regcache, regnum++, val);
 	}
       else if (len <= (ARGN_REGNUM - aligned_regnum + 1) * 2)
@@ -1047,13 +1047,13 @@ d10v_push_dummy_call (struct gdbarch *gdbarch, CORE_ADDR func_addr,
 	  for (b = 0; b < (len & ~1); b += 2)
 	    {
 	      val = extract_unsigned_integer (&contents[b], 2,
-					      BFD_ENDIAN_LITTLE);
+					      BFD_ENDIAN_BIG);
 	      regcache_cooked_write_unsigned (regcache, regnum++, val);
 	    }
 	  if (b < len)
 	    {
 	      val = extract_unsigned_integer (&contents[b], 1,
-					      BFD_ENDIAN_LITTLE);
+					      BFD_ENDIAN_BIG);
 	      regcache_cooked_write_unsigned (regcache, regnum++, (val << 8));
 	    }
 	}
@@ -1092,7 +1092,7 @@ d10v_extract_return_value (struct type *type, struct regcache *regcache,
     {
       ULONGEST c;
       regcache_cooked_read_unsigned (regcache, RET1_REGNUM, &c);
-      store_unsigned_integer ((gdb_byte*)valbuf, 1, BFD_ENDIAN_LITTLE, c);
+      store_unsigned_integer ((gdb_byte*)valbuf, 1, BFD_ENDIAN_BIG, c);
     }
   else
     {
@@ -1296,7 +1296,7 @@ d10v_eva_get_trace_data (void)
   tmpspace = (unsigned int*)xmalloc (65536 * sizeof (unsigned int));
 
   last_trace =
-    read_memory_unsigned_integer (DBBC_ADDR, 2, BFD_ENDIAN_LITTLE) << 2;
+    read_memory_unsigned_integer (DBBC_ADDR, 2, BFD_ENDIAN_BIG) << 2;
 
   /* Collect buffer contents from the target, stopping when we reach
      the word recorded when execution resumed.  */
@@ -1307,7 +1307,7 @@ d10v_eva_get_trace_data (void)
       QUIT;
       trace_word =
 	read_memory_unsigned_integer (TRACE_BUFFER_BASE + last_trace, 4,
-				      BFD_ENDIAN_LITTLE);
+				      BFD_ENDIAN_BIG);
       trace_addr = trace_word & 0xffff;
       last_trace -= 4;
       /* Ignore an apparently nonsensical entry.  */
