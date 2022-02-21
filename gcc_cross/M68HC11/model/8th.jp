@@ -1,0 +1,260 @@
+ランタイムライブラリ函数 __modsi3 の呼び出しが正しくない.
+
+f の先頭アドレスで
+
+d = 33, x = 0	
+
+0xfef4	+---------------+
+	|		|<- sp
+0xfef6	+---------------+
+	|    0x10c3	|
+	+---------------+
+	|		|
+	|	6	|
+	+---------------+
+
+のようになっている.
+
+	bsr	__modsi3
+
+では d = -273 x = 0 になっている.
+
+(m68hc11-elf-gdb) x/5bx $sp
+0xfeeb:	0xcc	0x00	0x00	0x00	0x06
+(m68hc11-elf-gdb)
+
+なので第 2 引数はできている.
+
+ここで f をステップ実行しようとしたところ
+
+
+(m68hc11-elf-gdb) n
+DWARF expression error: ran off end of buffer reading uleb128 value
+(m68hc11-elf-gdb) s
+DWARF expression error: ran off end of buffer reading uleb128 value
+(m68hc11-elf-gdb)
+
+のようにできていない. ステップ実行ができていないのは main 函数でも同様.
+またオリジナルの cc1 で生成した a.elf でもステップアセンブリで生成した
+コードはステップ実行できていない.
+
+ステップ実行はひとまず置いておいて
+
+    6: d:SI=[*_.frame:HI+0x1]
+
+    7: [--sp:HI]=[*_.frame:HI+0x9]
+
+    8: x:SI=d:SI
+
+のようなコードが出ているが 7 で d を使用しているので結果的に 8 ができていない:
+
+  if (is_push(x) && fp_rel(y, &offset)) {
+    int scratch = D_REGNUM; <---------------- これ
+    load(scratch, offset);
+    fprintf(asm_out_file, "	xgdy\n");
+    fprintf(asm_out_file, "	pshy\n");
+    fprintf(asm_out_file, "	pshx\n");
+    return "";
+  }
+
+
+__mulsi3 や __divsi3 で問題が発生しなかったのは
+
+    7: [--sp:HI]=[*_.frame:HI+0x9]
+
+    8: x:SI=[*_.frame:HI+0x1]
+
+のようにコード生成されていたから. さて困った.
+d をスクラッチレジスタとして使用するのならレジスタアロケーションから外してみては?
+
+#define REGISTER_NAMES \
+  { "d", "x", "y", "sp", "unuse0", "unuse1", "unuse2", "unuse3", "unuse4", \
+    "*_.frame", "dummy"  }
+#define FIXED_REGISTERS \
+  {  0,   0,   0,   1,    1,         1,        1,        1,        1,      \
+     1,          1}
+
+現状上のようにしているが以下を試してみる.
+
+#define REGISTER_NAMES \
+  { "d", "x", "y", "sp", "unuse0", "unuse1", "unuse2", "unuse3", "unuse4", \
+    "*_.frame", "dummy"  }
+#define FIXED_REGISTERS \
+  {  1,   0,   0,   1,    1,         1,        1,        1,        1,      \
+     1,          1}
+2022.02.21 7:05 ビルド開始.
+
+
+2022.02.21 8:23
+
+以下のようになっているがまだできていない.
+
+    6: x:SI=[*_.frame:HI+0x1]
+
+    7: [--sp:HI]=[*_.frame:HI+0x9]
+
+    9: x:SI=call [`__modsi3'] argc:0x4
+
+
+問題は 7 で d レジスタを使用していて壊している. やはり __mulsi3 や __divsi3 で
+こうならないのは
+
+    7: [--sp:HI]=[*_.frame:HI+0x9]
+    
+    6: x:SI=[*_.frame:HI+0x1]
+
+    9: x:SI=call [`__mulsi3'] argc:0x4
+
+のようになっているから.
+つまり, x が函数呼び出しに先立って第 1 引数がセットされていて, fp 相対の変数を第 2 引数
+をスタックに積む場合,
+
+   1. x, d レジスタを一旦退避して
+   2. これまで通り上の 6 に相当するコードを生成して
+   3. 1 で退避した x, d を復元する
+
+のようにする必要がある. しかし d, x, y でこれができるかは現段階では不明.
+
+これまで函数呼び出しの引数は第 2 引数, 第 1 引数の順にセットされていたのに
+なぜ __modsi3 がそのようになっているのか調べてみる.
+
+以下は int * int に対するコード
+
+Breakpoint 1, final_1 (first=0xb78fa960, file=0x96a7a98, seen=3, optimize_p=0) at ../.././gcc/final.c:2020
+$323 = (rtx_insn *) 0xb7877384
+    6: [--sp:HI]=[*_.frame:HI+0x9]
+      REG_ARGS_SIZE 0x4
+$324 = void
+
+Breakpoint 1, final_1 (first=0xb78fa960, file=0x96a7a98, seen=3, optimize_p=0) at ../.././gcc/final.c:2020
+$325 = (rtx_insn *) 0xb78773a8
+    7: x:SI=[*_.frame:HI+0x1]
+$326 = void
+
+Breakpoint 1, final_1 (first=0xb78fa960, file=0x96a7a98, seen=3, optimize_p=0) at ../.././gcc/final.c:2020
+$327 = (rtx_insn *) 0xb78d5140
+    8: x:SI=call [`__mulsi3'] argc:0x4
+      REG_EH_REGION 0xffffffff80000000
+
+そして以下は int % int に対するコード
+
+Breakpoint 1, final_1 (first=0xb78fa960, file=0x96a7a98, seen=3, optimize_p=0) at ../.././gcc/final.c:2020
+$369 = (rtx_insn *) 0xb7877384
+    6: x:SI=[*_.frame:HI+0x1]
+$370 = void
+
+Breakpoint 1, final_1 (first=0xb78fa960, file=0x96a7a98, seen=3, optimize_p=0) at ../.././gcc/final.c:2020
+$371 = (rtx_insn *) 0xb78773a8
+    7: [--sp:HI]=[*_.frame:HI+0x9]
+      REG_ARGS_SIZE 0x4
+$372 = void
+
+Breakpoint 1, final_1 (first=0xb78fa960, file=0x96a7a98, seen=3, optimize_p=0) at ../.././gcc/final.c:2020
+$373 = (rtx_insn *) 0xb78d5140
+    9: x:SI=call [`__modsi3'] argc:0x4
+      REG_EH_REGION 0xffffffff80000000
+
+まずは int * int の
+
+6: [--sp:HI]=[*_.frame:HI+0x9]
+
+をどこで生成しているか調べてみる.
+
+rtx
+emit_library_call_value_1 (int retval, rtx orgfun, rtx value,
+			   enum libcall_type fn_type,
+			   machine_mode outmode, int nargs, rtx_mode_t *args)
+{
+...
+	  emit_push_insn (val, mode, NULL_TREE, NULL_RTX, parm_align,
+			  partial, reg, 0, argblock,
+			  (gen_int_mode
+			   (argvec[argnum].locate.offset.constant, Pmode)),
+			  reg_parm_stack_space,
+			  ARGS_SIZE_RTX (argvec[argnum].locate.alignment_pad), false);
+
+それは当然と言えば当然.
+int * int と int % int で emit_library_call_value_1 の動作に違いが出ると
+思われるからそれが何が原因なのか調べてみる.
+
+(gdb) delete
+(gdb) b emit_library_call_value_1
+(gdb) run
+...
+emit_library_call_value_1 のブレークポイントにヒット
+
+  for (unsigned int i = 0; count < nargs; i++, count++)
+    {
+      rtx val = args[i].first;
+
+上の部分. どちらも nargs = 2 であるが
+
+int * int では
+(gdb) p debug_rtx(val)
+(mem/c:SI (reg/f:HI 12 virtual-stack-vars) [1 a+0 S4 A8])
+$404 = void
+(gdb) 
+
+int % int では
+(gdb) p debug_rtx(val)
+(reg:SI 19)
+$48 = void
+(gdb)
+
+のように違いが出ている.
+
+i = 2 では
+
+int * int でも int % int でも
+
+(gdb) p debug_rtx(val)
+(mem/c:SI (reg/f:HI 11 virtual-incoming-args) [1 b+0 S4 A8])
+$405 = void
+(gdb)
+
+のようになっている.
+この後処理が進み第 2 引数に対して emit_push_insn が呼び出されるのは同じ.
+ということやはり第 1 引数に対して違いが出る原因を調査したい.
+
+
+rtx
+expand_divmod (int rem_flag, enum tree_code code, machine_mode mode,
+	       rtx op0, rtx op1, rtx target, int unsignedp)
+{
+...
+  if (rem_flag || op1_is_constant)
+    op0 = force_reg (compute_mode, op0);
+
+
+ここで rem_flag = 1 で問題の (reg:SI 19) が生成されている.
+rem_flag は呼び出し元で計算している.
+
+rtx
+expand_expr_real_2 (sepops ops, rtx target, machine_mode tmode,
+		    enum expand_modifier modifier)
+{
+...
+       bool mod_p = code == TRUNC_MOD_EXPR || code == FLOOR_MOD_EXPR
+		    || code == CEIL_MOD_EXPR || code == ROUND_MOD_EXPR;
+
+
+(gdb) p code
+$64 = TRUNC_MOD_EXPR
+(gdb)
+
+ということなので % の演算に対して第 1 引数はどうしてもレジスタが割り当てられてしまうらしい.
+というわけで * と % で違いが出ている. さてどうやってこの問題を回避するか.
+
+
+	     stx  *_.d1
+	     xgdx
+	     stx  *_.d2
+
+のようにすれば退避できている.
+	     
+	     ldx  *_.d2
+	     xgdx
+	     ldx  *_.d1
+
+とすれば復元できている. 現状 a.S が期待する生成結果で zz により確認できている.
+ここで FIXED_REGISTERS にした修正を元に戻した.
