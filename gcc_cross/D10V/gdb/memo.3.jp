@@ -1,0 +1,792 @@
+現状 hello world 11 ができている.
+またプロローグで生成している rtx_insn の全てに対して
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+のようにしている.
+
+-g オプション付きでコンパイルした hello world 11 を d10v-elf-gdb で実行すると
+main にセットしたブレークポイントで停止できているが, f にステップインするとプロローグを
+適切にスキップできていない.
+仮に f にブレークポイントをセットしてそこまで実行すればプロローグは適切にスキップできている.
+この場合は引数 a, b を正しく表示できている. この状態で where コマンドを実行すると
+
+
+(d10v-elf-gdb) where
+#0  f (a=5, b=6) at a.c:5
+(d10v-elf-gdb)
+
+のように main の行がない. この状態で finish コマンドを実行すると
+
+(d10v-elf-gdb) finish
+"finish" not meaningful in the outermost frame.
+(d10v-elf-gdb) 
+
+のようになってしまう. まずは f にステップインしたときにプロローグを適切にスキップできる
+ようにする.
+
+この症状は RX のコンパイラの雛形を作成したときにも発生していたが, 今回は d10v-tdep.c が
+開発段階にあるので原因はおそらく異なる.
+
+(gdb) b step_command
+(gdb) run
+...
+step_command のブレークポイントにヒット
+(gdb) b handle_step_into_function
+(gdb) b process_event_stop_test
+(gdb) c
+...
+process_event_stop_test のブレークポイントにヒット(1 回目)
+(gdb) c
+...
+process_event_stop_test のブレークポイントにヒット(2 回目)
+(gdb) c
+...
+process_event_stop_test のブレークポイントにヒット(3 回目)
+(gdb) c
+...
+handle_step_into_function は呼び出されず終了.
+
+ 160:	e0 10 00 06 	ldi.l	r1, 0x6
+ 164:	e0 00 00 05 	ldi.l	r0, 0x5
+ 168:	24 f8 5e 00 	bl.s	128 <f>	||	nop	
+
+なのでおそらく 3 回目に handle_step_into_function が呼び出されるのが期待値.
+
+  if (!frame_id_eq (get_stack_frame_id (frame),
+		    ecs->event_thread->control.step_stack_frame_id)
+      && (frame_id_eq (frame_unwind_caller_id (get_current_frame ()),
+		       ecs->event_thread->control.step_stack_frame_id)
+	  && (!frame_id_eq (ecs->event_thread->control.step_stack_frame_id,
+			    outer_frame_id)
+	      || (ecs->event_thread->control.step_start_function
+		  != find_pc_function (ecs->event_thread->suspend.stop_pc)))))
+    {
+...
+	    if (execution_direction == EXEC_REVERSE)
+	      handle_step_into_function_backward (gdbarch, ecs);
+	    else
+	      handle_step_into_function (gdbarch, ecs);
+	    return;
+
+3 回目この条件が成立していないことを確認した.
+
+(gdb) p frame_id_eq (get_stack_frame_id (frame), ecs->event_thread->control.step_stack_frame_id)
+$1 = true
+
+ということはまずはこれが違っていると考えられる.
+
+(gdb) p ecs->event_thread->control.step_stack_frame_id
+$2 = {stack_addr = 0, code_addr = 0, special_addr = 0, 
+  stack_status = FID_STACK_OUTER, code_addr_p = 0, special_addr_p = 1, 
+  artificial_depth = 0}
+
+これは少なくとも期待したものではない.
+
+(gdb) p get_stack_frame_id (frame)
+$3 = {stack_addr = 0, code_addr = 0, special_addr = 0, 
+  stack_status = FID_STACK_OUTER, code_addr_p = 0, special_addr_p = 1, 
+  artificial_depth = 0}
+(gdb) 
+
+これもそう.
+
+static void
+d10v_frame_this_id(frame_info* frame, void** ptr, frame_id* id)
+{
+  // 空のままだった.
+}
+
+ここに cr16-tdep.c とほぼ同じコードにして正常動作を確認した.
+これで動作確認してみたところ f にステップインして適切にプロローグをスキップできている.
+しかし以下のように where コマンドはまだできていない.
+
+(d10v-elf-gdb) where
+#0  f (a=5, b=6) at a.c:5
+#1  0x0000016c in main () at a.c:10
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+(d10v-elf-gdb) 
+
+このエラーメッセージも以前どこかで見た.
+
+ 168:	24 f8 5e 00 	bl.s	128 <f>	||	nop	
+ 16c:	20 10 5e 00 	mv	r1, r0	||	nop	
+
+なので 0x16c を r13 から計算できているらしい.
+
+(gdb) delete
+(gdb) b backtrace_command_1
+(gdb) run
+...
+backtrace_command_1 のブレークポイントにヒット
+
+static void
+backtrace_command_1 (const frame_print_options &fp_opts,
+		     const backtrace_cmd_options &bt_opts,
+		     const char *count_exp, int from_tty)
+
+{
+...
+      for (fi = trailing; fi && count--; fi = get_prev_frame (fi))
+	{
+	  QUIT;
+
+このループでスタックを遡っている.
+
+ループ 1 回目
+
+(gdb) p/x *fi
+$15 = {level = 0x0, pspace = 0x8b3c678, aspace = 0x8b3cb20, 
+  prologue_cache = 0x8bbc568, unwind = 0x8a1a480, prev_arch = {p = 0x1, 
+    arch = 0x8b91268}, prev_pc = {status = 0x1, masked = 0x0, value = 0x16c}, 
+  prev_func = {addr = 0x0, status = 0x0}, this_id = {p = 0x2, value = {
+      stack_addr = 0xff4, code_addr = 0x128, special_addr = 0x0, 
+      stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+      artificial_depth = 0x0}}, base = 0x0, base_cache = 0x0, 
+  next = 0x8af5d80, prev_p = 0x1, prev = 0x8af5e74, stop_reason = 0x0, 
+  stop_string = 0x0}
+(gdb) 
+
+0x128 は f の先頭アドレス. 0xff4 は f のプロローグをスキップした時点での sp の値
+f の先頭アドレスでの sp は 0xffc.
+
+ループ 2 回目
+
+(gdb) p/x *fi
+$16 = {level = 0x1, pspace = 0x8b3c678, aspace = 0x8b3cb20, 
+  prologue_cache = 0x8bbd890, unwind = 0x8a1a480, prev_arch = {p = 0x0, 
+    arch = 0x0}, prev_pc = {status = 0x0, masked = 0x0, value = 0x0}, 
+  prev_func = {addr = 0x0, status = 0x0}, this_id = {p = 0x2, value = {
+      stack_addr = 0xff4, code_addr = 0x154, special_addr = 0x0, 
+      stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+      artificial_depth = 0x0}}, base = 0x0, base_cache = 0x0, 
+  next = 0x8af5dfc, prev_p = 0x0, prev = 0x0, stop_reason = 0x0, 
+  stop_string = 0x0}
+(gdb) 
+
+0x154 は main の先頭アドレス 0xff4 は main のプロローグをスキップした時点での sp の値
+main の先頭アドレスでの sp は 0x1000
+
+これ以上はループしない.
+cr16-elf-gdb と動作を比較してみることにした.
+
+ループ 1 回目
+
+(gdb) p/x *fi
+$9 = {level = 0x0, pspace = 0x8ce5680, aspace = 0x8ce5b28, 
+  prologue_cache = 0x8c9eee4, unwind = 0x87aa860, prev_arch = {p = 0x1, 
+    arch = 0x8d3a268}, prev_pc = {status = 0x1, masked = 0x0, value = 0x194}, 
+  prev_func = {addr = 0x188, status = 0x1}, this_id = {p = 0x2, value = {
+      stack_addr = 0xeff8, code_addr = 0x16e, special_addr = 0x0, 
+      stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+      artificial_depth = 0x0}}, base = 0x0, base_cache = 0x0, 
+  next = 0x8c9edf0, prev_p = 0x1, prev = 0x8c9f114, stop_reason = 0x0, 
+  stop_string = 0x0}
+(gdb)
+
+0x16e は f のアドレス. 0xeff8 はおそらく sp のアドレス.
+
+ループ 2 回目
+
+(gdb) p/x *fi
+$10 = {level = 0x1, pspace = 0x8ce5680, aspace = 0x8ce5b28, 
+  prologue_cache = 0x8c9f18c, unwind = 0x87aa860, prev_arch = {p = 0x1, 
+    arch = 0x8d3a268}, prev_pc = {status = 0x0, masked = 0x0, value = 0x0}, 
+  prev_func = {addr = 0x0, status = 0x0}, this_id = {p = 0x2, value = {
+      stack_addr = 0xf000, code_addr = 0x188, special_addr = 0x0, 
+      stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+      artificial_depth = 0x0}}, base = 0x0, base_cache = 0x0, 
+  next = 0x8c9ee6c, prev_p = 0x0, prev = 0x0, stop_reason = 0x0, 
+  stop_string = 0x0}
+(gdb)
+
+0x188 は main のアドレス. 0xf000 はおそらく sp のアドレス.
+
+これ以上はループしない.
+
+単純に get_frame_unwind_stop_reason (trailing) の戻り値に違いが出ている.
+
+
+static struct frame_info *
+get_prev_frame_if_no_cycle (struct frame_info *this_frame)
+{
+...
+	  this_frame->stop_reason = UNWIND_SAME_ID;  ここでセットしていた.
+
+
+get_prev_frame_if_no_cycle での動作に違いがあるはずだからそこを比較してみる.
+
+この函数が 2 回目に呼び出されたとき
+
+static struct frame_info *
+get_prev_frame_if_no_cycle (struct frame_info *this_frame)
+{
+  struct frame_info *prev_frame;
+
+  prev_frame = get_prev_frame_raw (this_frame);
+...
+  try
+    {
+      compute_frame_id (prev_frame);
+
+cr16-elf-gdb の 1 回目
+(gdb) p/x *prev_frame
+$22 = {level = 0x1, pspace = 0x8ce5680, aspace = 0x8ce5b28, 
+  prologue_cache = 0x8c9f18c, unwind = 0x87aa860, prev_arch = {p = 0x1, 
+    arch = 0x8d3a268}, prev_pc = {status = 0x0, masked = 0x0, value = 0x0}, 
+  prev_func = {addr = 0x0, status = 0x0}, this_id = {p = 0x2, value = {
+      stack_addr = 0xf000, code_addr = 0x188, special_addr = 0x0, 
+      stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+      artificial_depth = 0x0}}, base = 0x0, base_cache = 0x0, 
+  next = 0x8c9ee6c, prev_p = 0x0, prev = 0x0, stop_reason = 0x0, 
+  stop_string = 0x0}
+(gdb)
+
+0x188 は main のアドレス
+
+cr16-elf-gdb の 2 回目
+(gdb) p/x *prev_frame
+$18 = {level = 0x2, pspace = 0x8ce5680, aspace = 0x8ce5b28, 
+  prologue_cache = 0x8d538c0, unwind = 0x8bc08c0, prev_arch = {p = 0x0, 
+    arch = 0x0}, prev_pc = {status = 0x0, masked = 0x0, value = 0x0}, 
+  prev_func = {addr = 0x0, status = 0x0}, this_id = {p = 0x2, value = {
+      stack_addr = 0xf000, code_addr = 0x100, special_addr = 0x0, 
+      stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+      artificial_depth = 0x0}}, base = 0x0, base_cache = 0x0, 
+  next = 0x8c9f114, prev_p = 0x0, prev = 0x0, stop_reason = 0x0, 
+  stop_string = 0x0}
+(gdb)
+
+0x100 は start のアドレス. そして 0xf000 は start での sp の値.
+これは cr16-elf-gdb での話で期待した結果.
+
+d10v-elf-gdb の 1 回目
+
+
+(gdb) p/x *prev_frame
+$35 = {level = 0x1, pspace = 0x8b3d678, aspace = 0x8b3db20, 
+  prologue_cache = 0x8bbe890, unwind = 0x8a1b480, prev_arch = {p = 0x0, 
+    arch = 0x0}, prev_pc = {status = 0x0, masked = 0x0, value = 0x0}, 
+  prev_func = {addr = 0x0, status = 0x0}, this_id = {p = 0x2, value = {
+      stack_addr = 0xff4, code_addr = 0x154, special_addr = 0x0, 
+      stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+      artificial_depth = 0x0}}, base = 0x0, base_cache = 0x0, 
+  next = 0x8af6dfc, prev_p = 0x0, prev = 0x0, stop_reason = 0x0, 
+  stop_string = 0x0}
+(gdb)
+
+0x154 は main のアドレス.
+
+d10v-elf-gdb の 2 回目
+
+(gdb) p/x *prev_frame
+$36 = {level = 0x2, pspace = 0x8b3d678, aspace = 0x8b3db20, 
+  prologue_cache = 0x8bbead0, unwind = 0x8a1b480, prev_arch = {p = 0x0, 
+    arch = 0x0}, prev_pc = {status = 0x0, masked = 0x0, value = 0x0}, 
+  prev_func = {addr = 0x0, status = 0x0}, this_id = {p = 0x2, value = {
+      stack_addr = 0xff4, code_addr = 0x154, special_addr = 0x0, 
+      stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+      artificial_depth = 0x0}}, base = 0x0, base_cache = 0x0, 
+  next = 0x8af6e74, prev_p = 0x0, prev = 0x0, stop_reason = 0x0, 
+  stop_string = 0x0}
+(gdb)
+
+0x154 ではなくて 0x100 が期待値.
+0xff4 ではなくて 0x1000 が期待値.
+
+ということは compute_frame_id に問題がありそう.
+
+static void
+d10v_frame_this_id(frame_info* frame, void** ptr, frame_id* id)
+{
+  auto pf = reinterpret_cast<d10v_frame*>(*ptr);
+  if (!pf)
+    *ptr = pf = d10v_frame_create(frame);
+  
+  if (!pf->available)
+    *id = frame_id_build_unavailable_stack(pf->prologue.start);
+  else
+    *id = frame_id_build(pf->prev_sp, pf->prologue.start);
+    値をセットしていたのはここ
+}
+
+
+cr16-elf-gdb では
+(gdb) p/x pf->prologue.start
+$29 = 0x100
+(gdb)
+
+で
+
+d10v-elf-gdb では
+(gdb) p/x pf->prologue.start
+$47 = 0x154
+(gdb)
+
+になっている. だから pf->prologue.start に適切な値がセットされている必要がある.
+それをセットしている場所を特定する.
+
+bool
+find_pc_partial_function_sym (CORE_ADDR pc,
+			      const struct general_symbol_info **sym,
+			      CORE_ADDR *address, CORE_ADDR *endaddr,
+			      const struct block **block)
+{
+...
+  if (address)
+    {
+      if (pc_in_unmapped_range (pc, section))
+	*address = overlay_unmapped_address (cache_pc_function_low, section);
+      else
+	*address = cache_pc_function_low;  ここだった.
+    }
+
+
+cr16-elf-gdb も d10v-elf-gdb も同じ場所で値をセットしていた.
+
+cr16-elf-gdb では
+(gdb) p/x pc
+$31 = 0x11d
+(gdb)
+
+ 11a:	00 c0 6e 00 	bal	(ra),*+0x188 <_main>:m
+ 11e:	00 2c       	nop
+
+0x11d は main を呼び出した bal 命令の次のアドレスから 1 引いた値.
+
+d10v-elf-gdb では
+(gdb) p/x pc
+$53 = 0x16b
+(gdb)
+
+ 168:	24 f8 5e 00 	bl.s	128 <f>	||	nop	
+ 16c:	20 10 5e 00 	mv	r1, r0	||	nop	
+ 170:	e0 00 01 84 	ldi.l	r0, 0x184
+
+0x16b は f を呼び出した bl 命令の次のアドレスから 1 引いた値.
+
+static d10v_frame* d10v_frame_create(frame_info* frame)
+{
+...
+  ret->pc = get_frame_pc(frame);
+  ret->prev_sp = get_frame_sp(frame);
+  auto block_addr = get_frame_address_in_block(frame);  
+  bool found = find_pc_partial_function(block_addr, nullptr,
+					&ret->prologue.start,
+					&ret->prologue.end);
+
+ということ. cr16-elf-gdb でもここは同じ.
+
+cr16-elf-gdb では
+
+(gdb) p/x *frame
+$33 = {level = 0x2, pspace = 0x8ce5680, aspace = 0x8ce5b28, 
+  prologue_cache = 0x0, unwind = 0x8bc08c0, prev_arch = {p = 0x0, 
+    arch = 0x0}, prev_pc = {status = 0x0, masked = 0x0, value = 0x0}, 
+  prev_func = {addr = 0x0, status = 0x0}, this_id = {p = 0x1, value = {
+      stack_addr = 0x0, code_addr = 0x0, special_addr = 0x0, 
+      stack_status = 0x3, code_addr_p = 0x0, special_addr_p = 0x1, 
+      artificial_depth = 0x0}}, base = 0x0, base_cache = 0x0, 
+  next = 0x8c9f114, prev_p = 0x0, prev = 0x0, stop_reason = 0x0, 
+  stop_string = 0x0}
+(gdb)
+
+d10v-elf-gdb では
+
+p/x *frame
+$55 = {level = 0x2, pspace = 0x8b3d678, aspace = 0x8b3db20, 
+  prologue_cache = 0x0, unwind = 0x8a1b480, prev_arch = {p = 0x0, 
+    arch = 0x0}, prev_pc = {status = 0x0, masked = 0x0, value = 0x0}, 
+  prev_func = {addr = 0x0, status = 0x0}, this_id = {p = 0x1, value = {
+      stack_addr = 0x0, code_addr = 0x0, special_addr = 0x0, 
+      stack_status = 0x3, code_addr_p = 0x0, special_addr_p = 0x1, 
+      artificial_depth = 0x0}}, base = 0x0, base_cache = 0x0, 
+  next = 0x8af6e74, prev_p = 0x0, prev = 0x0, stop_reason = 0x0, 
+  stop_string = 0x0}
+(gdb)
+
+これから判断すると get_frame_pc(frame) や get_frame_sp(frame) に
+問題がありそう.
+
+
+(gdb) p frame
+$34 = (frame_info *) 0x8c9f3bc
+(gdb) delete
+(gdb) b cr16_frame_create
+
+(gdb) command
+Type commands for breakpoint(s) 5, one per line.
+End with a line saying just "end".
+>if (frame!=0x8c9f3bc) 
+ >c
+ >end
+>end
+(gdb) run
+
+期待したタイミングで止められている. 同様のことを d10v-elf-gdb でも行なった.
+
+この get_frame_pc の動作を比較してみる.
+
+static CORE_ADDR
+frame_unwind_pc (struct frame_info *this_frame)
+{
+...
+  if (this_frame->prev_pc.status == CC_VALUE)
+    return this_frame->prev_pc.value; どちらもここ
+
+この値をセットする瞬間を捕える.
+
+static CORE_ADDR
+frame_unwind_pc (struct frame_info *this_frame)
+{
+...
+      try
+	{
+	  pc = gdbarch_unwind_pc (prev_gdbarch, this_frame);
+	  pc_p = true;
+	}
+      catch (const gdb_exception_error &ex)
+...
+	  this_frame->prev_pc.value = pc;  どちらもここ
+
+だとすれば gdbarch_unwind_pc の呼び出しで違いがあるか調べてみる.
+
+
+cr16-elf-gdb では
+(gdb) delete
+(gdb) b frame.c:976
+
+(gdb) command
+Type commands for breakpoint(s) 8, one per line.
+End with a line saying just "end".
+>if (this_frame!=0x8c9f114)
+ >c
+ >end
+>end
+(gdb) run
+これで止めたいところで止められている. 同様のことを d10v-elf-gdb でもやった:
+
+(gdb) delete
+(gdb) b frame.c:976
+(gdb) command
+> if(this_frame!=0x8af6e74)
+ >c
+ >end
+>end
+(gdb) run
+
+
+struct value *
+frame_unwind_register_value (frame_info *next_frame, int regnum)
+{
+...
+  value = next_frame->unwind->prev_register (next_frame,
+					     &next_frame->prologue_cache,
+					     regnum);
+
+この呼び出しが
+
+cr16-elf-gdb では dwarf2_frame_prev_register の呼び出しになっているのに対して
+d10v-elf-gdb では d10v_frame_prev_register の呼び出しになっている.
+
+ということは... d10v-tdep.c で何か指定しているのかと思ったが違っていた.
+
+
+
+(gdb) p &next_frame->unwind->prev_register
+$82 = (frame_prev_register_ftype **) 0x87aa86c <dwarf2_frame_unwind+12>
+(gdb)
+
+
+(gdb) p &next_frame->unwind->prev_register
+$66 = (frame_prev_register_ftype **) 0x8a1b48c <d10v_frame_unwind+12>
+(gdb)
+
+このメンバに値をセットする瞬間を捕える.
+=> これは間違いで next_frame->unwind に値をセットする瞬間を捕えるのが正しい.
+
+
+(gdb) p &next_frame->unwind
+$84 = (const frame_unwind **) 0x8c9f124
+(gdb) watch *(int*)0x8c9f124
+(gdb) run
+...
+ウォッチポイントにヒットした.
+
+void
+frame_unwind_find_by_frame (struct frame_info *this_frame, void **this_cache)
+{
+...
+  for (entry = table->list; entry != NULL; entry = entry->next)
+    if (frame_unwind_try_unwinder (this_frame, this_cache, entry->unwinder))
+      return;
+
+これは以前どこかで見た.
+
+(gdb) p this_frame
+$87 = (frame_info *) 0x8c9f114
+(gdb) delete
+(gdb) b frame_unwind_find_by_frame
+(gdb) command
+>if (this_frame!=0x8c9f114)
+ >c
+ >end
+>end
+(gdb) run
+
+
+p entry->unwinder
+$88 = (const frame_unwind *) 0x87a8d00 <dummy_frame_unwind>
+(gdb) n
+(gdb) 
+(gdb) p entry->unwinder
+$89 = (const frame_unwind *) 0x87aa2a0 <dwarf2_tailcall_frame_unwind>
+(gdb) n
+(gdb) 
+(gdb) p entry->unwinder
+$90 = (const frame_unwind *) 0x87db480 <inline_frame_unwind>
+(gdb) n
+(gdb) 
+(gdb) p entry->unwinder
+$91 = (const frame_unwind *) 0x87dc120 <jit_frame_unwind>
+(gdb) n
+(gdb) 
+(gdb) p entry->unwinder
+$92 = (const frame_unwind *) 0x8d3a648
+(gdb) n
+(gdb) 
+(gdb) p entry->unwinder
+$93 = (const frame_unwind *) 0x87aa860 <dwarf2_frame_unwind>
+(gdb) n
+(gdb) 
+
+
+つまり dummy_frame_unwind, dwarf2_tailcall_frame_unwind, inline_frame_unwind,
+jit_frame_unwind, ???, dwarf2_frame_unwind
+
+の順に最初にマッチするものを探している. cr16-elf-gdb の場合はそれが dwarf2_frame_unwind
+であるが,
+
+以下 d10v-elf-gdb で
+(gdb) p this_frame
+$70 = (frame_info *) 0x8af6e74
+(gdb) delete
+(gdb) b frame_unwind_find_by_frame
+
+(gdb) command
+Type commands for breakpoint(s) 19, one per line.
+End with a line saying just "end".
+>if (this_frame!=0x8af6e74)
+ >c
+ >end
+>end
+(gdb) run
+...
+
+(gdb) p entry->unwinder
+$72 = (const frame_unwind *) 0x8695c40 <dummy_frame_unwind>
+(gdb) n
+(gdb) 
+(gdb) p entry->unwinder
+$73 = (const frame_unwind *) 0x86970c0 <dwarf2_tailcall_frame_unwind>
+(gdb) n
+(gdb) 
+(gdb) p entry->unwinder
+$74 = (const frame_unwind *) 0x86c5620 <inline_frame_unwind>
+(gdb) n
+(gdb) 
+(gdb) p entry->unwinder
+$75 = (const frame_unwind *) 0x86c6380 <jit_frame_unwind>
+(gdb) n
+(gdb) 
+(gdb) p entry->unwinder
+$76 = (const frame_unwind *) 0x8b92648
+(gdb) n
+(gdb) 
+(gdb) p entry->unwinder
+$77 = (const frame_unwind *) 0x8697a20 <dwarf2_frame_unwind>
+(gdb) n
+(gdb) 
+(gdb) p entry->unwinder
+$78 = (const frame_unwind *) 0x8697a00 <dwarf2_signal_frame_unwind>
+(gdb) n
+(gdb) 
+(gdb) p entry->unwinder
+$79 = (const frame_unwind *) 0x8a1b480 <d10v_frame_unwind>
+(gdb) n
+(gdb)
+
+のように dwarf2_frame_unwind で条件が成立せず d10v_frame_unwind で条件が
+成立しているので, 結果的に
+
+  value = next_frame->unwind->prev_register (next_frame,
+					     &next_frame->prologue_cache,
+					     regnum);
+
+の呼び出しが異なっている.
+だから何故 cr16-elf-gdb では dwarf2_frame_unwind で条件が成立し,
+d10v-elf-gdb で dwarf2_frame_unwind で条件が成立しないかを調べる.
+
+cr16-elf-gdb なら以下で期待するタイミングで止めることができている:
+b frame_unwind_try_unwinder
+if (unwinder!=0x87aa860)
+c
+end
+end
+
+d10v-elf-gdb ならば
+b frame_unwind_try_unwinder
+if (unwinder!=0x8697a20)
+c
+end
+end
+
+これで動作の比較をしてみる.
+
+      res = unwinder->sniffer (unwinder, this_frame, this_cache);
+
+でいずれも例外はスローされず
+cr16-elf-gdb は res = 1
+d10v-elf-gdb は res = 0
+になる
+
+  CORE_ADDR block_addr = get_frame_address_in_block (this_frame);
+  struct dwarf2_fde *fde = dwarf2_frame_find_fde (&block_addr, NULL);
+
+  if (!fde)
+    return 0; ここで 0 が返っている.
+
+
+  CORE_ADDR block_addr = get_frame_address_in_block (this_frame);
+
+(gdb) p/x block_addr
+$84 = 0x160
+(gdb)
+
+ 160:	e0 10 00 06 	ldi.l	r1, 0x6
+ 164:	e0 00 00 05 	ldi.l	r0, 0x5
+ 168:	24 f8 5e 00 	bl.s	128 <f>	||	nop	
+
+0x160 は main 函数でプロローグをスキップしたアドレス.
+
+以下は cr16-elf-gdb
+(gdb) p/x block_addr
+$102 = 0x18c
+(gdb)
+
+0000018c <.LM5>:
+ 18c:	63 5a       	movw	$0x6:s,r3
+ 18e:	52 5a       	movw	$0x5:s,r2
+ 190:	ff c0 df ff 	bal	(ra),*-0x16e <_f>:m
+
+
+やはり 0x18c は main 函数でプロローグをスキップしたアドレス.
+
+ということは
+
+  struct dwarf2_fde *fde = dwarf2_frame_find_fde (&block_addr, NULL);
+
+の呼び出しで cr16-elf-gdb では 0 以外の値が返ってくるのか,
+d10v-elf-gdb では 0 が返っていくるのかその理由を調べてみる.
+
+
+      if (*pc < offset + (*fde_table)[0]->initial_location)
+        continue;  ここで d10v-elf-gdb はスキップしている
+
+
+(gdb) p/x *pc
+$92 = 0x160
+(gdb) p/x offset
+$93 = 0x0
+(gdb) p/x  (*fde_table)[0]->initial_location
+$94 = 0x128002c                                異常な値
+(gdb)
+
+
+cr16-elf-gdb では以下
+(gdb) p/x *pc
+$106 = 0x18c
+(gdb) p/x offset
+$107 = 0x0
+(gdb) p/x (*fde_table)[0]->initial_location
+$108 = 0x16e                                   それっぽい
+(gdb)
+
+cr16-elf-gcc の生成した a.elf の objdump の抜粋
+
+00000014 0000001e 00000000 FDE cie=00000000 pc=0000016e..00000188
+
+
+d10v-elf-gcc の生成した a.elf の objdump の抜粋
+
+00000014 0028 00000000 FDE cie=00000000 pc=0128..0154
+
+これっぽい. 4 バイトで値を生成するべきところを 2 バイトで生成しているのが問題
+らしい. まずはこれを修正する.
+
+と思ったが H8 は以下のようになっている.
+
+00000012 0008 00000000 FDE cie=00000000 pc=01d0..01f2
+
+必ずしも 4 バイトである必要はないらしい.
+
+以下のように修正
+
+  set_gdbarch_ptr_bit(arch, 2 * TARGET_CHAR_BIT);
+  set_gdbarch_addr_bit(arch, 2 * TARGET_CHAR_BIT);
+
+これに伴なって
+
+static int
+d10v_reg_fetch (SIM_CPU *cpu, int rn, unsigned char *memory, int length)
+{
+...
+  if (rn == 34) {
+#if 0    
+    assert(length == 4);
+    uint32_t val = CREG (2);
+    val <<= 2;
+    memory[0] = val >> 24;
+    memory[1] = val >> 16;
+    memory[2] = val >> 8;
+    memory[3] = val;
+    return 4;
+#else
+    assert(length == 2);
+    uint32_t val = CREG (2);
+    val <<= 2;
+    memory[0] = val >> 8;
+    memory[1] = val;
+    return 2;
+#endif    
+  }
+
+static int
+d10v_reg_store (SIM_CPU *cpu, int rn, unsigned char *memory, int length)
+{
+...
+  if (rn == 34) {
+#if 0    
+    assert(length == 4);
+    uint32_t val = (memory[0] << 24) | (memory[1] << 16) |
+      (memory[2] << 8) | memory[3];
+    SET_CREG (2, val >> 2);
+    return 4;
+#else
+    assert(length == 2);
+    uint16_t val = (memory[0] << 8) | memory[1];
+    SET_CREG (2, val >> 2);
+    return 2;
+#endif    
+  }
+
+のように修正.
+この修正により unwinder = &dwarf2_frame_unwind に対して
+
+      res = unwinder->sniffer (unwinder, this_frame, this_cache);
+
+で 1 が返るようになり, d10v-elf-gdb で where コマンドが正常に
+動作するようになった.
+
+finish コマンドも動作するのに修正は必要だったが, cr16-tdep.c のコードを参考にすることで
+期待通り動作している.
