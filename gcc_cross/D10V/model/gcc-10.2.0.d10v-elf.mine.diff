@@ -1,0 +1,19 @@
+*** gcc-10.2.0.org/gcc/config.gcc	2021-10-16 10:31:18.000000000 +0900
+--- gcc-10.2.0.d10v-elf.mine/gcc/config.gcc	2022-02-21 10:32:28.000000000 +0900
+***************
+*** 3505,3510 ****
+--- 3505,3518 ----
+  	c_target_objs="m32c-pragma.o"
+  	cxx_target_objs="m32c-pragma.o"
+   	;;
++ d10v-*-elf*)
++  	tm_file="dbxelf.h elfos.h usegas.h newlib-stdint.h d10v/d10v.h"
++  	tm_p_file="d10v/d10v-protos.h"
++  	md_file="d10v/d10v.md"
++  	out_file="d10v/d10v.c"
++ 	tmake_file="d10v/t-d10v"
++  	use_gcc_stdint=wrap
++          ;;
+  *)
+  	echo "*** Configuration ${target} not supported" 1>&2
+  	exit 1
