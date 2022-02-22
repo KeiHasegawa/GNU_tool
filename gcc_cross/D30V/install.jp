@@ -1,0 +1,150 @@
+(*) D30V
+D10V と同様に三菱電機で開発されたメディアプロセッサらしい.
+
+(*) binutils のインストール
+
+% xz -d -c ~/binutils-2.36.1-2.src/binutils-2.36.1.tar.xz | tar xf -
+% mv binutils-2.36.1 binutils-2.36.1.d30v-elf
+% cd binutils-2.36.1.d30v-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=d30v-elf
+% make
+% make install
+
+(*) gcc のインストール
+
+% bunzip2 -c ../gcc-3.4.4.tar.bz2 | tar xf -
+% mv gcc-3.4.4 gcc-3.4.4.d30v-elf
+% cd gcc-3.4.4.d30v-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=d30v-elf --enable-obsolete
+% setenv SHELL /bin/sh
+% make all-gcc LANGUAGES="c c++"
+% make install-gcc LANGUAGES="c c++"
+
+(*3) gdb のインストール
+
+% bunzip2 -c ../gdb-6.0.tar.bz2 | tar xf -
+% mv gdb-6.0 gdb-6.0.d30v-elf
+% cd gdb-6.0.d30v-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=d30v-elf
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d30v-elf/gdb/configure.tgt:
+d10v-*-*)		gdb_target=d10v ;;
+
+d30v-*-*)		gdb_target=d30v ;;     これを追加
+
+h8300-*-*)		gdb_target=h8300 ;;
+
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d30v-elf/gdb/config
+% mkdir d30v
+% cp d10v/d10v.mt d30v/d30v.mt
+d30v/d30v.mt を修正
+
+このままビルドしてもエラーになるので
+
+gdb-6.0.d10v-elf/gdb/config.h
+/* Multi-arch enabled. */
+#define GDB_MULTI_ARCH GDB_MULTI_ARCH_PURE
+
+
+gdb-6.0.d30v-elf/gdb/config.h
+/* Multi-arch enabled. */
+/* #undef GDB_MULTI_ARCH */  これを上の d10v-elf のように修正
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d30v-elf
+% make all
+
+./../include/obstack.h:426:30: エラー: 増分の被演算子として左辺値が必要です
+  426 |    *((void **)__o->next_free)++ = ((void *)datum);   \
+
+
+   *((void **)__o->next_free)++ = ((void *)datum);
+
+おそらく以下が正しい.
+
+   *((void **)__o->next_free) = ((void *)datum);			\
+   __o->next_free = (void*)((void **)__o->next_free + 1);		\
+
+% make all
+...
+make: *** 'gdb' に必要なターゲット '../sim/d30v/libsim.a' を make するルールがありません
+
+% cd sim/d30v
+Makefile.in から
+
+# OBSOLETE
+
+を削除
+% ./configure
+% make
+...
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d30v-elf/sim/igen' に入ります
+make[1]: *** ターゲットが指定されておらず, makefile も見つかりません.  中止.
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d30v-elf/sim/igen' から出ます
+make: *** [Makefile:775: ../igen/igen] エラー 2
+% cd ../igen
+% ./configure
+% cd ../d30v
+% make
+
+../igen/igen を動かしてエラーしている.
+
+ic-d30v
+d30v-insns
+
+から
+
+# OBSOLETE
+
+を削除してみた.
+
+% cat x
+../igen/igen \
+	-G gen-zero-r0 \
+	-G direct-access \
+	-G default-nia-minus-one \
+	-G conditional-issue \
+	-G verify-slot \
+	-G field-widths \
+	-F short,emul \
+	-B 32 \
+	-P "s_" \
+	-o ./dc-short \
+	-k ./ic-d30v \
+	-n ./d30v-insns -i tmp-insns \
+	-n s_icache.h    -hc tmp-icache.h \
+	-n s_icache.c    -c  tmp-icache.c \
+	-n s_semantics.h -hs tmp-semantics.h \
+	-n s_semantics.c -s  tmp-semantics.c \
+	-n s_idecode.h   -hd tmp-idecode.h \
+	-n s_idecode.c   -d  tmp-idecode.c \
+	-n s_model.h     -hm tmp-model.h \
+	-n s_model.c     -m  tmp-model.c \
+	-n s_support.h   -hf tmp-support.h \
+	-n s_support.c   -f  tmp-support.c
+% sh x
+  -G gen-zero-r0 \
+  -G direct-access \
+Option direct-access replaced by gen-direct-access
+  -G default-nia-minus-one \
+Option default-nia-minus-one replaced by gen-nia-invalid
+  -G conditional-issue \
+Option conditional-issue replaced by gen-conditional-issue
+  -G verify-slot \
+Option verify-slot replaced by gen-slot-verification
+  -G field-widths \
+  -F short,emul \
+  -B 32 \
+  -P s_ \
+  -o ./dc-short \
+  -k ./ic-d30v \
+  -n ./d30v-insns \
+  -i tmp-insns \
+illegal-instruction missing from insn table
+% echo $status
+1
+%
+
+エラーは回避できていない. 簡単には修正できないらしい.
+MIPS, MN10300, PowerPC, V850 のシミュレータも igen を使用している.
+

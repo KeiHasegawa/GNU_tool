@@ -1,0 +1,21 @@
+(*) D30V
+D30V is a media processor developed by Mitsubishi Denki.
+
+(*) binutils install
+
+% xz -d -c ~/binutils-2.36.1-2.src/binutils-2.36.1.tar.xz | tar xf -
+% mv binutils-2.36.1 binutils-2.36.1.d30v-elf
+% cd binutils-2.36.1.d30v-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=d30v-elf
+% make
+% make install
+
+(*) gcc install
+
+% bunzip2 -c ../gcc-3.4.4.tar.bz2 | tar xf -
+% mv gcc-3.4.4 gcc-3.4.4.d30v-elf
+% cd gcc-3.4.4.d30v-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=d30v-elf --enable-obsolete
+% setenv SHELL /bin/sh
+% make all-gcc LANGUAGES="c c++"
+% make install-gcc LANGUAGES="c c++"
