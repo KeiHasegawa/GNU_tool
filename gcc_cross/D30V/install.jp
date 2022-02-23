@@ -148,3 +148,296 @@ illegal-instruction missing from insn table
 エラーは回避できていない. 簡単には修正できないらしい.
 MIPS, MN10300, PowerPC, V850 のシミュレータも igen を使用している.
 
+MN10300 で igen を実行してみた:
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.mn10300-elf/sim/mn10300/
+% cat x
+../igen/igen \
+	 \
+	-G gen-direct-access \
+                -M mn10300,am33 -G gen-multi-sim=am33 \
+	-M am33_2 \
+	-I . \
+	-i ./mn10300.igen ./am33.igen ./am33-2.igen \
+	-o ./mn10300.dc \
+	-x \
+	-n icache.h    -hc tmp-icache.h \
+	-n icache.c    -c  tmp-icache.c \
+	-n semantics.h -hs tmp-semantics.h \
+	-n semantics.c -s  tmp-semantics.c \
+	-n idecode.h   -hd tmp-idecode.h \
+	-n idecode.c   -d  tmp-idecode.c \
+	-n model.h     -hm tmp-model.h \
+	-n model.c     -m  tmp-model.c \
+	-n support.h   -hf tmp-support.h \
+	-n support.c   -f  tmp-support.c \
+	-n itable.h    -ht tmp-itable.h \
+	-n itable.c    -t  tmp-itable.c \
+	-n engine.h    -he tmp-engine.h \
+	-n engine.c    -e  tmp-engine.c \
+	-n irun.c      -r  tmp-irun.c
+% sh x
+...
+% echo $status
+0
+
+勿論正常終了する. この結果
+
+tmp-engine.c  tmp-idecode.c  tmp-itable.c  tmp-semantics.c
+tmp-engine.h  tmp-idecode.h  tmp-itable.h  tmp-semantics.h
+tmp-icache.c  tmp-igen	     tmp-model.c   tmp-support.c
+tmp-icache.h  tmp-irun.c     tmp-model.h   tmp-support.h
+
+が生成された.
+
+mn10300.igen
+
+に命令の動作っぽいものが書かれている.
+
+// What do we do with an illegal instruction?
+:internal::::illegal:
+{
+  PC = cia;
+  program_interrupt(SD, CPU, cia, SIM_SIGILL);
+}
+
+のようにあるからおそらくこれが抜けていると予測.
+
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d30v-elf/sim/d30v/d30v-insns
+
+には以下がある:
+
+// The following is called when ever an illegal instruction is
+// encountered
+::internal::illegal
+	sim_io_eprintf (sd, "illegal instruction at 0x%lx\n", (long) cia);
+	sim_engine_halt (SD, CPU, NULL, cia, sim_signalled, SIM_SIGILL);
+
+だから代わりになるものはあるらしい.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d30v-elf/sim/igen
+M-x gdb
+gdb --annotate=3 ./igen
+% cat x
+cd ../d30v
+run 	-G gen-zero-r0 	-G direct-access 	-G default-nia-minus-one 	-G conditional-issue 	-G verify-slot 	-G field-widths 	-F short,emul 	-B 32 	-P "s_" 	-o ./dc-short 	-k ./ic-d30v 	-n ./d30v-insns -i tmp-insns 	-n s_icache.h    -hc tmp-icache.h 	-n s_icache.c    -c  tmp-icache.c 	-n s_semantics.h -hs tmp-semantics.h 	-n s_semantics.c -s  tmp-semantics.c 	-n s_idecode.h   -hd tmp-idecode.h 	-n s_idecode.c   -d  tmp-idecode.c 	-n s_model.h     -hm tmp-model.h 	-n s_model.c     -m  tmp-model.c 	-n s_support.h   -hf tmp-support.h 	-n s_support.c   -f  tmp-support.c
+
+(gdb) so x
+...
+エラーを再現できている.
+
+(gdb) b error
+(gdb) run
+...
+error のブレークポイントにヒット
+(gdb) up
+
+	  if (isa->illegal_insn == NULL)
+	    error (NULL, "illegal-instruction missing from insn table\n");
+	  break;
+
+それっぽい.
+
+
+(gdb) b load_insn_table
+(gdb) run
+
+tmp-insns は出力ファイルなのかと思っていたが
+
+# 1 "./d30v-insns"
+# OBSOLETE //  -*- C -*-
+# OBSOLETE //  Mitsubishi Electric Corp. D30V Simulator.
+# OBSOLETE //  Copyright (C) 1997, Free Software Foundation, Inc.
+# OBSOLETE //  Contributed by Cygnus Solutions Inc.
+# OBSOLETE //
+...
+
+これは d30v-insns から 
+
+# OBSOLETE
+
+を削除していたがまだ残っていたらしい.
+
+tmp-insns からも # OBSOLETE を削除
+
+(gdb) run
+...
+load_insn_table のブレークポイントにヒット
+(gdb) fin
+
+error のブレークポイントにヒット
+Breakpoint 2, error (line=0x806c098, msg=0x80609d8 "Incorrect nr of fields for insn record\n") at misc.c:52
+
+(gdb) c
+./d30v-insns:24: Incorrect nr of fields for insn record
+[Inferior 1 (process 27821) exited with code 01]
+(gdb) 
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d30v-elf/sim/d30v
+% make clean
+% make
+...
+In file included from ./../common/sim-config.c:25:
+./sim-main.h:1:13: 警告: コメント内に "/*" があります [-Wcomment]
+    1 | /* OBSOLETE /*  This file is part of the program psim. */
+      |              
+./sim-main.h:20:21: エラー: expected identifier or ‘(’ before ‘/’ token
+   20 | /* OBSOLETE     */ */
+      |                     ^
+
+igen の部分は成功しているっぽい.
+
+sim-main.h
+/* OBSOLETE /*  This file is part of the program psim. */
+/* OBSOLETE  */
+/* OBSOLETE     Copyright (C) 1994-1997, Andrew Cagney <cagney@highland.com.au> */
+
+ここにも /* OBSOETE が残っていた.
+
+cpu.h にも /* OBSOETE が残っていた.
+alu.h にも /* OBSOETE が残っていた.
+
+これを削除
+ \*\/$
+
+これも削除
+/* OBSOLETE
+
+% make
+gcc -c ./../common/sim-memopt.c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2
+./../common/sim-memopt.c: 関数 ‘do_memopt_add’ 内:
+./../common/sim-memopt.c:163:16: エラー: ‘s’ の記憶域サイズが不明です
+  163 |    struct stat s;
+
+
+以下のように config.h を修正
+/* Define if you need to in order for stat and other things to work.  */
+#define _POSIX_SOURCE 1
+
+これでもエラーは回避できていない.
+
+config.h に直接以下を書いた
+#include <sys/stat.h>
+
+gcc -c ./../common/sim-memopt.c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2
+./../common/sim-memopt.c: 関数 ‘do_memopt_add’ 内:
+./../common/sim-memopt.c:176:18: 警告: 関数 ‘mmap’ の暗黙的な宣言です [-Wimplicit-function-declaration]
+  176 |    free_buffer = mmap (0, bytes, PROT_READ|PROT_WRITE, MAP_SHARED, mmap_next_fd, 0);
+      |                  ^~~~
+./../common/sim-memopt.c:176:34: エラー: ‘PROT_READ’ が宣言されていません (この関数内
+
+config.h に
+
+#include <sys/mman.h>
+
+を追加
+
+gcc -c ./../common/sim-memopt.c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2
+./../common/sim-memopt.c: 関数 ‘do_memopt_add’ 内:
+./../common/sim-memopt.c:180:17: エラー: ‘errno’ が宣言されていません (この関数内での最初の使用)
+  180 |        strerror(errno));
+
+config.h に以下を追加
+
+#include <errno.h>
+
+
+engine.c に /* OBSOETE が残っていた.
+cpu.c に /* OBSOETE が残っていた.
+sim-calls.c に /* OBSOETE が残っていた.
+
+
+gcc -c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2 sim-calls.c
+sim-calls.c:140:11: 警告: ‘struct _bfd’ declared inside parameter list will not be visible outside of this definition or declaration
+  140 |    struct _bfd *abfd,
+      |           ^~~~
+sim-calls.c:138:1: エラー: ‘sim_open’ と型が競合しています
+  138 | sim_open (SIM_OPEN_KIND kind,
+      | ^~~~~~~~
+In file included from ../common/sim-basics.h:138,
+                 from sim-main.h:26,
+                 from sim-calls.c:26:
+../../include/gdb/remote-sim.h:108:10: 備考: 前の ‘sim_open’ の宣言はここです
+  108 | SIM_DESC sim_open PARAMS ((SIM_OPEN_KIND kind, struct host_callback_struct *callback, struct bfd *abfd, char **argv));
+
+以下のように修正
+SIM_DESC
+sim_open (SIM_OPEN_KIND kind,
+	  host_callback *callback,
+	  struct bfd *abfd,
+	  char **argv)
+
+SIM_RC
+sim_create_inferior (SIM_DESC sd,
+		     struct bfd *abfd,
+		     char **argv,
+		     char **envp)
+
+
+gcc -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(sim-info.o): in function `sim_addr_range_hit_p':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d30v-elf/sim/d30v/../common/sim-arange.c:291: multiple definition of `sim_addr_range_hit_p'; nrun.o:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d30v-elf/sim/d30v/../common/sim-arange.c:291: first defined here
+
+sim-info.c   の sim_addr_range_hit_p と
+sim-arrage.c の sim_addr_range_hit_p とが両方定義されているらしい.
+
+おそらく以下が悪さをしている.
+
+extern INLINE int
+sim_addr_range_hit_p (ADDR_RANGE * /*ar*/, address_word /*addr*/);
+#define ADDR_RANGE_HIT_P(ar, addr) \
+  ((ar)->range_tree == NULL || sim_addr_range_hit_p ((ar), (addr)))
+
+以下のように修正
+extern int
+sim_addr_range_hit_p (ADDR_RANGE * /*ar*/, address_word /*addr*/);
+
+
+gcc -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(sim-info.o): in function `sim_addr_range_hit_p':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d30v-elf/sim/d30v/../common/sim-arange.c:291: multiple definition of `sim_addr_range_hit_p'; nrun.o:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d30v-elf/sim/d30v/../common/sim-arange.c:291: first defined here
+
+エラーを回避できていない.
+
+% gcc -E ./../common/sim-info.c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2 -o sim-info.i
+
+sim-info.i を確認すると
+
+# 288 "../common/sim-arange.c"
+extern __inline__ int
+sim_addr_range_hit_p (ADDR_RANGE *ar, address_word addr)
+{
+  ADDR_RANGE_TREE *t = ar->range_tree;
+
+のように sim-arange.c をインクルードしている.
+
+暫定的に sim-arange.c を以下のように修正
+
+#if 0
+
+SIM_ARANGE_INLINE int
+sim_addr_range_hit_p (ADDR_RANGE *ar, address_word addr)
+{
+
+
+gcc -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(s_support.o): in function `s_do_emul':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d30v-elf/sim/d30v/./d30v-insns:99: undefined reference to `sim_handle_breakpoint'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(l_support.o): in function `l_do_emul':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d30v-elf/sim/d30v/./d30v-insns:99: undefined reference to `sim_handle_breakpoint'
+collect2: エラー: ld はステータス 1 で終了しました
+
+以下を engine.c に追加
+
+void sim_handle_breakpoint(SIM_DESC sd, sim_cpu *cpu, address_word cia)
+{
+  abort();
+}
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d30v-elf
+% make
+% make install
