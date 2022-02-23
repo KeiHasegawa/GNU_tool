@@ -1,8 +1,7 @@
 	.text
 start:
-	nop
-	nop
-	nop
+	nop || nop
+	nop || nop
+	nop || nop
 end:
-	nop
-	
+	nop || nop
