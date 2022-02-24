@@ -1,0 +1,71 @@
+a << b に対してランタイムライブラリ函数 ___ashlsi3 を呼び出すようにしているが
+現状正しくない.
+
+
+(m68hc11-elf-gdb) disassemble
+Dump of assembler code for function f:
+   0x00001064 <+0>:	ldy	*0x10
+   0x00001067 <+3>:	pshy
+   0x00001069 <+5>:	pshy
+   0x0000106b <+7>:	pshy
+   0x0000106d <+9>:	sts	*0x10
+   0x0000106f <+11>:	ldy	*0x10
+   0x00001072 <+14>:	stx	0x1,y
+   0x00001075 <+17>:	std	0x3,y
+=> 0x00001078 <+20>:	ldy	*0x10
+   0x0000107b <+23>:	ldx	0x9,y
+   0x0000107e <+26>:	ldd	0xb,y
+   0x00001081 <+29>:	xgdy
+   0x00001083 <+31>:	pshy
+   0x00001085 <+33>:	pshx
+   0x00001086 <+34>:	ldy	*0x10
+   0x00001089 <+37>:	ldx	0x1,y
+   0x0000108c <+40>:	ldd	0x3,y
+   0x0000108f <+43>:	jsr	0x10ef <___ashlsi3>
+   0x00001092 <+46>:	tsy
+   0x00001094 <+48>:	xgdy
+   0x00001096 <+50>:	addd	#0x4
+   0x00001099 <+53>:	xgdy
+   0x0000109b <+55>:	tys
+   0x0000109d <+57>:	puly
+   0x0000109f <+59>:	puly
+   0x000010a1 <+61>:	puly
+   0x000010a3 <+63>:	sty	*0x10
+   0x000010a6 <+66>:	rts
+End of assembler dump.
+(m68hc11-elf-gdb) b *0x0000108f
+Breakpoint 2 at 0x108f: file a.c, line 5.
+(m68hc11-elf-gdb) c
+Continuing.
+
+Breakpoint 2, 0x0000108f in f (a=5, b=6) at a.c:5
+(m68hc11-elf-gdb) info register
+PC=0x108f  SP=0xfeeb  FP=0xfeef 
+CCR=0x00   --------   u> != >= > 
+D=0x0005 5 X=0x0000 0 Y=0xfeef -273
+(m68hc11-elf-gdb) x/5bx $sp
+0xfeeb:	0xcc	0x00	0x00	0x00	0x06
+(m68hc11-elf-gdb)
+
+ということは意図した通り呼び出せてはいる.
+
+オリジナルの cc1 で試してみた:
+(m68hc11-elf-gdb) info register
+PC=0x108f  SP=0xfeef  FP=0xfeef 
+CCR=0x00   --------   u> != >= > 
+D=0x0005 5 X=0x0000 0 Y=0x0006 6
+(m68hc11-elf-gdb) x/5bx $sp
+0xfeef:	0xcc	0x00	0x00	0x00	0x05
+(m68hc11-elf-gdb)
+
+どうやら y レジスタにシフトカウントを入れているらしい:
+
+;;
+;; 32-bit shifts are made by a small library routine that uses
+;; a specific passing convention for parameters (for efficiency reasons).
+;;
+;; [D + X] -> Value to be shifted
+;; Y       -> Shift count
+;;
+;; The shift count is clobbered by the routine.
+;;
