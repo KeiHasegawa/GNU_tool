@@ -7,8 +7,9 @@
 static const char *const initial_reg_names[] = REGISTER_NAMES;
 
     レジスタ番号 n のレジスタ名が n 番目の要素になるようにする.
-    例えばターゲットプロセッサに r0, r1, ..., r15 という名前のレジスタがあり,
-    r14 をフレームポインタ r15 をスタックポインタとする場合
+    例えばターゲットプロセッサに r0, r1, ..., r15 のレジスタがあり,
+    r14 をフレームポインタ r15 をスタックポインタとする場合, それぞれ
+    の名前を "fp" , "sp" としたいのならば
 
 #define REGISTER_NAMES { "r0", "r1", "r2", "r3", "r4", "r5", "r6", \
     "r7", "r8", "r9", "r10", "r11", "r12", "r13, "fp", "sp", "dummy" }
@@ -46,6 +47,8 @@ static const char *const initial_reg_names[] = REGISTER_NAMES;
 
     フレームポインタのレジスタ番号と等しくなるようにする.
     プリプロセッサのディレクティブで参照されるためマクロでなくてはならない.
+    フレームポンイタを持たないコンパイラならばスタックポインタのレジスタ番号と等しくなるよう
+    にする.
 
 (*) ARG_POINTER_REGNUM
 
@@ -77,13 +80,16 @@ static const char *const initial_reg_names[] = REGISTER_NAMES;
     番号を指定する.
 
     そうではなく AVR のようにフレームポインタ相対 1, 3 (sizeof(int) = 2)に保存する
-    必要があれば
+    必要があれば, FRAME_POINTER_REGNUM と同じレジスタ番号, すなわちフレームポンタのレジスタ
+    番号を指定して, さらに
 
     TARGET_STARTING_FRAME_OFFSET
 
     のマクロ(後述)を使用するのがお手軽である.
 
-    そうでなければ以下のように仮想のレジスタ "ap" を宣言する:
+    そうでなければ, 例えば Blackfin, Moxie, MN10300 のようなスタックフレームのように
+    呼び出し側で確保した位置に函数の引数を保存する場合以下のように仮想のレジスタ "ap" を宣
+    言する:
 
 #define REGISTER_NAMES { "r0", "r1", "r2", "r3", "r4", "r5", "r6", \
     "r7", "r8", "r9", "r10", "r11", "r12", "r13, "fp", "sp", "ap" }
@@ -104,6 +110,8 @@ static const char *const initial_reg_names[] = REGISTER_NAMES;
 
     但しこの修正のみ入れても期待する動作にはならない. 例えば Blackfin のコンパイラの
     雛形のメモを参照.
+
+    そうではなくてスタックポインタ
 
 (*) FIRST_PSEUDO_REGISTER
 
@@ -228,7 +236,7 @@ enum reg_class {
      UINT16_TYPE, UINT32_TYPE, UINT64_TYPE のセクションを参照.
 
     1 : avr, pru, rl78
-    2 : cr16, h8300(*1), m32c, m68hc11
+    2 : cr16, h8300(*1), m32c, m68hc11, msp430
     8 : aarch64, mips(*2), ppc(*2)
 
     (*1) オプションに依存するがオプションなしで 2
@@ -248,7 +256,12 @@ enum reg_class {
       int offset;
     };
 
-    としておけば十分である.
+    としておけば十分であるし
+
+    typedef int CUMULATIVE_ARGS;
+
+    でも十分であったりする. 函数呼び出しにおいて引数をどのようにして渡すかを決定する
+    のに必要な情報を伝搬させるための型を指定する.
 
 (*) INIT_CUMULATIVE_ARGS
 
@@ -276,7 +289,7 @@ enum reg_class {
 
       のような函数に対しては, 最初の 4 つの引数に対して sizeof(int) * 4 分フレーム
       サイズを変更する必要がある(かもしれない).
-      この計算を行なうために第 1 引数の cum の初期化を INIT_CUMULATIVE_ARGS で行なう.
+      この計算を行なうために第 1 引数の初期化を INIT_CUMULATIVE_ARGS で行なう.
       各引数に対して
 
       TARGET_FUNCTION_ARG_ADVANCE
@@ -798,4 +811,37 @@ constexpr int UNITS_PER_WORD  = 1;
 	|    lr_{old}    |
 	+----------------+
 
-            
+(*) ACCUMULATE_OUTGOING_ARGS
+
+参照箇所の 1 つ gcc/defaults.h
+
+#ifndef ACCUMULATE_OUTGOING_ARGS
+#define ACCUMULATE_OUTGOING_ARGS 0
+#endif
+
+      大抵の場合 true に define するとよい.
+
+      int f(int a, int b, int c, int d, int e);
+
+      int g(){ return f(1, 2, 3, 4, 5); } 
+
+      に対して, 最初の 4 つにレジスタ, 5 個目に対してスタックを使用するような ABI を
+      採用するとした場合. define なしで g に対して以下のような rtx_insn が生成される：
+
+     [--sp:SI]=lr:SI
+     [--sp:SI]=fp:SI
+     sp:SI=sp:SI-0x4
+     fp:SI=sp:SI
+
+     sp:SP=sp:SI-0x4
+      REG_ARGS_SIZE 0x4
+     r0:SI=sp:SI          これ
+     [fp:SI]=r0:SI        これ
+     [[fp:SI]]=0x5        これ
+     ...
+
+     true に define すれば [sp:SI]=0x5 のような rtx_insn が生成される.
+     
+      
+
+
