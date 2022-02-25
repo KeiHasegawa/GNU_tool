@@ -819,7 +819,9 @@ constexpr int UNITS_PER_WORD  = 1;
 #define ACCUMULATE_OUTGOING_ARGS 0
 #endif
 
-      大抵の場合 true に define するとよい.
+      函数呼び出しにおける引数をスタックにセットするとき push 命令相当ではなくて
+      スタックポインタ相対の命令を使用するようなプロセッサであれば true にセットする
+      と gcc の共通部分で期待する rtx_insn を生成してくれる. 例えば
 
       int f(int a, int b, int c, int d, int e);
 
@@ -831,17 +833,13 @@ constexpr int UNITS_PER_WORD  = 1;
      [--sp:SI]=lr:SI
      [--sp:SI]=fp:SI
      sp:SI=sp:SI-0x4
-     fp:SI=sp:SI
+     fp:SI=sp:SI          プロローグ
 
      sp:SP=sp:SI-0x4
-      REG_ARGS_SIZE 0x4
      r0:SI=sp:SI          これ
      [fp:SI]=r0:SI        これ
      [[fp:SI]]=0x5        これ
      ...
 
      true に define すれば [sp:SI]=0x5 のような rtx_insn が生成される.
-     
-      
-
 
