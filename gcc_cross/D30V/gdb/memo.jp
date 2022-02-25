@@ -1,0 +1,1064 @@
+gdb-6.0 では d10v-elf-gdb で既に期待通り動作していないことが分かっていたので
+いきなり gdb-10.2 でトライすることにした.
+
+% xz -d -c ../gdb-10.2-1.src/gdb-10.2.tar.xz | tar xf -
+% mv gdb-10.2 gdb-10.2.d30v-elf
+% cd gdb-10.2.d30v-elf
+
+gdb-6.0 のインストールで事前に問題が判明していたのでその対処をした.
+
+gdb-10.2.d30v-elf/gdb/configure.tgt:
+
+h8300-*-*)
+	# Target: H8300 processor
+	gdb_target_obs="h8300-tdep.o"
+	gdb_sim=../sim/h8300/libsim.a
+	;;
+
++d30v-*-*)
++	gdb_target_obs="d30v-tdep.o"
++	gdb_sim=../sim/d30v/libsim.a
++	;;
+
+
+hppa*-*-linux*)
+
+% cd gdb
+% cp /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d10v-elf/gdb/d10v-tdep.c d30v-tdep.c
+
+d30v-tdep.c を修正. とりあえず d10v_ を d30v_ に置換.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d30v-elf/sim
+% tar cf d30v.tar d30v
+% mv d30v.tar /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d30v-elf/sim
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d30v-elf/sim
+% tar xf d30v.tar
+% cd ..
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=d30v-elf
+% make
+
+エラーは発生していないが, 残念ながら期待したものがビルドされていない.
+少なくとも
+
+gdb-10.2.d30v-elf/sim/d30v/
+
+で何かがビルドされた形跡はない.
+
+gdb-10.2.d30v-elf/sim/config.log
+
+はある.
+
+% ls -l sim/config.log
+-rw-rw-r-- 1 khasegawa khasegawa 8899  2月 23 17:28 sim/config.log
+
+日付からすると今回のビルドで作られたもの.
+
+
+gdb-10.2.d30v-elf/sim/Makefile
+
+には
+
+SUBDIRS =
+
+になっているので
+
+SUBDIRS = d30v
+
+とした.
+
+% make -n
+...
+gcc -c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2 targ-map.c
+cd ../igen && make
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d30v-elf/sim/igen' に入ります
+make[2]: *** ターゲットが指定されておらず, makefile も見つかりません.  中止.
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d30v-elf/sim/igen' から出ます
+make[1]: *** [Makefile:775: ../igen/igen] エラー 2
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d30v-elf/sim/d30v' から出ます
+make: *** [Makefile:129: all] エラー 1
+%
+
+エラーしそうだが. とりあえずそこまで実行することにした.
+
+% make
+make
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d30v-elf/sim/d30v' に入ります
+gcc ./../common/gentmap.c -o gentmap -g -O -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -DNL_TARGET_d30v
+rm -f tmp-tvals.h tmp-tmap.c
+./gentmap -h >tmp-tvals.h
+/bin/sh ./../../move-if-change tmp-tvals.h targ-vals.h
+./gentmap -c >tmp-tmap.c
+/bin/sh ./../../move-if-change tmp-tmap.c targ-map.c
+touch stamp-tvals
+gcc -c ./../common/callback.c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2
+In file included from ../../include/gdb/callback.h:55,
+                 from ./../common/callback.c:48:
+../../bfd/bfd.h:35:2: エラー: #error config.h must be included before this header
+   35 | #error config.h must be included before this header
+      |  ^~~~~
+make[1]: *** [Makefile:303: callback.o] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d30v-elf/sim/d30v' から出ます
+make: *** [Makefile:129: all] エラー 1
+%
+
+igen でのビルド前にエラーしている.
+
+% cd d30v
+% gcc -c ./../common/callback.c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2
+
+エラーは再現している.
+
+% gcc -E ./../common/callback.c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2 -o callback.i
+In file included from ../../include/gdb/callback.h:55,
+                 from ./../common/callback.c:48:
+../../bfd/bfd.h:35:2: エラー: #error config.h must be included before this header
+   35 | #error config.h must be included before this header
+      |  ^~~~~
+
+
+#if !defined PACKAGE && !defined PACKAGE_VERSION
+#error config.h must be included before this header
+#endif
+
+こういう理由だった.
+
+
+gdb-10.2.d10v-elf/sim/d10v/config.h
+
+/* Name of this package. */
+#define PACKAGE "sim"
+
+これがある.
+
+gdb-10.2.d10v-elf/sim/d10v/config.log
+
+  $ ./configure --disable-option-checking --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --enable-obsolete --program-transform-name=s&^&d10v-elf-& --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=d10v-elf build_alias=i686-pc-linux-gnu host_alias=i686-pc-linux-gnu target_alias=d10v-elf CC=gcc CFLAGS=-g -O2 LDFLAGS=  --cache-file=.././config.cache --srcdir=.
+
+% cat x
+./configure --disable-option-checking --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --enable-obsolete --program-transform-name=s/^/d30v-elf-/ --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=d30v-elf build_alias=i686-pc-linux-gnu host_alias=i686-pc-linux-gnu target_alias=d30v-elf CC=gcc CFLAGS=-g -O2 LDFLAGS=  --cache-file=.././config.cache --srcdir=.
+% sh x
+configure: warning: build_alias=i686-pc-linux-gnu: invalid host type
+configure: warning: host_alias=i686-pc-linux-gnu: invalid host type
+configure: error: can only configure for one host and one target at a time
+%
+
+だめらしい.
+
+% ./configure --target=d30v-elf
+
+これは正常終了.
+
+% make
+Makefile:430: *** 分離記号を欠いています.  中止.
+%
+
+Makefile:430 を確認してみた.
+
+@GMAKE_TRUE@ifeq ($(DEPMODE),depmode=gcc3)
+# Note that we put the dependencies into a .Tpo file, then move them
+# into place if the compile succeeds.  We need this because gcc does
+# not atomically write the dependency output file.
+@GMAKE_TRUE@override COMPILE.post = -c -o $@ -MT $@ -MMD -MP \
+@GMAKE_TRUE@	-MF $(DEPDIR)/$(basename $(@F)).Tpo
+@GMAKE_TRUE@override POSTCOMPILE = @mv $(DEPDIR)/$(basename $(@F)).Tpo \
+@GMAKE_TRUE@	$(DEPDIR)/$(basename $(@F)).Po
+@GMAKE_TRUE@else
+@GMAKE_TRUE@override COMPILE.pre = source='$<' object='$@' libtool=no \
+@GMAKE_TRUE@	DEPDIR=$(DEPDIR) $(DEPMODE) $(depcomp) $(CC)
+# depcomp handles atomicity for us, so we don't need a postcompile
+# step.
+@GMAKE_TRUE@override POSTCOMPILE =
+@GMAKE_TRUE@endif
+
+@GMAKE_TRUE から始まる行をコメントアウトした.
+
+% make
+gcc -DHAVE_CONFIG_H  -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN   -DDEFAULT_INLINE=0 -DWITH_RESERVED_BITS=1  -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized      -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes @INCINTL@ -g -O2 -c -o callback.o ./../common/callback.c
+gcc: エラー: INCINTL@: そのようなファイルやディレクトリはありません
+make: *** [Makefile:544: callback.o] エラー 1
+% 
+
+Makefile の @INCINTL@ を -I../../intl に修正した.
+
+% make
+gcc -DHAVE_CONFIG_H  -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN   -DDEFAULT_INLINE=0 -DWITH_RESERVED_BITS=1  -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized      -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -g -O2 -c -o callback.o ./../common/callback.c
+In file included from ../../include/gdb/callback.h:55,
+                 from ./../common/callback.c:48:
+../../bfd/bfd.h:35:2: エラー: #error config.h must be included before this header
+   35 | #error config.h must be included before this header
+      |  ^~~~~
+make: *** [Makefile:544: callback.o] エラー 1
+%
+
+エラーを回避できていない.
+
+config.h に以下を追加
+
+/* Name of this package. */
+#define PACKAGE "sim"
+
+% make
+...
+gcc -DHAVE_CONFIG_H  -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN   -DDEFAULT_INLINE=0 -DWITH_RESERVED_BITS=1  -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized      -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -g -O2 -c -o sim-close.o ./../common/sim-close.c
+In file included from ../common/sim-base.h:89,
+                 from ./sim-main.h:37,
+                 from ./../common/sim-close.c:21:
+../common/sim-profile.h:24:1: 警告: データ定義が型または記憶域クラスを持っていません
+   24 | Error, WITH_PROFILE not defined.
+      | ^~~~~
+../common/sim-profile.h:24:1: 警告: 型がデフォルトの ‘int’ に ‘Error’ の宣言内でなります [-Wimplicit-int]
+../common/sim-profile.h:24:21: エラー: expected ‘=’, ‘,’, ‘;’, ‘asm’ or ‘__attribute__’ before ‘not’
+   24 | Error, WITH_PROFILE not defined.
+      |                     ^~~
+In file included from ./../common/sim-close.c:21:
+./sim-main.h:40:10: 致命的エラー: itable.h: そのようなファイルやディレクトリはありません
+   40 | #include "itable.h"
+      |          ^~~~~~~~~~
+コンパイルを停止しました。
+make: *** [Makefile:544: sim-close.o] エラー 1
+%
+
+先程のエラーは回避できたが, 違うエラーが発生.
+
+% cp /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d30v-elf/sim/d30v/Makefile .
+cp: './Makefile' を上書きしますか? y
+% make clean
+% make
+gcc ./../common/gentmap.c -o gentmap -g -O -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -DNL_TARGET_d30v
+rm -f tmp-tvals.h tmp-tmap.c
+./gentmap -h >tmp-tvals.h
+/bin/sh ./../../move-if-change tmp-tvals.h targ-vals.h
+./gentmap -c >tmp-tmap.c
+/bin/sh ./../../move-if-change tmp-tmap.c targ-map.c
+touch stamp-tvals
+cd ../igen && make
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d30v-elf/sim/igen' に入ります
+make[1]: *** ターゲットが指定されておらず, makefile も見つかりません.  中止.
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d30v-elf/sim/igen' から出ます
+make: *** [Makefile:775: ../igen/igen] エラー 2
+% pushd ../igen/
+% ./configure
+% make
+% popd
+% make
+...
+gcc -c ./../common/sim-config.c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2
+In file included from ./../common/sim-config.c:23:
+./sim-main.h:57: 警告: "STATE_CPU" が再定義されました
+   57 | #define STATE_CPU(sd, n) (&(sd)->cpu[0])
+      | 
+In file included from ./sim-main.h:37,
+                 from ./../common/sim-config.c:23:
+../common/sim-base.h:104: 備考: ここが以前の宣言がある位置です
+  104 | # define STATE_CPU(sd, n) ((sd)->cpu[0])
+      | 
+./../common/sim-config.c: 関数 ‘sim_config’ 内:
+./../common/sim-config.c:192:21: エラー: ‘WITH_STDIO’ が宣言されていません (この関数内での最初の使用)
+  192 |     current_stdio = WITH_STDIO;
+      |                     ^~~~~~~~~~
+
+sim-main.h の以下をコメントアウト
+
+// #define STATE_CPU(sd, n) (&(sd)->cpu[0])
+
+config.h に以下を追加
+
+#define WITH_STDIO 0
+
+#define WITH_ENVIRONMENT ALL_ENVIRONMENT
+
+% make
+...
+gcc -c ./../common/sim-core.c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2
+                 from ./sim-main.h:37,
+                 from ./../common/sim-core.c:26:
+./../common/sim-core.c: 関数 ‘sim_core_attach’ 内:
+../common/sim-cpu.h:65:31: エラー: ‘->’ の無効な型の引数です (‘sim_cpu’ {aka ‘struct _sim_cpu’} 型です)
+   65 | #define CPU_CORE(cpu) (& (cpu)->base.core)
+      |                               ^~
+
+sim-main.h を以下のように修正:
+
+   sim_cpu* cpu[MAX_NR_PROCESSORS];
+          ^
+
+% make
+...
+gcc -c ./../common/sim-core.c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2
+In file included from ../common/sim-base.h:86,
+                 from ./sim-main.h:37,
+                 from ./../common/sim-core.c:26:
+./../common/sim-n-core.h: 関数 ‘sim_core_trace_16’ 内:
+../common/sim-trace.h:125:28: エラー: ‘WITH_TRACE’ undeclared (first use in this function); did you mean ‘WITH_TRACE_P’?
+  125 | #define WITH_TRACE_P(idx) (WITH_TRACE & (1 << idx))
+
+config.h に以下を追加
+
+#define WITH_TRACE ~TRACE_debug
+
+% make
+...
+gcc -c ./../common/sim-memopt.c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2
+./../common/sim-memopt.c: 関数 ‘do_memopt_add’ 内:
+./../common/sim-memopt.c:168:16: エラー: ‘errno’ が宣言されていません (この関数内での最初の使用)
+  168 |      strerror (errno));
+      |                ^~~~~
+
+config.h に以下を追加
+
+#include <errno.h>
+
+% make
+...
+gcc -c ./../common/sim-memopt.c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2
+./../common/sim-memopt.c: 関数 ‘do_memopt_add’ 内:
+./../common/sim-memopt.c:194:18: 警告: 関数 ‘mmap’ の暗黙的な宣言です [-Wimplicit-function-declaration]
+  194 |    free_buffer = mmap (0, bytes, PROT_READ|PROT_WRITE, MAP_SHARED, mmap_next_fd, 0);
+      |                  ^~~~
+./../common/sim-memopt.c:194:34: エラー: ‘PROT_READ’ が宣言されていません (この関数内での最初の使用)
+
+config.h に以下を追加
+
+#include <sys/mman.h>
+
+% make
+...
+gcc -c ./../common/sim-options.c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2
+./../common/sim-options.c: 関数 ‘standard_option_handler’ 内:
+./../common/sim-options.c:298:13: エラー: ‘WITH_DEBUG’ が宣言されていません (この関数内での最初の使用)
+  298 |       if (! WITH_DEBUG)
+      |             ^~~~~~~~~~
+
+
+config.h に以下を追加
+
+#define WITH_DEBUG 0
+
+% make
+...
+gcc -c ./../common/sim-options.c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2
+./../common/sim-options.c: 関数 ‘standard_option_handler’ 内:
+./../common/sim-options.c:391:50: エラー: ‘PKGVERSION’ が宣言されていません (この関数内での最初の使用)
+
+
+config.h に以下を追加
+
+/* Additional package description */
+#define PKGVERSION "(SIM) "
+
+% make
+...
+gcc -c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2 sim-calls.c
+sim-calls.c:138:1: エラー: ‘sim_open’ と型が競合しています
+  138 | sim_open (SIM_OPEN_KIND kind,
+
+
+sim-calls.c を以下のように修正
+
+SIM_DESC
+sim_open (SIM_OPEN_KIND kind,
+	  host_callback *callback,
+	  struct bfd *abfd,
+	  char * const *argv)
+{
+
+
+% make
+gcc -c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2 sim-calls.c
+sim-calls.c:225:1: エラー: ‘sim_create_inferior’ と型が競合しています
+  225 | sim_create_inferior (SIM_DESC sd,
+
+以下のように修正
+
+SIM_RC
+sim_create_inferior (SIM_DESC sd,
+		     struct bfd *abfd,
+		     char * const *argv,
+		     char * const *envp)
+{
+
+% make
+gcc -c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2 sim-calls.c
+sim-calls.c:243:1: エラー: ‘sim_do_command’ と型が競合しています
+
+以下のようにコンパイルアウト
+#if 0
+void
+sim_do_command (SIM_DESC sd, char *cmd)
+{
+  if (sim_args_command (sd, cmd) != SIM_RC_OK)
+    sim_io_printf (sd, "Unknown command `%s'\n", cmd);
+}
+#endif
+
+% make
+gcc -c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2 sim-calls.c
+sim-calls.c: 関数 ‘sim_fetch_register’ 内:
+sim-calls.c:296:18: エラー: ‘sd->cpu[0]’ is a pointer; did you mean to use ‘->’?
+  296 |  reg = sd->cpu[0].regs.general_purpose[regno];
+
+以下のように修正
+
+	reg = sd->cpu[0]->regs.general_purpose[regno];
+
+% make
+...
+gcc -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d30v-elf/sim/d30v/./../common/sim-options.c:336: undefined reference to `sim_do_command'
+
+Makefile に以下を追加
+
+SIM_NEW_COMMON_OBJS = \
+	sim-arange.o \
+	sim-bits.o \
++	sim-command.o \
+
+
+sim-command.o: $(srccom)/sim-command.c $(sim-arange_h) $(SIM_EXTRA_DEPS)
+	$(CC) -c $(srccom)/sim-command.c $(ALL_CFLAGS)
+
+% make
+...
+gcc -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d30v-elf/sim/d30v/./../common/sim-options.c:391: undefined reference to `version'
+
+engine.c に以下を追加
+
+const char version[] = "1.0";
+
+% make
+...
+gcc -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(engine.o): in function `trace_alu32':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d30v-elf/sim/d30v/engine.c:72: undefined reference to `trace_one_insn'
+
+engine.c に以下を追加
+
+int trace_one_insn()
+{
+  return 0;
+}
+
+
+% make
+...
+gcc -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(sim-module.o):(.rodata+0x8): undefined reference to `sim_model_install'
+
+Makefile に以下を追加
+
+SIM_NEW_COMMON_OBJS = \
+...
+	sim-model.o \
+
+
+% make
+...
+gcc ./../common/gentmap.c -o gentmap -g -O -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -DNL_TARGET_d30v
+rm -f tmp-tvals.h tmp-tmap.c
+./gentmap -h >tmp-tvals.h
+/bin/sh ./../../move-if-change tmp-tvals.h targ-vals.h
+./gentmap -c >tmp-tmap.c
+/bin/sh ./../../move-if-change tmp-tmap.c targ-map.c
+touch stamp-tvals
+gcc -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(sim-profile.o): in function `profile_pc_event':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d30v-elf/sim/d30v/./../common/sim-profile.c:523: undefined reference to `sim_pc_get'
+
+Makefile に以下を追加
+
+SIM_NEW_COMMON_OBJS = \
+	sim-arange.o \
+	sim-bits.o \
+	sim-command.o \
+	sim-config.o \
+	sim-core.o \
++	sim-cpu.o \
+
+% make
+...
+gcc -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(cpu.o): in function `return_occurred':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d30v-elf/sim/d30v/cpu.c:141: undefined reference to `zfree'
+
+cpu.c を以下のように修正
+
+  free (ptr);
+
+% make
+...
+gcc -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: ../../bfd/libbfd.a(plugin.o): in function `try_load_plugin':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d30v-elf/bfd/plugin.c:274: undefined reference to `dlopen'
+
+Makefile を以下のように修正
+
+CONFIG_LIBS = -lnsl -ldl
+
+% make
+...
+gcc -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl -ldl 
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: ../../bfd/libbfd.a(compress.o): in function `decompress_contents':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d30v-elf/bfd/compress.c:51: undefined reference to `inflateInit_'
+
+
+Makefile を以下のように修正
+
+CONFIG_LIBS = -lnsl -ldl -lz
+
+これで sim/d30v ディレクトリでのビルドは一応成功.
+
+% ls -l run* libsim.a 
+-rw-rw-r-- 1 khasegawa khasegawa 3546894  2月 24 18:40 libsim.a
+-rwxrwxr-x 1 khasegawa khasegawa 6258364  2月 24 18:43 run.j*
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d30v-elf/gdb
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=d30v-elf
+
+% make
+...
+  CXX    gdb.o
+In file included from defs.h:28,
+                 from gdb.c:19:
+./../gdbsupport/common-defs.h:23:10: 致命的エラー: gdbsupport/config.h: そのようなファイルやディレクトリはありません
+   23 | #include <gdbsupport/config.h>
+      |          ^~~~~~~~~~~~~~~~~~~~~
+コンパイルを停止しました。
+make: *** [Makefile:1614: gdb.o] エラー 1
+%
+
+silent-rules.mk の @echo を echo に置換
+
+% cd ../gdbsupport/
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=d30v-elf
+% make
+make  all-am
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d30v-elf/gdbsupport' に入ります
+  CXX      agent.o
+In file included from agent.cc:20:
+common-defs.h:31:10: 致命的エラー: gnulib/config.h: そのようなファイルやディレクトリはありません
+   31 | #include "gnulib/config.h"
+
+% cd ../gnulib/
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=d30v-elf
+% make
+% cd ../gdbsupport
+% make
+% cd ../gdb
+% make
+...
+echo "  CXX    varobj.o"; g++ -x c++  -g -O2   -I. -I. -I./config -DLOCALEDIR="\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/share/locale\"" -DHAVE_CONFIG_H -I./../include/opcode -I./../readline/readline/.. -I./../zlib -I../bfd -I./../bfd -I./../include -I../libdecnumber -I./../libdecnumber  -I./../gnulib/import -I../gnulib/import -I./.. -I..  -DTUI=1    -I/usr/local/include/python3.8 -I/usr/local/include/python3.8   -I./.. -pthread  -Wall -Wpointer-arith -Wno-unused -Wunused-value -Wunused-variable -Wunused-function -Wno-switch -Wno-char-subscripts -Wempty-body -Wunused-but-set-parameter -Wunused-but-set-variable -Wno-sign-compare -Wno-error=maybe-uninitialized -Wno-mismatched-tags -Wsuggest-override -Wimplicit-fallthrough=3 -Wduplicated-cond -Wshadow=local -Wdeprecated-copy -Wdeprecated-copy-dtor -Wredundant-move -Wmissing-declarations -Wstrict-null-sentinel -Wformat -Wformat-nonliteral  -c -o varobj.o -MT varobj.o -MMD -MP -MF ./.deps/varobj.Tpo varobj.c
+  CXX    varobj.o
+echo "  GEN    stamp-version"; /bin/sh ./../gdbsupport/create-version.sh . \
+     d30v-elf version-t.t
+  GEN    stamp-version
+mv: 'version.c-tmp' から '' へ移動できません: そのようなファイルやディレクトリはありません
+mv: 'version-t.t' を stat できません: そのようなファイルやディレクトリはありません
+make: *** [Makefile:2085: stamp-version] エラー 1
+%
+
+% /bin/sh ./../gdbsupport/create-version.sh . d30v-elf version-t.t
+mv: 'version.c-tmp' から '' へ移動できません: そのようなファイルやディレクトリはありません
+%
+
+エラーは再現している.
+
+% /bin/sh -vx ./../gdbsupport/create-version.sh . d30v-elf version-t.t
+#!/bin/sh
+
+# Copyright (C) 1989-2021 Free Software Foundation, Inc.
+
+# This file is part of GDB.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Create version.c from version.in.
+# Usage:
+#    create-version.sh PATH-TO-GDB-SRCDIR HOST_ALIAS \
+#        TARGET_ALIAS OUTPUT-FILE-NAME
+
+srcdir="$1"
++ srcdir=.
+host_alias="$2"
++ host_alias=d30v-elf
+target_alias="$3"
++ target_alias=version-t.t
+output="$4"
++ output=
+
+rm -f version.c-tmp "$output" version.tmp
++ rm -f version.c-tmp '' version.tmp
+date=$(sed -n -e 's/^.* BFD_VERSION_DATE \(.*\)$/\1/p' "$srcdir/../bfd/version.h")
+sed -n -e 's/^.* BFD_VERSION_DATE \(.*\)$/\1/p' "$srcdir/../bfd/version.h")
+sed -n -e 's/^.* BFD_VERSION_DATE \(.*\)$/\1/p' "$srcdir/../bfd/version.h"
+++ sed -n -e 's/^.* BFD_VERSION_DATE \(.*\)$/\1/p' ./../bfd/version.h
++ date=20210425
+sed -e "s/DATE/$date/" < "$srcdir/version.in" > version.tmp
++ sed -e s/DATE/20210425/
+{
+    echo '#include "gdbsupport/version.h"'
+    echo 'const char version[] = "'"$(sed q version.tmp)"'";'
+    echo 'const char host_name[] = "'"$host_alias"'";'
+    echo 'const char target_name[] = "'"$target_alias"'";'
+} >> version.c-tmp
++ echo '#include "gdbsupport/version.h"'
+sed q version.tmp)"'";'
+sed q version.tmp)
+sed q version.tmp
+++ sed q version.tmp
++ echo 'const char version[] = "10.2";'
++ echo 'const char host_name[] = "d30v-elf";'
++ echo 'const char target_name[] = "version-t.t";'
+mv version.c-tmp "$output"
++ mv version.c-tmp ''
+mv: 'version.c-tmp' から '' へ移動できません: そのようなファイルやディレクトリはありません
+rm -f version.tmp
++ rm -f version.tmp
+%
+
+第 4 引数を指定していないらしい.
+
+d10v-elf-gdb のビルドを参考にしたところ Makefile の以下を修正すればよいことが判明.
+
+-host_alias =
++host_alias = i686-pc-linux-gnu
+
+% make
+...
+echo "  CXXLD  gdb"; g++  -g -O2     -pthread  \
+	-o gdb gdb.o ada-exp.o ada-lang.o ada-tasks.o ada-typeprint.o ada-valprint.o ada-varobj.o addrmap.o agent.o alloc.o annotate.o arch-utils.o async-event.o auto-load.o auxv.o ax-gdb.o ax-general.o bcache.o bfd-target.o block.o blockframe.o break-catch-sig.o break-catch-syscall.o break-catch-throw.o breakpoint.o btrace.o build-id.o buildsym-legacy.o buildsym.o c-exp.o c-lang.o c-typeprint.o c-valprint.o c-varobj.o charset.o cli-out.o cli/cli-cmds.o cli/cli-decode.o cli/cli-dump.o cli/cli-interp.o cli/cli-logging.o cli/cli-option.o cli/cli-script.o cli/cli-setshow.o cli/cli-style.o cli/cli-utils.o coff-pe-read.o coffread.o compile/compile-c-support.o compile/compile-c-symbols.o compile/compile-c-types.o compile/compile-cplus-symbols.o compile/compile-cplus-types.o compile/compile-loc2c.o compile/compile-object-load.o compile/compile-object-run.o compile/compile.o complaints.o completer.o continuations.o copying.o corefile.o corelow.o cp-abi.o cp-name-parser.o cp-namespace.o cp-support.o cp-valprint.o ctfread.o d-exp.o d-lang.o d-namespace.o d-valprint.o d30v-tdep.o dbxread.o dcache.o debug.o debuginfod-support.o dictionary.o disasm.o dtrace-probe.o dummy-frame.o dwarf2/abbrev.o dwarf2/attribute.o dwarf2/comp-unit.o dwarf2/dwz.o dwarf2/expr.o dwarf2/frame-tailcall.o dwarf2/frame.o dwarf2/index-cache.o dwarf2/index-common.o dwarf2/index-write.o dwarf2/leb.o dwarf2/line-header.o dwarf2/loc.o dwarf2/macro.o dwarf2/read.o dwarf2/section.o dwarf2/stringify.o elfread.o eval.o event-top.o exceptions.o exec.o expprint.o extension.o f-exp.o f-lang.o f-typeprint.o f-valprint.o filename-seen-cache.o filesystem.o findcmd.o findvar.o frame-base.o frame-unwind.o frame.o gcore.o gdb-demangle.o gdb_bfd.o gdb_obstack.o gdb_regex.o gdbarch.o gdbtypes.o gnu-v2-abi.o gnu-v3-abi.o go-exp.o go-lang.o go-typeprint.o go-valprint.o guile/guile.o inf-child.o inf-loop.o infcall.o infcmd.o inferior.o inflow.o infrun.o inline-frame.o interps.o jit.o language.o linespec.o location.o m2-exp.o m2-lang.o m2-typeprint.o m2-valprint.o macrocmd.o macroexp.o macroscope.o macrotab.o main.o maint-test-options.o maint-test-settings.o maint.o mdebugread.o mem-break.o memattr.o memory-map.o memrange.o mi/mi-cmd-break.o mi/mi-cmd-catch.o mi/mi-cmd-disas.o mi/mi-cmd-env.o mi/mi-cmd-file.o mi/mi-cmd-info.o mi/mi-cmd-stack.o mi/mi-cmd-target.o mi/mi-cmd-var.o mi/mi-cmds.o mi/mi-common.o mi/mi-console.o mi/mi-getopt.o mi/mi-interp.o mi/mi-main.o mi/mi-out.o mi/mi-parse.o mi/mi-symbol-cmds.o minidebug.o minsyms.o mipsread.o namespace.o objc-lang.o objfiles.o observable.o opencl-lang.o osabi.o osdata.o p-exp.o p-lang.o p-typeprint.o p-valprint.o parse.o posix-hdep.o printcmd.o probe.o process-stratum-target.o producer.o progspace-and-thread.o progspace.o prologue-value.o psymtab.o python/py-arch.o python/py-auto-load.o python/py-block.o python/py-bpevent.o python/py-breakpoint.o python/py-cmd.o python/py-continueevent.o python/py-event.o python/py-evtregistry.o python/py-evts.o python/py-exitedevent.o python/py-finishbreakpoint.o python/py-frame.o python/py-framefilter.o python/py-function.o python/py-gdb-readline.o python/py-inferior.o python/py-infevents.o python/py-infthread.o python/py-instruction.o python/py-lazy-string.o python/py-linetable.o python/py-newobjfileevent.o python/py-objfile.o python/py-param.o python/py-prettyprint.o python/py-progspace.o python/py-record-btrace.o python/py-record-full.o python/py-record.o python/py-registers.o python/py-signalevent.o python/py-stopevent.o python/py-symbol.o python/py-symtab.o python/py-threadevent.o python/py-tui.o python/py-type.o python/py-unwind.o python/py-utils.o python/py-value.o python/py-varobj.o python/py-xmethods.o python/python.o record-btrace.o record-full.o record.o regcache-dump.o regcache.o reggroups.o registry.o remote-fileio.o remote-notif.o remote-sim.o remote.o reverse.o run-on-main-thread.o rust-exp.o rust-lang.o sentinel-frame.o ser-base.o ser-event.o ser-pipe.o ser-tcp.o ser-uds.o ser-unix.o serial.o skip.o solib-target.o solib.o source-cache.o source.o stabsread.o stack.o stap-probe.o std-regs.o symfile-debug.o symfile.o symmisc.o symtab.o target-connection.o target-dcache.o target-descriptions.o target-float.o target-memory.o target.o target/waitstatus.o test-target.o thread-iter.o thread.o tid-parse.o top.o tracectf.o tracefile-tfile.o tracefile.o tracepoint.o trad-frame.o tramp-frame.o tui/tui-command.o tui/tui-data.o tui/tui-disasm.o tui/tui-file.o tui/tui-hooks.o tui/tui-interp.o tui/tui-io.o tui/tui-layout.o tui/tui-out.o tui/tui-regs.o tui/tui-source.o tui/tui-stack.o tui/tui-win.o tui/tui-wingeneral.o tui/tui-winsource.o tui/tui.o type-stack.o typeprint.o ui-file.o ui-out.o ui-style.o user-regs.o utils.o valarith.o valops.o valprint.o value.o varobj.o version.o xml-builtin.o xml-support.o xml-syscall.o xml-tdesc.o init.o \
+	  ../sim/d30v/libsim.a ../readline/readline/libreadline.a ../opcodes/libopcodes.a ../libctf/.libs/libctf.a ../bfd/libbfd.a -L./../zlib -lz ../gdbsupport/libgdbsupport.a  ../libiberty/libiberty.a ../libdecnumber/libdecnumber.a   -ltermcap -lncursesw -lm -ldl   -L/usr/local/lib/python3.8/config-3.8-i386-linux-gnu -lpython3.8 -lcrypt -lpthread -ldl -lutil -lrt -lm -lm -lexpat     ../gnulib/import/libgnu.a  -lmpfr -lgmp     
+  CXXLD  gdb
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: ../sim/d30v/libsim.a(engine.o):/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d30v-elf/sim/d30v/engine.c:503: multiple definition of `version'; version.o:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d30v-elf/gdb/version.c:2: first defined here
+collect2: エラー: ld はステータス 1 で終了しました
+make: *** [Makefile:1866: gdb] エラー 1
+%
+
+engine.c に追加した
+
+const char version[] = "1.0";
+
+が良くなかったらしい. d10v-elf-run でどうやっていたか.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d10v-elf/sim/d10v/version.c
+
+に定義されている.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d30v-elf/sim/d30v
+
+Makefile の以下を集成
+
+LIB_OBJS = callback.o syscall.o targ-map.o version.o $(SIM_OBJS)
+                                           ^^^^^^^^^
+% make
+% cd ../../gdb
+% make
+
+一応 gdb のビルドが成功.
+
+% which d30v-elf-gdb
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/d30v-elf-gdb
+% ls -l /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/d30v-elf-gdb
+-rwxr-xr-x 1 khasegawa khasegawa 11676328  2月 23 16:31 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/d30v-elf-gdb*
+
+% cd ..
+% make install
+% ls -l /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/d30v-elf-gdb
+-rwxr-xr-x 1 khasegawa khasegawa 11676328  2月 23 16:31 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/d30v-elf-gdb*
+
+更新できていないっぽい.
+
+% cd gdb
+% make install
+ls -l /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/d30v-elf-gdb
+-rwxr-xr-x 1 khasegawa khasegawa 111823028  2月 25 07:17 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/d30v-elf-gdb*
+%
+
+これなら更新できている.
+
+% which d30v-elf-run
+/usr/bin/which: no d30v-elf-run in (/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin:/home/khasegawa/lang/bin:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin:/home/khasegawa/lang/bin:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin)
+%
+
+インストールされていない.
+
+% cd ../sim/d30v/
+% make install
+/bin/sh ./../../mkinstalldirs /usr/local/bin
+/bin/sh ./../../mkinstalldirs /usr/local/lib
+n=`echo run | sed 's,x,x,'`; \
+/usr/local/bin/install -c run.j /usr/local/bin/$n.j
+/usr/local/bin/install: 通常ファイル '/usr/local/bin/run.j' を作成できません: 許可がありません
+make: *** [Makefile:617: install-common] エラー 1
+%
+
+直接コピーすることにした
+% cp run.j /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/d30v-elf-run
+
+% cd ../../gdb
+
+例によって 0x100 番地に nop を数命令置いて実行してみた
+
+% d30v-elf-gdb -q -x gdbcom test.elf
+Reading symbols from test.elf...
+アボート
+%
+
+M-x gdb
+gdb --annotate=3 ./gdb
+
+% cat x
+cd ~/lang/53_GNU_tool/gcc_cross/D30V/test/test001/
+run -q -x gdbcom test.elf
+
+(gdb) so x
+...
+Thread 1 "gdb" received signal SIGSEGV, Segmentation fault.
+sim_open (kind=SIM_OPEN_DEBUG, callback=0x8a6d180 <gdb_callback>, abfd=0x8b894d0, argv=0x8b9fe80) at sim-calls.c:151
+
+  /* Initialize the mechanism for doing insn profiling.  */
+=>CPU_INSN_NAME (STATE_CPU (sd, 0)) = get_insn_name;
+
+マクロ展開は以下
+  ((((sd)->cpu[0]))->base.insn_name) = get_insn_name;
+
+(gdb) p ((((sd)->cpu[0]))->base.insn_name)
+Cannot access memory at address 0x2b8
+(gdb) p ((((sd)->cpu[0]))->base)
+Cannot access memory at address 0x220
+(gdb) p ((((sd)->cpu[0])))
+$1 = (sim_cpu *) 0x0
+(gdb) 
+
+d10v-elf-gdb と動作の比較をしてみる.
+
+(gdb) b sim_open
+(gdb) run
+
+sim_open がよくあるものと違っているので他を真似する.
+
+これで改めて実行
+
+Connected to the simulator.
+Loading section .text, size 0x20 lma 0x100
+Start address 0x100
+Transfer rate: 256 bits in <1 sec.
+Breakpoint 1 at 0x100: file test.S, line 3.
+Breakpoint 2 at 0x118: file test.S, line 7.
+gdbcom:6: Error in sourced command file:
+Warning:
+Cannot insert breakpoint 1.
+Cannot access memory at address 0x100
+Cannot insert breakpoint 2.
+Cannot access memory at address 0x118
+
+(d30v-elf-gdb)
+
+おしい. おそらくまだロードができていない.
+
+(gdb) b sim_write
+(gdb) run
+(gdb) up
+
+以下のパッチを入れる:
+
+	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
++	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
+	      do_write (sd, lma, buffer, size);
+	      found_loadable_section = 1;
+	      free (buffer);
+	    }
+	}
++     else if (s->flags & SEC_ALLOC) {
++	bfd_vma vma = bfd_section_vma(s);
++	bfd_size_type size = bfd_section_size(s);
++	sim_do_command(sd, "memory-fill 0xcc");
++	sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", vma, size);
++     }
+
+これで実行してみた:
+
+(gdb) delete
+(gdb) run
+
+Connected to the simulator.
+Loading section .text, size 0x20 lma 0x100
+Start address 0x100
+Transfer rate: 256 bits in <1 sec.
+Breakpoint 1 at 0x100: file test.S, line 3.
+Breakpoint 2 at 0x118: file test.S, line 7.
+illegal instruction at 0x100
+
+Program terminated with signal SIGILL, Illegal instruction.
+The program no longer exists.
+gdbcom:7: Error in sourced command file:
+The program is not being run.
+(d30v-elf-gdb)
+
+まだだめらしい.
+
+(gdb) b sim_write
+(gdb) run
+...
+sim_write のブレークポイントにヒット
+(gdb) p/x mem
+$2 = 0x100
+(gdb) p length
+$3 = 32
+(gdb) x/32bx buf
+0x8b9fd20:	0x00	0xf0	0x00	0x00	0x00	0xf0	0x00	0x00
+0x8b9fd28:	0x00	0xf0	0x00	0x00	0x00	0xf0	0x00	0x00
+0x8b9fd30:	0x00	0xf0	0x00	0x00	0x00	0xf0	0x00	0x00
+0x8b9fd38:	0x00	0xf0	0x00	0x00	0x00	0xf0	0x00	0x00
+(gdb)
+
+
+00000100 <start>:
+ 100:	00f00000 00f00000 	nop		||	nop	
+ 108:	00f00000 00f00000 	nop		||	nop	
+ 110:	00f00000 00f00000 	nop		||	nop	
+
+なのでここはできている.
+
+(gdb) delete
+(gdb) b sim_resume
+(gdb) c
+...
+sim_resume のブレークポイントにヒット
+(gdb) delete
+(gdb) b sim_engine_run
+(gdb) c
+...
+sim_engine_run のブレークポイントにヒット
+
+(gdb) n
+(gdb) n
+(gdb) p/x cia
+$4 = 0x100
+(gdb) n
+(gdb) p/x insn
+$5 = 0x2f905e0000f00000            <- これはブレークポイントと nop
+(gdb)
+
+
+  nia_left = s_idecode_issue(sd,
+			     left_insn,
+			     cia);
+
+この行を実行したところで longjmp
+
+illegal instruction at 0x100
+Warning:
+Cannot insert breakpoint 0.
+Cannot access memory at address 0xfeae17e5
+
+longjmp (env=0xbfffecc4, val=1) at ../nptl/sysdeps/pthread/pt-longjmp.c:26
+26	../nptl/sysdeps/pthread/pt-longjmp.c: そのようなファイルやディレクトリはありません.
+(gdb) 
+
+以下を追加
+
+  STATE_CPU (sd, 0)->mvtsys_left_p = 0;
++ if (left_insn == 0x2f905e00)
++   sim_handle_breakpoint(sd, STATE_CPU (sd, 0), cia);
+  nia_left = s_idecode_issue(sd,
+
+以下のように修正
+void sim_handle_breakpoint(SIM_DESC sd, sim_cpu *cpu, address_word cia)
+{
+  sim_engine_halt (sd, cpu, NULL, cia, sim_stopped, SIM_SIGTRAP);
+}
+
+Reading symbols from test.elf...
+Target (BIG_ENDIAN) and configured (UNKNOWN) byte order in conflict
+Target (UNKNOWN) and specified (BIG_ENDIAN) byte order in conflict
+Connected to the simulator.
+Loading section .text, size 0x20 lma 0x100
+Start address 0x100
+Transfer rate: 256 bits in <1 sec.
+Breakpoint 1 at 0x100: file test.S, line 3.
+Breakpoint 2 at 0x118: file test.S, line 7.
+
+Program received signal SIGTRAP, Trace/breakpoint trap.
+0x00000000 in ?? ()
+gdbcom:7: Error in sourced command file:
+Cannot find bounds of current function
+(d30v-elf-gdb)
+
+まだできていない.
+
+d10v-elf-gdb では cr2 とは別に 34 番をプログラムカウンタの番号としていた.
+
+
+      address_word cia = PC;
+
+これのマクロ展開は
+
+      address_word cia = (((sd)->cpu[0])->regs.control[program_counter_cr]);
+
+のようになっている. d10v-elf-gdb とは異なりそのままの値で持っている.
+
+
+(gdb) p (int)program_counter_cr
+$9 = 2
+(gdb)
+
+68 番がプログラムカウンタのレジスタ番号らしい. スタックポインタは 63 番
+
+const int pc_regno = 68;
+const int sp_regno = 63;
+
+修正した. しかしまだだめ:
+
+Reading symbols from test.elf...
+Target (BIG_ENDIAN) and configured (UNKNOWN) byte order in conflict
+Target (UNKNOWN) and specified (BIG_ENDIAN) byte order in conflict
+Connected to the simulator.
+Loading section .text, size 0x20 lma 0x100
+Start address 0x100
+Transfer rate: 256 bits in <1 sec.
+Breakpoint 1 at 0x100: file test.S, line 3.
+Breakpoint 2 at 0x118: file test.S, line 7.
+
+Program received signal SIGTRAP, Trace/breakpoint trap.
+0x00000000 in ?? ()
+gdbcom:7: Error in sourced command file:
+Cannot find bounds of current function
+(d30v-elf-gdb) 
+
+D30V はレジスタが 32 ビットらしい. 以下のように修正.
+
+  set_gdbarch_ptr_bit(arch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_addr_bit(arch, 4 * TARGET_CHAR_BIT);
+...
+  set_gdbarch_int_bit(arch, 4 * TARGET_CHAR_BIT);
+
+
+Reading symbols from test.elf...
+Target (BIG_ENDIAN) and configured (UNKNOWN) byte order in conflict
+Target (UNKNOWN) and specified (BIG_ENDIAN) byte order in conflict
+Connected to the simulator.
+Loading section .text, size 0x20 lma 0x100
+Start address 0x100
+Transfer rate: 256 bits in <1 sec.
+Breakpoint 1 at 0x100: file test.S, line 3.
+Breakpoint 2 at 0x118: file test.S, line 7.
+
+Breakpoint 1, start () at test.S:3
+3		nop || nop
+4		nop || nop
+5		nop || nop
+
+Breakpoint 2, end () at test.S:7
+7		nop || nop
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
+[Thread 0xb6f03b70 (LWP 17158) exited]
+[Thread 0xb7704b70 (LWP 17157) exited]
+[Inferior 1 (process 17087) exited normally]
+(gdb)
+
+ほぼできている. 最初の 2 つのエラーメッセージの原因を調査してみる.
+
+(gdb) b write
+(gdb) run
+...
+思いの他たくさんきている. ここで捕えるのは難しい.
+エラーメッセージが出るタイミングからすると test.elf を読み込んでいるところ.
+
+(gdb) b main.c:1214
+(gdb) run
+(gdb) b write
+(gdb) c
+...
+write のブレークポイントにヒット
+(gdb) where
+それっぽい.
+
+gdb-10.2.d30v-elf/sim/common/sim-config.c
+
+  if (CURRENT_TARGET_BYTE_ORDER != current_target_byte_order)
+    sim_io_eprintf (sd, "Target (%s) and configured (%s) byte order in conflict\n",
+		  config_byte_order_to_a (current_target_byte_order),
+		  config_byte_order_to_a (CURRENT_TARGET_BYTE_ORDER));
+
+ここからだった.
+
+% gcc -E ./../common/sim-config.c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2 -o sim-config.i
+
+マクロ展開の結果は
+
+  if ((
+# 179 "./../common/sim-config.c" 3 4
+     4321 
+# 179 "./../common/sim-config.c"
+     != BFD_ENDIAN_UNKNOWN ? 
+# 179 "./../common/sim-config.c" 3 4
+     4321 
+# 179 "./../common/sim-config.c"
+     : current_target_byte_order) != current_target_byte_order)
+    sim_io_eprintf (sd, "Target (%s) and configured (%s) byte order in conflict\n",
+    config_byte_order_to_a (current_target_byte_order),
+    config_byte_order_to_a ((
+
+できている d10v-elf-gdb ではどうなっているか.
+
+
+  if (current_target_byte_order == BFD_ENDIAN_UNKNOWN
+      && prefered_target_byte_order != BFD_ENDIAN_UNKNOWN)
+    current_target_byte_order = prefered_target_byte_order;  ここで
+
+BFD_ENDIAN_BIG にセットされている. しかしこれは d30v-elf-gdb でも同じ.
+
+d10v-elf-gdb でのマクロ展開の結果は
+
+  if ((BFD_ENDIAN_UNKNOWN != BFD_ENDIAN_UNKNOWN ? BFD_ENDIAN_UNKNOWN : current_target_byte_order) != current_target_byte_order)
+    sim_io_eprintf (sd, "Target (%s) and configured (%s) byte order in conflict\
+
+マクロ展開の結果が異なる.
+
+マクロ CURRENT_TARGET_BYTE_ORDER は sim/common/sim-config.h で定義されていて
+
+#define CURRENT_TARGET_BYTE_ORDER \
+  (WITH_TARGET_BYTE_ORDER != BFD_ENDIAN_UNKNOWN \
+   ? WITH_TARGET_BYTE_ORDER : current_target_byte_order)
+
+さらにマクロ WITH_TARGET_BYTE_ORDER は 
+
+#ifndef WITH_TARGET_BYTE_ORDER
+#define WITH_TARGET_BYTE_ORDER		BFD_ENDIAN_UNKNOWN
+#endif
+
+だとすれば余計な define があるのかも. 
+コマンドラインで指定していた.
+
+Makefile を修正
+
+-SIM_ENDIAN = -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN
++SIM_ENDIAN =
+
+シミュレータビルドし直し gdb をリンクし直して正常動作を確認できた.
+ 
