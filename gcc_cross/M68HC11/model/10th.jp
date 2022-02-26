@@ -1,0 +1,794 @@
+int64 + int64 の実装
+
+M68HC11 の ABI ではスタックで引数を渡して, 戻り値を格納するアドレスを d レジスタ
+に入れるようになっている.
+
+現状生成されている rtx_insn は戻り値を x レジスタに入れるようになっている.
+これをどうすれば変更できるか.
+
+rtx m68hc11_function_value(const_tree ret_type, const_tree fun, bool)
+{
+  (void)fun;
+  auto mode = TYPE_MODE(ret_type);
+  if (mode == BLKmode)
+    return gen_rtx_REG(mode, D_REGNUM);
+
+  auto size = GET_MODE_SIZE(mode);
+  if (size <= 2)
+    return gen_rtx_REG(mode, D_REGNUM);
+
+  return gen_rtx_REG(mode, X_REGNUM);
+}
+
+#undef TARGET_FUNCTION_VALUE
+#define TARGET_FUNCTION_VALUE m68hc11_function_value
+
+これはオリジナルの cc1 を参考にした. オリジナルの cc1 では
+
+/* All return values are in the D or X+D registers:
+    - 8 and 16-bit values are returned in D.
+      BLKmode are passed in D as pointer.
+    - 32-bit values are returned in X + D.
+      The high part is passed in X and the low part in D.
+      For GCC, the register number must be HARD_X_REGNUM.  */
+#define FUNCTION_VALUE(VALTYPE, FUNC)					\
+     gen_rtx (REG, TYPE_MODE (VALTYPE),					\
+              ((TYPE_MODE (VALTYPE) == BLKmode				\
+	        || GET_MODE_SIZE (TYPE_MODE (VALTYPE)) <= 2)		\
+		   ? HARD_D_REGNUM : HARD_X_REGNUM))
+
+のようにしている.
+
+int64 の前に構造体でどうなるか確かめてみた.
+
+struct S {
+  int a;
+  int b;
+};
+
+struct S f()
+{
+  return (struct S){5, 6};
+}
+
+これをコンパイルしたとき m68hc11_function_value は一度呼び出されて
+
+(gdb) p debug_tree(ret_type)
+ <pointer_type 0xb78c5de0
+    type <record_type 0xb78c5cc0 S type_0 DI
+        size <integer_cst 0xb78552bc constant 64>
+        unit-size <integer_cst 0xb78552d0 constant 8>
+        align:8 warn_if_not_align:0 symtab:0 alias-set 1 canonical-type 0xb78c5cc0
+        fields <field_decl 0xb7867e70 a type <integer_type 0xb7a503c0 int>
+            SI aa.c:2:7
+            size <integer_cst 0xb785526c constant 32>
+            unit-size <integer_cst 0xb7855280 constant 4>
+            align:8 warn_if_not_align:0 offset_align 8
+            offset <integer_cst 0xb7855294 constant 0>
+            bit-offset <integer_cst 0xb78552e4 constant 0> context <record_type 0xb78c5cc0 S> chain <field_decl 0xb7867ec8 b>> context <translation_unit_decl 0xb78e904c aa.c>
+        pointer_to_this <pointer_type 0xb78c5de0> chain <type_decl 0xb7867e18 D.1380>>
+    unsigned HI
+    size <integer_cst 0xb7855410 type <integer_type 0xb7a500c0 bitsizetype> constant 16>
+    unit-size <integer_cst 0xb7855424 type <integer_type 0xb7a50060 sizetype> constant 2>
+    align:8 warn_if_not_align:0 symtab:0 alias-set 3 canonical-type 0xb78c5de0>
+$64 = void
+(gdb) p debug_tree(fun)
+ <function_decl 0xb78de300 f
+    type <function_type 0xb78c5c60
+        type <record_type 0xb78c5cc0 S type_0 DI
+            size <integer_cst 0xb78552bc constant 64>
+            unit-size <integer_cst 0xb78552d0 constant 8>
+            align:8 warn_if_not_align:0 symtab:0 alias-set 1 canonical-type 0xb78c5cc0 fields <field_decl 0xb7867e70 a> context <translation_unit_decl 0xb78e904c aa.c>
+            pointer_to_this <pointer_type 0xb78c5de0> chain <type_decl 0xb7867e18 D.1380>>
+        QI
+        size <integer_cst 0xb7855370 constant 8>
+        unit-size <integer_cst 0xb7855384 constant 1>
+        align:8 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb78c5c00>
+    public static QI aa.c:6:10 align:8 warn_if_not_align:0 context <translation_unit_decl 0xb78e904c aa.c> initial <block 0xb78ec000>
+    result <result_decl 0xb78e9000 D.1384 type <record_type 0xb78c5cc0 S>
+        used ignored DI aa.c:6:10 size <integer_cst 0xb78552bc 64> unit-size <integer_cst 0xb78552d0 8>
+        align:8 warn_if_not_align:0 context <function_decl 0xb78de300 f>
+        (mem/c:DI (mem/f/c:HI (reg/f:HI 12 virtual-stack-vars) [3 .result_ptr+0 S2 A8]) [1 <retval>+0 S8 A8])>
+    struct-function 0xb78ea000>
+$65 = void
+...
+(gdb) p mode
+$66 = E_HImode
+(gdb)
+
+mode は予想したのとは違っていた. 結果 gen_rtx_REG(mode, D_REGNUM) を返している.
+このとき生成されている rtx_insn は抜粋で
+
+   26: NOTE_INSN_PROLOGUE_END
+
+    2: [*_.frame:HI+0x1]=d:HI
+
+    3: NOTE_INSN_FUNCTION_BEG
+
+    6: [[*_.frame:HI+0x1]]=0x5
+
+    7: [[*_.frame:HI+0x1]+0x4]=0x6
+
+    8: clobber [*_.frame:HI+0x3]
+
+   14: d:HI=[*_.frame:HI+0x1]
+
+   15: use d:HI
+
+   27: NOTE_INSN_EPILOGUE_BEG
+
+さてどうしたものか.
+
+オリジナルの cc1 で以下を発見
+/* Register in which address to store a structure value is passed to a
+   function.  */
+#define STRUCT_VALUE_REGNUM	HARD_D_REGNUM
+
+しかし gcc-10.2.0 では
+
+/* Old target macros that have moved to the target hooks structure.  */
+ #pragma GCC poison ASM_OPEN_PAREN ASM_CLOSE_PAREN			\
+...
+	PROMOTE_FUNCTION_RETURN PROMOTE_PROTOTYPES STRUCT_VALUE_REGNUM	\
+
+のように poison 指定されている.
+
+オリジナルの AARCH64 で以下を発見
+
+static rtx
+aarch64_struct_value_rtx (tree fndecl ATTRIBUTE_UNUSED,
+			  int incoming ATTRIBUTE_UNUSED)
+{
+  return gen_rtx_REG (Pmode, AARCH64_STRUCT_VALUE_REGNUM);
+}
+
+#undef TARGET_STRUCT_VALUE_RTX
+#define TARGET_STRUCT_VALUE_RTX   aarch64_struct_value_rtx
+
+真似てみた. この結果生成される rtx_insn は以下になった:
+
+   25: NOTE_INSN_PROLOGUE_END
+
+    3: NOTE_INSN_FUNCTION_BEG
+
+    6: [d:HI]=0x5
+
+    7: [d:HI+0x4]=0x6
+
+    8: clobber [*_.frame:HI+0x1]
+
+   15: use d:HI
+
+   26: NOTE_INSN_EPILOGUE_BEG
+
+期待したものになっている.
+問題は int64 の戻り値についてこれができるかということ.
+
+試しに以下のようにしてみた:
+
+rtx m68hc11_function_value(const_tree ret_type, const_tree fun, bool)
+{
+...
+  if (size == 8)
+    return gen_rtx_MEM(mode, gen_rtx_REG(Pmode, D_REGNUM));
+
+これにより以下の assert で失敗する.
+
+	  if (REG_P (hard_reg))
+	    set_parm_rtl (res, gen_reg_rtx (GET_MODE (hard_reg)));
+	  else
+	    {
+	      gcc_assert (GET_CODE (hard_reg) == PARALLEL);  これ
+	      set_parm_rtl (res, gen_group_rtx (hard_reg));
+	    }
+
+さてどうしたものか.
+
+オリジナルの cc1 で以下を試してみた:
+
+long long int f()
+{
+  return 5;
+}
+
+このとき生成された rtx_insn は gcc-3.4.4 ではあるが
+
+(note 28 27 3 NOTE_INSN_PROLOGUE_END)
+
+
+(insn 3 28 4 (set (reg/f:HI 0 x [53])
+        (reg:HI 1 d)) 27 {*movhi_m68hc11} (nil)
+    (nil))
+# x := d    
+
+
+(note 4 3 34 NOTE_INSN_FUNCTION_BEG)
+
+
+(insn 34 4 35 (set (reg:HI 1 d)
+        (const_int 5 [0x5])) 27 {*movhi_m68hc11} (nil)
+    (nil))
+# d := 5
+
+(insn 35 34 36 (set (mem/f:HI (plus:HI (reg/f:HI 0 x [53])
+                (const_int 6 [0x6])) [0 <result>+6 S2 A8])
+        (reg:HI 1 d)) 27 {*movhi_m68hc11} (nil)
+    (nil))
+# [x+6] := d
+
+(insn 36 35 37 (set (reg:HI 1 d)
+        (const_int 0 [0x0])) 26 {movhi_const0} (nil)
+    (nil))
+# d := 0
+
+(insn 37 36 38 (set (mem/f:HI (plus:HI (reg/f:HI 0 x [53])
+                (const_int 4 [0x4])) [0 S2 A8])
+        (reg:HI 1 d)) 27 {*movhi_m68hc11} (nil)
+    (nil))
+# [x+4] := d
+
+(insn 38 37 39 (set (reg:HI 1 d)
+        (const_int 5 [0x5])) 27 {*movhi_m68hc11} (nil)
+    (nil))
+# d := 5
+
+(insn 39 38 40 (set (mem/f:HI (plus:HI (reg/f:HI 0 x [53])
+                (const_int 2 [0x2])) [0 S2 A8])
+        (reg:HI 1 d)) 27 {*movhi_m68hc11} (nil)
+    (nil))
+# [x+2] := d
+
+(insn 40 39 41 (set (reg:HI 1 d)
+        (const_int 0 [0x0])) 26 {movhi_const0} (nil)
+    (nil))
+# d := 0
+
+(insn 41 40 15 (set (mem/f:HI (reg/f:HI 0 x [53]) [0 S2 A8])
+        (reg:HI 1 d)) 27 {*movhi_m68hc11} (nil)
+    (nil))
+# [x] := d
+
+(note 15 41 18 NOTE_INSN_FUNCTION_END)
+
+
+(insn 18 15 20 (set (reg/i:HI 1 d)
+        (reg/f:HI 0 x [53])) 27 {*movhi_m68hc11} (nil)
+    (nil))
+# d := x
+
+(insn 20 18 29 (use (reg/i:HI 1 d)) -1 (nil)
+
+
+(note 29 20 30 NOTE_INSN_EPILOGUE_BEG)
+
+[x+2] に 5 をセットしているようにも思えるがそこはスルーしておく.
+
+最初に x := d がどこで生成しているかを確かめてみる.
+
+void
+expand_function_start (tree subr, int parms_have_cleanups)
+{
+...
+	  rtx sv = targetm.calls.struct_value_rtx (TREE_TYPE (subr), 1);
+	  /* Expect to be passed the address of a place to store the value.
+	     If it is passed as an argument, assign_parms will take care of
+	     it.  */
+	  if (sv)
+	    {
+	      value_address = gen_reg_rtx (Pmode);
+	      emit_move_insn (value_address, sv);
+	    }
+
+int64 の戻り値なのに構造体の戻り値のやり方で呼び出しているように見える.
+
+(gdb) b expand_function_start
+(gdb) run
+...
+expand_function_start のブレークポイントにヒット
+(gdb) p debug_tree(subr)
+ <function_decl 0xb7bcadec f
+    type <function_type 0xb7bcaec4
+        type <integer_type 0xb7bcad14 T DI
+            size <integer_cst 0xb7c542d0 constant 64>
+            unit size <integer_cst 0xb7c543d4 constant 8>
+            align 8 symtab 0 alias set -1 precision 64 min <integer_cst 0xb7c543ac 0x8000000000000000> max <integer_cst 0xb7c543c0 0x7fffffffffffffff>>
+        SI
+        size <integer_cst 0xb7c545c8 constant 32>
+        unit size <integer_cst 0xb7c547bc constant 4>
+        align 8 symtab 0 alias set -1>
+    public static QI file a.c line 4 context <translation_unit_decl 0xb7c56144>
+    result <result_decl 0xb7bcae58 type <integer_type 0xb7bcad14 T>
+        DI file a.c line 4 size <integer_cst 0xb7c542d0 64> unit size <integer_cst 0xb7c543d4 8>
+        align 8 context <function_decl 0xb7bcadec f>> initial <block 0xb7c55190>
+    (mem:QI (symbol_ref:HI ("f") <function_decl 0xb7bcadec f>) [0 S1 A8])
+    saved-insns 0xb7c4fc00>
+$50 = void
+(gdb)
+...
+
+  /* Decide whether to return the value in memory or in a register.  */
+  if (aggregate_value_p (DECL_RESULT (subr), subr))
+
+この条件が成立している.
+
+bool
+default_return_in_memory (tree type,
+			  tree fntype ATTRIBUTE_UNUSED)
+{
+#ifndef RETURN_IN_MEMORY
+  return (TYPE_MODE (type) == BLKmode);
+#else
+  return RETURN_IN_MEMORY (type);     ここにきている.
+#endif
+}
+
+
+#define RETURN_IN_MEMORY(TYPE)				\
+    ((TYPE_MODE (TYPE) == BLKmode)			\
+     ? (int_size_in_bytes (TYPE) > 4)			\
+     : (GET_MODE_SIZE (TYPE_MODE (TYPE)) > 4))
+
+なるほどこれが仕掛けだったということ.
+
+gcc-10.2.0 では以下のようになっている.
+
+bool
+default_return_in_memory (const_tree type,
+			  const_tree fntype ATTRIBUTE_UNUSED)
+{
+  return (TYPE_MODE (type) == BLKmode);
+}
+
+そこで以下を追加
+
+#undef  TARGET_STARTING_FRAME_OFFSET
+#define TARGET_STARTING_FRAME_OFFSET m68hc11_starting_frame_offset
+
+bool m68hc11_return_in_memory (const_tree type, const_tree fntype)
+{
+  (void)fntype;
+  auto mode = TYPE_MODE(type);
+  return mode == BLKmode || mode == DImode;
+}
+
+これで期待した rtx_insn が生成できている.
+
+2022.02.25 14:00
+
+現状 int64 + int64 をコンパイルできる状態にある. そしてこれまで開発してきたものに
+レベルダウンがないことを確認した.
+
+現状 int64 + int64 は不正メモリアクセスを起こしている.
+
+main 函数から f を呼び出すときに戻り値となる 8 バイトのスペースをフレームポインタ相対 1
+に確保しているらしい. よって f を呼び出す前に d の値は *_.frame + 1 にしている.
+引数の 5 と 6 はスタックに積んでいる.
+
+f の先頭アドレスでは d = 0xfeec でスタックは以下
+
+ 0xfed8	+---------------+
+	|		| <- sp
+ 0xfeda	+---------------+
+	|     0x116e	|
+ 0xfedc	+---------------+
+	|     0x0	|
+ 0xfede	+---------------+
+	|     0x0	|
+ 0xfee0	+---------------+
+	|     0x0	|
+ 0xfee2	+---------------+
+	|     0x5	|
+ 0xfee4	+---------------+
+	|     0x0	|
+ 0xfee6	+---------------+
+	|     0x0	|
+ 0xfee8	+---------------+
+	|     0x0	|
+ 0xfeea	+---------------+
+	|     0x6	|
+ 0xfeec	+---------------+ <- d
+
+のようになっている. これも期待したもの.
+
+	bsr	___adddi3
+
+この命令をエラーせず実行できている. 呼び出す直前 d = 0xfec6 で f の *_.frame + 1
+の値になっている.
+
+(m68hc11-elf-gdb) x/17bx $sp
+0xfeb5:	0xcc	0xcc	0xcc	0xcc	0xcc	0xcc	0xcc	0xcc
+0xfebd:	0xcc	0xfe	0xec	0xfe	0xeb	0x11	0x6e	0x00
+0xfec5:	0x00
+(m68hc11-elf-gdb) 
+
+これは全然違っている. 5 と 6 が積まれている必要があるがそうなっていない.
+おそらくこれは DI の push x (x はフレーム相対)ができていない.
+
+f では *_.frame をスタックに保存して, さらにスタックを 18 広げている. そして
+*_.frame を更新している.
+
+第 1 引数は  f が呼び出された時点では sp 相対 3
+第 2 引数は sp 相対 11
+
+(m68hc11-elf-gdb) p *(long long*)($sp+3)
+$2 = 5
+(m68hc11-elf-gdb) p *(long long*)($sp+11)
+$3 = 6
+(m68hc11-elf-gdb) 
+
+であるがプロローグ後は *_.frame 相対
+
+第 1 引数 : 3 + 2 + 18 = 23
+第 2 引数 : 3 + 2 + 18 + 8 = 23 + 8
+
+になっているはずである. プロローグ後は *_.frame = 0xfec5 なので
+
+(m68hc11-elf-gdb) p *(long long*)(0xfec5 + 23)
+$5 = 5
+(m68hc11-elf-gdb) p *(long long*)(0xfec5 + 23 + 8)
+$6 = 6
+(m68hc11-elf-gdb) 
+
+ここはできている. しかし生成されているコードはあたかも
+
+17
+9
+
+になっているように見える.
+
+int FIRST_PARM_OFFSET(tree func)
+{
+  (void)func;
+  return 9;
+}
+
+これが原因.
+
+int FIRST_PARM_OFFSET(tree func)
+{
+  (void)func;
+  return 3 + 2 + get_frame_size();
+}
+
+のように修正した. 一応これまでのレベルダウンがないことを確認した. しかしこれでも
+オフセットが
+
+13
+21
+
+のようになっている. FIRST_PARM_OFFSET で 13 が返っていることを確認した.
+ということは何か勘違いしている.
+
+FIRST_PARM_OFFSET で呼び出した get_frame_size は 8 を返しているが,
+m68hc11_expand_prologue で呼び出した get_frame_size は 18 を返している.
+
+さてこれは困った.
+
+rtx
+assign_stack_local_1 (machine_mode mode, poly_int64 size,
+		      int align, int kind)
+{
+...
+      frame_offset += size;  まずはここで 8 から 16 に更新している.
+      try_fit_stack_local (old_frame_offset, size, size, alignment, &slot_offset);
+
+そして同じところで 16 から 18 に更新している.
+これでオフセットが 10 ずれてしまう. さてどうするべきか.
+
+いずれにしても FIRST_PARM_OFFSET で get_frame_size を呼び出すのはこの仕組みから
+すると正しくない.
+
+簡単には修正できそうにないか.
+
+フレームポインタをスタックの底ではなくてスタックのトップを指しているようなスタックフレームを
+採用している場合に同じ問題が起こる.
+
+ということは ARG_POINTER_REGNUM がここでまた出てくる.
+2022.02.25 16:23
+
+#define       ARG_POINTER_REGNUM      10
+
+のようにしてリビルド.
+
+2022.02.25 17:45 動作確認したところ, 第 2 引数がずれている.
+
+以下のようにした.
+int FIRST_PARM_OFFSET(tree func)
+{
+  (void)func;
+  return 3 + 2;
+}
+
+こうすると実行結果は正しいが, デバッガで第 2 引数を表示すると正しくない.
+
+ <2><b6>: 省略番号: 6 (DW_TAG_formal_parameter)
+    <b7>   DW_AT_name        : a
+    <b9>   DW_AT_decl_file   : 1
+    <ba>   DW_AT_decl_line   : 3
+    <bb>   DW_AT_decl_column : 11
+    <bc>   DW_AT_type        : <0x4e>
+    <c0>   DW_AT_location    : 2 byte block: 79 1 	(DW_OP_breg9 (r9): 1)
+ <2><c3>: 省略番号: 6 (DW_TAG_formal_parameter)
+    <c4>   DW_AT_name        : b
+    <c6>   DW_AT_decl_file   : 1
+    <c7>   DW_AT_decl_line   : 3
+    <c8>   DW_AT_decl_column : 18
+    <c9>   DW_AT_type        : <0x4e>
+    <cd>   DW_AT_location    : 2 byte block: 91 0 	(DW_OP_fbreg: 0)
+
+a は r9 相対 1 になっていて b は fbreg 相対 0 になっている.
+r9 は *_.frame で a は正しく表示できている.
+
+Breakpoint 2, f (a=5, b=274320588) at f.c:5
+(m68hc11-elf-gdb) info register
+PC=0x1078  SP=0xfeef  FP=0xfeef 
+CCR=0x00   --------   u> != >= > 
+D=0x0005 5 X=0x0000 0 Y=0xfeef -273
+(m68hc11-elf-gdb) p &a
+$1 = (int *) 0xfef0
+(m68hc11-elf-gdb)
+
+a は *_.frame 相対 1 だからアドレスは勿論合っていて正しく表示できている.
+
+
+(m68hc11-elf-gdb) p &b
+$2 = (int *) 0xfefe
+(m68hc11-elf-gdb)
+
+b はフレーム相対 15 として扱われているらしい. 0xfeef + 15 = 0xfefe
+実際はフレーム相対 9 だから
+
+(m68hc11-elf-gdb) p *(int*)(0xfeef+9)
+$5 = 6
+(m68hc11-elf-gdb) 
+
+f.S に期待値を作成した:
+
+diff -c f.s f.S
+*** f.s	2022-02-26 06:49:46.000000000 +0900
+--- f.S	2022-02-26 06:47:57.000000000 +0900
+***************
+*** 248,255 ****
+  	.byte	0x12
+  	.4byte	0x28
+  	.uleb128 0x2
+! 	.byte	0x91
+! 	.sleb128 0
+  	.byte	0
+  	.byte	0
+  	.section	.debug_abbrev,"",@progbits
+--- 248,255 ----
+  	.byte	0x12
+  	.4byte	0x28
+  	.uleb128 0x2
+! 	.byte	0x79
+! 	.sleb128 9
+  	.byte	0
+  	.byte	0
+  	.section	.debug_abbrev,"",@progbits
+
+と思ったが, そもそも ap 相対なので ap がどこにあるか .debug_frame に入れることが必要
+なのかも. しかしそういうのは今まで見たことがない..
+
+試しに f2.S を以下のようにしてみた:
+
+	.string	"b"
+	.byte	0x1
+	.byte	0x3
+	.byte	0x12
+	.4byte	0x28
+	.uleb128 0x2
+	.byte	0x91
+	.sleb128 1            <- 0 を 1 にした
+
+Breakpoint 2, f (a=5, b=280100864) at f.c:5
+(m68hc11-elf-gdb) p &b
+$1 = (int *) 0xfef6
+(m68hc11-elf-gdb) 
+
+0xfefe だったのが 0xfef6 になっている
+
+	.sleb128 2            <- 1 を 2 にしてみると
+
+Breakpoint 2, f (a=5, b=-1308622848) at f.c:5
+(m68hc11-elf-gdb) p &b
+$1 = (int *) 0xfef7
+(m68hc11-elf-gdb) 
+
+	.sleb128 3            <- 2 を 3 にしてみると
+
+Breakpoint 2, f (a=5, b=6) at f.c:5
+(m68hc11-elf-gdb) p &b
+$1 = (int *) 0xfef8
+(m68hc11-elf-gdb)
+
+というわけでこれで辻褄は合っている.
+
+	+---------------+
+	|		| <- ap
+	+---------------+
+	|return address	|
+	+---------------+
+	| 1srt argument |
+	+---------------+
+
+ap + 3 ということなのだろうか?
+
+以下のように修正してみた:
+int FIRST_PARM_OFFSET(tree func)
+{
+  (void)func;
+  return 3;
+}
+
+void INITIAL_ELIMINATION_OFFSET(int from, int to, poly_int64_pod& offset)
+{
+  if (from == FRAME_POINTER_REGNUM && to == STACK_POINTER_REGNUM) {
+    offset = 0;
+    return;
+  }
+
+  assert(from == ARG_POINTER_REGNUM);
+  offset = get_frame_size() + 2;
+}
+
+しかし状況は変わらず以下のまま:
+
+	.string	"b"
+	.byte	0x1
+	.byte	0x3
+	.byte	0x12
+	.4byte	0x28
+	.uleb128 0x2
+	.byte	0x91
+	.sleb128 0
+
+FIRST_PARM_OFFSET は以下で参照されている.
+
+static unsigned int
+instantiate_virtual_regs (void)
+{
+...
+  in_arg_offset = FIRST_PARM_OFFSET (current_function_decl);     これ
+  var_offset = targetm.starting_frame_offset ();
+  dynamic_offset = STACK_DYNAMIC_OFFSET (current_function_decl);
+  out_arg_offset = STACK_POINTER_OFFSET;
+#ifdef FRAME_POINTER_CFA_OFFSET
+  cfa_offset = FRAME_POINTER_CFA_OFFSET (current_function_decl);
+#else
+  cfa_offset = ARG_POINTER_CFA_OFFSET (current_function_decl);
+#endif
+
+実は ARG_POINTER_CFA_OFFSET は FIRST_PARM_OFFSET に define されているので
+ここで調整してみる.
+
+以下を追加してみた
+
+extern rtx m68hc11_arg_pointer_cfa_offset(tree);
+#define ARG_POINTER_CFA_OFFSET(FDECL) m68hc11_arg_pointer_cfa_offset(FDECL)
+
+int FIRST_PARM_OFFSET(tree func)
+{
+  (void)func;
+  return 3;
+}
+
+int m68hc11_arg_pointer_cfa_offset(tree func)
+{
+  (void)func;
+  return 0;
+}
+
+void INITIAL_ELIMINATION_OFFSET(int from, int to, poly_int64_pod& offset)
+{
+  if (from == FRAME_POINTER_REGNUM && to == STACK_POINTER_REGNUM) {
+    offset = 0;
+    return;
+  }
+
+  assert(from == ARG_POINTER_REGNUM);
+  offset = get_frame_size() + 2;
+}
+
+これで以下が生成される.
+
+	.string	"b"
+	.byte	0x1
+	.byte	0x3
+	.byte	0x12
+	.4byte	0x28
+	.uleb128 0x2
+	.byte	0x91
+	.sleb128 3
+
+おそらく ARG_POINTER_CFA_OFFSET ではなくて FRAME_POINTER_CFA_OFFSET を
+使用してもできるかもしれない.
+
+これまで開発したものはレベルダウンしていないことを確認した.
+そこで問題の
+
+int64 + int64 を試してみたがまだできていない.
+
+	bsr	___adddi3
+
+この命令を実行する直前では
+
+(m68hc11-elf-gdb) x/17bx $sp
+0xfeb5:	0xcc	0x00	0x00	0x00	0x00	0x00	0x00	0x00
+0xfebd:	0x05	0x00	0x00	0x00	0x00	0x00	0x00	0x00
+0xfec5:	0x06
+(m68hc11-elf-gdb)
+
+のようになっているので期待した引数が積まれている. 
+d = 0xfec6 であるが, この命令を実行すると
+
+(m68hc11-elf-gdb) x/8bx 0xfec6
+0xfec6:	0x00	0x00	0x00	0x00	0x00	0x00	0x00	0x0b
+(m68hc11-elf-gdb) 
+
+なので呼び出し自体はできていて結果も正しい. しかしこの後で不正メモリアクセスが
+発生している.
+
+    9: call [`___adddi3'] argc:0x10
+
+   10: sp:HI=sp:HI+0x10
+
+   11: [*_.frame:HI+0x9]=[*_.frame:HI+0x1]
+
+   23: d:HI=[*_.frame:HI+0x11]
+
+   12: [d:HI]=[*_.frame:HI+0x9]
+
+   19: use d:HI
+
+   31: sp:HI=sp:HI+0x12
+
+debug_insn_slim(insn) を出力ファイルに書けないだろうか.
+
+	  if (targetm.asm_out.unwind_emit)
+	    targetm.asm_out.unwind_emit (asm_out_file, insn);
+
+このフックを使用するのが良さそう.
+
+void m68hc11_asm_out_unwind_emit(FILE* fp, rtx_insn* insn)
+{
+  fputc(';', fp);
+  dump_insn_slim(fp, insn);
+}
+
+#undef TARGET_ASM_UNWIND_EMIT
+#define TARGET_ASM_UNWIND_EMIT m68hc11_asm_out_unwind_emit
+
+のようにしてみたが, 改行が入るとコメントアウトできていない. また生成の
+タイミングがコードの前だったり後だったりしている. 一旦削除する.
+
+   23: d:HI=[*_.frame:HI+0x11]
+
+	ldy	*_.frame
+	ldd	17, y
+
+この時点で d = 0xfeec になっている.
+
+   12: [d:HI]=[*_.frame:HI+0x9]
+
+	ldy	*_.frame
+	ldx	9, y
+	ldd	11, y     <- ここで d を壊している.
+	xgdy
+	std	0, y
+	stx	2, y
+...
+
+23 の命令で d が使用されていることを表わすフラグがセットされていないのが原因.
+と思ったが, それだけではないらしいし, それが直接の原因ではなかった.
+
+12 の命令に対して load(D_REGNUM, 9) のようにすると d レジスタは壊れてしまう.
+
+	ldy	*_.frame
+	ldx	9, y
+	xgdy
+	stx	0, y
+
+のようにすれば 2 バイトセットしていることになる. この部分を修正して正常動作を
+確認できている.
+
