@@ -1,0 +1,131 @@
+muldi3 を実装中. オリジナルの cc1 には muldi3 が定義されていない. これはもしや...
+
+自前の m68hc11.md から以下を削除
+
+(define_expand "muldi3"
+  [(set
+    (match_operand:DI 0 "nonimmediate_operand" "")
+    (mult:DI
+     (match_operand:DI 1 "general_operand" "")
+     (match_operand:DI 2 "general_operand" "")))]
+  ""
+  "m68hc11_emit_libcall(\"___muldi3\", DImode, DImode,
+                        operands[0], operands[1], operands[2]); DONE;")
+
+削除してビルドした cc1 でライブラリ函数呼び出しに展開されていることを確認した.
+
+同様に divdi3 を m68hc11.md から削除してビルドした cc1 でライブラリ函数呼び出しに展開され
+ていることを確認した.
+
+ところが -g オプション付きで int64 / int64 の演算を行なうプログラムを m68hc11-elf-gdb
+で動作させると以下のようになる:
+
+Breakpoint 1, main () at v.c:12
+12	  printf("hello world %lld\n", f(33, 6));
+f (a=33, b=6) at v.c:7
+7	  return a / b;
+#0  f (a=33, b=6) at v.c:7
+#1  0x0000119b in main () at v.c:12
+0x0000119b in main () at v.c:12
+12	  printf("hello world %lld\n", f(33, 6));
+Value returned is $1 = 345
+hello world 345
+
+戻り値が正しくない. -g オプションなしでコンパイルした場合は期待通り動作している.
+-g オプションン付きでコンパイルした v.elf を以下のように実行してみた: 
+
+% m68hc11-elf-run --memory-region 0xef00,0x1100 v.elf
+hello world 345
+%
+
+m68hc11-elf-gdb は関係なかったらしい.
+
+(m68hc11-elf-gdb) disassemble  # f にステップインした状態で逆アセンブル
+...
+   0x000010b4 <+80>:	ldd	*0x10
+   0x000010b6 <+82>:	addd	#0x1
+   0x000010b9 <+85>:	jsr	0x120d <__divdi3>
+   0x000010bc <+88>:	tsy
+...
+(m68hc11-elf-gdb) b *0x000010b9
+(m68hc11-elf-gdb) c
+...
+0x000010b9 のブレークポイントにヒット
+(m68hc11-elf-gdb) info register
+PC=0x10b9  SP=0xfeb5  FP=0xfec5 
+CCR=0x08   ----N---   u> != < <= 
+D=0xfec6 -314 X=0x0000 0 Y=0x0000 0
+D1=0xcccc -13108 D2=0xcccc -13108 D3=0xcccc -13108 D4=0xcccc -13108 
+(m68hc11-elf-gdb) x/17bx $sp
+0xfeb5:	0xcc	0x00	0x00	0x00	0x00	0x00	0x00	0x00
+0xfebd:	0x21	0x00	0x00	0x00	0x00	0x00	0x00	0x00
+0xfec5:	0x06
+(m68hc11-elf-gdb) p 0x21
+$3 = 33
+(m68hc11-elf-gdb) 
+
+ということは __divdi3 を呼び出す寸前では期待した引数を積めている.
+
+(m68hc11-elf-gdb) nexti
+(m68hc11-elf-gdb) x/8bx 0xfec6
+0xfec6:	0x00	0x00	0x00	0x00	0x00	0x00	0x01	0x59
+(m68hc11-elf-gdb) p 0x159
+$1 = 345
+(m68hc11-elf-gdb) 
+
+d レジスタ指す領域にセットされたのは 345. なのでこのような結果になっている.
+期待通り動いている -g オプションなしの場合はどうか.
+
+__divdi3 を呼び出すアドレスはたまたまではあるが -g オプションありなしで
+同じアドレスであった.
+
+(m68hc11-elf-gdb) info register
+PC=0x10b9  SP=0xfeb5  FP=0xfec5 
+CCR=0x08   ----N---   u> != < <= 
+D=0xfec6 -314 X=0x0000 0 Y=0x0000 0
+D1=0xcccc -13108 D2=0xcccc -13108 D3=0xcccc -13108 D4=0xcccc -13108 
+(m68hc11-elf-gdb) x/17bx $sp
+0xfeb5:	0xcc	0x00	0x00	0x00	0x00	0x00	0x00	0x00
+0xfebd:	0x21	0x00	0x00	0x00	0x00	0x00	0x00	0x00
+0xfec5:	0x06
+(m68hc11-elf-gdb) nexti
+(m68hc11-elf-gdb) x/8bx 0xfec6
+0xfec6:	0x00	0x00	0x00	0x00	0x00	0x00	0x00	0x05
+(m68hc11-elf-gdb)
+
+さてこれはどう考えるべきか.
+普通であれば __divdi3 がどのような計算の結果 0xfec6 に 5 をセットしたり 0x159
+をセットしたりする理由を考えるべき.
+
+__divdi3 の定義は
+
+gcc-10.2.0.m68hc11-elf.mine/libgcc/libgcc2.c:
+
+#ifdef L_divdi3
+DWtype
+__divdi3 (DWtype u, DWtype v)
+{
+  Wtype c = 0;
+  DWunion uu = {.ll = u};
+  DWunion vv = {.ll = v};
+  DWtype w;
+
+  if (uu.s.high < 0)
+    c = ~c,
+    uu.ll = -uu.ll;
+  if (vv.s.high < 0)
+    c = ~c,
+    vv.ll = -vv.ll;
+
+  w = __udivmoddi4 (uu.ll, vv.ll, (UDWtype *) 0);
+  if (c)
+    w = -w;
+
+  return w;
+}
+#endif
+
+2022.02.26
+これが現状 libgcc.a にデバッグ情報なしでアセンブラの函数として見えている.
+残念ながらこれをアセンブラレベルで追跡するのは現実的ではないから, とりあえず保留の
+扱いにしておく. 不思議な現象だがバグの原因は非常に面白いと想像する.
