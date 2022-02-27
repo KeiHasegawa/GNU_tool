@@ -1,0 +1,74 @@
+moddi3 の実装中. できている.
+
+(define_expand "ashldi3"
+  [(set
+    (match_operand:DI 0 "nonimmediate_operand" "")
+    (ashift:DI
+     (match_operand:DI 1 "general_operand" "")
+     (match_operand:SI 2 "general_operand" "")))]
+  ""
+  "m68hc11_emit_libcall(\"__ashldi3\", DImode, DImode,
+                        operands[0], operands[1], operands[2]); DONE;")
+
+を確認中. operands[2] は SImode であるがこれで試してみる.
+=> gcc_assert でエラーしている. エラーの内容は SImode でないということ.
+
+assertion エラーしないように修正したが, ここで手付かずだった
+
+%0 ：= (trunc)%1
+
+が生成されている.
+
+m68hc11.md から以下を削除
+
+; int32 <- int64
+; not absolutely necessary
+(define_insn "truncdisi2"
+  [(set (match_operand:SI 0 "nonimmediate_operand" "")
+        (truncate:SI (match_operand:DI 1 "general_operand" "")))]
+  ""
+  "%0 := (trunc)%1")
+
+現状
+
+	bsr	__ashldi3
+
+の命令を実行する直前で
+
+(m68hc11-elf-gdb) info register
+PC=0x10b0  SP=0xfebd  FP=0xfec5 
+CCR=0x08   ----N---   u> != < <= 
+D=0xfec6 -314 X=0x0000 0 Y=0x0000 0
+D1=0x0000 0 D2=0x0006 6 D3=0xcccc -13108 D4=0xcccc -13108 
+(m68hc11-elf-gdb) x/17bx $sp
+0xfebd:	0xcc	0x00	0x00	0x00	0x00	0x00	0x00	0x00
+0xfec5:	0x05	0xcc	0xcc	0xcc	0xcc	0xcc	0xcc	0xcc
+0xfecd:	0xcc
+(m68hc11-elf-gdb)
+
+のようになっている. 第 2 引数がセットされていない.
+
+rtx m68hc11_function_incoming_arg(cumulative_args_t pcum_v,
+				  const function_arg_info& arg);
+
+で第 2 引数にレジスタを指定していたのが間違い.
+
+修正して以下を確認した.
+
+(m68hc11-elf-gdb) info register
+PC=0x10b5  SP=0xfeb9  FP=0xfec5 
+CCR=0x08   ----N---   u> != < <= 
+D=0xfec6 -314 X=0x0000 0 Y=0x0000 0
+D1=0x0000 0 D2=0xfec5 -315 D3=0xcccc -13108 D4=0xcccc -13108 
+(m68hc11-elf-gdb) x/17bx $sp
+0xfeb9:	0xcc	0x00	0x00	0x00	0x00	0x00	0x00	0x00
+0xfec1:	0x05	0x00	0x00	0x00	0x06	0xcc	0xcc	0xcc
+0xfec9:	0xcc
+(m68hc11-elf-gdb) nexti
+(m68hc11-elf-gdb) x/8bx 0xfec6
+0xfec6:	0x00	0x00	0x00	0x00	0x00	0x00	0x00	0x05
+(m68hc11-elf-gdb)
+
+オリジナルの cc1 ではそもそも long long の演算を正しくできていないので, ここは保留しておく.
+
+
