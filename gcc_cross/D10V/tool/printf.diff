@@ -1,5 +1,5 @@
 *** gdb-10.2.org/sim/d10v/interp.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.d10v-elf/sim/d10v/interp.c	2022-02-26 18:57:37.000000000 +0900
+--- gdb-10.2.d10v-elf/sim/d10v/interp.c	2022-02-27 16:57:30.000000000 +0900
 ***************
 *** 23,28 ****
 --- 23,30 ----
@@ -137,10 +137,10 @@
 + {
 +   assert(nth);
 +   if (nth < 4)
-+     return GPR(nth);
++     return (short)GPR(nth);
 +   int sp = GPR(15);
 +   int addr = sp + 2 * (nth-4);
-+   return RW(addr);
++   return (short)RW(addr);
 + }
 + 
 + static int arg32(SIM_CPU* cpu, int nth)
