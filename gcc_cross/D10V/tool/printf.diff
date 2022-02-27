@@ -1,0 +1,368 @@
+*** gdb-10.2.org/sim/d10v/interp.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.d10v-elf/sim/d10v/interp.c	2022-02-26 18:57:37.000000000 +0900
+***************
+*** 23,28 ****
+--- 23,30 ----
+  #include <stdlib.h>
+  #endif
+  
++ #include <assert.h>
++ 
+  enum _leftright { LEFT_FIRST, RIGHT_FIRST };
+  
+  int d10v_debug;
+***************
+*** 705,711 ****
+    return phys_size;
+  }
+  
+! 
+  int
+  sim_write (SIM_DESC sd, SIM_ADDR addr, const unsigned char *buffer, int size)
+  {
+--- 707,713 ----
+    return phys_size;
+  }
+  
+! #if 0
+  int
+  sim_write (SIM_DESC sd, SIM_ADDR addr, const unsigned char *buffer, int size)
+  {
+***************
+*** 719,725 ****
+    /* FIXME: this should be performing a virtual transfer */
+    return xfer_mem (sd, addr, buffer, size, 0);
+  }
+! 
+  static sim_cia
+  d10v_pc_get (sim_cpu *cpu)
+  {
+--- 721,727 ----
+    /* FIXME: this should be performing a virtual transfer */
+    return xfer_mem (sd, addr, buffer, size, 0);
+  }
+! #endif
+  static sim_cia
+  d10v_pc_get (sim_cpu *cpu)
+  {
+***************
+*** 867,872 ****
+--- 869,875 ----
+  uint8 *
+  dmem_addr (SIM_DESC sd, SIM_CPU *cpu, uint16 offset)
+  {
++ #if 0  
+    unsigned long phys;
+    uint8 *mem;
+    int phys_size;
+***************
+*** 892,902 ****
+--- 895,909 ----
+      }
+  #endif
+    return mem;
++ #else
++   abort();
++ #endif  
+  }
+  
+  uint8 *
+  imem_addr (SIM_DESC sd, SIM_CPU *cpu, uint32 offset)
+  {
++ #if 0  
+    unsigned long phys;
+    uint8 *mem;
+    int phys_size = sim_d10v_translate_imap_addr (sd, cpu, offset, 1, &phys, NULL,
+***************
+*** 916,921 ****
+--- 923,1122 ----
+      }
+  #endif
+    return mem;
++ #else
++   abort();
++ #endif  
++ }
++ 
++ int g_cia;
++ 
++ const char* first_string(SIM_CPU* cpu)
++ {
++   uint32_t addr = GPR(0);
++   static char buf[1024];
++   for (int i = 0 ; i != sizeof buf ; ++i) {
++     char c = RB(addr+i);
++     buf[i] = c;
++     if (!c)
++       return &buf[0];  // OK
++   }
++   abort();
++ }
++ 
++ enum arg_class { NONE, WORD, LONG, LONG_LONG, DF, LDF, STR };
++ 
++ static const char* get_part(const char* fmt, enum arg_class* how)
++ {
++   for ( ; *fmt ; ++fmt) {
++     char c = *fmt;
++     if (c == 'd' || c == 'i' || c == 'x' || c == 'u') {
++       if (*how == NONE)
++ 	*how = WORD;
++       return ++fmt;
++     }
++     if (c == 'c') {
++       *how = WORD;
++       return ++fmt;
++     }
++     if (c == 'f') {
++       char prev = *(fmt-1);
++       *how = prev == 'L' ? LDF : DF;
++       return ++fmt;
++     }
++     if (c == 's') {
++       *how = STR;
++       return ++fmt;
++     }
++     if (c == 'l') {
++       if (*how == NONE)
++ 	*how = LONG;
++       else
++ 	*how = LONG_LONG;
++     }
++   }
++   abort(); // unexpected format
++ }
++ 
++ static int arg16(SIM_CPU* cpu, int nth)
++ {
++   assert(nth);
++   if (nth < 4)
++     return GPR(nth);
++   int sp = GPR(15);
++   int addr = sp + 2 * (nth-4);
++   return RW(addr);
++ }
++ 
++ static int arg32(SIM_CPU* cpu, int nth)
++ {
++   if (nth < 3) {
++     uint32_t hi = GPR(nth);
++     uint32_t lo = GPR(nth+1);
++     return (hi << 16) | lo;
++   }
++   
++   int sp = GPR(15);
++   int addr = sp + 2 * (nth-4);
++   uint32_t hi = RW(addr);
++   uint32_t lo = RW(addr+2);
++   return (hi << 16) | lo;
++ }
++ 
++ static uint64_t arg64(SIM_CPU* cpu, int nth)
++ {
++   int sp = GPR(15);
++   int addr = sp + 2 * (nth-4);
++   uint32_t a = RW(addr+0);
++   uint32_t b = RW(addr+2);
++   uint32_t c = RW(addr+4);
++   uint32_t d = RW(addr+6);
++   uint64_t hi = (a << 16) | b;
++   uint64_t lo = (c << 16) | d;
++   return (hi << 32) | lo;
++ }
++ 
++ static const char*
++ handle(SIM_CPU* cpu, const char* fmt, int* nth, int* ret)
++ {
++   char c = *fmt;
++   if (c != '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   const char* beg = fmt;
++   c = *++fmt;
++   if (c == '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   enum arg_class how = NONE;  
++   const char* end = get_part(fmt, &how);
++   char part_fmt[256];
++   int n = end - beg;
++   assert(n + 1 < sizeof part_fmt/sizeof part_fmt[0]);
++   strncpy(&part_fmt[0], beg, n);
++   part_fmt[n] = '\0';
++   if (how == WORD) {
++     int arg = arg16(cpu, (*nth)++);
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == LONG) {
++     if (*nth & 1)
++       ++*nth;
++     uint64_t arg = arg32(cpu, *nth);
++     *nth += 2;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == LONG_LONG) {
++     if (*nth & 1)
++       ++*nth;
++     if (*nth & 2)
++       *nth += 2;
++     uint64_t arg = arg64(cpu, *nth);
++     *nth += 4;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DF || how == LDF) {
++     if (*nth & 1)
++       ++*nth;
++     if (*nth & 2)
++       *nth += 2;
++     union {
++       uint64_t i;
++       double d;
++     } u = { arg64(cpu, *nth) };
++     *nth += 4;
++     if (how == DF)
++       *ret += printf(part_fmt, u.d);
++     else
++       *ret += printf(part_fmt, (long double)u.d);
++     return end;
++   }
++   if (how == STR) {
++     uint32_t addr = arg16(cpu, (*nth)++);
++     char buf[256];
++     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++       char c = RB(addr+i);
++       buf[i] = c;
++       if (c == '\0') {
++ 	*ret += printf(part_fmt, &buf[0]);  // ok
++ 	return end;
++       }
++     }
++     abort(); // not enough buffer
++     return end;
++   }
++   abort();  // unexpected format string
++   return end;
++ }
++ 
++ static void do_printf(SIM_CPU* cpu)
++ {
++   const char* fmt = first_string(cpu);
++   int nargc = 1;
++   int ret = 0;
++   while (*fmt)
++     fmt = handle(cpu, fmt, &nargc, &ret);
++   SET_GPR(0, ret);
++ }
++ 
++ static void do_puts(SIM_CPU* cpu)
++ {
++   const char* arg = first_string(cpu);
++   int ret = puts(arg);
++   SET_GPR(0, ret);
++ }
++ 
++ static void do_putchar(SIM_CPU* cpu)
++ {
++   int arg = GPR(0);
++   int ret = putchar(arg);
++   SET_GPR(0, ret);
+  }
+  
+  static void
+***************
+*** 926,935 ****
+  
+    /* TODO: Unindent this block.  */
+      {
+!       iaddr = imem_addr (sd, cpu, (uint32)PC << 2);
+!  
+!       inst = get_longword( iaddr ); 
+!  
+        State.pc_changed = 0;
+        ins_type_counters[ (int)INS_CYCLES ]++;
+        
+--- 1127,1142 ----
+  
+    /* TODO: Unindent this block.  */
+      {
+!     again:
+!       g_cia = PC << 2;
+!       inst = sim_core_read_aligned_4(cpu, g_cia, read_map, g_cia);
+!       switch (inst) {
+!       case 0xbadbeef0: exit(0);
+!       case 0xbadbeef1: do_printf(cpu);  State.cregs[2] += 1; goto again;
+!       case 0xbadbeef2: do_puts(cpu);    State.cregs[2] += 1; goto again;
+!       case 0xbadbeef3: do_putchar(cpu); State.cregs[2] += 1; goto again;
+!       }
+!       
+        State.pc_changed = 0;
+        ins_type_counters[ (int)INS_CYCLES ]++;
+        
+***************
+*** 1205,1210 ****
+--- 1412,1437 ----
+  d10v_reg_fetch (SIM_CPU *cpu, int rn, unsigned char *memory, int length)
+  {
+    SIM_DESC sd = CPU_STATE (cpu);
++   if (rn == 34) {
++ #if 0    
++     assert(length == 4);
++     uint32_t val = CREG (2);
++     val <<= 2;
++     memory[0] = val >> 24;
++     memory[1] = val >> 16;
++     memory[2] = val >> 8;
++     memory[3] = val;
++     return 4;
++ #else
++     assert(length == 2);
++     uint32_t val = CREG (2);
++     val <<= 2;
++     memory[0] = val >> 8;
++     memory[1] = val;
++     return 2;
++ #endif    
++   }
++   
+    int size;
+    switch ((enum sim_d10v_regs) rn)
+      {
+***************
+*** 1289,1294 ****
+--- 1516,1536 ----
+  d10v_reg_store (SIM_CPU *cpu, int rn, unsigned char *memory, int length)
+  {
+    SIM_DESC sd = CPU_STATE (cpu);
++   if (rn == 34) {
++ #if 0    
++     assert(length == 4);
++     uint32_t val = (memory[0] << 24) | (memory[1] << 16) |
++       (memory[2] << 8) | memory[3];
++     SET_CREG (2, val >> 2);
++     return 4;
++ #else
++     assert(length == 2);
++     uint16_t val = (memory[0] << 8) | memory[1];
++     SET_CREG (2, val >> 2);
++     return 2;
++ #endif    
++   }
++   
+    int size;
+    switch ((enum sim_d10v_regs) rn)
+      {
+***************
+*** 1367,1369 ****
+--- 1609,1613 ----
+    SLOT_FLUSH ();
+    return size;
+  }
++ 
++ struct _state State;
