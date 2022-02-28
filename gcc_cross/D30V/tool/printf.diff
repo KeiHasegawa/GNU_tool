@@ -1,0 +1,218 @@
+*** gdb-6.0.d30v-elf/sim/d30v/engine.c	2022-02-23 16:29:44.000000000 +0900
+--- gdb-10.2.d30v-elf/sim/d30v/engine.c	2022-02-28 13:49:12.000000000 +0900
+***************
+*** 332,339 ****
+--- 332,497 ----
+    return ((fm0 << 1) | fm1);
+  }
+  
++ #include <assert.h>
++ 
++ const char* first_string(SIM_DESC sd, sim_cpu* cpu, address_word cia)
++ {
++   uint32_t addr = GPR[2];
++   static char buf[1024];
++   for (int i = 0 ; i != sizeof buf ; ++i) {
++     char c = sim_core_read_aligned_1(cpu, cia, read_map, addr+i);
++     buf[i] = c;
++     if (!c)
++       return &buf[0];  // OK
++   }
++   abort();
++ }
++ 
++ enum arg_class { NONE, WORD, DWORD, DF, LDF, STR };
++ 
++ const char* get_part(const char* fmt, enum arg_class* how)
++ {
++   for ( ; *fmt ; ++fmt) {
++     char c = *fmt;
++     if (c == 'd' || c == 'i' || c == 'x' || c == 'u') {
++       if (*how == NONE)
++ 	*how = WORD;
++       return ++fmt;
++     }
++     if (c == 'c') {
++       *how = WORD;
++       return ++fmt;
++     }
++     if (c == 'f') {
++       char prev = *(fmt-1);
++       *how = prev == 'L' ? LDF : DF;
++       return ++fmt;
++     }
++     if (c == 's') {
++       *how = STR;
++       return ++fmt;
++     }
++     if (c == 'l') {
++       if (*how == NONE)
++ 	*how = WORD;
++       else
++ 	*how = DWORD;
++     }
++   }
++   abort(); // unexpected format
++ }
++ 
++ uint32_t arg32(SIM_DESC sd, SIM_CPU* cpu, address_word cia, int nth)
++ {
++   if (nth < 16)
++     return GPR[2+nth];
++   int sp = GPR[63];
++   int addr = sp + 4 * (nth-16);
++   return sim_core_read_aligned_4(cpu, cia, read_map, addr);
++ }
++ 
++ uint64_t arg64(SIM_DESC sd, SIM_CPU* cpu, address_word cia, int nth)
++ {
++   if (nth < 16) {
++     uint64_t hi = GPR[2+nth];
++     uint64_t lo = GPR[2+nth+1];
++     return (hi << 32) | lo;
++   }
++   
++   int sp = GPR[63];
++   int addr = sp + 4 * (nth-16);
++   uint64_t hi = sim_core_read_aligned_4(cpu, cia, read_map, addr);
++   uint64_t lo = sim_core_read_aligned_4(cpu, cia, read_map, addr+4);
++   return (hi << 32) | lo;
++ }
+  
+  
++ const char* handle(SIM_DESC sd, SIM_CPU* cpu, address_word cia,
++ 		   const char* fmt, int* nth, int* ret)
++ {
++   char c = *fmt;
++   if (c != '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   const char* beg = fmt;
++   c = *++fmt;
++   if (c == '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   enum arg_class how = NONE;  
++   const char* end = get_part(fmt, &how);
++   char part_fmt[256];
++   int n = end - beg;
++   assert(n + 1 < sizeof part_fmt/sizeof part_fmt[0]);
++   strncpy(&part_fmt[0], beg, n);
++   part_fmt[n] = '\0';
++   if (how == WORD) {
++     int arg = arg32(sd, cpu, cia, (*nth)++);
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DWORD) {
++     if (*nth & 1)
++       ++*nth;
++     uint64_t arg = arg64(sd, cpu, cia, *nth);
++     *nth += 2;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DF || how == LDF) {
++     if (*nth & 1)
++       ++*nth;
++     union {
++       uint64_t i;
++       double d;
++     } u = { arg64(sd, cpu, cia, *nth) };
++     *nth += 2;
++     if (how == DF)
++       *ret += printf(part_fmt, u.d);
++     else
++       *ret += printf(part_fmt, (long double)u.d);
++     return end;
++   }
++   if (how == STR) {
++     uint32_t addr = arg32(sd, cpu, cia, (*nth)++);
++     char buf[256];
++     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++       char c = sim_core_read_aligned_1(cpu, cia, read_map, addr+i);
++       buf[i] = c;
++       if (c == '\0') {
++ 	*ret += printf(part_fmt, &buf[0]);  // ok
++ 	return end;
++       }
++     }
++     abort(); // not enough buffer
++   }
++   abort();  // unexpected format string
++ }
++ 
++ void do_printf(SIM_DESC sd, sim_cpu* cpu, address_word cia)
++ {
++   const char* fmt = first_string(sd, cpu, cia);
++   int nargc = 1;
++   int ret = 0;
++   while (*fmt)
++     fmt = handle(sd, cpu, cia, fmt, &nargc, &ret);
++   GPR[2] = ret;
++ }
++ 
++ void do_puts(SIM_DESC sd, sim_cpu* cpu, address_word cia)
++ {
++   (void)sd; (void)cpu; (void)cia;
++ }
++ 
++ void do_putchar(SIM_DESC sd, sim_cpu* cpu, address_word cia)
++ {
++   (void)sd; (void)cpu; (void)cia;
++ }
++ 
+  void
+  sim_engine_run (SIM_DESC sd,
+  		int last_cpu_nr,
+***************
+*** 345,350 ****
+--- 503,529 ----
+        address_word cia = PC;
+        address_word nia;
+        l_instruction_word insn = IMEM(cia);
++ 
++       switch (insn >> 32) {
++       case 0x2f905e00:
++ 	sim_handle_breakpoint(sd, STATE_CPU (sd, 0), cia);
++ 	break;
++       case 0xbadbeef0:
++ 	exit(0);
++       case 0xbadbeef1:
++ 	do_printf(sd, STATE_CPU (sd, 0), cia);
++ 	PC = cia + 8;
++ 	continue;
++       case 0xbadbeef2:
++ 	do_puts(sd, STATE_CPU (sd, 0), cia);
++ 	PC = cia + 8;
++ 	continue;
++       case 0xbadbeef3:
++ 	do_putchar(sd, STATE_CPU (sd, 0), cia);
++ 	PC = cia + 8;
++ 	continue;
++       }
++       
+        int rp_was_set;
+        int rpt_c_was_nonzero;
+  
+***************
+*** 497,501 ****
+  
+  void sim_handle_breakpoint(SIM_DESC sd, sim_cpu *cpu, address_word cia)
+  {
+!   abort();
+  }
+--- 676,684 ----
+  
+  void sim_handle_breakpoint(SIM_DESC sd, sim_cpu *cpu, address_word cia)
+  {
+!   sim_engine_halt (sd, cpu, NULL, cia, sim_stopped, SIM_SIGTRAP);
+! }
+! 
+! int trace_one_insn()
+! {
+  }
