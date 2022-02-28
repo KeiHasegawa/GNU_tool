@@ -1,0 +1,54 @@
+typedef long long int T;
+
+T f(T a)
+{
+  return ~a;
+}
+
+現状上に対して期待したコードは生成できているがリンクでエラーになる.
+
+m68hc11-elf-ld -o a.elf /home/khasegawa/lang/53_GNU_tool/gcc_cross/M68HC11/tool/start.o a.o /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/m68hc11-elf/4.2.0/libgcc.a -T /home/khasegawa/lang/53_GNU_tool/gcc_cross/M68HC11/tool/sample.x
+m68hc11-elf-ld: a.o: in function `f':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/a.s:37: undefined reference to `___one_cmpldi2'
+exit 1
+
+オリジナルの cc1 はもはや参考にはならないかもしれないが一応調べてみた.
+
+	ldx	*_.frame
+	ldd	19,x
+	bsr	___notdi2
+
+なんだか違う函数を呼び出しているっぽい.
+
+(define_expand "one_cmpldi2"
+  [(set (match_operand:DI 0 "nonimmediate_operand" "")
+	(not:DI (match_operand:DI 1 "general_operand" "")))]
+  ""
+  "m68hc11_emit_libcall (\"___notdi2\", NOT, DImode, DImode, 2, operands);
+   DONE;")
+
+これは意図してそうしているらしい.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/libgcc/libgcc2.c
+
+を調べてみたが ___one_cmpldi2 も ___one_cmplsi2 もない.
+
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.m68hc11-elf/gcc/libgcc2.c
+
+を調べてみるが ___one_cmpldi2 も ___one_cmplsi2 もない.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-4.2.0.m68hc11-elf/gcc/libgcc2.c
+
+を調べてみるが ___one_cmpldi2 も ___one_cmplsi2 もない.
+
+何か勘違いしているらしい.
+
+libgcc2.c には ___one_cmpldi2 も ___one_cmplsi2 もないようだが
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.m68hc11-elf/gcc/libgcc/_one_cmplsi2.o
+
+はある.
+とりあえずオリジナルの cc1 を真似して ___notdi2 を呼び出してみたところ期待通り動作している.
+そういうものなのか.
+
