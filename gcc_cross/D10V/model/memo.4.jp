@@ -1,0 +1,55 @@
+mulsi3 の実装. => m68hc11 を真似すればライブラリ函数コールにするのが良さそう.
+
+現状
+
+k.c:5:12: internal compiler error: in default_libcall_value, at targhooks.c:974
+    5 |   return a * b;
+      |          ~~^~~
+
+のようにエラーしている. これはマクロ LIBCALL_VALUE を define していないためのエラー.
+しかし今回はマクロを定義しないで
+
+rtx
+d10v_libcall_value (machine_mode mode ATTRIBUTE_UNUSED,
+  	 	    const_rtx fun ATTRIBUTE_UNUSED)
+{
+
+を定義する.
+
+#undef TARGET_LIBCALL_VALUE
+#define TARGET_LIBCALL_VALUE d10v_libcall_value
+
+現状ランタイムライブラリがないので int32 * int32 の正常動作の確認はできない.
+これは保留. 同様に int32 / int32, int32 % int32 も生成ルーチンのみ実装.
+
+ashlsi3, ashrsi3 を実装中.
+
+r0:HI=trunc([r14:HI+0x4])
+
+が生成されている.
+
+d10v.md から以下を削除
+; int16 <- int32
+; not absolutely necessary
+(define_insn "truncsihi2"
+  [(set (match_operand:HI 0 "nonimmediate_operand" "")
+        (truncate:HI (match_operand:SI 1 "general_operand" "")))]
+  ""
+  "%0 := (trunc)%1")
+
+m68hc11 の以下のようにしなかったのは sizeof(int) = 4 だから第 2 オペランドが
+HI なのはまずいのかも.
+
+(define_expand "ashlsi3"
+  [(set
+    (match_operand:SI 0 "nonimmediate_operand" "")
+    (ashift:SI
+     (match_operand:SI 1 "general_operand" "")
+     (match_operand:HI 2 "general_operand" "")))]
+  ""
+  "d10v_emit_libcall(\"__ashlsi3\", operands[0], operands[1], operands[2]);
+   DONE;")
+
+これを試してみた.
+期待通りのコードが生成されている. やはり現状は動作確認ができないので, ここで保留.
+__ashrsi3 に対しても同様に対処.
