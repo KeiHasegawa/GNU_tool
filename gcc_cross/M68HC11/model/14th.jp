@@ -1,0 +1,47 @@
+これまで函数の戻り値を x レジスタにするとしてきた.
+しかし以下のように必ず d レジスタにするとして問題なさそう:
+
+#define CHANGE_FUNCTION_VALUE
+
+rtx m68hc11_function_value(const_tree ret_type, const_tree fun, bool)
+{
+#ifdef CHANGE_FUNCTION_VALUE
+  (void)fun;
+  auto mode = TYPE_MODE(ret_type);
+  return gen_rtx_REG(mode, D_REGNUM);
+#else
+  (void)fun;
+  auto mode = TYPE_MODE(ret_type);
+  if (mode == BLKmode)
+    return gen_rtx_REG(mode, D_REGNUM);
+  
+  auto size = GET_MODE_SIZE(mode);
+  if (size == 4)
+    return gen_rtx_REG(mode, X_REGNUM);
+
+  if (size == 8)
+    return gen_rtx_MEM(mode, gen_rtx_REG(Pmode, D_REGNUM));
+  
+  if (size <= 2)
+    return gen_rtx_REG(mode, D_REGNUM);
+
+  abort();
+#endif  
+}
+
+int32 の戻り値はこれまで通り下位 16 ビットを d に 上位 16 ビットを x にセット
+するようにする. ここだけリトルエンデァンっぽいが一応辻褄は合っているはず.
+
+このマクロで切り換える.
+
+2022.03.01 8:45 zall でレベルダウンのないことを確認した.
+
+さらに
+
+#ifndef CHANGE_FUNCTION_VALUE  
+  if (x2d(x, y) || d2x(x, y))
+    return "";
+#endif  
+
+の修正を入れたところ j.c でレベルダウンしている. これ以外は pass している.
+ここは今回修正しないでおく.
