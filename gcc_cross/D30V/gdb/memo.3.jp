@@ -1,0 +1,90 @@
+avr-elg-gdb で
+
+~/lang/53_GNU_tool/gcc_cross/AVR/test/test002/test.elf
+
+を動かしたときの動作について調べてみた.
+d30v-elf-gdb で .stab を生成するコンパイラが生成した似たようなプログラムで
+where コマンドを実行したとき
+
+(d30v-elf-gdb) where
+#0  f (a=5, b=6) at test.c:3
+#1  0x00000190 in main () at test.c:8
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+(d30v-elf-gdb)
+
+のようになるが avr-elf-gdb ではできている.
+
+~/lang/53_GNU_tool/gcc_cross/AVR/test/test002/test.objdump
+
+からすると
+
+start:
+	addr = 0x00, sp = 0xfffe
+
+
+main:
+	addr = 0x5c, sp = 0xfffe
+	             (プロローグ後 0xfffe-4=0xffa)
+
+f:
+	addr = 0x2e, sp = 0xfffa
+	             (プロローグ後 0xffa-8=0xff2)
+
+になっている.
+
+(gdb) b stack.c:2116
+(gdb) run
+...
+stack.c:2116 のブレークポイントにヒット
+
+	  reason = get_frame_unwind_stop_reason (trailing);
+
+
+(gdb) p *trailing
+$2 = {level = 1, pspace = 0x8b286d0, aspace = 0x8b28b78, 
+  prologue_cache = 0x8ae2118, unwind = 0x8652ae0 <avr_frame_unwind>, 
+  prev_arch = {p = false, arch = 0x0}, prev_pc = {status = CC_UNKNOWN, 
+    masked = false, value = 0}, prev_func = {addr = 0, status = CC_UNKNOWN}, 
+  this_id = {p = frame_id_status::COMPUTED, value = {stack_addr = 8453886, 
+      code_addr = 92, special_addr = 0, stack_status = FID_STACK_VALID, 
+      code_addr_p = 1, special_addr_p = 0, artificial_depth = 0}}, 
+  base = 0x0, base_cache = 0x0, next = 0x8ae1e5c, prev_p = false, prev = 0x0, 
+  stop_reason = UNWIND_NO_REASON, stop_string = 0x0}
+(gdb) n
+(gdb) p *trailing
+$3 = {level = 1, pspace = 0x8b286d0, aspace = 0x8b28b78, 
+  prologue_cache = 0x8ae2118, unwind = 0x8652ae0 <avr_frame_unwind>, 
+  prev_arch = {p = true, arch = 0x8b2b038}, prev_pc = {status = CC_VALUE, 
+    masked = false, value = 38}, prev_func = {addr = 28, status = CC_VALUE}, 
+  this_id = {p = frame_id_status::COMPUTED, value = {stack_addr = 8453886, 
+      code_addr = 92, special_addr = 0, stack_status = FID_STACK_VALID, 
+      code_addr_p = 1, special_addr_p = 0, artificial_depth = 0}}, 
+  base = 0x0, base_cache = 0x0, next = 0x8ae1e5c, prev_p = true, 
+  prev = 0x8ae22e4, stop_reason = UNWIND_NO_REASON, stop_string = 0x0}
+(gdb) p reason
+$4 = UNWIND_NO_REASON
+(gdb)
+
+期待通り動いている.
+
+
+(gdb) p/x 92
+$5 = 0x5c              main のアドレス
+(gdb) p/x 8453886
+$6 = 0x80fefe          0x800000 は SRAM の先頭アドレス 0x80fffe になるかと思ったが...
+(gdb)
+
+stack_addr メンバの値が違っているようにも思える. とりあえずここはスルーしておく.
+
+(gdb) b avr-tdep.c:1115
+(gdb) command
+>p/x id
+>c
+>end
+(gdb) run
+
+のようにしてみたところ作られているスタック ID は以下の 3 つ.
+
+(0x80fefa, 0x2e)
+(0x80fefe, 0x5c)
+(0x80ff00, 0x1c)
