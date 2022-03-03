@@ -514,5 +514,61 @@ d30v_frame_this_id(frame_info* frame, void** ptr, frame_id* id)
 
 のいずれかになったが, エラーメッセージはまだ出ている. ここだけが問題なのではないらしい.
 
-現状 d30v-tdep.c に期待する返却値を即値で書いて期待通り動作している.
-この時点での d30v-tdep.c を
+現状 d30v-tdep.c に期待する返却値を即値で書いて期待通り動作している. 以下は抜粋:
+
+static void
+d30v_frame_this_id(frame_info* frame, void** ptr, frame_id* id)
+{
+#if 0  
+  auto pf = reinterpret_cast<d30v_frame*>(*ptr);
+  if (!pf)
+    *ptr = pf = d30v_frame_create(frame);
+  
+  if (!pf->available)
+    *id = frame_id_build_unavailable_stack(pf->prologue.start);
+  else
+    *id = frame_id_build(pf->prev_sp, pf->prologue.start);
+#else
+  static int n;  
+  auto pc = get_frame_pc(frame);
+  switch (++n) {
+  case 1:
+    assert(pc == 0x180);
+    *id = frame_id_build(0x1000, 0x160);   これ
+    return;
+...
+static value*
+d30v_frame_prev_register(frame_info* frame, void** ptr, int regno)
+{
+  if (regno == sp_regno) {
+    auto sp = get_frame_sp(frame);
+    return frame_unwind_got_constant(frame, regno, sp);
+  }
+
+  if (regno == pc_regno) {
+#if 0    
+    auto lr = frame_unwind_register_unsigned(frame, 62);
+    return frame_unwind_got_constant(frame, regno, lr);
+#else
+    auto pc = get_frame_pc(frame);    
+    static int n;
+    switch (++n) {
+    case 1:
+      assert(pc == 0x120);
+      return frame_unwind_got_constant(frame, regno, 0x190);  これ
+...
+static CORE_ADDR
+d30v_frame_base_address(frame_info* frame, void **ptr)
+{
+#if 0  
+  return get_frame_sp(frame);
+#else
+  static int n;
+  auto pc = get_frame_pc(frame); 
+  switch (++n) {
+  case 1: case 2: case 3: case 4:
+    assert(pc == 0x138);                  これ
+    return 0x0fe8;
+...
+この時点での d30v-tdep.c を d30v-tdep.c.000 としてアップロードしておく.
+不透明だったこの部分だが, 最初に期待値を作成しておくほうが見通しがよい.
