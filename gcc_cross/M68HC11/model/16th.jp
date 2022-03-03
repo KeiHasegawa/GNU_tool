@@ -1,0 +1,77 @@
+現状型変換
+
+int -> float
+int -> double
+
+ができている.
+
+
+#include <stdio.h>
+
+signed char f(int a)
+{
+  return a;
+}
+
+int main()
+{
+  printf("hello world '%c'\n", f('a' << 8 | 'b'));
+  return 0;
+}
+
+をコンパイルすると現状
+
+f:
+...
+	d := (trunc)(mem/c:SI (plus:HI (reg/f:HI 9 *_.frame)
+        (const_int 1 [0x1])) [1 a+0 S4 A8])
+
+main:
+...
+	d := (sign)d
+
+が出ている. そこで
+
+; int8 <- int32
+; not absolutely necessary
+(define_insn "truncsiqi2"
+  [(set (match_operand:QI 0 "nonimmediate_operand" "")
+        (truncate:QI (match_operand:SI 1 "general_operand" "")))]
+  ""
+  "%0 := (trunc)%1")
+
+を削除してみた. これでもやはり上のコードは出ている. 削除するべきだったのは
+
+; int8 <- int16
+; not absolutely necessary
+(define_insn "trunchiqi2"
+  [(set (match_operand:QI 0 "nonimmediate_operand" "")
+        (truncate:QI (match_operand:HI 1 "general_operand" "")))]
+  ""
+  "%0 := (trunc)%1")
+
+のほうだった. int8 <- int32 もこの機会に削除したままにしておく. これでもう一度トライ.
+
+2022.03.03 7:15
+現状上の対処を行なって f の trunc の rtx_insn は解消された.
+オリジナルの cc1 では
+
+main
+...
+	bsr	f
+	ldx	#0
+	clra
+	tstb
+	bpl	.L4
+	deca
+	dex
+.L4:
+	pshb
+	psha
+	pshx
+	ldd	#.LC0
+	bsr	printf
+
+のようなコードを生成している. これを真似して自前の cc1 でも限定的ではあるが
+int32 <- int8 の変換をできるようにした.
+
