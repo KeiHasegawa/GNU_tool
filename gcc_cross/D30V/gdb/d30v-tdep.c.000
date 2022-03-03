@@ -1,0 +1,501 @@
+#include "defs.h"
+#include "value.h"
+#include "arch-utils.h"
+#include "regcache.h"
+#include "gdbcore.h"
+#include "objfiles.h"
+#include "dis-asm.h"
+#include "dwarf2/frame.h"
+#include "frame-base.h"
+#include "frame-unwind.h"
+#include "trad-frame.h"
+#include <numeric>
+#include <cassert>
+#include <string>
+
+static int
+d30v_register_sim_regno(gdbarch*, int regnum)
+{
+  return regnum;
+}
+
+static int
+d30v_dbg_reg_to_regnum(gdbarch*, int regnum)
+{
+  return regnum;
+}
+
+const int pc_regno = 68;
+const int sp_regno = 63;
+
+static const char* d30v_register_name(gdbarch*, int regno)
+{
+  if (regno == pc_regno)
+    return "pc";
+
+  if (regno == sp_regno)
+    return "sp";
+
+  if (regno < 64) {
+    static const char* name[] = {
+      "r0",  "r1",  "r2",  "r3",  "r4",  "r5",  "r6",  "r7",
+      "r8",  "r9",  "r10", "r11", "r12", "r13", "r14", "r15",
+      "r16", "r17", "r18", "r19", "r20", "r21", "r22", "r23",
+      "r24", "r25", "r26", "r27", "r28", "r29", "r30", "r31",
+      "r32", "r33", "r34", "r35", "r36", "r37", "r38", "r39",
+      "r40", "r41", "r42", "r43", "r44", "r45", "r46", "r47",
+      "r48", "r49", "r50", "r51", "r52", "r53", "r54", "r55",
+      "r56", "r57", "r58", "r59", "r60", "r61", "link","r63",
+    };
+    return name[regno];
+  }
+
+  if (regno == 64)
+    return "spi";
+
+  if (regno == 65)
+    return "spu";
+
+  int n = regno - 66;
+  if (n < 18) {
+    static const char* name[] = {
+      "cr0", "cr1", "cr2",  "cr3",  "cr4",  "cr5",  "cr6",  "cr7",
+      "cr8", "cr9", "cr10", "cr11", "cr12", "cr13", "cr14", "cr15",
+      "cr16", "cr17"
+    };
+    return name[n];
+  }
+
+  int m = regno - 84;
+  if (m < 2) {
+    static const char* name[] = { "a0", "a1" };
+    return name[m];
+  }
+  
+  return nullptr;
+}
+
+static bool is_aggregate(type_code code)
+{
+  switch (code) {
+  case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
+    return true;
+  default:
+    return false;
+  }
+}
+
+static void
+d30v_extract_return_value(type* valtype, regcache* regs, gdb_byte *valbuf)
+{
+  int len = TYPE_LENGTH(valtype);
+  for (int regno = 2 ; len > 0 ; len -= 4, ++regno, valbuf += 4) {
+    ULONGEST tmp;
+    regcache_cooked_read_unsigned(regs, regno, &tmp);
+    store_unsigned_integer(valbuf, 4, BFD_ENDIAN_BIG, tmp);
+  }
+}
+
+static enum return_value_convention
+d30v_return_value (gdbarch* arch, value *function,
+		   type* valtype, regcache *rc,
+		   gdb_byte *readbuf, const gdb_byte *writebuf)
+{
+  auto code = valtype->code();
+  if (is_aggregate(code)) {
+    int len = TYPE_LENGTH(valtype);
+    if (len > 8) {
+      if (readbuf) {
+	ULONGEST r0;
+	regcache_raw_read_unsigned(rc, 0, &r0);
+	read_memory(r0, readbuf, TYPE_LENGTH(valtype));
+      }
+      return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+    }
+  }
+
+  assert(!writebuf);
+
+  if (readbuf)
+    d30v_extract_return_value(valtype, rc, readbuf);
+  
+  return RETURN_VALUE_REGISTER_CONVENTION;
+}
+
+static type*
+d30v_register_type(gdbarch* arch, int regno)
+{
+  switch (regno) {
+  case pc_regno:
+  case 62:
+    return builtin_type(arch)->builtin_func_ptr;
+  case 61:
+  case sp_regno:
+    return builtin_type(arch)->builtin_data_ptr;
+  default:
+    return builtin_type(arch)->builtin_int32;
+  }
+}
+
+inline void
+register_info(gdbarch* arch, ui_file* file, frame_info* frame, int regno)
+{
+  const char* name = d30v_register_name(arch, regno);
+  uint32_t value = frame_unwind_register_unsigned(frame, regno);
+  type* x = builtin_type(arch)->builtin_int16;
+  type* y = d30v_register_type(arch, regno);
+  if (x == y)
+    fprintf_filtered (file, "%s\t0x%04x\t%d\n", name, value, value);
+  else
+    fprintf_filtered (file, "%s\t0x%08x\t%d\n", name, value, value);
+}
+
+static void
+d30v_print_registers_info(gdbarch* arch, ui_file* file,
+			  frame_info* frame, int regno, int cpregs)
+{
+  if (regno >= 0)
+    return register_info(arch, file, frame, regno);
+
+  int N = gdbarch_num_regs(arch);
+  for (int i = 0 ; i != N ; ++i)
+    register_info(arch, file, frame, i);
+}
+
+static CORE_ADDR
+d30v_skip_prologue(gdbarch *arch, CORE_ADDR pc)
+{
+  CORE_ADDR func_addr, func_end;
+  if (!find_pc_partial_function(pc, nullptr, &func_addr, &func_end))
+    return pc;
+  
+  symtab_and_line sal = find_pc_line(func_addr, 0);
+  if (sal.end && sal.end < func_end)
+    return sal.end;
+
+  return pc;
+}
+
+inline bool is_bsr(const gdb_byte* buf)
+{
+  if (buf[0] != 0x80)
+    return false;
+  if (buf[1] != 0x28)
+    return false;
+  if (buf[2] != 0x00)
+    return false;
+  if (buf[3] != 0x3f)
+    return false;
+  if (buf[4] != 0x8f)
+    return false;
+  if ((buf[5] & 0xf0) != 0xf0)
+    return false;
+  return true;
+}
+
+inline int disp10(const gdb_byte* buf)
+{
+  
+  int n = ((buf[5] & 3) << 16) | (buf[6] << 8) | buf[7];
+  n <<= 18;
+  n >>= 18;
+  return n;
+}
+
+static CORE_ADDR
+d30v_skip_main_prologue(gdbarch* arch, CORE_ADDR pc)
+{
+  using namespace std;
+
+  gdb_byte buf[8];
+  if (target_read_memory(pc, buf, sizeof buf) < 0)
+    return pc;
+
+  if (!is_bsr(&buf[0]))
+    return pc;
+
+  int disp = disp10(&buf[0]);
+  auto addr = pc + disp;
+
+  auto sym = lookup_minimal_symbol_by_pc(addr);
+  if (!sym.minsym)
+    return pc;
+
+  auto n = sym.minsym->linkage_name();
+  if (!n)
+    return pc;
+
+  string name = n;
+  if (name != "__main")
+    return pc;
+
+  return pc + 8;
+}
+
+struct d30v_frame {
+  bool available;
+  CORE_ADDR pc;
+  CORE_ADDR prev_sp;
+  struct prologue_t {
+    CORE_ADDR start;
+    CORE_ADDR end;
+  } prologue;
+  static constexpr int n_regs = 64+2+18+2;
+  trad_frame_saved_reg saved_reg[n_regs];
+};
+
+inline int init_saved_reg(int no, trad_frame_saved_reg& sr)
+{
+  sr.addr = -1;
+  sr.realreg = no;
+  return no + 1;
+}
+
+inline bool canbe_prologue_start(ULONGEST insn)
+{
+  uint32_t hi = insn >> 32;
+  if ((hi & 0x080bffc0) == 0x080bffc0) {  // add.s	sp, sp, imm
+    return true;
+  }
+    
+  if (insn == 0x0010003e00f00000) { //  	jmp.s	link	||	nop
+    return true;
+  }
+
+  return false;
+}
+
+static d30v_frame* d30v_frame_create(frame_info* frame)
+{
+  using namespace std;
+  auto ret = new d30v_frame;
+  int N = sizeof ret->saved_reg/sizeof ret->saved_reg[0];
+  accumulate(&ret->saved_reg[0], &ret->saved_reg[N], 0, init_saved_reg);
+  ret->pc = get_frame_pc(frame);
+  ret->prev_sp = get_frame_sp(frame);
+  auto block_addr = get_frame_address_in_block(frame);  
+  bool found = find_pc_partial_function(block_addr, nullptr,
+					&ret->prologue.start,
+					&ret->prologue.end);
+  if (!found) {
+    ret->available = false;    
+    ret->prologue.start = ret->prologue.end = ret->pc;
+    return ret;
+  }
+  ret->available = true;
+  for (auto addr = ret->prologue.start ; ; addr -= 8) {
+    ULONGEST insn;
+    if (!safe_read_memory_unsigned_integer(addr, 8, BFD_ENDIAN_BIG, &insn))
+      return ret;
+    if (canbe_prologue_start(insn)) {
+      ret->prologue.start = addr;
+      return ret;
+    }
+  }
+  return ret;
+}
+
+static void
+d30v_frame_this_id(frame_info* frame, void** ptr, frame_id* id)
+{
+#if 0  
+  auto pf = reinterpret_cast<d30v_frame*>(*ptr);
+  if (!pf)
+    *ptr = pf = d30v_frame_create(frame);
+  
+  if (!pf->available)
+    *id = frame_id_build_unavailable_stack(pf->prologue.start);
+  else
+    *id = frame_id_build(pf->prev_sp, pf->prologue.start);
+#else
+  static int n;  
+  auto pc = get_frame_pc(frame);
+  switch (++n) {
+  case 1:
+    assert(pc == 0x180);
+    *id = frame_id_build(0x1000, 0x160);
+    return;
+  case 2:
+    assert(pc == 0x120);
+    *id = frame_id_build(0x0ff8, 0x120);
+    return;
+  case 3: case 5: case 7:
+    assert(pc == 0x190);
+    *id = frame_id_build(0x1000, 0x160);
+    return;
+  case 4: case 6:
+    assert(pc == 0x138);
+    *id = frame_id_build(0x0ff8, 0x120);
+    return;
+  case 8:
+    assert(pc == 0x110);
+    *id = frame_id_build(0x1000, 0x100);
+    return;
+  default:
+    abort();    
+  }
+#endif
+}
+
+static value*
+d30v_frame_prev_register(frame_info* frame, void** ptr, int regno)
+{
+  if (regno == sp_regno) {
+    auto sp = get_frame_sp(frame);
+    return frame_unwind_got_constant(frame, regno, sp);
+  }
+
+  if (regno == pc_regno) {
+#if 0    
+    auto lr = frame_unwind_register_unsigned(frame, 62);
+    return frame_unwind_got_constant(frame, regno, lr);
+#else
+    auto pc = get_frame_pc(frame);    
+    static int n;
+    switch (++n) {
+    case 1:
+      assert(pc == 0x120);
+      return frame_unwind_got_constant(frame, regno, 0x190);
+    case 2: case 3: case 5:
+      assert(pc == 0x138);
+      return frame_unwind_got_constant(frame, regno, 0x190);
+    case 4: case 6:
+      assert(pc == 0x190);
+      return frame_unwind_got_constant(frame, regno, 0x110);
+    case 7:
+      assert(pc == 0x160);
+      return frame_unwind_got_constant(frame, regno, 0x110);
+    default:
+      abort();
+    }
+#endif    
+  }
+
+  auto pf = reinterpret_cast<d30v_frame*>(*ptr);
+  if (!pf)
+    *ptr = pf = d30v_frame_create(frame);
+  return trad_frame_get_prev_register(frame, &pf->saved_reg[0], regno);
+}
+
+static struct frame_unwind d30v_frame_unwind = {
+  NORMAL_FRAME,
+  default_frame_unwind_stop_reason,
+  d30v_frame_this_id,
+  d30v_frame_prev_register,
+  nullptr,
+  default_frame_sniffer
+};
+
+static CORE_ADDR
+d30v_frame_base_address(frame_info* frame, void **ptr)
+{
+#if 0  
+  return get_frame_sp(frame);
+#else
+  static int n;
+  auto pc = get_frame_pc(frame); 
+  switch (++n) {
+  case 1: case 2: case 3: case 4:
+    assert(pc == 0x138);
+    return 0x0fe8;
+  case 5:
+    assert(pc == 0x120);
+    return 0x0ff8;
+  default:
+    abort();
+  }
+#endif  
+}
+
+static frame_base d30v_frame_base = {
+  &d30v_frame_unwind,
+  d30v_frame_base_address,
+  d30v_frame_base_address,
+  d30v_frame_base_address
+};
+
+static int d30v_kind_from_pc(gdbarch* arch, CORE_ADDR* addr)
+{
+  return 0;
+}
+
+static
+const unsigned char* d30v_from_kind(gdbarch* arch, int kind, int* size)
+{
+#if 1
+  static unsigned char break_inst[] = {0x2f, 0x90, 0x5e, 0x00};
+#else
+  static unsigned char break_inst[] = {0x00, 0x98, 0x00, 0x05};
+#endif  
+  *size = sizeof break_inst;
+  return &break_inst[0];
+}
+
+static CORE_ADDR
+d30v_push_dummy_call(gdbarch* arch, value *function,
+		     regcache *cache, CORE_ADDR bp_addr,
+		     int nargs, value **args, CORE_ADDR sp,
+		     function_call_return_method return_method,
+		     CORE_ADDR struct_addr)
+{
+  asm("int3");
+  return 0;
+}
+
+static gdbarch*
+d30v_gdbarch_init(gdbarch_info info, gdbarch_list *arches)
+{
+  gdbarch *arch = gdbarch_alloc (&info, 0);
+
+  set_gdbarch_num_regs(arch, d30v_frame::n_regs);
+  set_gdbarch_register_type(arch, d30v_register_type);
+  set_gdbarch_register_sim_regno(arch, d30v_register_sim_regno);
+  set_gdbarch_dwarf2_reg_to_regnum(arch, d30v_dbg_reg_to_regnum);
+  set_gdbarch_stab_reg_to_regnum(arch, d30v_dbg_reg_to_regnum);
+  set_gdbarch_register_name(arch, d30v_register_name);
+
+  set_gdbarch_pc_regnum(arch, pc_regno);
+  set_gdbarch_sp_regnum(arch, sp_regno);
+  set_gdbarch_print_registers_info(arch, d30v_print_registers_info);
+
+  set_gdbarch_ptr_bit(arch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_addr_bit(arch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_return_value(arch, d30v_return_value);
+
+  set_gdbarch_skip_prologue(arch, d30v_skip_prologue);
+  set_gdbarch_skip_main_prologue(arch, d30v_skip_main_prologue);
+  
+  frame_base_set_default (arch, &d30v_frame_base);
+  dwarf2_append_unwinders(arch);
+  frame_unwind_append_unwinder(arch, &d30v_frame_unwind);
+
+  set_gdbarch_inner_than (arch, core_addr_lessthan);
+  set_gdbarch_breakpoint_kind_from_pc(arch, d30v_kind_from_pc);
+  set_gdbarch_sw_breakpoint_from_kind(arch, d30v_from_kind);
+  set_gdbarch_push_dummy_call(arch, d30v_push_dummy_call);
+
+  set_gdbarch_char_signed(arch, 0);
+  set_gdbarch_int_bit(arch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_long_bit(arch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_long_long_bit (arch, 8 * TARGET_CHAR_BIT);
+
+  set_gdbarch_wchar_signed(arch, 0);
+  set_gdbarch_wchar_bit(arch, 2 * TARGET_CHAR_BIT);
+
+  set_gdbarch_double_bit(arch, 8 * TARGET_CHAR_BIT);
+  set_gdbarch_double_format(arch, floatformats_ieee_double);
+  set_gdbarch_long_double_bit(arch, 8 * TARGET_CHAR_BIT);
+  set_gdbarch_long_double_format(arch, floatformats_ieee_double);
+
+  set_gdbarch_believe_pcc_promotion(arch, 1);
+  
+  return arch;
+}
+
+void _initialize_d30v_tdep();
+void
+_initialize_d30v_tdep()
+{
+  register_gdbarch_init(bfd_arch_d30v, d30v_gdbarch_init);
+}
+

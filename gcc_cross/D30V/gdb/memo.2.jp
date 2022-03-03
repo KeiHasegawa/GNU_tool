@@ -1,0 +1,518 @@
+現状
+
+~/lang/53_GNU_tool/gcc_cross/D30V/test/test003/test.elf
+
+を gdb で動作させると
+
+main のブレークポイントでプロローグを適切にスキップできていない.
+また main から f にステップインすると
+
+static CORE_ADDR
+d30v_frame_base_address(frame_info *this_frame, void **this_cache)
+{
+  asm("int3");
+  return 0;
+}
+
+が呼び出されている.
+
+d30v-elf-gcc が生成しているデバッグ情報には .debug_frame がなくて
+.stab があるものになっている:
+
+Idx Name          Size      VMA       LMA       File off  Algn
+  0 .text         000000a0  00000100  00000100  00000100  2**3
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+  1 .debug_line   0000003d  00000000  00000000  000001a0  2**0
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+  2 .debug_info   00000026  00000000  00000000  000001dd  2**0
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+  3 .debug_abbrev 00000014  00000000  00000000  00000203  2**0
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+  4 .debug_aranges 00000020  00000000  00000000  00000218  2**3
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+  5 .debug_str    00000058  00000000  00000000  00000238  2**0
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+  6 .stab         000001d4  00000000  00000000  00000290  2**2
+                  CONTENTS, READONLY, DEBUGGING
+  7 .stabstr      0000043a  00000000  00000000  00000464  2**0
+                  CONTENTS, READONLY, DEBUGGING
+  8 .comment      00000012  00000000  00000000  0000089e  2**0
+                  CONTENTS, READONLY
+...
+int f (int a /* 0x0 */, int b /* 0x4 */)
+{ /* 0x120 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/D30V/test/test003/test.c line 2 addr 0x120 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/D30V/test/test003/test.c line 3 addr 0x138 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/D30V/test/test003/test.c line 4 addr 0x148 */
+} /* 0x160 */
+int main ()
+{ /* 0x160 */
+
+d30v-elf-gcc の実装は
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.d30v-elf/gcc/config/d30v/d30v.h
+
+#define	PREFERRED_DEBUGGING_TYPE DBX_DEBUG
+
+となっているからこれは AVR のコンパイラと同じ路線を取っているということ.
+
+ところで自前で開発した cr16-tdep.c などは現状以下のようになっている:
+
+static frame_base cr16_frame_base = {
+  nullptr
+};
+
+この変数のメンバに当初指定していた
+
+static CORE_ADDR
+cr16_frame_base_address(frame_info *this_frame, void **this_cache)
+{
+  asm("int3");
+  return 0;
+}
+
+などが呼び出されることはなかったが, これはコンパイラで .debug_frame を生成していた
+からで .stab を生成していたならば呼び出されていたとうこと.
+
+ところで main のプロローグがスキップされていない件を調べてみた
+
+~/lang/53_GNU_tool/gcc_cross/D30V/test/test003/test.objdump:
+
+00000160 <main>:
+ 160:	080bfff8 88096fc0 	add.s	sp, sp, -0x8	->	add.s	r22, sp, 0x0
+ 168:	0547d580 8547e580 	stw.s	r61, @(r22+, r0)	->	stw.s	r62, @(r22+, r0)
+ 170:	03a3d03f 00f00000 	or.s	r61, r0, sp	||	nop	
+ 178:	8028003f 8ff3ffa0 	bsr.l	-60	(118 <__main>)
+ 180:	03a82005 83a83006 	or.s	r2, r0, 0x5	->	or.s	r3, r0, 0x6
+ 188:	002bfff3 00f00000 	bsr.s	-68	(120 <f>)	||	nop	
+ 190:	03a3f03d 8447dfc0 	or.s	sp, r0, r61	->	ldw.s	r61, @(sp+, r0)
+ 198:	0447efc0 8010003e 	ldw.s	r62, @(sp+, r0)	->	jmp.s	r62
+
+(gdb) b d30v_skip_prologue
+(gdb) run
+...
+d30v_skip_prologue のブレークポイントにヒット pc = 0x160
+(gdb) 
+
+  if (sal.end && sal.end < func_end)
+    return sal.end;                    ここで 0x178 を返している
+
+0x180 を返すのが期待値だが __main の呼び出しの部分をスキップできていない.
+__main を呼び出すコンパイラは例えば FR-V などがあったが main 函数の
+プロローグは適切にスキップできていた. どこに問題があるかは不明だが, おそらく cc1 の
+生成しているデバッグ情報におそらく問題がある. と思ったが
+
+int main ()
+{ /* 0x160 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/D30V/test/test003/test.c line 7 addr 0x160 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/D30V/test/test003/test.c line 7 addr 0x178 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/D30V/test/test003/test.c line 8 addr 0x180 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/D30V/test/test003/test.c line 9 addr 0x190 */
+} /* 0x1a0 */
+
+8 行目は 0x180 なのでこれはできている. だとすればこれは gdb 側が自力でここをスキップしなくては
+ならないということなのだろうか. それはそれで面倒だと思いながら frv-tdep.c を覗いてみた:
+
+static CORE_ADDR
+frv_skip_main_prologue (struct gdbarch *gdbarch, CORE_ADDR pc)
+{
+...
+
+  set_gdbarch_skip_main_prologue (gdbarch, frv_skip_main_prologue);
+
+通常のプロローグをスキップする函数に続いてこの函数が呼び出されている. ここを参考にすれば良さそう.
+
+2022.03.01 13:26 main 函数で適切にプロローグをスキップできるようになった.
+
+f にステップインしたときに
+
+static CORE_ADDR
+d30v_frame_base_address(frame_info* frame, void **ptr)
+{
+
+が呼び出されている. この函数で何をやるのが期待されているのかサッパりだが,
+
+(gdb) p/x *frame
+$43 = {level = 0x0, pspace = 0x8b52668, aspace = 0x8b52b10, 
+  prologue_cache = 0x8bd1898, unwind = 0x8a31520, prev_arch = {p = 0x0, 
+    arch = 0x0}, prev_pc = {status = 0x0, masked = 0x0, value = 0x0}, 
+  prev_func = {addr = 0x0, status = 0x0}, this_id = {p = 0x2, value = {
+      stack_addr = 0xfe8, code_addr = 0x118, special_addr = 0x0, 
+      stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+      artificial_depth = 0x0}}, base = 0x8a31540, base_cache = 0x0, 
+  next = 0x8b0bd58, prev_p = 0x0, prev = 0x0, stop_reason = 0x0, 
+  stop_string = 0x0}
+(gdb)
+
+ここでアドレス 0x118 は __main のアドレスになっている. 試しにこれを返してみようかと思い
+
+  return frame->this_id.value.code_addr;
+
+のようにしてみたがコンパイルエラー. このコンテキストでは frame_info は不完全型構造体
+だから -> 演算子でエラーになるというわけだ.
+
+  CORE_ADDR ret = get_frame_pc(frame);
+  return ret;
+
+としてみた. ret = 0x138 でありこれは f のプロローグをスキップしたアドレスになっていた.
+当初の予定とは全く異なるが, とりあえずこれを返してみたところ, プロローグが適切にスキップ
+できるようになった. これは釈然としないが, 最初から何かを狙っていたわけではないからとりあえず
+スルーしておく.
+
+現状 main で停止して f にステップインしたとき
+
+Breakpoint 1, main () at test.c:8
+8	  return f(5, 6);
+f (a=71319360, b=-2075644092) at test.c:3
+3	  return a + b;
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+のように変数が正しく表示されていない.
+
+(d30v-elf-gdb) p &a
+$1 = (int *) 0x138 <f+24>
+(d30v-elf-gdb) p &b
+$2 = (int *) 0x13c <f+28>
+(d30v-elf-gdb)
+
+のようになる. コード領域を指している. そしてこの 0x138 は d30v_frame_base_address
+で返した値だったりする. 以下のように修正してみた:
+
+d30v_frame_base_address(frame_info* frame, void **ptr)
+{
+#if 0
+  // frame->this_id.value.code_addr;
+  CORE_ADDR ret = get_frame_pc(frame);
+#else
+  CORE_ADDR ret = get_frame_sp(frame);
+#endif
+  return ret; 
+}
+
+スタックのアドレスが返されるようになり, これで
+
+Breakpoint 1, main () at test.c:8
+8	  return f(5, 6);
+f (a=5, b=6) at test.c:3
+3	  return a + b;
+
+のようになり期待した動作になっている. これもマグレであって狙ってこうしているわけではない.
+
+現状 where コマンドを実行すると以下のようになる:
+
+(d30v-elf-gdb) where
+#0  f (a=5, b=6) at test.c:3
+#1  0x00000190 in main () at test.c:8
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+(d30v-elf-gdb)
+
+これは何度か見たことがあるエラーメッセージだが対処の方法は不明.
+
+(gdb) b backtrace_command_1
+(gdb) run
+...
+backtrace_command_1 のブレークポイントにヒット
+(gdb)
+
+	  reason = get_frame_unwind_stop_reason (trailing);
+	  if (reason >= UNWIND_FIRST_ERROR)
+	    printf_filtered (_("Backtrace stopped: %s\n"),
+			     frame_stop_reason_string (trailing));
+
+(gdb) p reason
+$1 = UNWIND_SAME_ID
+(gdb) 
+
+これがエラーメッセージの直接の原因. get_frame_unwind_stop_reason の呼び出しの
+前後で trailing は以下のように変わる.
+
+(gdb) p trailing->stop_reason
+$6 = UNWIND_NO_REASON
+(gdb) n
+(gdb) p trailing->stop_reason
+$7 = UNWIND_SAME_ID
+(gdb)
+
+これもエラーメッセージの直接の原因. テストプログラムは
+
+スタートアップルーチン:
+  sp = 0x1000, addr = 0x100
+
+main:
+  sp = 0x1000,             addr = 0x160
+      (プロローグ後 0x0ff8)
+f:
+  sp = 0x0ff8,             addr = 0x120
+      (プロローグ後 0x0fe8)
+
+のように 3 枚のフレームを持っている.
+
+さらに stop_reason = UNWIND_SAME_ID になる理由を調べてみる.
+
+(gdb) delete
+(gdb) b stack.c:2116
+(gdb) run
+...
+このブレークポイントにヒット
+(gdb) p &trailing->stop_reason 
+$40 = (unwind_stop_reason *) 0x8b0febc
+(gdb) watch *(int*)0x8b0febc
+Hardware watchpoint 8: *(int*)0x8b0febc
+(gdb) c
+...
+      compute_frame_id (prev_frame);
+      if (!frame_stash_add (prev_frame))
+	{
+...	
+	  this_frame->stop_reason = UNWIND_SAME_ID;  ここだった.
+
+ということは frame_stash_add が false を返す原因を調べてみる.
+
+(gdb) b frame.c:1984
+(gdb) run
+...
+frame.c:1984 のブレークポイントにヒット. 複数回呼び出されているらしい.
+(gdb) disable 9  # 一旦このブレークポイントを無効化
+(gdb) c
+...
+stack.c:2116 のブレークポイントにヒット
+(gdb) enable
+(gdb) c
+...
+frame.c:1984 のブレークポイントにヒット.
+(gdb) s
+
+static bool
+frame_stash_add (frame_info *frame)
+{
+...
+  if (*slot != nullptr)
+    return false;  ここで返っている
+
+ということは
+
+
+(gdb) p slot
+$42 = (frame_info **) 0x8b13e7c
+(gdb) watch *(int*)0x8b13e7c
+Hardware watchpoint 10: *(int*)0x8b13e7c
+(gdb) run
+...
+上のウォッチポイントにヒット. 0 がセットされている.
+(gdb) c
+...
+frame.c:1984 のブレークポイントにヒット.
+(gdb) disable 9 # 一旦無効化
+(gdb) c
+...
+上のウォッチポイントにヒット.
+Old value = 0
+New value = 145829452
+frame_stash_add (frame=0x8b12e4c) at frame.c:289
+
+
+static bool
+frame_stash_add (frame_info *frame)
+{
+...
+  if (*slot != nullptr)
+    return false;
+
+  *slot = frame;         ここだった.
+  return true;
+}
+
+(gdb) c
+...
+上のウォッチポイントにヒット
+Old value = 145829452
+New value = 0
+(gdb) c
+...
+上のウォッチポイントにヒット
+Old value = 0
+New value = 145829452
+frame_stash_add (frame=0x8b12e4c) at frame.c:289  # またここでセットされている.
+(gdb) c
+...
+stack.c:2116 のブレークポイントにヒット
+(gdb) enable
+(gdb) c
+...
+frame.c:1984 のブレークポイントにヒット.
+(gdb) s
+
+
+というわけで
+
+0 -> 145829452 -> 0 -> 145829452
+
+のように変更されているらしい. 2 回目に 145829452 になるのが直接の原因だが, おそらく
+1 回目に 145829452 になるのも同じ理由の可能性はある.
+
+(gdb) p/x *frame
+$46 = {level = 0x1, pspace = 0x8b59668, aspace = 0x8b59b10, 
+  prologue_cache = 0x8bd9e38, unwind = 0x8a38520, prev_arch = {p = 0x0, 
+    arch = 0x0}, prev_pc = {status = 0x0, masked = 0x0, value = 0x0}, 
+  prev_func = {addr = 0x0, status = 0x0}, this_id = {p = 0x2, value = {
+      stack_addr = 0xfe8, code_addr = 0x160, special_addr = 0x0, 
+      stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+      artificial_depth = 0x0}}, base = 0x0, base_cache = 0x0, 
+  next = 0x8b12dd4, prev_p = 0x0, prev = 0x0, stop_reason = 0x0, 
+  stop_string = 0x0}
+(gdb) 
+
+0x160 は main のアドレス 0xfe8 は f のプロローグ後のスタックのアドレス. だから何かがおかしい.
+ => と思ったが, そもそも
+
+    *id = frame_id_build(pf->prev_sp, pf->prologue.start);
+                             ^^^^^^^
+のようにフレーム ID を作っているのだからこの組み合わせになるのはある意味必然.
+
+  frame_info **slot = (struct frame_info **) htab_find_slot (frame_stash,
+							     frame, INSERT);
+
+  /* If we already have a frame in the stack with the same id, we
+     either have a stack cycle (corrupted stack?), or some bug
+     elsewhere in GDB.  In any case, ignore the duplicate and return
+     an indication to the caller.  */
+  if (*slot != nullptr)
+    return false;
+
+  *slot = frame;
+  return true;
+
+問題のアドレスを変更しているのが原因なのだが, そもそも htab_find_slot が返すアドレス
+自体に問題があってこのようになっていることも考えられる.
+
+自前の cc1 の生成したほぼ同じプログラムでは期待通り動作している:
+
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.d30v-elf.mine/host-i686-pc-linux-gnu/gcc/
+(gdb) run -q -x gdbcom a.elf
+...
+Start address 0x100
+Transfer rate: 2688 bits in <1 sec.
+Breakpoint 1 at 0x1f0: file a.c, line 10.
+
+Breakpoint 1, main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+f (a=5, b=6) at a.c:5
+5	  return a + b;
+#0  f (a=5, b=6) at a.c:5
+#1  0x00000200 in main () at a.c:10
+0x00000200 in main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+Value returned is $1 = 11
+hello world 11
+[Thread 0xb7704b70 (LWP 31715) exited]
+[Thread 0xb7a3fd10 (LWP 31649) exited]
+[Inferior 1 (process 31649) exited normally]
+(gdb)
+
+こっちのプログラムは
+
+start:
+	addr = 0x100
+	sp = 0x20000
+
+main:
+	addr = 0x1d8
+	sp = 0x20000 (プロローグ後 0x1fff4)
+
+f:
+	addr = 0x188
+	sp = 0x1fff4 (プロローグ後 0x1ffe0)
+
+% cat y
+b frame_stash_add
+command
+p/x frame->this_id.value.stack_addr
+p/x frame->this_id.value.code_addr
+c
+end
+
+(gdb) delete
+(gdb) so y
+(gdb) run
+...
+数回呼び出されているが
+
+(0x20000, 0x1d8)
+
+か
+
+(0x1fff4, 0x188)
+
+のいずれかになっている.
+
+一方できていないオリジナルの cc1 の生成した test.elf では
+
+(0xff8, 0x160)
+
+(0xff8, 0x120)
+
+(0xfe8, 0x120)
+
+(0xfe8, 0x160)
+
+のいずれかになっている. ということはやはり意図しないフレーム ID が作成されている
+と考えるのが正しそう. できている自前の cc1 の生成したプログラムの動きに合わせる
+ならば
+
+(0x1000, 0x160)
+
+か
+
+(0x0ff8, 0x120)
+
+のいずれかが作成されるのが期待値.
+
+d30v_frame_create に問題があるのかと思ってここにブレークポイントをセットしたところ
+できている自前の cc1 の生成したプログラムに対してはこの函数は呼び出されていなかった.
+
+一方, オリジナルの cc1 の生成したプログラムに対しては呼び出されている.
+
+そもそも d30v_frame_create ができていないということ.
+試しに
+
+static void
+d30v_frame_this_id(frame_info* frame, void** ptr, frame_id* id)
+{
+  auto pf = reinterpret_cast<d30v_frame*>(*ptr);
+  if (!pf)
+    *ptr = pf = d30v_frame_create(frame);
+  
+  if (!pf->available)
+    *id = frame_id_build_unavailable_stack(pf->prologue.start);
+  else {
+#if 0    
+    *id = frame_id_build(pf->prev_sp, pf->prologue.start);
+#else
+    switch (pf->prologue.start) {
+    case 0x160:
+      *id = frame_id_build(0x1000, pf->prologue.start);
+      break;
+    case 0x120:
+      *id = frame_id_build(0x0ff8, pf->prologue.start);
+      break;
+    default:
+      abort();
+    }
+#endif    
+  }
+}
+
+のように修正してみた. これにより作成されるフレーム ID は
+
+(0x1000, 0x160)
+
+か
+
+(0x0ff8, 0x120)
+
+のいずれかになったが, エラーメッセージはまだ出ている. ここだけが問題なのではないらしい.
+
+現状 d30v-tdep.c に期待する返却値を即値で書いて期待通り動作している.
+この時点での d30v-tdep.c を

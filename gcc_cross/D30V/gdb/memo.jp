@@ -889,6 +889,24 @@ void sim_handle_breakpoint(SIM_DESC sd, sim_cpu *cpu, address_word cia)
   sim_engine_halt (sd, cpu, NULL, cia, sim_stopped, SIM_SIGTRAP);
 }
 
+と思ったが 0x2f905e00 は D10V のブレーク命令. D30V では
+
+0x00980005 trap.s	5
+
+かと思ったが違っていた. 暫定的に D10V と同じブレーク命令を使用することにする.
+
+static
+const unsigned char* d30v_from_kind(gdbarch* arch, int kind, int* size)
+{
+#if 1
+  static unsigned char break_inst[] = {0x2f, 0x90, 0x5e, 0x00};  // D10V
+#else
+  static unsigned char break_inst[] = {0x00, 0x98, 0x00, 0x05};  // D30V
+#endif  
+  *size = sizeof break_inst;
+  return &break_inst[0];
+}
+
 Reading symbols from test.elf...
 Target (BIG_ENDIAN) and configured (UNKNOWN) byte order in conflict
 Target (UNKNOWN) and specified (BIG_ENDIAN) byte order in conflict
@@ -1061,4 +1079,4 @@ Makefile を修正
 +SIM_ENDIAN =
 
 シミュレータをビルドし直し gdb をリンクし直して正常動作を確認できた.
- 
+現状のソースを d30v.tar としてこのページにアップロードしておく.
