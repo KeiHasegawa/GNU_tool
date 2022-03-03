@@ -1,0 +1,81 @@
+andhi3, andsi3, anddi3 を実装しようと思ったが, その前に
+
+int64 * int64 がまだ. => 実装のみ完了.
+
+int16 / int16 がまだ.
+
+int16 % int16 がまだ.
+
+現状 m.c に対して以下が生成されている.
+
+f:
+...
+	st	r1, @(2, r14)
+	r0 := (sign)@r14
+	r2 := (sign)@(2, r14)
+	bl	__divsi3
+	mv	r0, r1
+
+これは先に int32 / int32 を実装したからこうなっている.
+d10v_divhi3, d10v_modhi3 を追加してリビルド中. 2022.03.02 11:50
+
+int16 / int16 に対して divs を生成してみたが実行結果は意図しないものになっている.
+
+/* divs */
+void
+OP_14002800 (SIM_DESC sd, SIM_CPU *cpu)
+{
+  uint16 foo, tmp, tmpf;
+  uint16 hi;
+  uint16 lo;
+
+  trace_input ("divs", OP_DREG, OP_REG, OP_VOID);
+  foo = (GPR (OP[0]) << 1) | (GPR (OP[0] + 1) >> 15);
+  tmp = (int16)foo - (int16)(GPR (OP[1]));
+  tmpf = (foo >= GPR (OP[1])) ? 1 : 0;
+  hi = ((tmpf == 1) ? tmp : foo);
+  lo = ((GPR (OP[0] + 1) << 1) | tmpf);
+  SET_GPR (OP[0] + 0, hi);
+  SET_GPR (OP[0] + 1, lo);
+  trace_output_32 (sd, ((uint32) hi << 16) | lo);
+}
+
+  divs r0, r8
+
+としているが, r0 だけではなく r1 も参照されるらしい. しかしこれで割り算をしている
+ことになっているのだろうか.
+
+r0 = 0, r1 = 33, r8 = 6 で実行したら
+
+foo = (r0 << 1) | (r1 >> 15) = 0
+tmp = foo - r8 = 0 - 6 = -6
+tmpf = (foo >= r8) ? 1 : 0 = 0
+hi = (tmpf == 1) ? tmp : foo = foo = 0
+lo = (r1 << 1) | tmpf = 12
+r0 = hi = 0
+r1 = lo = 12
+
+むむ. これは何を計算しているのかサッパり.
+simops.c から ' * ' を検索すれば掛け算をしている部分が検索できるが
+' / ' を検索しても見当らない. ' % ' もない.
+おそらくいくつかの命令を組み合わせて / や % を実現する必要があるのかもしれない.
+
+命令の互換性のないが d30v-elf-gcc で m.c をコンパイルしてみた:
+
+f:
+...
+	bsr (__divsi3)
+
+というわけでランタイムライブラリ函数の呼び出しになっている. 暫定的に
+自前の d10v の cc1 でもこのようにしておく. と思ったが, d30v は sizeof(int) = 4
+なわけで, d10v で呼び出すとしたら __divhi3 になるがそもそもそういうのは
+アリなんだろうか.
+
+答えはここにある:
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.d30v-elf/gcc/config/d30v/libgcc1.asm
+
+これを見ると divs 命令がそういう仕様になっている理由が分かる.
+
+だから d10v の cc1 では int16 / int16 に対してランタイムライブラリ函数
+__divhi3 を呼び出すようにしておけばよい.
