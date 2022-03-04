@@ -27,7 +27,7 @@ static const char *const initial_reg_names[] = REGISTER_NAMES;
     評価されて問題ないならば上のような "dummy" は必要ない.
     また上記は後述する UNITS_PER_WORD が 4 の場合には正しいが
 
-    o AVR のように UNIT_PER_WORDS が 1 で Pmode (後述)のサイズが 2 ならばダミー
+    o AVR のように UNIT_PER_WORDS が 1 でポインタのサイズが 2 ならばダミー
       の数をもう一つ増やす必要がある.
  
 (*) STACK_POINTER_REGNUM
@@ -52,44 +52,12 @@ static const char *const initial_reg_names[] = REGISTER_NAMES;
 
 (*) ARG_POINTER_REGNUM
 
-    函数が呼び出されたときに引数があるスタックの相対位置を示すレジスタを指定する.
-
-	+---------------+ <- sp_{new}, <- fp_{new}
-	|  1st argument |
-	+---------------+
-	|  2nd argument |
-	+---------------+
-	|		|
-	|		|
-	+---------------+
-	|     fp_{old}  |
-	+---------------+
-	|     lr_{old}	|
-	+---------------+
-
-    以下の f に対して上のようなスタックフレームを採用すると仮定する:
-
-    int f(int a, int b)
-    {
-      ...
-    }
-
-    f のプロローグの部分でレジスタ渡しされた a と b をスタックに保存するときに
-    フレームポインタ相対 0, 4( = sizeof(int)) に保存して問題なければ
-    FRAME_POINTER_REGNUM と同じレジスタ番号, すなわちフレームポンタのレジスタ
-    番号を指定する.
-
-    そうではなく AVR のようにフレームポインタ相対 1, 3 (sizeof(int) = 2)に保存する
-    必要があれば, FRAME_POINTER_REGNUM と同じレジスタ番号, すなわちフレームポンタのレジスタ
-    番号を指定して, さらに
-
-    TARGET_STARTING_FRAME_OFFSET
-
-    のマクロ(後述)を使用するのがお手軽である.
-
-    そうでなければ, 例えば Blackfin, Moxie, MN10300 のようなスタックフレームのように
-    呼び出し側で確保した位置に函数の引数を保存する場合以下のように仮想のレジスタ "ap" を宣
-    言する:
+    函数が呼び出されたときにスタック渡しした最初の引数があるアドレスを指すレジスタの番号を指定
+    する. このレジスタは実際には存在しない仮想的なレジスタである. フレームポインタがスタック
+    フレームの底を指すタイプのものであれば FRAME_POINTER_REGNUM と同じ値を指定することが
+    できるが, 区別することもできる.
+    例えばターゲットプロセッサに r0, r1, ..., r15 のレジスタがあり,
+    r14 をフレームポインタ r15 をスタックポインタとする場合
 
 #define REGISTER_NAMES { "r0", "r1", "r2", "r3", "r4", "r5", "r6", \
     "r7", "r8", "r9", "r10", "r11", "r12", "r13, "fp", "sp", "ap" }
@@ -98,21 +66,49 @@ static const char *const initial_reg_names[] = REGISTER_NAMES;
 #define STACK_POINTER_REGNUM 15
 #define ARG_POINTER_REGNUM   16
 
-    この仮想のレジスタ "ap" は HARD_REGISTER_NUM_P(16) が 0 になっても問題がないので
-    最後のダミーの要素は上のように必要ないし, あっても問題ない.
-    "ap" がどこを指すかを函数 INITIAL_ELIMINATION_OFFSET (後述)で指定する. このため
+    のように指定する. この仮想のレジスタ "ap" は HARD_REGISTER_NUM_P(16) が 0 になって
+    も問題がないので最後のダミーの要素は上のように必要ないし, あっても問題ない.
+    
+    そして以下のような f に対して最初の 2 つの引数をレジスタで渡し, 残りをスタック
+    で渡すような ABI を採用していると仮定する.
+
+    int f(int a, int b, int c, int d)
+    {
+      ...
+    }
+
+    そして以下のようなスタックフレームを採用すると仮定する.
+    
+
+	+---------------+ <- sp_{new}, <- fp_{new}
+	|  1st argument |
+	+---------------+
+	|  2nd argument |
+	+---------------+
+	|		|
+	~ 		~
+	|		|
+	+---------------+
+	|     fp_{old}  |
+	+---------------+
+	|     lr_{old}	|
+	+---------------+ <- sp_{old}, ap
+	|  3rd argument |
+	+---------------+
+	|  4th argument |
+	+---------------+
+
+    ここで 1st argument, 2nd argument はレジスタ渡しされた引数の保存場所である.
+    この場合 ap レジスタは sp_{old} が指していたアドレスを指すようにする.
+    但しそういうコードを生成するわけではなくて ap がどこを指すかを函数
+    INITIAL_ELIMINATION_OFFSET (後述)で指定する. このため
     マクロ ELIMINABLE_REGS (後述)を以下のようにする必要がある:
 
 #define ELIMINABLE_REGS				\
 {{ ARG_POINTER_REGNUM, STACK_POINTER_REGNUM},	\
  { ARG_POINTER_REGNUM, FRAME_POINTER_REGNUM},	\
  { FRAME_POINTER_REGNUM, STACK_POINTER_REGNUM}}	\
-
-    但しこの修正のみ入れても期待する動作にはならない. 例えば Blackfin のコンパイラの
-    雛形のメモを参照.
-
-    そうではなくてスタックポインタ
-
+ 
 (*) FIRST_PSEUDO_REGISTER
 
 参照箇所の 1 つ gcc/hard-reg-set.h
@@ -842,4 +838,3 @@ constexpr int UNITS_PER_WORD  = 1;
      ...
 
      true に define すれば [sp:SI]=0x5 のような rtx_insn が生成される.
-
