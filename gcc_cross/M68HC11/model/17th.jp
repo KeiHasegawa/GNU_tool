@@ -1,0 +1,108 @@
+d レジスタにある 8 ビットをゼロ拡張してスタックにプッシュするには以下のようにする：
+
+	ldx	#0
+	clra
+	pshb
+	psha
+	pshx
+	
+ int16 <- int32
+uint16 <- int32
+
+を実装中. 現状では以下が生成されている.
+
+f:
+...
+	d := (trunc)(mem/c:SI (plus:HI (reg/f:HI 9 *_.frame)
+        (const_int 1 [0x1])) [1 a+0 S4 A8])
+
+g:
+...
+	d := (trunc)(mem/c:SI (plus:HI (reg/f:HI 9 *_.frame)
+        (const_int 1 [0x1])) [1 a+0 S4 A8])
+
+main:
+...
+	(mem/c:SI (plus:HI (reg/f:HI 9 *_.frame)
+        (const_int 1 [0x1])) [2 %sfp+1 S4 A8]) := (zero)d
+...
+	d := (sign)d
+
+そこでまずは以下を m68hc11.md から削除する.
+
+; int16 <- int32
+; not absolutely necessary
+(define_insn "truncsihi2"
+  [(set (match_operand:HI 0 "nonimmediate_operand" "")
+        (truncate:HI (match_operand:SI 1 "general_operand" "")))]
+  ""
+  "%0 := (trunc)%1")
+
+f と g から d := (trunc)... のコードがなくなっている. これは期待した動作.
+
+d レジスタにある 16 ビットを符号拡張してスタックにプッシュするには以下のようにする：
+
+	ldx	#0
+	tsta
+	bpl	.L5
+	dex
+.L5:
+	pshb
+	psha
+	pshx
+
+同様に d レジスタにある 16 ビットをゼロ拡張してスタックにプッシュするには以下のようにする：
+
+
+	ldx	#0
+	pshb
+	psha
+	pshx
+
+2022.03.04 11:11 現状 a.c を実行すると
+
+hello world 65271, 65535
+
+のようになってしまう.
+
+hello world -1, 65535
+
+が期待する結果. printf を呼び出す直前では
+
+
+(m68hc11-elf-gdb) x/9bx $sp
+0xfeef:	0xcc	0x00	0x00	0xfe	0xf7	0x00	0x00	0xff
+0xfef7:	0xff
+(m68hc11-elf-gdb) p 0xfef7
+$1 = 65271
+(m68hc11-elf-gdb)
+
+つまり f を呼び出した結果をさらに符号拡張して 0xfef7 になっているのが間違い.
+
+f を呼び出した後, 符号拡張した結果
+
+(m68hc11-elf-gdb) info register
+PC=0x10dc  SP=0xfef7  FP=0xfef7 
+CCR=0x08   ----N---   u> != < <= 
+D=0xffff -1 X=0xffff -1 Y=0xfef7 -265
+(m68hc11-elf-gdb) 
+
+を確認した. ここまでは正しい. しかしこの後
+
+	ldy	*_.frame
+	ldx	1, y
+	ldd	3, y
+
+のように x, d を壊している.
+
+const char* m68hc11_extendhisi2(rtx x, rtx y)
+{
+  using namespace std;
+  if (REG_P(x) && REG_P(y)) {
+    int regno = REGNO(x);
+    int ry = REGNO(y);
+    assert(regno == ry && regno == D_REGNUM);l
+...    
+    m68hc11_impl::d_reg::use = true;  これが抜けていた.
+
+これで正しく動作している.
