@@ -1,0 +1,120 @@
+ int64 <- int32
+uint64 <- int32
+
+を実装中. どちらも符号拡張.
+
+オリジナルの cc1 はランタイムライブラリ函数 ___ashrsi3 を呼び出していた.
+自前の cc1 でもこれを真似てみる.
+そこで以下を m68hc11.md から削除してみた:
+
+; int64 <- int32
+; not absolutely necessary
+(define_insn "extendsidi2"
+  [(set (match_operand:DI 0 "nonimmediate_operand" "")
+        (sign_extend:DI (match_operand:SI 1 "general_operand" "")))]
+  ""
+  "%0 := (sign)%1")
+
+しかし期待した結果にはなっていない. オリジナルの cc1 はおそらく自力で
+___ashrsi3 を呼び出しているらしい.
+
+オリジナルの cc1 では
+
+(define_insn "zero_extendsidi2"
+
+はあるが, extendsidi2 はない.
+オリジナルの cc1 で
+
+long long int f(int a){ return a; }
+
+をコンパイルしたところ以下のような rtx が生成されている:
+
+x := *_.frame
+
+[--sp] := x
+
+[--sp] := x
+
+*_.frame := sp
+
+x := *_.d1
+
+[--sp] := x
+
+x := *_.d2
+
+[--sp] := x
+
+x := *_.frame
+
+[x+1] := d
+
+y := *_.frame
+
+d := [y+9]
+
+*_.d2 := d
+
+d := [y+7]
+
+*_.d1 := d
+
+y := *_.frame
+
+y := [y+1]
+
+d := *_.d2
+
+[y+6] := d
+
+d := *_.d1
+
+[y+4] := d
+
+d := *_.d2
+
+x := *_.d1
+
+[x := ashiftrt x, 31, clobber y]
+
+y := *_.frame
+
+y := [y+1]
+
+[y+2] := d
+
+y := *_.frame
+
+y := [y+1]
+
+[y] := d
+
+x := *_.frame
+
+d := [x+1]
+
+use d
+
+x := [sp++]
+
+*_.d2 := x
+
+x := [sp++]
+
+*_.d1 := x
+
+x := [sp++]
+
+x := [sp++]
+
+*_.frame := x
+
+のように, 随分と複雑なことをしている. オリジナルの cc1 を真似するのはやめることにした.
+
+(define_insn "extendsidi2"
+
+と
+
+const char* m68hc11_extendsidi2(rtx x, rtx y)
+
+を追加してリビルド. 自力で書いたほうがスッキりしている印象がある.
