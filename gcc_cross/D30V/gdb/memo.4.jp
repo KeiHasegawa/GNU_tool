@@ -1,0 +1,98 @@
+現状
+
+~/lang/53_GNU_tool/gcc_cross/D30V/test/test004/test.elf
+
+を動作させると以下のようになる:
+
+Breakpoint 1, f () at test.c:3
+3	  return 1;
+#0  f () at test.c:3
+#1  0x00000178 in fact (n=0) at test.c:9
+#2  0xcccccccc in ?? ()
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+
+函数 f で戻りアドレスを格納しているアドレスを正しく特定できていない.
+
+00000148 <fact>:
+ 148:	080bfff0 88096fc8 	add.s	sp, sp, -0x10	->	add.s	r22, sp, 0x8
+ 150:	0547d580 8547e580 	stw.s	r61, @(r22+, r0)	->	stw.s	r62, @(r22+, r0)
+
+以下のように修正すると期待通り動作しているが:
+
+  if (insn == 0x8547e580) { // stw.s	r62, @(r22+, r0)
+#if 0    
+    auto addr = frame->prev_sp + 4;
+#else
+    auto addr = frame->prev_sp + 12;
+#endif
+    ULONGEST ra;
+    if (safe_read_memory_unsigned_integer(addr, 4, BFD_ENDIAN_BIG, &ra))
+      frame->return_addr = ra;
+    return;
+  }
+
+さてこれは一体. もともとできていた
+
+~/lang/53_GNU_tool/gcc_cross/D30V/test/test003/test.elf
+
+を試してみた.
+
+  if (insn == 0x8547e580) { // stw.s	r62, @(r22+, r0)
+#if 0    
+    auto addr = frame->prev_sp + 4;
+#else
+    auto addr = frame->prev_sp + 12;
+#endif
+    ULONGEST ra;
+    if (safe_read_memory_unsigned_integer(addr, 4, BFD_ENDIAN_BIG, &ra))
+      frame->return_addr = ra;
+    return;
+  }
+
+addr = 0x1004 になっている. safe_read_memory_unsigned_integer でエラーしているため
+frame->return_addr は変更されなかった. そしてたまたま動いていた.
+
+test003 は以下.
+00000160 <main>:
+ 160:	080bfff8 88096fc0 	add.s	sp, sp, -0x8	->	add.s	r22, sp, 0x0
+ 168:	0547d580 8547e580 	stw.s	r61, @(r22+, r0)	->	stw.s	r62, @(r22+, r0)
+
+
+test003 のフレームサイズは 8
+test004 のフレームサイズは 16
+現状は
+
+  for (auto addr = ret->pc-4 ; addr >= ret->prologue.start ; addr -= 4) {
+    ULONGEST insn;
+    if (!safe_read_memory_unsigned_integer(addr, 4, BFD_ENDIAN_BIG, &insn))
+      return ret;
+    update(insn, ret);
+  }
+
+のようにアドレスの高いほうから解析しているがこれは合理的なのだろうか.
+アドレスの低いほうから解析してみる.
+
+inline void update(ULONGEST insn, d30v_frame* frame)
+{
+....
+  if (insn == 0x8547e580) { // stw.s	r62, @(r22+, r0)
+    auto addr = frame->prev_sp - 4;          これでうまくいく.
+    ULONGEST ra;
+    if (safe_read_memory_unsigned_integer(addr, 4, BFD_ENDIAN_BIG, &ra))
+      frame->return_addr = ra;
+    return;
+  }
+}
+
+  低いほうから解析
+  for (auto addr = ret->prologue.start ; addr != ret->pc ; addr += 4) {
+    ULONGEST insn;
+    if (!safe_read_memory_unsigned_integer(addr, 4, BFD_ENDIAN_BIG, &insn))
+      return ret;
+    update(insn, ret);
+  }
+
+この時点での d30v-tdep.c を d30v-tdep.c.002 としてアップロードしておく.
+
+
+
