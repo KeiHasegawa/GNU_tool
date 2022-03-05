@@ -1,0 +1,9 @@
+set prompt (d30v-elf-gdb) 
+target sim
+load
+sim memory-fill 0xcc
+sim memory-region 0x0e00,0x200
+b main
+run
+p f((struct S){5, 6})
+quit
