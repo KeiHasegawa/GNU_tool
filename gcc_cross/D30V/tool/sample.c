@@ -1,9 +1,5 @@
-#if 0
 #include <stdio.h>
 #include <stdarg.h>
-#else
-extern int printf(const char*, ...);
-#endif
 
 void f(int a, int b)
 {
@@ -89,6 +85,13 @@ void h3(void)
   printf("%d\n", test_h3);
 }
 
+long long f4(long long a, long long b, long long c, long long d,
+	long long e, long long f, long long g, long long h,
+	long long i, long long j, long long k, long long l)
+{
+  return a + b + c + d + e + f + g + h + i + j + k + l;
+}
+
 int main()
 {
   f(5, 6);
@@ -106,6 +109,8 @@ int main()
   f3(123);
   g3();
   h3();
+  printf("%lld\n",
+	 f4(1LL, 2LL, 3LL, 4LL, 5LL, 6LL, 7LL, 8LL, 9LL, 10LL, 11LL, 12LL));
   return 0;
 }
 #if 1
