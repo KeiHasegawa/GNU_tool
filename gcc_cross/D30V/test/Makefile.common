@@ -2,10 +2,10 @@
 	d30v-elf-as -o $@ -g $<
 
 %.o : %.c
-	d30v-elf-gcc -o $@ $< -c -g
+	d30v-elf-gcc -o $@ $< -c -g -std=c99
 
 %.elf : %.o 
-	d30v-elf-ld -o $@ ../default.o $< -T ../default.x
+	d30v-elf-ld -o $@ ../default.o $< -T ../default.x -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/d30v-elf/lib -lc
 
 %.objdump : %.elf
 	d30v-elf-objdump -x -d -g $< > $@

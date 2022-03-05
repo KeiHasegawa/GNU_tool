@@ -1,7 +1,7 @@
-(*) D30V
+(*1) D30V
 D10V と同様に三菱電機で開発されたメディアプロセッサらしい.
 
-(*) binutils のインストール
+(*2) binutils のインストール
 
 % xz -d -c ~/binutils-2.36.1-2.src/binutils-2.36.1.tar.xz | tar xf -
 % mv binutils-2.36.1 binutils-2.36.1.d30v-elf
@@ -10,7 +10,7 @@ D10V と同様に三菱電機で開発されたメディアプロセッサらし
 % make
 % make install
 
-(*) gcc のインストール
+(*3) gcc のインストール
 
 % bunzip2 -c ../gcc-3.4.4.tar.bz2 | tar xf -
 % mv gcc-3.4.4 gcc-3.4.4.d30v-elf
@@ -20,7 +20,7 @@ D10V と同様に三菱電機で開発されたメディアプロセッサらし
 % make all-gcc LANGUAGES="c c++"
 % make install-gcc LANGUAGES="c c++"
 
-(*3) gdb のインストール
+(*4) gdb のインストール
 
 % bunzip2 -c ../gdb-6.0.tar.bz2 | tar xf -
 % mv gdb-6.0 gdb-6.0.d30v-elf
@@ -441,3 +441,14 @@ void sim_handle_breakpoint(SIM_DESC sd, sim_cpu *cpu, address_word cia)
 % cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d30v-elf
 % make
 % make install
+
+(*5) newlib のインストール
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/
+% gunzip -c ../newlib-1.13.0.tar.gz | tar xf -
+% mv newlib-1.13.0 newlib-1.13.0.d30v-elf
+% cd newlib-1.13.0.d30v-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=d30v-elf
+% make
+% make install
+
