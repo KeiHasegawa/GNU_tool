@@ -1,0 +1,33 @@
+2022.03.05 8:55
+
+ int8 <-> int32
+uint8 <-> int32
+
+を実装中. 以下を d10v.md を削除した.
+
+; int8 <- int16
+; not absolutely necessary
+(define_insn "trunchiqi2"
+  [(set (match_operand:QI 0 "nonimmediate_operand" "")
+        (truncate:QI (match_operand:HI 1 "general_operand" "")))]
+  ""
+  "%0 := (trunc)%1")
+
+現状期待通り hh.c をコンパイルすると f と g のコードから x := (trunc)y が削られている.
+main のコードには
+
+	@r14 := (sign)r0
+
+や
+
+	r0 := (zero)r0
+
+がある.
+
+mvb
+
+を符号拡張に使用できそう. ゼロ拡張は単純に 0xff と and をとるのが良さそう.
+
+
+
+
