@@ -1,0 +1,46 @@
+addsf3 を実装中.
+しかしオリジナルの cc1 には md ファイルには
+
+(define_insn "addsf3"
+
+のような記述はない.
+オリジナルの cc1 ではランタイムライブラリ函数 __addsf3 を呼び出すようになっている.
+
+m68hc11.md から以下を削除してみた:
+
+(define_insn "addsf3"
+  [(set
+    (match_operand:SF 0 "nonimmediate_operand" "")
+    (plus:SF
+     (match_operand:SF 1 "general_operand" "")
+     (match_operand:SF 2 "general_operand" "")))]
+  ""
+  "*
+  return m68hc11_addsf3(operands[0], operands[1], operands[2]);")
+
+2022.03.06 7:35 リビルド開始.
+
+2022.03.06 8:50 確認したところ
+
+(define_insn "adddf3"
+  [(set
+    (match_operand:DF 0 "nonimmediate_operand" "")
+    (plus:DF
+     (match_operand:DF 1 "general_operand" "")
+     (match_operand:DF 2 "general_operand" "")))]
+  ""
+  "%0 := %1 + %2")
+
+を使用したコードを生成している. そこで上を削除. 折角なので
+
+subsf3
+subdf3
+mulsf3
+muldf3
+divsf3
+divdf3
+
+も削除.
+2022.03.06 8:53 リビルド開始.
+
+2022.03.06 9:48 __addsf3 が呼び出すコードが生成されている.
