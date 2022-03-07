@@ -1,0 +1,84 @@
+- float
+- double
+
+を実装中. 以下を削除してリビルド.
+
+(define_insn "negsf2"
+  [(set
+    (match_operand:SF 0 "nonimmediate_operand" "")
+    (neg:SF
+     (match_operand:SF 1 "general_operand" "")))]
+  ""
+  "%0 := -%1")
+
+(define_insn "negdf2"
+  [(set
+    (match_operand:DF 0 "nonimmediate_operand" "")
+    (neg:DF
+     (match_operand:DF 1 "general_operand" "")))]
+  ""
+  "%0 := -%1")
+
+これでランタイムライブラリの呼び出しになるのかと思ったが, 実際生成されたコードは
+符号ビットを反転するようなコード.
+
+オリジナルの cc1 ではどうやっているか調べてみた.
+少なくともランタイムライブラリ函数の呼び出しではない.
+
+(define_insn "negsf2"
+
+のような記述もない.
+
+現状
+
+float f(float a)
+{
+  return -a;
+}
+
+をコンパイルすると以下のような rtx_insn が生成されている:
+
+
+    2: [*_.frame:HI+0x1]=d:SF        ; 引数 a を保存
+
+    6: clobber d:SI
+
+    7: x:HI=[*_.frame:HI+0x1]
+
+    8: d:SI=d:SI^0xffffffffffff8000
+
+    9: [*_.frame:HI+0x5]=x:HI
+
+   10: [*_.frame:HI+0x7]=[*_.frame:HI+0x3]
+
+   13: d:SF=[*_.frame:HI+0x5]
+
+   18: use d:SF
+
+これは
+
+#define REGISTER_NAMES \
+  { "d", "x", "y", ...
+
+のように d x の並びにしているにも関わらず, d を下位 16 ビット, x を上位 16 ビット
+にしていることに問題があるかもしれない.
+
+単純に符号ビットを反転させれば良いはずなので
+
+(define_insn "negsf2"
+
+(define_insn "negdf2"
+
+を復活させる. と思ったが, そもそも 
+
+#define REGISTER_NAMES \
+  { "d", "x", "y", ...
+
+のようにして d, x を 32 ビットを表現するのに使用して d が下位 16 ビット, x が
+上位 16 ビットというのはそもそも gcc の枠組みを無視しているような運用方法になっている.
+
+しかし今回は
+
+(define_insn "negsf2"
+
+でビット反転することにした.
