@@ -1,0 +1,853 @@
+
+% bunzip2 -c ../gdb-6.0.tar.bz2 | tar xf -
+% mv gdb-6.0 gdb-6.0.fr30-elf
+% cd gdb-6.0.fr30-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=fr30-elf
+% make
+...
+gcc -DHAVE_CONFIG_H -I. -I. -I. -D_GNU_SOURCE -I. -I. -I../bfd -I./../include -I./../bfd -I./../intl -I../intl -W -Wall -Wstrict-prototypes -Wmissing-prototypes -g -O2 -c fr30-asm.c -o fr30-asm.o
+In file included from fr30-asm.c:33:
+fr30-desc.h:147:31: error: array type has incomplete element type 'struct cgen_ifld'
+  147 | extern const struct cgen_ifld fr30_cgen_ifld_table[];
+...
+make[3]: *** [Makefile:553: fr30-asm.lo] エラー 1
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf/opcodes' から出ます
+make[2]: *** [Makefile:595: all-recursive] エラー 1
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf/opcodes' から出ます
+make[1]: *** [Makefile:741: all-recursive-am] エラー 2
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf/opcodes' から出ます
+make: *** [Makefile:18060: all-opcodes] エラー 2
+
+エラーしている.
+
+このやり方を採用しているのに iq2000 がある:
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.iq2000-elf/opcodes
+% mv iq2000-asm.o iq2000-asm.o.org
+% make -n  iq2000-asm.o
+gcc -DHAVE_CONFIG_H -I.  -I. -I. -I../bfd -I./../include -I./../bfd    -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -g -O2 -MT iq2000-asm.o -MD -MP -MF .deps/iq2000-asm.Tpo -c -o iq2000-asm.o iq2000-asm.c
+% gcc -DHAVE_CONFIG_H -I.  -I. -I. -I../bfd -I./../include -I./../bfd    -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -g -O2 -MT iq2000-asm.o -MD -MP -MF .deps/iq2000-asm.Tpo -E -o iq2000-asm.i iq2000-asm.c
+
+として iq2000-asm.i を生成して確認したところ構造体 cgen_ifld は
+
+# 828 "./../include/opcode/cgen.h"
+typedef struct cgen_ifld {
+
+のように宣言されている. これは fr30 の場合も同じこと. だからどこかで
+iq2000-asm.c の場合は cgen.h を include しているはず.
+一方 fr30 では include していないからエラーしているということ.
+iq2000 では以下のようにしていた:
+
+#include "opcode/cgen.h"
+
+extern const struct cgen_ifld iq2000_cgen_ifld_table[];
+
+fr30 でも同じ対応を行なった.
+
+make fr30-asm.o
+gcc -DHAVE_CONFIG_H -I. -I. -I. -D_GNU_SOURCE -I. -I. -I../bfd -I./../include -I./../bfd  -I./../intl -I../intl   -W -Wall -Wstrict-prototypes -Wmissing-prototypes -g -O2 -c fr30-asm.c
+In file included from fr30-desc.h:146,
+                 from fr30-asm.c:33:
+./../include/opcode/cgen.h:421:21: エラー: フィールド ‘type’ が不完全型を持っています
+  421 |   enum cgen_hw_type type;
+
+fr30-desc.h に以下は定義されている
+
+typedef enum cgen_hw_type {
+
+以下の位置をファイルの後方に移動することにした:
+
+/* Ifield support.  */
+#include "opcode/cgen.h"
+
+extern const struct cgen_ifld fr30_cgen_ifld_table[];
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf
+% make
+...
+checking for cygwin... no
+checking for X... libraries , headers 
+configure: error: *** Gdb does not support target fr30-unknown-elf
+make: *** [Makefile:21441: configure-gdb] エラー 1
+
+%
+
+gdb/config/fr30/
+
+がないことが原因らしい.
+
+gdb/config/frv/
+
+をコピーしてそれっぽく変更した.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf
+% make
+...
+gcc -c -g -O2    -I. -I. -I./config -DLOCALEDIR="\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/share/locale\"" -DHAVE_CONFIG_H -I./../include/opcode -I./../readline/.. -I../bfd -I./../bfd  -I./../include -I../intl -I./../intl  -DMI_OUT=1 -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized  gdbtypes.c
+In file included from gdb_obstack.h:25,
+                 from objfiles.h:26,
+                 from gdbtypes.c:28:
+gdbtypes.c: 関数 ‘recursive_dump_type’ 内:
+./../include/obstack.h:426:30: エラー: 増分の被演算子として左辺値が必要です
+  426 |    *((void **)__o->next_free)++ = ((void *)datum);   \
+      |                              ^~
+
+%
+
+これは, ... d30v-elf-gdb をインストールしたときと同じ現象.
+以下のように修正:
+
+gdb-6.0.fr30-elf/include/obstack.h
+
+# define obstack_ptr_grow(OBSTACK,datum)				\
+__extension__								\
+({ struct obstack *__o = (OBSTACK);					\
+   if (__o->next_free + sizeof (void *) > __o->chunk_limit)		\
+     _obstack_newchunk (__o, sizeof (void *));				\
++  *((void **)__o->next_free) = ((void *)datum);			\
++  __o->next_free = (void*)((void **)__o->next_free + 1);		\
+-   *((void **)__o->next_free)++ = ((void *)datum);			\
+   (void) 0; })
+
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf
+% make
+...
+make[1]: *** 'libgdb.a' に必要なターゲット 'fr30-tdep.o' を make するルールがありません.  中止.
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf/gdb' から出ます
+make: *** [Makefile:21479: all-gdb] エラー 2
+
+fr30 は 32 ビットのプロセッサらしいのでとりあえず mcore-tdep.c.000 をコピーして
+mcore -> fr30 の置換をしておく.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf
+% make
+gcc -c -g -O2    -I. -I. -I./config -DLOCALEDIR="\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/share/locale\"" -DHAVE_CONFIG_H -I./../include/opcode -I./../readline/.. -I../bfd -I./../bfd  -I./../include -I../intl -I./../intl  -DMI_OUT=1 -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized  fr30-tdep.c
+fr30-tdep.c:8:10: 致命的エラー: dwarf2/frame.h: そのようなファイルやディレクトリはありません
+    8 | #include "dwarf2/frame.h"
+      |          ^~~~~~~~~~~~~~~~
+コンパイルを停止しました。
+
+
+%
+
+一旦 fr30-tdep.c のほとんどをコンパイルアウトしておく:
+
+#include "defs.h"
+#include "value.h"
+#include "arch-utils.h"
+#include "regcache.h"
+#include "gdbcore.h"
+#include "objfiles.h"
+#include "dis-asm.h"
+// #include "dwarf2/frame.h"
+#include "frame-base.h"
+#include "frame-unwind.h"
+
+#if 0
+...
+#endif
+
+void _initialize_fr30_tdep();
+void
+_initialize_fr30_tdep()
+{
+#if 0  
+  register_gdbarch_init(bfd_arch_fr30, fr30_gdbarch_init);
+#endif  
+}
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf
+% make
+...
+gcc -c -g -O2    -I. -I. -I./config -DLOCALEDIR="\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/share/locale\"" -DHAVE_CONFIG_H -I./../include/opcode -I./../readline/.. -I../bfd -I./../bfd  -I./../include -I../intl -I./../intl  -DMI_OUT=1 -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized  remote.c
+remote.c:4789:1: エラー: ‘remote_insert_watchpoint’ の静的宣言が非静的宣言の後に続いています
+
+これは, d30v-elf-gdb のときには出なかったエラーだが理由は不明. 個別にここで対処する.
+
+tm-fr30.h から以下を削除:
+
+/* These declarations should be in remote.h, no?  */
+extern int remote_insert_watchpoint (CORE_ADDR addr, int len, int type);
+extern int remote_remove_watchpoint (CORE_ADDR addr, int len, int type);
+extern int remote_insert_hw_breakpoint (CORE_ADDR addr, int len);
+extern int remote_remove_hw_breakpoint (CORE_ADDR addr, int len);
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf
+% make
+...
+make[1]: *** 'gdb' に必要なターゲット '../sim/fr30/libsim.a' を make するルールがありません.  中止.
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf/gdb' から出ます
+make: *** [Makefile:21479: all-gdb] エラー 2
+
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf/sim/fr30
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% make
+make: *** ターゲットが指定されておらず, makefile も見つかりません.  中止.
+%
+
+configure が空のファイルであることに気付く.
+
+% cp /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.d30v-elf/sim/d30v/configure .
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% make
+make: *** ターゲットがありません.  中止.
+%
+
+Makefile を確認したら
+
+# Generated automatically from Makefile.in by configure.
+# OBSOLETE # Makefile template for Configure for the fr30 simulator
+# OBSOLETE # Copyright (C) 1998, 2000 Free Software Foundation, Inc.
+# OBSOLETE # Contributed by Cygnus Support.
+# OBSOLETE #
+...
+のようになっている.
+
+Makefile.in から '# OBSOLETE ' 空の文字に置換した.
+
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% make
+...
+gcc -c ./../common/sim-config.c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2
+In file included from ./../common/sim-config.c:25:
+./sim-main.h:65:1: 警告: 複数行のコメント [-Wcomment]
+   65 | // OBSOLETE #define SIM_CORE_SIGNAL(SD,CPU,CIA,MAP,NR_BYTES,ADDR,TRANSFER,ERROR) \
+      | ^
+./../common/sim-config.c: 関数 ‘config_byte_order_to_a’ 内:
+./../common/sim-config.c:49:10: エラー: ‘LITTLE_ENDIAN’ が宣言されていません (この関数内での最初の使用)
+   49 |     case LITTLE_ENDIAN:
+
+
+sim-main.h を確認すると以下のようになっていた:
+
+// OBSOLETE /* Main header for the fr30.  */
+// OBSOLETE 
+// OBSOLETE #define USING_SIM_BASE_H /* FIXME: quick hack */
+// OBSOLETE 
+// OBSOLETE struct _sim_cpu; /* FIXME: should be in sim-basics.h */
+
+sim-main.h の '// OBSOLETE ' を空の文字に置換.
+
+
+% make
+...
+./../common/sim-memopt.c:21:10: 致命的エラー: cconfig.h: そのようなファイルやディレクトリはありません
+   21 | #include "cconfig.h"
+      |          ^~~~~~~~~~~
+コンパイルを停止しました。
+make: *** [Makefile:446: sim-memopt.o] エラー 1
+
+これは...d30v-elf-gdb のインストールでも見たエラーのように思える.
+調べてみると cconfig.h を config.h に修正して回避していた. fr30 でも同じ対処にする.
+
+% make
+> make
+gcc -c ./../common/sim-memopt.c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2
+./../common/sim-memopt.c: 関数 ‘do_memopt_add’ 内:
+./../common/sim-memopt.c:163:16: エラー: ‘s’ の記憶域サイズが不明です
+  163 |    struct stat s;
+      |                ^
+./../common/sim-memopt.c:168:9: 警告: 関数 ‘fstat’ の暗黙的な宣言です [-Wimplicit-function-declaration]
+  168 |    rc = fstat (mmap_next_fd, &s);
+      |         ^~~~~
+./../common/sim-memopt.c:176:18: 警告: 関数 ‘mmap’ の暗黙的な宣言です [-Wimplicit-function-declaration]
+
+config.h に以下を追加. d30v-elf-gdb での対処を思い出した.
+
+#include <sys/stat.h>
+#include <sys/mman.h>
+#include <errno.h>
+
+% make
+...
+gcc -c ./../common/sim-model.c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2
+In file included from ../common/sim-basics.h:140,
+                 from ./sim-main.h:13,
+                 from ./../common/sim-model.c:21:
+./../common/sim-model.c: 関数 ‘sim_model_init’ 内:
+../common/sim-config.h:536:29: エラー: ‘DEFAULT_MODEL’ undeclared (first use in this function); did you mean ‘WITH_DEFAULT_MODEL’?
+  536 | #define WITH_DEFAULT_MODEL  DEFAULT_MODEL
+      |                             ^~~~~~~~~~~~~
+
+参照箇所は以下:
+
+#ifndef WITH_DEFAULT_MODEL
+#define WITH_DEFAULT_MODEL		DEFAULT_MODEL
+#endif
+
+DEFAULT_MODEL を何かに define しておけば良さそうではあるが
+
+Makefile を以下のようにした:
+
+SIM_DEFAULT_MODEL =
+
+% make
+...
+gcc -c ./../common/cgen-trace.c -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0
+In file included from ../common/cgen-sim.h:26,
+                 from ./sim-main.h:26,
+                 from ./../common/cgen-trace.c:24:
+./../common/cgen-trace.c: 関数 ‘trace_insn_fini’ 内:
+../common/cgen-defs.h:39:39: エラー: invalid use of undefined type ‘const struct argbuf’
+
+このエラーは argbuf という構造体が不完全型であるのに
+
+   39 | #define ARGBUF_PROFILE_P(abuf) ((abuf)->profile_p)
+
+のように -> 演算子を適用してエラーしているらしい.
+
+cpu.h や他のファイルに // OBSOLUTE が残っていたので置換した.
+
+改めて
+
+% make clean
+% make
+...
+/bin/sh ./../common/genmloop.sh \
+	-mono -fast -pbb -switch sem-switch.c \
+	-cpu fr30bf -infile ./mloop.in
+case: 引数が多過ぎます.
+case: 引数が多過ぎます.
+case: 引数が多過ぎます.
+case: 引数が多過ぎます.
+case: 引数が多過ぎます.
+case: 引数が多過ぎます.
+/bin/sh ./../../move-if-change eng.hin eng.h
+/bin/sh ./../../move-if-change mloop.cin mloop.c
+...
+gcc -c -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 sem.c
+...
+
+sem.c:3006:23: エラー: マクロ "SEM_BRANCH_FINI" は引数を 2 要求しますが、1 個しか与えられていません
+ 3006 |   SEM_BRANCH_FINI (vpc);
+
+
+SEM_BRANCH_FINI (vpc) を SEM_BRANCH_FINI (vpc, 0) に置換した.
+
+% make
+gcc -c -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 mloop.c
+mloop.c: 関数 ‘fr30bf_pbb_chain’ 内:
+mloop.c:196:3: 警告: 関数 ‘PBB_UPDATE_INSN_COUNT’ の暗黙的な宣言です [-Wimplicit-function-declaration]
+  196 |   PBB_UPDATE_INSN_COUNT (current_cpu, sem_arg);
+      |   ^~~~~~~~~~~~~~~~~~~~~
+In file included from mloop.c:445:
+mloop.c: 関数 ‘fr30bf_engine_run_fast’ 内:
+sem-switch.c:205:5: エラー: ラベル ‘case_sem_INSN_XCHB’ が使用されましたが、定義されていません
+  205 |     { FR30BF_INSN_XCHB, && case_sem_INSN_XCHB },
+      |     ^
+
+sem-swith.c:
+
+  static struct {
+    int index;
+    void *label;
+  } labels[] = {
+    { FR30BF_INSN_X_INVALID, && case_sem_INSN_X_INVALID },
+...
+  CASE (sem, INSN_X_INVALID) : /* --invalid-- */
+
+CASE がマクロ展開されていないということだろうか.
+
+% gcc -E -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 mloop.c -o mloop.i
+
+mloop.i を確認してみた.
+
+$macro $def CASE "../common/cgen-defs.h" 130 ;
+
+以下のように修正
+#define WITH_SEM_SWITCH_FULL 1
+
+と思ったが eng.h は生成されるファイル.
+
+/bin/sh ./../common/genmloop.sh \
+	-mono -fast -pbb -switch sem-switch.c \
+	-cpu fr30bf -infile ./mloop.in
+
+で出ている
+
+case: 引数が多過ぎます.
+case: 引数が多過ぎます.
+case: 引数が多過ぎます.
+case: 引数が多過ぎます.
+case: 引数が多過ぎます.
+case: 引数が多過ぎます.
+
+も解明されていない.
+
+/bin/sh -vx ./../common/genmloop.sh -mono -fast -pbb -switch sem-switch.c -cpu fr30bf -infile ./mloop.in
+
+とすれば分かるが環境変数 SHELL が悪さをしていたらしい. SHELL を /bin/sh にセットすれば
+「case: 引数が多過ぎます.」のエラーを回避できている.
+
+% setenv SHELL /bin/sh
+% make clean
+% make
+...
+gcc -c -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 mloop.c
+
+mloop.c:133:14: エラー: 関数 ‘sc->argbuf.semantic.sem_full’ へ渡す引数が少なすぎます
+  133 |       vpc = (*sc->argbuf.semantic.sem_full) (current_cpu, abuf);
+      |             ~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+% gcc -E -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 mloop.c > mloop.i
+
+
+mloop.i を確認すると
+
+typedef SEM_STATUS (SEMANTIC_FN) (SIM_CPU *, SEM_ARG, CGEN_INSN_INT);
+
+union sem {
+
+  SEMANTIC_FN *sem_full;
+
+のようになっている. 第 3 引数の CGEN_INSN_INT 型が指定されていないらしい.
+
+mloop.c は生成されるファイルだが mloop.in がソースらしい.
+
+mloop.in:
+
+#if WITH_SCACHE
+      vpc = (*sc->argbuf.semantic.sem_full) (current_cpu, sc);
+#else
+      vpc = (*sc->argbuf.semantic.sem_full) (current_cpu, abuf, 0);
+#endif
+
+良く分からないが上のように修正した.
+
+% make
+...
+gcc -c -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 mloop.c
+...
+sem-switch.c: 関数 ‘fr30bf_engine_run_fast’ 内:
+sem-switch.c:269:39: エラー: ‘sc’ undeclared (first use in this function); did you mean ‘sec’?
+
+
+  CASE (sem, INSN_X_INVALID) : /* --invalid-- */
+{
+  SEM_ARG sem_arg = SEM_SEM_ARG (vpc, sc);             これがエラーしている.
+
+sem-switch.c は生成されるファイルではなさそうであるから sc の宣言が抜けている
+ということだろうか.
+
+例えば
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.cris-elf/sim/cris/semcrisv10f-switch.c
+
+を見ると
+
+  CASE (sem, INSN_X_INVALID) : /* --invalid-- */
+{
+  SEM_ARG sem_arg = SEM_SEM_ARG (vpc, sc);
+
+のように似た書き型をしている.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.cris-elf/sim/cris
+% gcc -DHAVE_CONFIG_H -DWITH_DEFAULT_MODEL='"crisv32"' -DWITH_ALIGNMENT=NONSTRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BFD_ENDIAN_LITTLE  -DWITH_HW=1 -DDEFAULT_INLINE=0  -DWITH_SCACHE=16384 -Wall -Wdeclaration-after-statement -Wpointer-arith -Wpointer-sign -Wno-unused -Wunused-value -Wunused-function -Wno-switch -Wno-char-subscripts -Wmissing-prototypes -Wdeclaration-after-statement -Wempty-body -Wmissing-parameter-type -Wold-style-declaration -Wold-style-definition -Wformat-nonliteral      -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes  -g3 -O0 -E -o mloopv10f.i -MT mloopv10f.o -MMD -MP -MF .deps/mloopv10f.Tpo mloopv10f.c
+
+として mloopv10f.i を確認してみたところ以下を発見.
+
+  case_sem_INSN_X_INVALID :
+{
+  SEM_ARG sem_arg = (vpc);
+
+ということはマクロ展開のされ方に問題があるということ.
+マクロ SEM_SEM_ARG は cris の場合どこで定義されていたか.
+
+$macro $def SEM_SEM_ARG "../common/cgen-engine.h" 192 ;
+
+#define SEM_SEM_ARG(vpc, sc) (vpc)
+
+これが fr30 の場合に適切にマクロ展開されていない原因を確認する.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf/sim/fr30
+% gcc -E -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 mloop.c > mloop.i
+
+mloop.i で以下を確認した.
+
+  case_sem_INSN_X_INVALID :
+{
+  SEM_ARG sem_arg = (sc);
+
+一方マクロ展開の前は
+
+  CASE (sem, INSN_X_INVALID) : /* --invalid-- */
+{
+  SEM_ARG sem_arg = SEM_SEM_ARG (vpc, sc);
+
+なので問題なさそうであるが...
+
+$macro $def SEM_SEM_ARG "../common/cgen-engine.h" 282 ;
+
+#define SEM_SEM_ARG(vpc, sc) (sc)
+
+というわけだった. ということは
+
+#if WITH_SCACHE_PBB
+
+/* Return the scache pointer of the current insn.  */
+#define SEM_SEM_ARG(vpc, sc) (vpc)
+
+...
+#else /* ! WITH_SCACHE_PBB */
+
+#define SEM_SEM_ARG(vpc, sc) (sc)
+
+#endif
+
+WITH_SCACHE_PBB は 1 に define されているのが期待するコンパイル.
+cris の場合はどこでこれを define していたかを確認する.
+
+$macro $def WITH_SCACHE_PBB "sim-main.h" 30 ;
+
+#define WITH_SCACHE_PBB 1
+
+これを fr30 でも追加する.
+
+% make clean
+% make
+...
+gcc -c -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 mloop.c
+...
+sem-switch.c:269:39: エラー: ‘sc’ undeclared (first use in this function); did you mean ‘sec’?
+  269 |   SEM_ARG sem_arg = SEM_SEM_ARG (vpc, sc);
+      |                                       ^~
+
+エラーを回避できていない.
+
+$macro $def WITH_SCACHE_PBB "sim-main.h" 3 ;
+...
+$macro $def WITH_SCACHE_PBB "./tconfig.h" 42 ;
+
+tconfig.h で定義していたらしい. しかし以下. 
+
+#define WITH_SCACHE_PBB 1
+
+一旦 sim-main.h から WITH_SCACHE_PBB の追加修正をキャンセルした.
+
+下のようになっていることに気付いた.
+
+#if WITH_SCACHE
+..
+#if WITH_SCACHE_PBB
+
+#else /* !WITH_SCACHE_PBB */
+
+#endif /* WITH_SCACHE_PBB */
+
+#else /* !WITH_SCACHE */
+
+ここが有効になっていた
+
+#endif
+
+
+$macro $def WITH_SCACHE "../common/cgen-scache.h" 25 ;
+
+#ifndef WITH_SCACHE
+#define WITH_SCACHE 0
+#endif
+
+これが原因だった. cris で WITH_SCACHE がどこで 1 に define されていたか確認する.
+
+$macro $def WITH_SCACHE "<コマンドライン>" 0 ;
+
+gcc -DHAVE_CONFIG_H -DWITH_DEFAULT_MODEL='"crisv32"' -DWITH_ALIGNMENT=NONSTRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BFD_ENDIAN_LITTLE  -DWITH_HW=1 -DDEFAULT_INLINE=0  -DWITH_SCACHE=16384 -Wall -Wdeclaration-after-statement -Wpointer-arith -Wpointer-sign -Wno-unused -Wunused-value -Wunused-function -Wno-switch -Wno-char-subscripts -Wmissing-prototypes -Wdeclaration-after-statement -Wempty-body -Wmissing-parameter-type -Wold-style-declaration -Wold-style-definition -Wformat-nonliteral      -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes  -g3 -O0 -c -o mloopv10f.o -MT mloopv10f.o -MMD -MP -MF .deps/mloopv10f.Tpo mloopv10f.c
+
+Makefile を以下のように修正
+SIM_SCACHE = -DWITH_SCACHE=16384
+
+% make clean
+% make
+...
+gcc -c -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 sem.c
+...
+sem.c:3006:26: エラー: マクロ "SEM_BRANCH_FINI" に引数が 2 渡されましたが、1 しか受け取りません
+
+これはエラーを回避するために置換した部分. 元に戻す.
+
+SEM_BRANCH_FINI (vpc, 0) を SEM_BRANCH_FINI (vpc) に置換した.
+
+% make
+...
+gcc -c -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 mloop.c
+...
+../common/cgen-defs.h:133:22: エラー: 複合文の最後にラベルがあります
+  133 | #define ENDSWITCH(N) end_switch_##N:
+      |                      ^~~~~~~~~~~
+sem-switch.c:5403:3: 備考: in expansion of macro ‘ENDSWITCH’
+ 5403 |   ENDSWITCH (sem) /* End of semantic switch.  */
+      |   ^~~~~~~~~
+make: *** [Makefile:645: mloop.o] エラー 1
+
+ということはこれまでのエラーとは異なるエラー. 前のエラーは回避できたが, 違うエラー
+が発生しているということ.
+
+sem-switch.c を以下のように修正.
+
+ENDSWITCH (sem); /* End of semantic switch.  */
+
+% make
+...
+gcc -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(sim-info.o): in function `sim_addr_range_hit_p':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf/sim/fr30/../common/sim-arange.c:290: multiple definition of `sim_addr_range_hit_p'; nrun.o:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf/sim/fr30/../common/sim-arange.c:290: first defined here
+
+コンパイルエラーを回避できてリンクでエラーしている. そしてこれは以前見たことがあるエラーだが
+思い出せない.
+
+../common/sim-arange.c:290
+
+SIM_ARANGE_INLINE int
+sim_addr_range_hit_p (ADDR_RANGE *ar, address_word addr)
+{
+
+% gcc -E ./../common/sim-arange.c -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 > sim-arange.i
+
+sim-arrange.i を確認
+
+extern int
+sim_addr_range_hit_p (ADDR_RANGE * , address_word );
+
+....
+                 int
+sim_addr_range_hit_p (ADDR_RANGE *ar, address_word addr)
+{
+ここは問題なさそう.
+
+% gcc -E ./../common/sim-info.c -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 > sim-info.i
+
+extern __inline__ int
+sim_addr_range_hit_p (ADDR_RANGE *ar, address_word addr)
+{
+  ADDR_RANGE_TREE *t = ar->range_tree;
+
+  while (t != 
+
+これは SIM_ARANGE_INLINE が extern __inline__ に define されているということか?
+
+$macro $def SIM_ARANGE_INLINE "../common/sim-arange.h" 75 ;
+
+#ifdef HAVE_INLINE
+#ifdef SIM_ARANGE_C
+#define SIM_ARANGE_INLINE INLINE
+#else
+#define SIM_ARANGE_INLINE EXTERN_INLINE
+#endif
+#include "sim-arange.c"
+#else
+#define SIM_ARANGE_INLINE
+#endif
+#define SIM_ARANGE_C_INCLUDED
+
+こういうことだった. -DSIM_ARANGE_C を追加してみたが以下のようになる.
+
+../common/sim-arange.c:22: 警告: "SIM_ARANGE_C" が再定義されました
+   22 | #define SIM_ARANGE_C
+
+エラーの回避ができていない. やはりリンクエラー.
+
+#ifdef HAVE_INLINE
+#ifdef SIM_ARANGE_C
+#define SIM_ARANGE_INLINE INLINE
+#else
+#define SIM_ARANGE_INLINE EXTERN_INLINE
+#endif
+// #include "sim-arange.c"      コメントアウトした
+#else
+#define SIM_ARANGE_INLINE
+#endif
+#define SIM_ARANGE_C_INCLUDED
+
+% make clean ; make
+...
+gcc -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(mloop.o): in function `GETMEMQI':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf/sim/fr30/../common/cgen-mem.h:50: multiple definition of `GETMEMQI'; libsim.a(cgen-utils.o):/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf/sim/fr30/./../common/cgen-mem.h:50: first defined here
+
+
+% gcc -E -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 mloop.c > mloop.i
+
+mloop.i を確認してみた:
+
+extern inline QI GETMEMQI (SIM_CPU *cpu, IADDR pc, ADDR a) { do { if (((-1 & (1 << (PROFILE_MEMORY_IDX))) != 0 && (((& (cpu)->base.profile_data))->profile_flags)[PROFILE_MEMORY_IDX] != 0)) ++ (((& (cpu)->base.profile_data))->read_count) [MODE_QI]; } while (0); return sim_core_read_aligned_1 (cpu, pc, read_map, a); }
+
+ここでも extern inline が出現.
+
+cgen-utils.o と mloop.o の両方に定義されているということ. 面倒なので以下のように
+修正.
+
+#if defined (__GNUC__) || defined (MEMOPS_DEFINE_INLINE)
+#define DECLARE_GETMEM(mode, size) \
+inline mode \
+XCONCAT2 (GETMEM,mode) (SIM_CPU *cpu, IADDR pc, ADDR a) \
+{ \
+
+これも修正
+
+#if defined (__GNUC__) || defined (MEMOPS_DEFINE_INLINE)
+#define DECLARE_SETMEM(mode, size) \
+inline void \
+XCONCAT2 (SETMEM,mode) (SIM_CPU *cpu, IADDR pc, ADDR a, mode val) \
+{ \
+
+% make clean ; make
+...
+gcc -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(mloop.o): in function `GETIMEMUQI':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf/sim/fr30/../common/cgen-mem.h:104: multiple definition of `GETIMEMUQI'; libsim.a(cgen-utils.o):/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf/sim/fr30/./../common/cgen-mem.h:104: first defined here
+
+#ifdef MEMOPS_DEFINE_INLINE
+#define MEMOPS_INLINE
+#else
+#define MEMOPS_INLINE inline  これを修正するほうが早い.
+#endif
+
+gcc -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(mloop.o): in function `SUBWORDSISF':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf/sim/fr30/../common/cgen-ops.h:308: multiple definition of `SUBWORDSISF'; libsim.a(cgen-utils.o):/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf/sim/fr30/./../common/cgen-ops.h:308: first defined here
+
+
+#if defined (__GNUC__) && ! defined (SEMOPS_DEFINE_INLINE)
+#define SEMOPS_DEFINE_INLINE
+#define SEMOPS_INLINE extern inline  これも修正する.
+#else
+#define SEMOPS_INLINE
+#endif
+
+
+gcc -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: nrun.o: in function `main':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf/sim/fr30/./../common/nrun.c:71: undefined reference to `sim_open'
+
+
+sim-if.c にまだ
+
+// OBSOLETE
+
+が残っていた.
+
+% make
+gcc -c -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 sim-if.c
+sim-if.c: 関数 ‘sim_open’ 内:
+sim-if.c:53:19: エラー: 引数 ‘abfd’ がプロトタイプと一致しません
+   53 |      struct _bfd *abfd;
+
+以下のように修正.
+
+SIM_DESC
+sim_open(SIM_OPEN_KIND kind, struct host_callback_struct *callback,
+	 struct bfd *abfd, char **argv)
+{
+...
+SIM_RC
+sim_create_inferior(SIM_DESC sd, struct bfd *abfd, char **argv, char **env)
+{
+
+% make
+...
+gcc -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl
+...
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(sim-if.o):/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf/sim/fr30/sim-if.c:34: multiple definition of `current_state'; libsim.a(sim-utils.o):/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf/sim/fr30/./../common/sim-utils.c:54: first defined here
+
+sim-if.c を以下のように修正:
+
+extern SIM_DESC current_state;
+
+% make
+...
+gcc -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(mloop.o): in function `extract':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf/sim/fr30/mloop.c:82: undefined reference to `sim_addr_range_hit_p'
+
+
+sim-arange.c を以下のように修正
+
+// 無条件でコンパイル
+int
+sim_addr_range_hit_p (ADDR_RANGE *ar, address_word addr)
+{
+  ADDR_RANGE_TREE *t = ar->range_tree;
+
+  while (t != NULL)
+    {
+      if (addr < t->start)
+	t = t->lower;
+      else if (addr > t->end)
+	t = t->higher;
+      else
+	return 1;
+    }
+  return 0;
+}
+
+% make
+gcc -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(mloop.o): in function `fr30bf_engine_run_fast':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf/sim/fr30/sem-switch.c:977: undefined reference to `GETMEMSI'
+
+sem-switch.c に以下を追加してみた.
+
+#include "cgen-mem.h"
+
+% make
+
+gcc -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(mloop.o): in function `fr30bf_engine_run_fast':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf/sim/fr30/sem-switch.c:979: undefined reference to `GETMEMSI'
+
+エラーを回避できていない.
+
+% gcc -E -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1    -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 mloop.c > mloop.i
+
+inline 函数の宣言は入っている:
+
+inline SI GETMEMSI (SIM_CPU *cpu, IADDR pc, ADDR a) { do { if (((-1 & (1 << (PROFILE_MEMORY_IDX))) != 0 && (((& (cpu)->base.profile_data))->profile_flags)[PROFILE_MEMORY_IDX] != 0)) ++ (((& (cpu)->base.profile_data))->read_count) [MODE_SI]; } while (0); return sim_core_read_unaligned_4 (cpu, pc, read_map, a); }
+
+% make clean ; make
+...
+gcc -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(mloop.o): in function `fr30bf_engine_run_fast':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.fr30-elf/sim/fr30/sem-switch.c:977: undefined reference to `GETMEMSI'
+
+エラーを回避できていない.
+
+Makefile から以下のオプションを削除してみた:
+
+ -DDEFAULT_INLINE=0
+
+エラーを回避できていない. 一旦元に戻す.
+
+% gcc -S -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 mloop.c
+
+mloop.s を見てみると
+
+	call GETMEMSI
+
+はあるがその定義がない.
+
+cgen-mem.h を以下のように修正
+
+#ifdef MEMOPS_DEFINE_INLINE
+#define MEMOPS_INLINE
+#else
+#define MEMOPS_INLINE static
+#endif
+
+% make clean ; make
+
+ビルド成功.
+
+しかし gdb-6.0 は期待通り動作しないことが判明しているので, 残りの作業は改めて
+gdb-10.2 で行なう.
