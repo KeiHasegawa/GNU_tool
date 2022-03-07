@@ -1,0 +1,18 @@
+int32 <-  int16
+
+        符号拡張
+	
+        ; r1 に int16 をロード
+	cmpi.s	r1, 0
+	obrf0t.s	label	 ; r1 < 0 ならばジャンプ
+	ldi.l	r0, #0
+	bra.s	label2
+label:
+	ldi.l	r0, #-1
+label2:
+
+
+int32 <- uint16
+
+        ゼロ拡張は単に上位のレジスタに 0 をセットすればよい.
+	
