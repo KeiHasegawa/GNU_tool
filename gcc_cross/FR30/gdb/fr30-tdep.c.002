@@ -1,0 +1,424 @@
+#include "defs.h"
+#include "value.h"
+#include "arch-utils.h"
+#include "regcache.h"
+#include "gdbcore.h"
+#include "objfiles.h"
+#include "dis-asm.h"
+#include "dwarf2/frame.h"
+#include "frame-base.h"
+#include "frame-unwind.h"
+#include "trad-frame.h"
+#include <numeric>
+#include <cassert>
+#include <string>
+
+static int
+fr30_register_sim_regno(gdbarch*, int regnum)
+{
+  if (regnum == 17)
+    return 19;  // rp
+
+  if (regnum == 18)
+    return 22; // mdh
+
+  if (regnum == 19)
+    return 23; // mdl
+
+  return regnum;
+}
+
+static int
+fr30_dbg_reg_to_regnum(gdbarch*, int regnum)
+{
+  return regnum;
+}
+
+const int pc_regno = 16;
+const int sp_regno = 15;
+
+static const char* fr30_register_name(gdbarch*, int regno)
+{
+  static const char* name[] = {
+    "r0",  "r1",  "r2",  "r3",  "r4",  "r5",  "r6",  "r7",
+    "r8",  "r9",  "r10", "r11", "r12", "r13", "r14", "r15",
+    "pc",  "ps",  "tbr", "rp",  "ssp", "usp",  "mdh", "mdl"
+  };
+
+  if (regno < sizeof name/sizeof name[0])
+    return name[regno];    
+  
+  return nullptr;
+}
+
+static bool is_aggregate(type_code code)
+{
+  switch (code) {
+  case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
+    return true;
+  default:
+    return false;
+  }
+}
+
+static void
+fr30_extract_return_value(type* valtype, regcache* regs, gdb_byte *valbuf)
+{
+  int len = TYPE_LENGTH(valtype);
+  for (int regno = 4 ; len > 0 ; len -= 4, ++regno, valbuf += 4) {
+    ULONGEST tmp;
+    regcache_cooked_read_unsigned(regs, regno, &tmp);
+    store_unsigned_integer(valbuf, 4, BFD_ENDIAN_BIG, tmp);
+  }
+}
+
+static enum return_value_convention
+fr30_return_value (gdbarch* arch, value *function,
+		   type* valtype, regcache *rc,
+		   gdb_byte *readbuf, const gdb_byte *writebuf)
+{
+  auto code = valtype->code();
+  if (is_aggregate(code)) {
+    if (readbuf) {
+      ULONGEST r4;
+      regcache_raw_read_unsigned(rc, 4, &r4);
+      read_memory(r4, readbuf, TYPE_LENGTH(valtype));
+    }
+    return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+  }
+
+  assert(!writebuf);
+
+  if (readbuf)
+    fr30_extract_return_value(valtype, rc, readbuf);
+  
+  return RETURN_VALUE_REGISTER_CONVENTION;
+}
+
+static type*
+fr30_register_type(gdbarch* arch, int regno)
+{
+  switch (regno) {
+  case pc_regno:
+  case 19:
+    return builtin_type(arch)->builtin_func_ptr;
+  case 14:
+  case sp_regno:
+    return builtin_type(arch)->builtin_data_ptr;
+  default:
+    return builtin_type(arch)->builtin_int32;
+  }
+}
+
+inline void
+register_info(gdbarch* arch, ui_file* file, frame_info* frame, int regno)
+{
+  const char* name = fr30_register_name(arch, regno);
+  uint32_t value = frame_unwind_register_unsigned(frame, regno);
+  type* x = builtin_type(arch)->builtin_int16;
+  type* y = fr30_register_type(arch, regno);
+  if (x == y)
+    fprintf_filtered (file, "%s\t0x%04x\t%d\n", name, value, value);
+  else
+    fprintf_filtered (file, "%s\t0x%08x\t%d\n", name, value, value);
+}
+
+static void
+fr30_print_registers_info(gdbarch* arch, ui_file* file,
+			  frame_info* frame, int regno, int cpregs)
+{
+  if (regno >= 0)
+    return register_info(arch, file, frame, regno);
+
+  int N = gdbarch_num_regs(arch);
+  for (int i = 0 ; i != N ; ++i)
+    register_info(arch, file, frame, i);
+}
+
+static CORE_ADDR
+fr30_skip_prologue(gdbarch* arch, CORE_ADDR pc)
+{
+  CORE_ADDR func_addr, func_end;
+  if (!find_pc_partial_function(pc, nullptr, &func_addr, &func_end))
+    return pc;
+  
+  symtab_and_line sal = find_pc_line(func_addr, 0);
+  if (sal.end && sal.end < func_end)
+    return sal.end;
+
+  return pc;
+}
+
+struct fr30_frame {
+  bool available;
+  CORE_ADDR prologue_start;
+  CORE_ADDR prev_sp;
+};
+
+static fr30_frame* fr30_frame_create(frame_info* frame)
+{
+  using namespace std;
+  auto ret = new fr30_frame;
+  CORE_ADDR pc = get_frame_pc(frame);
+  ret->prev_sp = get_frame_sp(frame);
+  auto block_addr = get_frame_address_in_block(frame);
+  CORE_ADDR func_end;
+  bool found = find_pc_partial_function(block_addr, nullptr,
+					&ret->prologue_start, &func_end);
+  if (!found) {
+    ret->available = false;
+    ret->prologue_start = pc;
+    return ret;
+  }
+
+  symtab_and_line sal = find_pc_line(ret->prologue_start, 0);
+  ret->available = true;
+  ret->prologue_start = sal.end;
+  return ret;
+}
+
+static void
+fr30_frame_this_id(frame_info* frame, void** ptr, frame_id* id)
+{
+  auto pf = reinterpret_cast<fr30_frame*>(*ptr);
+  if (!pf)
+    *ptr = pf = fr30_frame_create(frame);
+  
+  if (!pf->available)
+    *id = frame_id_build_unavailable_stack(pf->prologue_start);
+  else
+    *id = frame_id_build(pf->prev_sp, pf->prologue_start);
+}
+
+static value*
+fr30_frame_prev_register(frame_info* frame, void** ptr, int regno)
+{
+  if (regno == sp_regno) {
+    auto sp = get_frame_sp(frame);
+    return frame_unwind_got_constant(frame, regno, sp);
+  }
+  
+  if (regno == pc_regno) {
+    auto rp = frame_unwind_register_unsigned(frame, 17);
+    return frame_unwind_got_constant(frame, regno, rp);
+  }
+
+  auto pf = reinterpret_cast<fr30_frame*>(*ptr);
+  if (!pf)
+    *ptr = pf = fr30_frame_create(frame);
+
+  return frame_unwind_got_register(frame, regno, regno);
+}
+
+static struct frame_unwind fr30_frame_unwind = {
+  NORMAL_FRAME,
+  default_frame_unwind_stop_reason,
+  fr30_frame_this_id,
+  fr30_frame_prev_register,
+  nullptr,
+  default_frame_sniffer
+};
+
+static frame_base fr30_frame_base = {
+  nullptr
+};
+
+static int fr30_kind_from_pc(gdbarch* arch, CORE_ADDR* addr)
+{
+  return 0;
+}
+
+static
+const unsigned char* fr30_from_kind(gdbarch* arch, int kind, int* size)
+{
+  static unsigned char break_inst[] = {0x1f, 0x09 };
+  *size = sizeof break_inst;
+  return &break_inst[0];
+}
+
+static void calc_sp(int* nth, value* arg, CORE_ADDR* sp)
+{
+  auto arg_type = check_typedef(value_type(arg));
+  auto code = arg_type->code();
+  int len = TYPE_LENGTH(arg_type);
+  if (is_aggregate(code)) {
+    if (*nth & 1)
+      ++*nth;
+    int N = (len >> 2) + ((len & 3) ? 1 : 0);    
+    if (*nth + N <= 16) {
+      *nth += N;
+      return;
+    }
+    if (*nth < 16)
+      *sp -= (N - (16 - *nth)) * 4;
+    else
+      *sp -= N * 4;
+    *nth += N;
+    return;
+  }
+  
+  if (len <= 4) {
+    if (*nth < 16) {
+      ++*nth;
+      return;
+    }
+    *sp -= 4;
+    ++*nth;
+    return;
+  }
+
+  assert(len == 8);
+  if (*nth & 1)
+    ++*nth;
+  if (*nth + 1 < 16) {
+    *nth += 2;
+    return;
+  }
+  *sp -= 8;
+  *nth += 2;
+}
+
+static void set_arg(int* nth, value* arg, regcache* rc, CORE_ADDR sp)
+{
+  auto arg_type = check_typedef(value_type(arg));
+  auto code = arg_type->code();
+  auto val = value_contents(arg);
+  int len = TYPE_LENGTH(arg_type);
+
+  if (is_aggregate(code)) {
+    if (*nth & 1)
+      ++*nth;
+    int N = (len >> 2) + ((len & 3) ? 1 : 0);    
+    if (*nth + N <= 16) {
+      for (int i = 0 ; i != N ; ++i) {
+	auto regval = extract_unsigned_integer(val+4*i, 4, BFD_ENDIAN_BIG);
+	regcache_cooked_write_unsigned(rc, 2+*nth+i, regval);
+      }
+      *nth += N;
+      return;
+    }
+    for (int i = 0 ; i != N ; ++i) {
+      if (*nth + i < 16) {
+	auto regval = extract_unsigned_integer(val+4*i, 4, BFD_ENDIAN_BIG);
+	regcache_cooked_write_unsigned(rc, 2+*nth+i, regval);
+      }
+      else {
+	CORE_ADDR addr = sp + 4 * (*nth + i - 16);
+	write_memory(addr, val + 4*i, len - 4*i);
+	break;
+      }
+    }
+    *nth += N;
+    return;
+  }
+
+  if (len <= 4) {
+    if (*nth < 16) {
+      auto regval = extract_unsigned_integer(val, 4, BFD_ENDIAN_BIG);
+      regcache_cooked_write_unsigned(rc, 2+*nth, regval);
+      ++*nth;
+      return;
+    }
+    CORE_ADDR addr = sp + 4 * (*nth - 16);
+    write_memory(addr, val, 4);
+    ++*nth;
+    return;
+  }
+
+  assert(len == 8);
+  if (*nth & 1)
+    ++*nth;
+  if (*nth + 1 < 16) {
+    auto regval = extract_unsigned_integer(val, 8, BFD_ENDIAN_BIG);
+    uint32_t hi = regval >> 32;
+    uint32_t lo = regval;
+    regcache_cooked_write_unsigned(rc, 2+*nth+0, hi);
+    regcache_cooked_write_unsigned(rc, 2+*nth+1, lo);
+    *nth += 2;
+    return;
+  }
+
+  CORE_ADDR addr = sp + 4 * (*nth - 16);
+  write_memory(addr, val, 8);
+  *nth += 2;
+}
+
+static CORE_ADDR
+fr30_push_dummy_call(gdbarch* arch, value *func, regcache* rc,
+		     CORE_ADDR bp_addr, int nargs, value** argv, CORE_ADDR sp,
+		     function_call_return_method rm, CORE_ADDR struct_addr)
+{
+  using namespace std;
+  regcache_cooked_write_unsigned(rc, 62, bp_addr);
+  int nth = 0;
+  if (rm == return_method_struct)
+    ++nth;
+  for (int i = 0 ; i != nargs ; ++i)
+    calc_sp(&nth, argv[i], &sp);
+  regcache_cooked_write_unsigned(rc, sp_regno, sp);
+  nth = 0;
+  if (rm == return_method_struct) {
+    regcache_cooked_write_unsigned(rc, 2, struct_addr);
+    ++nth;
+  }
+  for (int i = 0 ; i != nargs ; ++i)
+    set_arg(&nth, argv[i], rc, sp);
+  return sp;
+}
+
+static gdbarch*
+fr30_gdbarch_init(gdbarch_info info, gdbarch_list *arches)
+{
+  gdbarch *arch = gdbarch_alloc (&info, 0);
+
+  set_gdbarch_num_regs(arch, 64+2+18+2);
+  set_gdbarch_register_type(arch, fr30_register_type);
+  set_gdbarch_register_sim_regno(arch, fr30_register_sim_regno);
+  set_gdbarch_dwarf2_reg_to_regnum(arch, fr30_dbg_reg_to_regnum);
+  set_gdbarch_stab_reg_to_regnum(arch, fr30_dbg_reg_to_regnum);
+  set_gdbarch_register_name(arch, fr30_register_name);
+
+  set_gdbarch_pc_regnum(arch, pc_regno);
+  set_gdbarch_sp_regnum(arch, sp_regno);
+  set_gdbarch_print_registers_info(arch, fr30_print_registers_info);
+
+  set_gdbarch_ptr_bit(arch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_addr_bit(arch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_return_value(arch, fr30_return_value);
+
+  set_gdbarch_skip_prologue(arch, fr30_skip_prologue);
+  
+  frame_base_set_default (arch, &fr30_frame_base);
+  dwarf2_append_unwinders(arch);
+  frame_unwind_append_unwinder(arch, &fr30_frame_unwind);
+
+  set_gdbarch_inner_than (arch, core_addr_lessthan);
+  set_gdbarch_breakpoint_kind_from_pc(arch, fr30_kind_from_pc);
+  set_gdbarch_sw_breakpoint_from_kind(arch, fr30_from_kind);
+  set_gdbarch_push_dummy_call(arch, fr30_push_dummy_call);
+
+  set_gdbarch_char_signed(arch, 0);
+  set_gdbarch_int_bit(arch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_long_bit(arch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_long_long_bit (arch, 8 * TARGET_CHAR_BIT);
+
+  set_gdbarch_wchar_signed(arch, 0);
+  set_gdbarch_wchar_bit(arch, 2 * TARGET_CHAR_BIT);
+
+  set_gdbarch_double_bit(arch, 8 * TARGET_CHAR_BIT);
+  set_gdbarch_double_format(arch, floatformats_ieee_double);
+  set_gdbarch_long_double_bit(arch, 8 * TARGET_CHAR_BIT);
+  set_gdbarch_long_double_format(arch, floatformats_ieee_double);
+
+  set_gdbarch_believe_pcc_promotion(arch, 1);
+  
+  return arch;
+}
+
+void _initialize_fr30_tdep();
+void
+_initialize_fr30_tdep()
+{
+  register_gdbarch_init(bfd_arch_fr30, fr30_gdbarch_init);
+}
+

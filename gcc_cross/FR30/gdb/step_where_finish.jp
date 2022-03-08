@@ -1,0 +1,268 @@
+現状 ~/lang/53_GNU_tool/gcc_cross/FR30/test/test002/test.elf
+を fr30-elf-gdb で実行すると,
+
+main のブレークポイントで停止できている. このときプロローグを適切にスキップできている.
+しかし f にステップインするとプロローグを適切にスキップできていない.
+まずはこれを修正する.
+
+生成されたプログラムには以下のように .debug_frame が生成されている. 
+
+.debug_frame セクションの内容(test.elf より読み込んだもの):
+
+
+00000000 00000010 ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -4
+  Return address column: 21
+
+  DW_CFA_def_cfa: r15 ofs 0
+  DW_CFA_register: r21 in r17
+  DW_CFA_nop
+
+00000014 00000018 00000000 FDE cie=00000000 pc=00000110..0000013a
+  DW_CFA_advance_loc4: 2 to 00000112
+  DW_CFA_offset: r14 at cfa-4
+  DW_CFA_def_cfa: r14 ofs 4
+  DW_CFA_nop
+  DW_CFA_nop
+
+00000030 00000020 00000000 FDE cie=00000000 pc=0000013c..00000156
+  DW_CFA_advance_loc4: 2 to 0000013e
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_offset: r17 at cfa-4
+  DW_CFA_advance_loc4: 2 to 00000140
+  DW_CFA_offset: r14 at cfa-8
+  DW_CFA_def_cfa: r14 ofs 8
+  DW_CFA_nop
+
+ここで r17 の 17 は rp レジスタのレジスタ番号. fr30-elf-gdb 側は 19 が rp
+レジスタのレジスタ番号なのでこれを変換する:
+
+static int
+fr30_register_sim_regno(gdbarch*, int regnum)
+{
+  if (regnum == 17)
+    return 19;  // rp
+
+  if (regnum == 18)
+    return 22; // mdh
+
+  if (regnum == 19)
+    return 23; // mdl
+    
+  return regnum;
+}
+
+多分 mdh, mdl の変換は必要ないが一応入れておく.
+この修正により f にステップインしたときプロローグを適切にスキップできるようになった.
+またこの効果で引数の a, b を正しく表示できている.
+
+where コマンドを実行すると以下のようなメッセージが表示される:
+
+(fr30-elf-gdb) where
+#0  f (a=5, b=6) at test.c:3
+#1  0x0000014c in main () at test.c:8
+Backtrace stopped: frame did not save the PC
+(fr30-elf-gdb) 
+
+さてこれはどこかで見たことがあるメッセージではあるが, 対処の方法は不明.
+さらに finish コマンドを実行してみた:
+
+(fr30-elf-gdb) finish
+Run till exit from #0  f (a=5, b=6) at test.c:3
+0x0000014c in main () at test.c:8
+Value returned is $1 = 5
+(fr30-elf-gdb)
+
+戻り値をセットするレジスタが D30V のままになっている.
+
+fr30_extract_return_value(type* valtype, regcache* regs, gdb_byte *valbuf)
+
+fr30_return_value (gdbarch* arch, value *function,
+
+では r2 レジスタを参照していたので r4 レジスタに修正した. これにより finish コマンドは
+期待した動作になっている.
+
+さて残るは where コマンドのエラーメッセージ.
+
+(gdb) b backtrace_command_1
+(gdb) run
+...
+backtrace_command_1 のブレークポイントにヒット
+(gdb) n
+...
+	  reason = get_frame_unwind_stop_reason (trailing);
+	  if (reason >= UNWIND_FIRST_ERROR)
+	    printf_filtered (_("Backtrace stopped: %s\n"),
+			     frame_stop_reason_string (trailing));
+(gdb) p reason
+$1 = UNWIND_NO_SAVED_PC
+(gdb)
+
+これがエラーメッセージの直接の理由.
+ここでリンクレジスタ rp が 62 のままになっていることに気付いた. 修正したがエラーメッセージ
+は依然として出ている.
+
+(gdb) p &trailing.stop_reason
+$7 = (unwind_stop_reason *) 0x8b0444c
+(gdb) watch *(int*)0x8b0444c
+Hardware watchpoint 3: *(int*)0x8b0444c
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Hardware watchpoint 3: *(int*)0x8b0444c
+
+Old value = 0
+New value = 6
+get_prev_frame_always_1 (this_frame=0x8b043dc) at frame.c:2162
+(gdb) 
+
+
+	  this_frame->stop_reason = UNWIND_NO_SAVED_PC;
+
+ここでセットしていた. これは前にも見たことがある.
+
+~/lang/53_GNU_tool/gcc_cross/FR30/test/test002/test.elf
+
+は以下のようなプログラム
+
+start:
+	アドレス 0x100
+	スタックポインタ 0x1000
+
+main:
+	アドレス 0x13c
+	スタックポインタ 0x1000 (プロローグ後 0x0ff8)
+
+f:
+	アドレス 0x110
+	スタックポインタ 0x0ff8 (プロローグ後 0x0fdc)
+
+
+
+(gdb) p/x *this_frame
+$44 = {level = 0x1, pspace = 0x8b4a668, aspace = 0x8b4ab10, 
+  prologue_cache = 0x8b04454, unwind = 0x86a28e0, prev_arch = {p = 0x1, 
+    arch = 0x8b9f1c0}, prev_pc = {status = 0x0, masked = 0x0, value = 0x0}, 
+  prev_func = {addr = 0x0, status = 0x0}, this_id = {p = 0x2, value = {
+      stack_addr = 0x1000, code_addr = 0x13c, special_addr = 0x0, 
+      stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+      artificial_depth = 0x0}}, base = 0x0, base_cache = 0x0, 
+  next = 0x8b03dd4, prev_p = 0x1, prev = 0x0, stop_reason = 0x0, 
+  stop_string = 0x0}
+(gdb) p/x *get_next_frame (this_frame)
+$45 = {level = 0x0, pspace = 0x8b4a668, aspace = 0x8b4ab10, 
+  prologue_cache = 0x8b03e4c, unwind = 0x86a28e0, prev_arch = {p = 0x1, 
+    arch = 0x8b9f1c0}, prev_pc = {status = 0x1, masked = 0x0, value = 0x14c}, 
+  prev_func = {addr = 0x13c, status = 0x1}, this_id = {p = 0x2, value = {
+      stack_addr = 0xff8, code_addr = 0x110, special_addr = 0x0, 
+      stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+      artificial_depth = 0x0}}, base = 0x0, base_cache = 0x0, 
+  next = 0x8b03d58, prev_p = 0x1, prev = 0x8b043dc, stop_reason = 0x0, 
+  stop_string = 0x0}
+(gdb)
+
+this_frame は main のアドレス 0x13c と main の先頭アドレスでのスタック
+ポインタ 0x1000 を保持していて,
+
+get_next_frame(this_frame) は f のアドレス 0x110 と f の先頭アドレスで
+のスタックポインタ 0xff8 を保持している.
+
+結果的に
+
+      if ((lval == lval_memory && lval == nlval && addr == naddr)
+	  || (lval == lval_register && lval == nlval && realnum == nrealnum))
+
+が成立しているが
+
+(gdb) p lval == lval_memory && lval == nlval && addr == naddr
+$54 = false
+
+(gdb) p lval == lval_register && lval == nlval && realnum == nrealnum
+$55 = true
+(gdb) 
+
+2 つ目の条件が成立している. これは main のフレームで戻りアドレスがスタックに保存
+されているので lval = lval_register になっているのが期待値と異なる.
+lval = lval_memory が期待値. かと思ったが後で気付く arm-elf-gdb の動作
+から not_lval が実は正しい.
+
+static struct value *
+dwarf2_frame_prev_register (struct frame_info *this_frame, void **this_cache,
+			    int regnum)
+{
+...
+  switch (cache->reg[regnum].how)
+    {
+
+ここで cache->reg[regnum].how = DWARF2_FRAME_REG_SAVED_REG になってい
+る.
+
+これをできている arm-elf-gdb と動作を比較してみる.
+
+~/lang/53_GNU_tool/gcc_cross/ARM/test/test006/test.elf
+
+は
+
+start:
+	アドレス 0x100
+	スタックポインタ 0x1000
+
+main:
+	アドレス 0x148
+	スタックポインタ 0x1000 (プロローグ後 0x0ff8)
+
+f:
+	アドレス 0x118
+	スタックポインタ 0x0ff8 (プロローグ後 0x0fdc)
+
+である.
+
+問題の箇所で停止して確認してみた:
+
+(gdb) b frame.c:2144
+(gdb) run
+...
+上のブレークポイントにヒット
+(gdb) p lval
+$6 = not_lval
+(gdb)
+
+以下は arm-elf-gcc の生成した .debug_frame
+
+00000000 0000000c ffffffff CIE
+  Version:               1
+  Augmentation:          ""
+  Code alignment factor: 2
+  Data alignment factor: -4
+  Return address column: 14
+
+  DW_CFA_def_cfa: r13 ofs 0
+
+00000010 0000001c 00000000 FDE cie=00000000 pc=00000118..00000148
+  DW_CFA_advance_loc: 4 to 0000011c
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_offset: r11 at cfa-4
+  DW_CFA_advance_loc: 4 to 00000120
+  DW_CFA_def_cfa_register: r11
+  DW_CFA_advance_loc: 32 to 00000140
+  DW_CFA_def_cfa_register: r13
+  DW_CFA_advance_loc: 4 to 00000144
+  DW_CFA_restore: r11
+  DW_CFA_def_cfa_offset: 0
+  DW_CFA_nop
+
+00000030 00000018 00000000 FDE cie=00000000 pc=00000148..00000168
+  DW_CFA_advance_loc: 4 to 0000014c
+  DW_CFA_def_cfa_offset: 8
+  DW_CFA_offset: r11 at cfa-8
+  DW_CFA_offset: r14 at cfa-4
+  DW_CFA_advance_loc: 4 to 00000150
+  DW_CFA_def_cfa: r11 ofs 4
+  DW_CFA_nop
+
+arm-elf-xxx と単純な比較はできないかもしれない. 一旦保留.
+
+この時点で fr30-tdep.c を fr30-tdep.c.002 としてアップロードしておく.
