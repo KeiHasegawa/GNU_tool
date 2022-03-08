@@ -1,0 +1,500 @@
+gdb-10.2 のインストール
+
+このメモを書きながら作業したのだが, 文字化けを起こしてしまい追記したもので情報が断片的に
+なってしまっている.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% xz -d -c ../gdb-10.2-1.src/gdb-10.2.tar.xz | tar xf -
+% mv gdb-10.2 gdb-10.2.fr30-elf
+% cd gdb-10.2.fr30-elf/sim
+% tar xvf ~/lang/53_GNU_tool/gcc_cross/FR30/gdb/fr30.tar
+% cd ..
+
+D30V と同じ対処をした.
+
+gdb-10.2.fr30-elf/gdb/configure.tgt:
+
+h8300-*-*)
+	# Target: H8300 processor
+	gdb_target_obs="h8300-tdep.o"
+	gdb_sim=../sim/h8300/libsim.a
+	;;
+
++fr30-*-*)
++	gdb_target_obs="fr30-tdep.o"
++	gdb_sim=../sim/fr30/libsim.a
++	;;
+
+% cd gdb
+% cp /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.d30v-elf/gdb/d30v-tdep.c fr30-tdep.c
+
+fr30-tdep.c の d30v_ を fr30_ に置換.
+
+% cd ..
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=fr30-elf
+% make
+
+エラーはしなかったが
+
+% find . -name gdb
+./include/gdb
+./gdb
+./gdb/guile/lib/gdb
+./gdb/python/lib/gdb
+%
+
+gdb/gdb はビルドされていない.
+
+gdb-10.2.fr30-elf/sim/Makefile
+
+を以下のように修正
+
+SUBDIRS = fr30
+
+% cd sim
+% make
+...
+gcc -c ./../common/callback.c -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2
+...
+   35 | #error config.h must be included before this header
+      |  ^~~~~
+
+config.h に以下を追加
+
+/* Name of this package. */
+#define PACKAGE "sim"
+
+% cd sim/fr30
+% make
+...
+gcc -c ./../common/sim-config.c -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0
+...
+   52 | enum mach_attr { _MACH_NONE };
+      |      ^~~~~~~~~
+...
+
+../../opcodes/fr30-desc.h
+typedef enum mach_attr {
+  MACH_BASE, MACH_FR30, MACH_MAX
+} MACH_ATTR;
+
+../common/sim-model.h
+#ifndef WITH_DEFAULT_MODEL
+/* Just a stub for ports that do not define models.  */
+enum mach_attr { _MACH_NONE };
+
+config.h に以下を追加
+
+#define WITH_DEFAULT_MODEL
+
+% make
+...
+gcc -c ./../common/sim-config.c -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0
+...
+   37 | extern const MACH fr30_mach;
+
+gdb-6.0.fr30-elf のときは
+
+# 36 "../common/sim-model.h"
+
+typedef struct {
+  const char *name;
+...
+} MACH;
+
+gdb-10.2 では SIM_MARCH に変更されていたらしい.
+
+
+% make
+...
+gcc -c ./../common/sim-config.c -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0
+...
+
+   88 | extern device fr30_devices;
+      |        ^~~~~~
+
+gdb-6.0.fr30-elf では
+
+# 65 "../common/sim-basics.h"
+typedef struct _device device;
+
+fr30_devices は参照されていないのでコメントアウトしておいた.
+
+% make
+...
+gcc -c ./../common/sim-config.c -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0
+...
+  192 |     current_stdio = WITH_STDIO;
+      |                     ^~~~~~~~~~
+
+config.h に以下を追加
+
+#define WITH_STDIO 0
+
+% make
+...
+gcc -c ./../common/sim-config.c -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0
+...
+  240 |     STATE_ENVIRONMENT (sd) = (WITH_ENVIRONMENT != ALL_ENVIRONMENT ?
+
+config.h に以下を追加
+
+#define WITH_ENVIRONMENT ALL_ENVIRONMENT
+
+% make
+...
+gcc -c ./../common/sim-core.c -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0
+...
+
+  125 | #define WITH_TRACE_P(idx) (WITH_TRACE & (1 << idx))
+
+config.h に以下を追加
+
+#define WITH_TRACE ~TRACE_debug
+
+% make
+...
+config.h に以下を追加
+
+#define WITH_DEBUG 0
+
+% make
+...
+config.h に以下を追加
+
+#define PKGVERSION "(SIM) "
+
+% make
+...
+config.h に以下を追加
+
+#define WITH_DEFAULT_MODEL "fr30"
+
+% make
+...
+gcc -c -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 sim-if.c
+...
+
+以下のように修正
+
+SIM_DESC sim_open (SIM_OPEN_KIND kind, struct host_callback_struct *callback,
+		   struct bfd *abfd, char * const *argv)
+{
+
+% make
+...
+
+以下のように修正
+
+SIM_RC sim_create_inferior (SIM_DESC sd, struct bfd *abfd,
+			    char * const *argv, char * const *env)
+{
+
+% make
+...
+
+sim_do_command をコンパイルアウトした.
+
+% make
+...
+gcc -c -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 fr30.c
+...
+   86 | typedef void (EXTRACT_FN) (SIM_CPU *, IADDR, CGEN_INSN_WORD, ARGBUF *);
+      |                                              ^~~~~~~~~~~~~~
+
+以下のように修正:
+
+#include "sim-base.h"
++
++typedef CGEN_INSN_INT CGEN_INSN_WORD;
++
+#include "cgen-sim.h"
+
+また以下もついでに修正
+
+#if 0  
+  /* Allocate core managed memory if none specified by user.
+     Use address 4 here in case the user wanted address 0 unmapped.  */
+  if (sim_core_read_buffer (sd, NULL, read_map, &c, 4, 1) == 0)
+    sim_do_commandf (sd, "memory region 0,0x%lx", FR30_DEFAULT_MEM_SIZE);
+#endif  
+
+% make
+...
+gcc -c -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 model.c
+...
+ 3947 | static const MODEL fr30_models[] =
+      |              ^~~~~
+
+以下のように修正:
+
+static const SIM_MODEL fr30_models[] =
+
+static const SIM_MACH_IMP_PROPERTIES fr30bf_imp_properties =
+
+const SIM_MACH fr30_mach =
+{
+
+% make
+...
+gcc -c -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 arch.c
+...
+   28 | const MACH *sim_machs[] =
+
+以下のように修正
+
+const SIM_MACH *sim_machs[] =
+
+% make
+...
+gcc -c -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 mloop.c
+...
+  297 |  sc->argbuf.fields.chain.insn_count = _insn_count;
+      |                   ^
+
+gdb-6.0.fr30-elf では以下のようにしていた:
+
+# 36 "./cpu.h"
+
+union sem_fields {
+...
+#if WITH_SCACHE_PBB
+  struct {
+
+    int insn_count;
+
+    SCACHE *next;
+    SCACHE *branch_target;
+  } chain;
+#endif
+};
+
+ sc->argbuf.fields.chain.insn_count = _insn_count;
+
+WITH_SCACHE_PBB をでこで define していたかだが gdb-6.0.fr30-elf では tconfig.h で
+あった.
+
+config.h に以下を追加してみた:
+
+#define WITH_SCACHE_PBB 1
+
+% make
+...
+gcc -c -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 devices.c
+...
+
+以下を追加:
+
+typedef void* device;
+
+% make
+...
+gcc -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(sim-options.o): in function `standard_option_handler':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.fr30-elf/sim/fr30/./../common/sim-options.c:336: undefined reference to `sim_do_command'
+
+Makefile に以下を追加
+
+SIM_NEW_COMMON_OBJS = \
+	sim-arange.o \
+	sim-bits.o \
++	sim-command.o \
+...
++sim-command.o:$(srccom)/sim-command.c $(sim-config_h) sim-main.h \
++	  $(SIM_EXTRA_DEPS)
++	$(CC) -c $(srccom)/sim-command.c $(ALL_CFLAGS)
+
+% make
+...
+gcc -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(sim-options.o): in function `standard_option_handler':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.fr30-elf/sim/fr30/./../common/sim-options.c:391: undefined reference to `version'
+
+Makefile に以下を追加:
+
+LIB_OBJS = callback.o syscall.o targ-map.o version.o $(SIM_OBJS)
+                                           ^^^^^^^^^
+% make
+gcc ./../common/gentmap.c -o gentmap -g -O -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -DNL_TARGET_fr30
+rm -f tmp-tvals.h tmp-tmap.c
+./gentmap -h >tmp-tvals.h
+/bin/sh ./../../move-if-change tmp-tvals.h targ-vals.h
+./gentmap -c >tmp-tmap.c
+/bin/sh ./../../move-if-change tmp-tmap.c targ-map.c
+touch stamp-tvals
+...
+Makefile に以下を追加:
+
+version.c: Makefile $(srcroot)/gdb/version.in $(srcroot)/bfd/version.h $(srcroot)/sim/common/create-version.sh
+	$(SHELL) $(srcroot)/sim/common/create-version.sh $(srcroot)/gdb \
+	    $(host_alias) $(target_alias) version.c
+
+% make
+...
+gcc -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(sim-if.o): in function `sim_open':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.fr30-elf/sim/fr30/sim-if.c:160: undefined reference to `current_state'
+
+sim-if.c を以下のように修正:
+
+SIM_DESC current_state;
+
+% make
+...
+gcc -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(mloop.o): in function `execute':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.fr30-elf/sim/fr30/mloop.c:126: undefined reference to `TRACE_INSN_INIT'
+
+sim-if.c に以下を追加:
+
+void TRACE_INSN_INIT()
+{
+}
+
+void TRACE_INSN_FINI()
+{
+}
+
+% make
+...
+gcc -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(decode.o): in function `fr30bf_decode':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.fr30-elf/sim/fr30/decode.c:1654: undefined reference to `EXTRACT_MSB0_INT'
+
+gdb-6.0 では EXTRACT_MSB0_INT であったが gdb-10.2 では EXTRACT_MSB0_SINT らしい.
+
+cpu.h, decode.c の EXTRACT_MSB0_INT を EXTRACT_MSB0_SINT に置換.
+
+% make
+...
+gcc -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(sem.o): in function `fr30bf_sem_add':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.fr30-elf/sim/fr30/sem.c:219: undefined reference to `TRACE_RESULT'
+
+sim-if.c に以下を追加:
+
+void TRACE_RESULT()
+{
+}
+
+% make
+...
+gcc -DHAVE_CONFIG_H   -DDEFAULT_MODEL=0  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN    -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0   -DWITH_RESERVED_BITS=1 -DWITH_SCACHE=16384   -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: ../../bfd/libbfd.a(plugin.o): in function `try_load_plugin':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.fr30-elf/bfd/plugin.c:274: undefined reference to `dlopen'
+
+Makefile を以下のように修正
+
+CONFIG_LIBS = -lnsl -ldl -lz
+
+% make
+% ls -l run* libsim.a
+できている.
+
+% cd ../../gdb
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=fr30-elf
+% make
+gdbsupport のファイルを参照してエラーしている.
+
+% cd ../gdbsupport/
+% !./conf
+% make
+
+gnulib のファイルを参照してエラーしている
+
+% cd ../gnulib/
+% !./conf
+% make
+% cd ../gdbsupport/
+% make
+% cd ../gdb
+% make
+...
+echo "  GEN    stamp-version"; /bin/sh ./../gdbsupport/create-version.sh . \
+     fr30-elf version-t.t
+  GEN    stamp-version
+mv: 'version.c-tmp' から '' へ移動できません: そのようなファイルやディレクトリはありません
+mv: 'version-t.t' を stat できません: そのようなファイルやディレクトリはありません
+make: *** [Makefile:2085: stamp-version] エラー 1
+
+% /bin/sh -vx ./../gdbsupport/create-version.sh . fr30-elf version-t.t
+#!/bin/sh
+
+# Copyright (C) 1989-2021 Free Software Foundation, Inc.
+
+# This file is part of GDB.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Create version.c from version.in.
+# Usage:
+#    create-version.sh PATH-TO-GDB-SRCDIR HOST_ALIAS \
+#        TARGET_ALIAS OUTPUT-FILE-NAME
+
+srcdir="$1"
++ srcdir=.
+host_alias="$2"
++ host_alias=fr30-elf
+target_alias="$3"
++ target_alias=version-t.t
+output="$4"
++ output=
+
+rm -f version.c-tmp "$output" version.tmp
++ rm -f version.c-tmp '' version.tmp
+date=$(sed -n -e 's/^.* BFD_VERSION_DATE \(.*\)$/\1/p' "$srcdir/../bfd/version.h")
+sed -n -e 's/^.* BFD_VERSION_DATE \(.*\)$/\1/p' "$srcdir/../bfd/version.h")
+sed -n -e 's/^.* BFD_VERSION_DATE \(.*\)$/\1/p' "$srcdir/../bfd/version.h"
+++ sed -n -e 's/^.* BFD_VERSION_DATE \(.*\)$/\1/p' ./../bfd/version.h
++ date=20210425
+sed -e "s/DATE/$date/" < "$srcdir/version.in" > version.tmp
++ sed -e s/DATE/20210425/
+{
+    echo '#include "gdbsupport/version.h"'
+    echo 'const char version[] = "'"$(sed q version.tmp)"'";'
+    echo 'const char host_name[] = "'"$host_alias"'";'
+    echo 'const char target_name[] = "'"$target_alias"'";'
+} >> version.c-tmp
++ echo '#include "gdbsupport/version.h"'
+sed q version.tmp)"'";'
+sed q version.tmp)
+sed q version.tmp
+++ sed q version.tmp
++ echo 'const char version[] = "10.2";'
++ echo 'const char host_name[] = "fr30-elf";'
++ echo 'const char target_name[] = "version-t.t";'
+mv version.c-tmp "$output"
++ mv version.c-tmp ''
+mv: 'version.c-tmp' から '' へ移動できません: そのようなファイルやディレクトリはありません
+rm -f version.tmp
++ rm -f version.tmp
+%
+
+Makefile を以下のように修正 
+
+stamp-version: Makefile version.in $(srcdir)/../bfd/version.h $(srcdir)/../gdbsupport/create-version.sh
+	$(ECHO_GEN) $(SHELL) $(srcdir)/../gdbsupport/create-version.sh $(srcdir) \
+	    i686-pc-linux-gnu fr30-elf version-t.t
+	@$(SHELL) $(srcdir)/../move-if-change version-t.t version.c
+	@echo stamp > stamp-version
+
+% make
+一応ビルドのみ成功.

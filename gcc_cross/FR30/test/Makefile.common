@@ -1,0 +1,22 @@
+%.o : %.S
+	fr30-elf-as -o $@ -g $<
+
+%.o : %.c
+	fr30-elf-gcc -o $@ $< -c -g -std=c99
+
+%.elf : %.o 
+	fr30-elf-ld -o $@ ../default.o $< -T ../default.x -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/fr30-elf/lib -lc
+
+%.objdump : %.elf
+	fr30-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v fr30-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.o *.s *.elf *.map *.objdump *.log TAGS *~
+
