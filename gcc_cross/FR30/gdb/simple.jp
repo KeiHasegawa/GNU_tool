@@ -1,0 +1,184 @@
+例によって 0x100 番地に nop 命令を数個配置してそれを実行するということをやってみる.
+
+fr30-elf-gdb を起動したときに以下のようなエラーメッセージが出る:
+
+M-x gdb
+gdb --annotate ./gdb
+
+(gdb) run
+...
+Reading symbols from test.elf...
+Target (BIG_ENDIAN) and configured (UNKNOWN) byte order in conflict
+Target (UNKNOWN) and specified (BIG_ENDIAN) byte order in conflict
+...
+
+これは d30v-elf-gdb でも見たエラーメッセージ. そのときの対処を真似してみた.
+
+sim/fr30/Makefile を修正
+
+-SIM_ENDIAN = -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN
++SIM_ENDIAN =
+
+このエラーメッセージは出なくなった.
+現状メモリを割り当てないでプログラムのロードをしているのでそこを以下のように修正した:
+
+	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
++	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
+	      do_write (sd, lma, buffer, size);
+	      found_loadable_section = 1;
+	      free (buffer);
+	    }
+	}
++     else if (s->flags & SEC_ALLOC) {
++	bfd_vma vma = bfd_section_vma(s);
++	bfd_size_type size = bfd_section_size(s);
++	sim_do_command(sd, "memory-fill 0xcc");
++	sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", vma, size);
++     }
+    }
+
+  if (!found_loadable_section)
+
+またブレークポイントが D30V のものになっているのでそれを FR30 のものに修正する.
+と思ったがとりあえずそのまま実行してみた.
+
+(gdb) run
+...
+Start address 0x100
+Transfer rate: 10 bits/sec.
+Breakpoint 1 at 0x100: file test.S, line 3.
+Breakpoint 2 at 0x106: file test.S, line 7.
+gdbcom:6: Error in sourced command file:
+Warning:
+Cannot insert breakpoint 2.
+Cannot access memory at address 0x106
+
+(fr30-elf-gdb) 
+
+ブレークポイントをセットできていないらしい. まずは 0x106 番地にブレークポイントをセット
+できない理由を調べてみる.
+
+セクション .text の逆アセンブル:
+
+00000100 <start>:
+ 100:	9f a0       	nop
+ 102:	9f a0       	nop
+ 104:	9f a0       	nop
+
+00000106 <end>:
+ 106:	9f a0       	nop
+
+なるほど, FR30 では nop は 2 バイトでブレーク命令は D30V の 4 バイトのものなので
+メモリ割り当てしていない 0x108 番地への書き込みがエラーしているということ.
+とりあえず出鱈目だが以下のようにしてみた:
+
+  static unsigned char break_inst[] = {0xba, 0xd0 };
+
+(gdb) run
+...
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x8 lma 0x100
+Start address 0x100
+Transfer rate: 64 bits in <1 sec.
+Breakpoint 1 at 0x100: file test.S, line 3.
+Breakpoint 2 at 0x106: file test.S, line 7.
+core: 2 byte read to unmapped address 0x108 at 0x108
+
+Program received signal SIGSEGV, Segmentation fault.
+0x00000000 in ?? ()
+gdbcom:7: Error in sourced command file:
+Cannot find bounds of current function
+(fr30-elf-gdb) 
+
+出鱈目のブレークポイントハセットできるようになっているらしいが, 停止していない.
+0xbad0 は命令が割り当てられていたらしい.
+
+(gdb) b sim_resume
+(gdb) run
+...
+(gdb) n
+...
+
+fr30bf_engine_run_fast が呼び出されている。
+
+FR30 のシミュレータのソースから以下を発見:
+
+USI
+fr30_int (SIM_CPU *current_cpu, PCADDR pc, int num)
+{
+...
+    case TRAP_BREAKPOINT:
+      sim_engine_halt (sd, current_cpu, NULL, pc,
+		       sim_stopped, SIM_SIGTRAP);
+      break;
+
+ここがくれば期待する動作.
+
+#define TRAP_BREAKPOINT	9
+
+0x1f09 がそれっぽい.
+
+  static unsigned char break_inst[] = {0x1f, 0x09 };
+
+(gdb) run
+...
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0xa lma 0x100
+Start address 0x100
+Transfer rate: 80 bits in <1 sec.
+Breakpoint 1 at 0x100: file test.S, line 3.
+Breakpoint 2 at 0x106: file test.S, line 7.
+
+Program received signal SIGTRAP, Trace/breakpoint trap.
+0x00000000 in ?? ()
+gdbcom:7: Error in sourced command file:
+Cannot find bounds of current function
+(fr30-elf-gdb)
+
+期待した動作にならないのは, おそらく 0x100 番地で停止したという情報ではなく 0x0 番地
+で停止したとシミュレータが答えたから.
+
+pc のレジスタ番号が合っていない.
+
+/* gdb register numbers */
+#define PC_REGNUM	16
+#define PS_REGNUM	17
+#define TBR_REGNUM	18
+#define RP_REGNUM	19
+#define SSP_REGNUM	20
+#define USP_REGNUM	21
+#define MDH_REGNUM	22
+#define MDL_REGNUM	23
+
+らしい. fr30-tdep.c を以下のように修正した:
+
+const int pc_regno = 16;
+const int sp_regno = 15;
+
+static const char* fr30_register_name(gdbarch*, int regno)
+{
+  static const char* name[] = {
+    "r0",  "r1",  "r2",  "r3",  "r4",  "r5",  "r6",  "r7",
+    "r8",  "r9",  "r10", "r11", "r12", "r13", "r14", "r15",
+    "pc",  "ps",  "tbr", "rp",  "ssp", "usp",  "mdh", "mdl"
+  };
+
+  if (regno < sizeof name/sizeof name[0])
+    return name[regno];    
+  
+  return nullptr;
+}
+
+また以下のように修正した:
+
+int
+fr30bf_fetch_register (SIM_CPU *current_cpu, int rn, unsigned char *buf, int len)
+{
+...
+  return 4;
+}
+
+これにより期待通り動作している. まだ開発段階ではあるがこの時点での fr30-tdep.c を
+fr30-tdep.c.001 としてアップロードしておく.
