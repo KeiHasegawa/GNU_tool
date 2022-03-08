@@ -19,7 +19,7 @@ sim/fr30/Makefile を修正
 -SIM_ENDIAN = -DWITH_TARGET_BYTE_ORDER=BIG_ENDIAN
 +SIM_ENDIAN =
 
-このエラーメッセージは出なくなった.
+上の対処でこのエラーメッセージは出なくなった.
 現状メモリを割り当てないでプログラムのロードをしているのでそこを以下のように修正した:
 
 	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
@@ -91,7 +91,7 @@ gdbcom:7: Error in sourced command file:
 Cannot find bounds of current function
 (fr30-elf-gdb) 
 
-出鱈目のブレークポイントハセットできるようになっているらしいが, 停止していない.
+出鱈目のブレークポイントはセットできるようになっているらしいが, 停止していない.
 0xbad0 は命令が割り当てられていたらしい.
 
 (gdb) b sim_resume
