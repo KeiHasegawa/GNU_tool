@@ -1,0 +1,211 @@
+*** gdb-6.0.fr30-elf/sim/fr30/sem-switch.c	2022-03-07 13:08:32.000000000 +0900
+--- gdb-10.2.fr30-elf/sim/fr30/sem-switch.c	2022-03-09 13:54:57.000000000 +0900
+***************
+*** 271,276 ****
+--- 271,280 ----
+  #define FLD(f) abuf->fields.fmt_empty.f
+    int UNUSED written = 0;
+    IADDR UNUSED pc = abuf->addr;
++   if (pc == 0x126) {
++     if (getenv("USE_FR30_PRINTF"))
++       exit(0);
++   }
+    vpc = SEM_NEXT_VPC (sem_arg, pc, 0);
+  
+    {
+***************
+*** 3185,3190 ****
+--- 3189,3202 ----
+  #define FLD(f) abuf->fields.fmt_empty.f
+    int UNUSED written = 0;
+    IADDR UNUSED pc = abuf->addr;
++   extern void do_printf(SIM_CPU*, uint32_t);
++   extern void do_puts(SIM_CPU*, uint32_t);
++   extern void do_putchar(SIM_CPU*, uint32_t);
++   switch (pc) {
++   case 0x128: do_printf(current_cpu, pc);  break;
++   case 0x12a: do_puts(current_cpu, pc);    break;
++   case 0x12c: do_putchar(current_cpu, pc); break;
++   }
+    SEM_BRANCH_INIT
+    vpc = SEM_NEXT_VPC (sem_arg, pc, 2);
+  
+*** gdb-6.0.fr30-elf/sim/fr30/cpu.c	2022-03-02 10:12:13.000000000 +0900
+--- gdb-10.2.fr30-elf/sim/fr30/cpu.c	2022-03-09 13:45:17.000000000 +0900
+***************
+*** 355,357 ****
+--- 355,528 ----
+  			    int *indices, TRACE_RECORD *tr)
+  {
+  }
++ 
++ const char* first_string(SIM_CPU* current_cpu, uint32_t cia)
++ {
++   uint32_t addr = GET_H_GR(4);
++   static char buf[1024];
++   for (int i = 0 ; i != sizeof buf ; ++i) {
++     char c = GETMEMQI(current_cpu, cia, addr+i);
++     buf[i] = c;
++     if (!c)
++       return &buf[0];  // OK
++   }
++   abort();
++ }
++ 
++ enum arg_class { NONE, WORD, DWORD, DFLT, LDFLT, STR };
++ 
++ const char* get_part(const char* fmt, enum arg_class* how)
++ {
++   for ( ; *fmt ; ++fmt) {
++     char c = *fmt;
++     if (c == 'd' || c == 'i' || c == 'x' || c == 'u') {
++       if (*how == NONE)
++ 	*how = WORD;
++       return ++fmt;
++     }
++     if (c == 'c') {
++       *how = WORD;
++       return ++fmt;
++     }
++     if (c == 'f') {
++       char prev = *(fmt-1);
++       *how = prev == 'L' ? LDFLT : DFLT;
++       return ++fmt;
++     }
++     if (c == 's') {
++       *how = STR;
++       return ++fmt;
++     }
++     if (c == 'l') {
++       if (*how == NONE)
++ 	*how = WORD;
++       else
++ 	*how = DWORD;
++     }
++   }
++   abort(); // unexpected format
++ }
++ 
++ uint32_t arg32(SIM_CPU* current_cpu, address_word cia, int nth)
++ {
++   if (nth < 4)
++     return GET_H_GR(4+nth);
++   int sp = GET_H_GR(15);
++   int addr = sp + 4 * (nth-4);
++   return GETMEMSI(current_cpu, cia, addr);
++ }
++ 
++ uint64_t arg64(SIM_CPU* current_cpu, address_word cia, int nth)
++ {
++   if (nth < 3) {
++     uint64_t hi = GET_H_GR(4+nth);
++     uint64_t lo = GET_H_GR(4+nth+1);
++     return (hi << 32) | lo;
++   }
++ 
++   if (nth == 3) {
++     uint64_t hi = GET_H_GR(4+nth);
++     int sp = GET_H_GR(15);
++     int addr = sp;
++     uint64_t lo = GETMEMSI(current_cpu, cia, addr);
++     return (hi << 32) | lo;
++   }
++   
++   int sp = GET_H_GR(15);
++   int addr = sp + 4 * (nth-4);
++   uint64_t hi = GETMEMSI(current_cpu, cia, addr);
++   uint64_t lo = GETMEMSI(current_cpu, cia, addr+4);
++   return (hi << 32) | lo;
++ }
++ 
++ const char* handle(SIM_CPU* current_cpu, uint32_t cia,
++ 		   const char* fmt, int* nth, int* ret)
++ {
++   char c = *fmt;
++   if (c != '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   const char* beg = fmt;
++   c = *++fmt;
++   if (c == '%') {
++     putchar(c);
++     ++*ret;
++     return fmt+1;
++   }
++   enum arg_class how = NONE;
++   const char* end = get_part(fmt, &how);
++   char part_fmt[256];
++   int n = end - beg;
++   assert(n + 1 < sizeof part_fmt/sizeof part_fmt[0]);
++   strncpy(&part_fmt[0], beg, n);
++   part_fmt[n] = '\0';
++   if (how == WORD) {
++     int arg = arg32(current_cpu, cia, (*nth)++);
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DWORD) {
++     uint64_t arg = arg64(current_cpu, cia, *nth);
++     *nth += 2;
++     *ret += printf(part_fmt, arg);
++     return end;
++   }
++   if (how == DFLT || how == LDFLT) {
++     union {
++       uint64_t i;
++       double d;
++     } u = { arg64(current_cpu, cia, *nth) };
++     *nth += 2;
++     if (how == DFLT)
++       *ret += printf(part_fmt, u.d);
++     else
++       *ret += printf(part_fmt, (long double)u.d);
++     return end;
++   }
++   if (how == STR) {
++     uint32_t addr = arg32(current_cpu, cia, (*nth)++);
++     char buf[256];
++     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
++       char c = GETMEMQI(current_cpu, cia, addr+i);
++       buf[i] = c;
++       if (c == '\0') {
++ 	*ret += printf(part_fmt, &buf[0]);  // ok
++ 	return end;
++       }
++     }
++     abort(); // not enough buffer
++   }
++   abort();  // unexpected format string
++ }
++ 
++ void do_printf(SIM_CPU* current_cpu, uint32_t cia)
++ {
++   if (!getenv("USE_FR30_PRINTF"))
++     return;
++   const char* fmt = first_string(current_cpu, cia);
++   int nargc = 1;
++   int ret = 0;
++   while (*fmt)
++     fmt = handle(current_cpu, cia, fmt, &nargc, &ret);
++   SET_H_GR(4, ret);
++ }
++     
++ void do_puts(SIM_CPU* current_cpu, uint32_t cia)
++ {
++   if (!getenv("USE_FR30_PRINTF"))
++     return;
++   const char* arg = first_string(current_cpu, cia);
++   int ret = puts(arg);
++   SET_H_GR(4, ret);
++ }
++     
++ void do_putchar(SIM_CPU* current_cpu, uint32_t cia)
++ {
++   if (!getenv("USE_FR30_PRINTF"))
++     return;
++   int arg = GET_H_GR(4);
++   int ret = putchar(arg);
++   SET_H_GR(4, ret);
++ }
