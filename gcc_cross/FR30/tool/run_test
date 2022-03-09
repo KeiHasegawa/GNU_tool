@@ -1,0 +1,11 @@
+#! /bin/csh -vf
+
+fr30-elf-as -o start.o -g start.S || exit 1
+#fr30-elf-gcc -o sample.o -g sample.c -c || exit 1
+fr30-elf-gcc -o sample.s sample.c -S || exit 1
+fr30-elf-as -o sample.o sample.s -g || exit 1
+fr30-elf-ld -o sample.elf start.o sample.o -T sample.x || exit 1
+fr30-elf-objdump -x -d sample.elf > sample.objdump || exit 1
+setenv USE_FR30_PRINTF
+fr30-elf-run --memory-fill 0xcc --memory-region 0x1b000,0x5000 sample.elf
+
