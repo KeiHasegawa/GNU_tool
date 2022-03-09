@@ -1,0 +1,61 @@
+fr30-elf-gdb で where コマンドを実行すると
+
+(fr30-elf-gdb) where
+#0  f (a=5, b=6) at test.c:3
+#1  0x0000014c in main () at test.c:8
+Backtrace stopped: frame did not save the PC
+(fr30-elf-gdb) 
+
+のようにエラーメッセージが出る件の調査
+
+(gdb) b frame.c:2144
+(gdb) run
+...
+frame.c:2144 のブレークポイントにヒット
+(gdb) n
+(gdb) p lval
+$83 = lval_register
+(gdb)
+
+同様のことを他のプロセッサで試してみた. 結論からすると
+
+lval = lval_memory か lval = not_lval
+
+になるのが期待値.
+
+cris, iq2000, m32r, microblaze, mips, ppc, sh, v850:
+	lval  = lval_memory
+	nlval = lval_register
+
+bfin, frv, ft32, or1k:
+
+	lval  = lval_memory
+	nlval = lval_memory
+	addr != naddr
+
+	コンパイラが f のプロローグでも戻りアドレスをスタックに保存しているから.
+
+arm, cr16, mcore, pru, d10v, d30v:
+
+	lval = not_lval
+
+avr:
+	.debug_frame を生成しないコンパイラなので比較はできない.
+
+aarch64, h8300:
+	以下の条件がそもそも成立していない.
+	
+  if (this_frame->level > 0
+      && gdbarch_pc_regnum (gdbarch) >= 0
+      && get_frame_type (this_frame) == NORMAL_FRAME
+      && (get_frame_type (this_frame->next) == NORMAL_FRAME
+	  || get_frame_type (this_frame->next) == INLINE_FRAME))
+    {
+
+	this_frame->level = -1 になっている. h8300 の jsr 命令は戻りア
+	ドレスをスタックに保存する仕様. 
+
+m32c, m68hc11, mn10300, moxie, msp430, rl78, rx:
+	事前に h8300 と同じで函数呼び出し命令でスタックに戻りアドレスを保存する仕様なので
+	調査しなかった.
+
