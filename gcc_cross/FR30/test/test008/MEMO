@@ -1,0 +1,38 @@
+setjmp, longjmp の行番号情報がないせいかソースの情報が表示されていない.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.fr30-elf/fr30-elf/newlib/libc/machine/fr30
+% fr30-elf-as -g ../../../../.././newlib/libc/machine/fr30/setjmp.S  -o lib_a-setjmp.o
+% rm -f lib.a
+% fr30-elf-ar cru lib.a lib_a-setjmp.o
+% fr30-elf-ranlib lib.a
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.fr30-elf/fr30-elf/newlib/libc
+% rm -f libc.a
+% make libc.a
+エラーしているが以下のようにして回避:
+
+% cd tmp
+% fr30-elf-ar rc ../libc.a *.o
+% cd ..
+% fr30-elf-ranlib libc.a
+% cp libc.a /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/fr30-elf/lib/libc.a
+
+これをしてみたがまだ行番号情報がないせいか, setjmp.S のソースが表示されていない.
+どこかでオペミスしている.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.fr30-elf/fr30-elf/newlib/libc
+% fr30-elf-objdump -g lib_a-setjmp.o > lib_a-setjmp.o.objdump
+
+lib_a-setjmp.o.objdump にはデバッグ情報が抜けている.
+
+上書きしてもう一度作り直した:
+
+% cp /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-4.1.0.fr30-elf/fr30-elf/newlib/libc/machine/fr30/lib_a-setjmp.o .
+% fr30-elf-ar rc ../libc.a *.o
+% rm -f ../libc.a 
+% fr30-elf-ar rc ../libc.a *.o
+% cd ..
+% fr30-elf-ranlib libc.a
+% cp libc.a /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/fr30-elf/lib/libc.a
+
+これで行番号も表示されるようになっている.
+
