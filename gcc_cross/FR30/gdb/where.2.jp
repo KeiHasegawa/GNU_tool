@@ -1,0 +1,126 @@
+オリジナルの cc1 の生成したプログラムを fr30-elf-gdb 実行し, where コマンドを実行すると
+
+(fr30-elf-gdb) where
+#0  f (a=5, b=6) at test.c:3
+#1  0x0000014c in main () at test.c:8
+Backtrace stopped: frame did not save the PC
+(fr30-elf-gdb) 
+
+のようにエラーメッセージが出る件の調査.
+
+自前の cc1 の生成したプログラムならばエラーメッセージが出ないので動作の比較を行なってみる.
+
+M-x gdb
+gdb --annotate ./gdb
+(gdb-mine) so xx           # 自前の cc1 の生成したプログラムを実行.
+...
+エラーメッセージは出ない.
+
+
+(gdb-org) so xxx          # オリジナルの cc1 の生成したプログラムを実行
+...
+エラーメッセージは出る.
+
+
+(gdb-mine) b frame.c:2144
+(gdb-mine) run
+...
+上のブレークポイントにヒット
+(gdb-mine) n
+p lval
+$1 = lval_memory
+(gdb-mine) n
+(gdb-mine) p nlval
+$2 = lval_register
+(gdb-mine)
+
+
+同様のことを試してみた
+(gdb-org) b frame.c:2144
+(gdb-org) run
+(gdb-org) n
+(gdb-org) p lval
+$1 = lval_register         # ここで違いが出ている.
+(gdb-org) n
+(gdb-org) p nlval
+$2 = lval_register
+(gdb-org)
+
+自前の cc1 では f でも戻りアドレスをスタックに保存しているから, 実は nlval は lval_memory
+が本当は正しい(と思っている).
+
+しかしまずは何故違いが出るのかを調べると以下の函数で違いが出ている. 
+
+static void
+frame_register_unwind_location (struct frame_info *this_frame, int regnum,
+...
+  while (this_frame != NULL)
+    {
+...    
+      if (*lvalp != lval_register)
+	break;                      自前の cc1 はここでループを抜ける
+...	                            オリジナルの cc1 は抜けない
+    }
+}
+
+自前の cc1
+
+start
+	アドレス 0x100
+	スタックポインタ 0x20000
+
+main
+	アドレス 0x15a
+	スタックポインタ 0x20000 (プロローグ後 0x1fff8)
+
+f
+	アドレス 0x12e
+	スタックポインタ 0x1fff8 (プロローグ後 0x1ffd8)
+
+オリジナルの cc1
+
+start
+	アドレス 0x100
+	スタックポインタ 0x20000
+
+main
+	アドレス 0x15c
+	スタックポインタ 0x20000 (プロローグ後 0x1fff8)
+
+f
+	アドレス 0x130
+	スタックポインタ 0x1fff8 (プロローグ後 0x1ffdc)
+
+上述したループの 2 回目
+自前の cc1 に対する fr30-elf-gdb の動きは以下:
+
+static struct value *
+dwarf2_frame_prev_register (struct frame_info *this_frame, void **this_cache,
+			    int regnum)
+{
+...
+    case DWARF2_FRAME_REG_SAVED_OFFSET:
+      addr = cache->cfa + cache->reg[regnum].loc.offset;
+      return frame_unwind_got_memory (this_frame, regnum, addr);
+
+ここで addr = 0x1fff4 になっていて, これは `f' で戻りアドレスを保存したスタックのアドレス.
+
+一方オリジナルの cc1 に対する fr30-elf-gdb の動きは以下:
+
+    case DWARF2_FRAME_REG_UNSPECIFIED:
+      /* GCC, in its infinite wisdom decided to not provide unwind
+	 information for registers that are "same value".  Since
+	 DWARF2 (3 draft 7) doesn't define such behavior, said
+	 registers are actually undefined (which is different to CFI
+	 "undefined").  Code above issues a complaint about this.
+	 Here just fudge the books, assume GCC, and that the value is
+	 more inner on the stack.  */
+      return frame_unwind_got_register (this_frame, regnum, regnum);
+
+ここで行なっていることは
+
+   main のスタックフレーム -> f のスタックフレーム
+
+のように辿って f のスタックフレームで戻りアドレスを保存していたら, 結果的に
+lval = lval_memory になっているように見える.
+なんだか釈然としない.
