@@ -1,0 +1,69 @@
+*** gdb-10.2.org/gdb/infrun.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.d30v-elf/gdb/infrun.c	2022-03-10 11:44:44.000000000 +0900
+***************
+*** 5781,5786 ****
+--- 5781,5793 ----
+  }
+  
+  /* Come here when the program has stopped with a signal.  */
++ #undef target_stopped_by_sw_breakpoint
++ bool target_stopped_by_sw_breakpoint(CORE_ADDR pc)
++ {
++   regcache* regcache = get_current_regcache();
++   const address_space* aspace = regcache->aspace();
++   return breakpoint_here_p(aspace, pc) == no_breakpoint_here;
++ }
+  
+  static void
+  handle_signal_stop (struct execution_control_state *ecs)
+***************
+*** 6116,6122 ****
+  
+    /* Maybe this was a trap for a software breakpoint that has since
+       been removed.  */
+!   if (random_signal && target_stopped_by_sw_breakpoint ())
+      {
+        if (gdbarch_program_breakpoint_here_p (gdbarch,
+  					     ecs->event_thread->suspend.stop_pc))
+--- 6123,6129 ----
+  
+    /* Maybe this was a trap for a software breakpoint that has since
+       been removed.  */
+!   if (random_signal && target_stopped_by_sw_breakpoint (ecs->event_thread->suspend.stop_pc))
+      {
+        if (gdbarch_program_breakpoint_here_p (gdbarch,
+  					     ecs->event_thread->suspend.stop_pc))
+***************
+*** 6127,6133 ****
+  	  /* Re-adjust PC to what the program would see if GDB was not
+  	     debugging it.  */
+  	  regcache = get_thread_regcache (ecs->event_thread);
+! 	  decr_pc = gdbarch_decr_pc_after_break (gdbarch);
+  	  if (decr_pc != 0)
+  	    {
+  	      gdb::optional<scoped_restore_tmpl<int>>
+--- 6134,6140 ----
+  	  /* Re-adjust PC to what the program would see if GDB was not
+  	     debugging it.  */
+  	  regcache = get_thread_regcache (ecs->event_thread);
+! 	  decr_pc = 8;
+  	  if (decr_pc != 0)
+  	    {
+  	      gdb::optional<scoped_restore_tmpl<int>>
+***************
+*** 6141,6147 ****
+  				 ecs->event_thread->suspend.stop_pc + decr_pc);
+  	    }
+  	}
+!       else
+  	{
+  	  /* A delayed software breakpoint event.  Ignore the trap.  */
+  	  infrun_debug_printf ("delayed software breakpoint trap, ignoring");
+--- 6148,6154 ----
+  				 ecs->event_thread->suspend.stop_pc + decr_pc);
+  	    }
+  	}
+!       else if (0)
+  	{
+  	  /* A delayed software breakpoint event.  Ignore the trap.  */
+  	  infrun_debug_printf ("delayed software breakpoint trap, ignoring");
