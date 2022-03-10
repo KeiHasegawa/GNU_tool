@@ -1,0 +1,59 @@
+自前の cc1 で f の場合に限り戻りアドレスをスタックに保存しないように特別な
+修正を入れてみた. この結果 .debug_frame は以下のようになっている:
+
+00000000 00000010 ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -4
+  Return address column: 21
+
+  DW_CFA_def_cfa: r15 ofs 0
+  DW_CFA_register: r21 in r17
+  DW_CFA_nop
+
+00000014 00000018 00000000 FDE cie=00000000 pc=0000012e..00000156
+  DW_CFA_advance_loc4: 2 to 00000130
+  DW_CFA_offset: r14 at cfa-4
+  DW_CFA_def_cfa: r14 ofs 4
+  DW_CFA_nop
+  DW_CFA_nop
+
+00000030 00000020 00000000 FDE cie=00000000 pc=00000156..0000018a
+  DW_CFA_advance_loc4: 2 to 00000158
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_offset: r17 at cfa-4
+  DW_CFA_advance_loc4: 2 to 0000015a
+  DW_CFA_offset: r14 at cfa-8
+  DW_CFA_def_cfa: r14 ofs 8
+  DW_CFA_nop
+
+そして fr30-elf-gdb で動作させ where コマンドを実行したところ
+
+(fr30-elf-gdb) where
+#0  f (a=5, b=6) at a.c:5
+#1  0x0000016e in main () at a.c:10
+Backtrace stopped: frame did not save the PC
+(fr30-elf-gdb) 
+
+エラーメッセージが出ている.
+
+fr30-elf-gdb の観点では
+
+M-x gdb
+gdb --annotate=3 ./gdb
+
+(gdb) b frame.c:2144
+(gdb) run
+...
+frame.c:2144 のブレークポイントにヒット
+(gdb) n
+(gdb) p lval
+$5 = lval_register
+(gdb) n
+(gdb) p nlval
+$6 = lval_register
+(gdb)
+
+というわけで, 当初はオリジナルの cc1 に問題があるのかと思われていたが実はそうでもないらしい.
+
