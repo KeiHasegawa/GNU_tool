@@ -1,0 +1,141 @@
+オリジナルの cc1 の生成したプログラムを fr30-elf-gdb 実行し, where コマンドを実行すると
+
+(fr30-elf-gdb) where
+#0  f (a=5, b=6) at test.c:3
+#1  0x0000014c in main () at test.c:8
+Backtrace stopped: frame did not save the PC
+(fr30-elf-gdb) 
+
+となる件の調査.
+動作が参考になると思われる cris-elf-gdb と動作の比較をしてみる.
+
+以下は cris-elf-gdb をデバッグした結果
+
+(gdb) b frame.c:2144
+(gdb) run
+...
+frame.c:2144 のブレークポイントにヒット
+(gdb) s
+...
+(gdb) where
+#0  dwarf2_frame_prev_register (this_frame=0x8d5be9c, this_cache=0x8d5bea8, regnum=15) at dwarf2/frame.c:1270
+#1  0x082246d9 in frame_unwind_register_value (next_frame=0x8d5be9c, regnum=15) at frame.c:1279
+#2  0x082242f0 in frame_register_unwind (next_frame=0x8d5be9c, regnum=15, optimizedp=0xbfffee8c, unavailablep=0xbfffee1c, lvalp=0xbfffee80, addrp=0xbfffee70, realnump=0xbfffee88, bufferp=0x0) at frame.c:1182
+#3  0x08225b14 in frame_register_unwind_location (this_frame=0x8d5be9c, regnum=15, optimizedp=0xbfffee8c, lvalp=0xbfffee80, addrp=0xbfffee70, realnump=0xbfffee88) at frame.c:1938
+
+  switch (cache->reg[regnum].how)
+    {
+...
+    case DWARF2_FRAME_REG_SAVED_OFFSET:
+      addr = cache->cfa + cache->reg[regnum].loc.offset;
+      return frame_unwind_got_memory (this_frame, regnum, addr);  ここにきている
+
+(gdb) p/x addr
+$4 = 0xffc
+(gdb) p regnum
+$5 = 15
+(gdb)
+
+15 は PC のレジスタ番号. 0xffc は main で srp レジスタを保存したアドレス.
+
+ということでこれは期待した動作.
+同様のことを fr30-elf-gdb で行なうと
+
+
+  switch (cache->reg[regnum].how)
+    {
+...
+    case DWARF2_FRAME_REG_SAVED_REG:             ここにきいている
+      realnum = dwarf_reg_to_regnum_or_error   
+	(gdbarch, cache->reg[regnum].loc.reg);
+      return frame_unwind_got_register (this_frame, regnum, realnum);
+
+
+ということは cache->reg[regnum].how が期待しない値になっているということ.
+cris-elf-gdb の場合は
+
+	    if (fs.retaddr_column < fs.regs.reg.size ()
+		&& regs[retaddr_column].how != DWARF2_FRAME_REG_UNSPECIFIED
+		&& regs[retaddr_column].how != DWARF2_FRAME_REG_SAME_VALUE)
+	      {
+		if (cache->reg[regnum].how == DWARF2_FRAME_REG_RA)
+		  cache->reg[regnum] = regs[retaddr_column];  ここ
+
+で期待した DWARF2_FRAME_REG_SAVED_OFFSET にセットされていた.
+fr30-elf-gdb の場合を確認すると同じところで DWARF2_FRAME_REG_SAVED_REG にセットされて
+いた. ということは...
+
+cris-elf-gcc の .debug_frame
+
+00000000 0000000c ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -1
+  Return address column: 16
+
+  DW_CFA_def_cfa: r14 ofs 0
+
+14 は sp  のレジスタ番号
+16 は srp のレジスタ番号
+
+fr30-elf-gcc の .debug_frame
+
+00000000 00000010 ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -4
+  Return address column: 21
+
+  DW_CFA_def_cfa: r15 ofs 0
+  DW_CFA_register: r21 in r17
+  DW_CFA_nop
+
+これは直接 17 が Return address column にきていないが辻褄が合っている
+から問題ないのかと思ったのだが, もしかしたら辻褄は合っていないのかも.
+
+	.section	.debug_frame,"",@progbits
+.Lframe0:
+	.4byte	.LECIE0-.LSCIE0
+.LSCIE0:
+	.4byte	0xffffffff
+	.byte	0x3
+	.string	""
+	.uleb128 0x1
+	.sleb128 -4
+	.uleb128 0x15         これが 21
+	.byte	0xc
+	.uleb128 0xf
+	.uleb128 0
+	.byte	0x9
+	.uleb128 0x15
+	.uleb128 0x11         これが 17
+	.align	2
+
+これを生成している部分は
+
+static void
+output_call_frame_info (int for_eh)
+{
+...
+  return_reg = DWARF2_FRAME_REG_OUT (DWARF_FRAME_RETURN_COLUMN, for_eh);
+
+ここで return_reg が 21 になっている.
+これは以前 CompactRISC でやったことがあるやつ. そこで以下を自前の cc1
+の fr30.h に追加:
+
+#define DWARF_FRAME_RETURN_COLUMN  DWARF_FRAME_REGNUM(RP_REGNUM)
+
+自前の cc1 は f に対して戻りアドレスを保存しないように変更を加えたまま
+にしてある.
+
+ビルド開始 2022.03.10 18:07
+
+2022.03.11 6:30 正常動作確認.
+
+オリジナルの cc1 の fr30.h に以下を追加
+
+#define DWARF_FRAME_RETURN_COLUMN DWARF_FRAME_REGNUM(RETURN_POINTER_REGNUM)
+
+ビルド開始 2022.03.11 6:40
