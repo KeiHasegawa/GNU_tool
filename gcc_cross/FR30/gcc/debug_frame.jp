@@ -1,0 +1,72 @@
+オリジナルの cc1 が生成したプログラムを fr30-elf-gdb で実行し where コマンドを実行すると
+
+(fr30-elf-gdb) where
+#0  f (a=5, b=6) at test.c:3
+#1  0x0000014c in main () at test.c:8
+Backtrace stopped: frame did not save the PC
+(fr30-elf-gdb) 
+
+のようにエラーメッセージが出る. オリジナルの cc1 が生成したものならばエラーメッセージは出ない
+
+自前の cc1 の .debug_frame は以下:
+
+00000000 00000010 ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -4
+  Return address column: 21
+
+  DW_CFA_def_cfa: r15 ofs 0
+  DW_CFA_register: r21 in r17
+  DW_CFA_nop
+
+00000014 00000020 00000000 FDE cie=00000000 pc=0000012e..0000015a
+  DW_CFA_advance_loc4: 2 to 00000130
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_offset: r17 at cfa-4
+  DW_CFA_advance_loc4: 2 to 00000132
+  DW_CFA_offset: r14 at cfa-8
+  DW_CFA_def_cfa: r14 ofs 8
+  DW_CFA_nop
+
+00000038 00000020 00000000 FDE cie=00000000 pc=0000015a..0000018e
+  DW_CFA_advance_loc4: 2 to 0000015c
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_offset: r17 at cfa-4
+  DW_CFA_advance_loc4: 2 to 0000015e
+  DW_CFA_offset: r14 at cfa-8
+  DW_CFA_def_cfa: r14 ofs 8
+  DW_CFA_nop
+
+オリジナルの cc1 の .debug_frame は以下
+
+00000000 00000010 ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -4
+  Return address column: 21
+
+  DW_CFA_def_cfa: r15 ofs 0
+  DW_CFA_register: r21 in r17
+  DW_CFA_nop
+
+00000014 00000018 00000000 FDE cie=00000000 pc=00000130..0000015a
+  DW_CFA_advance_loc4: 2 to 00000132
+  DW_CFA_offset: r14 at cfa-4
+  DW_CFA_def_cfa: r14 ofs 4
+  DW_CFA_nop
+  DW_CFA_nop
+
+00000030 00000020 00000000 FDE cie=00000000 pc=0000015c..00000188
+  DW_CFA_advance_loc4: 2 to 0000015e
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_offset: r17 at cfa-4
+  DW_CFA_advance_loc4: 2 to 00000160
+  DW_CFA_offset: r14 at cfa-8
+  DW_CFA_def_cfa: r14 ofs 8
+  DW_CFA_nop
+
+自前の cc1 は f でも戻りアドレスをスタックに保存しているためオリジナルのものと異なっては
+いるがそれを除けば問題ないように思える.
