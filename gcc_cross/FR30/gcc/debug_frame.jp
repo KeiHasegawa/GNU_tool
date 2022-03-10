@@ -6,7 +6,7 @@
 Backtrace stopped: frame did not save the PC
 (fr30-elf-gdb) 
 
-のようにエラーメッセージが出る. オリジナルの cc1 が生成したものならばエラーメッセージは出ない
+のようにエラーメッセージが出る. オリジナルの cc1 が生成したものならばエラーメッセージは出ない.
 
 自前の cc1 の .debug_frame は以下:
 
@@ -70,3 +70,13 @@ Backtrace stopped: frame did not save the PC
 
 自前の cc1 は f でも戻りアドレスをスタックに保存しているためオリジナルのものと異なっては
 いるがそれを除けば問題ないように思える.
+
+fr30-elf-gdb の動作を解析した結果 fr30.h に以下の宣言が必要であることが判明した:
+
+#define DWARF_FRAME_RETURN_COLUMN DWARF_FRAME_REGNUM(RETURN_POINTER_REGNUM)
+
+o ターゲットプロセッサの函数呼び出し命令が戻りアドレスをレジスタにセットする仕様になっている
+o コンパイラが葉の函数に対して戻りアドレスをスタックに保存しない
+
+この 2 つの条件が成立しているならば上に相当する宣言が必要になる. もし無ければ今回のような
+症状が発生する.
