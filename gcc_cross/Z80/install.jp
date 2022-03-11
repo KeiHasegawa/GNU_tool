@@ -105,3 +105,57 @@ __extension__								\
    (void) 0; })
 
 のように修正.
+
+% make
+...
+gcc -c -g -O2    -I. -I. -I./config -DLOCALEDIR="\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/share/locale\"" -DHAVE_CONFIG_H -I./../include/opcode -I./../readline/.. -I../bfd -I./../bfd  -I./../include -I../intl -I./../intl  -DMI_OUT=1 -Wimplicit -Wreturn-type -Wcomment -Wtrigraphs -Wformat -Wparentheses -Wpointer-arith -Wuninitialized  frame-base.c
+In file included from defs.h:780,
+                 from frame-base.c:22:
+frame-base.c: 関数 ‘default_frame_locals_address’ 内:
+tm.h:191:39: エラー: invalid use of undefined type ‘struct frame_info’
+  191 | #define FRAME_LOCALS_ADDRESS(fi) ((fi)->frame)
+      |                                       ^~
+
+とりあえず対処は不明なのでまず libsim.a をビルドできるか試してみた.
+
+% cd ../sim/z8k
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% make
+...
+gcc -c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1          -DDEFAULT_INLINE=0           -I./../../newlib/libc/sys/z8k   -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2 comped3.c
+...
+tc-gen3.h:67:5: エラー: ‘sfop_2’ が再定義されました
+   67 | int sfop_2(context,pc,iwords0)
+      |     ^~~~~~
+...
+
+tc-gen3.h:
+
+/* add rd,@rs */
+int sfop_2(context,pc,iwords0)
+int iwords0;
+sim_state_type *context;
+int pc;
+{
+...
+/* add rd,address_src */
+int sfop_2(context,pc,iwords0)
+int iwords0;
+sim_state_type *context;
+int pc;
+{
+...
+確かに 2 つ函数の定義がある. おそらく tc-gen3.h は生成されるファイル.
+
+% make clean
+% make -n tc-gen3.h
+gcc -c -g -O2  -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl  ./writecode.c
+gcc -c -g -O2  -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl  ./quick.c -o bquick.o
+gcc -o writecode writecode.o bquick.o
+./writecode  -3 >tc-gen3.h
+% make tc-gen3.h
+% ./writecode  -3 > a
+
+a を確認したところやはり sfop_2 の函数定義が 2 つある.
+さてどうしたものか.
+
