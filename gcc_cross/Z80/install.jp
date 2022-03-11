@@ -1,0 +1,107 @@
+(*) Z80
+
+https://ja.wikipedia.org/wiki/Z80
+
+(*) binutils のインストール
+
+z8k-elf は ld がサポートされていないらしい. 以下でうまくいくらしい.
+
+% xz -d -c ../binutils-2.36.1-2.src/binutils-2.36.1.tar.xz
+% mv binutils-2.36.1 binutils-2.36.1.z8k-coff
+% cd binutils-2.36.1.z8k-coff
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=z8k-coff
+% make
+% make install
+% cd ..
+
+(*) gdb のインストール
+
+% bunzip2 -c ../gdb-6.0.tar.bz2
+% mv gdb-6.0 gdb-6.0.z8k-coff
+% cd gdb-6.0.z8k-coff
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=z8k-coff
+% make
+...
+checking for cygwin... no
+checking for X... libraries , headers 
+configure: error: *** Gdb does not support target z8k-unknown-coff
+make: *** [Makefile:21438: configure-gdb] エラー 1
+exit 1
+% cd gdb
+% /bin/sh ./configure --cache-file=.././config.cache --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=z8k-coff  --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+...
+エラーを再現できている.
+
+% /bin/sh -vx ./configure --cache-file=.././config.cache --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=z8k-coff  --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+...
+target_makefile_frag=${srcdir}/config/${gdb_target_cpu}/${gdb_target}.mt
++ target_makefile_frag=./config/z8k/.mt
+if test ! -f ${target_makefile_frag}; then
+{ echo "configure: error: "*** Gdb does not support target ${target}"" 1>&2; exit 1; }
+fi
++ test '!' -f ./config/z8k/.mt
++ echo 'configure: error: ***' Gdb does not support target z8k-unknown-coff
+configure: error: *** Gdb does not support target z8k-unknown-coff
++ exit 1
+% ls config/z8k
+tm-z8k.h  z8k.mt
+%
+
+gdb_target が z8k になっていれば問題なさそう. configure を直接編集した.
+
+% /bin/sh -vx ./configure --cache-file=.././config.cache --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=z8k-coff  --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+...
+creating Makefile
+creating .gdbinit
+creating config.h
+linking ./config/i386/xm-i386.h to xm.h
+linking ./config/z8k/# to tm.h
+configure: error: ./config/z8k/#: File not found
++ exit 1
+%
+
+# が何か不明だが tm-z8k.h であれば問題なさそう. configure を直接編集した:
+
+    GDB_TM_FILE="config/${gdb_target_cpu}/tm-z8k.h"
+
+% make
+...
+gdbtypes.h:763:41: エラー: ‘->’ の無効な型の引数です (‘int’ 型です)
+  763 | #define TYPE_LENGTH(thistype) (thistype)->length
+      |                                         ^~
+arch-utils.c:349:12: 備考: in expansion of macro ‘TYPE_LENGTH’
+  349 |     return TYPE_LENGTH (REGISTER_VIRTUAL_TYPE (regnum)); /* OK */
+      |            ^~~~~~~~~~~
+arch-utils.c:350:1: 警告: 制御が非 void 関数の終りに到達しました [-Wreturn-type]
+  350 | }
+      | ^
+make: *** [Makefile:945: arch-utils.o] エラー 1
+%
+
+config/z8k/z8k.mt
+config/z8k/tm-z8k.h
+
+を修正. 行頭の # OBSOLETE
+行頭の // OBSOLETE
+を削除
+
+% make
+...
+./../include/obstack.h:426:30: エラー: 増分の被演算子として左辺値が必要です
+  426 |    *((void **)__o->next_free)++ = ((void *)datum);   \
+
+これは d30v, fr30 の gdb と同じエラー.
+
+gdb-6.0.z8k-coff/include/obstack.h
+
+# define obstack_ptr_grow(OBSTACK,datum)				\
+__extension__								\
+({ struct obstack *__o = (OBSTACK);					\
+   if (__o->next_free + sizeof (void *) > __o->chunk_limit)		\
+     _obstack_newchunk (__o, sizeof (void *));				\
++  *((void **)__o->next_free) = ((void *)datum);			\
++  __o->next_free = (void*)((void **)__o->next_free + 1);		\
+-   *((void **)__o->next_free)++ = ((void *)datum);			\
+   (void) 0; })
+
+のように修正.
