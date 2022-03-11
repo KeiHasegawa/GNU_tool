@@ -1,6 +1,6 @@
-(*) Z80
+(*) Z8000
 
-https://ja.wikipedia.org/wiki/Z80
+https://ja.wikipedia.org/wiki/Z8000
 
 (*) binutils のインストール
 
@@ -145,7 +145,7 @@ sim_state_type *context;
 int pc;
 {
 ...
-確かに 2 つ函数の定義がある. おそらく tc-gen3.h は生成されるファイル.
+確かに同じ名前の 2 つ函数の定義がある. おそらく tc-gen3.h は生成されるファイル.
 
 % make clean
 % make -n tc-gen3.h
@@ -159,3 +159,79 @@ gcc -o writecode writecode.o bquick.o
 a を確認したところやはり sfop_2 の函数定義が 2 つある.
 さてどうしたものか.
 
+writecode
+
+をデバッグしてみた
+
+      for (i = 0; i < NOPS; i++)
+	{
+	  if (list[i])
+	    {
+	      one_instruction (i);  ここで函数を出力している.
+
+問題の sfop_2 もここで出力されていた.
+
+(gdb) b one_instruction
+(gdb) run
+...
+one_instruction のブレークポイントにヒット
+(gdb) , 1292, 28673, 1289, 0, 0, 0, 0, 0, 0}, noperands = 2, length = 2, idx = 76}...}
+(gdb) ptype z8k_table
+type = const struct {
+    const char *nicename;
+    int type;
+    int cycles;
+    int flags;
+    const char *name;
+    unsigned char opcode;
+    void (*func)(void);
+    unsigned int arg_info[4];
+    unsigned int byte_info[10];
+    int noperands;
+    int length;
+    int idx;
+} [439]
+(gdb)
+
+この構造体テーブルの各 idx で函数の名前を決めていた.
+
+% gcc -E -g -O2  -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl  ./writecode.c > writecode.i
+
+writecode.i を確認したところ
+
+const opcode_entry_type z8k_table[] = {
+...
+{
+
+"add rd,@rs",16,7,0x3c,
+
+"add",2,0,{0x3000 +(0x02),0x700 +(0x01),},
+ {0x500 +0,0x500 +1,0x8000 +(0x01),0x7000 +(0x02),0,0,0,0,0,},2,2,2},
+
+
+{
+
+"add rd,address_src",16,9,0x3c,
+
+"add",2,0,{0x3000 +(0x02),0x30 +(0x01),},
+ {0x500 +4,0x500 +1,0x500 +0,0x7000 +(0x02),0xd0 +(0x01),0,0,0,0,},2,4,2},
+
+のように idx = 2 がやはり重複している.
+
+../../include/../opcodes/z8k-opc.h
+
+で定義されているらしい. これを修正してみた. と思ったが順にインクリメントしていく
+だけで良さそうなので
+
+-     emit ("int <fop>_%d(context,pc,iwords0)\n", p->idx);
++     emit ("int <fop>_%d(context,pc,iwords0)\n", p - z8k_table);
+
+のように修正してみた.
+
+% make
+
+libsim.a と run.j がビルドできている.
+
+% make clean
+% cd ..
+% tar z8k.tar z8k
