@@ -1,0 +1,518 @@
+例によって gdb-6.0 は期待通り動作しないのでいきなり gdb-10.2 でトライしてみた.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/
+% xz -d -c ../gdb-10.2-1.src/gdb-10.2.tar.xz | tar xf -
+% mv gdb-10.2 gdb-10.2.z8k-coff
+% cd gdb-10.2.z8k-coff/sim
+% tar xf ~/lang/53_GNU_tool/gcc_cross/Z80/z8k.tar
+
+configure.tgt を編集
+
+   v850*-*-*)
+       SIM_ARCH(v850)
+       sim_igen=yes
+       ;;
++  z8k-*-*)
++      SIM_ARCH(z8k)
++      ;;
+esac
+
+% cd ../gdb
+
+D30V, FR30 と同じ対処をした.
+
+gdb-10.2.fr30-elf/gdb/configure.tgt:
+
+h8300-*-*)
+	# Target: H8300 processor
+	gdb_target_obs="h8300-tdep.o"
+	gdb_sim=../sim/h8300/libsim.a
+	;;
+
++z8k-*-*)
++	gdb_target_obs="z8k-tdep.o"
++	gdb_sim=../sim/z8k/libsim.a
++	;;
+
+% cp ~/lang/53_GNU_tool/gcc_cross/CompactRISC/cr16-tdep.c.000 z8k-tdep.c
+
+cr16 を z8k に置換.
+
+% cd ..
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=z8k-coff
+% make
+...
+make[2]: *** 'gdb' に必要なターゲット '../sim/z8k/libsim.a' を make するルールがありません.  中止.
+% cd sim/z8k
+% make
+% gcc -c ./../common/callback.c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1          -DDEFAULT_INLINE=0           -I./../../newlib/libc/sys/z8k   -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0
+In file included from ../../include/gdb/callback.h:55,
+                 from ./../common/callback.c:48:
+../../bfd/bfd.h:35:2: エラー: #error config.h must be included before this header
+   35 | #error config.h must be included before this header
+      |  ^~~~~
+make: *** [Makefile:269: callback.o] エラー 1
+%
+
+config.h に以下を追加
+
+/* Name of this package. */
+#define PACKAGE "sim"
+
+% make
+gcc -c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1          -DDEFAULT_INLINE=0           -I./../../newlib/libc/sys/z8k   -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 iface.c
+In file included from iface.c:22:
+tm.h:136:28: エラー: expected ‘=’, ‘,’, ‘;’, ‘asm’ or ‘__attribute__’ before ‘PARAMS’
+  136 | extern int get_word_mem_da PARAMS((sim_state_type *context, int addr));
+      |                            ^~~~~~
+
+z8k のシミュレータは ANSI スタイルではなくて K&R スタイルになっている.
+
+config.h に以下を追加した
+
+#define PARAMS(X) ()
+
+% make clean ; make
+...
+gcc -c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1          -DDEFAULT_INLINE=0           -I./../../newlib/libc/sys/z8k   -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 iface.c
+...
+tm.h:136:28: エラー: expected ‘=’, ‘,’, ‘;’, ‘asm’ or ‘__attribute__’ before ‘PARAMS’
+  136 | extern int get_word_mem_da PARAMS((sim_state_type *context, int addr));
+      |
+
+エラーを回避できていない.
+
+iface.c の先頭で config.h を include した.
+
+% make
+...
+gcc -c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1          -DDEFAULT_INLINE=0           -I./../../newlib/libc/sys/z8k   -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 iface.c
+...
+iface.c: 関数 ‘sim_write’ 内:
+iface.c:74:21: エラー: 引数 ‘what’ がプロトタイプと一致しません
+   74 |      unsigned char *what;
+      |                     ^~~~
+
+sim_write から sim_info までコンパイルアウト.
+
+sim_open を以下のように変更.
+
+SIM_DESC sim_open (SIM_OPEN_KIND kind, struct host_callback_struct *callback,
+		   struct bfd *abfd, char * const *argv)
+{
+
+sim_create_inferior を以下のように変更.
+
+SIM_RC sim_create_inferior (SIM_DESC sd, struct bfd *abfd,
+			    char * const *argv, char * const *env)
+{
+
+sim_close, sim_load, sim_do_command をコンパイルアウト
+
+% make
+...
+gcc -c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1          -DDEFAULT_INLINE=0           -I./../../newlib/libc/sys/z8k   -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 comped1.c
+In file included from comped1.c:21:
+tm.h:136:28: エラー: expected ‘=’, ‘,’, ‘;’, ‘asm’ or ‘__attribute__’ before ‘PARAMS’
+
+    comped1.c
+    comped2.c
+    comped3.c    
+    compedb3.c
+
+の先頭で config.h を include するように修正
+
+% make
+...
+rm -f libsim.a
+ar rc libsim.a callback.o syscall.o targ-map.o iface.o mem.o support.o quick.o comped1.o comped2.o comped3.o compedb3.o sim-load.o
+ranlib libsim.a
+make: *** 'run.o' に必要なターゲット '../common/run.c' を make するルールがありません.  中止.
+%
+
+Makefile を以下のように修正
+
+SIM_RUN_OBJS = nrun.o
+
+% make 
+gcc ./../common/gentmap.c -o gentmap -g -O -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl 
+rm -f tmp-tvals.h tmp-tmap.c
+./gentmap -h >tmp-tvals.h
+/bin/sh ./../../move-if-change tmp-tvals.h targ-vals.h
+./gentmap -c >tmp-tmap.c
+/bin/sh ./../../move-if-change tmp-tmap.c targ-map.c
+touch stamp-tvals
+make: *** 'nrun.o' に必要なターゲット 'sim-main.h' を make するルールがありません.  中止.
+%
+
+とりあえず空の sim-main.h を作成
+
+% make
+gcc -c ./../common/nrun.c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1          -DDEFAULT_INLINE=0           -I./../../newlib/libc/sys/z8k   -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0
+./../common/nrun.c:49:8: エラー: 不明な型名 ‘host_callback’ です
+
+最近ビルドした fr30 でどのようにしていたか. 以下を発見
+
+#include "sim-base.h"
+
+% make
+gcc -c ./../common/nrun.c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1          -DDEFAULT_INLINE=0           -I./../../newlib/libc/sys/z8k   -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0
+In file included from ./sim-main.h:4,
+                 from ./../common/nrun.c:34:
+../common/sim-base.h:73:9: エラー: 不明な型名 ‘address_word’ です
+
+以下を sim-main.h に追加
+
+#include "sim-basics.h"
+
+% make
+gcc -c ./../common/nrun.c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1          -DDEFAULT_INLINE=0           -I./../../newlib/libc/sys/z8k   -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0
+In file included from ./sim-main.h:6,
+                 from ./../common/nrun.c:34:
+./../common/nrun.c: 関数 ‘main’ 内:
+../common/sim-base.h:226:30: エラー: invalid use of undefined type ‘struct sim_state’
+
+sim-main.h に以下を追加:
+
+struct sim_state {
+  sim_state_base base;
+};
+
+% make
+...
+gcc -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1          -DDEFAULT_INLINE=0           -I./../../newlib/libc/sys/z8k   -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl
+...
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: nrun.o: in function `cntrl_c':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.z8k-coff/sim/z8k/./../common/nrun.c:58: undefined reference to `sim_stop'
+
+
+Makefile を以下のように修正
+
+SIM_OBJS = iface.o mem.o support.o quick.o \
+	comped1.o comped2.o comped3.o compedb3.o sim-load.o \
+	sim-stop.o
+
+% make
+...
+gcc -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1          -DDEFAULT_INLINE=0           -I./../../newlib/libc/sys/z8k   -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: nrun.o: in function `main':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.z8k-coff/sim/z8k/./../common/nrun.c:102: undefined reference to `current_target_byte_order'
+
+Makefile を以下のように修正
+
+SIM_OBJS = iface.o mem.o support.o quick.o \
+	comped1.o comped2.o comped3.o compedb3.o \
+	$(SIM_NEW_COMMON_OBJS)
+
+% make
+...
+gcc -c ./../common/sim-config.c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1          -DDEFAULT_INLINE=0           -I./../../newlib/libc/sys/z8k   -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0
+./../common/sim-config.c: 関数 ‘sim_config’ 内:
+./../common/sim-config.c:192:21: エラー: ‘WITH_STDIO’ が宣言されていません (この関数内での最初の使用)
+  192 |     current_stdio = WITH_STDIO;
+
+
+config.h に以下を追加
+
+#define WITH_STDIO 0
+
+% make
+...
+gcc -c ./../common/sim-config.c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1          -DDEFAULT_INLINE=0           -I./../../newlib/libc/sys/z8k   -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0
+./../common/sim-config.c: 関数 ‘sim_config’ 内:
+./../common/sim-config.c:240:31: エラー: ‘WITH_ENVIRONMENT’ undeclared (first use in this function); did you mean ‘USER_ENVIRONMENT’?
+  240 |     STATE_ENVIRONMENT (sd) = (WITH_ENVIRONMENT != ALL_ENVIRONMENT ?
+...
+
+conifg.h に以下を追加
+
+#define WITH_ENVIRONMENT ALL_ENVIRONMENT
+
+% make
+...
+gcc -c ./../common/sim-core.c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1          -DDEFAULT_INLINE=0           -I./../../newlib/libc/sys/z8k   -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0
+In file included from ../common/sim-base.h:95,
+                 from ./sim-main.h:6,
+                 from ./../common/sim-core.c:26:
+./../common/sim-core.c: 関数 ‘sim_core_attach’ 内:
+../common/sim-base.h:104:32: エラー: ‘struct sim_state’ は ‘cpu’ という名前のメンバを持っていません
+...
+
+sim-main.h を以下のように修正
+
+struct sim_cpu {
+};
+
+struct sim_state {
+  struct sim_cpu* cpu;
+  sim_state_base base;
+};
+
+% make
+...
+gcc -c ./../common/sim-core.c -DHAVE_CONFIG_H     -DPROFILE=1 -DWITH_PROFILE=-1          -DDEFAULT_INLINE=0           -I./../../newlib/libc/sys/z8k   -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O0
+In file included from ../common/sim-base.h:95,
+                 from ./sim-main.h:6,
+                 from ./../common/sim-core.c:26:
+./../common/sim-core.c: 関数 ‘sim_core_attach’ 内:
+../common/sim-cpu.h:65:31: エラー: ‘->’ の無効な型の引数です (‘struct sim_cpu’ 型です)
+
+以下のように修正
+
+struct _sim_cpu {
+  sim_cpu_base base;
+};
+
+typedef struct _sim_cpu sim_cpu;
+
+struct sim_state {
+  sim_cpu* cpu[MAX_NR_PROCESSORS];
+  sim_state_base base;
+};
+
+% make
+...
+../common/sim-trace.h:125:28: エラー: ‘WITH_TRACE’ undeclared (first use in this function); did you mean ‘WITH_TRACE_P’?
+  125 | #define WITH_TRACE_P(idx) (WITH_TRACE & (1 << idx))
+
+config.h に以下を追加
+
+#define WITH_TRACE ~TRACE_debug
+
+% make
+...
+./../common/sim-memopt.c:168:16: エラー: ‘errno’ が宣言されていません (この関数内での最初の使用)
+  168 |      strerror (errno));
+
+config.h に以下を追加.
+
+#include <sys/stat.h>
+#include <sys/mman.h>
+#include <errno.h>
+
+% make
+
+./../common/sim-options.c:298:13: エラー: ‘WITH_DEBUG’ が宣言されていません (この関数内での最初の使用)
+  298 |       if (! WITH_DEBUG)
+
+config.h に以下を追加
+
+#define WITH_DEBUG 0
+
+% make
+...
+./../common/sim-options.c:391:50: エラー: ‘PKGVERSION’ が宣言されていません (この関数内での最初の使用)
+
+config.h に以下を追加
+
+#define PKGVERSION "(SIM) "
+
+% make
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.z8k-coff/sim/z8k/./../common/nrun.c:58: undefined reference to `sim_stop'
+
+Makefile を以下のように修正
+
+SIM_OBJS = iface.o mem.o support.o quick.o \
+	comped1.o comped2.o comped3.o compedb3.o \
+	sim-stop.o \
+	$(SIM_NEW_COMMON_OBJS)
+
+% make
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.z8k-coff/sim/z8k/./../common/nrun.c:134: undefined reference to `sim_load'
+
+Makefile を以下のように修正
+
+SIM_OBJS = iface.o mem.o support.o quick.o \
+	comped1.o comped2.o comped3.o compedb3.o \
+	sim-stop.o sim-hload.o \
+	$(SIM_NEW_COMMON_OBJS)
+
+% make
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.z8k-coff/sim/z8k/./../common/nrun.c:160: undefined reference to `sim_resume'
+
+Makefile を以下のように修正
+
+SIM_OBJS = iface.o mem.o support.o quick.o \
+	comped1.o comped2.o comped3.o compedb3.o \
+	sim-stop.o sim-hload.o sim-resume.o \
+	$(SIM_NEW_COMMON_OBJS)
+
+% make
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.z8k-coff/sim/z8k/./../common/nrun.c:162: undefined reference to `sim_stop_reason'
+
+Makefile を以下のように修正
+
+SIM_OBJS = iface.o mem.o support.o quick.o \
+	comped1.o comped2.o comped3.o compedb3.o \
+	sim-stop.o sim-hload.o sim-resume.o sim-reason.o \
+	$(SIM_NEW_COMMON_OBJS)
+
+% make
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.z8k-coff/sim/z8k/./../common/nrun.c:206: undefined reference to `sim_close'
+
+Makefile を以下のように修正
+
+SIM_OBJS = iface.o mem.o support.o quick.o \
+	comped1.o comped2.o comped3.o compedb3.o \
+	sim-stop.o sim-hload.o sim-resume.o sim-reason.o sim-close.o \
+	$(SIM_NEW_COMMON_OBJS)
+
+sim-close.o: $(srccom)/sim-close.c $(sim_main_headers)
+	$(CC) -c $(srccom)/sim-close.c $(ALL_CFLAGS)
+
+% make
+...
+libsim.a(sim-stop.o):./../common/sim-stop.c:30: undefined reference to `sim_engine_halt'
+
+
+Makefile を以下のように修正
+
+SIM_OBJS = iface.o mem.o support.o quick.o \
+	comped1.o comped2.o comped3.o compedb3.o \
+	sim-stop.o sim-hload.o sim-resume.o sim-reason.o sim-close.o \
+	sim-engine.o \
+	$(SIM_NEW_COMMON_OBJS)
+
+% make
+...
+libsim.a(sim-hload.o):./../common/sim-hload.c:44: undefined reference to `sim_write'
+...
+
+Makefile を以下のように修正
+
+SIM_OBJS = iface.o mem.o support.o quick.o \
+	comped1.o comped2.o comped3.o compedb3.o \
+	sim-stop.o sim-hload.o sim-resume.o sim-reason.o sim-close.o \
+	sim-engine.o sim-hrw.o \
+	$(SIM_NEW_COMMON_OBJS)
+
+% make
+...
+libsim.a(sim-resume.o):./../common/sim-resume.c:89: undefined reference to `sim_engine_run'
+
+Makefile を以下のように修正
+
+SIM_OBJS = iface.o mem.o support.o quick.o \
+	comped1.o comped2.o comped3.o compedb3.o \
+	sim-stop.o sim-hload.o sim-resume.o sim-reason.o sim-close.o \
+	sim-engine.o sim-hrw.o sim-run.o \
+	$(SIM_NEW_COMMON_OBJS)
+
+% make
+...
+./../common/sim-run.c:41:7: エラー: 不明な型名 ‘instruction_word’ です
+   41 |       instruction_word insn = IMEM32 (cia);
+
+
+config.h に以下を追加
+
+#include <stdint.h>
+typedef uint32_t instruction_word;
+
+% make
+...
+libsim.a(sim-close.o):./../common/sim-close.c:51: undefined reference to `sim_cpu_free_all'
+
+Makefile を以下のように修正
+
+SIM_OBJS = iface.o mem.o support.o quick.o \
+	comped1.o comped2.o comped3.o compedb3.o \
+	sim-stop.o sim-hload.o sim-resume.o sim-reason.o sim-close.o \
+	sim-engine.o sim-hrw.o sim-run.o sim-cpu.o \
+	$(SIM_NEW_COMMON_OBJS)
+
+% make
+...
+libsim.a(sim-run.o):./../common/sim-run.c:41: undefined reference to `IMEM32'
+
+config.h に以下を追加:
+
+uint32_t IMEM32(uint32_t cia);
+
+support.c に以下を追加:
+
+uint32_t IMEM32(uint32_t cia)
+{
+  asm("int3");
+}
+
+% make
+...
+libsim.a(sim-run.o):./../common/sim-run.c:42: undefined reference to `idecode_issue'
+
+support.c に以下を追加:
+
+uint32_t idecode_issue(SIM_DESC sd, instruction_word insn, uint32_t cia)
+{
+  asm("int3");
+}
+
+% make
+...
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(sim-module.o):(.rodata+0x8): undefined reference to `sim_model_install'
+
+Makefile を以下のように修正:
+
+SIM_OBJS = iface.o mem.o support.o quick.o \
+	comped1.o comped2.o comped3.o compedb3.o \
+	sim-stop.o sim-hload.o sim-resume.o sim-reason.o sim-close.o \
+	sim-engine.o sim-hrw.o sim-run.o sim-cpu.o sim-model.o \
+	$(SIM_NEW_COMMON_OBJS)
+
+% make
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.z8k-coff/sim/z8k/./../common/sim-options.c:336: undefined reference to `sim_do_command'
+...
+
+Makefile を以下のように修正:
+
+SIM_OBJS = iface.o mem.o support.o quick.o \
+	comped1.o comped2.o comped3.o compedb3.o \
+	sim-stop.o sim-hload.o sim-resume.o sim-reason.o sim-close.o \
+	sim-engine.o sim-hrw.o sim-run.o sim-cpu.o sim-model.o \
+	sim-command.o \
+	$(SIM_NEW_COMMON_OBJS)
+
+sim-command.o: $(srccom)/sim-command.c $(sim_main_headers)
+	$(CC) -c $(srccom)/sim-command.c $(ALL_CFLAGS)
+
+% make
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.z8k-coff/sim/z8k/./../common/sim-options.c:391: undefined reference to `version'
+...
+
+version.c を追加:
+
+#include "version.h"
+const char version[] = "10.2";
+const char host_name[] = "i686-pc-linux-gnu";
+const char target_name[] = "z8k-elf";
+
+Makefile を以下のように修正:
+
+SIM_OBJS = iface.o mem.o support.o quick.o \
+	comped1.o comped2.o comped3.o compedb3.o \
+	sim-stop.o sim-hload.o sim-resume.o sim-reason.o sim-close.o \
+	sim-engine.o sim-hrw.o sim-run.o sim-cpu.o sim-model.o \
+	sim-command.o version.o \
+	$(SIM_NEW_COMMON_OBJS)
+
+% make
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.z8k-coff/bfd/plugin.c:274: undefined reference to `dlopen'
+
+Makefile を以下のように修正:
+
+CONFIG_LIBS = -lnsl -ldl -lz
+
+これでビルド完了.
+
+% cd ../../gdb
+% make
