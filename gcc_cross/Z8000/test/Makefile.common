@@ -1,0 +1,22 @@
+%.o : %.S
+	z8k-coff-as -o $@ -g $<
+
+%.o : %.c
+	z8k-coff-gcc -o $@ $< -c -g
+
+%.elf : %.o 
+	z8k-coff-ld -o $@ ../default.o $< -T ../default.x
+
+%.objdump : %.elf
+	z8k-coff-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v z8k-coff-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.o *.s *.elf *.map *.objdump *.log TAGS *~
+
