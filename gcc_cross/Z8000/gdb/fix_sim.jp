@@ -1,0 +1,186 @@
+「簡単なプログラムを動かすまで」でも述べているが現状シミュレータは正しくない.
+
+例えば lddr 命令に対してそれをシミュレーションする函数が生成されていない.
+
+~/lang/53_GNU_tool/gcc_cross/Z8000/test/test002
+
+に
+	lddr	@r1, @r2, r3
+
+のコードを作成して実行してみたところ以下の函数が呼び出されていた.
+
+/* ldd @rd,@rs,rr */
+int sfop_201(context,pc,iwords0)
+int iwords0;
+sim_state_type *context;
+int pc;
+{
+
+lddr ではなくて ldd になっている原因を調べてみる.
+これは
+
+/* 1011 1011 ssN0 1001 0000 rrrr ddN0 1000 *** ldd @rd,@rs,rr */
+
+なのでこちらの命令の函数. 一方 lddr は以下
+
+/* 1011 1011 ssN0 1001 0000 rrrr ddN0 0000 *** lddr @rd,@rs,rr */
+
+最初の 2 バイトでは ldd 命令か lddr 命令かは判別できない. さてこれはどうするべきか.
+
+writecode のようなツールはそれはそれでよいのだが, これに固執しすぎるのは良くない.
+
+0xbb09 に対する writecode の動作を調べてみると, 最初の 2 バイト(4 nibble)を比較して
+最初にテーブルから見つかったものを返すということをしている.
+これが lddr 命令に対して ldd 命令に対する函数が呼び出されている原因である.
+
+ところで sfop_201 はどのように生成されているか調べてみた. どうやらテーブルに命令の記述も
+されているらしい.
+
+z8k_table にあるが lddr のような参照されなかったエントリを抜き出してみる.
+
+static
+void
+mangle (p, shortcut, value)
+     opcode_entry_type *p;
+     int shortcut;
+     int value;
+{
+  mark(p);  これをやっておく.
+
+mine.cpp:
+
+#include <set>
+
+std::set<void*> done;
+
+extern void mark(void* p)
+{
+  done.insert(p);
+}
+
+extern "C" int marked(void* p)
+{
+  return done.find(p) != end(done);
+}
+
+そして以下のように生成されていない函数を生成する.
+
+      for (i = 0; i < NOPS; i++)
+	{
+	  if (list[i])
+	    {
+	      one_instruction (i);
+	    }
++	  else if (!marked(p) && i < 435) {
++	    opcode_entry_type* p = z8k_table+i;
++	    mangle(p, 0, 0);
++	  }
+	  else
+	    {
+	      emit ("int <fop>_%d(context,pc)\n", i);
+	      printf ("sim_state_type *context;\n");
+	      printf ("int pc;\n");
+	      emit ("{ <fop>_bad1();return pc; }\n");
+	    }
+	}
+	
+      emit ("int <fop>_bad() ;\n");
+
+該当する命令は 82 あった. 面倒だがここからは手動でやったほうが良さそう.
+
+例えば
+
+/* 0000 0001 0000 dddd imm16 *** add rd,imm16 */
+
+は該当する生成されない命令の 1 つで
+
+/* 0000 0001 ssN0 dddd *** add rd,@rs */
+
+の影になっている. と思ったがこれは心当たりがある. 「簡単なプログラムを動かすまで」
+で以下の対応を行なった:
+
+		case CLASS_REGN0:
+#if 0		  
+		  if (instr_nibl == 0)
+		    nibl_matched = 0;
+#endif		  
+		  break;
+
+これは実は間違いだったっぽい. この修正を元に戻して, 例の 0x100 番地に nop を数命令
+置いたプログラムの正常動作を確認した.
+
+そこで改めて生成されない命令を確認してみたところ 26 命令までに現象している.
+例えば
+
+/* 0011 1011 ssss 1000 0000 aaaa ddN0 0000 *** indr @rd,@ri,ra */
+
+であるが
+
+/* 0011 1011 ssss 1000 0000 aaaa ddN0 1000 *** ind @rd,@ri,ra */
+
+この命令の影になっている. 先頭の 4 nibble(2 バイト)のみから判定しているから
+しょうがない.
+
+/* 0011 1010 ssss 1000 0000 aaaa ddN0 0000 *** indrb @rd,@ri,ra */
+
+は
+
+/* 0011 1010 ssss 1000 0000 aaaa ddN0 1000 *** indb @rd,@ri,ra */
+
+の影になっている. おそらくこういうパターンで間違えているのだろう.
+いずれにしても writecode の運用はここまでで後は手作業にするべき.
+
+また本来は 5 番目と 8 番目の nibble が 0000 1000 以外だったら illegal instruction
+のエラーにしなくてはならないが今回は面倒だからそれはしないでおく.
+
+Makefile を修正して writecode から
+
+tc-gen1.h
+tc-gen2.h
+tc-gen3.h
+tc-genb3.h
+
+を生成しないようにした. また一度生成したこれらのヘッダファイルの中身をそっくりそのまま
+
+comped1.c
+comped2.c
+comped3.c
+compedb3.c
+
+にコピーした.
+
+ところで
+
+	indr	@r1, @r2, r3
+
+命令を実行すると ind @rd,@ri,ra 命令の函数が実行されるので以下のようにした:
+
+/* ind @rd,@ri,ra */
+int sfop_148(context,pc,iwords0)
+int iwords0;
+sim_state_type *context;
+int pc;
+{
+  uint8_t b3 = get_word_mem_da(context,pc+3);
+  switch (b3 >> 4) {
+  case 0: break;
+  case 8: return sfop_150(context,pc,iwords0);
+  default:
+    sim_engine_halt(g_sd, g_cpu, 0, g_cia, sim_stopped, SIM_SIGILL);
+    break;
+  }
+
+これで ind 命令ではなくて indr 命令が実行されるようになる.
+ここでシミュレーションの内容が正しくないことに気付く:
+
+		tmp = fail(context,8);
+
+z8k-opc.h
+
+に動作の記述までされていないのだからそれはしょうがない. 特定の命令は実装されているらしい.
+今回はここまで.
+
+
+
+
+
