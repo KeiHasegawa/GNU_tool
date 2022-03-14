@@ -15,4 +15,575 @@ label2:
 int32 <- uint16
 
         ゼロ拡張は単に上位のレジスタに 0 をセットすればよい.
-	
+
+int32 の符号拡張
+
+        ; r2, r3 に int32 をロード
+	cmpi.s	r2, 0
+	brf0t.s	label	 ; r2 < 0 ならばジャンプ
+	ldi.l	r0, #0
+	ldi.l	r1, #0
+	bra.s	label2
+label:
+	ldi.l	r0, #-1
+	ldi.l	r1, #-1
+label2:
+
+
+int32 のゼロ拡張
+
+        上位 32 ビットに 0 をセットする.
+
+を実装中. 2022.03.07 9:50 => 2022.03.07 10:20 完了.
+
+int64 <- int16 は以下を削除. 
+
+; int64 <- int16
+; not absolutely necessary
+(define_insn "extendhidi2"
+  [(set (match_operand:DI 0 "nonimmediate_operand" "")
+        (sign_extend:DI (match_operand:HI 1 "general_operand" "")))]
+  ""
+  "%0 := (sign)%1")
+
+また
+
+int64 <- uint16 は以下を削除.
+
+; int64 <- uint16
+; not absolutely necessary
+(define_insn "zero_extendhidi2"
+  [(set (match_operand:DI 0 "nonimmediate_operand" "")
+        (zero_extend:DI (match_operand:HI 1 "general_operand" "")))]
+  ""
+  "%0 := (zero)%1")
+
+これで期待するコードが生成されるか確認中. 2022.03.07 10:23 リビルド開始.
+
+2022.03.07 15:00
+
+int64 <- int16 に対しては以下が生成されていた.
+
+	st	r0, @(8, r14)
+	r0 := r0 >> 15            0x0000 か 0xffff のいずれかになる.
+	st	r0, @(6, r14)     それを上位 48 ビットにそれぞれ
+	st	r0, @(4, r14)	  セットしている.
+	st	r0, @(2, r14)
+
+それであれば
+
+x        y
+int32 <- int16 は
+
+        r0, r1 に y をロードして
+	r0 := r0 >> 15
+
+	とすれば cmp 命令を生成する必要はなかった.
+
+そこで折角なので既に実装していた以下を削除してみる.
+
+; int32 <- int16
+(define_insn "extendhisi2"
+  [(set (match_operand:SI 0 "nonimmediate_operand" "")
+        (sign_extend:SI (match_operand:HI 1 "general_operand" "")))]
+  ""
+  "*
+  return d10v_extendhisi2(operands[0], operands[1]);")
+
+const char* d10v_extendhisi2(rtx x, rtx y);
+
+const char* d10v_extendhisi2(rtx x, rtx y)
+{
+  using namespace std;
+  int offset;
+  if (REG_P(x) && fp_rel(y, &offset)) {
+    int regno = REGNO(x);
+    assert(!(regno & 1));
+    load(regno+1, offset);
+    auto rh = reg_names[regno];
+    auto rl = reg_names[regno+1];
+    fprintf(asm_out_file, "	cmpi.s	%s, 0\n", rl);
+    string label = local_label();
+    fprintf(asm_out_file, "	brf0t.s	%s\n", label.c_str());
+    fprintf(asm_out_file, "	ldi.l	%s, #0\n", rh);
+    string label2 = local_label();
+    fprintf(asm_out_file, "	bra.s	%s\n", label2.c_str());
+    fprintf(asm_out_file, "%s:\n", label.c_str());
+    fprintf(asm_out_file, "	ldi.l	%s, #-1\n", rh);
+    fprintf(asm_out_file, "%s:\n", label2.c_str());
+    return "";
+  }
+
+  return "%0 := (sign)%1";
+}
+
+2022.03.07 15:10 リビルド開始
+
+2022.03.08 18:30 リビルド完了した cc1 で ii.c をコンパイルしてみた. 期待通り
+右シフトのコード
+
+f:
+...
+	r0 := r0 >> 15
+
+が生成されている. 同様に
+
+; int32 <- uint16
+(define_insn "zero_extendhisi2"
+  [(set (match_operand:SI 0 "nonimmediate_operand" "")
+        (zero_extend:SI (match_operand:HI 1 "general_operand" "")))]
+  ""
+  "*
+  return d10v_zero_extendhisi2(operands[0], operands[1]);")
+
+const char* d10v_zero_extendhisi2(rtx x, rtx y);
+
+
+const char* d10v_zero_extendhisi2(rtx x, rtx y)
+{
+  int offset;
+  if (REG_P(x) && fp_rel(y, &offset)) {
+    int regno = REGNO(x);
+    assert(!(regno & 1));
+    load(regno+1, offset);
+    auto rh = reg_names[regno];
+    fprintf(asm_out_file, "	ldi.l	%s, #0\n", rh);
+    return "";
+  }
+
+  return "%0 := (zero)%1";
+}
+
+を削除してリビルド開始. 2022.03.08 18:30
+
+2022.03.09 9:18 ii.c のゼロ拡張のコードが適切に生成されていることを確認した.
+
+2022.03.09 9:26 jj.c の符号拡張のコードも同様に改善するために以下を削除してビルド中:
+
+; int64 <- int32
+(define_insn "extendsidi2"
+  [(set (match_operand:DI 0 "nonimmediate_operand" "")
+        (sign_extend:DI (match_operand:SI 1 "general_operand" "")))]
+  ""
+  "*
+  return d10v_extendsidi2(operands[0], operands[1]);")
+
+
+const char* d10v_extendsidi2(rtx x, rtx y);
+
+const char* d10v_extendsidi2(rtx x, rtx y)
+{
+  using namespace std;
+  int offset;
+  if (REG_P(x) && fp_rel(y, &offset)) {
+    int regno = REGNO(x);
+    assert(!(regno & 3));
+    load2w(regno+2, offset);
+    auto rhh = reg_names[regno];
+    auto rhl = reg_names[regno+1];
+    auto rlh = reg_names[regno+2];
+    fprintf(asm_out_file, "	cmpi.s	%s, 0\n", rlh);
+    string label = local_label();
+    fprintf(asm_out_file, "	brf0t.s	%s\n", label.c_str());
+    fprintf(asm_out_file, "	ldi.l	%s, #0\n", rhh);
+    fprintf(asm_out_file, "	ldi.l	%s, #0\n", rhl);
+    string label2 = local_label();
+    fprintf(asm_out_file, "	bra.s	%s\n", label2.c_str());
+    fprintf(asm_out_file, "%s:\n", label.c_str());
+    fprintf(asm_out_file, "	ldi.l	%s, #-1\n", rhh);
+    fprintf(asm_out_file, "	ldi.l	%s, #-1\n", rhl);
+    fprintf(asm_out_file, "%s:\n", label2.c_str());
+    return "";
+  }
+  return "%0 := (sign)%1";
+}
+
+2022.03.09 14:30
+int64 <- int32, int64 <- uint32 が期待通り動作していることを確認した.
+
+ようやっと当初の目的だった
+int64 <- int16, int64 <- uint16 の動作を確認してみた.
+メモリアクセスアラインメントエラーが発生している.
+
+;#(insn 16 13 21 (set (reg:DI 0 r0 [orig:24 <retval> ] [24])
+;#        (mem/c:DI (plus:HI (reg/f:HI 14 r14)
+;#                (const_int 2 [0x2])) [2 %sfp+2 S8 A8])) "kk.c":5:10 8 {movdi}
+;#     (nil))
+	ld2w	r0, @(2, r14)
+	ld2w	r2, @(6, r14)
+
+フレーム相対オフセット 2 に 8 バイト(型 long long)の変数が置かれている.
+これは今までになかったエラー.
+函数 f や g のフレームのレイアウトは以下のようになっている.
+
+	+---------------+ <- r14
+	|      a	|
+     +2	+---------------+
+	|		|
+	|     戻り値	|
+	|		|
+	|		|
+    +10 +---------------+
+
+
+上の命令は以下:
+
+$34 = (rtx_insn *) 0xb785e57c
+   16: r0:DI=[r14:HI+0x2]
+
+この命令自体が生成されるタイミングを捕える:
+
+static void
+expand_value_return (rtx val)
+{
+
+	emit_move_insn (return_reg, val);  ここだった.
+
+生成されたタイミングでは
+
+(gdb) p debug_rtx(val)
+(reg:DI 23 [ _2 ])
+$184 = void
+(gdb)
+
+のようになっている. FIRST_PSEUDO_REGISTER = 17 だから 23 は疑似レジス
+タの 1 つ.
+おそらくこれがフレーム相対 2 に変更される.
+
+(gdb) p debug_insn_slim((rtx_insn*)0xb785e57c)
+   16: r24:DI=r23:DI
+$185 = void
+(gdb)
+
+(gdb) p debug_rtx((rtx_insn*)0xb785e57c)
+(insn 16 15 0 (set (reg:DI 24 [ <retval> ])
+        (reg:DI 23 [ _2 ])) "kk.c":5:10 -1
+     (nil))
+$194 = void
+(gdb) 
+
+(gdb) p debug_rtx(PATTERN((rtx_insn*)0xb785e57c))
+(set (reg:DI 24 [ <retval> ])
+    (reg:DI 23 [ _2 ]))
+$196 = void
+(gdb)
+
+(gdb) p debug_rtx(PATTERN((rtx_insn*)0xb785e57c)->u.fld[0].rt_rtx)
+(reg:DI 24 [ <retval> ])
+$201 = void
+(gdb) 
+(gdb) p debug_rtx(PATTERN((rtx_insn*)0xb785e57c)->u.fld[1].rt_rtx)
+(reg:DI 23 [ _2 ])
+$202 = void
+(gdb)
+
+ということは
+
+(gdb) p &PATTERN((rtx_insn*)0xb785e57c)->u.fld[1].rt_rtx
+$203 = (rtx *) 0xb78e073c
+(gdb)
+
+このアドレスにウォッチポイントを置いてみた:
+
+
+static bool
+remove_pseudos (rtx *loc, rtx_insn *insn)
+{
+...
+
+	  *loc = x != pseudo_slots[i].mem ? x : copy_rtx (x); ここらしい
+	}
+      return res;
+
+
+Hardware watchpoint 4: *(int*)0xb78e073c
+
+Old value = -1215364660
+New value = -1215428176
+
+(gdb) p debug_rtx((rtx)-1215364660)
+(reg:DI 23 [ _2 ])
+$390 = void
+(gdb) p debug_rtx((rtx)-1215428176)
+(mem/c:DI (plus:HI (reg/f:HI 14 r14)
+        (const_int 2 [0x2])) [2 %sfp+2 S8 A8])
+$391 = void
+(gdb)
+
+それっぽい. ということは
+
+(gdb) p (rtx)-1215428176 
+$392 = (rtx) 0xb78e09b0
+(gdb)
+
+これが生成される瞬間を捕えたい.
+
+
+static void
+copy_rtx_if_shared_1 (rtx *orig1)
+{
+...
+  format_ptr = GET_RTX_FORMAT (code); ここいら周辺らしい.
+
+(gdb) p debug_rtx(*orig1)
+(mem/c:DI (plus:HI (reg/f:HI 14 r14)
+        (const_int 2 [0x2])) [2 %sfp+2 S8 A8])
+$566 = void
+(gdb) 
+
+函数の名前から推測するに orig1 が生成される瞬間を捕えるべき.
+
+(gdb) up
+#1  0x0868036d in copy_rtx_if_shared (orig=0xb78e0730) at ../.././gcc/emit-rtl.c:3062
+(gdb) p debug_rtx(orig)
+(set (reg:DI 0 r0 [orig:24 <retval> ] [24])
+    (mem/c:DI (plus:HI (reg/f:HI 14 r14)
+            (const_int 2 [0x2])) [2 %sfp+2 S8 A8]))
+$1 = void
+(gdb)
+
+これ自体が既に set になっている. 問題なのは右辺の r14 相対 2 が生成さ
+れるタイミング.
+
+(gdb) p debug_rtx(orig->u.fld[1].rt_rtx)
+(mem/c:DI (plus:HI (reg/f:HI 14 r14)
+        (const_int 2 [0x2])) [2 %sfp+2 S8 A8])
+$13 = void
+(gdb) p orig->u.fld[1].rt_rtx
+$14 = (rtx) 0xb78e09b0
+(gdb)
+
+これが生成されるタイミングを捕える.
+
+static void
+copy_rtx_if_shared_1 (rtx *orig1)
+{
+...
+またここでひっかかった.
+
+(gdb) p debug_rtx((rtx) 0xb78e09b0)
+(mem/c:DI (plus:HI (reg/f:HI 14 r14)
+        (const_int 2 [0x2])) [2 %sfp+2 S8 A8])
+$15 = void
+(gdb)
+
+r14 相対 2 が作成されている.
+
+(gdb) up
+(gdb) p debug_rtx(orig)
+(set (reg:DI 0 r0 [orig:24 <retval> ] [24])
+    (mem/c:DI (plus:HI (reg/f:HI 14 r14)
+            (const_int 2 [0x2])) [2 %sfp+2 S8 A8]))
+$14 = void
+(gdb) 
+
+ここで既に r14 相対 2 が生成されている.
+
+(gdb) p orig
+$21 = (rtx) 0xb78e0730
+(gdb) p debug_rtx(((rtx) 0xb78e0730)->u.fld[1].rt_rtx)
+(mem/c:DI (plus:HI (reg/f:HI 14 r14)
+        (const_int 2 [0x2])) [2 %sfp+2 S8 A8])
+$22 = void
+(gdb) p ((rtx) 0xb78e0730)->u.fld[1].rt_rtx
+$23 = (rtx) 0xb78e09b0
+(gdb) 
+
+これは上で調べていた. 何か勘違いをしている. (rtx) 0xb78e09b0 が最初に作成された
+時点では
+
+(gdb) p debug_rtx((rtx) 0xb78e09b0)
+(mem/c:DI (nil) [0  S8 A8])
+$26 = void
+(gdb)
+
+だからどこかで r14 相対 2 が付加されるはず.
+
+相対 2 は以下:
+
+(gdb) p debug_rtx((((rtx) 0xb78e0840)->u.fld[0].rt_rtx)->u.fld[1].rt_rtx)
+(const_int 2 [0x2])
+$37 = void
+(gdb) p (((rtx) 0xb78e0840)->u.fld[0].rt_rtx)->u.fld[1].rt_rtx
+$38 = (rtx) 0xb7857450
+(gdb)
+
+これが生成される瞬間を捕える.
+
+  for (i = - MAX_SAVED_CONST_INT; i <= MAX_SAVED_CONST_INT; i++)
+    const_int_rtx[i + MAX_SAVED_CONST_INT] =
+      gen_rtx_raw_CONST_INT (VOIDmode, (HOST_WIDE_INT) i);
+
+ここだった.
+
+(gdb) p i
+$46 = 2
+(gdb)
+
+これはまとめて一回定数を生成しているようなところなので今回探しているものとは違う.
+
+(gdb) p debug_rtx((((rtx) 0xb78e0840)->u.fld[0].rt_rtx))
+(plus:HI (reg/f:HI 14 r14)
+    (const_int 2 [0x2]))
+$48 = void
+(gdb) p debug_rtx((((rtx) 0xb78e0840)->u.fld[0].rt_rtx)->u.fld[1].rt_rtx)
+(const_int 2 [0x2])
+$49 = void
+(gdb) p (((rtx) 0xb78e0840)->u.fld[0].rt_rtx)->u.fld[1].rt_rtx
+$50 = (rtx) 0xb7857450
+(gdb) p &(((rtx) 0xb78e0840)->u.fld[0].rt_rtx)->u.fld[1].rt_rtx
+$51 = (rtx *) 0xb78e083c
+(gdb) watch *(int*)0xb78e083c
+
+上のウォッチポイントが正しいように思える. とは思ったが違っていた.
+どうにか以下に辿り着いた:
+
+     address relative to the frame pointer.  */
+  if (virtuals_instantiated)
+    addr = plus_constant (Pmode, frame_pointer_rtx,
+			  trunc_int_for_mode
+			  (slot_offset + bigend_correction
+			   + targetm.starting_frame_offset (), Pmode));
+  else
+    addr = plus_constant (Pmode, virtual_stack_vars_rtx,
+			  trunc_int_for_mode
+			  (slot_offset + bigend_correction,
+			   Pmode));
+
+  x = gen_rtx_MEM (mode, addr);
+
+(gdb) p debug_rtx(addr)
+(plus:HI (reg/f:HI 14 r14)
+    (const_int 2 [0x2]))
+$66 = void
+(gdb) p virtuals_instantiated
+$67 = 1
+(gdb)
+
+ということはここで何とかしたい.
+
+
+(gdb) delete
+(gdb) b function.c:516
+(gdb) run
+...
+function.c:516 のブレークポイントにヒット.
+(gdb) c
+...
+function.c:516 のブレークポイントにヒット.
+(gdb) p size
+$75 = {<poly_int_pod<1, long long>> = {coeffs = {8}}, <No data fields>}
+(gdb) p slot_offset
+$76 = {<poly_int_pod<1, long long>> = {coeffs = {2}}, <No data fields>}
+(gdb)
+
+2 回目らしい.
+
+(gdb) b assign_stack_local_1
+(gdb) run
+
+2022.03.12 18:18 STACK_BOUNDARY は現状 8 だが 4 にしてみる.
+BIGGEST_ALIGNMENT, PARM_BOUNDARY も 4 に変更
+
+2022.03.13 6:55
+
+Program received signal SIGFPE, Arithmetic exception.
+
+となりどうやら 0 割りが発生している模様.
+
+(gdb) where
+#0  0x09311a2f in __udivmoddi4 (rp=<synthetic pointer>, d=<optimized out>, n=<optimized out>) at ../.././libgcc/libgcc2.c:1046
+#1  __moddi3 (u=0, v=0) at ../.././libgcc/libgcc2.c:1268
+#2  0x08593472 in expand_used_vars () at ../.././gcc/cfgexpand.c:2044
+#3  0x0859e84a in (anonymous namespace)::pass_expand::execute (this=0x97c99c0, fun=0xb78ec000) at ../.././gcc/cfgexpand.c:6410
+#4  0x0899325d in execute_one_pass (pass=0x97c99c0) at ../.././gcc/passes.c:2502
+#5  0x08993576 in execute_pass_list_1 (pass=0x97c99c0) at ../.././gcc/passes.c:2590
+#6  0x089935f2 in execute_pass_list (fn=0xb78ec000, pass=0x97c7230) at ../.././gcc/passes.c:2601
+#7  0x085db2e1 in cgraph_node::expand (this=0xb78ee000) at ../.././gcc/cgraphunit.c:2300
+--Type <RET> for more, q to quit, c to continue without paging--q
+Quit
+(gdb)
+
+このとき受けるシグナルは SIGFPE らしい.
+
+    int align = PREFERRED_STACK_BOUNDARY / BITS_PER_UNIT;
+    int off = targetm.starting_frame_offset () % align;
+
+この計算で 0 割りが発生していた. マクロ展開の結果は以下.
+
+    int align = STACK_BOUNDARY / (8);
+    int off = targetm.starting_frame_offset () % align;
+
+これからすると STACK_BOUNDARY は 4 や 8 ではなくて 16 にするべき.
+だとすれば PARM_BOUNDARY も 16 にしておくべき.
+
+2022.03.13 7:00 上の変更でビルド.
+
+2022.03.13 17:30 やはりオフセットは 2 になってしまう.
+
+
+unsigned int
+get_mode_alignment (machine_mode mode)
+{
+  return MIN (BIGGEST_ALIGNMENT, MAX (1, mode_base_align[mode]*BITS_PER_UNIT));
+}
+
+BIGGEST_ALIGNMENT で変更できそう.
+
+
+(gdb) p BIGGEST_ALIGNMENT
+$13 = 4
+(gdb)
+
+これを 16 にしてみる. 2022.03.14 10:00 ビルド開始.
+2022.03.14 13:34 確認してみたが改善されていない.
+
+get_mode_alignment が DImode のときに 32 が返ればよいので BIGGEST_ALIGNMENT
+は 32 にするべきだった.
+
+constexpr int BIGGEST_ALIGNMENT = 32;
+
+として 2022.03.14 14:20 ビルド開始. 
+
+2022.03.14 18:00 確認したところ assign_stack_local_1 は期待した形で呼ばれている
+ようだが依然として r14 相対 2 になっている.
+
+Breakpoint 6, assign_stack_local_1 (mode=E_BLKmode, size=..., align=32, kind=2) at ../.././gcc/function.c:378
+
+(gdb) p size
+$28 = {<poly_int_pod<1, long long>> = {coeffs = {8}}, <No data fields>}
+(gdb)
+
+これで r14 相対 2 ではなくて 4 になるかと思ったのだが,
+
+
+  else if (align == -2)
+    alignment = 1; /* BITS_PER_UNIT / BITS_PER_UNIT */
+  else
+    alignment = align / BITS_PER_UNIT;   ここで 4 になる.
+
+  /* Ignore alignment if it exceeds MAX_SUPPORTED_STACK_ALIGNMENT.  */
+  if (alignment_in_bits > MAX_SUPPORTED_STACK_ALIGNMENT)
+    {
+      alignment_in_bits = MAX_SUPPORTED_STACK_ALIGNMENT;
+      alignment = MAX_SUPPORTED_STACK_ALIGNMENT / BITS_PER_UNIT; しかしここ
+    }
+
+で 2 に上書きされている. 上のマクロ展開の結果は
+
+  if (alignment_in_bits > STACK_BOUNDARY)
+
+であるから
+
+(gdb) p alignment_in_bits
+$38 = 32
+(gdb) 
+
+STACK_BOUNDARY = 32 にするべき.
+
+constexpr int STACK_BOUNDARY = 32;
+
+constexpr int PARM_BOUNDARY  = 32;
+
+にしてビルド開始  2022.03.15 6:00
+2022.03.15 7:30 r14 相対 4 を生成していることを確認した.
