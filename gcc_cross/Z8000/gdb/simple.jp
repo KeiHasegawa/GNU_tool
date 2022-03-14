@@ -1,0 +1,519 @@
+例によって 0x100 番地に nop 命令を数個置いたプログラムをステップ実行する
+ということをやってみる.
+
+M-x gdb
+gdb --annotate=3 ./gdb
+
+(gdb) cd ~/lang/53_GNU_tool/gcc_cross/Z8000/test/test001
+(gdb) run -q -x gdbcom test.elf
+...
+
+Reading symbols from test.elf...
+
+Thread 1 "gdb" received signal SIGSEGV, Segmentation fault.
+0x08175413 in dwarf2_per_bfd::locate_sections (this=0x8b56a18, abfd=0x8b33f50, sectp=0x8b4a5ec, names=...) at dwarf2/read.c:1976
+(gdb)
+
+不正メモリアクセスが発生している. 該当ソースは以下:
+
+  else if (elf_section_data (sectp)->this_hdr.sh_size
+	   > bfd_get_file_size (abfd))
+
+
+このマクロ展開の結果は以下:
+
+  else if (((struct bfd_elf_section_data*)(sectp)->used_by_bfd)->this_hdr.sh_size
+    > bfd_get_file_size (abfd))
+
+(gdb) p (struct bfd_elf_section_data*)(sectp)->used_by_bfd
+$2 = (bfd_elf_section_data *) 0x0
+(gdb) p *sectp
+$4 = {name = 0x8b48754 ".text", id = 16, section_id = 0, index = 0, 
+  next = 0x8b4a6a8, prev = 0x0, flags = 275, user_set_vma = 0, 
+  linker_mark = 0, linker_has_input = 0, gc_mark = 0, compress_status = 0, 
+  segment_mark = 0, sec_info_type = 0, use_rela_p = 0, sec_flg0 = 0, 
+  sec_flg1 = 0, sec_flg2 = 0, sec_flg3 = 0, sec_flg4 = 0, sec_flg5 = 0, 
+  vma = 256, lma = 256, size = 8, rawsize = 0, compressed_size = 0, 
+  relax = 0x0, relax_count = 0, output_offset = 0, output_section = 0x0, 
+  alignment_power = 1, relocation = 0x0, orelocation = 0x0, reloc_count = 0, 
+  filepos = 168, rel_filepos = 0, line_filepos = 0, userdata = 0x0, 
+  contents = 0x0, lineno = 0x0, lineno_count = 0, entsize = 0, 
+  kept_section = 0x0, moving_line_filepos = 0, target_index = 1, 
+  used_by_bfd = 0x0, constructor_chain = 0x0, owner = 0x8b33f50, 
+  symbol = 0x8b48760, symbol_ptr_ptr = 0x8b4a688, map_head = {
+    link_order = 0x0, s = 0x0, linked_to_symbol_name = 0x0}, map_tail = {
+    link_order = 0x0, s = 0x0, linked_to_symbol_name = 0x0}, 
+  already_assigned = 0x0}
+(gdb)
+
+おそらく elf ではなくて coff 用にコンパイルされていないということなのだろう.
+マクロの定義は
+
+gdb-10.2.z8k-coff/bfd/elf-bfd.h
+
+にある.
+
+対応の方法が不明だが何かのエラーチェックをしているだけのように思ったので以下のようにして回避
+した:
+
+  else if (0 && elf_section_data (sectp)->this_hdr.sh_size
+	   > bfd_get_file_size (abfd))
+
+(gdb) run
+...
+Thread 1 "gdb" received signal SIGSEGV, Segmentation fault.
+0x083a1e07 in sim_analyze_program (sd=0x1, prog_name=0x8b59090 "/home/khasegawa/lang/53_GNU_tool/gcc_cross/Z8000/test/test001/test.elf", prog_bfd=0x0) at ./../common/sim-utils.c:230
+
+(gdb)
+
+SIM_DESC 型の sd が 0x1 できている.
+
+例えば aarch64-elf-gdb ではそれらしい値がきている:
+
+Thread 1 "gdb" hit Breakpoint 1, sim_analyze_program (sd=0x8d3f428, prog_name=0x0, prog_bfd=0x8d186b0) at ./../common/sim-utils.c:213
+(gdb)
+
+aarch64-elf-gdb では固有の sim_open を使用していてそこで
+
+  SIM_DESC sd = sim_state_alloc (kind, callback);
+
+のようにしている.
+
+以下のように修正:
+
+SIM_DESC sim_open (SIM_OPEN_KIND kind, struct host_callback_struct *callback,
+		   struct bfd *abfd, char * const *argv)
+{
+  sim_kind = kind;
+  myname = argv[0];
+  z8k_callback = callback;
+
+  SIM_DESC sd = sim_state_alloc (kind, callback);
+  assert(sd);
+
+  if (sim_cpu_alloc_all (sd, 1, 0) != SIM_RC_OK)
+    return 0;
+
+  if (sim_pre_argv_init (sd, argv[0]) != SIM_RC_OK)
+    return 0;
+
+  if (sim_parse_args (sd, argv) != SIM_RC_OK)
+    return 0;
+
+  if (sim_analyze_program (sd,
+			   (STATE_PROG_ARGV (sd) != NULL
+			       ? *STATE_PROG_ARGV(sd)
+			    : NULL), abfd) != SIM_RC_OK)
+    return 0;
+
+  if (sim_config (sd) != SIM_RC_OK)
+    return 0;
+
+  if (sim_post_argv_init (sd) != SIM_RC_OK)
+    return 0;
+
+  return sd;
+}
+
+また現状はメモリを割り当てていないので
+
+	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
++	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
+	      do_write (sd, lma, buffer, size);
+	      found_loadable_section = 1;
+	      free (buffer);
+	    }
+	}
++     else if (s->flags & SEC_ALLOC) {
++	bfd_vma vma = bfd_section_vma(s);
++	bfd_size_type size = bfd_section_size(s);
++	sim_do_command(sd, "memory-fill 0xcc");
++	sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", vma, size);
++     }
+
+のように修正.
+
+(gdb) run
+...
+Target alignment unspecified
+
+エラーしている.
+
+sim_config の呼び出しでエラーしている.
+
+以下を config.h に追加
+
+#define WITH_ALIGNMENT 2
+
+(gdb) run
+...
+Thread 1 "gdb" received signal SIGSEGV, Segmentation fault.
+0x00000000 in ?? ()
+
+該当箇所は以下:
+
+  cia = CPU_PC_GET (cpu);
+
+以下を追加:
+
+sim_cpu* g_cpu;
+
+SIM_DESC sim_open (SIM_OPEN_KIND kind, struct host_callback_struct *callback,
+...
+  g_cpu = STATE_CPU(sd, 0);
+  CPU_PC_FETCH(g_cpu) = z8k_pc_get;
+  CPU_PC_STORE(g_cpu) = z8k_pc_set;
+
+これで IMEM32 が呼び出されるようになった. そこで以下のようにした:
+
+uint32_t IMEM32(uint32_t cia)
+{
+  return sim_core_read_unaligned_2(g_cpu, cia, 0, cia);
+}
+
+さらにこれで idecode_issue が呼び出されるようになった. そこで以下のようにした:
+
+uint32_t idecode_issue(SIM_DESC sd, instruction_word insn, uint32_t cia)
+{
+  asm("int3");
+  typedef int FUNC();
+  extern FUNC* sfop_table[];
+  struct op_info* p = op_info_table + insn;
+  return sfop_table[p->exec](&the_state, cia, insn);
+}
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/aarch64-elf/include/machine/ieeefp.h
+
+Z8000 はビッグエンディアンらしい:
+
+#if defined(__Z8001__) || defined(__Z8002__)
+#define __IEEE_BIG_ENDIAN
+#endif
+
+命令の最初の 2 バイトがオペコードでその 2 バイトで命令が決定される.
+そして
+
+tc-gen2.h
+
+で定義されている.
+
+struct op_info op_info_table[] = {
+...
+};
+
+が 65535 = 0x10000 要素の配列であり writecode でこれを生成することによって
+idecode_issue が上のような実装になっているということ.
+
+しかし残念ながら writecode は完全でないため現状 op_info_table は
+正しくなくて, 現状はできていないということ.
+
+この調査の過程でブレーク命令が bkp が
+
+0011 0110 0000 0000 *** bpt
+
+0x3600 であることも判明している.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.z8k-coff/opcodes/z8k-opc.h
+
+static
+const unsigned char* z8k_from_kind(gdbarch* handle, int kind, int* size)
+{
+  // 0011 0110 0000 0000 *** bpt
+  static unsigned char break_inst[] = { 0x36, 0x00 };
+
+
+なので後は writecode を修正して正しい op_info_table を生成できればよい.
+現状 writecode.c では -2 のオプションに対して以下のようにしている
+
+   for (i = 0 ; i < NOPS ; i++)
+
+      for (i = 0; i < 1 << 16; i++)
+	{
+	  opcode_entry_type *p = lookup_inst (i);
+...
+          // p でテーブルの要素(ここでは数字)を出力
+
+のようになっている. おそらく lookup_inst を修正するだけで正しい op_info_table
+は生成できる.
+
+例えば 0x0000 に対する命令は
+
+/* 0000 0000 ssN0 dddd *** addb rbd,@rs */
+
+/* addb rbd,@rs */
+int sfop_7(context,pc,iwords0)
+...
+
+だから 7 が正しい.
+
+現状は 7 を返せていない.
+
+		case CLASS_REGN0:
+		  if (instr_nibl == 0)
+		    nibl_matched = 0;   ここにきている.
+		  break;
+
+
+/* 0000 0000 ssN0 dddd *** addb rbd,@rs */
+{
+#ifdef NICENAMES
+"addb rbd,@rs",8,7,0x3f,
+#endif
+"addb",OPC_addb,0,{CLASS_REG_BYTE+(ARG_RD),CLASS_IR+(ARG_RS),},
+	{CLASS_BIT+0,CLASS_BIT+0,CLASS_REGN0+(ARG_RS),CLASS_REG+(ARG_RD),0,0,0,0,0,},2,2,3},
+
+ループの 1 回目は CLASS_BIT でこれは OK
+ループの 2 回目は CLASS_BIT でこれも OK
+ループの 3 回目は CLASS_REGN0 でこれがマッチしないと判定されている.
+
+ARG_RS = 0x01
+ARG_RD = 0x02
+
+以下のように修正:
+
+		case CLASS_REGN0:
+#if 0		  
+		  if (instr_nibl == 0)
+		    nibl_matched = 0;
+#endif		  
+		  break;
+
+
+例えば 0x3600 に対する命令は
+
+/* 0011 0110 0000 0000 *** bpt */
+{
+#ifdef NICENAMES
+"bpt",8,2,0x00,
+#endif
+"bpt",OPC_bpt,0,{0},
+	{CLASS_BIT+3,CLASS_BIT+6,CLASS_BIT+0,CLASS_BIT+0,0,0,0,0,0,},0,2,9},
+
+...
+/* bpt */
+int sfop_37(context,pc,iwords0)
+int iwords0;
+sim_state_type *context;
+
+
+だから 37 が返るのが正しい. 現状では 3 が返ってしまっているようだ.
+
+
+	      z8k_inv_list[what] = ptr - z8k_table;
+
+ここが原因らしい. 上のように修正した. さらに以下も修正した:
+
+	      printf ("%d", p - z8k_table);
+
+これで最初に実行される命令が bpt 命令になった. そこで以下のように修正した:
+
+uint32_t idecode_issue(SIM_DESC sd, instruction_word insn, uint32_t cia)
+{
+  asm("int3");
+  if (insn == 0x3600)
+    sim_engine_halt(sd, g_cpu, 0, cia, sim_stopped, SIM_SIGTRAP);
+
+この修正により
+
+void z8k_pc_set(uint32_t v)
+{
+  asm("int3");
+}
+
+が呼び出されるようになった. 引数の数が間違えているらしい. 以下のように修正した.
+
+void z8k_pc_set(sim_cpu* cpu, uint32_t v)
+{
+  the_state.sometimes_pc = v;
+}
+
+この修正で現状以下のようになる.
+
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x8 lma 0x100
+Start address 0x100
+Transfer rate: 64 bits in <1 sec.
+Breakpoint 1 at 0x100
+Breakpoint 2 at 0x106
+
+Program received signal SIGTRAP, Trace/breakpoint trap.
+0x01000000 in ?? ()
+gdbcom:7: Error in sourced command file:
+Cannot find bounds of current function
+(z8k-coff-gdb)
+
+エンディアンをどこかで間違えているらしい.
+またブレークポイントがソースとの対応が取れていない.
+
+まずは停止したアドレスを正しく表示できるようにしてみる. ここで以下を間違えていたことに
+気付く. そして以下のように修正:
+
+  set_gdbarch_ptr_bit(gdbarch, 2 * TARGET_CHAR_BIT);
+  set_gdbarch_addr_bit(gdbarch, 2 * TARGET_CHAR_BIT);
+
+また以下のように修正:
+
+int
+sim_fetch_register (sd, regno, buf, length)
+     SIM_DESC sd;
+     int regno;
+     unsigned char *buf;
+     int length;
+{
+  tm_fetch_register (regno, buf);
+  return length;
+}
+
+シミュレータ側は PC のレジスタ番号は 17 だったので以下を修正.
+
+const int pc_regno = 16;
+
+static int
+z8k_register_sim_regno(struct gdbarch *gdbarch, int regnum)
+{
+  if (regnum == pc_regno)
+    return 17;
+  return regnum;
+}
+
+また以下のように修正:
+
+    case REG_PC:
+#if 0      
+      swap_long (buf, the_state.sometimes_pc);
+#else
+      swap_word (buf, the_state.sometimes_pc);      
+#endif      
+      break;
+
+これで 0x100 番地で停止したことになっている.
+現状 nop 命令を実行すると sfop_bad1 (context) が呼び出され 0 番地アクセスしている.
+
+まずは sfop_bad1 が呼び出されてしまうことを回避する.
+
+nop 命令に対してアセンブラは 0x8d07 を生成している.
+
+/* 1000 1101 0000 0111 *** nop */
+{
+#ifdef NICENAMES
+"nop",16,7,0x00,
+#endif
+"nop",OPC_nop,0,{0},
+	{CLASS_BIT+8,CLASS_BIT+0xd,CLASS_BIT+0,CLASS_BIT+7,0,0,0,0,0,},0,2,100},
+
+なのでコードは合っている.
+tc-gen3.h の生成コードは
+
+/* lddb @rd,@rs,rr */
+
+の後ない. これが原因っぽい.
+
+      for (i = 0; i < NOPS; i++)
+	{
+	  if (list[i])
+	    {
+	      one_instruction (i);
+	    }
+	  else
+	    {
+	      emit ("int <fop>_%d(context,pc)\n", i);
+	      printf ("sim_state_type *context;\n");
+	      printf ("int pc;\n");
+	      emit ("{ <fop>_bad1();return pc; }\n");
+	    }
+	}
+
+これからすると list[i] が 0 であることが原因.
+
+/* lddb @rd,@rs,rr */
+int sfop_202(context,pc,iwords0)
+
+であるから list[202] は 0 でない値になっているが, list[203] 以降は 0 になっている
+ということ.
+
+
+/* 1011 1011 ssN0 1001 0000 rrrr ddN0 0000 *** lddr @rd,@rs,rr */
+
+lddr に対する函数が生成されていない理由を調べてみる.
+
+0xbb09 に対して lddr のオペコードになるはずだからまずはそこを見てみる.
+
+
+void
+build_list (i)
+     int i;
+{
+  opcode_entry_type *p = lookup_inst (i);
+
+  if (!p)
+    return;
+  add_to_list (&list[p->idx], i);  おそらくこれが間違い
+}
+
+  add_to_list (&list[p-z8k_table], i); このように修正
+
+この修正で nop は tc-gen3.h に出力されるようになったのだが lddr は出ていないっぽい.
+これは後々修正する必要がある.
+
+この修正で改めて動作確認してみた:
+
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x8 lma 0x100
+Start address 0x100
+Transfer rate: 64 bits in <1 sec.
+Breakpoint 1 at 0x100
+Breakpoint 2 at 0x106
+
+Breakpoint 1, 0x00000100 in start ()
+Single stepping until exit from function start,
+which has no line number information.
+0x00000102 in L0L1 ()
+Single stepping until exit from function L0L1,
+which has no line number information.
+0x00000104 in L0L2 ()
+
+Breakpoint 2, 0x00000106 in end ()
+A debugging session is active.
+
+行番号情報が出ていないが end のラベルにセットしたブレークポイントにヒットして
+停止していた.
+
+また
+
+uint32_t idecode_issue(SIM_DESC sd, instruction_word insn, uint32_t cia)
+{
+  if (insn == 0x3600)
+    sim_engine_halt(sd, g_cpu, 0, cia, sim_stopped, SIM_SIGTRAP);
+  typedef int FUNC();
+  extern FUNC* sfop_table[];
+  struct op_info* p = op_info_table + insn;
+  return sfop_table[p->exec](&the_state, cia, insn);  この函数呼び出し
+}
+
+で nop の命令に対する函数が呼び出されていることを gdb のレベルではあるが確認した.
+
+そこで次の問題は行番号情報の問題. 改めて objdump の結果から以下に気付く.
+
+test.S:
+/* file test.S line 3 addr 0x80000100 */
+/* file test.S line 4 addr 0x80000102 */
+/* file test.S line 5 addr 0x80000104 */
+/* file test.S line 7 addr 0x80000106 */
+
+test.o.objdump は以下
+
+test.S:
+/* file test.S line 3 addr 0x0 */
+/* file test.S line 4 addr 0x2 */
+/* file test.S line 5 addr 0x4 */
+/* file test.S line 7 addr 0x6 */
+
+ということはリンカで意図的にかどうかは不明だが 0x80000XXX のようにビットをセットしている
+可能性は多いにある. いずれにしてもロードアドレスは 0x100 なのだからこの部分をまずは修正して
+みる.
+
+=> 「Z8000 の ld」を参照.
+
+z8k-coff-ld を修正した後正常動作を確認できている.
