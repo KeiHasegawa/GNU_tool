@@ -1,0 +1,29 @@
+2022.03.14
+
+uint64 / uint64 を実装中. オリジナルの cc1 は __udivdi3 の呼び出しにしている.
+
+(define_expand "udivdi3"
+  [(set
+    (match_operand:DI 0 "nonimmediate_operand" "")
+    (udiv:DI
+     (match_operand:DI 1 "general_operand" "")
+     (match_operand:DI 2 "general_operand" "")))]
+  ""
+  "m68hc11_emit_libcall(\"__udivdi3\", operands[0], operands[1], operands[2]);
+   DONE;")
+
+のようにしてみた. しかし 33 / 6 = 345 のような結果になっている.
+オリジナルの cc1 には udivdi3 の呼び出しに expand (展開)するようなコードは確認
+できない.
+
+2022.03.14 13:30 試しに上を削除してビルドしてみた.
+
+__udivdi3 の呼び出しが生成されている. しかし結果はやはり 33 / 6 = 345 のようになっている.
+ここまで書いて int64 / int64 で似たような問題があったことを思い出した. 但しこのときは
+-g オプションありで結果が違うという不思議な現象で, 今回は -g オプションに関係なく
+結果が間違っているということ. そしてオリジナルの cc1 では int64 / int64 は少なくとも
+できているということ.
+
+とりあえず保留しておく. int64 / int64 と uint64 / uint64 は同時に調査するべき.
+
+

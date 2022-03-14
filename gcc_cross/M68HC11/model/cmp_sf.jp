@@ -1,0 +1,156 @@
+2022.03.12 15:00 cbranchsf4 を実装中.
+
+オリジナルの cc1 では __ltsf2 を呼び出している. そして例によって m68hc11.md には
+それらしい呼び出しはない.
+
+そこで以下を m68hc11.md から削除. df4 も削除する必要がある.
+
+(define_insn "cbranchsf4"
+  [(set (pc) (if_then_else
+	      (match_operator 0 "ordered_comparison_operator"
+	       [(match_operand:SF 1 "general_operand")
+	        (match_operand:SF 2 "general_operand")])
+	      (label_ref (match_operand 3 "" ""))
+	      (pc)))]
+  ""
+  "*
+  return m68hc11_cbranch(operands[0]);")
+
+(define_insn "cbranchdf4"
+  [(set (pc) (if_then_else
+	      (match_operator 0 "ordered_comparison_operator"
+	       [(match_operand:DF 1 "general_operand")
+	        (match_operand:DF 2 "general_operand")])
+	      (label_ref (match_operand 3 "" ""))
+	      (pc)))]
+  ""
+  "*
+  return m68hc11_cbranch(operands[0]);")
+
+2022.03.12 15:00 ビルド開始
+
+2022.03.12 16:00 確認したところ
+
+ <materialize-all-clones> {heap 948k} fduring RTL pass: expand
+
+a.c: 関数 ‘f’ 内:
+a.c:3:6: コンパイラ内部エラー: emit_cmp_and_jump_insn_1 内、位置 optabs.c:4119
+    3 | void f(float a, float b)
+      |      ^
+
+想像していた動作と異なっている. オリジナルの cc1 がどのように __ltsf2 を呼び出しているか
+確認してみた.
+
+オリジナルの cc1 は以下のように __ltsf2 の呼び出しのコードが生成されている:
+
+Breakpoint 1, final (first=0xb7c52120, file=0x842f338, optimize=0, prescan=0) at final.c:1572
+$49 = (rtx) 0xb7bcbfc0
+(call_insn/u 14 74 15 (set (reg:HI 1 d)
+        (call (mem:QI (symbol_ref:HI ("__ltsf2")) [0 S1 A8])
+            (const_int 4 [0x4]))) 182 {call_value} (nil)
+    (expr_list:REG_EH_REGION (const_int -1 [0xffffffff])
+        (nil))
+    (expr_list (use (reg:SF 0 x [ a ]))
+        (nil)))
+$50 = void
+
+この rtx_insn を生成しているのは
+
+static void
+prepare_cmp_insn (rtx *px, rtx *py, enum rtx_code *pcomparison, rtx size,
+		  enum machine_mode *pmode, int *punsignedp,
+		  enum can_compare_purpose purpose)
+{
+...
+  if (class == MODE_FLOAT)
+    prepare_float_lib_cmp (px, py, pcomparison, pmode, punsignedp);
+
+ここだった.
+
+#0  emit_library_call_value_1 (retval=1, orgfun=0xb7926530, value=0x0, fn_type=LCT_CONST, outmode=E_HImode, nargs=2, args=0xbfffed10) at ../.././gcc/calls.c:5126
+#1  0x0856bea3 in emit_library_call_value (fun=0xb7926530, value=0x0, fn_type=LCT_CONST, outmode=E_HImode, arg1=0xb79264d0, arg1_mode=E_SFmode, arg2=0xb79264e0, arg2_mode=E_SFmode) at ../.././gcc/rtl.h:4257
+#2  0x089501f9 in prepare_float_lib_cmp (x=0xb79264d0, y=0xb79264e0, comparison=LT, ptest=0xbfffeea4, pmode=0xbfffeed0) at ../.././gcc/optabs.c:4295
+#3  0x0894faac in prepare_cmp_insn (x=0xb79264d0, y=0xb79264e0, comparison=LT, s
+
+自前の cc1 もここはきている. ということは何故エラーするか.
+
+自前の cc1 では emit_cmp_and_jump_insn_1 が呼び出されそこで assertion エラーしている.
+オリジナルの cc1 でもランタイムライブラリ函数呼び出しの rtx_insn が生成された後,
+やはり emit_cmp_and_jump_insn_1 が呼び出されている.
+
+gcc-3.4.4
+gcc-10.2.0
+
+2 つの gcc のバージョンで emit_cmp_and_jump_insn_1 の実装が異なっている.
+しかしオリジナルの cc1 では
+
+(define_expand "tsthi"
+
+(define_insn "tsthi_1"
+
+があるおかげで assertion エラーしていないっぽい.
+
+optabs.c:3759
+      icode = (int) tst_optab->handlers[(int) wider_mode].insn_code;
+
+(gdb) p icode
+$122 = CODE_FOR_tsthi
+(gdb) 
+
+オリジナルの cc1 のコードの抜粋:
+
+	bsr	__ltsf2
+	puly
+	puly
+	cpd	#0
+
+そこで以下を追加してみた:
+
+(define_insn "tsthi"
+  [(set (cc0)
+	(match_operand:HI 0 "general_operand" ""))]
+  ""
+  "*
+  return m68hc11_tsthi(operands[0]);")
+
+2022.03.13 17:05 ビルド開始
+改善されず.
+
+2022.03.13 6:50
+
+一旦, 上を削除して以下を代わりに追加した.
+
+(define_insn "cbranchhi4"
+  [(set (pc) (if_then_else
+	      (match_operator 0 "ordered_comparison_operator"
+	       [(match_operand:HI 1 "general_operand")
+	        (match_operand:HI 2 "general_operand")])
+	      (label_ref (match_operand 3 "" ""))
+	      (pc)))]
+  ""
+  "*
+  return m68hc11_cbranchhi4(operands[0],operands[1],operands[2],operands[3]);")
+
+これでエラーを回避できていることを確認した.
+2 バイトの整数の比較は以下で使用されていた:
+
+void f(float a, float b)
+{
+  if (a < b) {
+    ...
+  }
+
+のようなコードに対して
+
+	d_{hi} := call __ltsf2
+	sp := sp + 4		; sp を元に戻す.
+	if d_{hi} >= 0 goto label
+	...
+label:
+
+__ltsf2 の戻り値は 2 バイトの整数で, それが以下のような対応になっている:
+
+0 より小さい      a <  b
+0 以下           a <= b
+0 より大きい      a >  b
+0 以上           a >= b
