@@ -1,0 +1,86 @@
+i960 のクロスコンパイル環境
+
+(*) binutils のインストール
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% gunzip -c ../binutils-2.10.1.tar.gz | tar xf -
+% mv binutils-2.10.1 binutils-2.10.1.i960-elf
+% cd binutils-2.10.1.i960-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=i960-elf
+% make
+...
+gcc -DHAVE_CONFIG_H -I. -I. -I. -D_GNU_SOURCE -I. -I. -I../bfd -I./config -I./../include -I./.. -I./../bfd -I./../intl -I../intl -DLOCALEDIR="\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/share/locale\""    -g -O2 -W -Wall -c app.c
+...
+./config/tc-i960.h:181:32: エラー: array type has incomplete element type ‘struct relax_type’
+  181 | extern const struct relax_type md_relax_table[];
+      |                                ^~~~~~~~~~~~~~
+
+tc.h に relax_type 構造体が宣言されている.
+
+#ifdef USE_MD_RELAX_TABLE
+extern const struct relax_type md_relax_table[];
+#define TC_GENERIC_RELAX_TABLE md_relax_table
+#endif // USE_MD_RELAX_TABLE
+
+のように修正してみた. エラーを回避できているっぽい.
+
+% make install
+
+インストールされたのは
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-addr2line.j*
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-ar.j*
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-as.j*
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-c++filt.j*
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-gasp.j*
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-ld.j*
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-nm.j*
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-objcopy.j*
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-objdump.j*
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-ranlib.j*
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-readelf.j*
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-size.j*
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-strings.j*
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-strip.j*
+
+だった. .j なしのファイルに変更しておいた.
+
+(*) gcc のインストール
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% bunzip2 -c ../gcc-3.4.4.tar.bz2  | tar xf -
+% mv gcc-3.4.4 gcc-3.4.4.i960-elf
+% cd gcc-3.4.4.i960-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=i960-elf --enable-obsolete
+% setenv SHELL /bin/sh
+% make all-gcc LANGUAGES="c c++"
+...
+if [ -f stmp-dirs ]; then true; else touch stmp-dirs; fi
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.i960-elf/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.i960-elf/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/sys-include -O2  -DIN_GCC -DCROSS_COMPILE   -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition  -isystem ./include   -g  -DIN_LIBGCC2 -D__GCC_FLOAT_NOT_NEEDED -Dinhibit_libc -I. -I. -I. -I./. -I./../include   -DL_muldi3 -c ./libgcc2.c -o libgcc/./_muldi3.o
+as: unrecognized option '-AKB'
+make[2]: *** [libgcc.mk:8: libgcc/./_muldi3.o] エラー 1
+
+
+% i960-elf-as -o a.o a.s
+% i960-elf-as -o a.o a.s -AKB
+% which as
+/usr/local/bin/as
+% as -o a.o a.s
+% as -o a.o a.s -AKB
+as: unrecognized option '-AKB'
+
+
+-AKB オプションは受け付けられているらしい. i960-efl-as でない
+/usr/local/bin/as を起動している可能性はある.
+
+specs に問題がある. 以下が期待値だが
+
+*invoke_as:
+%{!S:-o %|.s |
+ i960-elf-as %(asm_options) %m.s %A }
+
+*invoke_as:
+%{!S:-o %|.s |
+ as %(asm_options) %m.s %A }
+
+のようになっている. specs は生成されるファイルなのだが...
