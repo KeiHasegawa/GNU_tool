@@ -1,0 +1,55 @@
+
+% bunzip2 -c ../gdb-6.0.tar.bz2  | tar xf -
+% mv gdb-6.0  gdb-6.0.i960-elf 
+% cd gdb-6.0.i960-elf 
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=i960-elf
+% make
+...
+configure: error: *** Gdb does not support target i960-unknown-elf
+make: *** [Makefile:21438: configure-gdb] エラー 1
+
+%
+
+エラーしている. とりあえず sim/i960 で libsim.a と run をビルドできるようにする.
+
+% cd sim/i960
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% setenv SHELL /bin/sh
+% make
+...
+./i960-desc.h:213:31: エラー: array type has incomplete element type ‘struct cgen_ifld’
+  213 | extern const struct cgen_ifld i960_cgen_ifld_table[];
+
+
+以下のようにコンパイルアウト:
+// extern const struct cgen_ifld i960_cgen_ifld_table[];
+
+% make
+..
+../common/cgen-defs.h:133:22: エラー: 複合文の最後にラベルがあります
+  133 | #define ENDSWITCH(N) end_switch_##N:
+      |                      ^~~~~~~~~~~
+sem-switch.c:7339:3: 備考: in expansion of macro ‘ENDSWITCH’
+ 7339 |   ENDSWITCH (sem) /* End of semantic switch.  */
+      |   ^~~~~~~~~
+make: *** [Makefile:652: mloop.o] エラー 1
+
+以下のように修正:
+
+  ENDSWITCH (sem) /* End of semantic switch.  */
+    ;
+
+% make
+...
+gcc -DHAVE_CONFIG_H   -DWITH_DEFAULT_MODEL='"i960KA"'  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=NONSTRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=LITTLE_ENDIAN -DWITH_ENVIRONMENT=ALL_ENVIRONMENT   -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN -DDEFAULT_INLINE=0    -DWITH_SCACHE=1024          -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -I./../../intl -g -O2 -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -lnsl  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(sim-info.o): in function `sim_addr_range_hit_p':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.i960-elf/sim/i960/../common/sim-arange.c:291: multiple definition of `sim_addr_range_hit_p'; nrun.o:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.i960-elf/sim/i960/../common/sim-arange.c:291: first defined here
+
+これは前にもどこかで見たエラーだ.
+しかしこのエラーは放置して gdb-10.2 でビルドすることをトライすることにした.
+
+% make clean
+% cd ..
+% tar cf i960.tar i960
+% mv i960.tar ~/lang/53_gcc_cross/
