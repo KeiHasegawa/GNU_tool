@@ -73,14 +73,142 @@ as: unrecognized option '-AKB'
 -AKB オプションは受け付けられているらしい. i960-efl-as でない
 /usr/local/bin/as を起動している可能性はある.
 
-specs に問題がある. 以下が期待値だが
+specs に問題があるのかと思った.
 
 *invoke_as:
 %{!S:-o %|.s |
  i960-elf-as %(asm_options) %m.s %A }
+ ^^^^^^^^^^^
 
 *invoke_as:
 %{!S:-o %|.s |
  as %(asm_options) %m.s %A }
 
-のようになっている. specs は生成されるファイルなのだが...
+のようになっている. しかしインストールに問題のなかった
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.m68hc11-elf/gcc/specs
+
+も同じように
+
+*invoke_as:
+%{!S:-o %|.s |
+ as %(asm_options) %m.s %A }
+
+のようになっている. xgcc から起動される as をどのように決めているのか
+もう少し詳しく調べてみる.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.m68hc11-elf/gcc
+% ./xgcc -c a.c
+% ls -l a.o
+
+勿論正常にできている.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.m68hc11-elf/gcc/gcc.c:
+
+      commands[i].pid = pexecute (string, (char *const *) commands[i].argv,
+
+(gdb) p string
+$3 = 0x8066d48 "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/m68hc11-elf/3.4.4/../../../../m68hc11-elf/bin/as"
+(gdb) 
+
+なるほど. これがどのように指定されるかはともかくここで起動しているらしい.
+そこで binutils のインストールで以下を思い出した:
+
+% ls /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/bin
+ar.j*  as.j*  ld.j*  nm.j*  ranlib.j*  strip.j*
+%
+
+なるほどこれが原因っぽい. .j のないファイルにリネームしておく.
+
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.i960-elf/gcc
+% ./xgcc -c a.c
+xgcc: installation problem, cannot exec `cc1': そのようなファイルやディレクトリはありません
+% set path = ($path /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.i960-elf/gcc )
+% ./xgcc -c a.c
+% ls -l a.o
+
+できている.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.i960-elf
+% make all-gcc LANGUAGES="c c++"
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.i960-elf/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.i960-elf/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/sys-include -O2  -DIN_GCC -DCROSS_COMPILE   -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition  -isystem ./include   -g  -DIN_LIBGCC2 -D__GCC_FLOAT_NOT_NEEDED -Dinhibit_libc -I. -I. -I. -I./. -I./../include   -DL_fixtfdi -c ./libgcc2.c -o libgcc/./_fixtfdi.o
+./libgcc2.c: In function `__fixtfdi':
+./libgcc2.c:1206: コンパイラ内部エラー: セグメンテーション違反です
+Please submit a full bug report,
+with preprocessed source if appropriate.
+See <URL:http://gcc.gnu.org/bugs.html> for instructions.
+make[2]: *** [libgcc.mk:160: libgcc/./_fixtfdi.o] エラー 1
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.i960-elf/gcc' から出ます
+make[1]: *** [Makefile:1261: stmp-multilib] エラー 2
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.i960-elf/gcc' から出ます
+make: *** [Makefile:23373: all-gcc] エラー 2
+
+正しいアセンブラを起動できていない問題は回避できたが, 今度は別のバグが
+発火している.
+
+gdb から cc1 を起動して再現するか確かめてみた:
+
+M-x gdb
+gdb --annotate ./cc1
+(gdb) run -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.i960-elf/gcc/include -g  -DIN_LIBGCC2 -D__GCC_FLOAT_NOT_NEEDED -Dinhibit_libc -I. -I. -I. -I./. -I./../include   -DL_fixtfdi ./libgcc2.c -o libgcc/./_fixtfdi.o
+
+正常終了している. 再現できていない.
+
+% ls -l libgcc/./_fixtfdi.o
+
+作成できている.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.i960-elf
+% make all-gcc LANGUAGES="c c++"
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.i960-elf/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.i960-elf/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/sys-include -O2  -DIN_GCC -DCROSS_COMPILE   -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition  -isystem ./include   -g  -DIN_LIBGCC2 -D__GCC_FLOAT_NOT_NEEDED -Dinhibit_libc -I. -I. -I. -I./. -I./../include   -DL_fixunstfdi -c ./libgcc2.c -o libgcc/./_fixunstfdi.o
+./libgcc2.c: In function `__fixunstfdi':
+./libgcc2.c:1196: コンパイラ内部エラー: セグメンテーション違反です
+
+% cd gcc
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.i960-elf/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.i960-elf/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/sys-include -O2  -DIN_GCC -DCROSS_COMPILE   -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition  -isystem ./include   -g  -DIN_LIBGCC2 -D__GCC_FLOAT_NOT_NEEDED -Dinhibit_libc -I. -I. -I. -I./. -I./../include   -DL_fixunstfdi -c ./libgcc2.c -o libgcc/./_fixunstfdi.o
+./libgcc2.c: In function `__fixunstfdi':
+./libgcc2.c:1196: コンパイラ内部エラー: セグメンテーション違反です
+Please submit a full bug report,
+with preprocessed source if appropriate.
+See <URL:http://gcc.gnu.org/bugs.html> for instructions.
+
+これなら再現している.
+
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.i960-elf/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.i960-elf/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/sys-include -O2  -DIN_GCC -DCROSS_COMPILE   -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition  -isystem ./include   -g  -DIN_LIBGCC2 -D__GCC_FLOAT_NOT_NEEDED -Dinhibit_libc -I. -I. -I. -I./. -I./../include   -DL_fixunstfdi -c ./libgcc2.c -o libgcc/./_fixunstfdi.o -###
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.i960-elf/gcc/specs から spec を読み込んでいます
+configure 設定: ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=i960-elf --enable-obsolete
+スレッドモデル: single
+gcc version 3.4.4
+ "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.i960-elf/gcc/cc1" "-quiet" "-I." "-I." "-I." "-I./." "-I./../include" "-iprefix" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.i960-elf/gcc/../lib/gcc/i960-elf/3.4.4/" "-isystem" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.i960-elf/gcc/include" "-isystem" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/bin/include" "-isystem" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/lib/include" "-D__i960_KB" "-D__i960KB__" "-DIN_GCC" "-DCROSS_COMPILE" "-DIN_LIBGCC2" "-D__GCC_FLOAT_NOT_NEEDED" "-Dinhibit_libc" "-DL_fixunstfdi" "-isystem" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/include" "-isystem" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/sys-include" "-isystem" "./include" "./libgcc2.c" "-mka" "-gstabs" "-quiet" "-dumpbase" "libgcc2.c" "-auxbase-strip" "libgcc/./_fixunstfdi.o" "-g" "-O2" "-W" "-Wall" "-Wwrite-strings" "-Wstrict-prototypes" "-Wmissing-prototypes" "-Wold-style-definition" "-o" "/tmp/ccQE7WWr.s"
+ "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/bin/as" "--traditional-format" "-AKB" "-o" "libgcc/./_fixunstfdi.o" "/tmp/ccQE7WWr.s"
+
+そこで以下のように起動
+(gdb) run "-quiet" "-I." "-I." "-I." "-I./." "-I./../include" "-iprefix" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.i960-elf/gcc/../lib/gcc/i960-elf/3.4.4/" "-isystem" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.i960-elf/gcc/include" "-isystem" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/bin/include" "-isystem" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/lib/include" "-D__i960_KB" "-D__i960KB__" "-DIN_GCC" "-DCROSS_COMPILE" "-DIN_LIBGCC2" "-D__GCC_FLOAT_NOT_NEEDED" "-Dinhibit_libc" "-DL_fixunstfdi" "-isystem" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/include" "-isystem" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/sys-include" "-isystem" "./include" "./libgcc2.c" "-mka" "-gstabs" "-quiet" "-dumpbase" "libgcc2.c" "-auxbase-strip" "libgcc/./_fixunstfdi.o" "-g" "-O2" "-W" "-Wall" "-Wwrite-strings" "-Wstrict-prototypes" "-Wmissing-prototypes" "-Wold-style-definition" "-o" "/tmp/ccQE7WWr.s"
+
+これで再現している.
+
+void
+output_addr_const (FILE *file, rtx x)
+{
+  char buf[256];
+
+ restart:
+  switch (GET_CODE (x))   ここで x = 0
+
+% rm i960.o
+% make cc1
+
+(gdb) run
+...
+
+これなら正常終了している.
+
+% cd ..
+% make all-gcc LANGUAGES="c c++"
+
+エラーせず. 少しずるいがこれで対処しておく.
+
+% make install-gcc LANGUAGES="c c++"
