@@ -157,3 +157,20 @@ i960_register_name (struct gdbarch *gdbarch, int regno)
   
   if (regno < sizeof name/sizeof name[0])
     return name[regno];
+
+ここまで修正してある程度期待する動作を確認できている. この時点での i960-tdep.c を
+i960-tdep.c.001 としてアップロードしておく.
+
+まだできていないことは
+
+(1) 以下のエラーメッセージが出ているということ.
+
+BFD: warning: /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test001/test.elf has a section extending past end of file
+
+(2) test001 のプログラムの end ラベルに置いたブレークポイントの手前で停止しているかのよ
+    うな動作になっていること.
+    
+
+
+
+
