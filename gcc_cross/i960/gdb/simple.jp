@@ -1,0 +1,159 @@
+簡単なプログラムを動かすまで.
+
+例によって 0x100 番地に nop 命令を数個置いてそれをステップ実行するとい
+うことをやってみる.
+i960 には nop 命令がないらしい. mov g0, g0 を数個置くことにした.
+
+(gdb) cd ~/lang/53_GNU_tool/gcc_cross/i960/test/test001
+(gdb) run -q -x gdbcom test.elf
+...
+BFD: warning: /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test001/test.elf has a section extending past end of file
+Target (LITTLE_ENDIAN) and configured (UNKNOWN) byte order in conflict
+Target (UNKNOWN) and specified (LITTLE_ENDIAN) byte order in conflict
+
+最初のエラーメッセージは見たことがないもの.
+
+2 つ目は sim_config でエラーする例の現象.
+
+gdb-10.2.i960-elf/sim/i960/Makefile
+
+を以下のように修正
+
+SIM_ENDIAN =
+
+この修正で 2 つ目のエラーは回避できた. しかし以下でエラーしている.
+
+  if (sim_post_argv_init (sd) != SIM_RC_OK)
+    {
+
+そしてエラーメッセージは以下:
+
+unsupported machine `i960:core'
+
+
+  if (sim_module_init (sd) != SIM_RC_OK)
+    return SIM_RC_FAIL;  ここでエラーしている.
+    
+
+  for (modp = modules->init_list; modp != NULL; modp = modp->next)
+    {
+      if ((*modp->fn) (sd) != SIM_RC_OK)
+	return SIM_RC_FAIL;  ループの 2 回目にここにきている.
+    }
+
+      const SIM_MACH *mach = sim_mach_lookup_bfd_name (STATE_ARCHITECTURE (sd)->printable_name);
+
+      if (mach == NULL)
+	{
+	  sim_io_eprintf (sd, "unsupported machine `%s'\n",
+			  STATE_ARCHITECTURE (sd)->printable_name);
+	  return SIM_RC_FAIL;   ここでエラーしている.
+
+
+const SIM_MACH *
+sim_mach_lookup_bfd_name (const char *name)
+{
+  const SIM_MACH **machp;
+
+  for (machp = & sim_machs[0]; *machp != NULL; ++machp)
+    {
+      if (strcmp (MACH_BFD_NAME (*machp), name) == 0)        
+	return *machp; マッチするものを探している.
+    }
+  return NULL;
+}
+
+
+(gdb) p **machp
+$8 = {name = 0x8732810 "i960:ka_sa", bfd_name = 0x8732810 "i960:ka_sa", 
+  num = MACH_I960_KA_SA, word_bitsize = 32, addr_bitsize = 32, 
+  models = 0x87327a0 <i960_ka_sa_models>, 
+  imp_props = 0x8732808 <i960base_imp_properties>, 
+  init_cpu = 0x83a64ba <i960_ka_sa_init_cpu>, 
+  prepare_run = 0x83a647d <i960base_prepare_run>}
+(gdb)
+
+アセンブラのオプションに -AKA を指定してみた.
+
+test.elf:     file format elf32-i960
+test.elf
+architecture: i960:core, flags 0x00000113:
+              ^^^^^^^^^
+変わっていないっぽい. -AKB オプションを指定してみたが変わらず.
+
+以下のように修正してみた:
+
+arch.c
+
+const SIM_MACH *sim_machs[] =
+{
++ &i960_core_mach,
+
+model.c
+
+const SIM_MACH i960_core_mach =
+{
+  "i960:core", "i960:core", MACH_I960_KA_SA,
+  32, 32, & i960_ka_sa_models[0], & i960base_imp_properties,
+  i960_ka_sa_init_cpu,
+  i960base_prepare_run
+};
+
+cpuall.h
+
++extern const SIM_MACH i960_core_mach;
+
+これでエラーを回避できた. そして sim_load が呼び出されていることを確認
+した. そこで以下のようにメモリを割り当てた:
+
+
+	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
++	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
+	      do_write (sd, lma, buffer, size);
+	      found_loadable_section = 1;
+	      free (buffer);
+	    }
+	}
++     else if (s->flags & SEC_ALLOC) {
++	bfd_vma vma = bfd_section_vma(s);
++	bfd_size_type size = bfd_section_size(s);
++	if (size) {
++	  sim_do_command(sd, "memory-fill 0xcc");
++	  sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", vma, size);
++	}
++     }
+
+
+サイズ 0 の .bss  が生成されているようなので上のようにしてある.
+
+ブレークポイントをセットするために sim_write が呼び出されている. 現状
+では MCORE のブレーク命令になっているのでこれを修正する.
+
+  static unsigned char bkpt[] = { 0x00, 0x3e, 0x00, 0x66 };  // fmark
+
+fmark というのが i960 のブレーク命令らしい.
+
+sim_resume が呼び出されるようになっている.
+
+ここいら辺でレジスタを擦り合わせておく. pc のレジスタ番号は 35 らしい.
+
+const int pc_regno = 35;
+const int sp_regno = 1;
+
+static const char*
+i960_register_name (struct gdbarch *gdbarch, int regno)
+{
+  if (regno == pc_regno)
+    return "pc";
+  if (regno == sp_regno)
+    return "sp";
+
+  static const char* name[] = {
+    "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7",
+    "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
+    "g0", "g1", "g2", "g3", "g4", "g5", "g6", "g7",
+    "g8", "g9", "g10", "g11", "g12", "g13", "g14", "g15",
+  };
+  
+  if (regno < sizeof name/sizeof name[0])
+    return name[regno];
