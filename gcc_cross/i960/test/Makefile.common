@@ -1,0 +1,22 @@
+%.o : %.S
+	i960-elf-as -o $@ --gstabs $<
+
+%.o : %.c
+	i960-elf-gcc -o $@ $< -c -g
+
+%.elf : %.o 
+	i960-elf-ld -o $@ ../default.o $< -T ../default.x
+
+%.objdump : %.elf
+	i960-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v i960-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.o *.s *.elf *.map *.objdump *.log TAGS *~
+
