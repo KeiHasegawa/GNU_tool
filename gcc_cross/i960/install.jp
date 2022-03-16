@@ -220,3 +220,33 @@ output_addr_const (FILE *file, rtx x)
 
 「i960 の gdb」を参照
 
+(*) newlib のインストール
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/
+% gunzip -c ../newlib-1.13.0.tar.gz | tar xf -
+% mv newlib-1.13.0 newlib-1.13.0.i960-elf
+% cd newlib-1.13.0.i960-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=i960-elf
+% make
+...
+i960-elf-gcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.i960-elf/i960-elf/soft-float/newlib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.i960-elf/i960-elf/soft-float/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.i960-elf/newlib/libc/include  -msoft-float -DPACKAGE=\"newlib\" -DVERSION=\"1.13.0\"  -I. -I../../../../.././newlib/libc/stdio  -O2 -DMISSING_SYSCALL_NAMES -fno-builtin    -O2 -g -O2  -O2 -g -O2  -msoft-float -fshort-enums -c ../../../../.././newlib/libc/stdio/vfprintf.c
+/tmp/ccfWX3yO.s: Assembler messages:
+/tmp/ccfWX3yO.s:2859: Error: Fixup of 6692 too large for field width of 13
+/tmp/ccfWX3yO.s:2859: Error: Fixup of 6564 too large for field width of 13
+/tmp/ccfWX3yO.s:2859: Error: Fixup of 4960 too large for field width of 13
+/tmp/ccfWX3yO.s:2859: Error: Fixup of 4800 too large for field width of 13
+/tmp/ccfWX3yO.s:2859: Error: Fixup of 4792 too large for field width of 13
+/tmp/ccfWX3yO.s:2859: Error: Fixup of 5632 too large for field width of 13
+/tmp/ccfWX3yO.s:2859: Error: Fixup of 4664 too large for field width of 13
+/tmp/ccfWX3yO.s:2859: Error: Fixup of 4912 too large for field width of 13
+/tmp/ccfWX3yO.s:2859: Error: Fixup of 4408 too large for field width of 13
+/tmp/ccfWX3yO.s:2859: Error: Fixup of -4532 too large for field width of 13
+/tmp/ccfWX3yO.s:2859: Error: Fixup of -4248 too large for field width of 13
+/tmp/ccfWX3yO.s:2859: Error: Fixup of -4256 too large for field width of 13
+/tmp/ccfWX3yO.s:2859: Error: Fixup of -5368 too large for field width of 13
+make[7]: *** [Makefile:438: vfprintf.o] エラー 1
+make[7]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.i960-elf/i960-elf/soft-float/newlib/libc/stdio' から出ます
+make[6]: *** [Makefile:404: all-recursive] エラー 1
+
+これはおそらくコンパイラのバグっぽい.
+とりあえず保留.
