@@ -1,0 +1,824 @@
+gdb-10.2 のビルド
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/
+% xz -d -c ../gdb-10.2-1.src/gdb-10.2.tar.xz | tar xf -
+% mv gdb-10.2 gdb-10.2.i960-elf
+% cd gdb-10.2.i960-elf/sim
+% tar xf ~/lang/53_GNU_tool/gcc_cross/i960/gdb/i960.tar
+
+configure.tgt を編集. z8k と同じ対応をした.
+
+   v850*-*-*)
+       SIM_ARCH(v850)
+       sim_igen=yes
+       ;;
++  i960-*-*)
++      SIM_ARCH(i960)
++      ;;
+esac
+
+% cd ../gdb
+
+d30v, fr30, z8k と同じ対処をした.
+
+gdb-10.2.fr30-elf/gdb/configure.tgt:
+
+h8300-*-*)
+	# Target: H8300 processor
+	gdb_target_obs="h8300-tdep.o"
+	gdb_sim=../sim/h8300/libsim.a
+	;;
+
++i960-*-*)
++	gdb_target_obs="i960-tdep.o"
++	gdb_sim=../sim/i960/libsim.a
++	;;
+
+% cp ~/lang/53_GNU_tool/gcc_cross/MCORE/gdb/mcore-tdep.c.000 i960-tdep.c
+
+mcore を i960 に置換.
+
+% cd ..
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=i960-elf
+% make
+...
+checking for cos in -lm... yes
+*** Configuration i960-unknown-elf is obsolete.
+*** Support has been REMOVED.
+make[1]: *** [Makefile:2715: configure-bfd] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i960-elf' から出ます
+make: *** [Makefile:853: all] エラー 2
+%
+
+% cd bfd
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i960-elf/bfd/configure --srcdir=.././bfd --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --program-transform-name=s/^/i960-elf-/ --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=i960-elf
+...
+*** Configuration i960-unknown-elf is obsolete.
+*** Support has been REMOVED.
+%
+
+エラーを再現できている.
+
+% sh -vx /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i960-elf/bfd/configure --srcdir=.././bfd --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --program-transform-name=s/^/i960-elf-/ --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=i960-elf
+...
+*** Configuration i960-unknown-elf is obsolete.
+++ echo '*** Support has been REMOVED.'
+*** Support has been REMOVED.
+++ exit 1
+...
++ rm -f -r conftest.j confdefs.h 'conf10490*'
++ exit 1
+%
+
+gdb-10.2.i960-elf/bfd/config.bfd
+
+を以下のように修正:
+
+ i860-*-* | \
+-i960-*-* | \
+ m68*-*-*bsd* | \
+
+  ip2k-*-elf)
+    targ_defvec=ip2k_elf32_vec
+    targ_underscore=yes
+    ;;
+
++ i960-*-elf*)
++   targ_defvec=i960_elf32_vec
++   ;;
+
+  iq2000-*-elf)
+    targ_defvec=iq2000_elf32_vec
+    ;;
+
+gdb-10.2.i960-elf/bfd/configure
+
+を以下のように修正:
+
+    ip2k_elf32_vec)		 tb="$tb elf32-ip2k.lo elf32.lo $elf" ;;
++   i960_elf32_vec)		 tb="$tb elf32-i960.lo elf32.lo $elf" ;;
+    iq2000_elf32_vec)		 tb="$tb elf32-iq2000.lo elf32.lo $elf" ;;
+
+一応これで
+
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i960-elf/bfd/configure --srcdir=.././bfd --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --program-transform-name=s/^/i960-elf-/ --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=i960-elf
+
+が正常終了している.
+
+% make
+...
+libtool: compile:  i686-pc-linux-gnu-gcc -DHAVE_CONFIG_H -I. -DBINDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin\" -DLIBDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib\" -I. -I. -I./../include -DHAVE_i960_elf32_vec -DHAVE_elf32_le_vec -DHAVE_elf32_be_vec -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g -O2 -MT archures.lo -MD -MP -MF .deps/archures.Tpo -c -DDEFAULT_VECTOR=i960_elf32_vec "-DSELECT_VECS=&i960_elf32_vec,&elf32_le_vec,&elf32_be_vec" "-DSELECT_ARCHITECTURES=&bfd_i960_arch" ./archures.c -o archures.o
+<コマンドライン>: エラー: ‘bfd_i960_arch’ undeclared here (not in a function); did you mean ‘bfd_ia64_arch’?
+<コマンドライン>: 備考: in definition of macro ‘SELECT_ARCHITECTURES’
+make[2]: *** [Makefile:1940: archures.lo] エラー 1
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i960-elf/bfd' から出ます
+make[1]: *** [Makefile:1643: all-recursive] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i960-elf/bfd' から出ます
+make: *** [Makefile:1174: all] エラー 2
+%
+
+これは gdb-6.0 のときどのよう以下のようにコンパイルしていた:
+
+/bin/sh ./libtool --mode=compile gcc -DHAVE_CONFIG_H -I. -I. -I. -D_GNU_SOURCE     -I. -I. -I./../include  -I./../intl -I../intl   -W -Wall -Wstrict-prototypes -Wmissing-prototypes -g -O2 -c -DDEFAULT_VECTOR=bfd_elf32_i960_vec -DSELECT_VECS='&bfd_elf32_i960_vec,&icoff_little_vec,&icoff_big_vec,&bfd_elf32_little_generic_vec,&bfd_elf32_big_generic_vec' -DSELECT_ARCHITECTURES='&bfd_i960_arch' -DHAVE_bfd_elf32_i960_vec -DHAVE_icoff_little_vec -DHAVE_icoff_big_vec -DHAVE_bfd_elf32_little_generic_vec -DHAVE_bfd_elf32_big_generic_vec ./archures.c
+
+% gcc -DHAVE_CONFIG_H -I. -I. -I. -D_GNU_SOURCE     -I. -I. -I./../include  -I./../intl -I../intl   -W -Wall -Wstrict-prototypes -Wmissing-prototypes -g -O2 -E -DDEFAULT_VECTOR=bfd_elf32_i960_vec -DSELECT_VECS='&bfd_elf32_i960_vec,&icoff_little_vec,&icoff_big_vec,&bfd_elf32_little_generic_vec,&bfd_elf32_big_generic_vec' -DSELECT_ARCHITECTURES='&bfd_i960_arch' -DHAVE_bfd_elf32_i960_vec -DHAVE_icoff_little_vec -DHAVE_icoff_big_vec -DHAVE_bfd_elf32_little_generic_vec -DHAVE_bfd_elf32_big_generic_vec ./archures.c > archures.i
+
+こういうことらしい:
+
+extern const bfd_arch_info_type bfd_i860_arch;
+extern const bfd_arch_info_type bfd_i960_arch;
+extern const bfd_arch_info_type bfd_ia64_arch;
+...
+static const bfd_arch_info_type * const bfd_archures_list[] =
+  {
+
+    &bfd_i960_arch,
+
+gdb-10.2.i960-elf/bfd/archures.c
+
+を以下のように修正:
+
+extern const bfd_arch_info_type bfd_ia64_arch;
++extern const bfd_arch_info_type bfd_i960_arch;
+extern const bfd_arch_info_type bfd_ip2k_arch;
+
+% make
+...
+libtool: compile:  i686-pc-linux-gnu-gcc -DHAVE_CONFIG_H -I. -DBINDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin\" -DLIBDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib\" -I. -I. -I./../include -DHAVE_i960_elf32_vec -DHAVE_elf32_le_vec -DHAVE_elf32_be_vec -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g -O2 -MT targets.lo -MD -MP -MF .deps/targets.Tpo -c -DDEFAULT_VECTOR=i960_elf32_vec "-DSELECT_VECS=&i960_elf32_vec,&elf32_le_vec,&elf32_be_vec" "-DSELECT_ARCHITECTURES=&bfd_i960_arch" ./targets.c -o targets.o
+<コマンドライン>: エラー: ‘i960_elf32_vec’ undeclared here (not in a function); did you mean ‘z80_elf32_vec’?
+
+gdb-10.2.i960-elf/bfd/targets.c
+
+を以下のように修正:
+
+extern const bfd_target ia64_pei_vec;
++extern const bfd_target i960_elf32_vec;
+extern const bfd_target ip2k_elf32_vec;
+
+% make
+...
+make[2]: *** 'libbfd.la' に必要なターゲット 'elf32-i960.lo' を make するルールがありません.  中止.
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i960-elf/bfd' から出ます
+
+% cp /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.i960-elf/bfd/elf32-i960.c .
+% make
+...
+libtool: compile:  i686-pc-linux-gnu-gcc -DHAVE_CONFIG_H -I. -DBINDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin\" -DLIBDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib\" -I. -I. -I./../include -DHAVE_i960_elf32_vec -DHAVE_elf32_le_vec -DHAVE_elf32_be_vec -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g -O2 -MT elf32-i960.lo -MD -MP -MF .deps/elf32-i960.Tpo -c elf32-i960.c -o elf32-i960.o
+bfd.h:35:2: エラー: #error config.h must be included before this header
+   35 | #error config.h must be included before this header
+      |  ^~~~~
+
+gdb-10.2.i960-elf/bfd/elf32-i960.c
+
+を以下のように修正:
+
++#include "config.h"
+#include "bfd.h"
+
+% make
+...
+libtool: compile:  i686-pc-linux-gnu-gcc -DHAVE_CONFIG_H -I. -DBINDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin\" -DLIBDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib\" -I. -I. -I./../include -DHAVE_i960_elf32_vec -DHAVE_elf32_le_vec -DHAVE_elf32_be_vec -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g -O2 -MT elf32-i960.lo -MD -MP -MF .deps/elf32-i960.Tpo -c elf32-i960.c -o elf32-i960.o
+In file included from elf32-i960.c:22:
+sysdep.h:26:2: エラー: #error sysdep.h must be included in lieu of config.h
+   26 | #error sysdep.h must be included in lieu of config.h
+
+
+#ifdef PACKAGE
+#error sysdep.h must be included in lieu of config.h
+#endif
+
+#include "config.h"
+
+
+config.h には以下がある.
+
+/* Name of package */
+#define PACKAGE "bfd"
+
+以下のようにしてみた:
+
+gdb-10.2.i960-elf/bfd/elf32-i960.c
+
+#include "sysdep.h"
+#include "config.h"
+#include "bfd.h"
+
+% make
+...
+libtool: compile:  i686-pc-linux-gnu-gcc -DHAVE_CONFIG_H -I. -DBINDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin\" -DLIBDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib\" -I. -I. -I./../include -DHAVE_i960_elf32_vec -DHAVE_elf32_le_vec -DHAVE_elf32_be_vec -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g -O2 -MT elf32-i960.lo -MD -MP -MF .deps/elf32-i960.Tpo -c elf32-i960.c -o elf32-i960.o
+elf32-i960.c:29:3: エラー: expected ‘=’, ‘,’, ‘;’, ‘asm’ or ‘__attribute__’ before ‘PARAMS’
+   29 |   PARAMS ((bfd *, arelent *, asymbol *, PTR, asection *, bfd *, char **));
+
+gdb-10.2.i960-elf/bfd/elf32-i960.c
+
+に以下を追加:
+
+#define PARAMS(X) X
+
+% make
+...
+libtool: compile:  i686-pc-linux-gnu-gcc -DHAVE_CONFIG_H -I. -DBINDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin\" -DLIBDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib\" -I. -I. -I./../include -DHAVE_i960_elf32_vec -DHAVE_elf32_le_vec -DHAVE_elf32_be_vec -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g -O2 -MT elf32-i960.lo -MD -MP -MF .deps/elf32-i960.Tpo -c elf32-i960.c -o elf32-i960.o
+elf32-i960.c: 関数 ‘elf32_i960_bfd_to_reloc_type’ 内:
+elf32-i960.c:70:10: エラー: ‘BFD_RELOC_I960_CALLJ’ undeclared (first use in this function); did you mean ‘BFD_RELOC_LM32_CALL’?
+   70 |     case BFD_RELOC_I960_CALLJ:
+      |          ^~~~~~~~~~~~~~~~~~~~
+      |          BFD_RELOC_LM32_CALL
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.i960-elf/bfd
+% gcc -DHAVE_CONFIG_H -I. -I. -I. -D_GNU_SOURCE     -I. -I. -I./../include  -I./../intl -I../intl   -W -Wall -Wstrict-prototypes -Wmissing-prototypes -g -O2 -E elf32-i960.c > efl32-i960.i
+
+bfd.h に定義があった.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i960-elf/bfd
+
+gdb-10.2.i960-elf/bfd/bfd.h
+
+に定義を追加:
+
+  BFD_RELOC_GPREL16,
+  BFD_RELOC_GPREL32,
+
++ BFD_RELOC_I960_CALLJ,
+
+/* SPARC ELF relocations.  There is probably some overlap with other
+relocation types already defined.  */
+  BFD_RELOC_NONE,
+
+% make
+...
+libtool: compile:  i686-pc-linux-gnu-gcc -DHAVE_CONFIG_H -I. -DBINDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin\" -DLIBDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib\" -I. -I. -I./../include -DHAVE_i960_elf32_vec -DHAVE_elf32_le_vec -DHAVE_elf32_be_vec -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g -O2 -MT elf32-i960.lo -MD -MP -MF .deps/elf32-i960.Tpo -c elf32-i960.c -o elf32-i960.o
+elf32-i960.c:171:19: エラー: ‘bfd_arch_i960’ undeclared here (not in a function); did you mean ‘bfd_arch_ia64’?
+  171 | #define ELF_ARCH  bfd_arch_i960
+      |                   ^~~~~~~~~~~~~
+elf32-target.h:807:3: 備考: in expansion of macro ‘ELF_ARCH’
+  807 |   ELF_ARCH,   /* arch */
+      |   ^~~~~~~~
+
+gdb-10.2.i960-elf/bfd/bfd.h
+
+に定義を追加:
+
+
+#define bfd_mach_ia64_elf64    64
+#define bfd_mach_ia64_elf32    32
+  
++ bfd_arch_i960,      /* Intel 960 */
+  
+  bfd_arch_ip2k,      /* Ubicom IP2K microcontrollers. */
+
+% make
+...
+libtool: compile:  i686-pc-linux-gnu-gcc -DHAVE_CONFIG_H -I. -DBINDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin\" -DLIBDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib\" -I. -I. -I./../include -DHAVE_i960_elf32_vec -DHAVE_elf32_le_vec -DHAVE_elf32_be_vec -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g -O2 -MT elf32-i960.lo -MD -MP -MF .deps/elf32-i960.Tpo -c elf32-i960.c -o elf32-i960.o
+...
+elf32-target.h:1153:26: エラー: ‘bfd_elf32_bfd_reloc_name_lookup’ undeclared here (not in a function); did you mean ‘bfd_elf32_bfd_reloc_type_lookup’?
+ 1153 |   BFD_JUMP_TABLE_RELOCS (bfd_elf32),
+
+
+const bfd_target bfd_elf32_i960_vec =
+{
+...
+   elf32_i960_reloc_type_lookup, bfd_elf32_bfd_reloc_name_lookup,
+...
+
+
+できている d30v と比較してみた:
+
+const bfd_target d30v_elf32_vec =
+{
+...
+   bfd_elf32_bfd_reloc_type_lookup, bfd_elf32_bfd_reloc_name_lookup,
+...
+
+エラーの原因と直接関係ないが以下のように修正:
+
+#define TARGET_LITTLE_SYM	i960_elf32_vec
+
+エラーの原因を回避するために以下のように修正:
+
+static void
+elf32_i960_info_to_howto (abfd, cache_ptr, dst)
+     bfd		*abfd ATTRIBUTE_UNUSED;
+     arelent		*cache_ptr ATTRIBUTE_UNUSED;
+     Elf_Internal_Rela *dst ATTRIBUTE_UNUSED;
+{
+  abort ();
+}
+
++static reloc_howto_type *
++bfd_elf32_bfd_reloc_name_lookup (bfd *abfd ATTRIBUTE_UNUSED,
++				 const char *r_name)
++{
++  unsigned int i;
++
++  for (i = 0;
++       i < sizeof (elf_i960_howto_table) / sizeof (elf_i960_howto_table[0]);
++       i++)
++    if (elf_i960_howto_table[i].name != NULL
++	&& strcasecmp (elf_i960_howto_table[i].name, r_name) == 0)
++      return &elf_i960_howto_table[i];
++
++  return NULL;
++}
+
+static void
+elf32_i960_info_to_howto_rel (abfd, cache_ptr, dst)
+     bfd *abfd ATTRIBUTE_UNUSED;
+     arelent *cache_ptr;
+     Elf_Internal_Rela *dst;
+{
+
+% make
+...
+make[2]: *** 'libbfd.la' に必要なターゲット 'cpu-i960.lo' を make するルールがありません.  中止.
+
+% cp /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.i960-elf/bfd/cpu-i960.c .
+% make
+...
+cpu-i960.c:52:21: エラー: ‘bfd_mach_i960_core’ undeclared (first use in this function); did you mean ‘bfd_mach_score3’?
+   52 |  return ap->mach == bfd_mach_i960_core;
+
+bfd.h を以下のように修正:
+
+  bfd_arch_i960,      /* Intel 960 */
+#define bfd_mach_i960_core      1
+#define bfd_mach_i960_ka_sa     2
+#define bfd_mach_i960_kb_sb     3
+#define bfd_mach_i960_mc        4
+#define bfd_mach_i960_xa        5
+#define bfd_mach_i960_ca        6
+#define bfd_mach_i960_jx        7
+#define bfd_mach_i960_hx        8
+
+% make
+一応 bfd でのビルドが正常終了.
+
+% cd ..
+% make
+...
+checking linker --as-needed support... yes
+checking for cos in -lm... yes
+configure: error: *** unknown target architecture bfd_i960_arch
+make[1]: *** [Makefile:3157: configure-opcodes] エラー 1
+%
+
+% cd opcodes
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i960-elf/opcodes/configure --srcdir=.././opcodes --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --program-transform-name=s/^/i960-elf-/ --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=i960-elf
+...
+checking for cos in -lm... yes
+configure: error: *** unknown target architecture bfd_i960_arch
+%
+
+エラーを再現できている.
+
+% sh -vx /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i960-elf/opcodes/configure --srcdir=.././opcodes --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --program-transform-name=s/^/i960-elf-/ --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=i960-elf
+...
+
+
+以下を configure に追加:
+
+	bfd_i386_arch|bfd_iamcu_arch|bfd_l1om_arch|bfd_k1om_arch)
+				ta="$ta i386-dis.lo i386-opc.lo" ;;
++	bfd_i960_arch)		ta="$ta i960-dis.lo" ;;
+	bfd_ia64_arch)		ta="$ta ia64-dis.lo ia64-opc.lo" ;;
+
+% cp /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-6.0.i960-elf/opcodes/i960-dis.c .
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i960-elf/opcodes/configure --srcdir=.././opcodes --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --program-transform-name=s/^/i960-elf-/ --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=i960-elf
+% make
+...
+libtool: compile:  i686-pc-linux-gnu-gcc -DHAVE_CONFIG_H -I. -I. -I. -I../bfd -I./../include -I./../bfd -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -g -O2 -MT i960-dis.lo -MD -MP -MF .deps/i960-dis.Tpo -c i960-dis.c -o i960-dis.o
+i960-dis.c:34:24: エラー: expected ‘=’, ‘,’, ‘;’, ‘asm’ or ‘__attribute__’ before ‘PARAMS’
+
+i960-dis.c に以下を追加
+
+#define PARAMS(X) X
+
+% make
+ビルド正常終了.
+
+% cd ..
+% make
+
+エラーはしなかったが
+
+% ls gdb/gdb
+ビルドされていない
+
+% ls sim/i960/libsim.a
+これもビルドされていない.
+
+% cd sim/i960
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% make
+Makefile:426: *** 分離記号を欠いています.  中止.
+
+Makefile から
+
+@GMAKE_TRUE@
+
+の行を削除した.
+
+% make
+...
+gcc ./../common/gentmap.c -o gentmap -g -O -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes @INCINTL@ -DNL_TARGET_i960
+gcc: エラー: INCINTL@: そのようなファイルやディレクトリはありません
+make: *** [Makefile:307: gentmap] エラー 1
+
+Makefile を以下のように修正
+
+CSEARCH = -I. -I$(srcdir) -I../common -I$(srccom) \
+  -I../../include -I$(srcroot)/include \
+  -I../../bfd -I$(srcroot)/bfd \
+  -I../../opcodes -I$(srcroot)/opcodes \
+  -I../../intl
+
+% make
+...
+../../bfd/bfd.h:35:2: エラー: #error config.h must be included before this header
+   35 | #error config.h must be included before this header
+
+#if !defined PACKAGE && !defined PACKAGE_VERSION
+#error config.h must be included before this header
+#endif
+
+config.h に以下を追加:
+
+/* Name of this package. */
+#define PACKAGE "sim"
+
+#define WITH_STDIO 0
+
+#define WITH_ENVIRONMENT ALL_ENVIRONMENT
+
+#define WITH_TRACE ~TRACE_debug
+
+#include <errno.h>
+
+#include <sys/mman.h>
+
+#define WITH_DEBUG 0
+
+/* Additional package description */
+#define PKGVERSION "(SIM) "
+
+#define WITH_PROFILE 0
+
+% make
+...
+./cpuall.h:37:14: エラー: 不明な型名 ‘MACH’ です
+   37 | extern const MACH i960_ka_sa_mach;
+
+以下のように修正:
+
+extern const SIM_MACH i960_ka_sa_mach;
+extern const SIM_MACH i960_ca_mach;
+
+% make
+...
+./i960-sim.h:48:8: エラー: 不明な型名 ‘device’ です
+   48 | extern device i960_devices;
+      |        ^~~~~~
+
+以下のように修正:
+
+// extern device i960_devices;
+
+% make
+...
+gcc -DHAVE_CONFIG_H -DWITH_DEFAULT_MODEL='"i960KA"' -DWITH_ALIGNMENT=NONSTRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=LITTLE_ENDIAN   -DDEFAULT_INLINE=0  -DWITH_SCACHE=1024       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -g -O2 -c -o sim-if.o sim-if.c
+../../bfd/bfd.h:35:2: エラー: #error config.h must be included before this header
+   35 | #error config.h must be included before this header
+
+#if !defined PACKAGE && !defined PACKAGE_VERSION
+#error config.h must be included before this header
+#endif
+
+以下のように修正:
+
++#include "config.h"
+#include "libiberty.h"
+#include "bfd.h"
+
+% make
+...
+sim-if.c: 関数 ‘sim_open’ 内:
+sim-if.c:57:13: エラー: 引数 ‘argv’ がプロトタイプと一致しません
+
+以下のように修正:
+
+SIM_DESC sim_open (SIM_OPEN_KIND kind, struct host_callback_struct *callback,
+		   struct bfd *abfd, char * const *argv)
+{
+  char c;
+
+% make
+...
+sim-if.c: 関数 ‘sim_open’ 内:
+sim-if.c:109:9: エラー: ‘i960_devices’ が宣言されていません (この関数内での最初の使用)
+  109 |        &i960_devices,
+
+以下のように修正:
+
++#if 0
+  /* Allocate a handler for the control registers and other devices
+     if no memory for that range has been allocated by the user.
+     All are allocated in one chunk to keep things from being
+     unnecessarily complicated.  */
+  if (sim_core_read_buffer (sd, NULL, read_map, &c, I960_DEVICE_ADDR, 1) == 0)
+    sim_core_attach (sd, NULL,
+		     0 /*level*/,
+		     access_read_write,
+		     0 /*space ???*/,
+		     I960_DEVICE_ADDR, I960_DEVICE_LEN /*nr_bytes*/,
+		     0 /*modulo*/,
+		     &i960_devices,
+		     NULL /*buffer*/);
++#endif
+
+% make
+...
+sim-if.c:179:13: エラー: 引数 ‘argv’ がプロトタイプと一致しません
+  179 |      char **argv;
+
+以下のように修正:
+
+SIM_RC sim_create_inferior (SIM_DESC sd, struct bfd *abfd,
+			    char * const *argv, char * const *env)
+{
+  SIM_CPU *current_cpu = STATE_CPU (sd, 0);
+
+% make
+...
+sim-if.c:275:12: エラー: 引数 ‘cmd’ がプロトタイプと一致しません
+  275 |      char *cmd;
+      |            ^~~
+
+以下のように修正:
+
++#if 0
+void
+sim_do_command (sd, cmd)
+     SIM_DESC sd;
+     char *cmd;
+{ 
+  if (sim_args_command (sd, cmd) != SIM_RC_OK)
+    sim_io_eprintf (sd, "Unknown command `%s'\n", cmd);
+}
++#endif
+
+また以下も修正:
+
++#if 0  
+  /* Allocate core managed memory if none specified by user.
+     Use address 4 here in case the user wanted address 0 unmapped.  */
+  if (sim_core_read_buffer (sd, NULL, read_map, &c, 4, 1) == 0)
+    /* ??? wilson */
+    sim_do_commandf (sd, "memory region 0x%lx,0x%lx", I960_DEFAULT_MEM_START,
+		     I960_DEFAULT_MEM_SIZE);
++#endif
+
+% make
+...
+arch.c:28:7: エラー: 不明な型名 ‘MACH’ です
+
+以下のように修正:
+
+const SIM_MACH *sim_machs[] =
+
+% make
+...
+/bin/sh ./../common/genmloop.sh \
+	-mono -fast -pbb -switch sem-switch.c \
+	-cpu i960base -infile ./mloop.in
+case: 引数が多過ぎます.
+case: 引数が多過ぎます.
+case: 引数が多過ぎます.
+case: 引数が多過ぎます.
+case: 引数が多過ぎます.
+case: 引数が多過ぎます.
+
+これは以前も見たことがある.
+
+% /bin/sh ./../common/genmloop.sh -mono -fast -pbb -switch sem-switch.c -cpu i960base -infile ./mloop.in
+case: 引数が多過ぎます.
+case: 引数が多過ぎます.
+case: 引数が多過ぎます.
+case: 引数が多過ぎます.
+case: 引数が多過ぎます.
+case: 引数が多過ぎます.
+
+再現している.
+
+% /bin/sh -vx ./../common/genmloop.sh -mono -fast -pbb -switch sem-switch.c -cpu i960base -infile ./mloop.in
+...
+${SHELL} $infile support
++ /bin/tcsh ./mloop.in support
+case: 引数が多過ぎます.
+...
+
+% setenv SHELL /bin/sh
+% /bin/sh ./../common/genmloop.sh -mono -fast -pbb -switch sem-switch.c -cpu i960base -infile ./mloop.in
+
+エラーメッセージは出なくなった.
+
+% make
+...
+gcc -DHAVE_CONFIG_H -DWITH_DEFAULT_MODEL='"i960KA"' -DWITH_ALIGNMENT=NONSTRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=LITTLE_ENDIAN   -DDEFAULT_INLINE=0  -DWITH_SCACHE=1024       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -g -O2 -c -o i960.o i960.c
+...
+../common/cgen-engine.h:86:46: エラー: unknown type name ‘CGEN_INSN_WORD’; did you mean ‘CGEN_INSN_RX’?
+
+以下のように修正
+
++#include <stdint.h>
++typedef uint32_t CGEN_INSN_WORD;
+
+#define USING_SIM_BASE_H /* FIXME: quick hack */
+
+% make
+...
+gcc -DHAVE_CONFIG_H -DWITH_DEFAULT_MODEL='"i960KA"' -DWITH_ALIGNMENT=NONSTRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=LITTLE_ENDIAN   -DDEFAULT_INLINE=0  -DWITH_SCACHE=1024       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -g -O2 -c -o model.o model.c
+...
+model.c:9976:14: エラー: 不明な型名 ‘MODEL’ です
+
+以下のように修正:
+
+static const SIM_MODEL i960_ka_sa_models[] =
+...
+static const SIM_MACH_IMP_PROPERTIES i960base_imp_properties =
+
+% make
+...
+gcc -DHAVE_CONFIG_H -DWITH_DEFAULT_MODEL='"i960KA"' -DWITH_ALIGNMENT=NONSTRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=LITTLE_ENDIAN   -DDEFAULT_INLINE=0  -DWITH_SCACHE=1024       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -g -O2 -c -o mloop.o mloop.c
+...
+mloop.c:170:19: エラー: ‘union sem_fields’ は ‘chain’ という名前のメンバを持っていません
+
+cpu.h
+
+union sem_fields {
+...
+#if WITH_SCACHE_PBB
+...
+  struct {
+    /* Number of insns in pbb.  */
+    int insn_count;
+    /* Next pbb to execute.  */
+    SCACHE *next;
+    SCACHE *branch_target;
+  } chain;
+#endif
+};
+
+config.h に以下を追加:
+
+#define WITH_SCACHE_PBB 1
+
+% make
+...
+gcc -DHAVE_CONFIG_H -DWITH_DEFAULT_MODEL='"i960KA"' -DWITH_ALIGNMENT=NONSTRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=LITTLE_ENDIAN   -DDEFAULT_INLINE=0  -DWITH_SCACHE=1024       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -g -O2 -c -o cgen-scache.o ./../common/cgen-scache.c
+...
+./../common/cgen-scache.c:223:35: エラー: 代入の左側の被演算子として左辺値が必要です
+  223 |    CPU_SCACHE_CHAIN_LENGTHS (cpu) =
+
+cgen-scache.h
+
+#if WITH_PROFILE_SCACHE_P
+...
+#if WITH_SCACHE_PBB
+  /* Chain length counts.
+     Each element is a count of the number of chains created with that
+     length.  */
+  unsigned long *chain_lengths;
+#define CPU_SCACHE_CHAIN_LENGTHS(cpu) ((cpu) -> cgen_cpu.scache.chain_lengths)
+  /* Number of times cache was flushed due to its being full.  */
+  unsigned long full_flushes;
+#define CPU_SCACHE_FULL_FLUSHES(cpu) ((cpu) -> cgen_cpu.scache.full_flushes)
+#endif
+#endif
+} CPU_SCACHE;
+
+
+config.h を以下のように修正:
+
+#define WITH_PROFILE PROFILE_scache
+
+% make
+...
+gcc -DHAVE_CONFIG_H -DWITH_DEFAULT_MODEL='"i960KA"' -DWITH_ALIGNMENT=NONSTRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=LITTLE_ENDIAN   -DDEFAULT_INLINE=0  -DWITH_SCACHE=1024       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -g -O2 -c -o devices.o devices.c
+...
+
+devices.c:30:1: エラー: 不明な型名 ‘device’ です
+
+devices.c をコンパイルアウト.
+
+% make
+...
+make: *** 'run.j' に必要なターゲット '@LIBINTL_DEP@' を make するルールがありません.  中止.
+
+Makefile を以下のように修正:
+
+ZLIB = -L../../zlib -lz
+...
+LIBINTL = ../../intl/libintl.a
+LIBINTL_DEP = 
+
+% cd ../../intl
+% make libintl.a
+% cd ../sim/i960
+% make
+...
+gcc -DHAVE_CONFIG_H -DWITH_DEFAULT_MODEL='"i960KA"' -DWITH_ALIGNMENT=NONSTRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=LITTLE_ENDIAN   -DDEFAULT_INLINE=0  -DWITH_SCACHE=1024       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -g -O2  -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a ../../intl/libintl.a ../../libiberty/libiberty.a -lnsl  -L../../zlib -lz
+
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(sim-if.o): in function `sim_close':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i960-elf/sim/i960/sim-if.c:171: multiple definition of `sim_close'; libsim.a(sim-close.o):/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i960-elf/sim/i960/./../common/sim-close.c:34: first defined here
+
+sim-if.c の sim_close をコンパイルアウト
+
+% make
+gcc -DHAVE_CONFIG_H -DWITH_DEFAULT_MODEL='"i960KA"' -DWITH_ALIGNMENT=NONSTRICT_ALIGNMENT  -DWITH_TARGET_BYTE_ORDER=LITTLE_ENDIAN   -DDEFAULT_INLINE=0  -DWITH_SCACHE=1024       -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../intl -g -O2  -o run.j \
+  nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a ../../intl/libintl.a ../../libiberty/libiberty.a -lnsl  -L../../zlib -lz  
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(mloop.o): in function `execute':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i960-elf/sim/i960/mloop.c:141: undefined reference to `TRACE_INSN_INIT'
+
+sim-if.c に以下を追加:
+
+void TRACE_INSN_INIT(){}
+
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(mloop.o): in function `execute':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i960-elf/sim/i960/mloop.c:160: undefined reference to `TRACE_INSN_FINI'
+
+sim-if.c に以下を追加:
+
+void TRACE_INSN_FINI(){}
+
+
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(decode.o): in function `i960base_decode':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i960-elf/sim/i960/decode.c:5138: undefined reference to `EXTRACT_MSB0_INT'
+
+
+EXTRACT_MSB0_INT を EXTRACT_MSB0_SINT に変更.
+
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(sem.o): in function `i960base_sem_fmark':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i960-elf/sim/i960/sem.c:7563: undefined reference to `TRACE_RESULT'
+
+sim-if.c に以下を追加:
+
+void TRACE_RESULT(){}
+
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: ../../bfd/libbfd.a(plugin.o): in function `try_load_plugin':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i960-elf/bfd/plugin.c:274: undefined reference to `dlopen'
+
+Makefile を以下のように修正:
+
+CONFIG_LIBS = -lnsl  $(ZLIB) -ldl
+
+% make
+% ls -l run.j libsim.a
+ビルドできている.
+
+% cd ../../gdb
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=i960-elf
+% make
+...
+./../gdbsupport/common-defs.h:23:10: 致命的エラー: gdbsupport/config.h: そのようなファイルやディレクトリはありません
+   23 | #include <gdbsupport/config.h>
+      |          ^~~~~~~~~~~~~~~~~~~~~
+
+% cd ../gdbsupport
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=i960-elf
+% make
+...
+common-defs.h:31:10: 致命的エラー: gnulib/config.h: そのようなファイルやディレクトリはありません
+   31 | #include "gnulib/config.h"
+      |          ^~~~~~~~~~~~~~~~~
+
+% cd ../gnulib
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=i960-elf
+% make
+% cd ../gdbsupport
+% make
+% cd ../gdb
+% make
+...
+echo "  GEN    stamp-version"; /bin/sh ./../gdbsupport/create-version.sh . \
+     i960-elf version-t.t
+  GEN    stamp-version
+mv: 'version.c-tmp' から '' へ移動できません: そのようなファイルやディレクトリはありません
+mv: 'version-t.t' を stat できません: そのようなファイルやディレクトリはありません
+make: *** [Makefile:2085: stamp-version] エラー 1
+%
+
+Makefile を以下のように修正
+
+host_alias = i686-pc-linux-gnu
+
+% make
+...
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: ../sim/i960/libsim.a(sim-if.o): in function `sim_fetch_register':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i960-elf/sim/i960/sim-if.c:255: multiple definition of `sim_fetch_register'; ../sim/i960/libsim.a(sim-reg.o):/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i960-elf/sim/i960/./../common/sim-reg.c:32: first defined here
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: ../sim/i960/libsim.a(sim-if.o): in function `sim_store_register':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i960-elf/sim/i960/sim-if.c:269: multiple definition of `sim_store_register'; ../sim/i960/libsim.a(sim-reg.o):/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i960-elf/sim/i960/./../common/sim-reg.c:47: first defined here
+
+sim-if.c から sim_fetch_register と sim_store_register をコンパイルアウト.
+
+% make
+一応 gdb をビルドすることができている.
