@@ -1,0 +1,124 @@
+D10V ABI
+
+(*1) Function call
+
+	bl	fun
+
+	Pseudo code
+
+	r13 := (next address of `bl' instruction) >> 2
+	pc := fun
+
+(*2) Return from function
+
+	jmp	r13
+
+	Pseudo code
+
+	pc := r13 << 2
+
+(*3) Prologue
+
+	st	r13, @-sp
+	st	r14, @-sp
+	sub	sp, 128
+	mv	r14, sp
+
+	Above is prologue of the function which uses 128 bytes local area.
+
+	+---------------+ <- sp_{new}, r14_{new}
+	|		|
+	|		|
+	~		~
+	|		|
+	|		|
+   +128	+---------------+
+	|    r14_{old}	|
+   +132	+---------------+
+	|    r13_{old}	|
+   +136	+---------------+ <- sp_{old}
+
+(*4) Epilogue
+
+	addi	sp, 128
+	ld	r14, @sp+
+	ld	r13, @sp+
+	jmp	r13
+
+	Above is epilogue of the function which uses 128 bytes local area.
+
+(*5) Normal argument and return value
+
+        sizeof(int) = 2
+
+	1st : r0
+	2nd : r1
+	3rd : r2
+	4th : r3
+	5th : use stack
+
+	For example,
+
+	int f(int a, int b, int c, int d, int e);
+
+	f(10, 11, 12, 13, 14);
+
+	at the start address of `f', registers and stack layout become
+        like below:
+
+	r0 = 10, r1 = 11, r2 = 12, r3 = 13
+
+     +0	+---------------+ <- sp
+	|	14	|
+     +2	+---------------+
+
+
+(*6) `long' argument and return value,
+     `long long' argument and return value
+
+	sizeof(long) = 4
+	sizeof(long long) = 8
+
+	For `long' argument, 2 registers are used. For example,
+
+	long f(int a, long b, long c);
+
+	f(1, 0x12345678L, 0x9abcdef0L);
+
+	at the start address of `f', registers and stack layout become
+	like below:
+
+	r0 = 1, r2 = 0x1234, r3 = 0x5678
+	
+     +0	+---------------+ <- sp
+	|     0x9abc	|
+     +2	+---------------+
+	|     0xdef0	|
+     +4	+---------------+
+
+        `long' return value is set to (r0, r1).
+
+	For `long long' argument, if it is 1st argumet, (r0, r1, r2, r3)
+	are used. Otherwise, stack is used.
+	`long long' return value is set to (r0, r1, r2, r3)
+
+(*7) Floating point number argument and return value
+
+        sizeof(float) = 4
+	sizeof(double) = sizeof(long double) = 8
+
+	D10V does not have FPU, so software calculates floating point
+	number operation.
+	For `float' same with `long' rule. For `doulbe' or `long double'
+	same with `long long' rule.
+
+
+(*8) Structure argument and return value
+
+        When calling the function which takes structure type argument,
+	make its copy and set the address is passed according to (*6)
+	rule.
+	
+	When calling the function which returns structure type, the addres
+	for the return value is set to `r0'.
+
