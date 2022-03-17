@@ -19,4 +19,75 @@ FR30 ABI
 
 (*4) Prologue
 
+	st	rp, @-r15
+	enter	#132
 
+        Above is prologue for the function which uses 128 bytes local area.
+
+	+---------------+ <- r15_{After `enter' instruction}
+	|		|
+	|		|
+	~		~
+	|		|
+	|		|
+	+---------------+ <- r14_{After `enter' instruction}
+	| r14_{old}     |
+	+---------------+ <- r15_{After `st' instruction}
+	| rp_{old}	|
+	+---------------+ <- r15_{start of function}
+
+(*5) Epilogue
+
+	leave
+	ld	@r15+, rp
+	ret
+
+	Above is epilogue for the function which uses 128 bytes local area.
+	r14(fp) and r15(sp) are restored and reutrn to callee.
+
+(*6) Normal argument and return value
+
+	1st : r4
+	2nd : r5
+	3rd : r6
+	4th : r7
+	5th : use stack
+
+	Function return value is set to `r4'.
+
+(*7) `long long' argument and return value
+
+	sizeof(long long) = 8
+
+	For `long long' type arugment, use 2 registers. For example,
+
+	long long f(int a, long long b, long long c);
+
+	f(1, 2LL, 3LL);
+
+	At the start address of `f', registers and stack become like below:
+
+	r4 = 1, r5 = 0, r6 = 2, r7 = 0
+
+	+---------------+ <- r15
+	|       3	|
+	+---------------+ +4
+
+	Function return value is set to `r4' and `r5'.
+
+(*7) Floating point number argument and return value
+
+	sizeof(float) = 4
+	sizeof(double) = sizeof(long double) = 8
+
+	For `float', (*6) rule is applied. For `double' and `long double',
+	(*7) rule is applied.
+
+(*8) Structure argument and return value
+
+        When calling function which takes structure type argument,
+	make the copy of argument and pass its address according to
+	the rule (*6).
+	
+	When calling function which returns structure type, `r4' is
+	set to the address for the return value.
