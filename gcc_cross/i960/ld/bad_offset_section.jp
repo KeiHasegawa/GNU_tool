@@ -1,0 +1,123 @@
+ファイルサイズを超えたオフセットをもつセクションが生成される原因を調査する.
+
+事前に 「i960 の gdb」 => 「BFD: warning: xxx.elf has a section extending past end of file. のメッセージ」
+
+で gdb 視点の調査がある.
+
+(gdb) run -o test.elf test.o -T default.x
+
+で test.elf を確認すると
+
+000001f0: 0000 0000 0000 0000 5403 0000 0000 0000  ........T.......
+
+
+のように 0x354 のオフセットが生成される. test.elf 自体は 849 = 0x351 バイト
+事前の調査で
+
+空のセクション
+.text
+.data
+.bss
+.stabs
+問題のセクション
+.stabstr
+
+のように 6 個目のセクションのオフセットが 0x354 になっている.
+
+(gdb) b _bfd_elf_set_section_contents
+(gdb) run
+
+.text, .stab, .stabstr に対して呼び出されただけ.
+
+
+
+  for (count = 0; count < i_ehdrp->e_shnum; count++)
+    {
+#if DEBUG & 2
+      elf_debug_section (count, i_shdrp[count]);
+#endif
+      elf_swap_shdr_out (abfd, i_shdrp[count], x_shdrp + count); ここ
+    }
+
+i_ehdrp->e_shnum = 10 になっている. ループで count = 5 のときを調べてみる.
+
+
+(gdb) p/x *i_shdrp[count]
+$30 = {sh_name = 0x32, sh_type = 0x9, sh_flags = 0x0, sh_addr = 0x0, 
+  sh_size = 0x0, sh_entsize = 0x8, sh_link = 0x8, sh_info = 0x4, 
+  sh_offset = 0x354, sh_addralign = 0x4, bfd_section = 0x0, contents = 0x0}
+(gdb)
+
+sh_offset = 0x354 になっている. これがセットされる瞬間を捕える.
+
+
+INLINE file_ptr
+_bfd_elf_assign_file_position_for_section (i_shdrp, offset, align)
+     Elf_Internal_Shdr *i_shdrp;
+     file_ptr offset;
+     boolean align;
+{
+  if (align)
+    {
+      unsigned int al;
+
+      al = i_shdrp->sh_addralign;
+      if (al > 1)
+	offset = BFD_ALIGN (offset, al);
+    }
+  i_shdrp->sh_offset = offset;               ここだった.
+  if (i_shdrp->bfd_section != NULL)
+
+この函数は off = 0x351 で呼び出されて align されて 0x354 になっているらしい.
+そして i960-elf-ld は binutils-2.10.1 の状態でビルドしている.
+
+binutils-2.36.1.arm-elf/bfd/elf.c
+
+を見てみたが, 自分が想像していたような対処を行なっているわけではなかった.
+おそらく
+
+i_shdrp->sh_addralign = 4
+
+になっているのが間違い. ここに値をセットしている瞬間を捕えてみた.
+
+
+boolean
+_bfd_elf_init_reloc_shdr (abfd, rel_hdr, asect, use_rela_p)
+...
+  rel_hdr->sh_addralign = bed->s->file_align;  ここ
+  rel_hdr->sh_flags = 0;
+
+そしてこのセクションの名前がここで
+
+".rel.stab"
+
+であることが判明した. この函数は ".stab" に対しても呼び出されていて
+
+  rel_hdr->sh_addralign = bed->s->file_align;  ここ
+
+で 4 にセットされている. ということは i_shdrp->sh_addralign = 4 は
+それはそれで間違いではないということ.
+
+数分の考慮の結果以下のように修正することにした:
+
+      if ((shdrp->sh_type == SHT_REL || shdrp->sh_type == SHT_RELA)
+	  && shdrp->sh_offset == -1) {
+#if 0	
+	off = _bfd_elf_assign_file_position_for_section (shdrp, off, true);
+#else
+	struct stat buf;
+	int n = stat(abfd->filename, &buf);
+	BFD_ASSERT(n == 0);
+	int size = buf.st_size;
+	if (shdrp->sh_addralign > 1) {
+	  int tmp = BFD_ALIGN (off, shdrp->sh_addralign);
+	  if (tmp <= size)
+	    off = _bfd_elf_assign_file_position_for_section (shdrp, off, true);
+	  else {
+	    BFD_ASSERT(!shdrp->sh_size);
+	    BFD_ASSERT(!shdrp->bfd_section);
+	    BFD_ASSERT(!shdrp->contents);
+	    off = _bfd_elf_assign_file_position_for_section (shdrp, off, false);
+	  }
+	}
+#endif	
