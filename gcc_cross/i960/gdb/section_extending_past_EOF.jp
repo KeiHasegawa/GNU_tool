@@ -1,0 +1,326 @@
+BFD: warning: /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test001/test.elf has a section extending past end of file.
+
+のメッセージの調査.
+
+% cd ~/lang/53_GNU_tool/gcc_cross/i960/test/test001
+% m68hc11-elf-gdb test.elf 
+...
+BFD: warning: /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test001/test.elf has a section extending past end of file
+Reading symbols from test.elf...
+(gdb)
+
+ということは, エラーメッセージを出しているのは gdb なのだがそれは
+i960-elf-gdb に限った話ではなくて他の gdb も同じエラーメッセージを出し
+ている.
+
+これは普通に考えれば i960-elf-ld が生成している test.elf に何らかの問
+題があるということ.
+
+とはいえ, メッセージを出しているのは gdb なのでまずはどのような場合に
+このメッセージが出るのかを gdb 視点で調査してみる.
+
+M-x gdb
+gdb --annotate=3 ./gdb
+(gdb) run -q ~/lang/53_GNU_tool/gcc_cross/i960/test/test001/test.elf
+...
+BFD: warning: /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test001/test.elf has a section extending past end of file
+Reading symbols from
+/home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test001/test.elf...
+(gdb) q
+
+再現している.
+
+(gdb) b _bfd_error_handler
+(gdb) run
+...
+きている
+(gdb) up
+
+
+      if (filesize != 0
+	  && ((ufile_ptr) dst->sh_offset > filesize
+	      || dst->sh_size > filesize - dst->sh_offset))
+	{
+	  abfd->read_only = 1;
+	  _bfd_error_handler (_("warning: %pB has a section "
+				"extending past end of file"), abfd);
+	}
+
+(gdb) p filesize
+$4 = 849
+(gdb) p dst->sh_offset
+$5 = 852
+(gdb) p filesize
+$6 = 849
+(gdb) p (ufile_ptr) dst->sh_offset > filesize
+$7 = 1
+(gdb) 
+
+エラーが発生している直接の原因がこれ.
+
+% ls -l ~/lang/53_GNU_tool/gcc_cross/i960/test/test001/test.elf
+-rwxrwxr-x 1 khasegawa khasegawa 849 Mar 16 14:50 /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test001/test.elf*
+%
+
+filesize は stat で取得できるそのままの値らしい.
+
+この部分は以下から呼び出されていた:
+
+      cleanup = BFD_SEND_FMT (abfd, _bfd_check_format, (abfd));
+
+これのマクロ展開は以下:
+      cleanup = (((abfd)->xvec->_bfd_check_format[(int) ((abfd)->format)]) (abfd));
+
+そして実際呼び出されたのが以下:
+
+bfd_cleanup
+elf_object_p (bfd *abfd)
+{
+...
+
+
+問題のなかった D30V のプログラムで試してみた.
+
+(gdb) run -q ~/lang/53_GNU_tool/gcc_cross/D30V/test/test001/test.elf
+
+      for (shindex = 1; shindex < i_ehdrp->e_shnum; shindex++)
+	{
+	  if (bfd_bread (&x_shdr, sizeof x_shdr, abfd) != sizeof (x_shdr))
+	    goto got_no_match;
+	  elf_swap_shdr_in (abfd, &x_shdr, i_shdrp + shindex);
+
+同じようにここにきている.
+
+(gdb) p i_ehdrp->e_shnum
+$2 = 10
+(gdb)
+
+この 10 も同じ.
+
+i960 でエラーしているのは shindex = 5 で
+
+(gdb) p *dst
+$11 = {sh_name = 50, sh_type = 9, sh_flags = 0, sh_addr = 0, sh_offset = 852, 
+  sh_size = 0, sh_link = 0, sh_info = 0, sh_addralign = 0, sh_entsize = 0, 
+  bfd_section = 0x0, contents = 0x0}
+(gdb)
+
+一方 d30v では shindex = 5 に対しては以下:
+
+(gdb) p *dst
+$18 = {sh_name = 71, sh_type = 1, sh_flags = 0, sh_addr = 0, sh_offset = 408, 
+  sh_size = 32, sh_link = 0, sh_info = 0, sh_addralign = 0, sh_entsize = 0, 
+  bfd_section = 0x0, contents = 0x0}
+(gdb) 
+
+もしかすると size = 0 の .bss セクションが悪さをしているということか.
+単純に 5 個目を比較しても意味がないのかも.
+
+いずれにしても
+
+~/lang/53_GNU_tool/gcc_cross/i960/test/test001/test.elf
+
+のファイルオフセット 0x1f8 が
+
+000001f0: 0000 0000 0000 0000 5403 0000 0000 0000
+
+のように 0x354 になっているのが原因. これの期待値は不明だが 849 以下に
+なるべき値.
+
+不明なのが
+
+~/lang/53_GNU_tool/gcc_cross/i960/test/test001/test.elf
+
+は
+
+.text
+.data
+.bss
+.stab
+.stabstr
+
+の 5 つのセクションを持っているのに
+
+i_ehdrp->e_shnum = 10 になっていること.
+
+この 10 は自分が知っている 5 つのセクションではない. 実際 d30v のプロ
+グラムでは
+
+.text
+.debug_line
+.debug_info
+.debug_abbrev
+.debug_aranges
+.debug_str
+
+の 6 つのセクションを持っているがやはり
+
+i_ehdrp->e_shnum = 10 になっているから.
+
+
+  if (bfd_bread (&x_ehdr, sizeof (x_ehdr), abfd) != sizeof (x_ehdr))
+
+で x_ehdr に test.elf の先頭 sizeof(x_ehdr) バイトを読み込んで,
+
+  i_ehdrp = elf_elfheader (abfd);
+  elf_swap_ehdr_in (abfd, &x_ehdr, i_ehdrp);
+
+のように x_ehdr を i_ehdrp に変換している.
+
+(gdb) p *i_ehdrp
+$4 = {e_ident = "\177ELF\001\001\001\000\000\000\000\000\000\000\000", 
+  e_entry = 256, e_phoff = 52, e_shoff = 288, e_version = 1, e_flags = 0, 
+  e_type = 2, e_machine = 19, e_ehsize = 52, e_phentsize = 32, e_phnum = 2, 
+  e_shentsize = 40, e_shnum = 10, e_shstrndx = 7}
+
+そこで 10 が出現する.
+
+
+(gdb) p/x x_ehdr
+$6 = {e_ident = {0x7f, 0x45, 0x4c, 0x46, 0x1, 0x1, 0x1, 0x0, 0x0, 0x0, 0x0, 
+    0x0, 0x0, 0x0, 0x0, 0x0}, e_type = {0x2, 0x0}, e_machine = {0x13, 0x0}, 
+  e_version = {0x1, 0x0, 0x0, 0x0}, e_entry = {0x0, 0x1, 0x0, 0x0}, 
+  e_phoff = {0x34, 0x0, 0x0, 0x0}, e_shoff = {0x20, 0x1, 0x0, 0x0}, 
+  e_flags = {0x0, 0x0, 0x0, 0x0}, e_ehsize = {0x34, 0x0}, e_phentsize = {
+    0x20, 0x0}, e_phnum = {0x2, 0x0}, e_shentsize = {0x28, 0x0}, e_shnum = {
+    0xa, 0x0}, e_shstrndx = {0x7, 0x0}}
+(gdb)
+
+e_shnum = {0xa, 0x0 }
+
+ということ. これが 10 の正体.
+
+10 個あるとされている最初のセクションは以下
+
+
+(gdb) p x_shdr
+$7 = {sh_name = "\000\000\000", sh_type = "\000\000\000", 
+  sh_flags = "\000\000\000", sh_addr = "\000\000\000", 
+  sh_offset = "\000\000\000", sh_size = "\000\000\000", 
+  sh_link = "\000\000\000", sh_info = "\000\000\000", 
+  sh_addralign = "\000\000\000", sh_entsize = "\000\000\000"}
+(gdb) p/x x_shdr
+$8 = {sh_name = {0x0, 0x0, 0x0, 0x0}, sh_type = {0x0, 0x0, 0x0, 0x0}, 
+  sh_flags = {0x0, 0x0, 0x0, 0x0}, sh_addr = {0x0, 0x0, 0x0, 0x0}, 
+  sh_offset = {0x0, 0x0, 0x0, 0x0}, sh_size = {0x0, 0x0, 0x0, 0x0}, 
+  sh_link = {0x0, 0x0, 0x0, 0x0}, sh_info = {0x0, 0x0, 0x0, 0x0}, 
+  sh_addralign = {0x0, 0x0, 0x0, 0x0}, sh_entsize = {0x0, 0x0, 0x0, 0x0}}
+(gdb)
+
+
+(gdb) p/x i_shdrp[shindex]
+$9 = {sh_name = 0x1b, sh_type = 0x1, sh_flags = 0x6, sh_addr = 0x100, 
+  sh_offset = 0x74, sh_size = 0x10, sh_link = 0x0, sh_info = 0x0, 
+  sh_addralign = 0x1, sh_entsize = 0x0, bfd_section = 0x0, contents = 0x0}
+
+shindex = 1
+sh_addr = 0x100 だからおそらく .text セクションン
+
+
+(gdb) p/x i_shdrp[shindex]
+$10 = {sh_name = 0x21, sh_type = 0x1, sh_flags = 0x3, sh_addr = 0x1000, 
+  sh_offset = 0x84, sh_size = 0x0, sh_link = 0x0, sh_info = 0x0, 
+  sh_addralign = 0x1, sh_entsize = 0x0, bfd_section = 0x0, contents = 0x0}
+
+shindex = 2
+sh_addr = 0x1000 だから .bss の可能性もあるがおそらく .data セクション
+
+
+(gdb) p/x i_shdrp[shindex]
+$11 = {sh_name = 0x27, sh_type = 0x8, sh_flags = 0x3, sh_addr = 0x1000, 
+  sh_offset = 0x84, sh_size = 0x0, sh_link = 0x0, sh_info = 0x0, 
+  sh_addralign = 0x1, sh_entsize = 0x0, bfd_section = 0x0, contents = 0x0}
+(gdb)
+
+shindex = 3
+sh_addr = 0x1000 だからおそらく .bss セクション
+
+
+(gdb) p/x i_shdrp[shindex]
+$12 = {sh_name = 0x2c, sh_type = 0x1, sh_flags = 0x0, sh_addr = 0x0, 
+  sh_offset = 0x84, sh_size = 0x48, sh_link = 0x6, sh_info = 0x0, 
+  sh_addralign = 0x4, sh_entsize = 0xc, bfd_section = 0x0, contents = 0x0}
+(gdb) 
+
+shindex = 4
+sh_size = 0x48 だから .stab セクション
+
+BFD: warning: /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test001/test.elf has a section extending past end of file
+(gdb) p/x i_shdrp[shindex]
+$13 = {sh_name = 0x32, sh_type = 0x9, sh_flags = 0x0, sh_addr = 0x0, 
+  sh_offset = 0x354, sh_size = 0x0, sh_link = 0x8, sh_info = 0x4, 
+  sh_addralign = 0x4, sh_entsize = 0x8, bfd_section = 0x0, contents = 0x0}
+(gdb) 
+
+
+shindex = 5 で問題のエラーメッセージも出ている.
+そしてこれは順番からいったら .stabstr セクション.
+
+Sections:
+Idx Name          Size      VMA       LMA       File off  Algn
+  0 .text         00000010  00000100  00000100  00000074  2**0
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+  1 .data         00000000  00001000  00001000  00000084  2**0
+                  CONTENTS, ALLOC, LOAD, DATA
+  2 .bss          00000000  00001000  00001000  00000084  2**0
+                  ALLOC
+  3 .stab         00000048  00000000  00000000  00000084  2**2
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+  4 .stabstr      0000000f  00000000  00000000  000000cc  2**0   <- これ!
+                  CONTENTS, READONLY, DEBUGGING
+
+File off が 0xcc になっている. おそらく objdump も変な値を読み込んだか
+ら 0xcc にしたのかも. しかしそれならエラーメッセージの 1 つも出ても良
+さそうだが...
+
+% i960-elf-objdump -x test.o > test.o.objdump
+
+Idx Name          Size      VMA       LMA       File off  Algn
+  0 .text         00000010  00000000  00000000  00000034  2**0
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+  1 .data         00000000  00000000  00000000  00000044  2**0
+                  CONTENTS, ALLOC, LOAD, DATA
+  2 .bss          00000000  00000000  00000000  00000044  2**0
+                  ALLOC
+  3 .stab         00000048  00000000  00000000  00000044  2**2
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+  4 .stabstr      0000000f  00000000  00000000  0000008c  2**0
+                  CONTENTS, READONLY, DEBUGGING
+
+こっちはそれっぽい値が出ている.
+
+このことから i960-elf-ld が .stabstr セクションのオフセットを
+
+0x34 -> 0x74
+0x44 -> 0x84
+0x8c -> 0xcc
+
+0xcc とするべきところを 0x354 としているらしい. なるほど 0xcc は正しい
+値だったと.
+
+objdump は問題の test.elf を期待した形でダンプできているが
+gdb が同じ test.elf を期待した形で読めていないようにも思える.
+
+しかし実際 0x5403 はファイル内にある. さてこれはどう考えるべきなのか.
+
+
+000001f0: 0000 0000 0000 0000 5403 0000 0000 0000  ........T.......
+00000200: 0800 0000 0400 0000 0400 0000 0800 0000  ................
+00000210: 3c00 0000 0300 0000 0000 0000 0000 0000  <...............
+00000220: cc00 0000 0f00 0000 0000 0000 0000 0000  ................
+
+実はファイル内には 0xcc があるのはオフセット 0x220 のみ.
+
+(gdb) p/x i_shdrp[shindex]
+$14 = {sh_name = 0x3c, sh_type = 0x3, sh_flags = 0x0, sh_addr = 0x0, 
+  sh_offset = 0xcc, sh_size = 0xf, sh_link = 0x0, sh_info = 0x0, 
+  sh_addralign = 0x1, sh_entsize = 0x0, bfd_section = 0x0, contents = 0x0}
+(gdb)
+
+shindex = 6
+
+sh_offset = 0xcc になっている.
+これが .stabstr セクション.
+
+ということは shindex = 5 は何なのだろう.
+当初は i960-elf-ld を修正するつもりでいたが一旦修正は見送る.
