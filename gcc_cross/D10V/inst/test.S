@@ -38,9 +38,6 @@ start:
 	cmpi.l	r1, 14
 	cmpu	r0, r1
 	cmpui	r0, 15
-	;;  cpfg ?? ?? OP_4E09
-	.long	0x5e004e0f
-	.long	0x5e004e09
 	cpfg	f1, c || nop
 	cpfg	f0, f1 || nop
 	dbt || nop
@@ -54,9 +51,7 @@ start:
 	exp	r0, r2
 	jl	r2
 	jmp	r4
-	.long	0x30000000
 	ld	r1, @(4,r2)
-	.long	0x30125e00
 	ld	r1, @r2+
 	ld	r1, @start
 	ld2w	r0, @(4,r2)
