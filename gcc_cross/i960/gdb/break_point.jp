@@ -1,0 +1,63 @@
+~/lang/53_GNU_tool/gcc_cross/i960/test/test001/test.elf
+
+で end ラベルにセットしたブレークポイントで停止すると 1 行前で停止した
+かのような動作をする件の調査.
+
+(gdb) cd ~/lang/53_GNU_tool/gcc_cross/i960/test/test001
+(gdb) run -q -x gdbcom test.elf
+...
+Breakpoint 1, start () at test.S:3
+3		mov	g0, g0
+4		mov	g0, g0
+5		mov	g0, g0
+
+Program received signal SIGTRAP, Trace/breakpoint trap.
+start () at test.S:5
+5		mov	g0, g0          ここは 7 行目が期待値
+A debugging session is active.
+
+で再現している.
+
+(gdb) b continue_command
+(gdb) run
+...
+continue_command のブレークポイントにヒット
+(gdb) b sim_engine_halt
+(gdb) c
+...
+sim_engine_halt のブレークポイントにヒット
+(gdb) up
+(gdb) p/x pc
+$1 = 0x10c
+(gdb)
+
+00000100 <start>:
+ 100:	10 16 80 5c 	mov	g0,g0
+ 104:	10 16 80 5c 	mov	g0,g0
+ 108:	10 16 80 5c 	mov	g0,g0
+
+0000010c <end>:
+ 10c:	10 16 80 5c 	mov	g0,g0
+
+ここまではできている.
+
+(gdb) b sim_fetch_register
+(gdb) c
+...
+sim_fetch_register のブレークポイントにヒット
+(gdb) finish
+(gdb) x/4bx buf.data()
+0x8e27eb8:	0x08	0x01	0x00	0x00
+(gdb)
+
+これが原因. PC の値を問い合わされたときに 0x108 を返している.
+
+以下のように修正.
+
+USI
+i960_breakpoint (SIM_CPU *current_cpu, PCADDR pc)
+{
+...
++ a_i960_h_pc_set (current_cpu, pc);
+  sim_engine_halt (sd, current_cpu, NULL, NULL_CIA,
+		   sim_stopped, SIM_SIGTRAP);
