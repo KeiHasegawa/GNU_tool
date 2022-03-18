@@ -109,7 +109,7 @@ extern "C" int marked(void* p)
 これは実は間違いだったっぽい. この修正を元に戻して, 例の 0x100 番地に nop を数命令
 置いたプログラムの正常動作を確認した.
 
-そこで改めて生成されない命令を確認してみたところ 26 命令までに現象している.
+そこで改めて生成されない命令を確認してみたところ 26 命令までに減少している.
 例えば
 
 /* 0011 1011 ssss 1000 0000 aaaa ddN0 0000 *** indr @rd,@ri,ra */
@@ -161,10 +161,12 @@ int iwords0;
 sim_state_type *context;
 int pc;
 {
-  uint8_t b3 = get_word_mem_da(context,pc+3);
-  switch (b3 >> 4) {
-  case 0: break;
-  case 8: return sfop_150(context,pc,iwords0);
+  uint8_t b3 = get_byte_mem_da(context,pc+3);
+  switch (b3 & 15) {
+    /* 0011 1011 ssss 1000 0000 aaaa ddN0 1000 *** ind @rd,@ri,ra */
+  case 8: break;
+  case 0: return sfop_150(context,pc,iwords0);
+    /* 0011 1011 ssss 1000 0000 aaaa ddN0 0000 *** indr @rd,@ri,ra */
   default:
     sim_engine_halt(g_sd, g_cpu, 0, g_cia, sim_stopped, SIM_SIGILL);
     break;
