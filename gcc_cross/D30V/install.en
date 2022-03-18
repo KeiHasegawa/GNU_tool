@@ -19,3 +19,17 @@ D30V is a media processor developed by Mitsubishi Denki.
 % setenv SHELL /bin/sh
 % make all-gcc LANGUAGES="c c++"
 % make install-gcc LANGUAGES="c c++"
+
+(*) gdb install
+
+Refer to "D30V gdb"
+
+(*) newlib install
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/
+% gunzip -c ../newlib-1.13.0.tar.gz | tar xf -
+% mv newlib-1.13.0 newlib-1.13.0.d30v-elf
+% cd newlib-1.13.0.d30v-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=d30v-elf
+% make
+% make install
