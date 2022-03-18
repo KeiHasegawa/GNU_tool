@@ -4,13 +4,13 @@
 %.o : %.c
 	z8k-coff-gcc -o $@ $< -c -g
 
-%.elf : %.o 
+%.coff : %.o 
 	z8k-coff-ld -o $@ ../default.o $< -T ../default.x
 
-%.objdump : %.elf
+%.objdump : %.coff
 	z8k-coff-objdump -x -d -g $< > $@
 
-%.log : %.elf
+%.log : %.coff
 	wdog.exe -v z8k-coff-gdb -q -x gdbcom $< > $@
 
 %.lof : %.log
@@ -18,5 +18,5 @@
 	touch $@
 
 clean:
-	rm -f *.o *.s *.elf *.map *.objdump *.log TAGS *~
+	rm -f *.o *.s *.coff *.map *.objdump *.log TAGS *~
 
