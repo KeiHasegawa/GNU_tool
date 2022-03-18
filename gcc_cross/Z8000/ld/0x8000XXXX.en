@@ -1,0 +1,7 @@
+By applying below patch, debug information address becomes like as I expect.
+
+binutils-2.36.1.z8k-coff/bfd/coff-z8k.c:
+
+-	  dst = (dst & 0xffff) | ((dst & 0xff0000) << 8) | 0x80000000;
++	  dst &= 0xffff;
+	  bfd_put_32 (in_abfd, dst, data + *dst_ptr);
