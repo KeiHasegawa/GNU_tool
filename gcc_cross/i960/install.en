@@ -1,0 +1,90 @@
+i960 cross compile environment
+
+(*) i960
+https://en.wikipedia.org/wiki/Intel_i960
+
+
+(*) binutils install
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% gunzip -c ../binutils-2.10.1.tar.gz | tar xf -
+% mv binutils-2.10.1 binutils-2.10.1.i960-elf
+% cd binutils-2.10.1.i960-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=i960-elf
+% make
+
+caused error. So I fixed like below:
+
+#if 0
+extern const struct relax_type md_relax_table[];
+#define TC_GENERIC_RELAX_TABLE md_relax_table
+#endif
+
+Above works well.
+
+% make install
+
+In my case, below files were installed:
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-addr2line.j*
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-ar.j*
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-as.j*
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-c++filt.j*
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-gasp.j*
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-ld.j*
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-nm.j*
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-objcopy.j*
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-objdump.j*
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-ranlib.j*
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-readelf.j*
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-size.j*
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-strings.j*
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/i960-elf-strip.j*
+
+So renamed them. Later I also noticed that below files were also installed:
+
+% ls /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/bin
+ar.j*  as.j*  ld.j*  nm.j*  ranlib.j*  strip.j*
+
+So renamed them.
+
+(*) gcc install
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% bunzip2 -c ../gcc-3.4.4.tar.bz2  | tar xf -
+% mv gcc-3.4.4 gcc-3.4.4.i960-elf
+% cd gcc-3.4.4.i960-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=i960-elf --enable-obsolete
+% setenv SHELL /bin/sh
+% make all-gcc LANGUAGES="c c++"
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.i960-elf/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.i960-elf/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/i960-elf/sys-include -O2  -DIN_GCC -DCROSS_COMPILE   -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition  -isystem ./include   -g  -DIN_LIBGCC2 -D__GCC_FLOAT_NOT_NEEDED -Dinhibit_libc -I. -I. -I. -I./. -I./../include   -DL_fixtfdi -c ./libgcc2.c -o libgcc/./_fixtfdi.o
+
+Above execution caused error. I did like below:
+
+% cd gcc
+% rm i960.o
+% make cc1
+% cd ..
+% make all-gcc LANGUAGES="c c++"
+% make install-gcc LANGUAGES="c c++"
+
+(*) gdb install
+
+Refer to "i960 gdb"
+
+(*) newlib install
+...
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/
+% gunzip -c ../newlib-1.13.0.tar.gz | tar xf -
+% mv newlib-1.13.0 newlib-1.13.0.i960-elf
+% cd newlib-1.13.0.i960-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=i960-elf
+% make
+...
+i960-elf-gcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.i960-elf/i960-elf/soft-float/newlib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.i960-elf/i960-elf/soft-float/newlib/targ-include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/newlib-1.13.0.i960-elf/newlib/libc/include  -msoft-float -DPACKAGE=\"newlib\" -DVERSION=\"1.13.0\"  -I. -I../../../../.././newlib/libc/stdio  -O2 -DMISSING_SYSCALL_NAMES -fno-builtin    -O2 -g -O2  -O2 -g -O2  -msoft-float -fshort-enums -c ../../../../.././newlib/libc/stdio/vfprintf.c
+/tmp/ccfWX3yO.s: Assembler messages:
+/tmp/ccfWX3yO.s:2859: Error: Fixup of 6692 too large for field width of 13
+...
+Unfortunately, this is cased by compiler bug. Once I decided to give up
+install `newlib'.
