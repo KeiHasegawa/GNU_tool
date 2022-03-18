@@ -1,0 +1,151 @@
+現状
+
+~/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.elf
+
+を動作させると main にブレークポイントをセットしようとして内部エラーを引き起こしている.
+
+(gdb) cd ~/lang/53_GNU_tool/gcc_cross/i960/test/test002
+(gdb) run -q -x x test.elf
+...
+gdbtypes.c:3355: internal-error: type* init_complex_type(const char*, type*): Assertion `target_type->code () == TYPE_CODE_INT || target_type->code () == TYPE_CODE_FLT' failed.
+
+(gdb) where
+#0  0xffffe424 in __kernel_vsyscall ()
+#1  0xb7ab87a1 in *__GI_raise (sig=6) at ../nptl/sysdeps/unix/sysv/linux/raise.c:64
+#2  0xb7aba052 in *__GI_abort () at abort.c:92
+#3  0x084cf698 in dump_core () at utils.c:204
+#4  0x084cfb91 in internal_vproblem (problem=0x8c94f68 <internal_error_problem>, file=0x885b8a5 "gdbtypes.c", line=3355, fmt=0x885b569 "%s: Assertion `%s' failed.", ap=0xbfffde8c "\274ȅ\blȅ\b") at utils.c:414
+#5  0x084cfc46 in internal_verror (file=0x885b8a5 "gdbtypes.c", line=3355, fmt=0x885b569 "%s: Assertion `%s' failed.", ap=0xbfffde8c "\274ȅ\blȅ\b") at utils.c:439
+#6  0x08604449 in internal_error (file=0x885b8a5 "gdbtypes.c", line=3355, fmt=0x885b569 "%s: Assertion `%s' failed.") at errors.cc:55
+#7  0x08277286 in init_complex_type (name=0x0, target_type=0x8dfdf74) at gdbtypes.c:3355
+#8  0x08415ca7 in read_sun_floating_type (pp=0xbfffe024, typenums=0xbfffdf20, objfile=0x8de95b8) at stabsread.c:3770
+#9  0x08412220 in read_type (pp=0xbfffe024, objfile=0x8de95b8) at stabsread.c:1947
+#10 0x084107c3 in define_symbol (valu=0, string=0x8dfd698 "complex long double:t18=R3;32;0;", desc=0, type=128, objfile=0x8de95b8) at stabsread.c:1205
+#11 0x0818eb4f in process_one_symbol (type=128, desc=0, valu=0, name=0x8dfd698 "complex long double:t18=R3;32;0;", section_offsets=..., objfile=0x8de95b8, language=language_c) at dbxread.c:2789
+#12 0x0818dcd2 in read_ofile_symtab (objfile=0x8de95b8, pst=0x8dff7b8) at dbxread.c:2233
+#13 0x0818d6bd in dbx_expand_psymtab (pst=0x8dff7b8, objfile=0x8de95b8) at dbxread.c:2083
+#14 0x0818fdd9 in legacy_psymtab::expand_psymtab (this=0x8dff7b8, objf=0x8de95b8) at psympriv.h:371
+#15 0x0818d7f6 in dbx_read_symtab (self=0x8dff7b8, objfile=0x8de95b8) at dbxread.c:2113
+
+--Type <RET> for more, q to quit, c to continue without paging--c
+frame-begin 16 0x818fdbb
+#16 0x0818fdbb in legacy_psymtab::read_symtab (this=0x8dff7b8, objf=0x8de95b8) at psympriv.h:366
+#17 0x0835bd47 in psymtab_to_symtab (objfile=0x8de95b8, pst=0x8dff7b8) at psymtab.c:766
+#18 0x0835b39e in psym_lookup_symbol (objfile=0x8de95b8, block_index=GLOBAL_BLOCK, name=0xbfffe890 "main", domain=VAR_DOMAIN) at psymtab.c:493
+#19 0x0843e52c in lookup_symbol_via_quick_fns (objfile=0x8de95b8, block_index=GLOBAL_BLOCK, name=0xbfffe890 "main", domain=VAR_DOMAIN) at symtab.c:2373
+#20 0x0843e925 in lookup_symbol_in_objfile (objfile=0x8de95b8, block_index=GLOBAL_BLOCK, name=0xbfffe890 "main", domain=VAR_DOMAIN) at symtab.c:2522
+#21 0x0843eb7f in lookup_symbol_global_or_static_iterator_cb (objfile=0x8de95b8, cb_data=0xbfffe6d0) at symtab.c:2596
+#22 0x0832ebcc in default_iterate_over_objfiles_in_search_order (gdbarch=0x8e061e0, cb=0x843eb0a <lookup_symbol_global_or_static_iterator_cb(objfile*, void*)>, cb_data=0xbfffe6d0, current_objfile=0x0) at objfiles.c:1362
+#23 0x0826de09 in gdbarch_iterate_over_objfiles_in_search_order (gdbarch=0x8e061e0, cb=0x843eb0a <lookup_symbol_global_or_static_iterator_cb(objfile*, void*)>, cb_data=0xbfffe6d0, current_objfile=0x0) at gdbarch.c:4868
+#24 0x0843ecef in lookup_global_or_static_symbol (name=0xbfffe890 "main", block_index=GLOBAL_BLOCK, objfile=0x0, domain=VAR_DOMAIN) at symtab.c:2641
+#25 0x0843ee48 in lookup_global_symbol (name=0xbfffe890 "main", block=0x0, domain=VAR_DOMAIN) at symtab.c:2692
+#26 0x0843e6d8 in language_defn::lookup_symbol_nonlocal (this=0x8cb9680 <c_language_defn>, name=0xbfffe890 "main", block=0x0, domain=VAR_DOMAIN) at symtab.c:2442
+#27 0x0843dc33 in lookup_symbol_aux (name=0xbfffe890 "main", match_type=symbol_name_match_type::FULL, block=0x0, domain=VAR_DOMAIN, language=language_c, is_a_field_of_this=0x0) at symtab.c:2089
+#28 0x0843d4f4 in lookup_symbol_in_language (name=0xbfffe890 "main", block=0x0, domain=VAR_DOMAIN, lang=language_c, is_a_field_of_this=0x0) at symtab.c:1884
+#29 0x0843d555 in lookup_symbol (name=0xbfffe890 "main", block=0x0, domain=VAR_DOMAIN, is_a_field_of_this=0x0) at symtab.c:1896
+#30 0x08178e30 in inspect_type (info=0x8e381e0, ret_comp=0x8e37a08, finder=0x0, data=0x0) at cp-support.c:160
+#31 0x081798c8 in replace_typedefs (info=0x8e381e0, ret_comp=0x8e37a08, finder=0x0, data=0x0) at cp-support.c:544
+#32 0x081799ff in cp_canonicalize_string_full (string=0x8e379f0 "main", finder=0x0, data=0x0) at cp-support.c:595
+#33 0x08179b34 in cp_canonicalize_string_no_typedefs (string=0x8e379f0 "main") at cp-support.c:619
+#34 0x082cb09b in find_linespec_symbols (state=0xbfffecc0, file_symtabs=0x8dffb88, lookup_name=0x8e379f0 "main", name_match_type=symbol_name_match_type::WILD, symbols=0xbfffeaf8, minsyms=0xbfffeaec) at linespec.c:3902
+#35 0x082c6506 in linespec_parse_basic (parser=0xbfffeca8) at linespec.c:1866
+#36 0x082c8442 in parse_linespec (parser=0xbfffeca8, arg=0x8e1db38 "main", match_type=symbol_name_match_type::WILD) at linespec.c:2655
+#37 0x082c9471 in event_location_to_sals (parser=0xbfffeca8, location=0x8e1dba8) at linespec.c:3151
+#38 0x082c97b6 in decode_line_full (location=0x8e1dba8, flags=1, search_pspace=0x0, default_symtab=0x0, default_line=0, canonical=0xbfffef18, select_mode=0x0, filter=0x0) at linespec.c:3230
+#39 0x080ce560 in parse_breakpoint_sals (location=0x8e1dba8, canonical=0xbfffef18) at breakpoint.c:9070
+#40 0x080d8a6f in create_sals_from_location_default (location=0x8e1dba8, canonical=0xbfffef18, type_wanted=bp_breakpoint) at breakpoint.c:13766
+#41 0x080d6497 in bkpt_create_sals_from_location (location=0x8e1dba8, canonical=0xbfffef18, type_wanted=bp_breakpoint) at breakpoint.c:12567
+#42 0x080ced6e in create_breakpoint (gdbarch=0x8e061e0, location=0x8e1dba8, cond_string=0x0, thread=0, extra_string=0x0, parse_extra=1, tempflag=0, type_wanted=bp_breakpoint, ignore_count=0, pending_break_support=AUTO_BOOLEAN_AUTO, ops=0x8cb89e0 <bkpt_breakpoint_ops>, from_tty=0, enabled=1, internal=0, flags=0) at breakpoint.c:9286
+#43 0x080cf51c in break_command_1 (arg=0x8e001f6 "", flag=0, from_tty=0) at breakpoint.c:9444
+#44 0x080cf79a in break_command (arg=0x8e001f2 "main", from_tty=0) at breakpoint.c:9515
+#45 0x08127ac9 in do_const_cfunc (c=0x8d59d30, args=0x8e001f2 "main", from_tty=0) at cli/cli-decode.c:95
+#46 0x0812a4cd in cmd_func (cmd=0x8d59d30, args=0x8e001f2 "main", from_tty=0) at cli/cli-decode.c:2181
+#47 0x08488b39 in execute_command (p=0x8e001f5 "n", from_tty=0) at top.c:668
+#48 0x0824145f in command_handler (command=0x8e001f0 "b main") at event-top.c:588
+#49 0x084884c2 in read_command_file (stream=0x8dff440) at top.c:447
+#50 0x081376e2 in script_from_file (stream=0x8dff440, file=0xbffff852 "x") at cli/cli-script.c:1622
+#51 0x08120cd9 in source_script_from_stream (stream=0x8dff440, file=0xbffff852 "x", file_to_open=0xbffff852 "x") at cli/cli-cmds.c:700
+#52 0x08120db2 in source_script_with_search (file=0xbffff852 "x", from_tty=1, search_path=0) at cli/cli-cmds.c:736
+#53 0x08120e05 in source_script (file=0xbffff852 "x", from_tty=1) at cli/cli-cmds.c:746
+#54 0x082e4eb2 in catch_command_errors (command=0x8120def <source_script(char const*, int)>, arg=0xbffff852 "x", from_tty=1) at main.c:457
+#55 0x082e6233 in captured_main_1 (context=0xbffff554) at main.c:1214
+#56 0x082e6464 in captured_main (data=0xbffff554) at main.c:1243
+#57 0x082e64cc in gdb_main (args=0xbffff554) at main.c:1268
+#58 0x080607e7 in main (argc=5, argv=0xbffff624) at gdb.c:32
+(gdb) up 7
+(gdb) p target_type->code () 
+$1 = TYPE_CODE_ERROR
+(gdb)
+
+エラーしている直接の原因はこれ.
+
+(gdb) p target_type->main_type->code
+$5 = TYPE_CODE_ERROR
+(gdb)
+
+
+  void set_code (type_code code)
+  {
+    this->main_type->code = code;  ここでセットしていた
+  }
+ 
+(gdb) p code
+$12 = TYPE_CODE_ERROR
+(gdb) 
+
+
+  format = gdbarch_floatformat_for_type (gdbarch, NULL, bits);
+  if (format)
+    type = init_float_type (objfile, bits, NULL, format);
+  else
+    type = init_type (objfile, TYPE_CODE_ERROR, bits, NULL);  ここから呼び
+                                                              出されている
+
+これは format が nullptr になっているのがそもそも期待しない動作のように思える.
+エラーしているときは以下:
+
+(gdb) p bits
+$13 = 128
+
+
+(gdb) b stabsread.c:377
+(gdb) run
+...
+stabsread.c:377 のブレークポイントにヒット
+(gdb) p format
+$14 = (const floatformat **) 0x8c8e8c0 <floatformats_ieee_single>
+(gdb) c
+...
+stabsread.c:377 のブレークポイントにヒット
+(gdb) p format
+$15 = (const floatformat **) 0x8c8e8c8 <floatformats_ieee_double>
+(gdb) c
+...
+stabsread.c:377 のブレークポイントにヒット
+(gdb) p format
+$16 = (const floatformat **) 0x0
+(gdb)
+
+こんな感じになっている.
+
+i960-tdep.c は以下のようになっている. これは mcore-tdep.c.000 をコピーしたから:
+
+  set_gdbarch_long_double_bit(gdbarch, 8 * TARGET_CHAR_BIT);
+  set_gdbarch_long_double_format(gdbarch, floatformats_ieee_double);
+
+aarch64-tdep.c は以下のようにしている:
+
+  set_gdbarch_long_double_bit (gdbarch, 128);
+  set_gdbarch_long_double_format (gdbarch, floatformats_ia64_quad);
+
+真似してみたところエラーしなくなっている.
+そして以下の函数が呼び出された.
+
+static CORE_ADDR
+i960_skip_prologue(struct gdbarch *gdbarch, CORE_ADDR pc)
+{
+  asm("int3");
+  return pc;
+}
+
+これはまた別の問題.
