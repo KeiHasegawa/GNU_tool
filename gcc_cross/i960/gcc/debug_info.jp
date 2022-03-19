@@ -1,0 +1,124 @@
+現状
+
+~/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.elf
+
+を i960-elf-gdb で動作させ main 函数のブレークポイントで停止させると
+表示されるソースが正しくない.
+
+i960-elf-ld, i960-elf-objdump 観点から調査し, さらに .stabs を生成している
+avr と d30v と比較をしてみたところ i960-elf-gcc に問題がありそうだと考えられる
+点はある.
+
+生成結果の期待値を手作業で作成した:
+
+% diff -c test.s test2.S
+*** test.s	2022-03-19 08:52:48.484354153 +0900
+--- test2.S	2022-03-19 14:59:17.149457717 +0900
+***************
+*** 44,53 ****
+  	.stabd	68,0,4
+  	mov	g4,g0
+  Li960R1:	ret
+! 	.stabs	"f:F1",36,0,2,_f
+! 	.stabs	"a:p1",160,0,1,64
+! 	.stabs	"b:p1",160,0,1,68
+! Lscope0:
+  	.align 4
+  	.globl _main
+  	#  Function 'main'
+--- 44,50 ----
+  	.stabd	68,0,4
+  	mov	g4,g0
+  Li960R1:	ret
+! Lscope0:	
+  	.align 4
+  	.globl _main
+  	#  Function 'main'
+***************
+*** 64,68 ****
+  	.stabd	68,0,9
+  	mov	g4,g0
+  Li960R2:	ret
+- 	.stabs	"main:F1",36,0,7,_main
+  Lscope1:
+--- 61,70 ----
+  	.stabd	68,0,9
+  	mov	g4,g0
+  Li960R2:	ret
+  Lscope1:
++ 	.stabs	"f:F1",36,0,2,_f
++ 	.stabs	"a:p1",160,0,1,64
++ 	.stabs	"b:p1",160,0,1,68
++ 	.stabs	"",36,0,0,Lscope0-_f
++ 	.stabs	"main:F1",36,0,7,_main		
++ 	.stabs	"",36,0,0,Lscope1-_main	
+%
+
+この test2.S をコンパイルしリンクしたものは期待する行番号情報を保持したものになる.
+
+不明なのは d30v-elf-gcc の生成結果ともだいぶ異なるものになっているという点.
+test.elf は結果的に期待したものにはなっているが, おそらくだが test.S は正しくはない.
+
+d30v-elf-gcc の生成結果を参考に手作業で作成した期待値は test3.S なのだが
+これをアセンブル, リンクしダンプしたものは以下のようになっている:
+
+int f (int a /* 0x40 */, int b /* 0x44 */)
+{ /* 0x130 */
+} /* 0x150 */
+int main ()
+{ /* 0x150 */
+} /* 0x174 */
+/* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 2 addr 0x260 */
+/* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 3 addr 0x26c */
+/* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 4 addr 0x278 */
+/* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 7 addr 0x2a0 */
+/* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 8 addr 0x2a8 */
+/* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 9 addr 0x2bc */
+
+0x260 = 0x130 + 0x130
+
+0x2a0 = 0x150 + 0x150
+
+といったところ. こうなってくるとアセンブラが怪しくなってくる. いずれにしても現状のコンパイラ
+の生成を修正するべきではある.
+
+リンカを修正して辻褄を合わせるのはやめるべき.
+
+ところでできている d30v-elf-gcc で生成した test.o の objdump の結果は以下:
+
+int f (int a /* 0x0 */, int b /* 0x4 */)
+{ /* 0x0 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/D30V/test/test003/test.c line 2 addr 0x0 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/D30V/test/test003/test.c line 3 addr 0x18 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/D30V/test/test003/test.c line 4 addr 0x28 */
+} /* 0x40 */
+int main ()
+{ /* 0x40 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/D30V/test/test003/test.c line 7 addr 0x40 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/D30V/test/test003/test.c line 7 addr 0x58 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/D30V/test/test003/test.c line 8 addr 0x60 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/D30V/test/test003/test.c line 9 addr 0x70 */
+} /* 0x80 */
+
+当り前であるが, 期待した結果. 一方手作業で無理矢理期待値になるように作成した test2.o の
+objdump 出力は
+
+int f (int a /* 0x40 */, int b /* 0x44 */)
+{ /* 0x0 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 2 addr 0x0 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 3 addr 0xc */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 4 addr 0x18 */
+} /* 0x20 */
+int main ()
+{ /* 0x0 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 7 addr 0x20 */
+} /* 0x24 */
+/* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 8 addr 0x28 */
+/* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 9 addr 0x3c */
+
+できていない. 勿論 test3.o の objdump 出力も同じくらいできていない.
+
+だからまずは正しいと思われる test3.S のアセンブル結果の objdump 出力が何故期待通りに
+ならないのかを調査するべき.
+
+コンパイラの修正はやるにしてもその後するべき.
