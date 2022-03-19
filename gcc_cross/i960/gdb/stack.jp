@@ -1,0 +1,124 @@
+現状
+
+~/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.elf
+
+を実行すると, スタートアップルーチンで
+
+	callx	_main
+
+のようにしているところで割り当てられていないメモリに対してアクセスしている.
+どうやら 31 番のレジスタが 0 になっているのが直接の原因のようだが,
+
+  CASE (sem, INSN_CALLX_DISP) : /* callx $optdisp */
+{
+...
+    SI opval = ADDSI (pc, 8);
+    CPU (h_gr[((UINT) 2)]) = opval;  ここは戻りアドレスを gr2 にセットしている.
+...
+SETMEMSI (current_cpu, pc, ADDSI (CPU (h_gr[((UINT) 31)]), 0), CPU (h_gr[((UINT) 0)]));
+SETMEMSI (current_cpu, pc, ADDSI (CPU (h_gr[((UINT) 31)]), 4), CPU (h_gr[((UINT) 1)]));
+...
+SETMEMSI (current_cpu, pc, ADDSI (CPU (h_gr[((UINT) 31)]), 60), CPU (h_gr[((UINT) 15)]));
+
+これは,... callx 命令がそういう仕様なのだろうか.
+ひとまず 31 番のレジスタがなぜ 0 になっているのか調査.
+
+	ldconst	stack, g4
+	mov	g4, sp
+	callx	_main
+
+のようにしているから sp は 0x1000 になっているのが期待値.
+
+2 命令目で mov をシミュレーションしていることは確認した. またソースオペランドが
+0x1000 であることも確認した.
+
+スタックポインタは事前に 1 番であることを確認していたが, これは 31 番に
+何かを保存している.
+
+31 番のレジスタ相対に 0 から 15 を保存しているのをコンパイルアウトした:
+
+#if 0
+SETMEMSI (current_cpu, pc, ADDSI (CPU (h_gr[((UINT) 31)]), 0), CPU (h_gr[((UINT) 0)]));
+...
+#endif
+
+そして気付いたことは callx 命令の実行後 0x1000 だった 1 番のレジスタが 0x1040
+になっている.
+
+つまりスタックポインタがアドレスの高い方に更新されている.
+
+ところで以下は main のコード
+
+_main:
+...
+	mov	5,g0
+	mov	6,g1
+	callx	_f
+
+戻りアドレスはこのコードで保存されていない.
+
+以下は f のコード
+
+_f:
+	addo	16,sp,sp
+	st	g0,64(fp)
+	st	g1,68(fp)
+	ld	64(fp),g5
+	ld	68(fp),g4
+	addo	g5,g4,g4
+	mov	g4,g0
+	ret
+
+sp に 16 を加算している.
+
+こんなページを見つけた:
+
+https://sourceware.org/cgen/gen-doc/i960.html
+
+31 番はフレームポインタだったらしい.
+一旦コンパイルアウトしているのを元に戻した.
+
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.i960-elf/gcc/config/i960/i960.h
+
+/* #define STACK_GROWS_DOWNWARD */
+
+define されていない. つまりコンパイラの実装ではスタックはアドレスの高い方に向かって
+成長することになっている.
+
+また以下も発見:
+
+#define STARTING_FRAME_OFFSET 64
+
+これはこれまでの経験したものとは異なるプロセッサ.
+現状
+
+[0x0e00, 0x1000) をスタック領域としていて, スタートアップルーチンで sp = 0x1000
+にしているがこれがそもそも正しくない可能性はある.
+
+そこで sp = fp = 0x0e00 のようにスタートアップルーチンでセットして callx 命令
+を実行したところエラーは発生しなくなった.
+しかし callx 命令の次に実行した命令は再び callx 命令だった. ジャンプしていない(のかと思った).
+
+
+ 110:	00 30 00 86 	callx	150 <_main>
+ 114:	50 01 00 00 
+ 118:	10 16 80 5c 	mov	g0,g0
+
+だから
+
+callx 命令は 0x110 番地で実行され
+戻りアドレスは 0x118 番地
+ジャンプ先は 0x150 番地
+
+と思ったが _main の最初の命令は __main への callx 命令だからここは問題ない.
+
+
+現状シミュレータの変更なしで,
+
+static void i960_frame_this_id(frame_info* frame, void** ptr, frame_id* id)
+{
+  asm("int3");
+}
+
+が呼び出されるところまできている.
