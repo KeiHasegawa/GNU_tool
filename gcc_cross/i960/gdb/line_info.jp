@@ -1,0 +1,127 @@
+現状
+
+~/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.elf
+
+を実行すると main のブレークポイントにヒットして
+
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x80 lma 0x100
+Start address 0x100
+Transfer rate: 1024 bits in <1 sec.
+Breakpoint 1 at 0x158: file test.c, line 4.
+
+Breakpoint 1, 0x00000158 in main () at test.c:4
+4	}
+
+のようになる. 表示されるソースが test.c:4 でこれは正しくない.
+
+% cat -n test.c
+     1	int f(int a, int b)
+     2	{
+     3	  return a + b;
+     4	}
+     5	
+     6	int main()
+     7	{
+     8	  return f(5, 6);
+     9	}
+%
+
+test.c:8 が期待値.
+
+int f (int a /* 0x40 */, int b /* 0x44 */)
+{ /* 0x130 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 2 addr 0x130 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 3 addr 0x13c */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 4 addr 0x148 */
+} /* 0x150 */
+int main ()
+{ /* 0x150 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 7 addr 0x280 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 8 addr 0x288 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 9 addr 0x29c */
+} /* 0xffffffff */
+
+ここら辺が関係しているのかもしれない.
+
+(gdb) b i960_skip_prologue
+(gdb) b i960_skip_main_prologue
+(gdb) run
+...
+i960_skip_prologue のブレークポイントにヒット
+(gdb) p/x pc
+$27 = 0x150
+(gdb) finish
+Value returned is $28 = 336
+(gdb) p/x $28
+$29 = 0x150
+(gdb) c
+...
+i960_skip_main_prologue のブレークポイントにヒット
+(gdb) p/x pc
+$30 = 0x150
+(gdb) finish
+Value returned is $31 = 344
+(gdb) p/x $31
+$32 = 0x158
+(gdb)
+
+00000150 <_main>:
+ 150:	00 30 00 86 	callx	124 <___main>
+ 154:	24 01 00 00 
+ 158:	05 1e 80 5c 	mov	5,g0
+
+ここはできているっぽい.
+
+main のブレークポイントにヒットしたときにシミュレータに PC の値を問い合わせている
+ところはどうか?
+
+(gdb) b sim_resume
+(gdb) c
+...
+sim_resume のブレークポイントにヒット
+(gdb) b sim_fetch_register
+(gdb) c
+...
+sim_fetch_register のブレークポイントにヒット
+(gdb) finish
+(gdb) x/4bx buf.data()
+0x8e00de8:	0x58	0x01	0x00	0x00
+(gdb)
+
+0x158 を返せてはいる. とここでデバッグ情報が誤っていることに気付く.
+
+int main ()
+{ /* 0x150 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 7 addr 0x150 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 8 addr 0x158 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 9 addr 0x170 */
+} /* 0xffffffff */
+
+0x280 -> 0x150
+0x288 -> 0x158
+0x29c -> 0x16c
+
+% i960-elf-objdump -g test.o > test.o.objdump
+
+int f (int a /* 0x40 */, int b /* 0x44 */)
+{ /* 0x0 */
+} /* 0x0 */
+int main ()
+{ /* 0x0 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 2 addr 0x0 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 3 addr 0xc */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 4 addr 0x18 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 7 addr 0x20 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 8 addr 0x28 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 9 addr 0x3c */
+} /* 0xffffffff */
+
+これはこれで突っ込み所があるが, これからするとおそらくアセンブラはできている.
+
+リンカがやればよいことは以下:
+
+0x20 -> 0x150
+0x28 -> 0x158
+0x3c -> 0x16c
