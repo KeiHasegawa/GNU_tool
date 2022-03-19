@@ -1,0 +1,32 @@
+他のツールで .stab を生成するものを調べてみた:
+
+以下は avr-elf-gcc (10.2.0)の場合:
+~/lang/53_GNU_tool/gcc_cross/AVR/test/test002/test.s
+
+	.stabs	"f:F(0,1)=r(0,1);-32768;32767;",36,0,1,f
+...
+f:
+	.stabn	68,0,2,.LM0-.LFBB1
+...
+	ret
+	.size	f, .-f
+.Lscope1:
+	.stabs	"",36,0,0,.Lscope1-.LFBB1
+
+
+以下は d30v-elf-gcc (3.4.4)の場合:
+~/lang/53_GNU_tool/gcc_cross/D30V/test/test003/test.s
+
+	.stabs	"f:F(0,1)",36,0,2,f
+...
+f:
+	.stabn 68,0,2,.LM1-f
+.LM1:
+...
+	.size	f, .-f
+.Lscope0:
+	.stabs	"",36,0,0,.Lscope0-f
+
+i960 のコンパイラとは順番が少し違っている.
+どうやらリンカに問題があるわけではなくてコンパイラの生成する疑似命令に問題があるらしい.
+
