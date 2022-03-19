@@ -54,10 +54,10 @@ avr と d30v と比較をしてみたところ i960-elf-gcc に問題があり�
 + 	.stabs	"",36,0,0,Lscope1-_main	
 %
 
-この test2.S をコンパイルしリンクしたものは期待する行番号情報を保持したものになる.
+この test2.S をアセンブルしリンクしたものは期待する行番号情報を保持したものになる.
 
 不明なのは d30v-elf-gcc の生成結果ともだいぶ異なるものになっているという点.
-test.elf は結果的に期待したものにはなっているが, おそらくだが test.S は正しくはない.
+test.elf は結果的に期待したものにはなっているが, おそらくだが test2.S は正しくはない.
 
 d30v-elf-gcc の生成結果を参考に手作業で作成した期待値は test3.S なのだが
 これをアセンブル, リンクしダンプしたものは以下のようになっている:
@@ -116,7 +116,7 @@ int main ()
 /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 8 addr 0x28 */
 /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 9 addr 0x3c */
 
-できていない. 勿論 test3.o の objdump 出力も同じくらいできていない.
+できていないっぽい. 勿論 test3.o の objdump 出力も同じくらいできていない.
 
 だからまずは正しいと思われる test3.S のアセンブル結果の objdump 出力が何故期待通りに
 ならないのかを調査するべき.
