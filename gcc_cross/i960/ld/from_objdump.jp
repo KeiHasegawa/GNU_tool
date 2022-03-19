@@ -1,0 +1,129 @@
+i960-elf-ld の行番号が間違っている件の調査.
+
+i960-elf-objdump 視点で調べてみる.
+
+M-x gdb
+gdb --annotate=3 ./objdump.j
+
+(gdb) run -g test.elf
+...
+int main ()
+{ /* 0x150 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 7 addr 0x280 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 8 addr 0x288 */
+  /* file /home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c line 9 addr 0x29c */
+} /* 0xffffffff */
+
+gdb から再現している. main のアドレスが 0x280, 0x288, 0x29c になる原因を
+調査してみる.
+
+(gdb) b fprintf
+(gdb) run
+...
+数度 continue コマンドを実行して以下が出力された:
+
+int f (int a /* 0x40 */, int b /* 0x44 */)
+
+次にブレークポイントにヒットしたところで
+
+(gdb) up
+
+static boolean
+pr_start_block (p, addr)
+     PTR p;
+     bfd_vma addr;
+{
+...
+  print_vma (addr, ab, true, true);
+  fprintf (info->f, "{ /* %s */\n", ab);
+
+(gdb) p ab
+$1 = "0x130\000\377\277\060\030\016\b`:\n\b\360\r\016\b"
+
+それっぽい.
+
+次の fprintf の呼び出しは以下の函数から
+
+static boolean
+pr_lineno (p, filename, lineno, addr)
+     PTR p;
+     const char *filename;
+     unsigned long lineno;
+     bfd_vma addr;
+{
+  struct pr_handle *info = (struct pr_handle *) p;
+  char ab[20];
+
+  indent (info);
+  print_vma (addr, ab, true, true);
+  fprintf (info->f, "/* file %s line %lu addr %s */\n", filename, lineno, ab);
+
+(gdb) delete
+(gdb) b pr_lineno
+(gdb) c
+...
+
+Breakpoint 2, pr_lineno (p=0xbffff360, filename=0x80e0970 "/home/khasegawa/lang/53_GNU_tool/gcc_cross/i960/test/test002/test.c", lineno=7, addr=640) at prdbg.c:1825
+(gdb) p/x addr
+$4 = 0x280
+(gdb)
+
+0x280 が 7 行目に対応している. この addr をどのように計算しているか確認する.
+
+
+debug_record_line (handle=0x80dc0c8, lineno=7, addr=640) at debug.c:1005
+...
+	      l->addrs[i] = addr; ここでセットしていた
+
+    case N_SLINE:
+      if (! debug_record_line (dhandle, desc,
+			       value + info->function_start_offset))
+
+(gdb) p/x value
+$3 = 0x150
+(gdb) p/x info->function_start_offset
+$4 = 0x130
+(gdb)
+
+それっぽい. f なら何故できていたのか
+
+(gdb) b stabs.c:615
+(gdb) run
+...
+
+(gdb) p/x value
+$10 = 0x130
+(gdb) p/x info->function_start_offset
+$11 = 0x0
+(gdb) c
+...
+(gdb) p/x value
+$12 = 0x13c
+(gdb) p/x info->function_start_offset
+$13 = 0x0
+
+ということは info->function_start_offset が 0x130 に更新されることがそもそも
+間違いのように思える.
+
+
+	    if (info->sections)
+	      info->function_start_offset = value;  ここで更新していた.
+
+そして main の間違っているライン情報を出力した後再びここで 0x150 に更新していた.
+
+ということは, ...何が正しいのか.
+
+コンパイラがそもそも以下を生成すると上のようになってしまうように思える.
+
+
+parse_stab (dhandle=0x80dc0c8, handle=0x80dc100, type=36, desc=7, value=336, string=0x80dd7cd "main:F1") at stabs.c:689
+
+	.stabs	"f:F1",36,0,2,_f
+
+type=36 はおそらくこれ.
+
+しかしこのデバッグ疑似命令はこれはこれで必要らしい.
+
+リンカで対応するとすれば main の行番号を決めるときに 0x130 引いた値にする必要がある.
+なんだかこれは釈然とはしない.
+
