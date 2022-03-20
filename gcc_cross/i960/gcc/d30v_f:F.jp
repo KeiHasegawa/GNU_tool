@@ -1,0 +1,36 @@
+d30v-elf-gcc で -g オプションを指定したときに
+
+	     .stabs	"f:F(0,1)",36,0,2,f
+
+を出力する部分を調べてみる.
+
+(gdb) where
+#0  0xb7ecae4f in _IO_new_file_xsputn (f=0x839f2c0, data=0x8263764, n=8) at fileops.c:1341
+#1  0xb7ea3b92 in _IO_vfprintf_internal (s=0x839f2c0, format=0x8263887 "%s\"%s:%c", ap=0xbfffeae8 "d7&\b\241\322\067\bF") at vfprintf.c:1602
+#2  0xb7eaa47f in __fprintf (stream=0x839f2c0, format=0x8263887 "%s\"%s:%c") at fprintf.c:33
+#3  0x080ca2c1 in dbxout_symbol (decl=0xb7bc921c, local=0) at dbxout.c:2151
+#4  0x080cb283 in dbxout_begin_function (decl=0xb7bc921c) at dbxout.c:3205
+#5  0x081e0f13 in assemble_start_function (decl=0xb7bc921c, fnname=0x837d2a1 "f") at varasm.c:1115
+#6  0x081cb108 in rest_of_handle_final (insns=0xb7c52120, decl=0xb7bc921c) at ./toplev.c:2070
+#7  rest_of_compilation (decl=<optimized out>) at ./toplev.c:3611
+--Type <RET> for more, q to quit, c to continue without paging--
+#8  0x081ef849 in tree_rest_of_compilation (fndecl=<optimized out>, nested_p=<optimized out>) at tree-optimize.c:168
+#9  0x08055aba in c_expand_body_1 (fndecl=0xb7bc921c, nested_p=<optimized out>) at c-decl.c:6174
+#10 0x081f124f in cgraph_expand_function (node=<optimized out>) at cgraphunit.c:538
+#11 0x081f15e9 in cgraph_assemble_pending_functions () at cgraphunit.c:144
+#12 cgraph_assemble_pending_functions () at cgraphunit.c:130
+#13 cgraph_finalize_function (decl=0xb7bc921c, nested=false) at cgraphunit.c:225
+#14 0x0805efa7 in finish_function () at c-decl.c:6131
+#15 0x0804dbc7 in yyparse () at c-parse.y:385
+
+(gdb)
+
+int
+dbxout_symbol (tree decl, int local ATTRIBUTE_UNUSED)
+{
+...
+      fprintf (asmfile, "%s\"%s:%c", ASM_STABS_OP,
+	       IDENTIFIER_POINTER (DECL_ASSEMBLER_NAME (decl)),
+	       TREE_PUBLIC (decl) ? 'F' : 'f');
+
+ここで出している.
