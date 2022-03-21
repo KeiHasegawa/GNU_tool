@@ -1,0 +1,957 @@
+(*) gcc のインストール
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work
+% wget http://www.z80ne.com/m20/sections/download/z8kgcc/z8kgcc-jan-19-2009.tar.bz2
+% bunzip2 -c z8kgcc-jan-19-2009.tar.bz2 | tar tvf - > z8kgcc-jan-19-2009.tar.bz2.list
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% cd src/gcc
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=z8k-coff
+% make
+...
+gcc -DCROSS_COMPILE -DIN_GCC    -g  -DHAVE_CONFIG_H   -o cccp cccp.o cexp.o prefix.o mbchar.o \
+  version.o obstack.o   
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: cexp.o:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/src/gcc/./config/z8k/z8k.h:57: multiple definition of `target_flags'; cccp.o:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/src/gcc/./config/z8k/z8k.h:57: first defined here
+
+z8k.h を以下のように変更
+
+extern char *call_used_option;
+extern char *args_in_option;
+extern char *args_mlist;
+extern char *fakes_option;
+...
+extern int pmode;
+...
+extern int saved_reg_on_stack_hack;
+
+% make
+
+`if [ -f /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/src/gcc/../bison/bison ] ; then case . in /*) echo /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/src/gcc/../bison/bison -L ./../bison/ ;; *) echo /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/src/gcc/../bison/bison -L /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/src/gcc/./../bison/ ;; esac else echo bison ; fi`  -d c-parse.y -o c-parse.c
+c-parse.y:1281.19-20: エラー: $$ に対する $4 midrule `structsp' が宣言された型を持っていません
+ 1281 | 		{ $$ = start_struct (RECORD_TYPE, $2);
+      |                   ^~
+
+これはさすがに無理っぽい.
+
+structsp:
+	  STRUCT identifier '{'
+		{ $$ = start_struct (RECORD_TYPE, $2);
+		  /* Start scope of tag before parsing components.  */
+		}
+	  component_decl_list '}' maybe_attribute 
+		{ $$ = finish_struct ($<ttype>4, $5, $7); }
+
+この書き方は知らない. $<ttype>4 で何を参照しているのか.
+もしかすると古い bison では合法だったのかもしれない.
+
+% cd config
+% tar cf z8k.tar z8k
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% bunzip2 -c ../gcc-3.4.4.tar.bz2 | tar xf -
+% mv gcc-3.4.4 gcc-3.4.4.z8k-coff
+% cd gcc-3.4.4.z8k-coff/gcc/config
+% tar xf /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/src/gcc/config/z8k.tar
+% cd ../..
+
+gcc/config.gcc
+
+を以下のように修正:
+
+h8300-*-*)
+	tm_file="h8300/h8300.h dbxcoff.h h8300/coff.h"
+	use_fixproto=yes
+	;;
++z8k-*-*)
++	tm_file="z8k/z8k.h dbxcoff.h"
++	;;
+hppa*64*-*-linux* | parisc*64*-*-linux*)
+
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=z8k-coff
+% setenv SHELL /bin/sh
+% make all-gcc LANGUAGES="c c++"
+...
+gcc -c   -g -O2 -DIN_GCC -DCROSS_COMPILE  -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -pedantic -Wno-long-long    -DHAVE_CONFIG_H -DGENERATOR_FILE    -I. -I. -I. -I./. -I./../include  genconstants.c -o genconstants.o
+In file included from tm.h:4,
+                 from genconstants.c:32:
+config/z8k/z8k.h:26:9: エラー: 汚染された 'CPP_PREDEFINES' 使おうとしています
+   26 | #define CPP_PREDEFINES "-D__Z8000__ -Dz8000"
+      |         ^
+config/z8k/z8k.h:30:9: エラー: 汚染された 'NO_BUILTIN_PTRDIFF_TYPE' 使おうとしています
+   30 | #define NO_BUILTIN_PTRDIFF_TYPE
+      |         ^
+config/z8k/z8k.h:31:9: エラー: 汚染された 'NO_BUILTIN_SIZE_TYPE' 使おうとしています
+   31 | #define NO_BUILTIN_SIZE_TYPE
+      |         ^
+config/z8k/z8k.h:750:15: 警告: 関数宣言がプロトタイプではありません [-Wstrict-prototypes]
+  750 | extern struct rtx_def* z8k_function_arg();
+      |               ^~~~~~~
+config/z8k/z8k.h:786:9: エラー: 汚染された 'FUNCTION_PROLOGUE' 使おうとしています
+  786 | #define FUNCTION_PROLOGUE(FILE, SIZE) ;
+      |         ^
+config/z8k/z8k.h:812:9: エラー: 汚染された 'FUNCTION_EPILOGUE' 使おうとしています
+  812 | #define FUNCTION_EPILOGUE(FILE, SIZE) ;
+      |         ^
+config/z8k/z8k.h:1094:15: 警告: 関数宣言がプロトタイプではありません [-Wstrict-prototypes]
+ 1094 | extern struct rtx_def *legitimize_address();
+      |               ^~~~~~~
+config/z8k/z8k.h:1117:9: エラー: 汚染された 'ADDRESS_COST' 使おうとしています
+ 1117 | #define ADDRESS_COST(RTX) address_cost(RTX)
+      |         ^
+config/z8k/z8k.h:1152:9: エラー: 汚染された 'IMPLICIT_FIX_EXPR' 使おうとしています
+ 1152 | #define IMPLICIT_FIX_EXPR FIX_ROUND_EXPR
+      |         ^
+config/z8k/z8k.h:1155:9: エラー: 汚染された 'EASY_DIV_EXPR' 使おうとしています
+ 1155 | #define EASY_DIV_EXPR TRUNC_DIV_EXPR
+      |         ^
+config/z8k/z8k.h:1197:10: 致命的エラー: dbxcoff.h: そのようなファイルやディレクトリはありません
+ 1197 | #include "dbxcoff.h"
+      |          ^~~~~~~~~~~
+コンパイルを停止しました。
+make[1]: *** [Makefile:2201: genconstants.o] エラー 1
+
+poison 指定されたマクロを使用してエラーしている.
+
+また dbxcoff.h を include できなくてエラーしている.
+
+gcc/config/z8k/z8k.h を以下のように修正
+
+(1)
+
+#define CPP_PREDEFINES "-D__Z8000__ -Dz8000"
+
+を削除して以下を追加
+
+#define TARGET_CPU_CPP_BUILTINS()		\
+  do						\
+    {						\
+      builtin_define_std ("Z8000");		\
+      builtin_define ("z8000");			\
+    }						\
+  while (0)
+
+(2)
+
+#define NO_BUILTIN_PTRDIFF_TYPE
+#define NO_BUILTIN_SIZE_TYPE
+
+を削除
+
+(3) 以下のようにコンパイルアウト
+
+// #define FUNCTION_PROLOGUE(FILE, SIZE) ; 
+
+// #define FUNCTION_EPILOGUE(FILE, SIZE)	;
+
+(4) 以下のようにコンパイルアウト
+
+// #define ADDRESS_COST(RTX) address_cost(RTX)
+
+z8k.c に以下を追加:
+
+#undef TARGET_ADDRESS_COST
+#define TARGET_ADDRESS_COST address_cost
+
+struct gcc_target targetm = TARGET_INITIALIZER;
+
+(5) 以下のようにコンパイルアウト
+
+// #define IMPLICIT_FIX_EXPR FIX_ROUND_EXPR
+
+// #define EASY_DIV_EXPR TRUNC_DIV_EXPR
+
+// #include "dbxcoff.h"
+
+(6) 以下のようにコンパイルアウト
+
+#if 0
+#define CONST_COSTS(RTX,CODE,OUTER_CODE) \
+  case CONST_INT:						\
+       if (CONST_OK_FOR_LETTER_P(INTVAL(RTX), 'I')) return 0;   \
+       if (CONST_OK_FOR_LETTER_P(INTVAL(RTX), 'L')) return 1;   \
+   return 2;                                                    \
+  case CONST_DOUBLE:						\
+  return 8;							\
+  case SYMBOL_REF:						\
+  case LABEL_REF:						\
+    return 30;							\
+  case CONST:  							\
+    return 2;
+#endif
+
+対応する TARGET_XXX を発見できず.
+
+(7) 以下のようにコンパイルアウト
+
+#if 0
+#define RTX_COSTS(X,CODE,OUTER_CODE)			\
+  case PLUS:						\
+  case MINUS:						\
+    break;						\
+  case MULT:						\
+  return COSTS_N_INSNS (10);				\
+  case DIV:						\
+  case UDIV:						\
+  case MOD:						\
+  case UMOD:						\
+      return COSTS_N_INSNS (TARGET_FAST ? 17 : 2);
+#endif
+
+z8k.c に以下を追加
+
+bool z8k_rtx_costs(rtx x, int code, int outer_code, int *total)
+{
+  switch (code) {
+  case PLUS:
+  case MINUS:
+    return false;
+  case MULT:
+    *total = COSTS_N_INSNS (10);
+    return true;
+  case DIV:
+  case UDIV:
+  case MOD:
+  case UMOD:
+    *total = COSTS_N_INSNS (TARGET_FAST ? 17 : 2);
+    return true;
+  }
+}
+
+#undef TARGET_RTX_COSTS
+#define TARGET_RTX_COSTS z8k_rtx_costs
+
+(8) 以下のようにコンパイルアウト
+
+#if 0
+#define ASM_FILE_START(STREAM) 							\
+  asm_file_start (STREAM, f_options, sizeof f_options / sizeof f_options[0], \
+		     W_options, sizeof W_options / sizeof W_options[0]); 	
+#endif
+
+以下を z8k.c に追加
+
+
+void z8k_file_start()
+{
+  asm_file_start (asm_out_file,
+		  f_options, sizeof f_options / sizeof f_options[0],
+		  W_options, sizeof W_options / sizeof W_options[0]);
+}
+
+#undef TARGET_ASM_FILE_START
+#define TARGET_ASM_FILE_START z8k_file_start
+
+(9) 以下のようにコンパイルアウト
+
+#if 0
+#define ASM_FILE_END(file) asm_file_end(file)
+#endif
+
+以下を z8k.c に追加
+
+void z8k_file_end()
+{
+  asm_file_end(asm_out_file);
+}
+
+#undef TARGET_ASM_FILE_END
+#define TARGET_ASM_FILE_END z8k_file_end
+
+(10) 以下のようにコンパイルアウト
+
+#if 0
+#define ASM_OUTPUT_CONSTRUCTOR(FILE,NAME)	\
+   do { ctors_section();  ASM_OUTPUT_PTR(FILE, NAME); } while (0)
+
+#define ASM_OUTPUT_DESTRUCTOR(FILE,NAME)	\
+   do {  dtors_section(); ASM_OUTPUT_PTR(FILE, NAME); } while (0)
+#endif
+
+
+void z8k_constructor(rtx x, int)
+{
+  ctors_section();
+  auto s = XSTR(x, 0);
+  ASM_OUTPUT_PTR(asm_out_file, s);
+}
+
+#undef TARGET_ASM_CONSTRUCTOR
+#define TARGET_ASM_CONSTRUCTOR z8k_asm_constructor
+
+void z8k_destructor(rtx x, int)
+{
+  dtors_section();
+  auto s = XSTR(x, 0);
+  ASM_OUTPUT_PTR(asm_out_file, s);
+}
+
+#undef TARGET_ASM_DESTRUCTOR
+#define TARGET_ASM_DESTRUCTOR z8k_asm_destructor
+
+(11) 以下のようにコンパイルアウト
+#if 0
+#define ASM_GLOBALIZE_LABEL(FILE,NAME)	\
+  do { fputs ("\tglobal\t", FILE); assemble_name (FILE, NAME); fputs ("\n", FILE);} while (0)
+#endif
+
+z8k.c に以下を追加
+
+void z8k_globalize_label(FILE* fp, const char* label)
+{
+  fputs ("\tglobal\t", fp);
+  assemble_name(fp, label);
+  fputs ("\n", fp);
+}
+
+#undef TARGET_ASM_GLOBALIZE_LABEL
+#define TARGET_ASM_GLOBALIZE_LABEL z8k_globalize_label
+
+(12) 以下のようにコンパイルアウト
+
+#if 0
+#define ASM_OUTPUT_INTERNAL_LABEL(FILE,PREFIX,NUM)	\
+    fprintf (FILE, "E%s%d:\n", PREFIX, NUM)
+#endif
+
+z8k.c に以下を追加
+
+void z8k_internal_label(FILE* fp, const char* prefix, unsigned long num)
+{
+  fprintf (fp, "E%s%d:\n", prefix, num)
+}
+
+#undef TARGET_ASM_INTERNAL_LABEL
+#define TARGET_ASM_INTERNAL_LABEL z8k_internal_label
+
+(13) 以下のようにコンパイルアウト
+#if 0
+#define ASM_OPEN_PAREN "("
+#define ASM_CLOSE_PAREN ")"
+#endif
+
+% make all-gcc LANGUAGES="c c++"
+...
+./genconstants ./config/z8k/z8k.md > tmp-constants.h
+./config/z8k/z8k.md:115: unknown mode `PSI'
+./config/z8k/z8k.md:115: following context is `0 "r_ir_da_x_operand" "rQR"))]'
+
+gcc/config/z8k/z8k.md から以下を削除
+
+(define_insn "tstpsi_"
+  [(set (cc0)
+	(match_operand:PSI 0 "r_ir_da_x_operand" "rQR"))]
+  ""
+  "testl 	%S0"
+  [(set_attr "cond" "logcc")])
+
+(define_expand "tstpsi"
+  [(set (cc0) (match_operand:PSI 0 "r_ir_da_operand" "rQR"))]
+  ""
+  "operands[0] = force_reg (PSImode, operands[0]);")
+
+% make all-gcc LANGUAGES="c c++"
+...
+./genconstants ./config/z8k/z8k.md > tmp-constants.h
+./config/z8k/z8k.md:228: unknown mode `PSI'
+./config/z8k/z8k.md:228: following context is `0 "r_im_ir_da_x_operand" "r,iQR")'
+gcc/config/z8k/z8k.md から以下を削除
+
+(define_insn ""
+  [(set (cc0)
+	(compare (match_operand:PSI 0 "r_im_ir_da_x_operand" "r,iQR")
+		 (match_operand:PSI 1 "r_im_ir_da_x_operand" "rQRi,r")))]
+  "r_operand(operands[0], PSImode) || r_operand(operands[1], PSImode)"
+  "@
+	cpl	%S0,%S1
+	cpl	%S1,%S0"
+  [(set_attr "cond" "setcc,setrevcc")])
+
+
+(define_expand "cmppsi"
+  [ (set (cc0)
+	(compare (match_operand:PSI 0 "r_im_ir_da_x_operand" "")
+		 (match_operand:PSI 1 "r_im_ir_da_x_operand" "")))]
+  ""
+ "{
+   if (!r_operand(operands[0], PSImode) || r_operand(operands[1], PSImode)) 
+     {
+       operands[0] = force_reg (PSImode, operands[0]);
+     }
+ }")
+
+% make all-gcc LANGUAGES="c c++"
+...
+./genconstants ./config/z8k/z8k.md > tmp-constants.h
+./config/z8k/z8k.md:307: unknown mode `PSI'
+./config/z8k/z8k.md:307: following context is `0 "r_ir_da_x_ba_bx_prd_operand" "=r,r,r,r,rQR,QRS,<")'
+
+
+gcc/config/z8k/z8k.md から以下を削除
+
+;; PSI mode
+
+(define_insn "movpsi_matcher"
+  [(set (match_operand:PSI 0 "r_ir_da_x_ba_bx_prd_operand" "=r,r,r,r,rQR,QRS,<")
+	(match_operand:PSI 1 "r_im_ir_da_x_ba_bx_poi_operand" "I,L,ri,QRS,>,r,rQR"))]
+  "moveok(operands, PSImode)"
+  "@
+	xor	%I0,%I0\;ld	%H0,%I0
+	xor	%H0,%H0\;ldk	%I0,%H1
+	ldl	%S0,%S1
+	$ldl	%S0,%S1
+	popl	%S0,@%1
+	$ldl	%S0,%S1
+	pushl	@%0,%S1 !!CPG3 xxx"
+  [(set_attr "cond" "trashcc,trashcc,notrashcc,notrashcc,notrashcc,notrashcc,notrashcc")
+   (set_attr "length" "6,6,6,6,2,6,2")
+  ])
+
+(define_expand "movpsi"
+  [(set (match_operand:PSI 0 "r_ir_da_x_ba_bx_operand" "")
+	(match_operand:PSI 1 "r_im_ir_da_x_ba_bx_operand" ""))]
+  ""
+  "
+  if (!reload_in_progress && !reload_completed && !moveok(operands, PSImode))
+    operands[1] = copy_to_mode_reg (PSImode, operands[1]);
+")
+ 
+(define_insn ""
+  [(set (match_operand:PSI 0 "r_operand" "=r")
+	(plus:PSI (match_operand:PSI 1 "r_operand" "0")
+		  (truncate:PSI (match_operand:SI 2 "r_im_operand" "r"))))]
+  ""
+  "add	%I0,%I2"
+  [(set_attr "cond" "logcc")])
+			   
+(define_insn "addpsi3_"
+  [(set (match_operand:PSI 0 "r_operand"           "=r,r,r,r,r,r,r,r")
+	(plus:PSI (match_operand:PSI 1 "r_ir_da_x_operand" "%0,0,0,0,0,0,0,0")
+		  (match_operand:PSI 2 "r_im_ir_da_x_operand" "J,K,n,rQRi,r,r,r,r")))]
+  "r_operand (operands[0], PSImode)"
+  "*
+{
+  switch (which_alternative)
+    {
+    case 0: return \"inc	%I0,%H2 ! psi2\";
+    case 1: return \"dec	%I0,%N2 ! psi2\";
+    case 2: 
+      /* This can happen when the fp has been eliminated */
+      if (INTVAL(operands[2]) == 0) return \"\";
+      return \"add	%I0,%H2 !psi2\";
+    case 3: return \"addl	%S0,%S2 !psi2\";
+    case 4: return \"ldl	%S0,%S1\;inc	%I0,%H2 !psi2\";
+    case 5: return \"ldl	%S0,%S1\;dec	%I0,%N2 !psi2\";
+    case 6:
+      if (REGNO(operands[0]) == REGNO(operands[1]))
+	{
+	  return \"addl	%S0,%S2 ! psi2 - a\";
+	}
+      if (REGNO(operands[0]) == REGNO(operands[2]))
+	{
+	  return \"addl	%S0,%S1 ! psi2 - b\";
+	}
+      return \"ldl	%S0,%S2\;addl	%S0,%S1 ! psi2 - c\";
+    case 7:
+      /* r = r + thing */
+      if (REGNO(operands[1]) == REGNO(operands[0])) 
+	{
+	  /* Rn += thing */
+	  saved_reg_on_stack_hack =1;
+	  return \"pushl @%X0,rr0\;ldl	rr0,%S2\;addl	%S0,rr0\;popl	rr0,@%X0 ! reg alert %S0=%S1+%S2\";
+	}
+      return \"ldl	%S0,%S2\;addl	%S0,%S1\";
+    }
+}"
+  [(set_attr "cond" "trashcc")])
+
+(define_expand "addpsi3"
+  [(set (match_operand:PSI 0 "r_operand" "")
+	(plus:PSI (match_operand:PSI 1 "r_im_ir_da_x_operand" "")	
+		  (match_operand:PSI 2 "r_im_ir_da_x_operand" "")))]
+  ""
+  "")
+
+
+(define_insn "subpsi3_"
+  [(set (match_operand:PSI 0 "r_operand" "=r,r,r,r,r,r,r,r")
+	(minus:PSI (match_operand:PSI 1 "r_im_ir_da_x_operand" "0,0,0,0,0,0,0,0")
+		   (match_operand:PSI 2 "r_im_ir_da_x_operand" "J,K,n,rQRi,r,r,r,r")))]
+  ""
+  "*
+{
+  switch (which_alternative)
+    {
+    case 0: return \"dec	%I0,%H2 ! psi2\";
+    case 1: return \"inc	%I0,%N2 ! psi2\";
+    case 2: 
+      /* This can happen when the fp has been eliminated */
+      if (INTVAL(operands[2]) == 0) return \"\";
+      return \"sub	%I0,%H2 !psi2\";
+    case 3: return \"subl	%S0,%S2 !psi2\";
+    case 4: return \"ldl	%S0,%S1\;dec	%I0,%H2 !psi2\";
+    case 5: return \"ldl	%S0,%S1\;inc	%I0,%N2 !psi2\";
+    case 6:
+      if (REGNO(operands[0]) == REGNO(operands[1]))
+	{
+	  return \"subl	%S0,%S2 ! psi2 - a\";
+	}
+      if (REGNO(operands[0]) == REGNO(operands[2]))
+	{
+	  return \"subl	%S0,%S1 ! psi2 - b\";
+	}
+      return \"ldl	%S0,%S2\;subl	%S0,%S1 ! psi2 - c\";
+    case 7:
+      /* r = r - thing */
+      if (REGNO(operands[1]) == REGNO(operands[0])) 
+	{
+	  /* Rn -= thing */
+	  saved_reg_on_stack_hack =1;
+	  return \"pushl @%X0,rr0\;ldl	rr0,%S2\;subl	%S0,rr0\;popl	rr0,@%X0 ! reg alert %S0=%S1+%S2\";
+	}
+      return \"ldl	%S0,%S2\;subl	%S0,%S1\";
+    }
+}"
+  [(set_attr "cond" "trashcc")])
+
+
+(define_expand "subpsi3"
+  [(set (match_operand:PSI 0 "register_operand" "")
+	(minus:PSI (match_operand:PSI 1 "r_im_ir_da_x_operand" "")	
+  		   (match_operand:PSI 2 "r_im_ir_da_x_operand" "")))]
+  ""
+  "")
+
+% make all-gcc LANGUAGES="c c++"
+...
+./genconstants ./config/z8k/z8k.md > tmp-constants.h
+./config/z8k/z8k.md:499: unknown mode `PSI'
+./config/z8k/z8k.md:499: following context is `(match_dup 0) '
+
+gcc/config/z8k/z8k.md を以下のように修正 PSI -> SI のようにする.
+
+;; BLK moves
+
+(define_insn "ldirb_z8001"
+  [(parallel [(set (mem:BLK (match_operand 0 "r_operand" "+v"))
+		   (mem:BLK (match_operand 1 "r_operand" "+v")))
+	      (set (match_dup 0) (plus:SI (match_dup 0) 
+					   (zero_extend:SI (match_operand 2 "r_operand" "+r"))))
+	      (set (match_dup 1) (plus:SI (match_dup 1) 
+					   (zero_extend:SI (match_dup 2))))
+	      (set (match_dup 2) (const_int 0))])]
+
+
+以下を削除
+
+(define_insn "truncsipsi2"
+  [(set (match_operand:PSI 0 "general_operand" "=g")
+	(truncate:PSI (match_operand:SI 1 "general_operand" "0")))]
+  ""
+  "!truncsipsi2 %0=%1")
+
+以下を削除
+
+(define_insn "zero_extendpsisi2"
+  [(set (match_operand:SI 0 "general_operand" "=g")
+	(zero_extend:SI (match_operand:PSI 1 "general_operand" "0")))]
+  ""
+  "! zero ext %S0"
+  [(set_attr "cond" "notrashcc")])
+
+以下を削除
+
+(define_insn "extendpsisi2"
+  [(set (match_operand:SI 0 "general_operand" "=g")
+	(sign_extend:SI (match_operand:PSI 1 "general_operand" "0")))]
+  ""
+  "! extend psi %S0"       
+  [(set_attr "cond" "notrashcc")])
+
+いっぱい削除 & PSI -> SI に置換
+
+% make all-gcc LANGUAGES="c c++"
+...
+gcc -c   -g -O2 -DIN_GCC -DCROSS_COMPILE  -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -pedantic -Wno-long-long    -DHAVE_CONFIG_H    -I. -I. -I. -I./. -I./../include  calls.c -o calls.o
+...
+calls.c:2425:77: エラー: マクロ "INIT_CUMULATIVE_ARGS" に引数が 5 渡されましたが、4 しか受け取りません
+ 2425 | CUMULATIVE_ARGS (args_so_far, funtype, NULL_RTX, fndecl, n_named_args);
+
+gcc/config/z8k/z8k.h を以下のように修正
+
+#define INIT_CUMULATIVE_ARGS(CUM,FNTYPE,LIBNAME,INDIRECT,ARGS)	\
+  (CUM) = 7 ;
+
+% make all-gcc LANGUAGES="c c++"
+...
+gcc -c   -g -O2 -DIN_GCC -DCROSS_COMPILE  -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -pedantic -Wno-long-long    -DHAVE_CONFIG_H    -I. -I. -I. -I./. -I./../include  final.c -o final.o
+...
+final.c:838:36: エラー: expected expression before ‘||’ token
+  838 |    if (JUMP_TABLES_IN_TEXT_SECTION || !HAVE_READONLY_DATA_SECTION)
+      |                                    ^~
+
+void
+shorten_branches (rtx first ATTRIBUTE_UNUSED)
+{
+...
+	  if (JUMP_TABLES_IN_TEXT_SECTION || !HAVE_READONLY_DATA_SECTION)
+
+% cd gcc
+% gcc -E   -g -O2 -DIN_GCC -DCROSS_COMPILE  -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -pedantic -Wno-long-long    -DHAVE_CONFIG_H    -I. -I. -I. -I./. -I./../include  final.c -o final.i
+
+マクロ展開の結果は以下
+
+   if ( || !1)
+
+マクロ JUMP_TABLES_IN_TEXT_SECTION が空に define されているのが間違い.
+
+gcc/config/z8k/z8k.h を以下のように修正
+
+// #define JUMP_TABLES_IN_TEXT_SECTION
+
+% cd ..
+% make all-gcc LANGUAGES="c c++"
+...
+gcc   -g -O2 -DIN_GCC -DCROSS_COMPILE  -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -pedantic -Wno-long-long    -DHAVE_CONFIG_H    -I. -I. -I. -I./. -I./../include  -c insn-emit.c \
+  -o insn-emit.o
+...
+insn-emit.c:2122:19: エラー: 関数 ‘gen_call’ への引数が多すぎます
+
+
+gcc/config/z8k/z8k.md を以下のように修正
+
+  emit_call_insn (gen_call_value (operands[0], const0_rtx, NULL));
+
+% make all-gcc LANGUAGES="c c++"
+...
+gcc   -g -O2 -DIN_GCC -DCROSS_COMPILE  -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -pedantic -Wno-long-long    -DHAVE_CONFIG_H    -I. -I. -I. -I./. -I./../include  -c insn-output.c \
+  -o insn-output.o
+...
+insn-output.c:288:6: エラー: ‘warn_cpg’ が宣言されていません (この関数内での最初の使用)
+
+z8k.h に以下を追加
+
+extern bool warn_cpg;
+
+z8k.c に以下を追加
+
+bool warn_cpg = true;
+
+% make all-gcc LANGUAGES="c c++"
+...
+gcc   -g -O2 -DIN_GCC -DCROSS_COMPILE  -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -pedantic -Wno-long-long    -DHAVE_CONFIG_H    -I. -I. -I. -I./. -I./../include  -c insn-output.c \
+  -o insn-output.o
+...
+insn-output.c:439:5: エラー: ‘r_ir_da_x_operand’ がここでは宣言されていません (関数内ではない)
+  439 |     r_ir_da_x_operand,
+      |     ^~~~~~~~~~~~~~~~~
+
+z8k.h に以下を追加
+
+extern int r_ir_da_x_operand();
+
+gcc   -g -O2 -DIN_GCC -DCROSS_COMPILE  -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -pedantic -Wno-long-long    -DHAVE_CONFIG_H    -I. -I. -I. -I./. -I./../include  -c insn-output.c \
+  -o insn-output.o
+...
+insn-output.c:481:5: エラー: ‘r_im_ir_da_x_operand’ undeclared here (not in a function); did you mean ‘r_ir_da_x_operand’?
+
+z8k.h に以下を追加
+
+extern int r_ir_da_x_operand();
+
+extern int r_im_ir_da_x_operand();
+
+extern int r_ir_da_x_ba_bx_prd_operand();
+
+extern int r_im_ir_da_x_ba_bx_poi_operand();
+
+extern int r_ir_da_x_ba_bx_operand()
+
+extern int r_im_ir_da_x_ba_bx_operand();
+
+extern int r_ir_da_x_operand_for_di();
+
+extern int r_operand();
+
+extern int im_operand();
+
+extern int r_ir_da_x_ba_operand_for_di();
+
+extern int r_im_operand();
+
+extern int r_im_ir_da_operand();
+
+extern int immediate15_operand();
+
+extern int com_power_two_operand();
+
+extern int not_subreg_register_operand();
+
+extern int power_two_operand();
+
+extern int ir_da_x_operand();
+
+extern int symbol_ref();
+
+% make all-gcc LANGUAGES="c c++"
+...
+./genrecog ./config/z8k/z8k.md > tmp-recog.c
+...
+./config/z8k/z8k.md:746: `*z8k.md:746' matches `*z8k.md:734'
+./config/z8k/z8k.md:734: previous definition of `*z8k.md:734'
+
+これは z8k.md を正しく修正できなかったらしい.
+
+(define_insn ""
+  [(set (match_operand:SI 0 "r_operand" "=r")
+       (plus:SI (match_operand:SI 1 "symbol_ref" "i")
+		 (match_operand:SI 2 "r_operand" "v")))]
+  ""
+  "lda	%S0,%A1(%I2) !i8")
+
+のような単独の define_insn "" を削除
+
+(define_insn ""
+  [(set (match_operand:SI 0 "r_operand" "=r")
+       (plus:SI (match_operand:SI 2 "r_operand" "v")
+		  (match_operand:SI 1 "symbol_ref" "i")))]
+  ""
+  "lda	%S0,%A1(%I2) !i10")
+
+も削除した. ここいら辺は全く自信がない.
+
+
+% make all-gcc LANGUAGES="c c++"
+...
+./config/z8k/z8k.md:1986: mode mismatch in set: HImode vs SImode
+
+以下のように修正:
+
+(define_insn "decrement_and_branch_until_zero"
+  [(set (pc)
+	(if_then_else (ne (plus:HI (match_operand:HI 0 "r_operand" "+!r,!*m")
+				   (const_int -1))
+			  (const_int 0))
+		      (label_ref (match_operand 1 "" ""))
+		      (pc)))
+   (set (match_dup 0)
+	(plus:HI (match_dup 0) (const_int -1)))]
+
+% make all-gcc LANGUAGES="c c++"
+...
+gcc -c   -g -O2 -DIN_GCC -DCROSS_COMPILE  -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -pedantic -Wno-long-long    -DHAVE_CONFIG_H    -I. -I. -I. -I./. -I./../include  postreload.c -o postreload.o
+...
+postreload.c: 関数 ‘reload_cse_simplify_set’ 内:
+postreload.c:264:45: エラー: マクロ "REGISTER_MOVE_COST" に引数が 3 渡されましたが、2 しか受け取りません
+  264 |        REGNO_REG_CLASS (REGNO (src)), dclass);
+      |                                             ^
+In file included from tm.h:4,
+                 from postreload.c:25:
+config/z8k/z8k.h:597: 備考: macro "REGISTER_MOVE_COST" defined here
+  597 | #define REGISTER_MOVE_COST(CLASS1, CLASS2)  ((CLASS1) == (CLASS2) ? 2: 5)
+
+以下のように z8k.h を修正:
+
+#define REGISTER_MOVE_COST(MODE, CLASS1, CLASS2)  ((CLASS1) == (CLASS2) ? 2: 5)
+
+% make all-gcc LANGUAGES="c c++"
+...
+config/z8k/z8k.h:1323:39: エラー: 列挙型 ‘in_ctors’ の再宣言です
+
+z8k.h を以下のように修正.
+
+#define EXTRA_SECTIONS	readonly_data
+
+% make all-gcc LANGUAGES="c c++"
+...
+gcc -c   -g -O2 -DIN_GCC -DCROSS_COMPILE  -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -pedantic -Wno-long-long    -DHAVE_CONFIG_H    -I. -I. -I. -I./. -I./../include  varasm.c -o varasm.o
+...
+varasm.c: トップレベル:
+varasm.c:943:1: エラー: ‘dtors_section’ が再定義されました
+config/z8k/z8k.h:1336:1: 備考: 前の ‘dtors_section’ の宣言はここです
+ 1336 | dtors_section()           \
+      | ^~~~~~~~~~~~~
+
+以下のようにコンパイルアウトした
+
+#if 0
+#define EXTRA_SECTION_FUNCTIONS					\
+void							     \
+ctors_section() 					     \
+...
+						\
+#endif
+
+% make all-gcc LANGUAGES="c c++"
+...
+gcc -c   -g -O2 -DIN_GCC -DCROSS_COMPILE  -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -pedantic -Wno-long-long    -DHAVE_CONFIG_H    -I. -I. -I. -I./. -I./../include  \
+	./config/z8k/z8k.c -o z8k.o
+...
+./machmode.h:92:37: エラー: expected ‘=’, ‘,’, ‘;’, ‘asm’ or ‘__attribute__’ before ‘mode_mask_array’
+   92 | extern const unsigned HOST_WIDE_INT mode_mask_array[NUM_MACHINE_MODES];
+
+z8k.c に以下を追加:
+
+#include "hwint.h"
+
+% make all-gcc LANGUAGES="c c++"
+...
+gcc -c   -g -O2 -DIN_GCC -DCROSS_COMPILE  -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -pedantic -Wno-long-long    -DHAVE_CONFIG_H    -I. -I. -I. -I./. -I./../include  \
+	./config/z8k/z8k.c -o z8k.o
+In file included from ./rtl.h:28,
+                 from ./config/z8k/z8k.c:26:
+./input.h:27:24: エラー: expected declaration specifiers or ‘...’ before ‘(’ token
+   27 | struct location_s GTY (())
+
+
+% cd gcc
+% gcc -E   -g -O2 -DIN_GCC -DCROSS_COMPILE  -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -pedantic -Wno-long-long    -DHAVE_CONFIG_H    -I. -I. -I. -I./. -I./../include  ./config/z8k/z8k.c > z8k.i
+% cd ..
+
+以下を z8k.c に追加
+
+#include "coretypes.h"
+
+% make all-gcc LANGUAGES="c c++"
+...
+gcc -c   -g -O2 -DIN_GCC -DCROSS_COMPILE  -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -pedantic -Wno-long-long    -DHAVE_CONFIG_H    -I. -I. -I. -I./. -I./../include  \
+	./config/z8k/z8k.c -o z8k.o
+
+./rtl.h:143:3: エラー: expected specifier-qualifier-list before ‘ENUM_BITFIELD’
+  143 |   ENUM_BITFIELD(rtx_code) code: 16;
+      |   ^~~~~~~~~~~~~
+
+以下を z8k.c に追加
+
+#include "hwint.h"
++#include "system.h"
+#include "rtl.h"
+
+% make all-gcc LANGUAGES="c c++"
+...
+gcc -c   -g -O2 -DIN_GCC -DCROSS_COMPILE  -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -pedantic -Wno-long-long    -DHAVE_CONFIG_H    -I. -I. -I. -I./. -I./../include  \
+	./config/z8k/z8k.c -o z8k.o
+
+In file included from ./regs.h:24,
+                 from ./config/z8k/z8k.c:29:
+./hard-reg-set.h:395:24: エラー: ‘FIRST_PSEUDO_REGISTER’ undeclared here (not in a function); did you mean ‘FIRST_VIRTUAL_REGISTER’?
+  395 | extern char fixed_regs[FIRST_PSEUDO_REGISTER];
+
+以下を z8k.c に追加
+
+#include "coretypes.h"
++#include "tm.h"
+#include "hwint.h"
+
+% make all-gcc LANGUAGES="c c++"
+...
+gcc -c   -g -O2 -DIN_GCC -DCROSS_COMPILE  -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -pedantic -Wno-long-long    -DHAVE_CONFIG_H    -I. -I. -I. -I./. -I./../include  \
+	./config/z8k/z8k.c -o z8k.o
+...
+./config/z8k/z8k.c: 関数 ‘override_options’ 内:
+./config/z8k/z8k.c:740:29: エラー: 汚染された 'strdup' 使おうとしています
+...
+./config/z8k/z8k.c:976:7: エラー: 汚染された 'ASM_GLOBALIZE_LABEL' 使おうとしています
+  976 |       ASM_GLOBALIZE_LABEL (file, name);
+
+
+gcc-3.4.4.z8k-coff/gcc/system.h
+
+#undef calloc
+#undef strdup
+ #pragma GCC poison calloc strdup
+
+poison 指定されている.
+
+strdup を xstrdup に変更.
+
+また以下のように変更
+#if 0      
+      ASM_GLOBALIZE_LABEL (file, name);
+#else      
+      default_globalize_label(file, name);
+#endif      
+
+./config/z8k/z8k.c: 関数 ‘output_options’ 内:
+./config/z8k/z8k.c:1894:7: エラー: ‘profile_block_flag’ undeclared (first use in
+
+以下を追加
+
+int profile_block_flag;
+
+
+./config/z8k/z8k.c: 関数 ‘asm_file_start’ 内:
+./config/z8k/z8k.c:1931:16: エラー: ‘main_input_filename’ と型が競合しています
+ 1931 |   extern char *main_input_filename;
+      |                ^~~~~~~~~~~~~~~~~~~
+In file included from ./rtl.h:28,
+                 from ./config/z8k/z8k.c:29:
+./input.h:44:20: 備考: 前の ‘main_input_filename’ の宣言はここです
+   44 | extern const char *main_input_filename;
+
+以下のように修正
+#if 0  
+  extern char *main_input_filename;
+#endif  
+
+
+./config/z8k/z8k.c: 関数 ‘asm_file_start’ 内:
+./input.h:48:39: エラー: expected ‘)’ before ‘.’ token
+   48 | #define input_filename (input_location.file)
+      |                                       ^
+./config/z8k/z8k.c:1936:16: 備考: in expansion of macro ‘input_filename’
+ 1936 |   extern char *input_filename;
+      |                ^~~~~~~~~~~~~~
+
+以下のように修正
+
+#if 0  
+  extern char *input_filename;
+#endif
+
+
+./config/z8k/z8k.c:2037:34: エラー: 汚染された 'malloc' 使おうとしています
+
+malloc を xmalloc に修正
+
+
+./config/z8k/z8k.c:2325:28: エラー: ‘gen_addpsi3’ undeclared (first use in this
+
+gen_addsi3 に修正
+
+
+./config/z8k/z8k.c: 関数 ‘z8k_expand_prologue’ 内:
+./config/z8k/z8k.c:2339:28: エラー: ‘current_function_pretend_args_size’ が宣言されていません (この関数内での最初の使用)
+
+以下を追加
+
+int current_function_pretend_args_size;
+
+
+
+./target-def.h:267:31: エラー: ‘default_expand_builtin’ undeclared here (not in a function); did you mean ‘default_expand_builtin_saveregs’?
+  267 | #define TARGET_EXPAND_BUILTIN default_expand_builtin
+
+紆余曲折あったがリンクでエラーするところまできている.
+
+
+z8k.c に追加:
+
+int pmode;
+
+int* insn_addresses;
+
+int saved_reg_on_stack_hack;
+
+そして詳細は省くが cc1 等リンクが完了している.
+
+しかし libgcc のビルドでコンパイラの内部エラーが発生している.
+
+cc1 のビルドを通すために相当修正したからある意味必然なのだと思う.
+今回の作業はここまで.
+
+試しに
+
+int f(int a, int b)
+{
+  return a + b;
+}
+
+を -g なし -g ありでコンパイルしてみたところそれっぽいコードが生成されている.
