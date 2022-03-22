@@ -1,0 +1,69 @@
+現状
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.z8k-coff/gcc/a.coff
+
+を動作させると main のブレークポイントをセットできていない.
+
+(z8k-coff-gdb) b main
+
+とすると main のアドレス 0x12c は合っているのだが
+
+Breakpoint 1 at 0x12c: file start.S, line 7.
+
+Breakpoint 1, 0x0000012c in main () at start.S:7
+
+のように start.S の 7 行目が対応しているらしい.
+さてこれはどのツールが間違っているのやら.
+
+% z8k-coff-addr2line -e a.coff -a 0x12c
+0x0000012c
+start.S:7
+
+少なくとも addr2line も 0x12c は start.S:7 だとしている.
+
+以下は a.o.objdump の抜粋
+
+int _f (int _a /* 0xfffffffe */, int _b /* 0xfffffffc */)
+{ /* 0x0 */
+  /* file fake line 3 addr 0xe */
+  /* file fake line 4 addr 0x18 */
+} /* 0x20 */
+int _main ()
+{ /* 0x20 */
+  /* file fake line 8 addr 0x24 */
+  /* file fake line 9 addr 0x2e */
+} /* 0x36 */
+
+% z8k-coff-addr2line -e a.o -a 0x20
+0x00000020
+fake:7
+%
+
+これはコンパイラが出していないせいのようにも思える. fake の部分には
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.z8k-coff/gcc/a.c
+
+がくるのが期待値.
+
+	.file "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.z8k-coff/gcc/a.c"
+
+を入れたが, 途中で切り詰められている.
+
+	.file "a.c"
+
+のようにしてみた.
+
+a.o.objdump は以下のようになった.
+
+int _f (int _a /* 0xfffffffe */, int _b /* 0xfffffffc */)
+{ /* 0x0 */
+  /* file a.c line 3 addr 0xe */
+  /* file a.c line 4 addr 0x18 */
+} /* 0x20 */
+int _main ()
+{ /* 0x20 */
+  /* file a.c line 8 addr 0x24 */
+  /* file a.c line 9 addr 0x2e */
+} /* 0x36 */
+
+しかし a.objdump に上のような情報はない. これはおそらくリンカもできていないということだろうか.
