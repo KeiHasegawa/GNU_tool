@@ -115,4 +115,27 @@ Z8000 ABI
 
 	In this case, `r6' is not used.
 
+	`long' return value is set to `r2' and `r3'.
 
+	For a `long long' arguments, 4 registers are used.
+
+	`long long' return value is set to `r2', `r3', `r4' and `r5'.
+
+(*7) Floating point number argument and return value
+
+        sizeof(float) = 4
+	sizeof(double) = 8
+	sizeof(long double) = 8
+
+	For `float' same with `long'. For `double' and `long double'
+	same with `long long'.
+
+(*8) Structure argument and return value
+
+        When calling the function which takes structure type argument,
+	if its size is less than or equal to 4 bytes, r6 and r7 registers
+	are used for passing the arugment. Otherwise, arguments are
+	passed by using stack.
+	
+	When calling the function which returns structure type,
+	the address of the return value are is set to r7.
