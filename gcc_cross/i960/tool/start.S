@@ -1,5 +1,15 @@
 	.text
 start:
+	ldconst	_bss_start, g4
+	ldconst	_bss_end, g5
+	mov	0, g6
+.L1:
+	cmpi	g4, g5
+	be	.L2
+	stob	g6,(g4)
+	addo	g4, 1, g4
+	b	.L1
+.L2:
 	ldconst	stack, g4
 	mov	g4, sp
 	mov	g4, fp
@@ -12,15 +22,12 @@ ___main:
 
 	.global _printf
 _printf:
-	.word	0xbadbeef1
 	ret
 
 	.global _puts
 _puts:
-	.word	0xbadbeef2
 	ret
 	
 	.global _putchar
 _putchar:
-	.word	0xbadbeef3
 	ret
