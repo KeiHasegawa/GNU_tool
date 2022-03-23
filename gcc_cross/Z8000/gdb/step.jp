@@ -1,0 +1,212 @@
+自前の cc1 が生成したプログラム
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.z8k-coff.mine/host-i686-pc-linux-gnu/gcc/a.coff
+
+に対して現状 f にステップインしたときプロローグを適切にスキップできていない.
+a.coff は以下のようなスタックフレームを持っている:
+
+start:
+	code  : 0x100
+	stack : 0x1000
+	ret   : なし
+	size  : なし
+
+main:
+	code  : 0x1aa
+	stack : 0x0ffe (プロローグ後 0xffc)
+	ret   : 0x11c
+	size  : 0
+
+f:
+	code  : 0x17c
+	stack : 0x0ffa (プロローグ後 0xff4)
+	ret   : 0x1be
+	size  : 4
+
+f にブレークポイントをセットすれば適切にプロローグをスキップできていることは確認できている.
+
+ということは, step コマンドで z8k_skip_prologue を呼び出す条件が成立していないという
+ことらしい.
+
+単純な比較はできないかもしれないが z8k-coff-gdb と近い実装になるのは .stab セクション
+を扱うという意味では d30v-elf-gdb なのでこれを参考にしてみる.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.d30v-elf/gcc/a.elf
+
+は同様のプログラムでやはり以下のようなスタックフレームを持っている:
+
+start:
+	code  : 0x100
+	stack : 0x20000
+	ret   : なし
+	size  : なし
+
+main:
+	code  : 0x1c8
+	stack : 0x20000 (プロローグ後 0x1fff8)
+	ret   : 0x140
+	size  : 8
+
+f:
+	code  : 0x188
+	stack : 0x1fff8 (プロローグ後 0x1ffe8)
+	ret   : 0x1f8
+	size  : 16
+
+そこですぐに気付いたことは
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.d30v-elf/gcc/a.elf
+
+には以下のように .debug_frame はないのだが, .debug_xxx があるということ.
+
+  0 .text         00000128  00000100  00000100  00000100  2**3
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+  1 .debug_line   00000040  00000000  00000000  00000238  2**0
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+  2 .debug_info   00000026  00000000  00000000  00000278  2**0
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+  3 .debug_abbrev 00000014  00000000  00000000  0000029e  2**0
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+  4 .debug_aranges 00000020  00000000  00000000  000002b8  2**3
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+  5 .debug_str    0000004b  00000000  00000000  000002d8  2**0
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+  6 .stab         000001e0  00000000  00000000  00000324  2**2
+                  CONTENTS, READONLY, DEBUGGING
+  7 .stabstr      00000448  00000000  00000000  00000504  2**0
+                  CONTENTS, READONLY, DEBUGGING
+
+これが即 z8k-coff-gdb が動作しない原因とは考えられないわけだが留意しておくべき点だと
+思われる.
+
+直接原因を調査するならまずは step コマンドの後だが, その前に
+
+d30v_frame_create()
+z8k_frame_create()
+
+の 2 つの函数の動作を比較してみる.
+
+以下は main のブレークポイントで停止して step コマンドを実行し quit で終了する動作を
+比較したもの.
+
+d30v_frame_create() が返したものは:
+
+1 回目:
+$2 = {available = 0x1, prologue_start = 0x1c8, prev_sp = 0x20000, 
+  return_addr = 0x140, size = 0x8}
+
+2 回目
+$4 = {available = 0x1, prologue_start = 0x188, prev_sp = 0x1fff8, 
+  return_addr = 0xffffffffffffffff, size = 0x0}
+
+3 回目
+$6 = {available = 0x1, prologue_start = 0x1c8, prev_sp = 0x20000, 
+  return_addr = 0x140, size = 0x8}
+
+4 回目
+$8 = {available = 0x1, prologue_start = 0x188, prev_sp = 0x1fff8, 
+  return_addr = 0xffffffffffffffff, size = 0x10}
+
+5 回目
+$10 = {available = 0x1, prologue_start = 0x1c8, prev_sp = 0x20000, 
+  return_addr = 0x140, size = 0x8}
+
+6 回目
+$12 = {available = 0x1, prologue_start = 0x188, prev_sp = 0x1fff8, 
+  return_addr = 0xffffffffffffffff, size = 0x10}
+
+そして終了している.
+
+一方 z8k_frame_create が返したものは以下:
+
+1 回目
+$120 = {available = 0x1, prologue_start = 0x1aa, prev_sp = 0xffe, size = 0x0, 
+  return_addr = 0x11c}
+
+2 回目
+$122 = {available = 0x1, prologue_start = 0x17c, prev_sp = 0xffa, size = 0x0, 
+  return_addr = 0x1be}
+
+3 回目
+$124 = {available = 0x1, prologue_start = 0x1b2, prev_sp = 0xffe, size = 0x0, 
+  return_addr = 0x11c}
+
+# 3 回目の prologue_start が期待した値ではない. 期待値は 0x1aa
+
+4 回目
+$126 = {available = 0x1, prologue_start = 0x17c, prev_sp = 0xffa, size = 0x0, 
+  return_addr = 0x1be}
+
+5 回目, 6 回目はきていない.
+そこで 3 回目の prologue_start を 0x1b2 を 0x1aa に書き換えてみたところプロローグを
+スキップできている.
+
+ということは z8k_frame_create に問題がありそうなのだが, これはほとんど
+d30v_frame_create の真似.
+
+そしてさらに以下に気付く.
+
+_f:
+	.stabn	68,0,4,_LM0-_LFBB1
+_LM0:
+_LFBB1:
+	push	@r15, r10
+	ld	r10, r15
+	dec	r15, #4
+	ld	-2(r10), r7
+	ld	-4(r10), r6
+	.stabn	68,0,5,_LM1-_LFBB1
+_LM1:
+
+_LM0, _LFBB1, _LM1 はローカルラベルとして扱われるべきだがそうなっていない.
+おそらくそういう仕様で `.' から始まるものにするべき.
+そこで
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.z8k-coff.mine/host-i686-pc-linux-gnu/gcc/a.S
+
+を作成しこれをビルドし z8k-coff-gdb で実行してみた:
+
+1 回目
+$135 = {available = 0x1, prologue_start = 0x1aa, prev_sp = 0xffe, size = 0x0, 
+  return_addr = 0x11c}
+
+2 回目
+$137 = {available = 0x1, prologue_start = 0x17c, prev_sp = 0xffa, size = 0x0, 
+  return_addr = 0x1be}
+
+3 回目
+$139 = {available = 0x1, prologue_start = 0x1aa, prev_sp = 0x1000, 
+  size = 0x0, return_addr = 0xffffffffffffffff}
+
+prologue_start は期待通りになったが今度は prev_sp が間違っている. 期待値は 0xffe.
+これが修正されば return_addr が 0x11c になる.
+
+prev_sp が 0x1000 になる原因を調べてみる.
+
+000001aa <_main>:
+ 1aa:	93fa           	push	@r15,r10
+ 1ac:	a1fa           	ld	r10,r15
+ 1ae:	5f00 017a      	call	0x17a
+
+[0x1aa, 0x1ae) の命令から
+
+	push	@r15,r10
+
+により 0xffe -> 0x1000 のように変更している. これは自分が想像していた get_frame_sp
+の戻り値とは違っている. この場合は
+
+get_frame_sp が返す値が 0xffc でそれが 0xffe に更新されるのが期待値.
+と, ここで
+
+z8k_frame_prev_register
+
+は自分が作成した期待値を返すような実装にしていたことに気付く. この時点では
+
+
+  if (n == 2) {
+    assert(regno == sp_regno);
+    return frame_unwind_got_constant(frame, regno, 0xffe);
+  }
+
+のようにしていたが 0xffe -> 0xffc のように修正した. これによりプロローグが
+適切にスキップできている.
