@@ -8,7 +8,7 @@
 	i960-elf-ld -o $@ ../default.o $< -T ../default.x
 
 %.objdump : %.elf
-	i960-elf-objdump -x -d -g $< > $@
+	export LANG=C ; i960-elf-objdump -x -d -g $< > $@
 
 %.log : %.elf
 	wdog.exe -v i960-elf-gdb -q -x gdbcom $< > $@
