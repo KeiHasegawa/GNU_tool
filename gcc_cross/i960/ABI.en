@@ -1,0 +1,68 @@
+i960 ABI
+
+(*1) Registers
+
+     r1  : sp
+     r15 : fp
+     r2  : used as link pointer
+
+(*2) Function call
+
+	callx	fun
+
+	Pseudo code
+
+	r2 := (`callx' instruction next address)
+	[g15+0] := r0
+	[g15+4] := r1
+	[g15+8] := r2
+	...
+	[g15+60] := r15
+	r0 := g15
+	r1 := g15 + 64
+	pc := fun
+
+(*3) Return from function
+
+	ret
+
+	Pseudo code
+
+	g15 := r0
+	r0 := [g15+0]
+	r1 := [g15+4]
+	...
+	r15 := [g15+60]
+	pc := r2
+
+(*4) Prologue
+
+	addo	16, sp, sp
+
+        Above is prologue for the function which uses 16 bytes local area.
+	The point is the specification of `callx' and `ret' instruction.
+	Note that stack grows in hihg address direction.
+
+(*5) Epilogue
+
+       ret
+
+       Above is epilogue which doesn't depend on the local area.
+
+(*6) Normal function call
+
+        1st : g0
+	2nd : g1
+	...
+	12th : g11
+	13th : g14 relative offset 48
+	14th : g14 relative offset 52
+	...
+
+	Function return value is set to `g0'.
+
+(*7) `long long' arguments, return function
+
+        2 registers are used.
+
+	Function return value is set to `g0' and `g1'.
