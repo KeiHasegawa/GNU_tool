@@ -61,3 +61,12 @@ static CORE_ADDR z8k_frame_base_address(frame_info* frame, void** ptr)
     *ptr = pf = z8k_frame_create(frame);
   return pf->prev_sp - pf->size + 2;      またこの + 2 も z8k の場合は必要
 }
+
+この修正により自前の cc1 が生成したプログラムで
+
+step
+where
+finish
+
+が期待通り同している. この時点での z8k-tdep.c を z8k-tdep.c.002 としてアップロード
+しておく.

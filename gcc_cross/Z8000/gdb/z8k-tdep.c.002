@@ -1,0 +1,374 @@
+#include "defs.h"
+#include "value.h"
+#include "arch-utils.h"
+#include "regcache.h"
+#include "gdbcore.h"
+#include "objfiles.h"
+#include "dis-asm.h"
+#include "dwarf2/frame.h"
+#include "frame-base.h"
+#include "frame-unwind.h"
+#include <string>
+#include <cassert>
+
+const int pc_regno = 16;
+
+static int z8k_register_sim_regno(gdbarch*, int regnum)
+{
+  if (regnum == pc_regno)
+    return 17;
+  return regnum;
+}
+
+static int z8k_dbg_reg_to_regnum(gdbarch*, int regnum)
+{
+  return regnum;
+}
+
+const int sp_regno = 15;
+
+static const char* register_name[] = {
+  "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7",
+  "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
+  "pc"
+};
+
+static const char* z8k_register_name(gdbarch*, int regno)
+{
+  if (regno == sp_regno)
+    return "sp";
+
+  int N = sizeof register_name/sizeof register_name[0];
+  if (regno < N)
+    return register_name[regno];
+
+  return nullptr;
+}
+
+static bool is_aggregate(type_code code)
+{
+  switch (code) {
+  case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
+    return true;
+  default:
+    return false;
+  }
+}
+
+static void
+z8k_extract_return_value(type* valtype, regcache* regs, gdb_byte *valbuf)
+{
+  int len = TYPE_LENGTH(valtype);
+  for (int regno = 2 ; len > 0 ; len -= 2, ++regno, valbuf += 2) {
+    ULONGEST tmp;
+    regcache_cooked_read_unsigned(regs, regno, &tmp);
+    store_unsigned_integer(valbuf, 2, BFD_ENDIAN_BIG, tmp);
+  }
+}
+
+static return_value_convention
+z8k_return_value(gdbarch* arch, value* function, type* valtype, regcache* rc,
+		 gdb_byte *readbuf, const gdb_byte *writebuf)
+{
+  auto code = valtype->code();
+  if (is_aggregate(code)) {
+    if (readbuf) {
+      ULONGEST r7;
+      regcache_raw_read_unsigned(rc, 7, &r7);
+      read_memory(r7, readbuf, TYPE_LENGTH(valtype));
+    }
+    return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+  }
+
+  assert(!writebuf);
+
+  if (readbuf)
+    z8k_extract_return_value(valtype, rc, readbuf);
+  
+  return RETURN_VALUE_REGISTER_CONVENTION;
+}
+
+static type* z8k_register_type(gdbarch* arch, int regno)
+{
+  switch (regno) {
+  case pc_regno: return builtin_type(arch)->builtin_func_ptr;
+  case 14: case 15: /* sp_regno = 15 */
+                 return builtin_type(arch)->builtin_data_ptr;
+  default:       return builtin_type(arch)->builtin_int16;
+  }
+}
+
+inline void
+register_info(gdbarch* arch, ui_file* file, frame_info* frame, int regno)
+{
+  const char* name = z8k_register_name(arch, regno);
+  uint32_t value = frame_unwind_register_unsigned(frame, regno);
+  fprintf_filtered (file, "%s\t0x%04x\t%d\n", name, value, value);
+}
+
+static void
+z8k_print_registers_info(gdbarch* arch, ui_file* file, frame_info* frame,
+			 int regno, int cpregs)
+{
+  if (regno >= 0)
+    return register_info(arch, file, frame, regno);
+
+  int N = gdbarch_num_regs(arch);
+  for (int i = 0 ; i != N ; ++i)
+    register_info(arch, file, frame, i);
+}
+
+static CORE_ADDR z8k_skip_prologue(gdbarch*, CORE_ADDR pc)
+{
+  CORE_ADDR func_addr, func_end;
+  if (!find_pc_partial_function (pc, nullptr, &func_addr, &func_end))
+    return pc;
+  
+  symtab_and_line sal = find_pc_line (func_addr, 0);
+  if (sal.end && sal.end < func_end)
+    return sal.end;
+
+  return pc;
+}
+
+inline bool is_call(const gdb_byte* buf)
+{
+  if (buf[0] != 0x5f)
+    return false;
+  if (buf[1] != 0x00)
+    return false;
+  return true;
+}
+
+static CORE_ADDR
+z8k_skip_main_prologue(gdbarch* arch, CORE_ADDR pc)
+{
+  using namespace std;
+  
+  gdb_byte buf[4];
+  if (target_read_memory(pc, buf, sizeof buf) < 0)
+    return pc;
+
+  if (!is_call(&buf[0]))
+    return pc;
+
+  uint32_t addr = buf[2] << 8 | buf[3];
+  
+  auto sym = lookup_minimal_symbol_by_pc(addr);
+  if (!sym.minsym)
+    return pc;
+
+  auto n = sym.minsym->linkage_name();
+  if (!n)
+    return pc;
+
+  string name = n;
+  if (name != "__main")
+    return pc;
+
+  return pc + 4;
+}
+
+struct z8k_frame {
+  bool available;
+  CORE_ADDR prologue_start;
+  CORE_ADDR prev_sp;
+  int size;
+  CORE_ADDR return_addr;
+};
+
+inline int update(uint16_t insn, z8k_frame* frame)
+{
+  if (insn == 0x93fa) {  // push	@r15, r10
+    frame->prev_sp += 2;
+    return 2;
+  }
+
+  if (insn == 0xa1fa) { // ld	r10, r15
+    return 2;
+  }
+
+  if ((insn & 0xfff0) == 0xabf0) {  // dec	r15, #??
+    int imm = insn & 15;
+    ++imm;
+    frame->prev_sp += imm;
+    frame->size = imm;
+    return 2;
+  }
+
+  if ((insn & 0xfff0) == 0x6fa0) {  // ld	-???(r10), r?
+    return 4;
+  }
+
+  if ((insn & 0xfff0) == 0x2100) {  // ld	r?, #??
+    return 4;
+  }
+
+  if (insn == 0x5f00) { // call	???
+    return 4;
+  }
+  
+  asm("int3");
+  return 0;
+}
+
+static z8k_frame* z8k_frame_create(frame_info* frame)
+{
+  using namespace std;
+  auto ret = new z8k_frame;
+  CORE_ADDR pc = get_frame_pc(frame);
+  ret->prev_sp = get_frame_sp(frame);
+  ret->size = 0;
+  ret->return_addr = -1;
+  auto block_addr = get_frame_address_in_block(frame);
+  CORE_ADDR func_end;
+  bool found = find_pc_partial_function(block_addr, nullptr,
+					&ret->prologue_start, &func_end);
+  if (!found) {
+    ret->available = false;
+    ret->prologue_start = pc;
+    return ret;
+  }
+  symtab_and_line sal = find_pc_line(ret->prologue_start, 0);
+  auto end = sal.end ? min(sal.end, pc) : pc;
+  ret->available = true;
+  for (auto addr = ret->prologue_start; addr != end ; ) {
+    ULONGEST insn;
+    if (!safe_read_memory_unsigned_integer(addr, 2, BFD_ENDIAN_BIG, &insn))
+      return ret;
+    addr += update(insn, ret);
+  }
+
+  ULONGEST tmp;
+  if (safe_read_memory_unsigned_integer(ret->prev_sp, 2, BFD_ENDIAN_BIG, &tmp))
+    ret->return_addr = tmp;
+
+  return ret;
+}
+
+static void z8k_frame_this_id(frame_info* frame, void** ptr, frame_id *id)
+{
+  auto pf = reinterpret_cast<z8k_frame*>(*ptr);
+  if (!pf)
+    *ptr = pf = z8k_frame_create(frame);
+
+  if (!pf->available)
+    *id = frame_id_build_unavailable_stack(pf->prologue_start);
+  else
+    *id = frame_id_build(pf->prev_sp, pf->prologue_start);
+}
+
+static value*
+z8k_frame_prev_register(frame_info* frame, void** ptr, int regno)
+{
+  auto pf = z8k_frame_create(frame);
+
+  if (regno == pc_regno)
+    return frame_unwind_got_constant(frame, regno, pf->return_addr);
+
+  assert(regno == sp_regno);
+  return frame_unwind_got_constant(frame, regno, pf->prev_sp+2);
+}
+
+static frame_unwind z8k_frame_unwind = {
+  NORMAL_FRAME,
+  default_frame_unwind_stop_reason,
+  z8k_frame_this_id,
+  z8k_frame_prev_register,
+  nullptr,
+  default_frame_sniffer
+};
+
+static CORE_ADDR z8k_frame_base_address(frame_info* frame, void** ptr)
+{
+  auto pf = reinterpret_cast<z8k_frame*>(*ptr);
+  if (!pf)
+    *ptr = pf = z8k_frame_create(frame);
+  return pf->prev_sp - pf->size + 2;
+}
+
+static struct frame_base z8k_frame_base = {
+  &z8k_frame_unwind,
+  z8k_frame_base_address,
+  z8k_frame_base_address,
+  z8k_frame_base_address
+};
+
+static int z8k_kind_from_pc(gdbarch* arch, CORE_ADDR* addr)
+{
+  return 0;
+}
+
+static const unsigned char* z8k_from_kind(gdbarch*, int kind, int* size)
+{
+  // 0011 0110 0000 0000 *** bpt
+  static unsigned char break_inst[] = { 0x36, 0x00 };
+  *size = sizeof break_inst;
+  return &break_inst[0];
+}
+
+static CORE_ADDR
+z8k_push_dummy_call(gdbarch* arch, value* function, regcache* rc,
+		    CORE_ADDR bp_addr, int nargs, value** args, CORE_ADDR sp,
+		    function_call_return_method rm, CORE_ADDR struct_addr)
+{
+  asm("int3");
+  return 0;
+}
+
+static gdbarch*
+z8k_gdbarch_init(gdbarch_info info, gdbarch_list *arches)
+{
+  gdbarch* arch = gdbarch_alloc (&info, 0);
+
+  set_gdbarch_num_regs(arch, sizeof register_name/sizeof register_name[0]);
+  set_gdbarch_register_type(arch, z8k_register_type);
+  set_gdbarch_register_sim_regno(arch, z8k_register_sim_regno);
+  set_gdbarch_dwarf2_reg_to_regnum(arch, z8k_dbg_reg_to_regnum);
+  set_gdbarch_stab_reg_to_regnum(arch, z8k_dbg_reg_to_regnum);
+  set_gdbarch_register_name(arch, z8k_register_name);
+
+  set_gdbarch_pc_regnum(arch, pc_regno);
+  set_gdbarch_sp_regnum(arch, sp_regno);
+  set_gdbarch_print_registers_info(arch, z8k_print_registers_info);
+
+  set_gdbarch_ptr_bit(arch, 2 * TARGET_CHAR_BIT);
+  set_gdbarch_addr_bit(arch, 2 * TARGET_CHAR_BIT);
+  set_gdbarch_return_value(arch, z8k_return_value);
+
+  set_gdbarch_skip_prologue(arch, z8k_skip_prologue);
+  set_gdbarch_skip_main_prologue(arch, z8k_skip_main_prologue);
+  
+  frame_base_set_default (arch, &z8k_frame_base);
+  dwarf2_append_unwinders(arch);
+  frame_unwind_append_unwinder(arch, &z8k_frame_unwind);
+
+  set_gdbarch_inner_than (arch, core_addr_lessthan);
+  set_gdbarch_breakpoint_kind_from_pc(arch, z8k_kind_from_pc);
+  set_gdbarch_sw_breakpoint_from_kind(arch, z8k_from_kind);
+  set_gdbarch_push_dummy_call(arch, z8k_push_dummy_call);
+
+  set_gdbarch_char_signed(arch, 0);
+  set_gdbarch_int_bit(arch, 2 * TARGET_CHAR_BIT);
+  set_gdbarch_long_bit(arch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_long_long_bit (arch, 8 * TARGET_CHAR_BIT);
+
+  set_gdbarch_wchar_signed(arch, 0);
+  set_gdbarch_wchar_bit(arch, 2 * TARGET_CHAR_BIT);
+
+  set_gdbarch_double_bit(arch, 8 * TARGET_CHAR_BIT);
+  set_gdbarch_double_format(arch, floatformats_ieee_double);
+  set_gdbarch_long_double_bit(arch, 8 * TARGET_CHAR_BIT);
+  set_gdbarch_long_double_format(arch, floatformats_ieee_double);
+
+  set_gdbarch_believe_pcc_promotion(arch, 1);
+ 
+  return arch;
+}
+
+void _initialize_z8k_tdep();
+void
+_initialize_z8k_tdep()
+{
+  register_gdbarch_init(bfd_arch_z8k, z8k_gdbarch_init);
+}
