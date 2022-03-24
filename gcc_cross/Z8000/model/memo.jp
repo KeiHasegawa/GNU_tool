@@ -1,3 +1,8 @@
+cc1 の雛形
+
+「AARCH64」=>「cc1 の雛形」=>「メモ」 を参照.
+AARCH64 と同様の手順で cc1 の雛形をビルドすることができる.
+
 開発記録
 
 (*1)
@@ -126,3 +131,49 @@ Breakpoint 1 at 0x1ae: file a.c, line 9.
 できなかったが, これだけの現象から推測するとコンパイラに問題があったということになる.
 
 これ以降は z8k-coff-gdb 側から動作の解析を行なう.
+
+(*4)
+z8k-coff-gdb から調査した結果, f にステップインしたときプロローグを適切にスキップできない
+原因はローカルラベルの扱いができていないこと.
+
+現状以下のように
+
+_f:
+	.stabn	68,0,4,_LM0-_LFBB1
+_LM0:
+_LFBB1:
+
+ローカルラベルであるべきものが函数のラベルと変わらないものになっている.
+これを修正する.
+ローカルラベルは以下のように名前を付けられているらしい:
+
+  char label[256];
+...
+  ASM_GENERATE_INTERNAL_LABEL (label, "LC", labelno);
+
+そこで以下のように修正した:
+
+void z8k_asm_output_labelref(FILE* fp, const char* label)
+{
+  if (label[0] == '.')
+    fprintf(fp, "%s", label);
+  else
+    fprintf(fp, "_%s", label);
+}
+
+extern void z8k_asm_output_labelref(FILE*, const char*);
+#define ASM_OUTPUT_LABELREF(FILE, NAME) z8k_asm_output_labelref(FILE, NAME)
+
+これで期待通りの生成結果になる:
+
+_f:
+	.stabn	68,0,4,.LM0-.LFBB1
+.LM0:
+.LFBB1:
+	push	@r15, r10
+	ld	r10, r15
+	dec	r15, #4
+	ld	-2(r10), r7
+	ld	-4(r10), r6
+	.stabn	68,0,5,.LM1-.LFBB1
+.LM1:
