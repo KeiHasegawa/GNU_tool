@@ -1,0 +1,76 @@
+現状自前の cc1 の生成したプログラムを作成しようとして
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i960-elf.mine/host-i686-pc-linux-gnu/gcc
+
+で
+
+i960-elf-ld -o a.elf ~/lang/53_GNU_tool/gcc_cross/i960/tool/start.o a.o -T ~/lang/53_GNU_tool/gcc_cross/i960/tool/sample.x
+
+のように実行すると不正メモリアクセスが発生している.
+
+gdb から ld-new.j を実行して再現している:
+
+      if ((sym->section->flags & SEC_HAS_CONTENTS) != 0
+	  && sym->section->linker_mark == false)
+	output = false;
+
+(gdb) p sym->section->flags
+Cannot access memory at address 0xc
+(gdb) p sym->section
+$2 = (struct sec *) 0x0
+(gdb)
+
+以下のように修正してみた:
+
+      if (sym->section) {
+	if ((sym->section->flags & SEC_HAS_CONTENTS) != 0
+	    && sym->section->linker_mark == false)
+	  output = false;
+      }
+      else
+	output = false;
+
+処理が先に進んで以下で不正メモリアクセスしている.
+
+  if (bfd_is_com_section (symbol->section))
+    relocation = 0;
+  else
+    relocation = symbol->value;
+
+そこで以下のように修正した:
+
+  if (!symbol->section)
+    return bfd_reloc_ok;
+
+  if (bfd_is_com_section (symbol->section))
+    relocation = 0;
+  else
+    relocation = symbol->value;
+
+しかし処理が先に進んで不正メモリアクセスする. やはり symbol->section のように
+アクセスしているところ.
+
+一旦上の修正をキャンセルした.
+
+      if ((sym->section->flags & SEC_HAS_CONTENTS) != 0
+	  && sym->section->linker_mark == false)
+	output = false;
+
+(gdb) p *sym
+$8 = {the_bfd = 0x80d6070, name = 0x80d6f6d "_main", value = 135094384, 
+  flags = 2, section = 0x0, udata = {p = 0x80d01ac, i = 135070124}}
+
+これは...おそらく section は .text セクションがセットされているのが正しいと思われる.
+
+オリジナルの cc1 の生成結果ならば実行結果は期待しないものになるものの, 少なくともリンカ
+でエラーすることはない. 少し話が脱線するが hello world 11 はオリジナルの cc1 では無限ループ
+している.
+
+まずはオリジナルの ccc1 の生成結果と比較してみる.
+函数のラベルに `_' があるのがオリジナルの cc1 でないのが自前の cc1. まずはここを合わせて
+みる.
+
+2022.03.25 7:09 ビルド開始.
+
+この修正でリンカで不正メモリアクセスすることはなくなった. しかしオリジナルの cc1 と同様に
+無限ループしている. これはまた別の問題.
