@@ -1,0 +1,63 @@
+現状
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.z8k-coff.mine/host-i686-pc-linux-gnu/gcc/a.coff
+
+を z8k-coff-gdb で動作させて f にステップインしたときプロローグは適切にスキップできてい
+いるが a と b の値を正しく表示できていない.
+
+(z8k-coff-gdb) p &a
+$1 = (int *) 0xfec
+(z8k-coff-gdb) p &b
+$2 = (int *) 0xfea
+
+のようになっている.
+
+
+int16 f (int16 a /* 0xfffffffe */, int16 b /* 0xfffffffc */)
+
+のようになっている. おそらくフレームポインタ相対 -2, -4 をそれぞれ表わしている.
+
+f における r10 は 0xff8 なので a のアドレスは 0xff6, b のアドレスは 0xff4 が
+正しい:
+
+(z8k-coff-gdb) p *(int*)0xff6
+$3 = 5
+(z8k-coff-gdb) p *(int*)0xff4
+$4 = 6
+
+そこで以下のように修正してみた:
+
+static CORE_ADDR z8k_frame_base_address(frame_info* frame, void** ptr)
+{
+#if 0
+  auto pf = reinterpret_cast<z8k_frame*>(*ptr);
+  if (!pf)
+    *ptr = pf = z8k_frame_create(frame);
+  return pf->prev_sp - pf->size;
+#else
+  return 0xff8;
+#endif  
+}
+
+これで a と b の値は正しく表示できている. そこで正しく計算できていない理由を調べてみた.
+
+$5 = {available = 0x1, prologue_start = 0x17c, prev_sp = 0xff2, size = 0x4, 
+  return_addr = 0xcccc}
+
+prev_sp の値を間違えている. 0xffa が正しい. 0xff2 になる理由だが
+
+  if ((insn & 0xfff0) == 0xabf0) {  // dec	r15, #??
+    int imm = insn & 15;
+    ++imm;
+    frame->prev_sp -= imm;   <- += の間違いだった.
+    frame->size = imm;
+    return 2;
+  }
+
+static CORE_ADDR z8k_frame_base_address(frame_info* frame, void** ptr)
+{
+  auto pf = reinterpret_cast<z8k_frame*>(*ptr);
+  if (!pf)
+    *ptr = pf = z8k_frame_create(frame);
+  return pf->prev_sp - pf->size + 2;      またこの + 2 も z8k の場合は必要
+}
