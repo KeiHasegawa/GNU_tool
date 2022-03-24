@@ -1,0 +1,54 @@
+2022.03.24 16:56
+
+int8 <- int64, uint8 <- int64 の実装
+
+D10V でそうしたように単純に
+
+; int8 <- int64
+; not absolutely necessary
+(define_insn "truncdiqi2"
+  [(set (match_operand:QI 0 "nonimmediate_operand" "")
+        (truncate:QI (match_operand:DI 1 "general_operand" "")))]
+  ""
+  "%0 := (trunc)%1")
+
+を削除してみる.
+
+2022.03.24 16:58 ビルド開始
+
+2022.03.25 7:12 動作確認完了. D10V のメモでは明示的に書かれていなかっ
+たがこれを削除することで, ロード命令でこれを実現するというもの.
+
+unsigned char f(long long a)
+{
+  return a;
+}
+
+に対して f を -2 で呼び出したとき f の先頭アドレスでは以下のようなスタッ
+クのレイアウトになっている. ここで 0x1098 は f の戻りアドレス.
+
+0xfef0	+---------------+
+	|		|<- sp
+0xfef2	+---------------+
+	|     0x1098	|
+0xfef4	+---------------+
+	|     0xffff	|
+0xfef6	+---------------+
+	|     0xffff	|
+0xfef8	+---------------+
+	|     0xffff	|
+0xfefa	+---------------+
+	|     0xfffe	|
+0xfefc	+---------------+
+
+f に対して以下のようにフレームポインタ相対からオフセット 11 を D レジ
+スタにロードするようにしている.
+
+f:
+	ldy	*_.frame
+	pshy
+	sts	*_.frame
+	
+	ldy	*_.frame
+	ldd	11, y
+...
