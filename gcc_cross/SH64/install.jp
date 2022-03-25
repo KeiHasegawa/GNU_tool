@@ -1,0 +1,38 @@
+(*1) SH64
+https://ja.wikipedia.org/wiki/SuperH
+
+(*2) スクリプトによるインストール
+
+「IQ2000」と同じスクリプトを使う
+
+set TARGET = sh64-elf   # ここを変更
+
+残念ながら binutils のインストールでエラーになる:
+
+checking linker --as-needed support... yes
+checking for cos in -lm... yes
+*** Configuration sh64-unknown-elf is obsolete.
+*** Support has been REMOVED.
+make[1]: *** [configure-bfd] Error 1
+
+サポート停止ということだろうか.
+
+ChangeLog-2018 4386:	* elf64-sh64.c (elf_backend_omit_section_dynsym): Likewise.
+
+ということはこの頃のバージョンには入っていた可能性はある. 以下のように 2.31 で試してみた:
+
+% xz -d -c ../binutils-2.31.tar.xz | tar xf -
+% mv binutils-2.31 binutils-2.31.sh64-elf
+% cd binutils-2.31.sh64-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=sh64-elf --enable-obsolete
+% make all
+...
+checking for cos in -lm... yes
+*** Configuration sh64-unknown-elf is obsolete.
+*** Support has been REMOVED.
+make[1]: *** [Makefile:2641: configure-bfd] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.31.sh64-elf' から出ます
+make: *** [Makefile:849: all] エラー 2
+%
+
+エラーを回避できていない.
