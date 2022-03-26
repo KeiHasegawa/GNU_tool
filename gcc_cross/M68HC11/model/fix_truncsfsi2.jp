@@ -1,0 +1,82 @@
+2022.03.26 16:45
+
+int32 <- float の実装中.
+
+オリジナルの cc1 は以下のようなコードを生成している:
+
+	ldy	*_.frame
+	ldd	3,y
+	ldx	1,y
+	bsr	__fixsfsi
+
+オリジナルの m68hc11.md にこれを明示的に呼び出しているようなところは見当らない.
+試しに以下を削除してみた:
+
+; int32 <- float
+(define_insn "fix_truncsfsi2"
+  [(set (match_operand:SI 0 "nonimmediate_operand" "")
+        (fix:SI (match_operand:SF 1 "general_operand" "")))]
+  ""
+  "%0 := (int32)%1")
+
+ビルド開始 2022.03.26 16:50
+
+しかしこれだけ削除しても int64 <- float が生成されている. そこで以下も
+削除した:
+
+; uint32 <- float
+; not abusolutely necessary
+(define_insn "fixuns_truncsfsi2"
+  [(set (match_operand:SI 0 "nonimmediate_operand" "")
+        (unsigned_fix:SI (match_operand:SF 1 "general_operand" "")))]
+  ""
+  "%0 := (uint32)%1")
+  
+; int64 <- float
+(define_insn "fix_truncsfdi2"
+  [(set (match_operand:DI 0 "nonimmediate_operand" "")
+        (fix:DI (match_operand:SF 1 "general_operand" "")))]
+  ""
+  "%0 := (int64)%1")
+
+; uint64 <- float
+; not abusolutely necessary
+(define_insn "fixuns_truncsfdi2"
+  [(set (match_operand:DI 0 "nonimmediate_operand" "")
+        (unsigned_fix:DI (match_operand:SF 1 "general_operand" "")))]
+  ""
+  "%0 := (uint64)%1")
+
+; int32 <- double
+(define_insn "fix_truncdfsi2"
+  [(set (match_operand:SI 0 "nonimmediate_operand" "")
+        (fix:SI (match_operand:DF 1 "general_operand" "")))]
+  ""
+  "%0 := (int32)%1")
+
+; uint32 <- double
+; not abusolutely necessary
+(define_insn "fixuns_truncdfsi2"
+  [(set (match_operand:SI 0 "nonimmediate_operand" "")
+        (unsigned_fix:SI (match_operand:DF 1 "general_operand" "")))]
+  ""
+  "%0 := (uint32)%1")
+
+; int64 <- double
+(define_insn "fix_truncdfdi2"
+  [(set (match_operand:DI 0 "nonimmediate_operand" "")
+        (fix:DI (match_operand:DF 1 "general_operand" "")))]
+  ""
+  "%0 := (int64)%1")
+
+; uint64 <- double
+; not abusolutely necessary
+(define_insn "fixuns_truncdfdi2"
+  [(set (match_operand:DI 0 "nonimmediate_operand" "")
+        (unsigned_fix:DI (match_operand:DF 1 "general_operand" "")))]
+  ""
+  "%0 := (uint64)%1")
+
+ビルド開始 2022.03.26 17:45
+
+2022.03.27 6:45 動作確認してみたところ期待したコードが生成されている.
