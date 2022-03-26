@@ -1,0 +1,552 @@
+#include "defs.h"
+#include "value.h"
+#include "arch-utils.h"
+#include "regcache.h"
+#include "gdbcore.h"
+#include "objfiles.h"
+#include "dis-asm.h"
+#include "dwarf2/frame.h"
+#include "frame-base.h"
+#include "frame-unwind.h"
+
+#include <string>
+#include <cassert>
+#include <set>
+#include <algorithm>
+#include <iostream>
+
+static int i960_register_sim_regno(gdbarch*, int regnum)
+{
+  return regnum;
+}
+
+static int i960_dbg_reg_to_regnum(gdbarch*, int regnum)
+{
+  return regnum;
+}
+const int pc_regno = 35;
+const int sp_regno = 1;
+
+static const char* i960_register_name(gdbarch*, int regno)
+{
+  if (regno == pc_regno)
+    return "pc";
+
+  static const char* name[] = {
+    "r0", "sp", "r2", "r3", "r4", "r5", "r6", "r7",
+    "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
+    "g0", "g1", "g2", "g3", "g4", "g5", "g6", "g7",
+    "g8", "g9", "g10", "g11", "g12", "g13", "g14", "fp",
+  };
+  
+  if (regno < sizeof name/sizeof name[0])
+    return name[regno];
+
+  return nullptr;
+}
+
+static bool is_aggregate(type_code code)
+{
+  switch (code) {
+  case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
+    return true;
+  default:
+    return false;
+  }
+}
+
+static void
+i960_extract_return_value(type* valtype, regcache* regs, gdb_byte *valbuf)
+{
+  int len = TYPE_LENGTH(valtype);
+  for (int regno = 16 ; len > 0 ; len -= 4, ++regno, valbuf += 4) {
+    ULONGEST tmp;
+    regcache_cooked_read_unsigned(regs, regno, &tmp);
+    store_unsigned_integer(valbuf, 4, BFD_ENDIAN_LITTLE, tmp);
+  }
+}
+
+static return_value_convention
+i960_return_value(gdbarch*, value* function, type* valtype, regcache* rc,
+		  gdb_byte* readbuf, const gdb_byte* writebuf)
+{
+  auto code = valtype->code();
+  if (is_aggregate(code)) {
+    if (readbuf) {
+      ULONGEST g0;
+      regcache_raw_read_unsigned(rc, 16, &g0);
+      read_memory(g0, readbuf, TYPE_LENGTH(valtype));
+    }
+    return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+  }
+
+  assert(!writebuf);
+
+  if (readbuf)
+    i960_extract_return_value(valtype, rc, readbuf);
+  
+  return RETURN_VALUE_REGISTER_CONVENTION;
+}
+
+static type* i960_register_type(gdbarch* arch, int regno)
+{
+  switch (regno) {
+  case pc_regno:
+    return builtin_type(arch)->builtin_func_ptr;
+  case sp_regno: case 15:
+    return builtin_type(arch)->builtin_data_ptr;
+  default:
+    return builtin_type(arch)->builtin_int32;
+  }
+}
+
+static void
+i960_print_registers_info(gdbarch*, ui_file* file, frame_info* frame,
+			  int regno, int cpregs)
+{
+  asm("int3");
+}
+
+static CORE_ADDR i960_skip_prologue(gdbarch*, CORE_ADDR pc)
+{
+  CORE_ADDR func_addr, func_end;
+  if (!find_pc_partial_function(pc, nullptr, &func_addr, &func_end))
+    return pc;
+  
+  symtab_and_line sal = find_pc_line(func_addr, 0);
+  if (sal.end && sal.end < func_end)
+    return sal.end;
+
+  return pc;
+}
+
+inline bool is_callx(const gdb_byte* buf)
+{
+  if (buf[0] != 0x00)
+    return false;
+  if (buf[1] != 0x30)
+    return false;
+  if (buf[2] != 0x00)
+    return false;
+  if (buf[3] != 0x86)
+    return false;
+  return true;
+}
+
+static CORE_ADDR i960_skip_main_prologue(gdbarch* arch, CORE_ADDR pc)
+{
+  using namespace std;
+
+  gdb_byte buf[4];
+  if (target_read_memory(pc, buf, sizeof buf) < 0)
+    return pc;
+
+  if (!is_callx(&buf[0]))
+    return pc;
+
+  if (target_read_memory(pc+4, buf, sizeof buf) < 0)
+    return pc;
+
+  CORE_ADDR addr = (buf[3] << 24) | (buf[2] << 16) | (buf[1] << 8) | buf[0];
+  auto sym = lookup_minimal_symbol_by_pc(addr);
+  if (!sym.minsym)
+    return pc;
+
+  auto n = sym.minsym->linkage_name();
+  if (!n)
+    return pc;
+
+  string name = n;
+  if (name != "___main")
+    return pc;
+
+  return pc + 8;
+}
+
+struct i960_frame {
+  bool available;
+  CORE_ADDR prologue_start;
+  CORE_ADDR prev_sp;
+  int size;
+  i960_frame(frame_info* frame)
+  {
+    available = false;
+    prologue_start = -1;
+    prev_sp = get_frame_sp(frame);
+    size = 0;
+  }
+};
+
+inline bool operator<(const i960_frame& x, const i960_frame& y)
+{
+  return x.prev_sp < y.prev_sp;
+}
+
+namespace i960_frame_impl {
+  std::set<i960_frame> all;
+  inline const i960_frame* up(i960_frame* pf)
+  {
+    using namespace std;
+    auto p = all.find(*pf);
+    assert(p != end(all));
+    if (p == begin(all))
+      return &*p;
+    return &*--p;
+  }
+  struct install {
+    i960_frame* pf;
+    install(i960_frame* p) : pf(p) {}
+    ~install()
+    {
+      auto p = all.find(*pf);
+      if (p == end(all)) {
+	all.insert(*pf);
+	return;
+      }
+      if (p->size)
+	return;
+      all.erase(p);
+      all.insert(*pf);
+    }
+  };
+}
+
+inline void debug_1(const i960_frame& x)
+{
+  using namespace std;
+  cerr << x.available << ' ';
+  cerr << hex;
+  cerr << "0x" << x.prologue_start << ' ';
+  cerr << "0x" << x.prev_sp << ' ';
+  cerr << "0x" << x.size << '\n';
+}
+
+static void debug()
+{
+  (void)debug;
+  for (const auto& x : i960_frame_impl::all)
+    debug_1(x);
+}
+
+inline void update(uint32_t insn, i960_frame* frame)
+{
+  if ((insn & 0xffffff00) == 0x8c086000) { // lda	??(sp), sp
+    int imm = insn & 0xff;
+    frame->size = imm;
+    frame->prev_sp -= imm;
+    return;
+  }
+
+  if ((insn & 0xffffff00) == 0x59084800) {  // addo	??, sp, sp
+    int imm = insn & 0xff;
+    frame->size = imm;
+    frame->prev_sp -= imm;
+    return;
+  }
+}
+
+static i960_frame* i960_frame_create(frame_info* frame)
+{
+  using namespace std;
+  auto ret = new i960_frame(frame);
+  i960_frame_impl::install obj(ret);
+  CORE_ADDR pc = get_frame_pc(frame);
+  auto block_addr = get_frame_address_in_block(frame);
+  CORE_ADDR func_end;
+  bool found = find_pc_partial_function(block_addr, nullptr,
+					&ret->prologue_start, &func_end);
+  if (!found) {
+    ret->available = false;
+    ret->prologue_start = pc;
+    return ret;
+  }
+  symtab_and_line sal = find_pc_line(ret->prologue_start, 0);
+  auto end = sal.end ? min(pc, sal.end) : pc;
+  ret->available = true;
+  for (auto addr = ret->prologue_start; addr != end ; addr += 4) {
+    ULONGEST insn;
+    if (!safe_read_memory_unsigned_integer(addr, 4, BFD_ENDIAN_LITTLE, &insn))
+      return ret;
+    update(insn, ret);
+  }
+  return ret;
+}
+
+static void i960_frame_this_id(frame_info* frame, void** ptr, frame_id* id)
+{
+  auto pf = reinterpret_cast<i960_frame*>(*ptr);
+  if (!pf)
+    *ptr = pf = i960_frame_create(frame);
+#ifdef CHECK_VALUE
+  if (pf->available) {
+    auto start = pf->prologue_start;
+    switch (start) {
+    case 0x174:
+      assert(pf->prev_sp == 0x1b040);
+      assert(pf->size == 0x40);
+      break;
+    case 0x154:
+      assert(pf->prev_sp == 0x1b0c0);
+      break;
+    case 0x100:
+      assert(pf->prev_sp == 0x1b000);
+      break;
+    default:
+      abort();
+    }
+  }
+#endif // CHECK_VALUE
+
+  if (!pf->available)
+    *id = frame_id_build_unavailable_stack(pf->prologue_start);
+  else
+    *id = frame_id_build(pf->prev_sp, pf->prologue_start);
+}
+
+#ifdef USE_MY_VALUE
+static value*
+i960_frame_prev_register(frame_info* frame, void** ptr, int regno)
+{
+  static int n;
+  ++n;
+
+  if (n == 1) {
+    assert(regno == pc_regno);
+    return frame_unwind_got_constant(frame, regno, 0x18c);
+  }
+
+  if (n == 2) {
+    assert(regno == sp_regno);
+    return frame_unwind_got_constant(frame, regno, 0x1b080);
+  }
+
+  if (n == 3) {
+    assert(regno == pc_regno);
+    return frame_unwind_got_constant(frame, regno, 0x18c);
+  }
+
+  if (n == 4) {
+    assert(regno == sp_regno);
+    return frame_unwind_got_constant(frame, regno, 0x1b080);
+  }
+
+  if (n == 5) {
+    assert(regno == pc_regno);
+    return frame_unwind_got_constant(frame, regno, 0x18c);
+  }
+
+  if (n == 6) {
+    assert(regno == sp_regno);
+    return frame_unwind_got_constant(frame, regno, 0x1b080);
+  }
+
+  if (n == 7) {
+    assert(regno == pc_regno);
+    return frame_unwind_got_constant(frame, regno, 0x140);
+  }
+
+  if (n == 8) {
+    assert(regno == pc_regno);
+    return frame_unwind_got_constant(frame, regno, 0x18c);
+  }
+  
+  if (n == 9) {
+    assert(regno == pc_regno);
+    return frame_unwind_got_constant(frame, regno, 0x140);
+  }
+
+  if (n == 10) {
+    assert(regno == sp_regno);
+    return frame_unwind_got_constant(frame, regno, 0x1b000);
+  }
+
+  if (n == 11) {
+    assert(regno == pc_regno);
+    return frame_unwind_got_constant(frame, regno, 0x100);
+  }
+
+  if (n == 12) {
+    assert(regno == pc_regno);
+    return frame_unwind_got_constant(frame, regno, 0x140);
+  }
+
+  if (n == 13) {
+    assert(regno == pc_regno);
+    return frame_unwind_got_constant(frame, regno, 0x100);
+  }
+
+  if (n == 14) {
+    assert(regno == sp_regno);
+    return frame_unwind_got_constant(frame, regno, 0x1b000);
+  }
+
+  abort();
+}
+#else // USE_MY_VALUE
+static value*
+i960_frame_prev_register(frame_info* frame, void** ptr, int regno)
+{
+#ifdef CHECK_VALUE2  
+  static int n;
+  ++n;
+#endif // CHECK_VALUE2    
+  
+  auto pf = reinterpret_cast<i960_frame*>(*ptr);
+  auto up = i960_frame_impl::up(pf);  
+  if (regno == pc_regno) {
+    auto addr = up->prev_sp + 8;
+    if (pf->prev_sp == up->prev_sp) {
+      addr = up->prev_sp - 0x40 + 8;
+      if (!up->size) {
+#ifdef CHECK_VALUE2
+	assert(n == 11 || n == 13);
+	assert(up->prologue_start == 0x100);
+#endif // CHECK_VALUE2
+	return frame_unwind_got_memory(frame, regno, up->prologue_start);
+      }
+    }
+#ifdef CHECK_VALUE2    
+    assert(addr >= 0x1b000);
+    ULONGEST tmp;
+    assert(safe_read_memory_unsigned_integer(addr, 4, BFD_ENDIAN_LITTLE, &tmp));
+    switch (n) {
+    case 1: case 3: case 5: case 8:
+       assert(tmp == 0x18c); break;
+    case 7: case 9: case 12:
+      assert(tmp == 0x140); break;
+    default:
+      abort();
+    }
+#endif // CHECK_VALUE2    
+    return frame_unwind_got_memory(frame, regno, addr);
+  }
+
+  assert(regno == sp_regno);
+  auto tmp = up->prev_sp + up->size;
+  if (pf->prev_sp == up->prev_sp) {
+    tmp = up->prev_sp - 0x40;
+    if (!up->size)
+      tmp = up->prev_sp;
+  }
+#ifdef CHECK_VALUE2
+  switch (n) {
+  case 2: case 4: case 6:
+    assert(tmp == 0x1b080); break;
+  case 10: case 14:
+    assert(tmp == 0x1b000); break;
+    break;
+  default:
+    abort();
+  }
+#endif // CHECK_VALUE2  
+  return frame_unwind_got_constant(frame, regno, tmp);
+}
+#endif  // USE_MY_VALUE
+
+static frame_unwind i960_frame_unwind = {
+  NORMAL_FRAME,
+  default_frame_unwind_stop_reason,
+  i960_frame_this_id,
+  i960_frame_prev_register,
+  nullptr,
+  default_frame_sniffer
+};
+
+static CORE_ADDR
+i960_frame_base_address(frame_info* frame, void** ptr)
+{
+  auto pf = reinterpret_cast<i960_frame*>(*ptr);
+  if (!pf)
+    *ptr = pf = i960_frame_create(frame);
+  return pf->prev_sp;
+}
+
+static frame_base i960_frame_base = {
+  &i960_frame_unwind,
+  i960_frame_base_address,
+  i960_frame_base_address,
+  i960_frame_base_address
+};
+
+static int i960_kind_from_pc(gdbarch*, CORE_ADDR* addr)
+{
+  return 0;
+}
+
+static const unsigned char* i960_from_kind(gdbarch*, int kind, int* size)
+{
+  static unsigned char bkpt[] = { 0x00, 0x3e, 0x00, 0x66 };  // fmark
+  *size = sizeof bkpt;
+  return &bkpt[0];
+}
+
+static CORE_ADDR
+i960_push_dummy_call(gdbarch*, value *function, regcache* rc,
+		     CORE_ADDR bp_addr, int nargs, value **args, CORE_ADDR sp,
+		     function_call_return_method rm, CORE_ADDR struct_addr)
+{
+  asm("int3");
+  return 0;
+}
+
+static int i960_core_addr_lessthan(CORE_ADDR lhs, CORE_ADDR rhs)
+{
+  return lhs > rhs;
+}
+
+static gdbarch* i960_gdbarch_init(gdbarch_info info, gdbarch_list *arches)
+{
+  gdbarch* arch = gdbarch_alloc (&info, 0);
+
+  set_gdbarch_num_regs(arch, pc_regno+1);
+  set_gdbarch_register_type(arch, i960_register_type);
+  set_gdbarch_register_sim_regno(arch, i960_register_sim_regno);
+  set_gdbarch_dwarf2_reg_to_regnum(arch, i960_dbg_reg_to_regnum);
+  set_gdbarch_stab_reg_to_regnum(arch, i960_dbg_reg_to_regnum);
+  set_gdbarch_register_name(arch, i960_register_name);
+
+  set_gdbarch_pc_regnum(arch, pc_regno);
+  set_gdbarch_sp_regnum(arch, sp_regno);
+  set_gdbarch_print_registers_info(arch, i960_print_registers_info);
+
+  set_gdbarch_ptr_bit(arch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_addr_bit(arch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_return_value(arch, i960_return_value);
+
+  set_gdbarch_skip_prologue(arch, i960_skip_prologue);
+  set_gdbarch_skip_main_prologue(arch, i960_skip_main_prologue);
+  
+  frame_base_set_default(arch, &i960_frame_base);
+  dwarf2_append_unwinders(arch);
+  frame_unwind_append_unwinder(arch, &i960_frame_unwind);
+
+  set_gdbarch_inner_than(arch, i960_core_addr_lessthan);
+  set_gdbarch_breakpoint_kind_from_pc(arch, i960_kind_from_pc);
+  set_gdbarch_sw_breakpoint_from_kind(arch, i960_from_kind);
+  set_gdbarch_push_dummy_call(arch, i960_push_dummy_call);
+
+  set_gdbarch_char_signed(arch, 0);
+  set_gdbarch_int_bit(arch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_long_bit(arch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_long_long_bit(arch, 8 * TARGET_CHAR_BIT);
+
+  set_gdbarch_wchar_signed(arch, 0);
+  set_gdbarch_wchar_bit(arch, 2 * TARGET_CHAR_BIT);
+
+  set_gdbarch_double_bit(arch, 8 * TARGET_CHAR_BIT);
+  set_gdbarch_double_format(arch, floatformats_ieee_double);
+  set_gdbarch_long_double_bit(arch, 16 * TARGET_CHAR_BIT);
+  set_gdbarch_long_double_format(arch, floatformats_ia64_quad);
+
+  set_gdbarch_believe_pcc_promotion(arch, 1);
+ 
+  return arch;
+}
+
+void _initialize_i960_tdep();
+void
+_initialize_i960_tdep()
+{
+  register_gdbarch_init(bfd_arch_i960, i960_gdbarch_init);
+}
+
