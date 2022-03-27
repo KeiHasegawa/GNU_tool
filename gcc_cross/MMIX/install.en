@@ -1,0 +1,37 @@
+MMIX
+
+(*1) MMIX
+https://en.wikipedia.org/wiki/MMIX
+
+
+(*2) binutils install
+% xz -d -c ~/binutils-2.36.1-2.src/binutils-2.36.1.tar.xz | tar xf -
+% mv binutils-2.36.1 binutils-2.36.1.mmix-elf
+% cd binutils-2.36.1.mmix-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=mmix-elf
+% make
+% make install
+
+(*3) gcc install
+
+% bunzip2 -c ../gcc-3.4.4.tar.bz2 | tar xf -
+% mv gcc-3.4.4 gcc-3.4.4.mmix-elf
+% cd gcc-3.4.4.mmix-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=mmix-elf --enable-obsolete
+% setenv SHELL /bin/sh
+% make all-gcc LANGUAGES="c c++"
+% make install-gcc LANGUAGES="c c++"
+
+(*4) gdb install
+
+Refer to "MMIX gdb"
+
+(*5) newlib install
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/
+% gunzip -c ../newlib-1.13.0.tar.gz | tar xf -
+% mv newlib-1.13.0 newlib-1.13.0.mmix-elf
+% cd newlib-1.13.0.mmix-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=mmix-elf
+% make
+% make install
