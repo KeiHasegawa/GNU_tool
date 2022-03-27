@@ -1,0 +1,129 @@
+2022.03.26 16:55
+
+float + float 
+
+の実装開始. これはランタイムライブラリの呼び出しにする.
+現状ではまだ movsf が未実装なのでそこからやる.
+
+現状未実装なのは
+
+float + float
+
+double <- float
+
+そこで以下を削除:
+
+(define_insn "addsf3"
+  [(set
+    (match_operand:SF 0 "nonimmediate_operand" "")
+    (plus:SF
+     (match_operand:SF 1 "general_operand" "")
+     (match_operand:SF 2 "general_operand" "")))]
+  ""
+  "%0 := %1 + %2")
+
+
+; double <- float
+(define_insn "extendsfdf2"
+  [(set (match_operand:DF 0 "nonimmediate_operand" "")
+        (float_extend:DF (match_operand:SF 1 "general_operand" "")))]
+  ""
+  "%0 := (double)%1")
+
+
+2022.03.27 8:40 ビルド開始
+
+2022.03.27 9:50 動作を確認してみたところ
+
+double + double のコードが生成されていた. そこで以下を削除:
+
+(define_insn "adddf3"
+  [(set
+    (match_operand:DF 0 "nonimmediate_operand" "")
+    (plus:DF
+     (match_operand:DF 1 "general_operand" "")
+     (match_operand:DF 2 "general_operand" "")))]
+  ""
+  "%0 := %1 + %2")
+
+2022.03.27 11:15
+
+	bl	__addsf3
+
+が生成されていることを確認. 残念ながらランタイムリブラリがない以上動作の確認は
+後になる.
+
+上と同様の手順で float - float を実装してみる.
+
+以下を削除
+
+(define_insn "subsf3"
+  [(set
+    (match_operand:SF 0 "nonimmediate_operand" "")
+    (minus:SF
+     (match_operand:SF 1 "general_operand" "")
+     (match_operand:SF 2 "general_operand" "")))]
+  ""
+  "%0 := %1 - %2")
+
+(define_insn "subdf3"
+  [(set
+    (match_operand:DF 0 "nonimmediate_operand" "")
+    (minus:DF
+     (match_operand:DF 1 "general_operand" "")
+     (match_operand:DF 2 "general_operand" "")))]
+  ""
+  "%0 := %1 - %2")
+
+ビルド開始 2022.03.27 12:55
+2022.03.27 14:58 生成結果のみ確認.
+
+同様に float * float を実装中
+
+(define_insn "mulsf3"
+  [(set
+    (match_operand:SF 0 "nonimmediate_operand" "")
+    (mult:SF
+     (match_operand:SF 1 "general_operand" "")
+     (match_operand:SF 2 "general_operand" "")))]
+  ""
+  "%0 := %1 * %2")
+
+(define_insn "muldf3"
+  [(set
+    (match_operand:DF 0 "nonimmediate_operand" "")
+    (mult:DF
+     (match_operand:DF 1 "general_operand" "")
+     (match_operand:DF 2 "general_operand" "")))]
+  ""
+  "%0 := %1 * %2")
+
+を削除.
+
+2022.03.27 14:59 ビルド開始.
+2022.03.27 15:56 生成結果のみ確認.
+
+同様に float / float を実装中
+
+(define_insn "divsf3"
+  [(set
+    (match_operand:SF 0 "nonimmediate_operand" "")
+    (div:SF
+     (match_operand:SF 1 "general_operand" "")
+     (match_operand:SF 2 "general_operand" "")))]
+  ""
+  "%0 := %1 / %2")
+
+(define_insn "divdf3"
+  [(set
+    (match_operand:DF 0 "nonimmediate_operand" "")
+    (div:DF
+     (match_operand:DF 1 "general_operand" "")
+     (match_operand:DF 2 "general_operand" "")))]
+  ""
+  "%0 := %1 / %2")
+
+を削除.
+
+2022.03.27 15:57 ビルド開始.
+2022.03.27 17:00 生成結果のみ確認.
