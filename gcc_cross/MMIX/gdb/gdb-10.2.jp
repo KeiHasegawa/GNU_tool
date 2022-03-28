@@ -1,0 +1,89 @@
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/
+% xz -d -c ../gdb-10.2-1.src/gdb-10.2.tar.xz | tar xf -
+% mv gdb-10.2 gdb-10.2.mmix-elf
+% cd gdb-10.2.mmix-elf/sim
+% mkdir mmix
+
+configure.tgt を編集. z8k, i960 と同じ対応をした.
+
+   v850*-*-*)
+       SIM_ARCH(v850)
+       sim_igen=yes
+       ;;
++  mmix-*-*)
++      SIM_ARCH(mmix)
++      ;;
+esac
+
+% cd ../gdb
+
+d30v, fr30, z8k, i960 と同じ対処をした.
+
+gdb-10.2.mmix-elf/gdb/configure.tgt:
+
+h8300-*-*)
+	# Target: H8300 processor
+	gdb_target_obs="h8300-tdep.o"
+	gdb_sim=../sim/h8300/libsim.a
+	;;
+
++mmix-*-*)
++	gdb_target_obs="mmix-tdep.o"
++	gdb_sim=../sim/mmix/libsim.a
++	;;
+
+% cp ~/lang/53_GNU_tool/gcc_cross/MCORE/gdb/mcore-tdep.c.000 mmix-tdep.c
+
+mcore を mmix に置換.
+
+% cd ..
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=mmix-elf
+% make
+
+エラーは発生しなかった. i960 のときは configure-bfd のターゲットでエラーしていた.
+
+% ls bfd/libbfd.a
+bfd/libbfd.a
+% ls bfd/*mmix*.c
+bfd/cpu-mmix.c	bfd/elf64-mmix.c
+
+なるほど, 問題なかったらしい.
+
+% cd sim
+
+ここで共通ソース ../common をできるだけ利用して最小限のビルドが成功するもののみ
+作成した. この時点での
+
+gdb-10.2.mmix-elf/sim/mmix/
+
+を mmix.1.tar としてアップロードしておく.
+
+% cd ../gnulib
+% sh configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=mmix-elf
+% make
+
+% cd ../gdbsupport
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=mmix-elf
+% make
+
+% cd ../gdb
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=mmix-elf
+% make
+...
+echo "  GEN    stamp-version"; /bin/sh ./../gdbsupport/create-version.sh . \
+     mmix-elf version-t.t
+  GEN    stamp-version
+mv: 'version.c-tmp' から '' へ移動できません: そのようなファイルやディレクトリはありません
+mv: 'version-t.t' を stat できません: そのようなファイルやディレクトリはありません
+make: *** [Makefile:2085: stamp-version] エラー 1
+%
+
+これはどこかで見たエラー. i960 の gdb-10.2 のインストールで発生した.
+
+Makefile を以下のように修正
+
+host_alias = i686-pc-linux-gnu
+
+% make
+
+一応ビルドのみ完了.
