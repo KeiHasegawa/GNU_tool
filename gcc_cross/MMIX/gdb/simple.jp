@@ -1,0 +1,97 @@
+簡単なプログラムを動かすまで.
+
+例によってアドレス 0x100 にいくつかの nop 命令を置いてそれをステップ実行する
+ということをやってみたい.
+
+MMIX には nop 命令はないらしく代わりに
+
+	add	$0, $0, $0
+
+にした.
+
+mmix-elf-gdb を gdb から実行してみた. すると以下のようになっている.
+
+M-x gdb
+gdb --annotate=3 ./gdb
+(gdb) cd ~/lang/53_GNU_tool/gcc_cross/MMIX/test/test001/
+(gdb) run -q -x gdbcom test.elf
+Reading symbols from test.elf...
+I'm sorry, Dave, I can't do that.  Symbol format `mmo' unknown.
+Target alignment unspecified
+gdbcom:2: Error in sourced command file:
+unable to create simulator instance
+(mmix-elf-gdb) q
+[Thread 0xb6f03b70 (LWP 2171) exited]
+[Thread 0xb7704b70 (LWP 2170) exited]
+[Inferior 1 (process 2078) exited normally]
+(gdb)
+
+これは 2 つのエラーが発生しているように見える. とりあえず最初のエラーを調べてみる.
+
+(gdb) b symfile.c:1095
+(gdb) run
+...
+symfile.c:1095 にきている
+(gdb) b __cxa_allocate_exception
+(gdb) c
+...
+__cxa_allocate_exception のブレークポイントにヒット
+(gdb) up
+
+static const struct sym_fns *
+find_sym_fns (bfd *abfd)
+{
+...
+  for (const registered_sym_fns &rsf : symtab_fns)
+    if (our_flavour == rsf.sym_flavour)
+      return rsf.sym_fns;
+
+  error (_("I'm sorry, Dave, I can't do that.  Symbol format `%s' unknown."),
+	 bfd_get_target (abfd));
+}
+
+
+ここだった. これは単純に条件を満たすものが見つからなかったということだろうか. この場合の
+Dave は人名だろうか?
+
+objdump の結果は以下
+
+test.elf:     ファイル形式 mmo
+test.elf
+アーキテクチャ: mmix, フラグ 0x00000010:
+HAS_SYMS
+開始アドレス 0x0000000000000100
+
+確かにファイル形式 mmo になっている.
+
+最近インストールしたものを調べてみた:
+
+test.coff:     ファイル形式 coff-z8k
+test.elf:     file format elf32-i960
+test.elf:     ファイル形式 elf32-fr30
+
+問題の函数で
+
+our_flavour = bfd_target_mmo_flavour
+
+でありコンテナの内容は
+
+bfd_target_elf_flavour
+bfd_target_coff_flavour
+bfd_target_aout_flavour
+bfd_target_ecoff_flavour
+
+であってこれが一致しないためにエラーとなっている.
+さてこのエラーはどうやって回避するべきか.
+
+% mmix-elf-objdump -x -d -g test.o > test.o.objdump
+
+test.o:     ファイル形式 elf64-mmix
+
+なるほど. アセンブラの出力は elf64-mmix という形式だがリンカの出力が mmo という
+見慣れないファイル形式ということ.
+
+おそらくリンカの出力ファイルの形式を elf64-mmix にすれば gdb が期待した動作に
+なる可能性は高い.
+
+一旦 gdb 視点の調査はやめてリンカを調べてみることにする.
