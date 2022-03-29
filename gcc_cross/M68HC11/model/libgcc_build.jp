@@ -1,0 +1,511 @@
+2022.03.27 9:32
+
+まだできているとは言い難いが m68hc11.md から %0 や %1 を使用しているところがほぼ
+なくなった.
+
+問題はこれまでの手法で
+
+const char* m68hc11_addsi3(rtx x, rtx y, rtx z)
+{
+  int offy, offz;
+  if (REG_P(x) && fp_rel(y, &offy) && fp_rel(z, &offz)) {
+    ...
+    return "";
+  }
+
+  if (REG_P(x) && fp_rel(y, &offy) && REG_P(z)) {
+    ...
+    return "";
+  }
+
+どの程度カバーできているかということ.
+
+また即値が限定されずに指定されているため場合によっては範囲を超えてアセンブル時のエラーを
+引き起こすことがある.
+
+無謀だが libgcc のビルドにチャレンジしてみた.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine
+% make all-target-libgcc
+...
+checking for suffix of object files... configure: error: in `/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/m68hc11-elf/libgcc':
+configure: error: cannot compute suffix of object files: cannot compile
+See `config.log' for more details
+make: *** [Makefile:12629: configure-target-libgcc]
+%
+
+Makefile を以下のように @ を削除した:
+
+configure-target-libgcc: 
+	r=`${PWD_COMMAND}`; export r; \
+
+% make all-target-libgcc
+...
+r=`${PWDCMD-pwd}`; export r; \
+s=`cd .; ${PWDCMD-pwd}`; export s; \
+
+...
+CONFIG_SITE=no-such-file /bin/sh \
+  $s/$module_srcdir/configure \
+  --srcdir=${topdir}/$module_srcdir \
+  --cache-file=./config.cache --enable-multilib --with-cross-host=i686-pc-linux-gnu   '--prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG' '--with-newlib' '--enable-languages=c,c++,fortran,lto,objc' --program-transform-name='s&^&m68hc11-elf-&' --disable-option-checking --with-target-subdir="m68hc11-elf" --build=i686-pc-linux-gnu --host=m68hc11-elf \
+  --target=m68hc11-elf  \
+  || exit 1
+...
+configure: error: cannot compute suffix of object files: cannot compile
+See `config.log' for more details
+make: *** [Makefile:12629: configure-target-libgcc] エラー 1
+% 
+
+
+% ls m68hc11-elf/libgcc/
+config.cache  config.log  multilib.out
+%
+
+これらしい.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/m68hc11-elf/libgcc/config.log
+
+これの抜粋
+
+  $ /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/libgcc/configure --srcdir=../.././libgcc --cache-file=./config.cache --enable-multilib --with-cross-host=i686-pc-linux-gnu --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --with-newlib --enable-languages=c,c++,fortran,lto,objc --program-transform-name=s&^&m68hc11-elf-& --disable-option-checking --with-target-subdir=m68hc11-elf --build=i686-pc-linux-gnu --host=m68hc11-elf --target=m68hc11-elf
+
+それっぽい.
+
+% cd m68hc11-elf/libgcc/
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/libgcc/configure --srcdir=../.././libgcc --cache-file=./config.cache --enable-multilib --with-cross-host=i686-pc-linux-gnu --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --with-newlib --enable-languages=c,c++,fortran,lto,objc --program-transform-name=s/^/m68hc11-elf-/ --disable-option-checking --with-target-subdir=m68hc11-elf --build=i686-pc-linux-gnu --host=m68hc11-elf --target=m68hc11-elf
+...
+*** Configuration m68hc11-unknown-elf not supported
+%
+
+違うエラーが発生している. もう一度エラーを再現させる:
+
+% cd ../..
+% make all-target-libgcc
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/m68hc11-elf/libgcc/config.log
+...
+configure:3804:  /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include    -c -g -O2  conftest.c >&5
+
+% cd m68hc11-elf/libgcc/
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include    -c -g -O2  conftest.c
+during RTL pass: combine
+conftest.c: In function ‘main’:
+conftest.c:4:1: internal compiler error: in default_function_value_regno_p, at targhooks.c:986
+    4 | }
+      | ^
+0x8a59c91 default_function_value_regno_p(unsigned int)
+	../.././gcc/targhooks.c:986
+0x9093507 likely_spilled_retval_p
+	../.././gcc/combine.c:2424
+0x9094116 try_combine
+	../.././gcc/combine.c:2802
+0x9091388 combine_instructions
+	../.././gcc/combine.c:1303
+0x90b7e09 rest_of_handle_combine
+	../.././gcc/combine.c:15067
+0x90b7ec6 execute
+	../.././gcc/combine.c:15112
+Please submit a full bug report,
+with preprocessed source if appropriate.
+Please include the complete backtrace with any bug report.
+See <https://gcc.gnu.org/bugs/> for instructions.
+%
+
+再現している. 以下を追加してエラーを回避できている.
+
+bool m68hc11_function_value_regno_p(unsigned int regno)
+{
+...
+
+#undef TARGET_FUNCTION_VALUE_REGNO_P
+#define TARGET_FUNCTION_VALUE_REGNO_P m68hc11_function_value_regno_p
+
+% make all-target-libgcc
+...
+checking for target glibc version... 0.0
+*** Configuration m68hc11-unknown-elf not supported
+make: *** [Makefile:12629: configure-target-libgcc] エラー 1
+% cd m68hc11-elf/libgcc/
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/libgcc/configure --srcdir=../.././libgcc --cache-file=./config.cache --enable-multilib --with-cross-host=i686-pc-linux-gnu --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --with-newlib --enable-languages=c,c++,fortran,lto,objc --program-transform-name=s/^/m68hc11-elf-/ --disable-option-checking --with-target-subdir=m68hc11-elf --build=i686-pc-linux-gnu --host=m68hc11-elf --target=m68hc11-elf
+...
+checking for target glibc version... 0.0
+*** Configuration m68hc11-unknown-elf not supported
+%
+
+エラーを再現できている.
+
+% sh -vx /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/libgcc/configure --srcdir=../.././libgcc --cache-file=./config.cache --enable-multilib --with-cross-host=i686-pc-linux-gnu --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --with-newlib --enable-languages=c,c++,fortran,lto,objc --program-transform-name=s/^/m68hc11-elf-/ --disable-option-checking --with-target-subdir=m68hc11-elf --build=i686-pc-linux-gnu --host=m68hc11-elf --target=m68hc11-elf
+...
++ printf '%s\n' '## ----------- ##
+## confdefs.h. ##
+## ----------- ##'
++ echo
++ cat confdefs.h
++ echo
++ test 0 '!=' 0
++ printf '%s\n' 'configure: exit 1'
+  rm -f core *.core core.conftest.* &&
+    rm -f -r conftest* confdefs* conf$$* $ac_clean_files &&
+    exit $exit_status
++ rm -f core '*.core' 'core.conftest.*'
++ rm -f -r 'conftest*' confdefs.h 'conf18861*'
++ exit 1
+%
+
+これは何が原因でエラーしているのか不明. だが configure から以下を発見した.
+そしてこの文字列はこの configure ではここだけ.
+
+
+    if test -s confdefs.h; then
+      $as_echo "## ----------- ##
+## confdefs.h. ##
+## ----------- ##"
+      echo
+      cat confdefs.h
+      echo
+    test "$ac_signal" != 0 &&
+
+ということは $ac_signal が 0 になっているのがエラーの直接の原因, かと思ったが違った.
+エラーの直接の原因は
+
+    exit $exit_status
+
+で $exit_status が 1 になっていること. しかし $exit_status が 1 になる原因は
+不明.
+
+% sh -vx ...
+
+のログから以下を発見
+
++ eval 'ac_val=$exit_status'
+ac_val=$exit_status
+++ ac_val=1
+
+それっぽい.
+
+% cp /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/libgcc/{configure,x}
+% sh -vx /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/libgcc/x --srcdir=../.././libgcc --cache-file=./config.cache --enable-multilib --with-cross-host=i686-pc-linux-gnu --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --with-newlib --enable-languages=c,c++,fortran,lto,objc --program-transform-name=s/^/m68hc11-elf-/ --disable-option-checking --with-target-subdir=m68hc11-elf --build=i686-pc-linux-gnu --host=m68hc11-elf --target=m68hc11-elf
+
+エラーを再現できている.
+
+
+echo "*** HASEGAWA 5280 ***"
+
+# Collect host-machine-specific information.
+. ${srcdir}/config.host
+
+echo "*** HASEGAWA 5285 ***"
+
+ここだった.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/libgcc/config.host
+
+を以下のように修正.
+
+m68hc11-*-*)
+	cpu_type=m68hc11
+	;;
+
+
+m68hc11-*-*)
+	tmake_file="$tmake_file m68hc11/t-m68hc11"
+	;;
+
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/libgcc/configure --srcdir=../.././libgcc --cache-file=./config.cache --enable-multilib --with-cross-host=i686-pc-linux-gnu --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --with-newlib --enable-languages=c,c++,fortran,lto,objc --program-transform-name=s/^/m68hc11-elf-/ --disable-option-checking --with-target-subdir=m68hc11-elf --build=i686-pc-linux-gnu --host=m68hc11-elf --target=m68hc11-elf
+エラーを回避できているっぽい.
+
+% cd ../..
+% make all-target-libgcc
+...
+Checking multilib configuration for libgcc...
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/m68hc11-elf/libgcc' に入ります
+Makefile:183: ../.././gcc/libgcc.mvars: そのようなファイルやディレクトリはありません
+make[1]: *** ターゲット '../.././gcc/libgcc.mvars' を make するルールがありません.  中止.
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/m68hc11-elf/libgcc' から出ます
+make: *** [Makefile:12701: all-target-libgcc] エラー 2
+%
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/libgcc/Makefile.in
+
+を以下のように修正.
+
+host_subdir = host-i686-pc-linux-gnu
+
+% make configure-target-libgcc
+% make all-target-libgcc
+
+回避できていない. 一旦以下のように削除:
+
+% rm m68hc11-elf/libgcc/Makefile
+% make configure-target-libgcc
+...
+configure: error: in `/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/m68hc11-elf/libgcc':
+configure: error: changes in the environment can compromise the build
+configure: error: run `make distclean' and/or `rm ./config.cache' and start over
+make: *** [Makefile:12629: configure-target-libgcc] エラー 1
+
+% rm  m68hc11-elf/libgcc/config.cache
+% make configure-target-libgcc
+...
+checking for m68hc11-elf-gcc...  /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include   
+checking for suffix of object files... configure: error: in `/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/m68hc11-elf/libgcc':
+configure: error: cannot compute suffix of object files: cannot compile
+See `config.log' for more details
+make: *** [Makefile:12629: configure-target-libgcc] エラー 1
+%
+
+% cd m68hc11-elf/libgcc
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/libgcc/configure --srcdir=../.././libgcc --cache-file=./config.cache --enable-multilib --with-cross-host=i686-pc-linux-gnu --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --with-newlib --enable-languages=c,c++,fortran,lto,objc --program-transform-name=s/^/m68hc11-elf-/ --disable-option-checking --with-target-subdir=m68hc11-elf --build=i686-pc-linux-gnu --host=m68hc11-elf --target=m68hc11-elf
+
+エラーが発生していない.
+
+% cd ../..
+% make all-target-libgcc
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include    -g -O2 -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../host-i686-pc-linux-gnu/gcc -I../.././libgcc -I../.././libgcc/. -I../.././libgcc/../gcc -I../.././libgcc/../include    -o _muldi3.o -MT _muldi3.o -MD -MP -MF _muldi3.dep -DL_muldi3 -c ../.././libgcc/libgcc2.c -fvisibility=hidden -DHIDE_EXPORTS
+In file included from ../../host-i686-pc-linux-gnu/gcc/tm.h:22,
+                 from ../.././libgcc/libgcc2.c:29:
+../.././libgcc/../gcc/config/m68hc11/m68hc11.h:14:10: error: expected ‘;’ before ‘int’
+   14 | constexpr int D_REGNUM              = 0;
+
+IN_LIBGCC2 で条件コンパイルするようにしてみる. 以下のように m68hc11.h を修正.
+
+#ifndef M68HC11_H
+#define M68HC11_H
+
+#ifndef IN_LIBGCC2
+
+#endif // IN_LIBGCC2
+
+#endif // M68HC11_H
+
+これで全ビルドが必要になっている.
+2022.03.27 14:54 ビルド開始.
+
+% make all-target-libgcc
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include    -g -O2 -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../host-i686-pc-linux-gnu/gcc -I../.././libgcc -I../.././libgcc/. -I../.././libgcc/../gcc -I../.././libgcc/../include    -o _muldi3.o -MT _muldi3.o -MD -MP -MF _muldi3.dep -DL_muldi3 -c ../.././libgcc/libgcc2.c -fvisibility=hidden -DHIDE_EXPORTS
+In file included from ../.././libgcc/libgcc2.c:56:
+../.././libgcc/libgcc2.h:411:8: error: unknown type name ‘DItype’
+  411 | extern DItype __bswapdi2 (DItype);
+      |        ^~~~~~
+../.././libgcc/libgcc2.h:411:1: 警告: 関数宣言中に（型の無い）仮引数名があります
+  411 | extern DItype __bswapdi2 (DItype);
+      | ^~~~~~
+make[1]: *** [Makefile:501: _muldi3.o] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/m68hc11-elf/libgcc' から出ます
+make: *** [Makefile:12701: all-target-libgcc] エラー 2
+%
+
+以下を m68hc11.h に追加
+
+typedef long long int DItype;
+
+% make all-target-libgcc
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include    -g -O2 -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../host-i686-pc-linux-gnu/gcc -I../.././libgcc -I../.././libgcc/. -I../.././libgcc/../gcc -I../.././libgcc/../include    -o _muldi3.o -MT _muldi3.o -MD -MP -MF _muldi3.dep -DL_muldi3 -c ../.././libgcc/libgcc2.c -fvisibility=hidden -DHIDE_EXPORTS
+xgcc: internal compiler error: トレース/ブレイクポイント トラップ signal terminated program cc1
+Please submit a full bug report,
+with preprocessed source if appropriate.
+See <https://gcc.gnu.org/bugs/> for instructions.
+make[1]: *** [Makefile:501: _muldi3.o] エラー 4
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/m68hc11-elf/libgcc' から出ます
+make: *** [Makefile:12701: all-target-libgcc] エラー 2
+%
+
+% cd m68hc11-elf/libgcc/
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include    -g -O2 -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../host-i686-pc-linux-gnu/gcc -I../.././libgcc -I../.././libgcc/. -I../.././libgcc/../gcc -I../.././libgcc/../include    -o _muldi3.o -MT _muldi3.o -MD -MP -MF _muldi3.dep -DL_muldi3 -c ../.././libgcc/libgcc2.c -fvisibility=hidden -DHIDE_EXPORTS -###
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/specs から spec を読み込み中
+COLLECT_GCC=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/xgcc
+Target: m68hc11-elf
+コンフィグオプション: ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=m68hc11-elf --with-newlib : (reconfigured) ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=m68hc11-elf --with-newlib
+スレッドモデル: single
+Supported LTO compression algorithms: zlib zstd
+gcc version 10.2.0 (GCC) 
+COLLECT_GCC_OPTIONS='-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include' '-g' '-O2' '-O2' '-g' '-O2' '-D' 'IN_GCC' '-D' 'CROSS_DIRECTORY_STRUCTURE' '-Wextra' '-Wall' '-Wno-narrowing' '-Wwrite-strings' '-Wcast-qual' '-Wno-error=format-diag' '-Wstrict-prototypes' '-Wmissing-prototypes' '-Wno-error=format-diag' '-Wold-style-definition' '-isystem' './include' '-g' '-D' 'IN_LIBGCC2' '-fbuilding-libgcc' '-fno-stack-protector' '-D' 'inhibit_libc' '-I' '.' '-I' '.' '-I' '../../host-i686-pc-linux-gnu/gcc' '-I' '../.././libgcc' '-I' '../.././libgcc/.' '-I' '../.././libgcc/../gcc' '-I' '../.././libgcc/../include' '-o' '_muldi3.o' '-MT' '_muldi3.o' '-MD' '-MP' '-MF' '_muldi3.dep' '-D' 'L_muldi3' '-c' '-fvisibility=hidden' '-D' 'HIDE_EXPORTS'
+ /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/cc1 -quiet -I . -I . -I ../../host-i686-pc-linux-gnu/gcc -I ../.././libgcc -I ../.././libgcc/. -I ../.././libgcc/../gcc -I ../.././libgcc/../include -iprefix /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/../lib/gcc/m68hc11-elf/10.2.0/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/include-fixed -MD _muldi3.d -MF _muldi3.dep -MP -MT _muldi3.o -D IN_GCC -D CROSS_DIRECTORY_STRUCTURE -D IN_LIBGCC2 -D inhibit_libc -D L_muldi3 -D HIDE_EXPORTS -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include -isystem ./include ../.././libgcc/libgcc2.c -quiet -dumpbase libgcc2.c -auxbase-strip _muldi3.o -g -g -g -O2 -O2 -O2 -Wextra -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual "-Wno-error=format-diag" -Wstrict-prototypes -Wmissing-prototypes "-Wno-error=format-diag" -Wold-style-definition -fbuilding-libgcc -fno-stack-protector "-fvisibility=hidden" -o /tmp/ccA0kMjg.s
+COLLECT_GCC_OPTIONS='-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include' '-g' '-O2' '-O2' '-g' '-O2' '-D' 'IN_GCC' '-D' 'CROSS_DIRECTORY_STRUCTURE' '-Wextra' '-Wall' '-Wno-narrowing' '-Wwrite-strings' '-Wcast-qual' '-Wno-error=format-diag' '-Wstrict-prototypes' '-Wmissing-prototypes' '-Wno-error=format-diag' '-Wold-style-definition' '-isystem' './include' '-g' '-D' 'IN_LIBGCC2' '-fbuilding-libgcc' '-fno-stack-protector' '-D' 'inhibit_libc' '-I' '.' '-I' '.' '-I' '../../host-i686-pc-linux-gnu/gcc' '-I' '../.././libgcc' '-I' '../.././libgcc/.' '-I' '../.././libgcc/../gcc' '-I' '../.././libgcc/../include' '-o' '_muldi3.o' '-MT' '_muldi3.o' '-MD' '-MP' '-MF' '_muldi3.dep' '-D' 'L_muldi3' '-c' '-fvisibility=hidden' '-D' 'HIDE_EXPORTS'
+ /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/as -o _muldi3.o /tmp/ccA0kMjg.s
+COMPILER_PATH=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/
+LIBRARY_PATH=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/
+COLLECT_GCC_OPTIONS='-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/' '-B' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include' '-isystem' '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include' '-g' '-O2' '-O2' '-g' '-O2' '-D' 'IN_GCC' '-D' 'CROSS_DIRECTORY_STRUCTURE' '-Wextra' '-Wall' '-Wno-narrowing' '-Wwrite-strings' '-Wcast-qual' '-Wno-error=format-diag' '-Wstrict-prototypes' '-Wmissing-prototypes' '-Wno-error=format-diag' '-Wold-style-definition' '-isystem' './include' '-g' '-D' 'IN_LIBGCC2' '-fbuilding-libgcc' '-fno-stack-protector' '-D' 'inhibit_libc' '-I' '.' '-I' '.' '-I' '../../host-i686-pc-linux-gnu/gcc' '-I' '../.././libgcc' '-I' '../.././libgcc/.' '-I' '../.././libgcc/../gcc' '-I' '../.././libgcc/../include' '-o' '_muldi3.o' '-MT' '_muldi3.o' '-MD' '-MP' '-MF' '_muldi3.dep' '-D' 'L_muldi3' '-c' '-fvisibility=hidden' '-D' 'HIDE_EXPORTS'
+%
+
+ここで
+
+bool d10v_function_value_regno_p(unsigned int regno)
+{
+
+にブレークポイントを埋め込んでいたことに気付く.
+
+% make all-target-libgcc
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include    -g -O2 -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../host-i686-pc-linux-gnu/gcc -I../.././libgcc -I../.././libgcc/. -I../.././libgcc/../gcc -I../.././libgcc/../include    -o _muldi3.o -MT _muldi3.o -MD -MP -MF _muldi3.dep -DL_muldi3 -c ../.././libgcc/libgcc2.c -fvisibility=hidden -DHIDE_EXPORTS
+cc1: ../.././gcc/config/m68hc11/m68hc11.c:1442: const char* m68hc11_zero_extendqisi2(rtx, rtx): Assertion `regno == yr && regno == D_REGNUM' が失敗しました.
+during RTL pass: final
+../.././libgcc/libgcc2.c: In function ‘__mulhi3’:
+../.././libgcc/libgcc2.c:558:1: internal compiler error: アボートしました
+  558 | }
+
+
+const char* m68hc11_zero_extendqisi2(rtx x, rtx y)
+{
+  if (REG_P(x) && REG_P(y)) {
+    int regno = REGNO(x);
+    int yr = REGNO(y);
+    assert(regno == yr && regno == D_REGNUM);   ここの assertion で失敗していた.
+
+(gdb) p debug_rtx(x)
+(reg:SI 0 d [orig:57 _1+-3 ] [57])
+$8 = void
+(gdb) p debug_rtx(y)
+(reg:QI 2 y [orig:53 u+1 ] [53])
+$9 = void
+(gdb) 
+
+x, y レジスタの場合に対応した:
+
+const char* m68hc11_zero_extendqisi2(rtx x, rtx y)
+{
+  if (REG_P(x) && REG_P(y)) {
+    int regno = REGNO(x);
+    assert(regno == D_REGNUM);
+    int yr = REGNO(y);
+    if (yr != D_REGNUM) {   ここ
+      switch (yr) {
+      case X_REGNUM:
+	fprintf(asm_out_file, "	xgdx\n");
+	break;
+      case Y_REGNUM:
+	fprintf(asm_out_file, "	xgdy\n");
+	break;
+      default:
+	abort();
+      }      
+    }
+
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include    -g -O2 -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../host-i686-pc-linux-gnu/gcc -I../.././libgcc -I../.././libgcc/. -I../.././libgcc/../gcc -I../.././libgcc/../include    -o _muldi3.o -MT _muldi3.o -MD -MP -MF _muldi3.dep -DL_muldi3 -c ../.././libgcc/libgcc2.c -fvisibility=hidden -DHIDE_EXPORTS
+/tmp/ccPrdkG4.s: Assembler messages:
+/tmp/ccPrdkG4.s:28: Error: junk at end of line, first unrecognized character is `='
+
+アセンブル時にエラーするところまできている.
+
+ここで y レジスタもアロケーション対象になっていることに気付いた.
+一旦上の修正をキャンセルした.
+
+プロローグで y レジスタを使用しないでフレーム情報を出すように修正した:
+
+void m68hc11_expand_prologue()
+{
+  auto fntype = TREE_TYPE(current_function_decl);
+  auto ret_type = TREE_TYPE(fntype);
+  auto mode = TYPE_MODE(ret_type);
+  m68hc11_impl::d_reg::use = return_in_memory(mode);
+
+#if 0  
+  // y := *_.frame
+  auto fp = frame_pointer_rtx;
+  auto y = gen_rtx_REG(HImode, Y_REGNUM);
+  auto move = emit_move_insn(y, fp);
+  RTX_FRAME_RELATED_P(move) = true;
+
+  push(y);
+#else
+  // x := *_.frame
+  auto fp = frame_pointer_rtx;
+  auto x = gen_rtx_REG(HImode, X_REGNUM);
+  auto move = emit_move_insn(x, fp);
+  RTX_FRAME_RELATED_P(move) = true;
+
+  push(x);
+#endif  
+
+  struct last {
+    ~last()
+    {
+      // *_.frame := sp
+      auto fp = frame_pointer_rtx;
+      auto sp = stack_pointer_rtx;
+      auto insn = emit_move_insn(fp, sp);
+      RTX_FRAME_RELATED_P(insn) = true;
+    }
+  } last; 
+
+  auto size = get_frame_size();
+  if (!size)
+    return;
+
+  if (size <= 10 && !(size & 1)) {
+    int n = size >> 1;
+#if 0    
+    while (n--)
+      push(y);
+#else
+    while (n--)
+      push(x);
+#endif    
+    return;
+  }
+  
+  // sp := sp - size
+  auto sp = stack_pointer_rtx;
+  auto tmp = gen_rtx_MINUS(Pmode, sp, gen_rtx_CONST_INT(Pmode, size));
+  auto insn = emit_move_insn(sp, tmp);
+  RTX_FRAME_RELATED_P(insn) = true;
+}
+
+そして y レジスタをアロケートされないようにした.
+
+#define REGISTER_NAMES \
+  { "d", "x", "y", "sp", "unuse0", "unuse1", "unuse2", "unuse3", "unuse4", \
+    "*_.frame", "ap"  }
+#define FIXED_REGISTERS \
+  {  0,   0,   1,   1,    1,         1,        1,        1,        1,      \
+     1,          1}
+
+これでビルド開始 2022.03.28 8:35
+
+2022.03.28 9:36 レベルダウンしてしまっている.
+一旦この修正をキャンセルする.
+
+2022.03.28 9:40 ビルド開始
+2022.03.28 12:20 レベルダウンを回避できたことを確認した.
+
+現状 FIX_2022_03_28 のマクロで条件コンパイルするようにしている.
+
+まずはこのマクロが define された状態での正常動作を目指す.
+
+2022.03.28 15:10
+
+レベルダウンしている状態. f.elf は int + int でこれがまずできていない.
+
+f の先頭アドレスで
+
+(m68hc11-elf-gdb) info register
+PC=0x1064  SP=0xfef5  FP=0xfefb 
+CCR=0x00   --------   u> != >= > 
+D=0x0005 5 X=0x0000 0 Y=0x0000 0
+(m68hc11-elf-gdb) x/6bx $sp+1
+0xfef6:	0x10	0xac	0x00	0x00	0x00	0x06
+(m68hc11-elf-gdb)
+
+のようになっているから, 引数の 5 と 6 は期待通り渡されている.
+
+f:
+	ldx	*_.frame
+	pshx
+	pshx
+	pshx
+	sts	*_.frame
+	ldy	*_.frame
+	stx	1, y
+	std	3, y
+
+とよくよく調べてみたら ldx *_.frame で x を壊している.
+やはりこれは y を使用しないのは相当無理がある.
+
+いろいろ悩んだが FIX_2022_03_28 の修正をキャンセルことにした.
+つまり  y レジスタがアロケーション対象でも大丈夫なように実装する
+ことにする.
