@@ -1,0 +1,98 @@
+簡単なプログラムを動かすまで(2)
+
+「MMIX の ld」 => 「ファイル形式」
+
+で判明したように環境変数 GNUTARGET を elf64-mmix にセットすればよいらしい.
+
+現状
+
+target sim
+
+コマンドで以下のようになる.
+
+Reading symbols from test.elf...
+Target alignment unspecified
+gdbcom:2: Error in sourced command file:
+unable to create simulator instance
+(mmix-elf-gdb)
+
+これは sim_config でエラーしているメッセージだったと記憶している.
+
+      sim_io_eprintf (sd, "Target alignment unspecified\n");
+
+ここだった.
+
+-DWITH_ALIGNMENT=4
+
+をコンパイルオプションに追加した. これで回避できている.
+現状はメモリを全く割り当てていないので以下のように修正:
+
+gdb-10.2.mmix-elf/sim/common/sim-load.c:
+
+  	      data_count += size;
+  	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
++ 	      sim_do_commandf(sd, "memory-region 0x%llx,0x%llx", lma, size);
+  	      do_write (sd, lma, buffer, size);
+  	      found_loadable_section = 1;
+  	      free (buffer);
+  	    }
+  	}
++       else if (s->flags & SEC_ALLOC) {
++         bfd_vma vma = bfd_section_vma(s);
++         bfd_size_type size = bfd_section_size(s);
++         sim_do_command(sd, "memory-fill 0xcc");
++         sim_do_commandf(sd, "memory-region 0x%llx,0x%llx", vma, size);
++       }
+      }
+
+この作業で
+
+sim_cia mmix_pc_get(sim_cpu* cpu);
+
+void mmix_pc_set(sim_cpu* cpu, sim_cia pc);
+
+int mmix_reg_get(sim_cpu* cpu, int rn, unsigned char *buf, int length);
+
+int mmix_reg_set(sim_cpu* cpu, int rn, unsigned char *buf, int length);
+
+
+  sim_cpu* cpu = STATE_CPU(sd, 0);
+  CPU_PC_FETCH(cpu) = mmix_pc_get;
+  CPU_PC_STORE(cpu) = mmix_pc_set;
+
+  CPU_REG_FETCH(cpu) = mmix_reg_get;
+  CPU_REG_STORE(cpu) = mmix_reg_set;
+
+とする必要があった. そして
+
+instruction_word mmix_fetch(SIM_DESC sd, sim_cia cia)
+{
+  sim_cpu* cpu = STATE_CPU(sd, 0);
+  return sim_core_read_aligned_4(cpu, cia, read_map, cia);
+}
+
+としたところで以下が呼び出されるところまでできている.
+
+sim_cia idecode_issue(SIM_DESC sd, instruction_word insn, sim_cia cia)
+{
+   // ...
+}
+
+ブレークポイントが MCORE のものになっているので以下のように暫定的に修正した:
+
+  static unsigned char bkpt[] = { 0xba, 0xdb, 0xee, 0xf0 };
+
+そして idecode_issue をブレークポイントを処理できるように以下のようにした.
+
+sim_cia idecode_issue(SIM_DESC sd, instruction_word insn, sim_cia cia)
+{
+  if (insn == 0xbadbeef0) {
+    sim_cpu* cpu = STATE_CPU(sd, 0);
+    sim_engine_halt(sd, cpu, 0, cia, sim_stopped, SIM_SIGTRAP);
+  }
+  return cia + 4;
+}
+
+これにより期待通り動作するようになっている.
+勿論, これは何も命令をシュミレーションしていない. ブレークポイント以外には nop の
+動作となる.
