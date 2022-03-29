@@ -1,0 +1,303 @@
+mmix-elf-ld の生成のファイル形式が mmo になる件の調査.
+
+gdb から ld-new を実行して再現している.
+
+% mmix-elf-objdump -x test.elf 
+
+test.elf:     ファイル形式 mmo
+...
+
+objdump はファイルのどのデータを見て mmo とか elf64-mmix などのように
+表示しているかをまず確認する.
+
+objdump.c:4860
+    printf (_("\n%s:     file format %s\n"),
+	    sanitize_string (bfd_get_filename (abfd)),
+	    abfd->xvec->name);
+
+(gdb) p abfd->xvec->name
+$1 = 0x81444ce "mmo"
+(gdb)
+
+ということは 'm', 'm', 'o', '\0' というデータがファイルに埋め込まれているということ
+だろうか. そうでもないらしい.
+
+targets.c:
+	  abfd->xvec = target;
+
+ここでセットしている.
+
+
+(gdb) p target
+$10 = (const bfd_target *) 0x8146000 <mmix_elf64_vec>
+(gdb) p abfd->xvec->name
+$11 = 0x8145c95 "elf64-mmix"
+(gdb)
+
+これがどこかで変更されるということ.
+
+bfd_boolean
+bfd_check_format_matches (bfd *abfd, bfd_format format, char ***matching)
+{
+...
+      /* Change BFD's target temporarily.  */
+      abfd->xvec = *target;          (*A)
+
+ここで変更していた.
+
+(gdb) p *target
+$14 = (const bfd_target * const) 0x814c240 <mmix_mmo_vec>
+(gdb) p abfd->xvec->name
+$15 = 0x81444ce "mmo"
+(gdb) 
+
+ここで "mmo" になっている. 同じところで 0x814c240 <mmix_mmo_vec> 以外にも
+変更されている.
+
+そしてさらに
+
+      abfd->xvec = save_targ;         (*B)
+
+ここで変更されていた.
+
+(gdb) p abfd->xvec
+$37 = (const struct bfd_target *) 0x81669c0 <mmix_elf64_vec>
+(gdb) 
+
+元に戻されている.
+
+そして再びここで変更され
+
+      /* Change BFD's target temporarily.  */
+      abfd->xvec = *target;           (*A)
+
+ここで変更されていた.
+
+  if (match_count == 1)
+    {
+      abfd->xvec = right_targ;
+
+そして変更されることなく表示されていた.
+
+アセンブラの出力である test.o をダンプした結果はファイル形式 elf64-mmix
+なのだが objdump の動作は (*B) で元に戻されてそしてそのまま表示というもの.
+
+ということは (*B) の後 (*A) がきているのがおそらく間違い. というかこの事象の原因.
+
+test.o と test.elf とで動作が異なっているからその原因を調べてみる.
+
+bfd_boolean
+bfd_check_format_matches (bfd *abfd, bfd_format format, char ***matching)
+{
+
+が 1 回目呼び出されたときの動作は見た目は同じ.
+
+2 回目に呼び出されたとき test.o は abfd->xvec は変更されないが test.elf は
+数回変更され結果的に mmix_mmo_vec になることが判明している.
+
+2 回目の呼び出しで動作に違いが出るのは以下:
+
+      cleanup = BFD_SEND_FMT (abfd, _bfd_check_format, (abfd));
+
+test.o では cleanup = _bfd_void_bfd
+test.elf   cleanup = 0x0
+
+test.elf で 0x0 になる理由は以下:
+
+  if (! elf_file_p (&x_ehdr)
+      || x_ehdr.e_ident[EI_VERSION] != EV_CURRENT
+      || x_ehdr.e_ident[EI_CLASS] != ELFCLASS)
+    goto got_wrong_format_error;
+
+この条件が成立してエラーしている.
+
+(gdb) p elf_file_p (&x_ehdr)
+$49 = 0
+(gdb)
+
+これが直接の原因らしい. test.elf の先頭 4 バイトは
+
+127, 'E', 'L', 'F'
+
+が期待値だがそうなっていないらしい. 全然違う値がある.
+まずは
+
+mmix-elf-ld
+
+がこのような出力をしている理由を調べてみる. 現状では
+
+0x98, 0x09, 0x01, 0x01
+
+を出力している.
+
+(gdb) b write
+(gdb) run
+...
+write のブレークポイントにヒット
+(gdb) x/4bx 0xb7fd6000 
+0xb7fd6000:	0x98	0x09	0x01	0x01
+(gdb) 
+
+これっぽい.
+
+(gdb) delete
+(gdb) watch *(int*)0xb7fd6000
+(gdb) run
+...
+
+
+static bfd_boolean
+mmo_internal_write_header (bfd *abfd)
+{
+  const char lop_pre_bfd[] = { LOP, LOP_PRE, 1, 1};
+
+  if (bfd_bwrite (lop_pre_bfd, 4, abfd) != 4)
+    return FALSE;
+
+ここで書き込んでいる.
+
+(gdb) p/x lop_pre_bfd
+$1 = {0x98, 0x9, 0x1, 0x1}
+(gdb)
+
+ということは間違ったヘッダを生成しているわけではなくて, どうやら意図してこれを
+生成しているらしい.
+
+呼び出し元はここ:
+
+bfd_boolean
+bfd_close (bfd *abfd)
+{
+  if (bfd_write_p (abfd))
+    {
+      if (! BFD_SEND_FMT (abfd, _bfd_write_contents, (abfd)))
+	return FALSE;
+    }
+
+  return bfd_close_all_done (abfd);
+
+そしてこれがマクロ展開の結果:
+
+
+bfd_boolean
+bfd_close (bfd *abfd)
+{
+  if (((abfd)->direction == write_direction || (abfd)->direction == both_direction))
+    {
+      if (! (((abfd)->xvec->_bfd_write_contents[(int) ((abfd)->format)]) (abfd)))
+ return 0;
+    }
+
+
+(gdb) p (abfd)->format
+$3 = bfd_object
+(gdb) p (int)((abfd)->format)
+$4 = 1
+(gdb) p (abfd)->xvec->_bfd_write_contents
+$5 = {0x807a870 <_bfd_bool_bfd_false_error>, 
+  0x80d0080 <mmo_write_object_contents>, 
+  0x807a870 <_bfd_bool_bfd_false_error>, 
+  0x807a870 <_bfd_bool_bfd_false_error>}
+(gdb)
+
+これが mmo_write_object_contents が呼び出されている直接の理由.
+
+正常に動作している, 例えば
+
+aarch64-elf-ld
+
+でどのようになっているか調べてみた.
+
+(gdb) b write
+(gdb) run
+...
+数回目
+(gdb) x/4bx 0xb7fd6000
+0xb7fd6000:	0x7f	0x45	0x4c	0x46
+(gdb) x/4bc 0xb7fd6000
+0xb7fd6000:	127 '\177'	69 'E'	76 'L'	70 'F'
+(gdb)
+
+ヘッダを書いているところを調べた. 
+ここから呼び出されている.
+
+  result = abfd->iovec->bseek (abfd, position, direction);
+
+(gdb) p abfd->iovec
+$2 = (const struct bfd_iovec *) 0x818f660 <cache_iovec>
+(gdb) 
+
+どうやら mmix-elf-ld とは大分実装が違っているらしい.
+
+amr-elf-ld でも調べてみたところ aarch64-elf-ld と同じようになっていた.
+
+abfd->iovect は arm-elf-ld では以下でセットされていた.
+
+bfd_boolean
+bfd_cache_init (bfd *abfd)
+{
+...
+  abfd->iovec = &cache_iovec;
+
+さて mmix-elf-ld はどうすればよいのか...
+
+bfd ディレクトリでは
+
+gcc -DHAVE_CONFIG_H -I.  -DBINDIR='"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin"' -DLIBDIR='"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib"' -I. -I. -I./../include  -DHAVE_mmix_elf64_vec -DHAVE_mmix_mmo_vec -DHAVE_elf64_le_vec -DHAVE_elf64_be_vec -DHAVE_elf32_le_vec -DHAVE_elf32_be_vec   -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g -O0 -MT opncls.o -MD -MP -MF .deps/opncls.Tpo -E -o opncls.i opncls.c
+
+のように 
+
+-DHAVE_mmix_mmo_vec
+
+が指定されていることに気付く. しかしこのマクロを参照しているわけではないらしい.
+
+mmix_mmo_vec が定義されているのは
+
+binutils-2.36.1.mmix-elf/bfd/mmo.c
+
+const bfd_target mmix_mmo_vec =
+{
+
+mmix_elf64_vec が定義されているのは
+
+elf64-mmix.c:
+#define TARGET_BIG_SYM		mmix_elf64_vec
+...
+#include "elf64-target.h"
+
+elf64-target.h:
+const bfd_target TARGET_BIG_SYM =
+{
+
+mmix-elf-ld では abfd->xvec を以下でセットしている:
+
+const bfd_target *
+bfd_find_target (const char *target_name, bfd *abfd)
+{
+...
+  if (abfd)
+    abfd->xvec = target;
+
+
+(gdb) p target
+$16 = (const bfd_target *) 0x816dde0 <mmix_mmo_vec>
+(gdb)
+
+
+
+  default_target = ldemul_choose_target (argc, argv);
+
+ここで default_target が "mmo" になることを確認.
+
+
+(gdb) set environment GNUTARGET elf64-mmix
+(gdb) run
+...
+
+% mmix-elf-objdump -x test.elf
+
+test.elf:     ファイル形式 elf64-mmix
+...
+
+できている.
+環境変数 GNUTARGET を elf64-mmix にセットすればよいらしい.
