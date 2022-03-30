@@ -1,0 +1,165 @@
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/m68hc11-elf/libgcc/
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include    -g -O2 -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../host-i686-pc-linux-gnu/gcc -I../.././libgcc -I../.././libgcc/. -I../.././libgcc/../gcc -I../.././libgcc/../include    -o _muldi3.o -MT _muldi3.o -MD -MP -MF _muldi3.dep -DL_muldi3 -c ../.././libgcc/libgcc2.c -fvisibility=hidden -DHIDE_EXPORTS
+
+libgcc のビルドで発生したビルドを再現できている. 上の実行でさらに -### オプションを指定して
+cc1 の起動形式を確認. そして
+
+% cd ../../host-i686-pc-linux-gnu/gcc/
+
+M-x gdb
+gdb --annotate=3 ./cc1
+
+(gdb) cd ../../m68hc11-elf/libgcc
+(gdb) run -quiet -I . -I . -I ../../host-i686-pc-linux-gnu/gcc -I ../.././libgcc -I ../.././libgcc/. -I ../.././libgcc/../gcc -I ../.././libgcc/../include -iprefix /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/../lib/gcc/m68hc11-elf/10.2.0/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/include-fixed -MD _muldi3.d -MF _muldi3.dep -MP -MT _muldi3.o -D IN_GCC -D CROSS_DIRECTORY_STRUCTURE -D IN_LIBGCC2 -D inhibit_libc -D L_muldi3 -D HIDE_EXPORTS -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include -isystem ./include ../.././libgcc/libgcc2.c -quiet -dumpbase libgcc2.c -auxbase-strip _muldi3.o -g -g -g -O2 -O2 -O2 -Wextra -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual "-Wno-error=format-diag" -Wstrict-prototypes -Wmissing-prototypes "-Wno-error=format-diag" -Wold-style-definition -fbuilding-libgcc -fno-stack-protector "-fvisibility=hidden" -o /tmp/ccsOhrqW.s
+
+再現できている.
+
+(gdb) quit
+
+M-x gdb
+gdb --annotate=3 ./cc1
+
+(gdb) run -quiet -I ../../m68hc11-elf/libgcc -I ../../host-i686-pc-linux-gnu/gcc -I ../.././libgcc -I ../.././libgcc/. -I ../.././libgcc/../gcc -I ../.././libgcc/../include -iprefix /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/../lib/gcc/m68hc11-elf/10.2.0/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/include-fixed -MD _muldi3.d -MF _muldi3.dep -MP -MT _muldi3.o -D IN_GCC -D CROSS_DIRECTORY_STRUCTURE -D IN_LIBGCC2 -D inhibit_libc -D L_muldi3 -D HIDE_EXPORTS -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include -isystem ./include ../.././libgcc/libgcc2.c -quiet -dumpbase libgcc2.c -auxbase-strip _muldi3.o -g -g -g -O2 -O2 -O2 -Wextra -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual "-Wno-error=format-diag" -Wstrict-prototypes -Wmissing-prototypes "-Wno-error=format-diag" -Wold-style-definition -fbuilding-libgcc -fno-stack-protector "-fvisibility=hidden" -o muldi3.s
+
+これでも再現できている.
+
+ところで気付いたことはプリプロセスの結果を見てみると
+
+HItype
+__mulhi3 (HItype u, HItype v)
+{
+  const DWunion uu = {.ll = u};
+  const DWunion vv = {.ll = v};
+  DWunion w = {.ll = ({DWunion __w; do { UQItype __x0, __x1, __x2, __x3; UQItype __ul, __vl, __uh, __vh; __ul = ((UQItype) (uu.s.low) & (((UQItype) 1 << (8 / 2)) - 1)); __uh = ((UQItype) (uu.s.low) >> (8 / 2)); __vl = ((UQItype) (vv.s.low) & (((UQItype) 1 << (8 / 2)) - 1)); __vh = ((UQItype) (vv.s.low) >> (8 / 2)); __x0 = (UQItype) __ul * __vl; __x1 = (UQItype) __ul * __vh; __x2 = (UQItype) __uh * __vl; __x3 = (UQItype) __uh * __vh; __x1 += ((UQItype) (__x0) >> (8 / 2)); __x1 += __x2; if (__x1 < __x2) __x3 += ((UQItype) 1 << (8 / 2)); (__w.s.high) = __x3 + ((UQItype) (__x1) >> (8 / 2)); (__w.s.low) = ((UQItype) (__x1) & (((UQItype) 1 << (8 / 2)) - 1)) * ((UQItype) 1 << (8 / 2)) + ((UQItype) (__x0) & (((UQItype) 1 << (8 / 2)) - 1)); } while (0); __w.ll; })};
+
+  w.s.high += ((UQItype) uu.s.low * (UQItype) vv.s.high
+        + (UQItype) uu.s.high * (UQItype) vv.s.low);
+
+  return w.ll;
+}
+
+のようになっている. つまりコンパイルしている函数は __mulhi3 で __muldi3 ではないということ.
+しかし
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/libgcc/libgcc2.c
+
+では以下のようになっている.
+
+#ifdef L_muldi3
+DWtype
+__muldi3 (DWtype u, DWtype v)
+{
+  const DWunion uu = {.ll = u};
+  const DWunion vv = {.ll = v};
+  DWunion w = {.ll = __umulsidi3 (uu.s.low, vv.s.low)};
+
+  w.s.high += ((UWtype) uu.s.low * (UWtype) vv.s.high
+	       + (UWtype) uu.s.high * (UWtype) vv.s.low);
+
+  return w.ll;
+}
+#endif
+
+これはあたかも -D__muldi3=__mulhi3 のようにコンパイルしているかのようであって,
+しかもランタイムライブラリ函数として必要なのは __muldi3 であって __mulhi3 は必要ない.
+
+コンパイル時のエラーを修正することも必要なのだが, まずはなぜ __muldi3 がコンパイル
+されないかを調べてみるべき.
+
+オリジナルの cc1 でどのようになっていたか調べてみる.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.m68hc11-elf/gcc
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.m68hc11-elf/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.m68hc11-elf/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include -Os -mrelax  -DUSE_GAS -DIN_GCC -Dinhibit_libc -g  -DIN_LIBGCC2 -I. -I. -I. -I./. -I./../include   -DL_muldi3 -E ./libgcc2.c -o libgcc/./_muldi3.i
+
+プリプロセスの結果の抜粋は以下
+...
+typedef int DItype __attribute__ ((mode (DI)));
+...
+  struct DWstruct {SItype high, low;};
+...
+typedef union
+{
+  struct DWstruct s;
+  DItype ll;
+} DWunion;
+...
+DItype
+__muldi3 (DItype u, DItype v)
+{
+  const DWunion uu = {.ll = u};
+  const DWunion vv = {.ll = v};
+  DWunion w = {.ll = ({DWunion __w; do { USItype __x0, __x1, __x2, __x3; USItype __ul, __vl, __uh, __vh; __ul = ((USItype) (uu.s.low) & (((USItype) 1 << ((4 * 8) / 2)) - 1)); __uh = ((USItype) (uu.s.low) >> ((4 * 8) / 2)); __vl = ((USItype) (vv.s.low) & (((USItype) 1 << ((4 * 8) / 2)) - 1)); __vh = ((USItype) (vv.s.low) >> ((4 * 8) / 2)); __x0 = (USItype) __ul * __vl; __x1 = (USItype) __ul * __vh; __x2 = (USItype) __uh * __vl; __x3 = (USItype) __uh * __vh; __x1 += ((USItype) (__x0) >> ((4 * 8) / 2)); __x1 += __x2; if (__x1 < __x2) __x3 += ((USItype) 1 << ((4 * 8) / 2)); (__w.s.high) = __x3 + ((USItype) (__x1) >> ((4 * 8) / 2)); (__w.s.low) = ((USItype) (__x1) & (((USItype) 1 << ((4 * 8) / 2)) - 1)) * ((USItype) 1 << ((4 * 8) / 2)) + ((USItype) (__x0) & (((USItype) 1 << ((4 * 8) / 2)) - 1)); } while (0); __w.ll; })};
+
+  w.s.high += ((USItype) uu.s.low * (USItype) vv.s.high
+        + (USItype) uu.s.high * (USItype) vv.s.low);
+
+  return w.ll;
+}
+
+これは期待した結果になっている.
+
+オリジナルの cc1 でプリプロセスの結果が __mulhi3 になる理由を調べてみる.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/m68hc11-elf/libgcc
+% cp ../.././libgcc/libgcc2.c ../.././libgcc/my_libgcc2.c
+
+../.././libgcc/my_libgcc2.c
+
+の先頭に
+
+#define __muldi3 xxxxxxxxxxxxxx
+
+を挿入.
+
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include    -g -O2 -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../host-i686-pc-linux-gnu/gcc -I../.././libgcc -I../.././libgcc/. -I../.././libgcc/../gcc -I../.././libgcc/../include    -o _muldi3.i -MT _muldi3.o -MD -MP -MF _muldi3.dep -DL_muldi3 -E ../.././libgcc/my_libgcc2.c -fvisibility=hidden -DHIDE_EXPORTS
+In file included from ../.././libgcc/my_libgcc2.c:57:
+../.././libgcc/libgcc2.h:273: 警告: "__muldi3" が再定義されました
+  273 | #define __muldi3 __NDW(mul,3)
+      | 
+../.././libgcc/my_libgcc2.c:1: note: ここが以前の宣言がある位置です
+    1 | #define __muldi3 xxxxxxxxxxxxxx
+      | 
+%
+
+そして以下を発見した.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/libgcc/libgcc2.h:
+
+#elif LIBGCC2_UNITS_PER_WORD == 4
+#define W_TYPE_SIZE (4 * __CHAR_BIT__)
+#define Wtype	SItype
+#define UWtype	USItype
+#define HWtype	SItype
+#define UHWtype	USItype
+#define DWtype	DItype
+#define UDWtype	UDItype
+#ifdef LIBGCC2_GNU_PREFIX
+#define __NW(a,b)	__gnu_ ## a ## si ## b
+#define __NDW(a,b)	__gnu_ ## a ## di ## b
+#else
+#define __NW(a,b)	__ ## a ## si ## b
+#define __NDW(a,b)	__ ## a ## di ## b
+#endif
+#elif LIBGCC2_UNITS_PER_WORD == 2
+
+
+#define LIBGCC2_UNITS_PER_WORD 4
+
+とする必要があるのかと思い, m68hc11.h に入れてもう一度プリプロセスしてみたところ
+__muldi3 も __mulhi3 も出力されていない. やり方が違うらしい.
+
+試しに以下のようにしてみた:
+
+#else // IN_LIBGCC2
+
+typedef long long int DItype;
+#define UNITS_PER_WORD 2
+
+#endif // IN_LIBGCC2
+
+期待通りプリプロセスされている. ということは UNITS_PER_WORD はマクロであるべきであった
+ということ.
+
+しかし今回は正解に辿り着いたのはマグレっぽい.
+そして DItype の宣言も UNITS_PER_WORD の宣言を追加して必要なくなった.
+
