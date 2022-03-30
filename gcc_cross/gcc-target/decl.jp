@@ -226,8 +226,24 @@ enum reg_class {
 
 #define BITS_PER_WORD (BITS_PER_UNIT * UNITS_PER_WORD)
 
-    いわゆるワードサイズと等しくする. 32 ビットプロセッサならば通常は 4. constexpr に
-    よる宣言も OK.
+    いわゆるワードサイズと等しくする. 具体的には汎用レジスタのバイト数と等しくする.  
+    32 ビットプロセッサならば通常は 4 になる.
+    cc1 をビルドするだけであれば constexpr による宣言で良いが libgcc.a をビルド
+    するためにマクロにする必要がある:
+
+#ifdef IN_LIBGCC2
+...
+constexpr UNITS_PER_WORD = 2
+...
+#else // IN_LIBGCC2
+
+#define UNITS_PER_WORD 2
+
+#endif // IN_LIBGCC2
+
+    これは間違いを生みやすい. 回避するのならば constexpr による宣言を避けて
+    マクロにするべきなのかもしれない.
+
     この値を 4 以外にする場合は他の部分も調整が必要になる.
      UINT16_TYPE, UINT32_TYPE, UINT64_TYPE のセクションを参照.
 
