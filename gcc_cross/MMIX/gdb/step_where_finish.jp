@@ -1,0 +1,179 @@
+現状
+
+~/lang/53_GNU_tool/gcc_cross/MMIX/test/test002/test.elf
+
+を mmix-elf-gdb から実行すると以下のようになる.
+
+Breakpoint 1, main () at test.c:8
+8	  return f(5, 6);
+f (a=264, b=0) at test.c:3
+3	  return a + b;
+#0  f (a=264, b=0) at test.c:3
+#1  0x000000000000016c in main () at test.c:8
+Backtrace stopped: frame did not save the PC
+0x000000000000016c in main () at test.c:8
+8	  return f(5, 6);
+Value returned is $1 = 264
+A debugging session is active.
+
+つまり
+
+	(1) main のブレークポイントで停止して
+	(2) f にステップインしてプロローグを適切にスキップできてはいる.
+
+しかし
+	(3) 引数の a と b を正しく表示できていない.
+	(4) where コマンドで
+
+	Backtrace stopped: frame did not save the PC
+
+	    のエラーメッセージが出ている.
+
+	(5) finish コマンドで
+
+	Value returned is $1 = 11
+
+	となるのが期待値だが値が間違えている.
+	
+~/lang/53_GNU_tool/gcc_cross/MMIX/test/test002/test.elf
+
+は
+
+start:
+	code  : 0x100
+	stack : 0x1000
+	size  : なし
+	ret   : なし
+
+main:
+	code  : 0x150
+	stack : 0x1000 (プロローグ後 0x0ff8) 
+	size  : 8
+	ret   : 0x108
+
+f:
+	code  : 0x110
+	stack : 0x0ff8 (プロローグ後 0x0fe8)
+	size  : 16
+	ret   : 0x16c
+
+一方 .debug_frame は以下
+
+00000000 000000000000000c ffffffff CIE
+  Version:               1
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -8
+  Return address column: 35
+
+  DW_CFA_def_cfa: r30 ofs 0
+
+00000010 000000000000002c 00000000 FDE cie=00000000 pc=0000000000000110..0000000000000150
+  DW_CFA_advance_loc4: 4 to 0000000000000114
+  DW_CFA_def_cfa_offset: 16
+  DW_CFA_advance_loc4: 4 to 0000000000000118
+  DW_CFA_offset: r29 at cfa-8
+  DW_CFA_advance_loc4: 4 to 000000000000011c
+  DW_CFA_def_cfa: r29 ofs 0
+  DW_CFA_nop
+  DW_CFA_nop
+
+00000040 000000000000002c 00000000 FDE cie=00000000 pc=0000000000000150..0000000000000180
+  DW_CFA_advance_loc4: 4 to 0000000000000154
+  DW_CFA_def_cfa_offset: 8
+  DW_CFA_advance_loc4: 4 to 0000000000000158
+  DW_CFA_offset: r29 at cfa-8
+  DW_CFA_advance_loc4: 4 to 000000000000015c
+  DW_CFA_def_cfa: r29 ofs 0
+  DW_CFA_nop
+  DW_CFA_nop
+
+$253 : フレームポインタ
+$254 : スタックポインタ
+rJ   : リンクポインタ
+
+であるが .debug_frame 上では
+
+r29 : フレームポインタ
+r30 : スタックポインタ
+r35 : リンクポインタ
+
+になっている.
+
+main:
+...
+	GET $0,rJ
+	SETL $2,#5
+	SETL $3,#6
+	PUSHJ $1,f
+	PUT rJ,$0
+
+であるから main 函数では $0 レジスタに main の戻りアドレスを退避しているらしい.
+そしてその情報が .debug_frame に載っていないので
+
+	Backtrace stopped: frame did not save the PC
+
+のエラーメッセージが出ている.
+
+現状シミュレータ側で
+
+static uint64_t mmix_get_reg_1(sim_cpu* cpu, int rn)
+{
+  if (rn == 64)
+    return mmix_pc_get(cpu);
+
+  if (rn == 0 || rn == 30)
+    return get_gpr_for_me(254);
+
+  if (rn == 29)
+    return get_gpr_for_me(253);
+
+  if (rn == 35)
+    return get_spr_for_me(4);
+      
+  asm("int3");
+}
+
+のようにレジスタ番号を変更しているがこれは本来 mmix-tdep.c でやるべきなのでまずは
+その修正を行なった:
+
+constexpr int fp_regno = 253;
+constexpr int sp_regno = 254;
+
+static int mmix_dbg_reg_to_regnum(gdbarch* arch, int regnum)
+{
+  switch (regnum) {
+  case 29: return fp_regno;
+  case 30: return sp_regno;
+  case 35: return n_gpr + 4;
+  default: return regnum;
+  }
+}
+
+これに伴なってシミュレータ側も以下のように変更した:
+
+static uint64_t mmix_get_reg_1(sim_cpu* cpu, int rn)
+{
+  if (rn < 256)
+    return get_gpr_for_me(rn);
+
+  int n = rn - 256;
+  if (n < 32)
+    return get_spr_for_me(n);
+
+  assert(n == 32);
+  return mmix_pc_get(cpu);
+}
+
+これで動作が変更されたわけではないが, だいぶスッキリしている.
+
+変数が正しく表示できていない理由は引数 a は fp 相対 -12, 引数 b は fp 相対 -16
+でそこにシミュレーション上では 264 と 0 を保存しているから.
+
+だから finish による戻り値は 264 + 0 = 264 になっている.
+
+現時点ではコンパイラに問題があるとしておく.
+この時点での mmix-tdep.c を mmix-tdep.c.002 としてアップロードしておく.
+
+
+
