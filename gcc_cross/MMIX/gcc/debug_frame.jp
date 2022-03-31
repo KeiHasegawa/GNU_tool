@@ -1,0 +1,121 @@
+経緯 : mmix-elf-gdb の where コマンドで
+
+	Backtrace stopped: frame did not save the PC
+
+というメッセージが生成されるが mmix-elf-gcc で .debug_frame に戻りアドレスに
+関する情報がないのが原因.
+
+.debug_frame の修正.
+
+オリジナルの mmix-elf-gcc は
+
+int f(int, int);
+...
+  f(5, 6);
+
+に対して
+
+	GET $0,rJ
+	SETL $2,#5
+	SETL $3,#6
+	PUSHJ $1,f
+	PUT rJ,$0
+
+のように函数呼び出し毎に $0 レジスタにその函数の戻りアドレスを退避して復元するということを
+しているらしい.
+
+これが .debug_frame に反映されれば mmix-elf-gdb 側で where コマンドを適切に動作さ
+せることができる可能性がある.
+
+	GET $0,rJ
+
+を生成しているところを調べてみた.
+
+
+(gdb) where
+#0  rtx_alloc (code=INSN) at rtl.c:194
+#1  0x080e73aa in make_insn_raw (pattern=0xb7bd20d8) at emit-rtl.c:3464
+#2  emit_insn (x=0xb7bd20d8) at emit-rtl.c:4690
+#3  emit_insn (x=0xb7bd20d8) at emit-rtl.c:4657
+#4  0x080f9626 in emit_move_insn (x=<optimized out>, y=0xb7c1bc80) at expr.c:2853
+#5  0x08149d66 in emit_initial_value_sets () at integrate.c:3111
+#6  0x081c747d in rest_of_compilation (decl=<optimized out>) at ./toplev.c:3235
+#7  0x081ec9b9 in tree_rest_of_compilation (fndecl=<optimized out>, nested_p=<optimized out>) at tree-optimize.c:168
+--Type <RET> for more, q to quit, c to continue without paging--
+#8  0x08055a7a in c_expand_body_1 (fndecl=0xb7bcd7b4, nested_p=<optimized out>) at c-decl.c:6174
+#9  0x081ee3cf in cgraph_expand_function (node=<optimized out>) at cgraphunit.c:538
+#10 0x081ee769 in cgraph_assemble_pending_functions () at cgraphunit.c:144
+#11 cgraph_assemble_pending_functions () at cgraphunit.c:130
+#12 cgraph_finalize_function (decl=0xb7bcd7b4, nested=false) at cgraphunit.c:225
+#13 0x0805efe7 in finish_function () at c-decl.c:6131
+#14 0x0804dbe8 in yyparse () at c-parse.y:385
+#15 0x0804f668 in c_parse_file () at c-parse.y:3029
+--Type <RET> for more, q to quit, c to continue without paging--
+#16 0x0807d246 in c_common_parse_file (set_yydebug=0) at c-opts.c:1249
+#17 0x081ca27c in compile_file () at ./toplev.c:1822
+#18 do_compile () at ./toplev.c:4656
+#19 toplev_main (argc=3, argv=0xbffff624) at ./toplev.c:4696
+#20 0x0804a8cb in main (argc=3, argv=0xbffff624) at main.c:35
+(gdb) p debug_rtx((rtx)0xb7c563c0)
+(insn 29 0 0 (set (reg:DI 270)
+        (reg:DI 259 rJ)) -1 (nil)
+    (nil))
+$83 = void
+
+これは想像していたところとだいぶ違っていた.
+ちなみに 259 は mmix-elf-gcc における rJ のレジスタ番号で 260 でないのは
+実装依存ということ.
+
+少し強引だが, 以下のように試しに修正してみた:
+
+void
+emit_initial_value_sets (void)
+{
+...
+#if 0  
+  for (i = 0; i < ivs->num_entries; i++)
+    emit_move_insn (ivs->entries[i].pseudo, ivs->entries[i].hard_reg);
+#else
+  for (i = 0; i < ivs->num_entries; i++) {
+    rtx insn = emit_move_insn (ivs->entries[i].pseudo, ivs->entries[i].hard_reg);
+    int regno = REGNO(ivs->entries[i].hard_reg);
+    if (regno == 259)
+      RTX_FRAME_RELATED_P(insn) = 1;   //  GET $0 rJ の命令
+  }
+#endif  
+
+しかし
+
+      switch (GET_CODE (src))
+	{
+	  /* Setting FP from SP.  */
+	case REG:
+	  if (cfa.reg == (unsigned) REGNO (src))
+	    /* OK.  */
+	    ;
+	  else
+	    abort ();          ここでひっかかる.
+
+
+つまり
+
+	RTX_FRAME_RELATED_P(insn) = 1
+
+のようにできる命令には制限があってそのうち
+
+	レジスタ(dst) := レジスタ(src)
+
+のようにデスティネーションとソースのオペランドがレジスタならば
+
+        r0 := fp
+
+のようにソースはフレームポインタである必要があるということ.
+つまり .debug_frame を使用する枠組みでオリジナルの mmix-elf-gcc のように
+戻りアドレスを, 例えば $0 に退避するようなコードを生成すると where コマンド
+が期待通り動作しないということ. 回避策として以下のどちらかが考えられる.
+
+(1) .debug_frame を使用しない. .stab によるデバッグ情報を生成する.
+(2) 戻りアドレスはスタックに保存する
+
+
+
