@@ -101,13 +101,13 @@ f:
 
 $253 : フレームポインタ
 $254 : スタックポインタ
-rJ   : リンクポインタ
+rJ   : リターンジャンプレジスタ
 
 であるが .debug_frame 上では
 
 r29 : フレームポインタ
 r30 : スタックポインタ
-r35 : リンクポインタ
+r35 : リターンジャンプレジスタ
 
 になっている.
 
@@ -124,7 +124,7 @@ main:
 
 	Backtrace stopped: frame did not save the PC
 
-のエラーメッセージが出ている.
+のエラーメッセージが出ているというわけだ. だからここに関してはコンパイラができていない.
 
 現状シミュレータ側で
 
@@ -150,13 +150,14 @@ static uint64_t mmix_get_reg_1(sim_cpu* cpu, int rn)
 
 constexpr int fp_regno = 253;
 constexpr int sp_regno = 254;
+constexpr int rj_regno = n_gpr + 4;
 
 static int mmix_dbg_reg_to_regnum(gdbarch* arch, int regnum)
 {
   switch (regnum) {
   case 29: return fp_regno;
   case 30: return sp_regno;
-  case 35: return n_gpr + 4;
+  case 35: return rj_regno;
   default: return regnum;
   }
 }
@@ -185,6 +186,15 @@ static uint64_t mmix_get_reg_1(sim_cpu* cpu, int rn)
 
 現時点ではコンパイラに問題があるとしておく.
 この時点での mmix-tdep.c を mmix-tdep.c.002 としてアップロードしておく.
+またこの時点での
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.mmix-elf/sim/mmix/
+
+を mmix.3.tar として,
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GIMMIX/
+
+を GIMMIX.tar としてアップロードしておく.
 
 
 
