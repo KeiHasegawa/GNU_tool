@@ -86,7 +86,7 @@ static void
 mmix_extract_return_value(type* valtype, regcache* regs, gdb_byte *valbuf)
 {
   ULONGEST tmp;
-  regcache_cooked_read_unsigned(regs, 0, &tmp);
+  regcache_cooked_read_unsigned(regs, 1, &tmp);
   int len = TYPE_LENGTH(valtype);
   assert(len <= 8);
   store_unsigned_integer(valbuf, len, BFD_ENDIAN_BIG, tmp);
@@ -117,7 +117,7 @@ mmix_return_value(gdbarch* arch, value* function, type* valtype, regcache* rc,
 static type* mmix_register_type(struct gdbarch* arch, int regno)
 {
   switch (regno) {
-  case pc_regno:
+  case pc_regno: case rj_regno:
     return builtin_type(arch)->builtin_func_ptr;
   case sp_regno: case fp_regno:
     return builtin_type(arch)->builtin_data_ptr;

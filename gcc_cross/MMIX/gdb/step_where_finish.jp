@@ -185,6 +185,27 @@ static uint64_t mmix_get_reg_1(sim_cpu* cpu, int rn)
 だから finish による戻り値は 264 + 0 = 264 になっている.
 
 現時点ではコンパイラに問題があるとしておく.
+  => と思ったが GIMMIX でローカルレジスタスタックを実装していないのが原因らしい.
+    => と思ったが rG を適切にセットしていなかった.
+
+スタートアップルーチンで rG に 253 をセットして $253, $254, $255 を
+グローバルレジスタにした. これにより
+
+Breakpoint 1, main () at test.c:8
+8	  return f(5, 6);
+f (a=5, b=6) at test.c:3
+3	  return a + b;
+#0  f (a=5, b=6) at test.c:3
+#1  0x0000000000000170 in main () at test.c:8
+Backtrace stopped: frame did not save the PC
+0x0000000000000170 in main () at test.c:8
+8	  return f(5, 6);
+Value returned is $1 = 11
+A debugging session is active.
+
+のように修正された. where コマンドのエラーメッセージは解消できていないがそれ以外は
+できている.
+  
 この時点での mmix-tdep.c を mmix-tdep.c.002 としてアップロードしておく.
 またこの時点での
 
@@ -195,6 +216,3 @@ static uint64_t mmix_get_reg_1(sim_cpu* cpu, int rn)
 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GIMMIX/
 
 を GIMMIX.tar としてアップロードしておく.
-
-
-
