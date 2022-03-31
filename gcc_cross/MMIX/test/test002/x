@@ -1,0 +1,5 @@
+#! /bin/sh -vx
+
+mmix-elf-as -o aaa.o -g aaa.S || exit 1
+export GNUTARGET=elf64-mmix ; mmix-elf-ld -o aaa.elf ../default.o aaa.o -T ../default.x || exit 1
+
