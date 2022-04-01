@@ -73,3 +73,30 @@ GETA は必ず 4 命令に生成するのに対して, LDA は解決されるシ
 
 単純にオリジナルの mmix-elf-gcc で LDA を出しているところを GETA に修正してみること
 にしてみたらどうか?
+
+gcc-3.4.4.mmix-elf/gcc/config/mmix/mmix.md:
+
+(define_insn "movdi"
+  [(set (match_operand:DI 0 "nonimmediate_operand" "=r,r ,r,x,r,m,r,m,r,r,??r")
+	(match_operand:DI 1 "general_operand"	    "r,LS,K,r,x,I,m,r,R,s,n"))]
+  ""
+  "@
+   SET %0,%1
+   %s1 %0,%v1
+   NEGU %0,0,%n1
+   PUT %0,%1
+   GET %0,%1
+   STCO %1,%0
+   LDO %0,%1
+   STOU %1,%0
+   GETA %0,%1
+   LDA %0,%1
+   %r0%I1")
+
+この LDA を GETA に変更してみたらどうなるか.
+変数のアドレスを参照しているところは期待する結果になっている.
+
+しかしスタックでないメモリに配置された変数を参照するのに LDA が使用されていたわけではないので
+アドレスではなくて変数そのものを参照するコードは期待通り動いていない.
+
+
