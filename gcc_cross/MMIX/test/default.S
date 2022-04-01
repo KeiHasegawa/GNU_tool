@@ -1,6 +1,7 @@
 	.text
 start:
-	SETL	$254, #1000
+	PUT	rG, #fd
+	GETA	$254, stack
 	PUSHJ	$1, main
 	add	$0, $0, 0	
 end:	
