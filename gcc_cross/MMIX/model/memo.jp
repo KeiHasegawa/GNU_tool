@@ -1,0 +1,236 @@
+cc1 の雛形
+
+「AARCH64」=>「cc1 の雛形」=>「メモ」 を参照.
+AARCH64 と同様の手順で cc1 の雛形をビルドすることができる.
+
+以下開発メモ
+
+(*1)
+cc1 の実行時以下でエラーしている.
+
+  const struct real_format *dfmt
+    = REAL_MODE_FORMAT (TYPE_MODE (double_type_node));
+
+これのプリプロセスの結果は
+
+  const struct real_format *dfmt
+    = (real_format_for_mode[(((enum mode_class) mode_class[((((enum tree_code) ((global_trees[TI_DOUBLE_TYPE]))->base.code) == VECTOR_TYPE) ? vector_type_mode (global_trees[TI_DOUBLE_TYPE]) : (global_trees[TI_DOUBLE_TYPE])->type_common.mode)]) == MODE_DECIMAL_FLOAT) ? (((((((enum tree_code) ((global_trees[TI_DOUBLE_TYPE]))->base.code) == VECTOR_TYPE) ? vector_type_mode (global_trees[TI_DOUBLE_TYPE]) : (global_trees[TI_DOUBLE_TYPE])->type_common.mode)) - MIN_MODE_DECIMAL_FLOAT) + (MAX_MODE_FLOAT - MIN_MODE_FLOAT + 1)) : ((enum mode_class) mode_class[((((enum tree_code) ((global_trees[TI_DOUBLE_TYPE]))->base.code) == VECTOR_TYPE) ? vector_type_mode (global_trees[TI_DOUBLE_TYPE]) : (global_trees[TI_DOUBLE_TYPE])->type_common.mode)]) == MODE_FLOAT ? ((((((enum tree_code) ((global_trees[TI_DOUBLE_TYPE]))->base.code) == VECTOR_TYPE) ? vector_type_mode (global_trees[TI_DOUBLE_TYPE]) : (global_trees[TI_DOUBLE_TYPE])->type_common.mode)) - MIN_MODE_FLOAT) : ((fancy_abort ("../.././gcc/c-family/c-cppbuiltin.c", 780, __FUNCTION__)), 0)]);
+
+これを理解するのは人間技ではないが fancy_abort が呼び出されてエラーしたのだと気付くことは
+できそう.
+
+fancy : 空想
+
+おそらくだが MMIX の cc1 では 
+
+#define UNITS_PER_WORD 8
+
+としたのがこのエラーの間接的な原因なのだと思われる.
+
+(gdb) p ((global_trees[TI_DOUBLE_TYPE]))->base.code
+$1 = REAL_TYPE
+(gdb) p (((enum tree_code) ((global_trees[TI_DOUBLE_TYPE]))->base.code) == VECTOR_TYPE)
+$2 = false
+(gdb) 
+
+UNITS_PER_WORDS を 2 にした場合に必要な対処を行なった. 以下を mmix.h に追加した.
+
+#define SHORT_TYPE_SIZE		16
+#define INT_TYPE_SIZE           32
+#define LONG_TYPE_SIZE		32
+#define LONG_LONG_TYPE_SIZE     64
+#define FLOAT_TYPE_SIZE         32
+#define DOUBLE_TYPE_SIZE        64
+#define LONG_DOUBLE_TYPE_SIZE   64
+
+エラーを回避できている.
+
+(*2)
+mmix_expand_prologue, mmix_expand_epilogue をコーディングしたところ不正メモリアクセス
+してしまっている.
+しかし
+
+void mmix_expand_prologue()
+{
+#if 0
+...
+
+void mmix_expand_epilogue()
+{
+#if 0
+...
+
+のように空の函数にしたところ不正メモリアクセスしなくなる. これは一体?
+
+void mmix_expand_prologue()
+{
+...
+#if 0
+  emit_move_insn(mem, rJ);
+#endif  
+
+
+void mmix_expand_epilogue()
+{
+...
+#if 0 
+  emit_move_insn(rJ, mem);
+#endif  
+
+この rtx_insn の生成がエラーを引き起こしているらしい.
+
+#define RJ_REGNUM            300
+
+単純だがこれが間違いだった.
+
+256+4 = 260
+
+が正解
+
+(*3)
+a.c をコンパイル時に実行時エラーしている:
+
+      icode = recog_memoized (insn);
+      if (icode < 0)
+	fatal_insn_not_found (insn);   ここでエラーしている
+
+(gdb) p debug_rtx(insn)
+(insn 6 11 9 2 (set (reg/i:SI 1 $1)
+        (reg:SI 294 [ <retval> ])) "a.c":3:1 -1
+     (nil))
+$3 = void
+(gdb)
+
+さてこれは一体何がまずいのか.
+
+256 + 32 = 288
+
+なので 294 は疑似レジスタ.
+
+(define_insn "movsi"
+  [(set (match_operand:DI 0 "nonimmediate_operand" "")
+	(match_operand:DI 1 "general_operand" ""))]
+  ""
+  "*
+  return mmix_movsi(operands[0], operands[1]);")
+
+間違えていた :SI が正しい.
+
+(*4)
+mmix-elf-as は `.' から始まるラベルがエラーになってしまう.
+
+オリジナルの cc1 のソースに以下を発見:
+
+/* We insert a ":" to disambiguate against user symbols like L5.  */
+#define ASM_GENERATE_INTERNAL_LABEL(LABEL, PREFIX, NUM) \
+ sprintf (LABEL, "*%s:%ld", PREFIX, (long)(NUM))
+
+同じように追加してみたが
+
+$macro $def ASM_GENERATE_INTERNAL_LABEL "../.././gcc/config/mmix/mmix.h" 238 ;
+...
+$macro $def ASM_GENERATE_INTERNAL_LABEL "../.././gcc/config/elfos.h" 114 ;
+
+
+gcc/config/elfos.h:
+
+#undef  ASM_GENERATE_INTERNAL_LABEL
+#define ASM_GENERATE_INTERNAL_LABEL(LABEL, PREFIX, NUM)		\
+  do								\
+    {								\
+      char *__p;						\
+      (LABEL)[0] = '*';						\
+      (LABEL)[1] = '.';						\
+      __p = stpcpy (&(LABEL)[2], PREFIX);			\
+      sprint_ul (__p, (unsigned long) (NUM));			\
+    }								\
+  while (0)
+
+gcc-10.2.0.mmix-elf.mine/gcc/config.gcc:
+
+mmix-*-elf*)
+ 	tmake_file="mmix/t-mmix"
+ 	tm_file="mmix/mmix.h dbxelf.h elfos.h newlib-stdint.h"
+ 	;;
+
+順番が関係しているのだと思っている.
+
+以下のように修正
+
+mmix-*-elf*)
+ 	tmake_file="mmix/t-mmix"
+ 	tm_file="dbxelf.h elfos.h mmix/mmix.h newlib-stdint.h"
+ 	;;
+
+(*5)
+現状 hello world はできているが hello world 11 はできていない.
+hello world 0 になっている.
+5 + 6 自体は以下で行なっているが
+
+	addu	$0, $0, $17
+
+(mmix-elf-gdb) p/x $r0
+$11 = 0x600000005
+(mmix-elf-gdb) p/x $r17
+$12 = 0x6
+(mmix-elf-gdb)
+
+これはロード命令が 4 バイトではなくて 8 バイトにしているということ.
+
+	ldwu	$0, $16, 0
+
+これで $16 = 0x1ffdc で $0 が 5 になるのが期待値だがそうなっていない.
+
+スタックは以下.
+
+(mmix-elf-gdb) x/6bw 0x1ffd8
+0x1ffd8:	0x00000006	0x00000005	0x00000000	0x000001a4
+0x1ffe8:	0x00000000	0x00020000
+(mmix-elf-gdb) 
+
+これは期待したもの. 0x15c 番地の ldwu 命令が期待した動作ではない.
+ldwu は 2 バイトのロード.
+
+0x150 の sttu 命令が 8 バイトアクセスになっている.
+
+
+(*6)
+
+現状できていないが
+
+diff a.s a.s.correct 
+25c25
+< 	pop	0, 0
+---
+> 	pop	1, 0
+43c43
+< 	set	$6, $0
+---
+> 	set	$6, $4
+>
+
+pop は簡単に修正できるとして問題は戻り値. おそらくだが pop 命令の仕様をよく理解していない
+ことが良くない.
+
+以下のように outgoing の引数を参照するとよいらしい:
+
+rtx mmix_function_value(const_tree ret_type, const_tree, bool outgoing)
+{
+  auto mode = TYPE_MODE(ret_type);
+  int n = outgoing ? 0 : mmix_impl::first_arg_register-1;
+  return gen_rtx_REG(mode, n);
+}
+
+(*7)
+現状 hello world 11 はできている. そこで mmix_expand_prologue で生成している
+すべての rtx_insn* insn に対して
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+のように情報を付加した.
+また以下を追加した.
+
+#define INCOMING_RETURN_ADDR_RTX gen_rtx_REG(Pmode, RJ_REGNUM)
+
+これだけで step, where, finish ができている.
+
