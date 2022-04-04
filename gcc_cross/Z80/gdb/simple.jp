@@ -1,0 +1,156 @@
+簡単なプログラムを動かすまで
+
+例によって 0x100 番地に nop を数個配置してそこをステップ実行することができるようにする.
+
+M-x gdb
+gdb --annotate=3 ./gdb
+(gdb) cd ~/lang/53_GNU_tool/gcc_cross/Z80/test/test001/
+(gdb) run -q -x gdbcom test.elf
+Reading symbols from test.elf...
+Target alignment unspecified
+gdbcom:2: Error in sourced command file:
+unable to create simulator instance
+(z80-elf-gdb) 
+
+これは sim_config でエラーしているときのメッセージ.
+
+-DWITH_ALIGNMENT=4
+
+をビルドのオプションに追加した. もしかしてこれは 4 でないのかもしれないがとりあえず 4 に
+しておく.
+
+(gdb) run
+...
+
+以下の埋め込んでおいたブレークポイントにヒットしている. 上のエラーは回避できている.
+
+void z80_pc_set(sim_cpu* cpu, sim_cia pc)
+{
+  asm("int3");
+}
+
+どうせシミュレーション部分のソースは github から適当なものを持ってくる予定なので
+適当にやっておく:
+
+static sim_cia my_pc;
+
+sim_cia z80_pc_get(sim_cpu* cpu)
+{
+  return my_pc;
+}
+
+void z80_pc_set(sim_cpu* cpu, sim_cia pc)
+{
+  my_pc = pc;
+}
+
+(gdb) run
+...
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x4 lma 0x100
+Start address 0x100
+Transfer rate: 32 bits in <1 sec.
+Breakpoint 1 at 0x100: file test.S, line 3.
+Breakpoint 2 at 0x103: file test.S, line 7.
+gdbcom:6: Error in sourced command file:
+Warning:
+Cannot insert breakpoint 1.
+Cannot access memory at address 0x100
+Cannot insert breakpoint 2.
+Cannot access memory at address 0x103
+
+
+Thread 1 "gdb" received signal SIGSEGV, Segmentation fault.
+0x00000000 in ?? ()
+(gdb)
+
+現状ではメモリを割り当てていないので以下のようにパッチを当てておく：
+
+gdb-10.2.z80-elf/sim/common/sim-load.c:
+
+  	      data_count += size;
+  	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
++ 	      sim_do_commandf(sd, "memory-region 0x%llx,0x%llx", lma, size);
+  	      do_write (sd, lma, buffer, size);
+  	      found_loadable_section = 1;
+  	      free (buffer);
+  	    }
+  	}
++       else if (s->flags & SEC_ALLOC) {
++         bfd_vma vma = bfd_section_vma(s);
++         bfd_size_type size = bfd_section_size(s);
++         sim_do_command(sd, "memory-fill 0xcc");
++         sim_do_commandf(sd, "memory-region 0x%llx,0x%llx", vma, size);
++       }
+      }
+
+また現状ではブレーク命令が不明だが nop が 0x00 なので halt を割り当てておく
+
+static
+const unsigned char* z80_from_kind(gdbarch* handle, int kind, int* size)
+{
+  static unsigned char break_inst[] = { 0x76 };  // halt
+
+これだと halt のシミュレーションができないことになるがそのうち変更する.
+現状レジスタを読み書きしているところで不正メモリアクセスしている. 以下の対応を行なった:
+
+int z80_reg_get(sim_cpu* cpu, int rn, unsigned char *buf, int length)
+{
+  asm("int3");
+}
+
+int z80_reg_set(sim_cpu* cpu, int rn, unsigned char *buf, int length)
+{
+  assert(length == 2);
+  asm("int3");
+}
+...
+  sim_cpu* cpu = STATE_CPU(sd, 0);
+...
+  CPU_REG_FETCH(cpu) = z80_reg_get;
+  CPU_REG_STORE(cpu) = z80_reg_set;
+
+これで z80_reg_get(rn = 32, lenght = 4) で呼び出されている. 32 は pc の番号.
+以下の修正で lenght = 2 で呼び出されるようになる
+z80-tdep.c:
+
+  set_gdbarch_ptr_bit(gdbarch, 2 * TARGET_CHAR_BIT);
+  set_gdbarch_addr_bit(gdbarch, 2 * TARGET_CHAR_BIT);
+
+この対応を行なったところ以下の埋め込んでおいたブレークポイントにヒットした:
+
+instruction_word z80_fetch(SIM_DESC sd, sim_cia cia)
+{
+  asm("int3");  
+}
+
+そこで以下のようにした:
+
+sim-main.h:
+typedef uint8_t instruction_word;
+
+sim-if.c:
+instruction_word z80_fetch(SIM_DESC sd, sim_cia cia)
+{
+  sim_cpu* cpu = STATE_CPU(sd, 0);
+  return sim_core_read_aligned_1(cpu, cia, read_map, cia);
+}
+
+sim_cia idecode_issue(SIM_DESC sd, instruction_word insn, sim_cia cia)
+{
+  if (insn == 0x76) {
+    sim_cpu* cpu = STATE_CPU(sd, 0);
+    sim_engine_halt(sd, cpu, 0, cia, sim_stopped, SIM_SIGTRAP);
+  }
+
+  return cia + 1;  // nop
+}
+
+これでこのプログラムが期待通り動作するようになった.
+
+この時点での z80-tdep.c を z80-tdep.c.001 として,
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.z80-elf/sim/z80
+
+を z80.1.tar としてアップロードしておく.
