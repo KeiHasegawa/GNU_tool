@@ -1,0 +1,21 @@
+%.o : %.S
+	z80-elf-as -o $@ -g $<
+
+%.o : %.c
+	z80-elf-gcc -o $@ $< -c -g
+
+%.elf : %.o 
+	z80-elf-ld -o $@ ../default.o $< -T ../default.x
+
+%.objdump : %.elf
+	z80-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v z80-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.o *.s *.elf *.map *.objdump *.log TAGS *~
