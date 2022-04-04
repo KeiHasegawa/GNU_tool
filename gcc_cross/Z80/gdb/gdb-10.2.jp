@@ -1,0 +1,55 @@
+gdb-10.2 のビルド
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% xz -d -c ../gdb-10.2-1.src/gdb-10.2.tar.xz | tar xf -
+% mv gdb-10.2 gdb-10.2.z80-elf
+% cd gdb-10.2.z80-elf
+
+sim/configure.tgt は今回は z80 用に編集しなかった.
+
+% cd gdb
+
+d30v, fr30, z8k, i960, mmix と同じ対処をした.
+
+gdb-10.2.z80-elf/gdb/configure.tgt:
+
+h8300-*-*)
+	# Target: H8300 processor
+	gdb_target_obs="h8300-tdep.o"
+	gdb_sim=../sim/h8300/libsim.a
+	;;
+
++z80-*-*)
++	gdb_target_obs="z80-tdep.o"
++	gdb_sim=../sim/z80/libsim.a
++	;;
+
+% cp ~/lang/53_GNU_tool/gcc_cross/PRU/gdb/pru-tdep.c.000 z80-tdep.c
+
+pru を z80 に変換しておいた.
+
+% cd ..
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=z80-elf
+% make
+...
+make[2]: *** 'gdb' に必要なターゲット '../sim/z80/libsim.a' を make するルールがありません.  中止.
+...
+%
+
+i960 や MMIX とは違うくらいビルドが進んでいる.
+
+% cd sim
+% tar xf ~/lang/53_GNU_tool/gcc_cross/MMIX/gdb/mmix.1.tar
+% mv mmix z80
+% cd z80
+
+各ファイルにある mmix を z80 に置換した.
+
+% make
+
+libsim.a と run をビルドした.
+
+% cd ../../gdb
+% make gdb
+
+シミュレーション部分は空っぽだが, 一応ビルド完了.
