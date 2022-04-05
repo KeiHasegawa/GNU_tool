@@ -1,0 +1,39 @@
+github を検索して以下を発見した:
+
+https://github.com/LuccoJ/z80sim
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% mkdir z80sim
+% cd z80sim
+% git init
+% git pull https://github.com/LuccoJ/z80sim
+% make
+
+z80sim
+
+がビルドされた.
+これらを修正して libz80sim.a をビルドできるようにした.
+そしてアセンブラレベルで函数を呼び出す以下のようなプログラム:
+
+	.text
+start:
+	ld	sp, stack
+	call	func
+	nop
+end:	
+	nop
+
+func:
+	ret
+	
+に対して期待するシミュレーションができている.
+この時点での z80-tdep.c を z80-tdep.c.002 として,
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.z80-elf/sim/z80
+
+を z80.2.tar としてアップロードしておく.
+
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/z80sim
+
+を z80sim.1.tar としてアップロードしておく.
