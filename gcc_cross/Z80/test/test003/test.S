@@ -8,12 +8,11 @@ end:
 	
 
 _f:
+	push	ix
 	ld	hl, 0
 	add	hl, sp
-	push	hl
-	push	ix
 	ld	a, l
-	sub	0x44
+	sub	64
 	ld	l, a
 	ld	sp, hl
 	ld	ix, 0
@@ -27,8 +26,6 @@ _f:
 	ld	l, a
 	ld	sp, hl
 	pop	ix
-	pop	hl
-	ld	sp, hl
 	ret
 	
 	
