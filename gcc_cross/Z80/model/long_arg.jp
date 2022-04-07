@@ -1,0 +1,122 @@
+2022.04.07 13:10
+
+long の引数を実装中.
+
+#define B_REGNUM              2
+#define D_REGNUM              4
+#define H_REGNUM              6
+
+の宣言を追加してビルド中.
+現状
+
+#define REGISTER_NAMES \
+  { "a", "f", "b", "c", "d", "e", "h", "l", "ix", "iy", "sp", "ap", "dummy" }
+
+#define FIXED_REGISTERS \
+  {  0 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 ,   1 ,   1 ,   1 ,   1,     1  }
+
+のようにしているが long (sizeof(long)=2) に対して a レジスタを選択しても
+f はフラグレジスタなので
+
+const char* z80_movhi(rtx x, rtx y)
+{
+...
+  if (REG_P(x) && fp_rel(y, &offy)) {
+    asm("int3");
+    return "";
+  }
+
+
+のようにレジスタにロードするコードが出てしまうとどうしようもない. さてどうしたものか.
+
+2022.04.07 14:10
+
+FIXED レジスタを以下のように変更
+
+#define REGISTER_NAMES \
+  { "a", "f", "b", "c", "d", "e", "h", "l", "ix", "iy", "sp", "ap", "dummy" }
+
+#define FIXED_REGISTERS \
+  {  1 ,  1 ,  0 ,  1 ,  1 ,  1 ,  1 ,  1 ,   1 ,   1 ,   1 ,   1,     1  }
+
+以下も変更:
+
+rtx z80_function_value(const_tree ret_type, const_tree, bool)
+{
+  auto mode = TYPE_MODE(ret_type);
+- return gen_rtx_REG(mode, A_REGNUM);
++ return gen_rtx_REG(mode, B_REGNUM);
+}
+
+以下はだいぶ修正した:
+
+const char* z80_addqi3(rtx x, rtx y, rtx z)
+{
+  int offy, offz;
+  if (REG_P(x) && fp_rel(y, &offy) && fp_rel(z, &offz)){
+    ldqi_fp(A_REGNUM, offy);
+    addqi_fp(A_REGNUM, offz);
+    int regno = REGNO(x);
+    auto rn = reg_names[regno];    
+    auto a = reg_names[A_REGNUM];
+    fprintf(asm_out_file, "	ld	%s, %s\n", rn, a);
+    return "";
+  }
+
+まあ動かなくなるかもしれないがとりあえずこのように修正
+
+2022.04.07 16:30
+現状 B レジスタに戻り値をセットするようにできている.
+また qi + qi も期待通り動作している.
+現状 b.elf を実行して期待する動作をしているが b.elf を z80-elf-gdb で動作させると
+以下のように引数を正しく表示できていない.
+
+Breakpoint 1, main () at b.c:10
+10	  printf("%ld\n", f(123));
+f (a=-13108) at b.c:5
+5	  return a;
+#0  f (a=-13108) at b.c:5
+#1  0x00000160 in main () at b.c:10
+#2  0x00000106 in start () at start.S:4
+0x00000160 in main () at b.c:10
+10	  printf("%ld\n", f(123));
+Value returned is $1 = 123
+123
+
+-13108 = 0xcccc なのでおそらく違うアドレスを参照している.
+
+f の先頭アドレスで停止したところで sp の指しているメモリを参照してみた:
+
+(z80-elf-gdb) x/4bx $sp
+0xffe6:	0x60	0x01	0x7b	0x00
+(z80-elf-gdb)
+
+期待した 123 の値はきている. 実行結果は正しいのだからデバッグ情報が間違えているか,
+あるいは z80-elf-gdb が正しく動作していない.
+
+    <71>   DW_AT_name        : a
+    <73>   DW_AT_decl_file   : 1
+    <74>   DW_AT_decl_line   : 3
+    <75>   DW_AT_decl_column : 13
+    <76>   DW_AT_type        : <0x7e>
+    <7a>   DW_AT_location    : 2 byte block: 91 4 	(DW_OP_fbreg: 4)
+
+これは 2 が正しい. 4 になっている. ということはコンパイラが間違えている.
+試しに期待値となる生成結果を作成してみたところ期待通り動作している.
+
+自前の Z80 の cc1 は ARG_POINTER_REGNUM を使用する実装になっているので
+以下を削除した:
+
+#define FRAME_POINTER_CFA_OFFSET(FDECL) 2
+
+そして代わりに以下を追加した:
+
+extern int z80_arg_pointer_cfa_offset(tree);
+#define ARG_POINTER_CFA_OFFSET(FDECL) z80_arg_pointer_cfa_offset(FDECL)
+...
+int z80_arg_pointer_cfa_offset(tree)
+{
+  return -2;
+}
+
+これで期待する動作になっている.
