@@ -1,0 +1,303 @@
+開発メモ
+
+(*1)
+(gdb) run a.c
+Program received signal SIGSEGV, Segmentation fault.
+__strlen_sse2 () at ../sysdeps/i386/i686/multiarch/strlen.S:99
+99	../sysdeps/i386/i686/multiarch/strlen.S: そのようなファイルやディレクトリはありません.
+(gdb) where
+#0  __strlen_sse2 () at ../sysdeps/i386/i686/multiarch/strlen.S:99
+#1  0x084aaaa1 in c_common_nodes_and_builtins () at ../.././gcc/c-family/c-common.c:4304
+#2  0x08404bc7 in c_init_decl_processing () at ../.././gcc/c/c-decl.c:4415
+#3  0x08445fc8 in c_objc_common_init () at ../.././gcc/c/c-objc-common.c:62
+#4  0x08a1a2cd in lang_dependent_init (name=0xbffff80c "a.c") at ../.././gcc/toplev.c:1974
+#5  0x08a1aa51 in do_compile () at ../.././gcc/toplev.c:2263
+#6  0x08a1ad87 in toplev::main (this=0xbffff50e, argc=2, argv=0xbffff5d4) at ../.././gcc/toplev.c:2417
+#7  0x091aaa44 in main (argc=2, argv=0xbffff5d4) at ../.././gcc/main.c:39
+(gdb) up
+
+
+  char16_type_node = get_identifier (CHAR16_TYPE);  ここで不正メモリアクセス.
+
+今回の実装では
+
+sizeof(long) = 2 なのでここは long 相当がくるのが正しい.
+
+$macro $def CHAR16_TYPE "../.././gcc/defaults.h" 591 ;
+
+#ifdef UINT_LEAST16_TYPE
+#define CHAR16_TYPE UINT_LEAST16_TYPE
+#else
+#define CHAR16_TYPE "short unsigned int"
+#endif
+
+これはどこかで見たやつ.
+
+~/lang/53_GNU_tool/gcc_cross/AVR/model/memo.jp
+
+を参考にした. そして以下を追加してみた:
+
+#undef UINT16_TYPE
+#define UINT16_TYPE	"long unsigned int"
+#undef UINT32_TYPE
+#define UINT32_TYPE	"long long unsigned int"
+
+2022.04.06 7:50 エラーを回避できていない.
+
+% g++ -fno-PIE -E  -DIN_GCC_FRONTEND -DIN_GCC_FRONTEND -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H -I. -Ic-family -I../.././gcc -I../.././gcc/c-family -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber -I../.././gcc/../libbacktrace   -o c-family/c-common.i -MT c-family/c-common.o -MMD -MP -MF c-family/.deps/c-common.TPo ../.././gcc/c-family/c-common.c
+In file included from ./tm.h:21,
+                 from ../.././gcc/target.h:52,
+                 from ../.././gcc/c-family/c-common.c:25:
+../.././gcc/config/newlib-stdint.h:41: 警告: "UINT16_TYPE" が再定義されました
+   41 | #define UINT16_TYPE (SHORT_TYPE_SIZE == 16 ? "short unsigned int" : INT_TYPE_SIZE == 16 ? "unsigned int" : CHAR_TYPE_SIZE == 16 ? "unsigned char" : 0)
+      | 
+In file included from ./tm.h:18,
+
+これは ... どうやら include の順番が関係しているらしい.
+
+一旦
+
+#undef UINT16_TYPE
+#define UINT16_TYPE	"long unsigned int"
+#undef UINT32_TYPE
+#define UINT32_TYPE	"long long unsigned int"
+
+を削除した.
+単純に gcc/config/newlib-stdint.h を include することで自分が期待しない状態になっている.
+
+gcc-10.2.0.z80-elf.mine/gcc/config.gcc
+
+z80-*-elf*)
+	tmake_file="z80/t-z80"
+	tm_file="z80/z80.h dbxelf.h elfos.h newlib-stdint.h"
+	;;
+
+を
+
+z80-*-elf*)
+	tmake_file="z80/t-z80"
+	tm_file="z80/z80.h dbxelf.h elfos.h"
+	;;
+
+のように修正した.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.z80-elf.mine
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=z80-elf
+% make all-gcc
+
+これで期待通り動作している.
+
+(*2)
+hello world をコンパイルすると引数を push するようなコードが生成されていないので
+
+#define PUSH_ROUNDING(X)	(X)
+
+を追加した. このようにしたところ
+
+	(mem/f:HI (pre_inc:HI (reg/f:HI 10 sp)) [1  S2 A8]) := .LC0
+
+のようなコードが生成されている.
+
+#define STACK_GROWS_DOWNWARDS 1
+
+のようにしているが. これは typo だった. STACK_GROWS_DOWNWARD が正しい.
+
+(*3)
+現状 hello world 11 を実行すると hello world 1 になっている.
+f から戻ったときに a レジスタに 11 が入っているので f の呼び出しはできている.
+しかし f を呼び出した後 sp := sp + 2 に対するコードで a を壊している
+のが間違い.
+
+現状 sp の加算, 減算を a レジスタを介した 8 ビットのものにしているがこれがそもそ
+良くない.
+
+	sbc	hl, bc
+
+を使用する.
+
+	ld	hl, 0
+	add	hl, sp
+	ld	bc, 64
+	sbc	hl, bc
+	ld	sp, hl
+
+(*4)
+sbc 命令を使用したところシミュレータが未対応であることに気付いた. それっぽく実装しておいた.
+
+(*5)
+現状 hello world 11 ができている.
+
+そこで z80_expand_prologue で生成しているすべての rtx_insn* insn に対して
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+のようにした. また以下を追加した:
+
+#define INCOMING_RETURN_ADDR_RTX gen_rtx_MEM(Pmode, stack_pointer_rtx)
+
+この結果生成された .debug_frame は以下
+
+.debug_frame セクションの内容(a.elf より読み込んだもの):
+
+
+00000000 000e ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -1
+  Return address column: 13
+
+  DW_CFA_def_cfa: r10 ofs 0
+  DW_CFA_offset: r13 at cfa+0
+
+00000012 0018 00000000 FDE cie=00000000 pc=010b..011c
+  DW_CFA_advance_loc4: 2 to 010d
+  DW_CFA_def_cfa_offset: 2
+  DW_CFA_offset: r8 at cfa-2
+  DW_CFA_advance_loc4: 6 to 0113
+  DW_CFA_def_cfa_register: r8
+
+0000002e 0018 00000000 FDE cie=00000000 pc=011c..0150
+  DW_CFA_advance_loc4: 2 to 011e
+  DW_CFA_def_cfa_offset: 2
+  DW_CFA_offset: r8 at cfa-2
+  DW_CFA_advance_loc4: 6 to 0124
+  DW_CFA_def_cfa_register: r8
+
+これで z80-elf-gdb から hello world 11 を実行してみたところいくつか修正する
+必要があったが, 以下のようになっている:
+
+Connected to the simulator.
+Loading section .text, size 0x50 lma 0x100
+Loading section .rodata, size 0x10 lma 0x150
+Start address 0x100
+Transfer rate: 768 bits in <1 sec.
+Breakpoint 1 at 0x124: file a.c, line 10.
+
+Breakpoint 1, main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+f (a=47 '/', b=1 '\001') at a.c:5
+5	  return a + b;
+#0  f (a=47 '/', b=1 '\001') at a.c:5
+#1  0x0000012f in main () at a.c:10
+#2  0x00000106 in start () at start.S:4
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+0x0000012f in main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+Value returned is $1 = 11 '\v'
+hello world 11
+[Thread 0xb6f03b70 (LWP 12004) exited]
+[Thread 0xb7704b70 (LWP 12003) exited]
+[Inferior 1 (process 11937) exited normally]
+
+o main のブレークポイントで停止できている.
+o f にステップインできている.
+
+しかし
+
+o 引数の a と b は正しく表示できていない.
+o where コマンドでエラーメッセージが出ている。
+
+(*6)
+まずは引数が正しく表示できない理由を調べてみる. 引数 a と b はフレームポインタ(ix)相対
+4, 5 の位置にある. 一方, .debug_info は以下のようになっている:
+
+ <2><6c>: 省略番号: 5 (DW_TAG_formal_parameter)
+    <6d>   DW_AT_name        : a
+    <6f>   DW_AT_decl_file   : 1
+    <70>   DW_AT_decl_line   : 3
+    <71>   DW_AT_decl_column : 11
+    <72>   DW_AT_type        : <0x55>
+    <76>   DW_AT_location    : 2 byte block: 91 0 	(DW_OP_fbreg: 0)
+ <2><79>: 省略番号: 5 (DW_TAG_formal_parameter)
+    <7a>   DW_AT_name        : b
+    <7c>   DW_AT_decl_file   : 1
+    <7d>   DW_AT_decl_line   : 3
+    <7e>   DW_AT_decl_column : 18
+    <7f>   DW_AT_type        : <0x55>
+    <83>   DW_AT_location    : 2 byte block: 91 1 	(DW_OP_fbreg: 1)
+
+これはコンパイラが正しい情報を出せていないということ.
+
+
+static unsigned int
+instantiate_virtual_regs (void)
+{
+...
+#ifdef FRAME_POINTER_CFA_OFFSET
+  cfa_offset = FRAME_POINTER_CFA_OFFSET (current_function_decl);
+#else
+  cfa_offset = ARG_POINTER_CFA_OFFSET (current_function_decl);
+#endif
+
+ここが関係しているらしい. そしてこれは以前どこかで見たことがあるやつ.
+mn10300, rl78, moxie で似たような対応をした.
+
+そこで以下を追加した:
+
+#define FRAME_POINTER_CFA_OFFSET(FDECL) 0
+
+これにより .debug_info は以下のように変更された:
+
+ <2><6c>: 省略番号: 5 (DW_TAG_formal_parameter)
+    <6d>   DW_AT_name        : a
+    <6f>   DW_AT_decl_file   : 1
+    <70>   DW_AT_decl_line   : 3
+    <71>   DW_AT_decl_column : 11
+    <72>   DW_AT_type        : <0x55>
+    <76>   DW_AT_location    : 2 byte block: 91 4 	(DW_OP_fbreg: 4)
+ <2><79>: 省略番号: 5 (DW_TAG_formal_parameter)
+    <7a>   DW_AT_name        : b
+    <7c>   DW_AT_decl_file   : 1
+    <7d>   DW_AT_decl_line   : 3
+    <7e>   DW_AT_decl_column : 18
+    <7f>   DW_AT_type        : <0x55>
+    <83>   DW_AT_location    : 2 byte block: 91 5 	(DW_OP_fbreg: 5)
+
+しかし実行結果は以下:
+
+Breakpoint 1, main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+f (a=0 '\000', b=0 '\000') at a.c:5
+5	  return a + b;
+#0  f (a=0 '\000', b=0 '\000') at a.c:5
+#1  0x0000012f in main () at a.c:10
+#2  0x00000106 in start () at start.S:4
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+0x0000012f in main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+Value returned is $1 = 11 '\v'
+hello world 11
+
+
+(z80-elf-gdb) x/2b 0xffea
+0xffea:	0x05	0x06
+(z80-elf-gdb) p &a
+$10 = (int *) 0xffec ""
+(z80-elf-gdb) p &b
+$11 = (int *) 0xffed ""
+(z80-elf-gdb)
+
+a と b のアドレスは 0xffea, 0xffeb が正しいが z80-elf-gdb は 0xffec, 0xffed
+にアクセスしている.
+
+(z80-elf-gdb) p/x $ix
+$12 = 0xffe6
+(z80-elf-gdb)
+
+これは何かを勘違いしているらしい.
+
+#define FRAME_POINTER_CFA_OFFSET(FDECL) 2
+
+が正解らしい.
+
+    <76>   DW_AT_location    : 2 byte block: 91 4 	(DW_OP_fbreg: 4)
+
+の意味はフレームポインタ相対 4 を意味するのではなくて,
+f が呼び出されたときのスタックポインタの値に 4 を加算したアドレス
+を表すらしい.
+
+(*7)
+where コマンドのエラーメッセージについては z80-elf-gdb の視点から調査してみる.
+
+
