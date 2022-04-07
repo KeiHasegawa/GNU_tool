@@ -1,0 +1,258 @@
+現状自前の cc1 の生成したプログラムで where コマンドを実行すると以下のように
+エラーメッセージが出る:
+
+(z80-elf-gdb) where
+#0  f (a=5 '\005', b=6 '\006') at a.c:5
+#1  0x0000012f in main () at a.c:10
+#2  0x00000106 in start () at start.S:4
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+(z80-elf-gdb)
+
+M-x gdb
+gdb --annoate ./gdb
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.z80-elf.mine/host-i686-pc-linux-gnu/gcc
+(gdb) run -q -x gdbcom a.elf
+
+再現している.
+
+(gdb) b backtrace_command_1
+(gdb) run
+...
+backtrace_command_1 のブレークポイントにヒット
+(gdb) b stack.c:2117
+(gdb) c
+...
+stack.c:2117 のブレークポイントにヒット
+
+	  if (reason >= UNWIND_FIRST_ERROR)
+	    printf_filtered (_("Backtrace stopped: %s\n"),
+			     frame_stop_reason_string (trailing));
+
+エラーメッセージはここで出力されている.
+
+(gdb) p reason
+$1 = UNWIND_SAME_ID
+(gdb) 
+
+エラーメッセージの直接の原因 reason = UNWIND_SAME_ID になること.
+
+(gdb) p *trailing
+$2 = {level = 2, pspace = 0x8c08678, aspace = 0x8c08b20, 
+  prologue_cache = 0x8c76e50, unwind = 0x89ff860 <z80_frame_unwind>, 
+  prev_arch = {p = true, arch = 0x8c5d280}, prev_pc = {status = CC_VALUE, 
+    masked = false, value = 262}, prev_func = {addr = 0, 
+    status = CC_UNKNOWN}, this_id = {p = frame_id_status::COMPUTED, value = {
+      stack_addr = 65518, code_addr = 256, special_addr = 0, 
+      stack_status = FID_STACK_VALID, code_addr_p = 1, special_addr_p = 0, 
+      artificial_depth = 0}}, base = 0x0, base_cache = 0x0, next = 0x8bc1f34, 
+  prev_p = true, prev = 0x0, stop_reason = UNWIND_SAME_ID, stop_string = 0x0}
+(gdb) p trailing->stop_reason
+$3 = UNWIND_SAME_ID
+(gdb)
+
+間接的な理由は trailing->stop_reason = UNWIND_SAME_ID になること. これをセット
+している瞬間を捕える.
+
+(gdb) p &trailing->stop_reason
+$4 = (unwind_stop_reason *) 0x8bc20dc
+(gdb) watch *(unwind_stop_reason *) 0x8bc20dc
+(gdb) run
+...
+
+
+      compute_frame_id (prev_frame);
+      if (!frame_stash_add (prev_frame))
+	{
+	  /* Another frame with the same id was already in the stash.  We just
+	     detected a cycle.  */
+	  if (frame_debug)
+	    {
+	      fprintf_unfiltered (gdb_stdlog, "-> ");
+	      fprint_frame (gdb_stdlog, NULL);
+	      fprintf_unfiltered (gdb_stdlog, " // this frame has same ID }\n");
+	    }
+	  this_frame->stop_reason = UNWIND_SAME_ID;  ここでセットしている.
+
+frame_stash_add (prev_frame) が false を返しているのが原因.
+そしておそらく
+
+      compute_frame_id (prev_frame);
+
+が正しくできていない可能性がある.
+
+ところで where コマンドの結果で気付くことは他のプロセッサのツールと異なり
+
+#0  f (a=5 '\005', b=6 '\006') at a.c:5
+#1  0x0000012f in main () at a.c:10
+#2  0x00000106 in start () at start.S:4
+
+のようにスタートアップルーチンも表示されていることである. これは i960-elf-gdb でも
+このようになっている.
+i960-elf-gdb でも同じエラーメッセージが出力されていた問題があったがエラーをセットしている
+場所が異なることと, おそらく対処の方法が異なると考えてこっちは独自で調査することにした.
+
+ターゲットプログラムは以下のようなスタックフレームを構成している:
+
+start:
+	code  : 0x100
+	stack : 0xfff0
+	ret   : なし
+	size  : なし
+
+main:
+	code  : 0x11c
+	stack : 0xffee (プロローグ後  0xffee)
+	ret   : 0x107
+	size  : 0
+
+f:
+	code  : 0x10b
+	stack : 0xffe8 (プロローグ後 0xffe6)
+	ret   : 0x12f
+	size  : 2
+
+(gdb) b z80_create_frame
+(gdb) run
+...
+backtrace_command_1 のブレークポイントにヒット
+(gdb) c
+...
+z80_create_frame のブレークポイントにヒット
+(gdb) fin
+Run till exit from #0  z80_create_frame (frame=0x8bc206c) at z80-tdep.c:132
+0x08392842 in z80_frame_this_id (frame=0x8bc206c, ptr=0x8bc2078, id=0x8bc20a8) at z80-tdep.c:161
+Value returned is $7 = (z80_frame *) 0x8c76e50
+(gdb) p/x *$7
+$8 = {available = 0x1, prologue_start = 0x100, prev_sp = 0xffee, size = 0x0}
+(gdb) c
+Continuing.
+#2  0x00000106 in start () at start.S:4
+
+Thread 1 "gdb" hit Breakpoint 4, z80_create_frame (frame=0x8bc20e4) at z80-tdep.c:132
+(gdb) fin
+Run till exit from #0  z80_create_frame (frame=0x8bc20e4) at z80-tdep.c:132
+0x08392842 in z80_frame_this_id (frame=0x8bc20e4, ptr=0x8bc20f0, id=0x8bc2120) at z80-tdep.c:161
+Value returned is $9 = (z80_frame *) 0x8c76e70
+(gdb) p/x *$9
+$10 = {available = 0x1, prologue_start = 0x100, prev_sp = 0xffee, size = 0x0}
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Hardware watchpoint 3: *(unwind_stop_reason *) 0x8bc20dc
+
+Old value = UNWIND_NO_REASON
+New value = UNWIND_SAME_ID
+get_prev_frame_if_no_cycle (this_frame=0x8bc206c) at frame.c:1996
+(gdb)
+
+$7 と $9 で作成した z80_frame が同じ値になっているから問題のエラーメッセージが
+出ているものと思われる.
+
+frame_stash_add が false を返す理由を調べてみた:
+
+static bool
+frame_stash_add (frame_info *frame)
+{
+  /* Do not try to stash the sentinel frame.  */
+  gdb_assert (frame->level >= 0);
+
+  frame_info **slot = (struct frame_info **) htab_find_slot (frame_stash,
+							     frame, INSERT);
+
+  /* If we already have a frame in the stack with the same id, we
+     either have a stack cycle (corrupted stack?), or some bug
+     elsewhere in GDB.  In any case, ignore the duplicate and return
+     an indication to the caller.  */
+  if (*slot != nullptr)
+    return false;           ここで false が返っている
+
+これはどこかで見た気がする.
+
+~/lang/53_GNU_tool/gcc_cross/D30V/gdb/for_cc1_model.jp
+
+~/lang/53_GNU_tool/gcc_cross/PRU/gdb/where.jp
+
+で調べていた.
+
+おそらく
+
+z80_frame_prev_register
+
+でほどほどのことをしておけばよいのだが, 現状
+
+static value*
+z80_frame_prev_register(frame_info* frame, void** ptr, int regno)
+{
+  if (regno == pc_regno) {
+    auto pc = get_frame_pc(frame);
+    return frame_unwind_got_constant(frame, regno, pc);
+  }
+
+  if (regno == sp_regno) {
+    auto sp = get_frame_sp(frame);
+    return frame_unwind_got_constant(frame, regno, sp);
+  }
+
+  asm("int3");
+  return nullptr;
+}
+
+のようにしていることが原因のように思える. おそらくスタートアップルーチン
+のスタックフレームで, 前の pc はいくつかと問い合わせがあったときに
+
+「不明」
+
+のような回答をしておけばおそらく正解なのだが現状では不明ではなくてズバリの値を
+返しているからこのようになる.
+
+またこれが where コマンドの表示でスタートアップルーチンが表示されていることにも
+関係しているように推測はできる.
+
+いずれにしても現状の z80_frame_prev_register は正しくはないので
+まずはここでの期待値を作成してみる.
+
+と思ったが試しに以下の修正を行なってみた:
+
+static value*
+z80_frame_prev_register(frame_info* frame, void** ptr, int regno)
+{
+  if (regno == pc_regno) {
+#if 0    
+    auto pc = get_frame_pc(frame);
+    return frame_unwind_got_constant(frame, regno, pc);
+#else
+    return frame_unwind_got_constant(frame, regno, -1);
+#endif    
+  }
+
+  if (regno == sp_regno) {
+    auto sp = get_frame_sp(frame);
+    return frame_unwind_got_constant(frame, regno, sp);
+  }
+
+  asm("int3");
+  return nullptr;
+}
+
+実はこれで期待した動作になる. 「不明」はこれで実現できている. また
+自前の cc1 は .debug_frame を使用しているからアセンブラレベルの
+コードで z80_frame_prev_register に問い合わされるのだから, そこで
+
+「不明」
+
+のように答えておけば, 一応は期待した結果になる.
+
+.stab を生成するコンパイラでは勿論これでは動作しない. またおそらくアセンブラ
+レベルでスタックを辿ることはこれでは動作しない.
+
+しかし中間目標は達成できている.
+
+ひとまず現時点での z80-tdep.c を z80-tdep.c.003 として
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.z80-elf/sim/z80/
+
+を z80.3.tar として
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/z80sim/
+
+を z80sim.2.tar としてアップロードしておく.
