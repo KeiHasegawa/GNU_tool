@@ -71,23 +71,24 @@ int test_f3;
 void f3(int a)
 {
   test_f3 = a;
-  printf("test_f3= %d\n", test_f3);
+  printf("test_f3 = %d\n", test_f3);
 }
 
 int test_g3;
 
 void g3(void)
 {
-  printf("test_g3= %x\n", test_g3);
+  printf("test_g3 = %x\n", test_g3);
 }
 
-int test_h3 = 456;
+int test_h3 = 234;
 
 void h3(void)
 {
   printf("test_h3 = %d\n", test_h3);
 }
 
+#if 0
 long long f4(long long a2,  long long a3,  long long a4,  long long a5,
 	     long long a6,  long long a7,  long long a8,  long long a9,
 	     long long a10, long long a11, long long a12, long long a13,
@@ -115,6 +116,7 @@ void h4(int* p, int* q, int* r)
   printf("*q = %d\n", *q);
   printf("*r = %d\n", *r);
 }
+#endif
 
 int main()
 {
@@ -123,12 +125,8 @@ int main()
   printf("\n");
   h(1.0);
   ff(9LL);
-#if 0
   char a[] = "hasegawa kei";
   gg(&a[0], 5, 6.0);
-#else
-  gg("hasegawa kei", 5, 6.0);
-#endif
   hh(3.0L);
   f2(1.0, 2.0, 3.0);
   g2(1LL, 2LL, 3LL, 4LL, 5LL, 6LL, 7LL, 8LL, 9LL, 10LL, 11LL, 12LL,
@@ -138,11 +136,13 @@ int main()
   f3(123);
   g3();
   h3();
+#if 0 
   printf("%lld\n",
 	 f4(2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
 	    19, 20, 21));
   g4();
   h4(&test_f3, &test_g3, &test_h3);
+#endif  
   return 0;
 }
 #if 0

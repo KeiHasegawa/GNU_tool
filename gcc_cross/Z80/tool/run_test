@@ -1,8 +1,9 @@
 #! /bin/csh -vxf
 
 z80-elf-as -o start.o -g start.S || exit 1
-z80-elf-gcc -o sample.s sample.c -S || exit 1
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.z80-elf.mine/host-i686-pc-linux-gnu/gcc/cc1 -o sample.s sample.c || exit 1
 z80-elf-as -o sample.o -g sample.s || exit 1
 z80-elf-ld -o sample.elf start.o sample.o -T sample.x || exit 1
 z80-elf-objdump -x -d sample.elf > sample.objdump || exit 1
-z80-elf-run --memory-fill 0xcc --memory-region 0xdff0,0x2000 sample.elf
+setenv USE_Z80_PRINTF
+z80-elf-run --memory-fill 0xcc --memory-region 0xf000,0x1000 sample.elf
