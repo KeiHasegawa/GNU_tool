@@ -1,0 +1,18 @@
+Z80 のオペコードで空いているところを見つけられなかったので環境変数 USE_Z80_PRINTF
+をセットしたとき以下のアドレスの該当命令を特別に扱うようにしてある.
+
+0x120 の nop : exit(0)
+0x124 の ret : printf
+0x125 の ret : puts
+0x126 の ret : putchar
+
+start.S の .text セクションを 0x100 番地に配置すればよい.
+またこの時点での z80-tdep.c を z80-tdep.c.004として
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.z80-elf/sim/z80/
+
+を z80.4.tar として
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/z80sim/
+
+を z80sim.3.tar としてアップロードしておく.
