@@ -67,4 +67,6 @@ EL16:
 	pop	r10,@r15
 	ret	t
 
-	
+	.global	___main
+___main:
+	ret	t

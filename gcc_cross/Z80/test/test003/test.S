@@ -11,9 +11,8 @@ _f:
 	push	ix
 	ld	hl, 0
 	add	hl, sp
-	ld	a, l
-	sub	64
-	ld	l, a
+	ld	bc, 64
+	sbc	hl, bc
 	ld	sp, hl
 	ld	ix, 0
 	add	ix, sp
@@ -21,11 +20,8 @@ _f:
 
 	ld	hl, 0
 	add	hl, sp
-	ld	a, l
-	add	a, 64
-	ld	l, a
+	ld	bc, 64
+	add	hl, bc
 	ld	sp, hl
 	pop	ix
 	ret
-	
-	

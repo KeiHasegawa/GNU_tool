@@ -7,7 +7,7 @@ start.elf:start.o start.x
 	avr-elf-ld -o start.elf start.o -T start.x -Map start.map
 
 start.objdump:start.elf
-	avr-elf-objdump -x -d start.elf > start.objdump
+	avr-elf-objdump -x -d -g start.elf > start.objdump
 
 start.log:start.elf gdbcom
 	wdog.exe -v avr-elf-gdb -q -x gdbcom $< > $@

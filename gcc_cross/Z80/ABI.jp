@@ -8,11 +8,15 @@ Z80 の ABI
 	af レジスタの下位 8 ビット : f
 	b, c, d, e, h, l についても同様.
 
+	但し f はフラグレジスタなので以下のように例えば ld 命令のオペランドには指定できない:
+
+	ld af, xx
+
 	af' : af の裏レジスタ
 	bc', de', hl' についても同様.
 	裏レジスタを使用する特殊な命令がある.
 
-	フラグレジスタ
+	フラグレジスタ(af レジスタの 下位バイト)
 
 	+-+-+-+-+-+-+-+-+
 	| | | | | | | | |
@@ -66,8 +70,6 @@ Z80 の ABI
 	|		|
 	+---------------+
 	|    ix_{old}	|
-	+---------------+
-	|    sp_{old}	|
 	+---------------+ <- sp_{old}
 	| return address|
 	+---------------+
@@ -77,7 +79,7 @@ Z80 の ABI
 	sizeof(char) = sizeof(short) = sizeof(int) = 1
 	sizeof(long) = 2
 	sizeof(long long) = 4
-	sizeof(void*) = 2
+	sizeof(void*) = 2                                  (*A)
 
 	のような少し変わったコンパイラを作成してみるという選択はあるが
 
@@ -85,25 +87,35 @@ Z80 の ABI
 	sizeof(short) = sizeof(int) = 2
 	sizeof(long) = 4
 	sizeof(long long) = 8
-	sizeof(void*) = 2	
+	sizeof(void*) = 2	                            (*B)
 
 	がおそらく妥当なところ.
 
-	しかしプログラマがしたいことが 8 ビットの加算で十分なのであれば上の
+	しかしプログラマがしたいことが 8 ビットの加算で十分なのであれば (*A) の
 	選択はある. おそらくこれはオプションによって選択できるべき.
-	せっかくだから sizeof(int) = 1 のほうをまずは実装してみることにする.
+	せっかくだから (*A) のほうをまずは実装してみることにする.
+
+	と思ったが実は push, pop 命令のオペランドは 16 ビットレジスタ
+	に限定されるので sizeof(int) = 1 はやはりコンパイラが複雑にな
+	るのでやめておこうかとも考えた.
+
+	しかし変わりに演算の実装は面倒にはなる. さてどうするべきか.
+	仮に sizeof(int) = 1 とするのであれば push 命令以外で
+	引数を積んだほうが良さそう.
+
+	inc sp
+
+	を利用すれば良さそう.
 	
 (*5) プロローグ
 
 	以下は 64 バイトのローカル領域を使用する函数のプロローグ
 
+	push	ix
 	ld	hl, 0
 	add	hl, sp
-	push	hl
-	push	ix
-	ld	a, l
-	sub	68
-	ld	l, a
+	ld	de, 64
+	sbc	hl, de
 	ld	sp, hl
 	ld	ix, 0
 	add	ix, sp
@@ -116,8 +128,6 @@ Z80 の ABI
 	|		|
 	+---------------+
 	|    ix_{old}	|
-	+---------------+
-	|    sp_{old}	|
 	+---------------+ <- sp_{old}
 	| return address|
 	+---------------+
@@ -128,13 +138,10 @@ Z80 の ABI
 
 	ld	hl, 0
 	add	hl, sp
-	ld	a, l
-	add	a, 64
-	ld	l, a
+	ld	de, 64
+	add	hl, de
 	ld	sp, hl
 	pop	ix
-	pop	hl
-	ld	sp, hl
 	ret
 
 	ix, sp が復元され呼び出し元に復帰する.
@@ -143,7 +150,25 @@ Z80 の ABI
 
 	sizeof(int) = 1
 
-	スタックに積む.
+	引数 : スタックに積む.
 	戻り値 : a レジスタ
 
-(*8) long, long long を引数に取る函数よ呼び出し, 返す函数の呼び出し.
+(*8) long, long long を引数に取る函数呼び出し, 返す函数の呼び出し.
+
+	sizeof(long) = 2
+	sizeof(long long) = 4
+
+	long の戻り値 : bc レジスタ
+	long long の戻り値 : bc, de レジスタ
+
+(*9) 浮動小数点数を引数に取る函数呼び出し, 返す函数の呼び出し.
+
+	sizeof(float) = sizeof(double) = sizeof(long double) = 4
+
+	long long と同じ規則が適用される.
+
+(*10) 構造体を引数に取る函数呼び出し, 返す函数呼び出し
+
+	構造体の引数はスタックにセットされる.
+	構造体を返す函数を呼び出すとき, 戻り値を格納するアドレスが第 1 引数として
+	渡される.

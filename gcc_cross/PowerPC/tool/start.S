@@ -38,13 +38,9 @@ putchar:
 	.globl memcpy
 memcpy:
 .LFB13:
-	.cfi_startproc
 	stwu 1,-48(1)
-	.cfi_def_cfa_offset 48
 	stw 31,44(1)
-	.cfi_offset 31, -4
 	mr 31,1
-	.cfi_def_cfa_register 31
 	stw 3,24(31)
 	stw 4,28(31)
 	stw 5,32(31)
@@ -70,10 +66,7 @@ memcpy:
 	mr 3,9
 	addi 11,31,48
 	lwz 31,-4(11)
-	.cfi_def_cfa 11, 0
 	mr 1,11
-	.cfi_restore 31
-	.cfi_def_cfa_register 1
 	blr
-	.cfi_endproc
+
 

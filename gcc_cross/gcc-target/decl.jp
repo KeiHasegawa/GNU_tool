@@ -288,6 +288,13 @@ constexpr UNITS_PER_WORD = 2
                                        tree fntype, rtx,
                                        tree fundecl, int);
 
+      もしくは以下のように函数の宣言とマクロを追加する:
+
+      extern void mmix_init_cumulative_args(CUMULATIVE_ARGS*,
+					    tree, rtx, tree, int);
+      #define INIT_CUMULATIVE_ARGS(CUM, FNTYPE, LIBNAME, FNDECL, N_NAMED_ARGS) \
+      mmix_init_cumulative_args (&(CUM), FNTYPE, LIBNAME, FNDECL, N_NAMED_ARGS)
+
       函数のフレームサイズはその函数で宣言されたローカル変数や中間変数から計算される.
       この分とは別に, この函数はターゲットコードの函数がとる引数をスタックに保存する
       ためにフレームサイズを変更する仕組みで使用される.
@@ -622,6 +629,13 @@ void ASM_OUTPUT_ALIGN(FILE* fp, int n)
 参照箇所の 1 つ gcc/lra-eliminations.c
 
       INITIAL_ELIMINATION_OFFSET (ep->from, ep->to, ep->offset);
+
+      以下のように宣言を追加する:
+      
+      extern int mmix_initial_elimination_offset(int, int);
+      #define INITIAL_ELIMINATION_OFFSET(FROM, TO, OFFSET) \
+        (OFFSET) = mmix_initial_elimination_offset(FROM, TO)
+
 
       ELIMINABLE_REGS で指定したレジスタ番号のペアに対してオフセットを計算する
       ときに呼び出される. ARG_POINTER_REGNUM が FRAME_POINTER_REGNUM

@@ -59,7 +59,7 @@ bfin のスタックフレームは以下のようになっている.
 
 (1) マクロ TARGET_LRA_P の宣言の追加.
 (2) マクロ TARGET_LEGITIMATE_ADDRESS_P の定義となる函数の修正
-(3) マクロ ARG_POINTER_REGNUM REG_ARGP と ELIMINABLE_REGS の宣言の修正
+(3) マクロ ARG_POINTER_REGNUM と ELIMINABLE_REGS の宣言の修正
 (4) マクロ REG_PARM_STACK_SPACE の宣言の追加
 (5) 函数 FIRST_PARM_OFFSET では 0 を返す
 (6) マクロ OUTGOING_REG_PARM_STACK_SPACE の宣言の追加.
@@ -781,9 +781,9 @@ assign_parms (tree fndecl)
  * space allocated by the caller.  */
 #define OUTGOING_REG_PARM_STACK_SPACE(FNTYPE) 1
 
-ここで above は REG_PARM_STACK_SPACE のこと. 正しく動かない可能性はあるが
-必要になるまで追加しないでおく. と思ったが現状 get_frame_size() が 8 を返している
-からやはりこのマクロも宣言しておく必要がある.
+ここで `above' は REG_PARM_STACK_SPACE のこと. 必要になるまで追加しないでおく.
+と思ったが現状 get_frame_size() が 8 を返しているからやはりこのマクロも宣言しておく必要がある.
+
   => と思ったが結局必要にならなかったので追加しないことにする. get_frame_size() は
      上の修正なしで 0 を返している.
 
