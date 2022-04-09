@@ -1,0 +1,74 @@
+gdb-10.2 のビルド
+
+Z80 と同じようなやり方をしてみた:
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% xz -d -c ../gdb-10.2-1.src/gdb-10.2.tar.xz | tar xf -
+% mv gdb-10.2 gdb-10.2.sparc-elf
+% cd gdb-10.2.sparc-elf
+% cd gdb
+
+d30v, fr30, z8k, i960, mmix, z80 と同じ対処をしようとしたところ以下を
+発見した:
+
+gdb-10.2.z80-elf/gdb/configure.tgt:
+
+sparc-*-*)
+	# Target: SPARC
+	gdb_target_obs="sparc-tdep.o \
+			ravenscar-thread.o sparc-ravenscar-thread.o"
+	gdb_sim=../sim/erc32/libsim.a
+	;;
+
+ということは既にシミュレータもあるらしい.
+
+% cd ..
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=sparc-elf
+% make
+...
+gcc -DHAVE_CONFIG_H       -DDEFAULT_INLINE=0      -DFAST_UART -I./../..   -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes  -g -O2 -c -o sis.o -MT sis.o -MMD -MP -MF .deps/sis.Tpo sis.c
+sis.c:36:10: 致命的エラー: readline/readline.h: そのようなファイルやディレクトリはありません
+   36 | #include "readline/readline.h"
+      |          ^~~~~~~~~~~~~~~~~~~~~
+コンパイルを停止しました。
+make[3]: *** [Makefile:515: sis.o] エラー 1
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.sparc-elf/sim/erc32' から出ます
+make[2]: *** [Makefile:129: all] エラー 1
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.sparc-elf/sim' から出ます
+make[1]: *** [Makefile:8314: all-sim] エラー 2
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.sparc-elf' から出ます
+make: *** [Makefile:853: all] エラー 2
+% find . -name readline.h
+./readline/readline/readline.h
+% cd sim/erc32
+
+Makefile を修正.
+
+CSEARCH = -I. -I$(srcdir) -I../common -I$(srccom) \
+  -I../../include -I$(srcroot)/include \
+  -I../../bfd -I$(srcroot)/bfd \
+  -I../../opcodes -I$(srcroot)/opcodes \
++ -I../../readline
+
+% make
+...
+gcc -DHAVE_CONFIG_H       -DDEFAULT_INLINE=0      -DFAST_UART -I./../..   -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes -I../../readline -g -O2 -o sis \
+  sis.o exec.o erc32.o func.o help.o float.o  ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a -ltermcap -ldl -lnsl  -L../../zlib -lz ../../readline/libreadline.a -ltermcap -lm 
+gcc: エラー: ../../readline/libreadline.a: そのようなファイルやディレクトリはありません
+make: *** [Makefile:609: sis] エラー 1
+% ls ../../readline/readline/libreadline.a
+../../readline/readline/libreadline.a
+%
+
+Makefile を修正
+
+READLINE_LIB = ../../readline/readline/libreadline.a
+
+% make
+
+成功
+
+% cd ../...
+% make
+% make install
+
