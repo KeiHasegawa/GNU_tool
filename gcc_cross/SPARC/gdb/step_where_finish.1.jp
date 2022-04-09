@@ -1,0 +1,260 @@
+0x100 番地に nop 命令を数個配置してそれらをステップ実行することはできている.
+
+そこで main 函数から加算をする函数にステップインし, where, finish コマンドを
+実行するプログラムを実行してみたところステップインしたところでターゲットプログラム
+が終了しているらしい.
+
+M-x gdb
+gdb --annotate=3 ./gdb
+(gdb) cd ~/lang/53_GNU_tool/gcc_cross/SPARC/test/test002
+(gdb) run -q -x gdbcom test.elf
+...
+syntax error
+syntax error
+Breakpoint 1 at 0x140: file test.c, line 8.
+
+Breakpoint 1, main () at test.c:8
+8	  return f(5, 6);
+[Inferior 1 (process 42000) exited normally]
+gdbcom:9: Error in sourced command file:
+No stack.
+(sparc-elf-gdb) q
+[Thread 0xb6f03b70 (LWP 19019) exited]
+[Thread 0xb7704b70 (LWP 19018) exited]
+[Inferior 1 (process 18946) exited normally]
+(gdb)
+
+ここで syntax error と表示されていたことに気付く. 以下のコマンドに対して
+
+sim memory-fill 0xcc
+sim memory-region 0x0e00,0x200
+
+このエラーメッセージらしきものが出力されていた.
+コメントアウトして実行してみたがやはりステップ実行したタイミングでターゲットプログラム
+が終了しているらしい.
+
+(gdb) b step_command
+(gdb) run
+...
+step_command のブレークポイントにヒット
+(gdb) b sim_resume
+(gdb) c
+...
+sim_resume のブレークポイントにヒット
+(gdb) b sim_stop_reason
+(gdb) c
+...
+sim_stop_reason のブレークポイントにヒット
+(gdb) c
+
+この後 sim_resume, sim_stop_reason のブレークポイントに交互に 2 回ヒットして終了している.
+以下はこのときのログ 
+
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 1, sim_resume (sd=0x1, step=0, siggnal=0) at interf.c:449
+
+Thread 1 "gdb" hit Breakpoint 3, sim_stop_reason (sd=0x1, reason=0xbfffed84, sigrc=0xbfffed80) at interf.c:372
+--Type <RET> for more, q to quit, c to continue without paging--c
+
+Thread 1 "gdb" hit Breakpoint 1, sim_resume (sd=0x1, step=0, siggnal=0) at interf.c:449
+
+Thread 1 "gdb" hit Breakpoint 3, sim_stop_reason (sd=0x1, reason=0xbfffed84, sigrc=0xbfffed80) at interf.c:372
+
+Thread 1 "gdb" hit Breakpoint 1, sim_resume (sd=0x1, step=0, siggnal=0) at interf.c:449
+
+Thread 1 "gdb" hit Breakpoint 3, sim_stop_reason (sd=0x1, reason=0xbfffed84, sigrc=0xbfffed80) at interf.c:372
+
+Thread 1 "gdb" hit Breakpoint 1, sim_resume (sd=0x1, step=0, siggnal=0) at interf.c:449
+
+Thread 1 "gdb" hit Breakpoint 3, sim_stop_reason (sd=0x1, reason=0xbfffed84, sigrc=0xbfffed80) at interf.c:372
+
+Thread 1 "gdb" hit Breakpoint 1, sim_resume (sd=0x1, step=0, siggnal=0) at interf.c:449
+
+Thread 1 "gdb" hit Breakpoint 3, sim_stop_reason (sd=0x1, reason=0xbfffed84, sigrc=0xbfffed80) at interf.c:372
+[Inferior 1 (process 42000) exited normally]
+[Thread 0xb6f03b70 (LWP 25431) exited]
+[Thread 0xb7704b70 (LWP 25430) exited]
+[Inferior 1 (process 25359) exited normally]
+(gdb) 
+
+この時点で気付くことはシミュレータは自前で sim_resume, sim_stop_reason, sim_do_command
+等を実装しているということ. またメモリを独自で保持しているということ.
+
+不思議なののは step = 0 で sim_resume が呼び出されているにもかかわらず, シミューレタ
+が何らかの理由で停止し, そして gdb 自体と数回やりとりをして終了しているということ.
+
+できている最近作成した z80-elf-gdb で動作を比較してみたところ step_command の後
+sim_resume(step = 1) の呼び出しであることを確認した.
+
+そこでシミュレータを修正して, まずは step, where, finish ができることを目指すことにした.
+これに伴なって
+
+o MMIX や Z80 と同様に共通ソースを利用する
+o 独自で搭載しているメモリを使用しない
+
+ようにすることにした.
+
+2022.04.09 12:00
+
+現状ではメモリをアクセスしたときに埋め込んだブレークポイントにヒットするようにしたつもりだ
+が実際はそれにヒットしていないのでまずはそこを確認する.
+
+函数 f で引数の a と b をスタックに保存してロードするコード
+
+00000114 <f>:
+ 114:	9d e3 bf a0 	save  %sp, -96, %sp
+ 118:	f0 27 a0 44 	st  %i0, [ %fp + 0x44 ]
+ 11c:	f2 27 a0 48 	st  %i1, [ %fp + 0x48 ]
+ 120:	c4 07 a0 44 	ld  [ %fp + 0x44 ], %g2
+ 124:	c2 07 a0 48 	ld  [ %fp + 0x48 ], %g1
+
+があるのでそこで何をシミュレーションしているか確認する.
+
+2022.04.09 14:00
+
+現状 main のブレークポイントで step コマンドを実行すると見た目 f にステップイン
+して, しかし停止せず, 戻ってきたかのような動作になっている.
+
+(sparc-elf-gdb) step
+(sparc-elf-gdb) p $pc
+$2 = (void (*)()) 0x154 <main+24>
+(sparc-elf-gdb) disassemble
+Dump of assembler code for function main:
+   0x0000013c <+0>:	save  %sp, -96, %sp
+   0x00000140 <+4>:	mov  6, %o1
+   0x00000144 <+8>:	mov  5, %o0
+   0x00000148 <+12>:	call  0x114 <f>
+   0x0000014c <+16>:	nop 
+   0x00000150 <+20>:	mov  %o0, %g1
+=> 0x00000154 <+24>:	mov  %g1, %i0
+   0x00000158 <+28>:	restore 
+   0x0000015c <+32>:	retl 
+   0x00000160 <+36>:	nop 
+End of assembler dump.
+(sparc-elf-gdb) 
+
+つまりステップインしてはいるが, そこで停止できていないらしい.
+
+main と f にブレークポイントをセットして f まで実行することはできている.
+
+(sparc-elf-gdb) c
+Continuing.
+
+Breakpoint 2, f (a=5, b=6) at test.c:3
+(sparc-elf-gdb) where
+#0  f (a=5, b=6) at test.c:3
+#1  0x00000150 in main () at test.c:8
+(sparc-elf-gdb) finish
+Run till exit from #0  f (a=5, b=6) at test.c:3
+core: 4 byte write to unmapped address 0x1044 at 0x118
+
+Program received signal SIGSEGV, Segmentation fault.
+0x00000118 in f (a=<error reading variable: Cannot access memory at address 0x1044>, b=<error reading variable: Cannot access memory at address 0x1048>) at test.c:2
+(sparc-elf-gdb)
+
+finish コマンドが期待した動作になっていない.
+まずはステップインできるように修正しようかと思ったがオリジナルのソースではブレークポイント
+にヒットしたときにレジスタウィンドウをスタックに書き込むようにしてあったのでそのようにしてみた
+ところ以下のようになっている:
+
+(sparc-elf-gdb) c
+Continuing.
+
+Breakpoint 2, f (a=5, b=6) at test.c:3
+(sparc-elf-gdb) where
+#0  f (a=5, b=6) at test.c:3
+#1  0x00000150 in main () at test.c:8
+(sparc-elf-gdb) finish
+Run till exit from #0  f (a=5, b=6) at test.c:3
+0x00000150 in main () at test.c:8
+Value returned is $1 = 184549376
+(sparc-elf-gdb) p/x $1
+$2 = 0xb000000
+(sparc-elf-gdb) 
+
+メモリアクセスエラーはしていないがエンディアンが間違えている. これはおそらく
+リトルエンディアンのプロセッサで動作することを想定していなかったということらしい.
+
+sparc-tdep.c の函数 sparc32_extract_return_value を修正しておいた. 
+
+現状での問題点は f にステップインできていないことの他に main からスタートアップルーチンに
+戻れていないこともある.
+
+0000013c <main>:
+...
+ 15c:	81 c3 e0 08 	retl 
+ 160:	01 00 00 00 	nop 
+
+0x15c の retl を実行すると不正メモリアクセスしている.
+
+Breakpoint 2, f (a=5, b=6) at test.c:3
+3	  return a + b;
+#0  f (a=5, b=6) at test.c:3
+#1  0x00000150 in main () at test.c:8
+0x00000150 in main () at test.c:8
+8	  return f(5, 6);
+Value returned is $1 = 11
+core: 4 byte write to unmapped address 0x0 at 0x15c
+0x0000015c in main () at test.c:9
+9	}
+A debugging session is active.
+
+しかしブレークポイントをスタートアップルーチンの end ラベルだけにセットしてそこまで実行すると
+以下のようになっている:
+
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x68 lma 0x100
+Start address 0x100
+Transfer rate: 832 bits in <1 sec.
+Breakpoint 1 at 0x110: file ../default.S, line 8.
+core: 4 byte write to unmapped address 0x0 at 0x110
+
+Breakpoint 1, end () at ../default.S:8
+(sparc-elf-gdb)
+
+ということはレジスタウィンドウをスタックに書き込んでいるところに問題がありそう.
+
+ところでブレークポイントにヒットしたときにレジスタウィンドウをスタックに書き込むようにし
+てあるために 0x100 番地に nop を数個並べたプログラムが期待通り動作しないようになってしまった.
+
+これは sp が 0 でそこに書き込もうとしてエラーしているというわけだ. しかしレジスタウィンドウ
+をスタックに書き込むことで finish コマンドが期待通り動作するきっかけにはなっていて,
+この修正をキャンセルすれば 0x100 番地に nop を数個並べたプログラムは期待通り
+動作するようにはなるが finish コマンドは期待通り動作しなくなってしまう.
+
+オリジナルのシミュレータのソースのコメントにあるようにレジスタウィンドウをスタック
+に書き込むという動作は厳密には正しくないとあり, 何となくだがこれは納得できる.
+
+そもそも
+
+(*A) : ブレークポイントにヒットしたときレジスタウィンドウをスタックに書き込む
+(*B) : finish コマンドが期待通り動く
+
+(*A) ならば (*B) が成立する			   
+                
+これは論理がかなり飛躍しているので一概に (*A) がなされるべき根拠は薄い.
+一旦 (*A) の修正をキャンセルする.
+
+そしてこの状態で main から加算する函数を呼び出すプログラムでスタートアップルーチンの
+end ラベルにのみブレークポイントをセットしてそこまで実行すると期待通り動作している.
+メモリアクセスのエラーは発生していない.
+0x15c の retl 命令も正しく動作しているらしい.
+
+スタートアップルーチンの start ラベル
+main
+f
+スタートアップルーチンの end ラベル
+
+の 4 つにブレークポイントをセットして順次これらのブレークポイントまで期待通り実行できている.
+現時点では step, finish コマンドは期待通り動作しないがこの時点での sparc-tdep.c
+を sparc-tdep.c.001 として
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.sparc-elf/sim/erc32
+
+を erc32.1.tar としてアップロードしておく.
+
+
+
