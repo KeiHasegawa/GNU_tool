@@ -1,0 +1,397 @@
+函数にステップインするがプロローグをスキップしたところで停止しない件の調査.
+
+M-x gdb
+gdb --annotate ./gdb
+(gdb) cd ~/lang/53_GNU_tool/gcc_cross/SPARC/test/test002
+(gdb) run -q -x gdbcom.4 test.elf
+
+で再現する.
+
+(gdb) b step_command
+(gdb) run
+...
+step_command のブレークポイントにヒット
+(gdb) b sim_resume
+(gdb) command
+>c
+>end
+(gdb) c
+Thread 1 "gdb" hit Breakpoint 2, sim_resume (sd=0x90af608, step=0, siggnal=0) at ../common/sim-resume.c:41
+
+Thread 1 "gdb" hit Breakpoint 2, --Type <RET> for more, q to quit, c to continue without paging--c
+sim_resume (sd=0x90af608, step=0, siggnal=0) at ../common/sim-resume.c:41
+
+Thread 1 "gdb" hit Breakpoint 2, sim_resume (sd=0x90af608, step=0, siggnal=0) at ../common/sim-resume.c:41
+
+Thread 1 "gdb" hit Breakpoint 2, sim_resume (sd=0x90af608, step=0, siggnal=0) at ../common/sim-resume.c:41
+
+Thread 1 "gdb" hit Breakpoint 2, sim_resume (sd=0x90af608, step=0, siggnal=0) at ../common/sim-resume.c:41
+9	}
+
+sim_resume(step = 0) の呼び出し. これは期待しない結果.
+
+
+(gdb) delete 2    # sim_resume のブレークポイントを削除
+(gdb) run
+...
+step_command のブレークポイントにヒット
+(gdb) b sim_write
+(gdb) command
+>c
+>end
+(gdb) c
+Continuing.
+
+Thread 1 "gdb" hit Breakpoint 3, sim_write (sd=0x90af608, mem=324, buf=0x86f7f28 <sparc_break_insn> "\221\320 \001", length=4) at ../common/sim-hrw.c:37
+
+Thread 1 "gdb" hit Breakpoint 3, --Type <RET> for more, q to quit, c to continue without paging--c
+sim_write (sd=0x90af608, mem=324, buf=0x900a9bc "\220\020 \005", length=4) at ../common/sim-hrw.c:37
+
+Thread 1 "gdb" hit Breakpoint 3, sim_write (sd=0x90af608, mem=320, buf=0x86f7f28 <sparc_break_insn> "\221\320 \001", length=4) at ../common/sim-hrw.c:37
+
+Thread 1 "gdb" hit Breakpoint 3, sim_write (sd=0x90af608, mem=328, buf=0x86f7f28 <sparc_break_insn> "\221\320 \001", length=4) at ../common/sim-hrw.c:37
+
+Thread 1 "gdb" hit Breakpoint 3, sim_write (sd=0x90af608, mem=328, buf=0x900a9bc "\177\377\377", <incomplete sequence \363>, length=4) at ../common/sim-hrw.c:37
+
+Thread 1 "gdb" hit Breakpoint 3, sim_write (sd=0x90af608, mem=332, buf=0x86f7f28 <sparc_break_insn> "\221\320 \001", length=4) at ../common/sim-hrw.c:37
+
+Thread 1 "gdb" hit Breakpoint 3, sim_write (sd=0x90af608, mem=332, buf=0x900a9bc "\001", length=4) at ../common/sim-hrw.c:37
+
+Thread 1 "gdb" hit Breakpoint 3, sim_write (sd=0x90af608, mem=336, buf=0x86f7f28 <sparc_break_insn> "\221\320 \001", length=4) at ../common/sim-hrw.c:37
+
+Thread 1 "gdb" hit Breakpoint 3, sim_write (sd=0x90af608, mem=336, buf=0x900a9bc "\202\020", length=4) at ../common/sim-hrw.c:37
+
+Thread 1 "gdb" hit Breakpoint 3, sim_write (sd=0x90af608, mem=340, buf=0x86f7f28 <sparc_break_insn> "\221\320 \001", length=4) at ../common/sim-hrw.c:37
+
+Thread 1 "gdb" hit Breakpoint 3, sim_write (sd=0x90af608, mem=340, buf=0x900a9bc "\260\020", length=4) at ../common/sim-hrw.c:37
+
+Thread 1 "gdb" hit Breakpoint 3, sim_write (sd=0x90af608, mem=320, buf=0x900a784 "\222\020 \006", length=4) at ../common/sim-hrw.c:37
+9	}
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
+[Thread 0xb6dffb70 (LWP 24251) exited]
+[Thread 0xb7704b70 (LWP 24250) exited]
+[Inferior 1 (process 24180) exited normally]
+(gdb)
+
+324 = 0x144
+320 = 0x140
+328 = 0x148
+332 = 0x14c
+336 = 0x150
+340 = 0x154
+320 = 0x140
+
+0000013c <main>:
+ 13c:	9d e3 bf a0 	save  %sp, -96, %sp
+ 140:	92 10 20 06 	mov  6, %o1
+ 144:	90 10 20 05 	mov  5, %o0
+ 148:	7f ff ff f3 	call  114 <f>
+ 14c:	01 00 00 00 	nop 
+ 150:	82 10 00 08 	mov  %o0, %g1
+ 154:	b0 10 00 01 	mov  %g1, %i0
+
+これは内部ブレークポイントを配置してそこまで実行ということをしているらしい.
+同じことをできている最近実装した z80-elf-gdb と動作を比較してみたところ
+step_command の後の sim_resume の呼び出しは step = 1 で呼び出されていた.
+
+だからまず, sparc-elf-gdb の場合なぜ step = 0 で呼び出されてしまうのか原因を
+調べてみる.
+
+ptid_t
+gdbsim_target::wait (ptid_t ptid, struct target_waitstatus *status, int options)
+{
+  struct sim_inferior_data *sim_data;
+...
+    sim_data = get_sim_inferior_data (current_inferior (),
+				      SIM_INSTANCE_NEEDED);
+...
+  sim_resume (sim_data->gdbsim_desc, sim_data->resume_step,
+	      sim_data->resume_siggnal);
+
+sim_resume の呼び出しは上のようになっている. sim_data の計算の仕方を確認してみる.
+
+static struct sim_inferior_data *
+get_sim_inferior_data (struct inferior *inf, int sim_instance_needed)
+{
+  SIM_DESC sim_desc = NULL;
+  struct sim_inferior_data *sim_data = sim_inferior_data_key.get (inf);
+
+ここで sim_data を計算しているが
+
+z80-elf-gdb の場合
+
+(gdb) p *sim_data
+$2 = {program_loaded = 1, gdbsim_desc = 0x8c6c260, remote_sim_ptid = {
+    m_pid = 42000, m_lwp = 0, m_tid = 42000}, resume_siggnal = GDB_SIGNAL_0, 
+  resume_step = 1}
+(gdb)
+
+一方できていない sparc-elf-gdb の場合
+(gdb) p *sim_data
+$29 = {program_loaded = 1, gdbsim_desc = 0x90af608, remote_sim_ptid = {
+    m_pid = 42000, m_lwp = 0, m_tid = 42000}, resume_siggnal = GDB_SIGNAL_0, 
+  resume_step = 0}
+(gdb)
+
+のようになっている.
+
+できている z80-elf-gdb では
+
+gdbsim_target::resume_one_inferior (inferior *inf, bool step,
+				    gdb_signal siggnal)
+{
+  struct sim_inferior_data *sim_data
+    = get_sim_inferior_data (inf, SIM_INSTANCE_NOT_NEEDED);
+
+  if (sim_data)
+    {
+      sim_data->resume_siggnal = siggnal;
+      sim_data->resume_step = step;     ここでセットしている.
+
+
+
+ということは step_command の次の gdbsim_target::resume_one_inferior の呼び出しを
+確認してみたところ呼び出されていない.
+
+できている z80-elf-gdb で step_command の次の gdbsim_target::resume_one_inferior
+の呼び出しで以下のようになっている
+
+(gdb) where
+#0  gdbsim_target::resume_one_inferior (this=0x8a02210 <gdbsim_ops>, inf=0x8c0ce60, step=true, siggnal=GDB_SIGNAL_0) at remote-sim.c:844
+#1  0x08333cb3 in target_resume (ptid=..., step=1, signal=GDB_SIGNAL_0) at target.c:2069
+#2  0x081ee41d in do_target_resume (resume_ptid=..., step=1, sig=GDB_SIGNAL_0) at infrun.c:2245
+#3  0x081f70fe in resume_1 (sig=<optimized out>) at infrun.c:2617
+#4  resume (sig=<optimized out>) at infrun.c:2630
+#5  0x081f7ff6 in keep_going_pass_signal (ecs=0xbfffef3c) at infrun.c:7876
+#6  0x081f82fb in start_step_over () at infrun.c:2028
+#7  0x081feca1 in proceed (addr=18446744073709551615, siggnal=GDB_SIGNAL_DEFAULT) at infrun.c:3079
+
+step_command の次の resume は呼び出されているのでここの動きを比較してみる.
+
+  else if (step)
+    step = maybe_software_singlestep (gdbarch, pc);  ここ
+
+できている z80-elf-gdb では step = 1 だが sparc-elf-gdb では step = 0
+sparc-elf-gdb の動きからすると step コマンドの解釈が函数呼び出しを認識していないかのように
+推測できる.
+
+何故 maybe_software_singlestep (gdbarch, pc) の呼び出しで違いが出るのかを調べてみる
+
+
+  if (execution_direction == EXEC_FORWARD
+      && gdbarch_software_single_step_p (gdbarch))
+    hw_step = !insert_single_step_breakpoints (gdbarch);
+
+ここで hw_step = 0 になるのが原因.
+
+
+(gdb) p gdbarch_software_single_step_p (gdbarch)
+$40 = 1
+(gdb)
+
+これが原因らしい. 以下のように修正してみた.
+
+sparc-tdep.c:
+#if 0
+  set_gdbarch_software_single_step (gdbarch, sparc_software_single_step);
+#endif  
+
+これで sim_resum(step=1) の呼び出しにはなったがステップインできていない状況は
+変わっていない.
+
+おそらくだがこの仕掛けは遅延分岐のためのものかと推測できる. 一旦上の修正をキャンセルした.
+
+static CORE_ADDR
+sparc_analyze_control_transfer (struct regcache *regcache,
+				CORE_ADDR pc, CORE_ADDR *npc)
+{
+  unsigned long insn = sparc_fetch_instruction (pc);
+
+なるほどこれはリトルエンディアンには対応していなさそうだと思ったが
+
+pc = 0x140
+insn = 0x92102006
+
+なので
+
+ 140:	92 10 20 06 	mov  6, %o1
+ 144:	90 10 20 05 	mov  5, %o0
+ 148:	7f ff ff f3 	call  114 <f>
+ 14c:	01 00 00 00 	nop 
+ 150:	82 10 00 08 	mov  %o0, %g1
+ 154:	b0 10 00 01 	mov  %g1, %i0
+
+ここはできている. おそらくだが pc = 0x148 に対して *npc = 0x14c, pc = 0x14c に
+対して *npc = 0x114 となるのが期待値. そこで期待値を即値で書いてみた:
+
+static CORE_ADDR
+sparc_analyze_control_transfer (struct regcache *regcache,
+				CORE_ADDR pc, CORE_ADDR *npc)
+{
+  if (pc == 0x14c)
+    return 0x114;
+...
+
+しかし期待した通りには動作していない. 何か勘違いをしている.
+ブレークポイントを埋め込んでみた:
+
+sim_cia idecode_issue(SIM_DESC sd, instruction_word insn, sim_cia cia)
+{
+  if (cia == 0x114)
+    asm("int3");
+
+ここにきていない. とういことは f はまだ呼び出されてはいないわけだ.
+
+内部ブレークポイントにヒットしたとき, 通常のブレークポイントと同様に
+
+  if (insn == 0x91d02001)
+    sim_engine_halt(sd, cpu, 0, cia, sim_stopped, SIM_SIGTRAP);
+
+が実行されるわけだがそこで
+
+void sparc_pc_set(sim_cpu* cpu, sim_cia pc)
+{
+  sregs.pc = pc & ~3;
+  sregs.npc = pc + 4;
+}
+
+が実行される. つまり
+
+ 13c:	9d e3 bf a0 	save  %sp, -96, %sp
+ 140:	92 10 20 06 	mov  6, %o1
+ 144:	90 10 20 05 	mov  5, %o0
+ 148:	7f ff ff f3 	call  114 <f>
+ 14c:	01 00 00 00 	nop 
+
+0x14c のブレークポイントにヒットしたとき npc = 0x114 を書き換えているということ.
+
+いくつかのバグが重なって見えにくくなっているがまずはここを修正しなくてはならない.
+もしかしたらここだけなのかもしれないし, 他にもバグがあるのかもしれない.
+以下のように修正した:
+
+#undef SIM_ENGINE_HALT_HOOK
+void sim_engine_halt_hook(SIM_DESC, sim_cpu*, sim_cia);
+#define SIM_ENGINE_HALT_HOOK(SD, LAST_CPU, CIA) \
+  sim_engine_halt_hook(SD, LAST_CPU, CIA)
+
+void sim_engine_halt_hook(SIM_DESC sd, sim_cpu* cpu, sim_cia cia)
+{
+  assert(sregs.pc == cia);
+}
+
+この修正を入れたところ以下のように assertion エラーしている.
+
+sparc-tdep.c:1768: internal-error: std::vector<long long unsigned int> sparc_software_single_step(regcache*): Assertion `nnpc != npc || orig_npc == 0' failed.
+A problem internal to GDB has been detected,
+further debugging may prove unreliable.
+
+
+  gdb_assert (nnpc != npc || orig_npc == 0);
+
+なるほどなのか. おそらく遅延分岐に対応してくれているが一旦以下のようにしてみる:
+
+sparc-tdep.c:
+#if 0
+  set_gdbarch_software_single_step (gdbarch, sparc_software_single_step);
+#endif
+
+実行してみると自分が入れた assertion で失敗している:
+
+void sim_engine_halt_hook(SIM_DESC sd, sim_cpu* cpu, sim_cia cia)
+{
+  assert(sregs.pc == cia);
+}
+
+そこで以下のようにした:
+
+void sim_engine_halt_hook(SIM_DESC sd, sim_cpu* cpu, sim_cia cia)
+{
+  sregs.pc = cia;
+}
+
+実行すると以下のようになっている:
+
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x64 lma 0x100
+Start address 0x100
+Transfer rate: 800 bits in <1 sec.
+Breakpoint 1 at 0x140: file test.c, line 8.
+
+Breakpoint 1, main () at test.c:8
+8	  return f(5, 6);
+0x00000000 in ?? ()
+$1 = (void (*)()) 0x0
+A debugging session is active.
+
+
+これは...また何か勘違いしている.
+
+  while (1)
+    {
+      instruction_word insn = IMEM32 (cia);
+      cia = idecode_issue (sd, insn, cia);
+      /* process any events */
+      if (sim_events_tick (sd))
+	{
+	  CPU_PC_SET (cpu, cia);         ここで結果的に npc も変更している.
+	  sim_events_process (sd);
+	}
+    }
+
+さてどうするべきか.
+
+pc のみセットするものと
+pc と npc 両方セットする函数を分けるべき.
+
+sim_engine_halt_hook の修正をキャンセルした.
+
+そして実行してみたところ:
+
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x64 lma 0x100
+Start address 0x100
+Transfer rate: 800 bits in <1 sec.
+Breakpoint 1 at 0x140: file test.c, line 8.
+
+Breakpoint 1, main () at test.c:8
+8	  return f(5, 6);
+f (a=5, b=6) at test.c:3
+3	  return a + b;
+$1 = (void (*)()) 0x120 <f+12>
+A debugging session is active.
+
+f にステップインできている. そして現状では
+
+sparc-tdep.c:
+#if 0
+  set_gdbarch_software_single_step (gdbarch, sparc_software_single_step);
+#endif
+
+この修正は入ったまま. これは本来なら #if 1 にするのが作成者の意図した動作.
+この修正をキャンセルしてみる. つまり有効にする.
+
+実行してみるとやはり同じところで assertion エラーしている.
+
+static CORE_ADDR
+sparc_analyze_control_transfer (struct regcache *regcache,
+				CORE_ADDR pc, CORE_ADDR *npc)
+{
+  if (pc == 0x148 || pc == 0x14c || pc == 0x150)  この修正が残ったままだった.
+    return 0x114;
+
+この修正を削除して実行.
+
+期待通り動作している. ということは結局今回は
+
+void sparc_pc_set(sim_cpu* cpu, sim_cia pc);
+
+で npc もセットしていたことだけが原因だった.
+また SPARC には遅延分岐があるので適切にステップ実行するための仕組みが gdb にはあって
+おそらくアセンブラレベルでデバッグすると顕著にその仕掛けが発揮されるということなのかもしれない.
+
