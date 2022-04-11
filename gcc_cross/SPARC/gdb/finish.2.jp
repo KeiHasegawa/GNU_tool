@@ -1,0 +1,166 @@
+finish コマンドが期待した動作にならない件の調査(2)
+
+経緯
+	o オリジナルの ERC32 のシミュレータはブレークポイントにヒットしたとき
+	  レジスタウィンドウをスタックに書き込んでいた.
+	  
+	o そもそもオリジナルの ERC32 のシミュレータと gdb で何ができていたかは
+	  相当怪しい.
+	  
+	o ブレークポイントにヒットしたときレジスタウィンドウをスタックに書き込むように
+	  すると finish コマンドが期待した通りには動作する.
+	  
+	o とはいえアセンブラレベルのスタックポインタを使用してないプログラムに対しても
+	  同じようにレジスタウィンドウをスタックポインタの指している領域に書き込むと
+	  当然ながら不正メモリアクセスが発生する.
+
+        o 前回の調査でフレーム ID の計算を sparc32_frame_this_id で行なっているが
+	  これ自体が期待する動作かどうか不明.
+
+        o sparc32_frame_this_id で計算するのが正しいとすればフレーム ID の期待値
+	  は何か.
+
+フレーム ID を計算する函数を選択するのはこれまでのノウハウで以下だと判明している:
+
+void
+frame_unwind_find_by_frame (struct frame_info *this_frame, void **this_cache)
+{
+...
+  for (entry = table->list; entry != NULL; entry = entry->next)
+    if (frame_unwind_try_unwinder (this_frame, this_cache, entry->unwinder))
+      return;
+
+これは C++ でいうところの find_if のループ. そして
+
+(gdb) p *table->list
+$46 = {unwinder = 0x86a4180 <dummy_frame_unwind>, next = 0x8c9c648}
+(gdb) p *table->list->next
+$47 = {unwinder = 0x86a5600 <dwarf2_tailcall_frame_unwind>, next = 0x8c9c650}
+(gdb) p *table->list->next->next
+$48 = {unwinder = 0x86d3be0 <inline_frame_unwind>, next = 0x8cbe8e8}
+(gdb) p *table->list->next->next->next
+$49 = {unwinder = 0x86d4940 <jit_frame_unwind>, next = 0x8c9c694}
+(gdb) p *table->list->next->next->next->next
+$50 = {unwinder = 0x8c9c674, next = 0x8c9c658}
+(gdb) p *table->list->next->next->next->next->next
+$51 = {unwinder = 0x86a5f60 <dwarf2_frame_unwind>, next = 0x8c9c660}
+(gdb) p *table->list->next->next->next->next->next->next
+$52 = {unwinder = 0x86a5f40 <dwarf2_signal_frame_unwind>, next = 0x8c9c668}
+(gdb) p *table->list->next->next->next->next->next->next->next
+$53 = {unwinder = 0x8a3e9c0 <z80_frame_unwind>, next = 0x0}
+(gdb)
+
+つまり
+
+dummy_frame_unwind
+dwarf2_tailcall_frame_unwind
+inline_frame_unwind
+jit_frame_unwind
+???
+dwarf2_frame_unwind                       ここ
+dwarf2_signal_frame_unwind
+z80_frame_unwind                          ここ
+
+の列からある条件が成立する最初のものを見つけるということ. そして .debug_frame をコンパイラ
+が生成した場合は, これまで調査してきた他のプロセッサのツールでは dwarf2_frame_unwind が
+その条件を満たすものであった.
+
+一方 sparc-elf-gdb では sparc_frame_unwind が選択されている.
+
+(gdb) p *table->list
+$52 = {unwinder = 0x86b4160 <dummy_frame_unwind>, next = 0x909377c}
+(gdb) p *table->list->next
+$53 = {unwinder = 0x86b55e0 <dwarf2_tailcall_frame_unwind>, next = 0x9093784}
+(gdb) p *table->list->next->next
+$54 = {unwinder = 0x86e3a00 <inline_frame_unwind>, next = 0x90f6704}
+(gdb) p *table->list->next->next->next
+$55 = {unwinder = 0x86e4760 <jit_frame_unwind>, next = 0x90937b8}
+(gdb) p *table->list->next->next->next->next
+$56 = {unwinder = 0x9093798, next = 0x909378c}
+(gdb) p *table->list->next->next->next->next->next
+$57 = {unwinder = 0x871ab20 <sparc32_frame_unwind>, next = 0x0}
+(gdb) 
+
+なるほど SPARC では dwarf2_frame_unwind がこのリストにないから選択されようがないという
+こと. 意図してリストに入っていないとすれば sparc32_frame_this_id で計算する必要がある.
+
+以下でリストに追加していた:
+
+  frame_unwind_append_unwinder (gdbarch, &sparc32_frame_unwind);
+
+一方 z80-elf-gdb では以下:
+
+  dwarf2_append_unwinders(arch);
+  frame_unwind_append_unwinder(arch, &z80_frame_unwind);
+
+そこで以下のように修正してみた:
+
++ dwarf2_append_unwinders(gdbarch);
+  frame_unwind_append_unwinder (gdbarch, &sparc32_frame_unwind);
+
+この修正により main や f のフレーム ID を計算するのに dwarf2_frame_this_id が
+代わりに呼び出されるようになった.
+
+(gdb) b dwarf2_frame_this_id
+(gdb) run
+...
+dwarf2_frame_this_id のブレークポイントにヒット
+(gdb) finish
+(gdb) p/x fi->this_id.value
+$7 = {stack_addr = 0xf60, code_addr = 0x114, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}          これは f のフレーム ID
+(gdb) c
+...
+dwarf2_frame_this_id のブレークポイントにヒット
+(gdb) finish
+(gdb) p/x fi->this_id.value
+$8 = {stack_addr = 0xcccccccc, code_addr = 0x13c, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}    これは main のフレーム ID だが stack_addr が正しくない
+...
+(gdb) c
+...
+dwarf2_frame_this_id のブレークポイントにヒット
+(gdb) finish
+(gdb) p/x fi->this_id.value
+$9 = {stack_addr = 0xfc0, code_addr = 0x13c, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}     これは mian のフレーム ID jdel stack_addr がそれっぽい
+(gdb) 
+
+そして stack_addr の正しくない main のフレーム ID とそれっぽい値の main のフレーム ID
+とを比較して異なっていると判定し finish コマンドが正常に動作していないということになっている.
+
+ということは普通に考えればだが, フレーム ID を計算するのに SPARC のようにレジスタウィンドウ
+のあるプロセッサではプロセッサ固有の計算が必要になるように思える.
+
+% ls sparc*tdep.c
+sparc-linux-tdep.c  sparc-tdep.c	  sparc64-obsd-tdep.c
+sparc-nbsd-tdep.c   sparc64-fbsd-tdep.c   sparc64-sol2-tdep.c
+sparc-obsd-tdep.c   sparc64-linux-tdep.c  sparc64-tdep.c
+sparc-sol2-tdep.c   sparc64-nbsd-tdep.c
+%
+
+他も覗いてみた.
+
+sparc-linux-tdep.c:
+  /* Hook in the DWARF CFI frame unwinder.  */
+  dwarf2_append_unwinders (gdbarch);
+
+sparc 独自の unwinder はない. そういうものなのか.
+
+
+sparc-nbsd-tdep.c:
+
+  frame_unwind_append_unwinder (gdbarch, &sparc32nbsd_sigcontext_frame_unwind);
+
+dwarf2_append_unwinders はなし.
+
+sparc-obsd-tdep.c : sparc-nbsd-tdep.c と同様.
+sparc-sol2-tdep.c : sparc-nbsd-tdep.c と同様.
+
+この結果では何とも言えない.
+しかし dwarf2_append_unwinders を呼び出す修正は一旦キャンセルする.
+
+
