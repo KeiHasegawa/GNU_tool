@@ -1,0 +1,133 @@
+finish コマンドが期待した動作にならない件の調査(3)
+
+前回の調査でフレーム ID を計算するのに dwarf2_frame_this_id を使うのは必ずしも SPARC
+のようにレジスタウィンドウのあるプロセッサでは正しくないという仮の結論になっている.
+
+そこで sparc32_frame_this_id で自力で計算する. また現状ではスタックにレジスタウィンドウ
+が書き込まれているとして実装されているがそれを修正する.
+
+以下のように期待値を作成してみた:
+
+static void
+sparc32_frame_this_id (struct frame_info *this_frame, void **this_cache,
+		       struct frame_id *this_id)
+{
+#if 1
+  static int n;
+  ++n;
+  if (n == 1) {
+    *this_id = frame_id_build(0xf60, 0x114);
+    return;
+  }
+  if (n == 2) {
+    *this_id = frame_id_build(0xfc0, 0x13c);
+    return;
+  }
+  if (n == 3) {
+    *this_id = frame_id_build(0xfc0, 0x13c);
+    return;
+  }
+  if (n == 4) {
+    *this_id = frame_id_build(0xfc0, 0x13c);
+    return;
+  }
+  asm("int3");
+#endif  
+  struct sparc_frame_cache *cache =
+    sparc32_frame_cache (this_frame, this_cache);
+
+これを実行したところ以下のように $1 = 11 になるのが正しいのだが
+
+0x00000150 in main () at test.c:8
+8	  return f(5, 6);
+Value returned is $1 = 184549376
+A debugging session is active.
+
+値が違っている. これは初期の対応でリトルエンディアンのために必要なのかと思って入れていた
+のが実は必要なかったことに気付く. この修正をキャンセルして改めて:
+
+
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x64 lma 0x100
+Start address 0x100
+Transfer rate: 800 bits in <1 sec.
+Breakpoint 1 at 0x120: file test.c, line 3.
+
+Breakpoint 1, f (a=5, b=6) at test.c:3
+3	  return a + b;
+0x00000150 in main () at test.c:8
+8	  return f(5, 6);
+Value returned is $1 = 11
+A debugging session is active.
+
+この結果になっている. 期待値を即値で書いているもののできている.
+
+ところで ERC32 のシミュレータが SPILL FILL 例外ができているのか確認したくなる.
+
+gdb-10.2.sparc-elf/sim/erc32/exec.c:
+
+	    case SAVE:
+		new_cwp = ((sregs->psr & PSR_CWP) - 1) & PSR_CWP;
+		if (sregs->wim & (1 << new_cwp)) {
+		    sregs->trap = TRAP_WOFL;
+		    break;
+		}
+...
+	    case RESTORE:
+
+		new_cwp = ((sregs->psr & PSR_CWP) + 1) & PSR_CWP;
+		if (sregs->wim & (1 << new_cwp)) {
+		    sregs->trap = TRAP_WUFL;
+		    break;
+		}
+
+それっぽいことをしている. しかし WIM = 2 で PSR レジスタの下位 3 ビットの初期値が 0
+なので最初の save 命令で new_cwp = 7 になっている.
+
+7 -> 6 -> 5 -> 4 -> 3 -> 2
+
+のようにして SPILL 例外が発生するということだろうか. 何だかこれは怪しい.
+
+WIM = 2 だから save 命令を 2 回実行したら SPILL 例外が発生しないと辻褄が合わない.
+と思ったが WIM は Window Invalid Mask であって保持しているレジスタウィンドウとは
+限らないらしい.
+
+
+struct pstate {
+...
+    uint32 psr;
+    uint32 tbr;
+    uint32 wim;
+    uint32 g[8];
+    uint32 r[128];
+    uint32 y;
+    uint32 asr17;
+    uint32 pc, npc;
+
+だから 24 * 8 - 8 * (8-1) - 8 = 128 ということでレジスタウィンドウは 8 つ持つことが
+できている. そして
+
+~/lang/53_GNU_tool/gcc_cross/SPARC/test/test003/
+
+に SPILL 例外を発生させるようなプログラムを作成したところ無限ループしている.
+というわけでシミュレータは現状 SPILL, FILL 例外を実装していない.
+単純にフラグをセットし, pc や npc を更新しないということをしている.
+
+ちなみに SPILL, FILL 例外ではなくて window overflow trap, window underflow trap
+とも言うらしい.
+
+話がだいぶ脱線したが, カレントウィンドウの 1 つ前のレジスタウィンドウを gdb から参照
+できればメモリアクセスせずに正しい値を取得することができそう.
+
+(1) gdb の finish コマンドの問題
+(2) window overflow trap, window underflow trap のシミュレーションの問題
+
+これら 2 つは別だからそれぞれで対処する.
+
+しかしよくよく考えてみるとカレントウィンドウの 1 つ前のレジスタウィンドウを参照
+するというのはシミュレータだからできる話であって現実世界でできるのかは不明と思ったが,
+単に restore 命令を函数のエピローグと関係なしに行なえばできる. やはりレジスタウィンドウ
+を無理にスタックに書き込む必要はない.
+
+現時点では難易度は高そうだがさてできるだろうか.
