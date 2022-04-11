@@ -1,0 +1,436 @@
+finish コマンドが期待した動作にならない件の調査
+
+M-x gdb
+gdb --annotate=3 ./gdb
+(gdb) cd ~/lang/53_GNU_tool/gcc_cross/SPARC/test/test002
+(gdb) run -q -x gdbcom.5 test.elf
+
+で再現している:
+
+Breakpoint 1, f (a=5, b=6) at test.c:3
+3	  return a + b;
+core: 4 byte write to unmapped address 0x1004 at 0x118
+
+Program received signal SIGSEGV, Segmentation fault.
+0x00000118 in f (
+    a=<error reading variable: Cannot access memory at address 0x1004>, 
+    b=<error reading variable: Cannot access memory at address 0x1008>)
+    at test.c:2
+2	{
+A debugging session is active.
+
+(gdb) b finish_command
+(gdb) run
+...
+finish_command のブレークポイントにヒット
+(gdb) b sim_write
+(gdb) command
+>c
+>end
+(gdb) c
+
+Thread 1 "gdb" hit Breakpoint 3, sim_write (sd=0x90c5600, mem=336, buf=0x8703308 <sparc_break_insn> "\221\320 \001", length=4) at ../common/sim-hrw.c:37
+
+Thread 1 "gdb" hit Breakpoint 3, --Type <RET> for more, q to quit, c to continue without paging--c
+sim_write (sd=0x90c5600, mem=292, buf=0x8703308 <sparc_break_insn> "\221\320 \001", length=4) at ../common/sim-hrw.c:37
+
+Thread 1 "gdb" hit Breakpoint 3, sim_write (sd=0x90c5600, mem=292, buf=0x90d281c "\302\a\240H", length=4) at ../common/sim-hrw.c:37
+
+Thread 1 "gdb" hit Breakpoint 3, sim_write (sd=0x90c5600, mem=288, buf=0x8703308 <sparc_break_insn> "\221\320 \001", length=4) at ../common/sim-hrw.c:37
+
+Thread 1 "gdb" hit Breakpoint 3, sim_write (sd=0x90c5600, mem=336, buf=0x9020cd4 "\202\020", length=4) at ../common/sim-hrw.c:37
+
+Thread 1 "gdb" hit Breakpoint 3, sim_write (sd=0x90c5600, mem=340, buf=0x8703308 <sparc_break_insn> "\221\320 \001", length=4) at ../common/sim-hrw.c:37
+
+Thread 1 "gdb" hit Breakpoint 3, sim_write (sd=0x90c5600, mem=340, buf=0x90d281c "\260\020", length=4) at ../common/sim-hrw.c:37
+
+Thread 1 "gdb" hit Breakpoint 3, sim_write (sd=0x90c5600, mem=336, buf=0x8703308 <sparc_break_insn> "\221\320 \001", length=4) at ../common/sim-hrw.c:37
+core: 4 byte write to unmapped address 0x1004 at 0x118
+
+Thread 1 "gdb" hit Breakpoint 3, sim_write (sd=0x90c5600, mem=336, buf=0x9020cd4 "\202\020", length=4) at ../common/sim-hrw.c:37
+
+Program received signal SIGSEGV, Segmentation fault.
+
+...
+
+このことから
+
+336 = 0x150
+292 = 0x124
+288 = 0x120
+340 = 0x154
+336 = 0x150
+
+に内部ブレークポイントをセットしていることが分かる. f の戻りアドレスは 0x150
+
+0000013c <main>:
+ 13c:	9d e3 bf a0 	save  %sp, -96, %sp
+ 140:	92 10 20 06 	mov  6, %o1
+ 144:	90 10 20 05 	mov  5, %o0
+ 148:	7f ff ff f3 	call  114 <f>
+ 14c:	01 00 00 00 	nop 
+ 150:	82 10 00 08 	mov  %o0, %g1        ここ
+ 154:	b0 10 00 01 	mov  %g1, %i0
+
+なのでそれっぽい. しかし 0x150 番地を実行していないためか再び f が呼び
+出されているかのような動きになっている.
+
+そこで明示的に以下のようにブレークポイントを埋め込んでおいた:
+
+sim_cia idecode_issue(SIM_DESC sd, instruction_word insn, sim_cia cia)
+{
+  if (cia == 0x150)
+    asm("int3");
+
+そして実行してみた. finish_command のブレークポイントにヒットした後,
+確かにこの埋め込んだブレークポイントにヒットしている.
+そして 0x150 にはこのとき本来の命令ではなくてブレーク命令が置かれてい
+た. この動作も期待したもの. そしてこの後 0x150 に本来の
+
+ 150:	82 10 00 08 	mov  %o0, %g1
+
+が書き込まれているかと思ったが書き込まれたのは 0x154 へのブレークポイ
+ントだった. 再び続行すると上の埋め込んだブレークポイントにヒットし
+
+(gdb) p/x insn
+$16 = 0x82100008
+(gdb)
+
+のように本来の命令になっている. どこで元に戻したかは不明. しかしここで
+0x150 から再び sim_resume が呼び出されているのがそもそも期待しない結果.
+そして 0x154 へブレークポイントをセットしているのも期待した動作ではない.
+
+埋め込んだブレークポイントにヒットした後, sim_resume が再び呼び出され
+る理由を調べてみる.
+
+できている z80-elf-gdb と動きを比較してみると
+
+    if (!ecs->wait_some_more)
+      {
+	struct inferior *inf = find_inferior_ptid (ecs->target, ecs->ptid);
+
+この条件が成立しているのが z80-elf-gdb で成立していないのが sparc-elf-gdb.
+これははっきりとしたことは言えないものの字面だけ考えたら成立するのが期待値のように推測は
+できる.
+
+sparc-elf-gdb でこの値は 1 になっている. セットしているところを調べてみる.
+と思ったが z80-elf-gdb ではこの値は 0. クリアしているところを調べてみる方が良さそうに思える.
+
+(gdb) p &ecs->wait_some_more
+$16 = (int *) 0xbffff0cc
+(gdb) run
+
+z80-elf-gdb の場合は f の戻りアドレスは 0x14b なので以下のようになっているが:
+
+sim_cia idecode_issue(SIM_DESC sd, instruction_word insn, sim_cia cia)
+{
+  if (cia == 0x14b)
+    asm("int3");
+
+この埋め込んだブレークポイントにきたとき
+
+(gdb) p *(int *) 0xbffff0cc
+$17 = 0
+(gdb)
+
+もうこの時点でクリアされている. ならば sparc-elf-gdb でこの値をセットしているところ
+を調べてみる.
+
+
+(gdb) p &ecs->wait_some_more
+$23 = (int *) 0xbffff0fc
+(gdb) run
+...
+finish_command のブレークポイントにヒット
+(gdb) p *(int *) 0xbffff0fc
+$24 = 136310816
+(gdb) watch *(int *) 0xbffff0fc
+...
+
+ここでセットしていた:
+
+static void
+prepare_to_wait (struct execution_control_state *ecs)
+{
+...
+  ecs->wait_some_more = 1;
+
+同じことを z80-elf-gdb でやってみたが勿論 0 にセットされてからは変更されない.
+sparc-elf-gdb で prepare_to_wait が呼び出されたときのスタックは以下:
+
+(gdb) where
+#0  prepare_to_wait (ecs=0xbffff0c0) at infrun.c:7913
+#1  0x081fbe1c in keep_going_pass_signal (ecs=0xbffff0c0) at infrun.c:7879
+#2  0x081fbf4c in keep_going (ecs=0xbffff0c0) at infrun.c:7895
+#3  0x081f8c2e in process_event_stop_test (ecs=0xbffff0c0) at infrun.c:6576
+#4  0x081f83b7 in handle_signal_stop (ecs=0xbffff0c0) at infrun.c:6298
+#5  0x081f6a49 in handle_inferior_event (ecs=0xbffff0c0) at infrun.c:5549
+#6  0x081f3364 in fetch_inferior_event () at infrun.c:3931
+#7  0x081e07f9 in inferior_event_handler (event_type=INF_REG_EVENT) at inf-loop.c:42
+#8  0x081fe5c5 in infrun_async_inferior_event_handler (data=0x0) at infrun.c:9207
+#9  0x080a8c1c in check_async_event_handlers () at async-event.c:295
+
+finish_command が呼び出された後に process_event_stop_test が呼ばれた状態を調べてみる.
+
+(gdb) run
+...
+finish_command のブレークポイントにヒット
+(gdb) b process_event_stop_test
+(gdb) c
+...
+process_event_stop_test のブレークポイントにヒット
+
+同様のことを z80-elf-gdb でやってみたが process_event_stop_test は呼び出されなかった.
+
+process_event_stop_test ではなくて handle_signal_stop に対して同様のことを行なってみ
+たところ呼び出されている.
+
+だから sparc-elf-gdb で handle_signal_stop から process_event_stop_test が呼び出
+される理由, あるいは z80-elf-gdb で呼び出されない理由を調べてみる.
+
+=> z80-elf-gdb でも呼び出されていた. 上の調査は勘違いか.
+
+動作の違いは以下で現れていた:
+
+static void
+process_event_stop_test (struct execution_control_state *ecs)
+{
+...
+  what = bpstat_what (ecs->event_thread->control.stop_bpstat);  (*A)
+...
+  switch (what.main_action)
+    {
+...
+    case BPSTAT_WHAT_STOP_NOISY:
+      infrun_debug_printf ("BPSTAT_WHAT_STOP_NOISY");  z80-elf-gdb はここ
+...
+    case BPSTAT_WHAT_SINGLE:
+      infrun_debug_printf ("BPSTAT_WHAT_SINGLE");   sparc-elf-gdb はここ
+
+what は (*A) で計算されている. そこで違いが出ているらしい.
+
+(*A) で停止して確認 sparc-elf-gdb では
+(gdb) p *ecs->event_thread->control.stop_bpstat
+$27 = {next = 0x0, bp_location_at = 0x9020c58, breakpoint_at = 0x9020bc0, 
+  commands = {<std::__shared_ptr<command_line, (__gnu_cxx::_Lock_policy)2>> = {<std::__shared_ptr_access<command_line, (__gnu_cxx::_Lock_policy)2, false, false>> = {<No data fields>}, _M_ptr = 0x0, _M_refcount = {
+        _M_pi = 0x0}}, <No data fields>}, old_val = {m_obj = 0x0}, 
+  print = 1 '\001', stop = 0 '\000', print_it = print_it_noop}
+(gdb)
+
+一方 z80-elf-gdb では
+
+(gdb) p *ecs->event_thread->control.stop_bpstat
+$22 = {next = 0x0, bp_location_at = 0x8c8ddc8, breakpoint_at = 0x8c8dc58, 
+  commands = {<std::__shared_ptr<command_line, (__gnu_cxx::_Lock_policy)2>> = {<std::__shared_ptr_access<command_line, (__gnu_cxx::_Lock_policy)2, false, false>> = {<No data fields>}, _M_ptr = 0x0, _M_refcount = {
+        _M_pi = 0x0}}, <No data fields>}, old_val = {m_obj = 0x0}, 
+  print = 1 '\001', stop = 1 '\001', print_it = print_it_normal}
+(gdb)
+
+違いが出ている. stop と print_it に違いがあるがまずは stop に違いが出る理由を調べてみる.
+
+z80-elf-gdb
+(gdb) p &(*ecs->event_thread->control.stop_bpstat)->stop
+$24 = 0x8c86439 "\001"
+(gdb) run
+...
+finish_command のブレークポイント
+(gdb) p *(char*)0x8c86439
+$26 = 0 '\000'
+(gdb)
+
+この時点ではまだ 0
+
+(gdb) watch *(char*)0x8c86439
+(gdb) c
+...
+ここでセットしていた:
+
+bpstat
+build_bpstat_chain (const address_space *aspace, CORE_ADDR bp_addr,
+		    const struct target_waitstatus *ws)
+{
+...
+	  bs->stop = 1;
+	  bs->print = 1;  (*B)
+
+build_bpstat_chain はおそらく sparc-elf-gdb でも呼び出されていると思われる.
+この函数の動きを比較してみる.
+
+比較してみたところ, どうやら sparc-elf-gdb はより多くの内部ブレークポイントを使用して
+いるらしく単純な動作の比較はできない.
+
+さてどうするべきか. idecode_issue に埋め込んだブレークポイントにヒットした直後
+の build_bpstat_chain の動作の比較はできそうなのでそれをしてみる.
+
+そこで sparc-elf-gdb でも (*B) が実行されていることに気付く. ということは
+どこかでこれがクリアされている可能性はある.
+
+static void
+bpstat_check_breakpoint_conditions (bpstat bs, thread_info *thread)
+{
+...
+  if (cond && !condition_result)
+    {
+      bs->stop = 0;            ここでクリアされていた
+    }
+
+おそらく z80-elf-gdb でもこの函数は呼び出されていると予測して動作の比較を行なってみた.
+最適化オプションの影響もあるが以下の条件が成立していて
+
+  if (frame_id_p (b->frame_id)
+      && !frame_id_eq (b->frame_id, get_stack_frame_id (get_current_frame ())))
+    {
+      bs->stop = 0;
+
+sparc-elf-gdb では bp->stop がクリアされていた. 勿論 z80-elf-gdb では成立しないので
+クリアされていない.
+
+sparc-elf-gdb では
+
+(gdb) p frame_id_p (b->frame_id)
+$35 = true
+(gdb) p !frame_id_eq (b->frame_id, get_stack_frame_id (get_current_frame ()))
+$36 = true
+(gdb)
+
+一方 z80-elf-gdb では
+
+(gdb) p frame_id_p (b->frame_id)
+$28 = true
+(gdb) p !frame_id_eq (b->frame_id, get_stack_frame_id (get_current_frame ()))
+$29 = false
+(gdb)
+
+これは何となくではあるが予測できた結果. つまり 2 つのスタックフレーム ID を比較して
+
+sparc-elf-gdb : 違っていた
+z80-elf-gdb : 等しい
+
+というところで動作に違いが出ていたということになる.
+
+sparc-elf-gdb では
+(gdb) p/x b->frame_id
+$38 = {stack_addr = 0xcccccccc, code_addr = 0x13c, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) p/x get_stack_frame_id (get_current_frame ())
+$31 = {stack_addr = 0xffee, code_addr = 0x138, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb)
+
+z80-elf-gdb では
+
+(gdb) p/x b->frame_id
+$32 = {stack_addr = 0xffee, code_addr = 0x138, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) p/x get_stack_frame_id (get_current_frame ())
+$33 = {stack_addr = 0xffee, code_addr = 0x138, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb)
+
+これから判断すると sparc-elf-gdb では
+
+b->frame_id
+
+も
+
+get_stack_frame_id (get_current_frame ())
+
+も正しく計算できていないということなのだと思う. code_addr = 0x138 は期待しない値
+である:
+
+00000114 <f>:
+ 114:	9d e3 bf a0 	save  %sp, -96, %sp
+ 118:	f0 27 a0 44 	st  %i0, [ %fp + 0x44 ]
+ 11c:	f2 27 a0 48 	st  %i1, [ %fp + 0x48 ]
+ 120:	c4 07 a0 44 	ld  [ %fp + 0x44 ], %g2
+ 124:	c2 07 a0 48 	ld  [ %fp + 0x48 ], %g1
+ 128:	82 00 80 01 	add  %g2, %g1, %g1
+ 12c:	b0 10 00 01 	mov  %g1, %i0
+ 130:	81 e8 00 00 	restore 
+ 134:	81 c3 e0 08 	retl 
+ 138:	01 00 00 00 	nop                 ここ
+
+0000013c <main>:
+ 13c:	9d e3 bf a0 	save  %sp, -96, %sp
+ 140:	92 10 20 06 	mov  6, %o1
+ 144:	90 10 20 05 	mov  5, %o0
+ 148:	7f ff ff f3 	call  114 <f>
+ 14c:	01 00 00 00 	nop 
+
+stack_addr = 0xcccccccc は初期化されていないスタックを参照している
+と考えられる.
+
+そこで改めて main に対する .debug_frame を調べてみると
+
+00000028 00000014 00000000 FDE cie=00000000 pc=0000013c..00000164
+  DW_CFA_advance_loc: 4 to 00000140
+  DW_CFA_GNU_window_save
+  DW_CFA_register: r15 in r31
+  DW_CFA_def_cfa_register: r30
+  DW_CFA_nop
+
+さてこれは初めて見るものがある. レジスタウィンドウ特別のものがある.
+
+stack_addr = 0xcccccccc をセットしているところは以下:
+
+breakpoint_up
+set_momentary_breakpoint (struct gdbarch *gdbarch, struct symtab_and_line sal,
+			  struct frame_id frame_id, enum bptype type)
+{
+...
+  b->frame_id = frame_id;
+
+frame_id は既に計算されたもの. 以下から呼び出されている:
+
+  sm->breakpoint = set_momentary_breakpoint (gdbarch, sal,
+					     get_stack_frame_id (frame),
+					     bp_finish);
+
+(gdb) p/x frame->this_id.value
+$46 = {stack_addr = 0xcccccccc, code_addr = 0x13c, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb)
+
+この値を計算している部分を調べてみる.
+
+
+static void
+sparc32_frame_this_id (struct frame_info *this_frame, void **this_cache,
+		       struct frame_id *this_id)
+{
+...
+  (*this_id) = frame_id_build (cache->base, cache->pc);
+}
+
+ここで計算しているらしい.
+これまで調べてきた他のプロセッサのコンパイラで .debug_frame を生成しているものは
+固有の部分でフレーム ID を計算する必要がなかったが SPARC のようにレジスタウィンドウ
+があるプロセッサではこの限りでないことは想像できる.
+
+しかしだとしてもフレーム ID を計算するのに必ずしもスタックをアクセスすることがそもそも
+正しくないからこの部分ができていないのだとも思える.
+
+z80-elf-gdb の場合で同様のことを確認してみたところやはりプロセッサ固有の部分の
+フレームq ID を計算するところではなくて以下で計算されていた:
+
+static void
+dwarf2_frame_this_id (struct frame_info *this_frame, void **this_cache,
+		      struct frame_id *this_id)
+{
+...
+    (*this_id) = frame_id_build (cache->cfa, get_frame_func (this_frame));
+
+そこで調べる必要があることは
+
+(1) sparc-elf-gdb でフレーム ID を計算するのに dwarf2_frame_this_id で計算されない
+    理由
+
+(2) sparc-elf-gdb でフレーム ID を計算するのに sparc32_frame_this_id で計算され
+    るとすればその期待値は何か
+
+ということになる.
