@@ -15,4 +15,4 @@ clean:
 			cd ..; \
 		fi \
 	done
-	rm -f default.o *~
+	rm -f default.o vector.o handler.o *~
