@@ -28,7 +28,7 @@ window overflow trap が発生することになる.
 
 このとき, 例外ハンドラ window_overflow では以下を行なう:
 
-	  o %wim を 2 から 1 に変更
+	  o %wim を 2 = 1 << 1 から 1 = 1 << 0 に変更
 	  o レジスタウィンドウ 0 をスタックポインタの指す先に保存
 
 	    ここでレジスタウィンドウ 0 はスタートアップルーチンのものである.
@@ -63,11 +63,12 @@ save 命令のアドレスにプログラムの制御が移る.
 
 復帰後 %wim = 1 になっていてるので f2 の save 命令は例外を引き起こさない.
 
-続いて f1 の save 命令が実行される. このとき %wim = 1 なのでやはり
-window overflow trap を引き起こす. 例外ハンドラ window_overflow では以下を行なう
+続いて f1 の save 命令が実行される. このとき CWP は 1 から 0 になるところで
+%wim = 1 = 1 << 0 なのでやはり window overflow trap を引き起こす.
+例外ハンドラ window_overflow では以下を行なう
 
 
-	  o %wim を 1 から 1 << 7 = 128 に変更
+	  o %wim を 1 << 0 から 1 << 7 = 128 に変更
 	  o レジスタウィンドウ 7 をスタックポインタの指す先に保存
 
 	    ここでレジスタウィンドウ 7 は main 函数のものである.
@@ -92,8 +93,9 @@ window overflow trap を引き起こす. 例外ハンドラ window_overflow で�
 		     レジスタウィンドウ 7
 		     をスタックに保存
 
-続いて f0 の save 命令が実行される. やはり %wim = 1 << 7 = 128 なので
-window overflow trap を引き起こす.  例外ハンドラ window_overflow では以下を行なう
+続いて f0 の save 命令が実行される. このとき CWP が 0 から 7 になるところで
+やはり %wim = 1 << 7 = 128 なので window overflow trap を引き起こす.
+例外ハンドラ window_overflow では以下を行なう
 
 	  o %wim を 1 << 7 = 128 から 1 << 6 = 64 に変更
 	  o レジスタウィンドウ 6 をスタックポインタの指す先に保存
@@ -120,12 +122,12 @@ o main の restore 命令でスタートアップルーチンのレジスタウ�
 続いて f1, f2, ..., f5 の restore 命令が実行されるがやはり window underflow trap
 は引き起こされない.
 
-続いて f6 の restore 命令が実行される. このとき CWP は 5 から 6 に更新されようと
-するところで %wim = 1 << 6 = 64 なので window underflow trap が引き起こされる.
+続いて f6 の restore 命令が実行される. このとき CWP が 5 から 6 になるところで
+%wim = 1 << 6 = 64 なので window underflow trap が引き起こされる.
 
 このとき, 例外ハンドラ window_underflow では以下を行なう:
 
-	  o %wim を 1 << 6 から 1  << 7 に変更
+	  o %wim を 1 << 6 = 64 から 1  << 7 = 127 に変更
 	  o レジスタウィンドウ 2 をスタックポインタの指す先に保存
 
 
