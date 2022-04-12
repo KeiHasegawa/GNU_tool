@@ -4,10 +4,10 @@ start:
 	or	%o0, %lo(TRAP_BASE), %o0
 	wr	%o0, %tbr
 
-	wr	0xff, %wim
+	wr	2, %wim
 
-	sethi	%hi(stack), %sp
-	or	%sp, %lo(stack), %sp
+	sethi	%hi(stack-96), %sp
+	or	%sp, %lo(stack-96), %sp
 	
 	call	main
 	nop
