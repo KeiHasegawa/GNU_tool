@@ -180,6 +180,10 @@ f1 で call 命令を実行しているからこの時点で本来の main の�
      のならば少なくとも f1 の save 命令で window overflow trap を発生させる
      必要がある.
 
+  => 実はスタートアップルーチンのレジスタウィンドウの保存までやろうとすれば f2 の
+     save 命令で window overflow traqp を発生させる必要がある. しかしそれは必ずしも
+     必要ではない.
+
 このままステップコマンドにより実行していくと f7 に戻ってきたところで以下のようになる:
 
 (sparc-elf-gdb) 
@@ -191,7 +195,7 @@ f7 (a=<error reading variable: Cannot access memory at address 0x1ce4>, b=<error
 (sparc-elf-gdb) 
 
 これは gdb がフレームポインタが正しいところを指しているとして %i6 (fp) 相対を参照
-しているためである.
+しているためである. f7 のフレームポインタは場所はともかく破壊されていた.
 
 そして main に戻ってきたところでレジスタは以下のようになっている:
 
