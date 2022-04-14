@@ -1,0 +1,561 @@
+#include "defs.h"
+#include "value.h"
+#include "arch-utils.h"
+#include "regcache.h"
+#include "gdbcore.h"
+#include "objfiles.h"
+#include "dis-asm.h"
+#include "dwarf2/frame.h"
+#include "frame-base.h"
+#include "frame-unwind.h"
+
+#include "sparc-tdep.h"
+
+#include <cassert>
+#include <memory>
+
+static int sparc_register_sim_regno(gdbarch*, int regnum)
+{
+  return regnum;
+}
+
+static int sparc_dbg_reg_to_regnum(gdbarch*, int regnum)
+{
+  return regnum;
+}
+
+#define SPARC32_FPU_REGISTERS                             \
+  "f0", "f1", "f2", "f3", "f4", "f5", "f6", "f7",         \
+  "f8", "f9", "f10", "f11", "f12", "f13", "f14", "f15",   \
+  "f16", "f17", "f18", "f19", "f20", "f21", "f22", "f23", \
+  "f24", "f25", "f26", "f27", "f28", "f29", "f30", "f31"
+#define SPARC32_CP0_REGISTERS \
+  "y", "psr", "wim", "tbr", "pc", "npc", "fsr", "csr"
+
+static const char* sparc32_register_names[] =
+{
+  SPARC_CORE_REGISTERS,
+  SPARC32_FPU_REGISTERS,
+  SPARC32_CP0_REGISTERS
+};
+
+static const char* sparc_register_name(gdbarch*, int regno)
+{
+  const int N = sizeof sparc32_register_names/sizeof sparc32_register_names[0];
+  if (regno < N)
+    return sparc32_register_names[regno];
+
+  return nullptr;
+}
+
+static bool is_aggregate(type_code code)
+{
+  switch (code) {
+  case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
+    return true;
+  default:
+    return false;
+  }
+}
+
+static bool is_integral_or_pointer(const type* T)
+{
+  int len = TYPE_LENGTH(T);
+  switch (T->code()) {
+    case TYPE_CODE_INT:
+    case TYPE_CODE_BOOL:
+    case TYPE_CODE_CHAR:
+    case TYPE_CODE_ENUM:
+    case TYPE_CODE_RANGE:
+      /* We have byte, half-word, word and extended-word/doubleword
+	 integral types.  The doubleword is an extension to the
+	 original 32-bit ABI by the SCD 2.4.x.  */
+      return (len == 1 || len == 2 || len == 4 || len == 8);
+    case TYPE_CODE_PTR:
+    case TYPE_CODE_REF:
+    case TYPE_CODE_RVALUE_REF:
+      /* Allow either 32-bit or 64-bit pointers.  */
+      return (len == 4 || len == 8);
+    default:
+      return false;      
+  }
+}
+
+static bool is_floating(const type* T)
+{
+  switch (T->code()) {
+  case TYPE_CODE_FLT:
+    {
+      int len = TYPE_LENGTH(T);
+      return (len == 4 || len == 8 || len == 16);
+    }
+  default:
+    return false;
+  }
+}
+
+static bool is_complex_floating(const type* T)
+{
+  switch (T->code()) {
+  case TYPE_CODE_COMPLEX:
+    {
+      int len = TYPE_LENGTH(T);
+      return (len == 8 || len == 16 || len == 32);
+    }
+  default:
+    return false;
+  }
+}
+
+static void
+sparc32_extract_return_value(type* valtype, regcache* rc, gdb_byte* valbuf)
+{
+  gdb_byte buf[32];
+  int len = TYPE_LENGTH (valtype);
+  
+  if (is_integral_or_pointer(valtype)) {
+    rc->cooked_read (SPARC_O0_REGNUM, buf);
+    if (len > 4) {
+      rc->cooked_read (SPARC_O1_REGNUM, buf + 4);
+      gdb_assert(len == 8);
+      memcpy(valbuf, buf, 8);
+      return;
+    }
+
+    /* Just stripping off any unused bytes should preserve the
+       signed-ness just fine.  */
+    memcpy(valbuf, buf + 4 - len, len);
+    return;
+  }
+  
+  assert(is_floating(valtype) || is_complex_floating(valtype));
+  rc->cooked_read(SPARC_F0_REGNUM, buf);
+  if (len > 4)
+    rc->cooked_read(SPARC_F1_REGNUM, buf + 4);
+  if (len > 8) {
+    rc->cooked_read(SPARC_F2_REGNUM, buf + 8);
+    rc->cooked_read(SPARC_F3_REGNUM, buf + 12);
+  }
+  if (len > 16) {
+    rc->cooked_read(SPARC_F4_REGNUM, buf + 16);
+    rc->cooked_read(SPARC_F5_REGNUM, buf + 20);
+    rc->cooked_read(SPARC_F6_REGNUM, buf + 24);
+    rc->cooked_read(SPARC_F7_REGNUM, buf + 28);
+  }
+  memcpy(valbuf, buf, len);
+}
+
+static return_value_convention
+sparc_return_value(gdbarch* arch, value* function,
+		   type* valtype, regcache* rc,
+		   gdb_byte* readbuf, const gdb_byte* writebuf)
+{
+  auto code = valtype->code();
+  if (is_aggregate(code)) {
+    if (readbuf) {
+      ULONGEST sp;
+      regcache_cooked_read_unsigned(rc, SPARC_SP_REGNUM, &sp);
+      CORE_ADDR addr =
+	read_memory_unsigned_integer(sp + 64, 4, BFD_ENDIAN_BIG);
+      read_memory(addr, readbuf, TYPE_LENGTH(valtype));
+    }
+    return RETURN_VALUE_ABI_PRESERVES_ADDRESS;
+  }
+
+  if (readbuf)
+    sparc32_extract_return_value(valtype, rc, readbuf);
+  
+  return RETURN_VALUE_REGISTER_CONVENTION;
+}
+
+static type* sparc_register_type(gdbarch* gdbarch, int regno)
+{
+  switch (regno) {
+  case SPARC32_PC_REGNUM:
+  case SPARC32_NPC_REGNUM:
+    return builtin_type(gdbarch)->builtin_func_ptr;    
+  case SPARC_SP_REGNUM:
+  case SPARC_FP_REGNUM:
+    return builtin_type(gdbarch)->builtin_data_ptr;
+  default:
+    return builtin_type(gdbarch)->builtin_int32;
+  }
+}
+
+static void
+sparc_print_registers_info(gdbarch* arch, ui_file* file,
+			   frame_info* frame, int regno, int cpregs)
+{
+  asm("int3");
+}
+
+static CORE_ADDR sparc_skip_prologue(gdbarch* arch, CORE_ADDR pc)
+{
+  CORE_ADDR func_addr, func_end;
+  if (!find_pc_partial_function (pc, nullptr, &func_addr, &func_end))
+    return pc;
+  
+  symtab_and_line sal = find_pc_line (func_addr, 0);
+  if (sal.end && sal.end < func_end)
+    return sal.end;
+
+  return pc;
+}
+
+struct sparc_frame {
+  bool available;
+  CORE_ADDR prologue_start;
+  CORE_ADDR func_end;
+  CORE_ADDR prev_sp;
+  CORE_ADDR ret_addr;
+  int size;
+  sparc_frame(frame_info* frame)
+    : available{false}, prologue_start{(CORE_ADDR)-1}, func_end{(CORE_ADDR)-1},
+      prev_sp{get_frame_sp(frame)}, ret_addr{(CORE_ADDR)-1}, size{0}
+  {
+  }
+};
+
+inline void update(uint32_t insn, sparc_frame* frame)
+{
+  if ((insn & 0xfffff000) == 0x9de3b000) {
+    // save	%sp, -imm, %sp
+    int imm = insn & 0xfff;
+    imm <<= 20;
+    imm >>= 20;
+    assert(!frame->size);
+    frame->size = -imm;
+    frame->prev_sp -= imm;
+    return;
+  }
+
+  if (insn == 0xf027a044) {
+    //	st  %i0, [ %fp + 0x44 ]
+    return;
+  }
+
+  if (insn == 0xf227a048) {
+    // st  %i1, [ %fp + 0x48 ]
+    return;
+  }
+
+  if (insn == 0x1d000003) {
+    // sethi  %hi(0xc00), %sp
+    assert(!frame->size);
+    return;
+  }
+
+  if (insn == 0x01000000) {
+    // nop
+    return;
+  }
+
+  if (insn == 0x11000004) {
+    // sethi  %hi(0x1000), %o0
+    return;
+  }
+}
+
+extern "C" uint32_t get_register_for_me(int regno);
+
+extern "C" void set_register_for_me(int regno, uint32_t value);
+
+struct sweeper_1 {
+  uint32_t org;
+  sweeper_1(uint32_t value) : org{get_register_for_me(SPARC32_PSR_REGNUM)}
+  {
+    set_register_for_me(SPARC32_PSR_REGNUM,  value);
+  }
+  ~sweeper_1()
+  {
+    set_register_for_me(SPARC32_PSR_REGNUM, org);
+  }
+};
+
+static sparc_frame* sparc_frame_create(frame_info* frame);
+
+inline int chose(sparc_frame* sframe, frame_info* frame, int cwp)
+{
+  auto pc = get_register_for_me(SPARC32_PC_REGNUM);
+  if (sframe->prologue_start <= pc && pc <= sframe->func_end)
+    return cwp;
+  frame = get_next_frame(frame);
+  for (int i = 1 ; i != 7 ; ++i, frame = get_next_frame(frame)) {
+    auto sf = std::unique_ptr<sparc_frame>{sparc_frame_create(frame)};
+    if (pc == sf->prologue_start)
+      return (cwp + i - 1) & 7;
+    if (sf->prologue_start < pc && pc <= sf->func_end)
+      return (cwp + i) & 7;
+  }
+  return -1; // not found
+}
+
+inline CORE_ADDR get_ret_addr_from_memory(CORE_ADDR sp)
+{
+  auto addr = sp + 60;
+  auto i7 = read_memory_unsigned_integer(addr, 4, BFD_ENDIAN_BIG);
+  return i7 ? i7 + 8 : -1;
+}
+
+struct sweeper {
+  sparc_frame* sframe;
+  frame_info* frame;
+  sweeper(sparc_frame* sf, frame_info* fi) : sframe{sf}, frame{fi} {}
+  ~sweeper()
+  {
+    auto psr = get_register_for_me(SPARC32_PSR_REGNUM);
+    int cwp = psr & 7;
+    int new_cwp = chose(sframe, frame, cwp);
+    if (new_cwp < 0) {
+      frame = get_next_frame(frame);
+      auto sf = std::unique_ptr<sparc_frame>{sparc_frame_create(frame)};
+      sframe->ret_addr = get_ret_addr_from_memory(sf->prev_sp);
+      return;
+    }
+    assert(0 <= new_cwp && new_cwp <= 7);
+    psr &= ~7;
+    psr |= new_cwp;
+    sweeper_1 sweeper_1(psr);
+    
+    if (sframe->size)
+      sframe->ret_addr = get_register_for_me(SPARC_I7_REGNUM) + 8;
+    else
+      sframe->ret_addr = get_register_for_me(SPARC_O7_REGNUM) + 8;
+  }
+};
+
+static sparc_frame* sparc_frame_create(frame_info* frame)
+{
+  using namespace std;
+  sparc_frame* ret = new sparc_frame(frame);
+  CORE_ADDR pc = get_frame_pc(frame);
+  auto block_addr = get_frame_address_in_block(frame);
+
+  bool found = find_pc_partial_function(block_addr, nullptr,
+					&ret->prologue_start,
+					&ret->func_end);
+  if (!found) {
+    ret->available = false;
+    ret->prologue_start = pc;
+    return ret;
+  }
+
+  sweeper sweeper(ret, frame);
+
+  symtab_and_line sal = find_pc_line(ret->prologue_start, 0);
+  auto end = sal.end ? min(pc, sal.end) : pc;
+  ret->available = true;
+  for (auto addr = ret->prologue_start; addr != end ; addr += 4) {
+    ULONGEST insn;
+    if (!safe_read_memory_unsigned_integer(addr, 4, BFD_ENDIAN_BIG, &insn))
+      return ret;
+    update(insn, ret);
+  }
+  return ret;
+}
+
+static void sparc_frame_this_id(frame_info* frame, void** ptr, frame_id* id)
+{
+  auto pf  = reinterpret_cast<sparc_frame*>(*ptr);
+  if (!pf)
+    *ptr = pf = sparc_frame_create(frame);
+
+  if (!pf->available)
+    *id = frame_id_build_unavailable_stack(pf->prologue_start);
+  else
+    *id = frame_id_build(pf->prev_sp, pf->prologue_start);
+}
+
+#ifdef USE_EXPECTED_VALUE
+static value*
+sparc_frame_prev_register(frame_info* frame, void** ptr, int regno)
+{
+  static int n;
+  ++n;
+  auto pf = std::unique_ptr<sparc_frame>{sparc_frame_create(frame)};
+
+  auto pc = get_frame_pc(frame);
+  if (pc == 0x114) {
+    // `f' start address
+    if (regno == SPARC32_PC_REGNUM) {
+#if 0
+      uint32_t ret_addr = 0x150;  // `f' return address
+#else
+      uint32_t ret_addr = pf->ret_addr;
+      assert(ret_addr == 0x150);
+#endif      
+      return frame_unwind_got_constant(frame, regno, ret_addr);
+    }
+    assert(regno == SPARC_SP_REGNUM);
+#if 0    
+    uint32_t prev_sp = 0xf40;  // fp value at `f'
+#else
+    uint32_t prev_sp = pf->prev_sp;
+    assert(prev_sp == 0xf40); 
+#endif    
+    return frame_unwind_got_constant(frame, regno, prev_sp);
+  }
+
+  if (pc == 0x120) {
+    // `f' prologue skipped address
+    if (regno == SPARC32_PC_REGNUM) {
+#if 0      
+      uint32_t ret_addr = 0x150;  // `f' return address
+#else
+      uint32_t ret_addr = pf->ret_addr;
+      assert(ret_addr == 0x150);
+#endif      
+      return frame_unwind_got_constant(frame, regno, ret_addr);
+    }
+    assert(regno == SPARC_SP_REGNUM);
+#if 0
+    uint32_t prev_sp = 0xf40;  // fp value at `f'
+#else
+    uint32_t prev_sp = pf->prev_sp;
+#endif    
+    return frame_unwind_got_constant(frame, regno, prev_sp);
+  }
+
+  if (pc == 0x150) {
+    // `f' return address at `main'
+    if (regno == SPARC32_PC_REGNUM) {
+#if 0      
+      uint32_t ret_addr = 0x110;
+#else
+      uint32_t ret_addr = pf->ret_addr;
+      assert(ret_addr == 0x110);
+#endif      
+      return frame_unwind_got_constant(frame, regno, ret_addr);
+    }
+    assert(regno == SPARC_SP_REGNUM);
+#if 1
+    uint32_t prev_sp = 0xfa0;
+    return frame_unwind_got_constant(frame, regno, prev_sp);
+#else
+    uint32_t prev_sp = pf->prev_sp;
+    assert(prev_sp == 0xfa0);
+    return frame_unwind_got_constant(frame, regno, prev_sp);
+#endif    
+  }
+  
+  asm("int3");
+  return nullptr;
+}
+#else // USE_EXPECTED_VALUE
+static value*
+sparc_frame_prev_register(frame_info* frame, void** ptr, int regno)
+{
+  auto pf = std::unique_ptr<sparc_frame>{sparc_frame_create(frame)};
+
+  if (regno == SPARC32_PC_REGNUM) {
+    uint32_t ret_addr = pf->ret_addr;
+    return frame_unwind_got_constant(frame, regno, ret_addr);
+  }
+  assert(regno == SPARC_SP_REGNUM);
+  uint32_t prev_sp = pf->prev_sp;
+  return frame_unwind_got_constant(frame, regno, prev_sp);
+}
+#endif // USE_EXPECTED_VALUE
+
+static struct frame_unwind sparc_frame_unwind = {
+  NORMAL_FRAME,
+  default_frame_unwind_stop_reason,
+  sparc_frame_this_id,
+  sparc_frame_prev_register,
+  nullptr,
+  default_frame_sniffer
+};
+
+static CORE_ADDR
+sparc_frame_base_address(frame_info* frame, void** ptr)
+{
+  auto pf = reinterpret_cast<sparc_frame*>(*ptr);
+  if (!pf)
+    *ptr = pf = sparc_frame_create(frame);
+  return pf->prev_sp;
+}
+
+static frame_base sparc_frame_base = {
+  &sparc_frame_unwind,
+  sparc_frame_base_address,
+  sparc_frame_base_address,
+  sparc_frame_base_address
+};
+
+static int sparc_kind_from_pc(gdbarch*, CORE_ADDR*)
+{
+  return 0;
+}
+
+static const unsigned char* sparc_from_kind(gdbarch*, int, int* size)
+{
+  static unsigned char bkpt[] = { 0x91, 0xd0, 0x20, 0x01 };
+  *size = sizeof bkpt;
+  return &bkpt[0];
+}
+
+static CORE_ADDR
+sparc_push_dummy_call(gdbarch* arch, value* function,
+		      regcache* rc, CORE_ADDR bp_addr,
+		      int nargs, value** args, CORE_ADDR sp,
+		      function_call_return_method rm,
+		      CORE_ADDR struct_addr)
+{
+  asm("int3");
+  return 0;
+}
+
+static gdbarch* sparc_gdbarch_init(gdbarch_info info, gdbarch_list* arches)
+{
+  struct gdbarch* arch = gdbarch_alloc (&info, 0);
+
+  const int N = sizeof sparc32_register_names/sizeof sparc32_register_names[0];
+  set_gdbarch_num_regs(arch, N);
+  set_gdbarch_register_type(arch, sparc_register_type);
+  set_gdbarch_register_sim_regno(arch, sparc_register_sim_regno);
+  set_gdbarch_dwarf2_reg_to_regnum(arch, sparc_dbg_reg_to_regnum);
+  set_gdbarch_stab_reg_to_regnum(arch, sparc_dbg_reg_to_regnum);
+  set_gdbarch_register_name(arch, sparc_register_name);
+
+  set_gdbarch_pc_regnum(arch, SPARC32_PC_REGNUM);
+  set_gdbarch_sp_regnum(arch, SPARC_SP_REGNUM);
+  set_gdbarch_print_registers_info(arch, sparc_print_registers_info);
+
+  set_gdbarch_ptr_bit(arch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_addr_bit(arch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_return_value(arch, sparc_return_value);
+
+  set_gdbarch_skip_prologue(arch, sparc_skip_prologue);
+  frame_base_set_default(arch, &sparc_frame_base);
+  frame_unwind_append_unwinder(arch, &sparc_frame_unwind);
+
+  set_gdbarch_inner_than (arch, core_addr_lessthan);
+  set_gdbarch_breakpoint_kind_from_pc(arch, sparc_kind_from_pc);
+  set_gdbarch_sw_breakpoint_from_kind(arch, sparc_from_kind);
+  set_gdbarch_push_dummy_call(arch, sparc_push_dummy_call);
+
+  set_gdbarch_char_signed(arch, 0);
+  set_gdbarch_int_bit(arch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_long_bit(arch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_long_long_bit (arch, 8 * TARGET_CHAR_BIT);
+
+  set_gdbarch_wchar_signed(arch, 0);
+  set_gdbarch_wchar_bit(arch, 2 * TARGET_CHAR_BIT);
+
+  set_gdbarch_double_bit(arch, 8 * TARGET_CHAR_BIT);
+  set_gdbarch_double_format(arch, floatformats_ieee_double);
+  set_gdbarch_long_double_bit(arch, 8 * TARGET_CHAR_BIT);
+  set_gdbarch_long_double_format(arch, floatformats_ieee_double);
+
+  set_gdbarch_believe_pcc_promotion(arch, 1);
+ 
+  return arch;
+}
+
+void _initialize_sparc_tdep();
+void
+_initialize_sparc_tdep()
+{
+  register_gdbarch_init(bfd_arch_sparc, sparc_gdbarch_init);
+}
+
