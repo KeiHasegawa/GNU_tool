@@ -1,0 +1,428 @@
+~/lang/53_GNU_tool/gcc_cross/SPARC/test/test002/test.elf
+
+は以下の 3 つのスタックフレームを持っている.
+
+start:
+	code  : 0x100
+	stack : 0xfa0
+	size  : なし
+	ret   : なし
+
+main:
+	code  : 0x13c
+	stack : 0xfa0 (プロローグ後 0xf40)
+	size  : 0x60
+	ret   : 0x110
+
+f:
+	code  : 0x114
+	stack : 0xf40 (プロローグ後 0xee0)
+	size  : 0x60
+	ret   : 0x150
+
+
+「finish コマンドが期待した動作にならない件の調査(3)」で sparc32_frame_this_id
+で期待値を作成したがスタートアップルーチンの変更に伴なって以下のようになる.
+
+static void
+sparc32_frame_this_id (struct frame_info *this_frame, void **this_cache,
+		       struct frame_id *this_id)
+{
+#if 1
+  static int n;
+  ++n;
+  if (n == 1) {
+    *this_id = frame_id_build(0xf40, 0x114);
+    return;
+  }
+  if (n == 2) {
+    *this_id = frame_id_build(0xfa0, 0x13c);
+    return;
+  }
+  if (n == 3) {
+    *this_id = frame_id_build(0xfa0, 0x13c);
+    return;
+  }
+  if (n == 4) {
+    *this_id = frame_id_build(0xfa0, 0x13c);
+    return;
+  }
+  asm("int3");
+#endif
+
+実際できていないのは n == 2 のときで, 以下でメモリをアクセスしている.
+
+static struct value *
+sparc32_frame_prev_register (struct frame_info *this_frame,
+			     void **this_cache, int regnum)
+{
+...
+  /* The previous frame's `local' and `in' registers may have been saved
+     in the register save area.  */
+  if (regnum >= SPARC_L0_REGNUM && regnum <= SPARC_I7_REGNUM
+      && (cache->saved_regs_mask & (1 << (regnum - SPARC_L0_REGNUM))))
+    {
+      CORE_ADDR addr = cache->base + (regnum - SPARC_L0_REGNUM) * 4;
+
+      return frame_unwind_got_memory (this_frame, regnum, addr);  ここ
+    }
+
+既存の sparc-tdep.c を修正しようかと考えたが, そもそも方法が違っているので最初から作るこ
+とにした. ここでいう方法とは
+
+  o CWP(Current Window Pointer)を参照する(PSR レジスタの下位 5 ビット)
+  o WIM(Window Invalid Mask)を参照する
+     => 後で判明するが WIM は必要なし
+  o WIM と CWP からどの函数のレジスタウィンドウがスタックに保存されているか判定する
+     => 後で判明するが WIM は必要なし  
+  o レジスタウィンドウがスタックに保存されていないのならば CWP を切り換えてその
+    レジスタウィンドウを参照する 
+
+というものである. これだけ書いてもだいぶ難易度は高そうには思える. というより難しいのか
+そうでないのかも想像できていない. ということはおそらく難しいと考えるのが妥当.
+もしかすると window overflow trap や window underflow trap の例外ハンドラ
+に依存しそうに思えるし, しないように作ることもできるかもしれないし, それはそもそもできないか
+もしれない.
+
+     => 後で判明するが例外ハンドラには依存しない
+
+2022.04.13 14:00 現状
+
+~/lang/53_GNU_tool/gcc_cross/SPARC/test/test002/test.elf
+
+に対して step, where, finish が条件付きでできている.
+この時点での sparc_frame_prev_register は以下のようになっている:
+
+#ifdef USE_EXPECTED_VALUE
+static value*
+sparc_frame_prev_register(frame_info* frame, void** ptr, int regno)
+{
+...
+#else // USE_EXPECTED_VALUE
+static value*
+sparc_frame_prev_register(frame_info* frame, void** ptr, int regno)
+{
+  auto pf = sparc_frame_create(frame);
+
+  if (regno == SPARC32_PC_REGNUM) {
+    uint32_t ret_addr = pf->ret_addr;
+    return frame_unwind_got_constant(frame, regno, ret_addr);
+  }
+  assert(regno == SPARC_SP_REGNUM);
+  uint32_t prev_sp = pf->prev_sp;
+  return frame_unwind_got_constant(frame, regno, prev_sp);
+}
+#endif // USE_EXPECTED_VALUE
+
+USE_EXPECTED_VALUE を define した場合は期待値をそのまま返すような状態にしてある.
+現状は define しないでできているが以下ができていない:
+
+inline int chose(sparc_frame* frame, int cwp)
+{
+#if 0
+  if (frame->prologue_start == 0x13c && cwp != 7) {
+    // `main' but cwp is not 7
+    return 7;
+  }
+#endif
+  auto pc = get_register_for_me(SPARC32_PC_REGNUM);
+  if (frame->prologue_start <= pc && pc <= frame->func_end)
+    return cwp;
+
+  return cwp + 1;  // not enough
+}
+
+そこでもう少し函数をネストして呼び出すテスト
+
+~/lang/53_GNU_tool/gcc_cross/SPARC/test/test004/test.elf
+
+での正常動作を目指すことにした. このプログラムは main から f7, f7 から f6, ..., f4 から f3
+を呼び出すというもので各函数での save 命令の後の CWP は
+
+main : 7
+f7   : 6
+f6   : 5
+f4   : 4
+f3   : 3
+
+である. またこのプログラムでは %wim は 0 のまま動作させる. window overflow trap も
+window underflow trap も引き起こされない.
+
+現状このプログラムを動作させると where コマンドで以下のようになる:
+
+(gdb) where
+#0  f3 (a=1, b=10) at test.c:3
+#1  0x00000168 in f4 (a=2, b=9) at test.c:8
+#2  0x000001a8 in f5 (a=3, b=8) at test.c:13
+#3  0x000001a8 in f5 (a=4, b=7) at test.c:13
+#4  0x000001a8 in f5 (a=5, b=6) at test.c:13
+#5  0x000001a8 in f5 (a=-858993460, b=-858993460) at test.c:13
+#6  0x000001a8 in f5 (
+    a=<error reading variable: Cannot access memory at address 0x1044>, 
+    b=<error reading variable: Cannot access memory at address 0x1048>)
+    at test.c:13
+...
+これはおそらく函数 chose で戻り値を適切に選択できれば正常に動作すると思われるので
+まずは期待値でよいから正常動作させてみた:
+
+inline int chose(sparc_frame* frame, int cwp)
+{
+  auto pc = get_register_for_me(SPARC32_PC_REGNUM);
+  if (frame->prologue_start <= pc && pc <= frame->func_end)
+    return cwp;
+
+  if (frame->prologue_start == 0x23c && frame->func_end == 0x264) {
+    // main
+    return 7;
+  }
+
+  if (frame->prologue_start == 0x1fc && frame->func_end == 0x23c) {
+    // f7
+    return 6;
+  }
+
+  if (frame->prologue_start == 0x1bc && frame->func_end == 0x1fc) {
+    // f6
+    return 5;
+  }
+
+  if (frame->prologue_start == 0x17c && frame->func_end == 0x1bc) {
+    // f5
+    return 4;
+  }
+
+  if (frame->prologue_start == 0x13c && frame->func_end == 0x17c) {
+    // f4
+    return 3;
+  }
+
+  if (frame->prologue_start == 0x100 && frame->func_end == 0x110) {
+    // start
+    return 0;
+  }
+  
+  asm("int3");
+  return cwp;
+}
+
+これで where コマンドが期待した動作になっている.
+また finish コマンドもこの修正で期待した動作になっている.
+
+この期待値を実現してみた. 2022.04.13 18:00 できている.
+この時点では以下のようになった:
+
+inline int chose(sparc_frame* sframe, frame_info* frame, int cwp)
+{
+  auto pc = get_register_for_me(SPARC32_PC_REGNUM);
+  if (sframe->prologue_start <= pc && pc <= sframe->func_end)
+    return cwp;
+  frame = get_next_frame(frame);
+  for (int i = 1 ; i != 7 ; ++i, frame = get_next_frame(frame)) {
+    sframe = sparc_frame_create(frame);
+    if (pc == sframe->prologue_start)
+      return (cwp + i - 1) & 7;
+    if (sframe->prologue_start < pc && pc <= sframe->func_end)
+      return (cwp + i) & 7;
+  }
+  abort();
+}
+
+ポイントは get_next_frame(frame) で 1 つ上のフレームに対して
+sparc_frame_create を呼び出して合致するかどうか調べるということをしている.
+
+そこで「レジスタウィンドウの退避復元をしないプログラムの動作」で述べたプログラムに
+対して f0 まで実行して where コマンドを実行してみたところ上の abort() が呼び出された.
+実行結果は以下:
+
+Breakpoint 1, f0 (a=-2, b=13) at test.c:3
+(sparc-elf-gdb) where
+#0  f0 (a=-2, b=13) at test.c:3
+#1  0x00000168 in f1 (a=-1, b=12) at test.c:8
+#2  0x000001a8 in f2 (a=0, b=11) at test.c:13
+#3  0x000001e8 in f3 (a=1, b=10) at test.c:18
+#4  0x00000228 in f4 (a=2, b=9) at test.c:23
+#5  0x00000268 in f5 (a=3, b=8) at test.c:28
+#6  0x000002a8 in f6 (
+Debugger aborted
+
+この abort の呼び出しは一応想定内ではあるのだが, 呼び出されたタイミングが予想していたよりも
+早かった.「レジスタウィンドウの退避復元をしないプログラムの動作」でも述べたように
+このプログラムは f7 のフレームポインタを壊してはいるものの f6 や f7 の戻りアドレスは
+壊してはいない. main の戻りアドレスは壊している.
+
+さてここでどうするべきかが問題である.
+
+函数 chose は where コマンドを実行したときの pc すなわちこのプログラム
+の場合は函数 f0 でプロローグをスキップしたアドレスを, どのスタックフレー
+ムが含んでいるかという判定をしているが, そもそもこれが正しくないのかもしれない.
+
+このテストの期待した動作を目指すよりも「レジスタウィンドウの退避復元をした場合の動作」
+で述べたプログラムに対して where コマンドの正常動作を目指すほうが難易度は低いと考えた
+ので先にそっちを完成させることにした.
+
+~/lang/53_GNU_tool/gcc_cross/SPARC/test/test006/test.elf
+
+にその実行環境を作成した. やはり where コマンドで上の同じところで abort が呼び出される.
+test005 と異なるのはスタックにレジスタウンィドウが保存されている点である.
+
+chose で abort を呼び出すのをやめて -1 を返すようにした. そして
+
+    cwp = chose(sframe, frame, cwp);
+    if (cwp < 0) {
+      get_ret_addr_from_memory(sframe);
+      return;
+    }
+
+のようにした. get_ret_addr_from_memory は例によって期待値をまずは作成
+してみた.
+
+inline void get_ret_addr_from_memory(sparc_frame* sframe)
+{
+  if (sframe->prologue_start == 0x39c && sframe->func_end == 0x3dc) {
+    sframe->ret_addr =  0x3f0;
+    return;
+  }
+    
+  if (sframe->prologue_start == 0x3dc && sframe->func_end == 0x404) {
+    sframe->ret_addr = 0x120;
+    return;
+  }
+
+  if (sframe->prologue_start == 0x100 && sframe->func_end == 0x120) {
+    return;
+  }
+}
+
+これでできている. とすれば単純にフレームポインタ相対 0x44 + 7 * 4 = 0x60
+を参照するのが正しい. と思ったが以下のようにしたところ:
+
+inline void get_ret_addr_from_memory(sparc_frame* sframe)
+{
+#if 0  
+  if (sframe->prologue_start == 0x39c && sframe->func_end == 0x3dc) {
+    sframe->ret_addr =  0x3f0;
+    return;
+  }
+    
+  if (sframe->prologue_start == 0x3dc && sframe->func_end == 0x404) {
+    sframe->ret_addr = 0x120;
+    return;
+  }
+
+  if (sframe->prologue_start == 0x100 && sframe->func_end == 0x120) {
+    return;
+  }
+#else
+  auto addr = sframe->prev_sp + 0x60; 
+  auto ret_addr = read_memory_unsigned_integer(addr, 4, BFD_ENDIAN_BIG);
+  if (ret_addr)
+    sframe->ret_addr = ret_addr;
+#endif  
+}
+
+where コマンドの結果は以下のようになっている:
+
+Breakpoint 1 at 0x200: file test.c, line 3.
+
+Breakpoint 1, f0 (a=-2, b=13) at test.c:3
+3	  return a + b;
+(sparc-elf-gdb) where
+#0  f0 (a=-2, b=13) at test.c:3
+#1  0x00000248 in f1 (a=-1, b=12) at test.c:8
+#2  0x00000288 in f2 (a=0, b=11) at test.c:13
+#3  0x000002c8 in f3 (a=1, b=10) at test.c:18
+#4  0x00000308 in f4 (a=2, b=9) at test.c:23
+#5  0x00000348 in f5 (a=3, b=8) at test.c:28
+#6  0x00000388 in f6 (a=4, b=7) at test.c:33
+#7  0x000003c8 in f7 (a=5, b=6) at test.c:38
+#8  0xffffffff in ?? ()
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+(sparc-elf-gdb) 
+
+期待値を直接書いた場合は以下:
+
+Breakpoint 1, f0 (a=-2, b=13) at test.c:3
+3	  return a + b;
+(sparc-elf-gdb) where
+#0  f0 (a=-2, b=13) at test.c:3
+#1  0x00000248 in f1 (a=-1, b=12) at test.c:8
+#2  0x00000288 in f2 (a=0, b=11) at test.c:13
+#3  0x000002c8 in f3 (a=1, b=10) at test.c:18
+#4  0x00000308 in f4 (a=2, b=9) at test.c:23
+#5  0x00000348 in f5 (a=3, b=8) at test.c:28
+#6  0x00000388 in f6 (a=4, b=7) at test.c:33
+#7  0x000003c8 in f7 (a=5, b=6) at test.c:38
+#8  0x000003f0 in main () at test.c:43
+(sparc-elf-gdb) 
+
+これは f7 と main の戻りアドレスを取得できていないということらしい. 
+何か勘違いしている. window overflow trap のハンドラで戻りアドレスをスタックに書き込んで
+いるところを確認してみた:
+
+handler.S:32
+        std	%i6, [%sp + 56]   ここ
+
+Breakpoint 1, window_overflow () at ../handler.S:32
+(sparc-elf-gdb) p/x $sp + 60
+$1 = 0x1fdc
+(sparc-elf-gdb) p/x $i7
+$2 = 0x0                          スタートアップルーチンの %i7
+(sparc-elf-gdb) c
+...
+Breakpoint 1, window_overflow () at ../handler.S:32
+(sparc-elf-gdb) p/x $sp + 60
+$3 = 0x1f7c
+(sparc-elf-gdb) p/x $i7
+$4 = 0x118                        main の戻りアドレス-8
+(sparc-elf-gdb) c
+Continuing.
+
+Breakpoint 1, window_overflow () at ../handler.S:32
+(sparc-elf-gdb) p/x $sp + 60
+$5 = 0x1f1c
+(sparc-elf-gdb) p/x $i7
+$6 = 0x3e8                        f7 の戻りアドレス-8
+(sparc-elf-gdb) 
+
+勘違いしていたのは今作成している sparc_frame のスタックポインタを参照していたことで
+あって 1 つ上の sparc_frame のスタックポインタを参照するということであった:
+
+inline CORE_ADDR get_ret_addr_from_memory(CORE_ADDR sp)
+{
+  auto addr = sp + 60;
+  auto i7 = read_memory_unsigned_integer(addr, 4, BFD_ENDIAN_BIG);
+  return i7 ? i7 + 8 : -1;
+}
+
+    int new_cwp = chose(sframe, frame, cwp);
+    if (new_cwp < 0) {
+      frame = get_next_frame(frame);  これ
+      auto sf = std::unique_ptr<sparc_frame>{sparc_frame_create(frame)};  これ
+      sframe->ret_addr = get_ret_addr_from_memory(sf->prev_sp);  この prev_sp
+      return;                                                    を参照する 
+    }
+    assert(0 <= new_cwp && new_cwp <= 7);
+
+これで一応期待通り動作している.
+ここまで実装したが WIM レジスタを参照する必要はなかった.
+最後に保留していた「レジスタウィンドウの退避復元をしないプログラムの動作」で述べたプログラムに
+対して f0 まで実行して where コマンドを実行してみた:
+
+Breakpoint 1, f0 (a=-2, b=13) at test.c:3
+3	  return a + b;
+#0  f0 (a=-2, b=13) at test.c:3
+#1  0x00000168 in f1 (a=-1, b=12) at test.c:8
+#2  0x000001a8 in f2 (a=0, b=11) at test.c:13
+#3  0x000001e8 in f3 (a=1, b=10) at test.c:18
+#4  0x00000228 in f4 (a=2, b=9) at test.c:23
+#5  0x00000268 in f5 (a=3, b=8) at test.c:28
+#6  0x000002a8 in f6 (a=4, b=7) at test.c:33
+#7  0x000002e8 in f7 (a=5, b=6) at test.c:38
+#8  0xccccccd4 in ?? ()
+#9  0xffffffff in ?? ()
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+A debugging session is active.
+
+これはやってみてそう思ったのだが妥当な結果ではある. レジスタウィンドウをスタックに保存して
+いないプログラムに対しても同じようにそこに戻りアドレスが保存されているとして sparc-elf-gdb
+は動作している. これはこれで妥当である.

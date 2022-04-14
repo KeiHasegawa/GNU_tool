@@ -1,6 +1,6 @@
 スタートアップルーチンで %wim レジスタに 0 をセットした状態で
-この test.c のプログラムを動かしてみる. test.c は以下のように
-main 函数から f7 を f7 から f6 を, ... f1 から f0 を呼び出
+test.c のプログラムを動かしてみる. test.c は以下のように
+main 函数から f7 を, f7 から f6 を, ... f1 から f0 を呼び出
 すようなプログラムである.
 
 f0
@@ -13,7 +13,7 @@ f6
 f7
 main
 
-%wim が 0 なので window overflow 例外は発生しない.
+%wim が 0 なので window overflow trap も window underflow trap も発生しない.
 
 main 函数でプロローグをスキップしたところでレジスタは以下のようになっている:
 
@@ -195,7 +195,7 @@ f7 (a=<error reading variable: Cannot access memory at address 0x1ce4>, b=<error
 (sparc-elf-gdb) 
 
 これは gdb がフレームポインタが正しいところを指しているとして %i6 (fp) 相対を参照
-しているためである. f7 のフレームポインタは場所はともかく破壊されていた.
+しているためである. f7 のフレームポインタは, 場所はともかく, 破壊されていた.
 
 そして main に戻ってきたところでレジスタは以下のようになっている:
 
