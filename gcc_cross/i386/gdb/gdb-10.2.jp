@@ -1,0 +1,157 @@
+gdb-10.2 のビルド
+
+Z80 と同じようなやり方をしてみた:
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% xz -d -c ../gdb-10.2-1.src/gdb-10.2.tar.xz | tar xf -
+% mv gdb-10.2 gdb-10.2.i386-elf
+% cd gdb-10.2.i386-elf/gdb
+
+d30v, fr30, z8k, i960, mmix, z80 と同じ対処をした.
+
+gdb-10.2.i386-elf/gdb/configure.tgt:
+
+-i[34567]86-*-*)
+-	cpu_obs="${i386_tobjs}"
+-	if test "x$enable_64_bit_bfd" = "xyes"; then
+-	   cpu_obs="${amd64_tobjs} ${cpu_obs}"
+-	fi
+-	;;
+
++i386-*-*)
++	gdb_target_obs="i386-tdep.o"
++	gdb_sim=../sim/i386/libsim.a
++	;;
+
+% cd ..
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=i386-elf
+% make
+...
+make[2]: *** 'gdb' に必要なターゲット '../sim/i386/libsim.a' を make するルールがありません.  中止.
+...
+%
+
+% cd sim
+% tar xvf ~/lang/53_GNU_tool/gcc_cross/MMIX/gdb/mmix.1.tar
+% mv mmix i386
+% cd i386
+
+mmix を単純に i386 に置換した.
+
+% make
+% cd ../../gdb
+% make gdb
+...
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: i386-tdep.o: in function `i386_in_indirect_branch_thunk(gdbarch*, unsigned long long)':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i386-elf/gdb/i386-tdep.c:4480: undefined reference to `x86_in_indirect_branch_thunk(unsigned long long, char const**, int, int)'
+...
+リンクでエラーしている. そのままの i386-tdep.c ではクロス環境では利用できない可能性がある.
+と思ったが, 
+
+gdb-10.2.i386-elf/gdb/configure.tgt
+
+の修正がまずかったらしい.
+
+gdb-10.2.i386-elf/gdb/Makefile を修正した:
+
+-TARGET_OBS =  i386-tdep.o
++TARGET_OBS =  i386-tdep.o i386-tdep.o arch/i386.o i387-tdep.o x86-tdep.o
+
+これでリンクが成功する.
+例によって 0x100 番地に nop 命令を数個置いてそこを実行するということをしてみる.
+
+M-x gdb
+gdb --annotate=3 ./gdb
+(gdb) cd ~/lang/53_GNU_tool/gcc_cross/i386/test/test001/
+(gdb) run -q -x gdbcom test.elf
+...
+Reading symbols from test.elf...
+Target alignment unspecified
+gdbcom:2: Error in sourced command file:
+unable to create simulator instance
+(i386-elf-gdb) q
+
+これはエラーしている. 確かこれは sim_config でエラーしているやつだったはず.
+
+(gdb) b sim_config
+(gdb) run
+...
+sim_config のブレークポイントにヒット
+(gdb) finish
+...
+Run till exit from #0  sim_config (sd=0x8c0f670) at ../common/sim-config.c:146
+Target alignment unspecified
+0x083b8c11 in sim_open (kind=SIM_OPEN_DEBUG, callback=0x8aba840 <gdb_callback>, abfd=0x8bd8a50, argv=0x8bef2f0) at sim-if.c:46
+Value returned is $1 = SIM_RC_FAIL
+(gdb)
+
+やはりここだった. そうか MMIX はビッグエンディアンで i386 はリトルエンディアンだから
+そこは変更する必要があったということ.
+さてエンディアンはどこで指定していたかサッパリ思い出せない.
+
+エンディアンに関するエラーではなくアラインメントに関するエラー. これは
+SPARC の gdb でもやった通りシミュレータのビルドオプションに以下が必要:
+
+-DWITH_ALIGNMENT=4
+
+シミュレータをビルドし直して, gdb をリンクし直した. sim_config でエラーしなくなった.
+そこで i386_pc_set に埋め込んだブレークポイントにヒットしている.
+
+ここで仮の pc に値をセットしておいた. さらに処理が進んで i386_reg_get に埋め込んだ
+ブレークポイントにヒットしている.
+
+そこで
+
+gdbcom:6: Error in sourced command file:
+Warning:
+Cannot insert breakpoint 1.
+Cannot access memory at address 0x100
+Cannot insert breakpoint 2.
+Cannot access memory at address 0x103
+
+のようにエラーメッセージが出ていることに気付いた. 現状ではメモリを割り当てていないので
+このようにエラーしているということ. まずはこちらのエラーをエラーしないようにする.
+
+プログラムをロードする前にそこにメモリを割り当てるいつものパッチを適用した.
+これで上のエラーを回避できている.
+
+そこで i386_reg_get(rn = 8) の呼び出しで埋め込んだブレークポイントにヒットしている.
+rn = 8 はプログラムカウンタのレジスタ番号で保持している値を返すようにした.
+
+さらに処理が進んで i386_pc_get に埋め込んでおいたブレークポイントにヒットしている.
+やはり保持しているプログラムカウンタを返すようにした.
+
+さらに処理が進んで i386_fetch に埋め込んでおいたブレークポイントにヒットしている.
+i386 の最小命令長は 1 なので以下のように修正した:
+
+-typedef uint32_t instruction_word;
++typedef uint8_t instruction_word;
+
+i386_fetch では 1 バイトメモリから読み出してそれを返すようにした.
+
+そこでとうとう idecode_issue が呼び出された. 今回は nop だけなので
+ブレークポイントだったら実行を停止する, そうでなければ引数 cia に 1 を加算した
+ものを返すとだけしておいた.
+
+最後に i386_reg_get(rn = 5) の呼び出しがあった. 5 は %ebp のレジスタ番号なので
+ここは 0 を返しておいた.
+
+これによりプログラムは期待通り動作している. nop 以外はシミュレーションできていないが
+この時点での
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i386-elf/sim/i386/
+
+を i386.1.tar としてアップロードしておく.
+
+
+ 
+
+
+
+
+
+
+
+
+
+
