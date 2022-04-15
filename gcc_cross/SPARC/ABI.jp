@@ -68,3 +68,16 @@
 	そして CWP が WIM レジスタと同じ値になったときに SPILL, FILL 例外が
 	(window overflow trap, window underflow trap とも呼ばれるらしい)
 	発生する.
+
+
+(*3) 函数呼び出し
+
+	call func, 0
+
+	疑似コード
+
+	%o7 := pc
+	npc := pc
+	npc := func
+
+	呼び出された側ではプロローグの restore 命令の後 %o7 + 8 が戻りアドレスになる.
