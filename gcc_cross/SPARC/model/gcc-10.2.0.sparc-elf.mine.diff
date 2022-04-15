@@ -1,0 +1,47 @@
+*** gcc-10.2.0.org/gcc/config.gcc	2021-10-16 10:31:18.000000000 +0900
+--- gcc-10.2.0.sparc-elf.mine/gcc/config.gcc	2022-04-14 11:49:04.000000000 +0900
+***************
+*** 535,544 ****
+  	;;
+  sparc*-*-*)
+  	cpu_type=sparc
+- 	c_target_objs="sparc-c.o"
+- 	cxx_target_objs="sparc-c.o"
+- 	d_target_objs="sparc-d.o"
+- 	extra_headers="visintrin.h"
+  	;;
+  s390*-*-*)
+  	cpu_type=s390
+--- 535,540 ----
+***************
+*** 3271,3288 ****
+  	tm_file="${tm_file} elfos.h sh/elf.h sh/embed-elf.h vx-common.h vxworks.h sh/vxworks.h"
+  	;;
+  sparc-*-elf*)
+! 	tm_file="${tm_file} dbxelf.h elfos.h newlib-stdint.h sparc/sysv4.h sparc/sp-elf.h"
+! 	case ${target} in
+! 	    *-leon-*)
+! 		tmake_file="sparc/t-sparc sparc/t-leon"
+! 		;;
+! 	    *-leon[3-9]*)
+! 		tmake_file="sparc/t-sparc sparc/t-leon3"
+! 		;;
+! 	    *)
+! 		tmake_file="sparc/t-sparc sparc/t-elf"
+! 		;;
+! 	esac
+  	;;
+  sparc-*-rtems*)
+  	tm_file="${tm_file} dbxelf.h elfos.h sparc/sysv4.h sparc/sp-elf.h sparc/rtemself.h rtems.h newlib-stdint.h"
+--- 3267,3277 ----
+  	tm_file="${tm_file} elfos.h sh/elf.h sh/embed-elf.h vx-common.h vxworks.h sh/vxworks.h"
+  	;;
+  sparc-*-elf*)
+! 	tm_file="${tm_file} dbxelf.h elfos.h newlib-stdint.h"
+!   	tm_p_file="sparc/sparc-protos.h"
+!   	md_file="sparc/sparc.md"
+!   	out_file="sparc/sparc.c"
+! 	tmake_file="sparc/t-sparc"
+  	;;
+  sparc-*-rtems*)
+  	tm_file="${tm_file} dbxelf.h elfos.h sparc/sysv4.h sparc/sp-elf.h sparc/rtemself.h rtems.h newlib-stdint.h"

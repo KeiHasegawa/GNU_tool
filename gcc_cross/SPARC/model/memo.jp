@@ -1,0 +1,218 @@
+cc1 の雛形
+
+「AARCH64」=>「cc1 の雛形」=>「メモ」 を参照.
+AARCH64 と同様の手順で cc1 の雛形をビルドすることができる.
+
+開発メモ
+(*1)
+SPARC のコンパイラはレジスタウィンドウがあるので明示的に戻りアドレスやフレームポインタを
+スタックに保存したりせずに
+
+	save	%sp, -96, %sp
+
+のように save 命令を生成する. さてこの命令の生成だがどのようにするべきか.
+
+sparc.md
+
+(define_insn "save"
+  [
+    ...
+  ]
+  ""
+  "save	%%sp, -%0, %%sp")
+
+おそらくこんな感じになるかと思ったがオリジナルの cc1 の sparc.md を参考にしてみた.
+
+(define_insn "window_save"
+  [(unspec_volatile [(match_operand 0 "arith_operand" "rI")] UNSPECV_SAVEW)]
+  "!TARGET_FLAT"
+  "save\t%%sp, %0, %%sp"
+  [(set_attr "type" "savew")])
+
+ここだけ見てもあまりピンとは来ないのでとりあえず以下のようにしてみた:
+
+(define_insn "save"
+  [
+    (match_operand:SI 0 "immediate_operand" "")
+  ]
+  ""
+  "save	%%sp, -%0, %%sp")
+
+おそらく sparc_expand_prologue でいきなりアセンブラ生成しても何とかなるのかとは
+思ったが一般的な方法を踏襲することにしてみた.
+restore は以下のようにしておいた.
+
+(define_insn "restore"
+  [
+    (const_int 0)
+  ]
+  ""
+  "restore")
+
+これで期待通り save と restore 命令が出力されるかと思ったが restore 命令が
+期待されるところで save 命令が出力されている.
+調べてみると gen_restore は以下のようになっている:
+
+rtx
+gen_restore (void)
+{
+  return const0_rtx;
+}
+
+ここで生成された const0_rtx が save 命令を生成する条件に合致(?)するのが
+今回起こっている現象であると推測できる.
+
+あまり良い回避方法ではないが以下のようにした:
+
+(define_insn "do_return"
+  [(return)]
+  ""
+  "restore\n\tretl\n\tnop")
+
+現状だと思わぬ式が save 命令を出力させるかもしれないがそうなるまで放っておくことにした.
+そして
+
+(define_insn "restore" ... は削除した.
+
+(*2)
+sparc_expand_prologue は当初以下のようにしていた:
+
+void sparc_expand_prologue()
+{
+  auto size = get_frame_size();
+  auto delta = gen_rtx_CONST_INT(Pmode, size+96);
+  emit_insn(gen_save(delta));
+}
+
+しかしこれだと函数の引数も size に含まれてしまう. 例えば
+
+int f(int a, int b)
+{
+  return a + b;
+}
+
+に対して生成されるべき save 命令は
+
+	save	%sp, -96, %sp
+
+なのだが上のものだと
+
+	save	%sp, -104, %sp
+
+になってしまう. これも正しい回避方法ではないが現状
+
+void sparc_expand_prologue()
+{
+  auto delta = gen_rtx_CONST_INT(Pmode, 96);
+  emit_insn(gen_save(delta));
+}
+
+にしている. これは全く正しくない.
+
+(*2)
+2022.04.15 7:40 現状 hello world 11 ができているは (*1) の問題は解消できていない.
+そこで以下のように修正してみた:
+
+(define_insn "save"
+  [
+    ; fp := sp
+   (set (reg:SI FRAME_POINTER_REGNUM) (reg:SI STACK_POINTER_REGNUM))
+    ; sp := sp - %0
+   (set (reg:SI STACK_POINTER_REGNUM)
+	(minus:SI (reg:SI STACK_POINTER_REGNUM)
+	  	  (match_operand:SI 0 "immediate_operand" "")))
+  ]
+  ""
+  "save	%%sp, -%0, %%sp")
+
+
+(define_insn "restore"
+  [
+    ; sp := fp  
+   (set (reg:SI STACK_POINTER_REGNUM) (reg:SI FRAME_POINTER_REGNUM))
+    ; fp := fp + %0
+   (set (reg:SI FRAME_POINTER_REGNUM)
+	(plus:SI (reg:SI FRAME_POINTER_REGNUM)
+	  	 (match_operand:SI 0 "immediate_operand" "")))
+  ]
+  ""
+  "restore")
+
+としてみた. これで一応だが restore が出力されるようにはなった. hello world 11 も
+できている.
+
+(*3)
+MSP430 のコンパイラでは以下のように函数呼び出しの引数をフレームサイズに加算していた.
+
+  auto size = get_frame_size();
+  size += crtl->outgoing_args_size;
+
+これに近いことを SPARC のコンパイラでやる必要がある. 以下はコンパイルエラーになるが
+やりたいことは伝わると思う:
+
+  auto size = get_frame_size();
+  size += crtl->incoming_args_size;
+
+2022.04.15 10:40 さてこれはどのように実現すればよいかだが
+current_function_decl から自力で計算するのが早そう.
+
+int sparc_incoming_args_size()
+{
+  auto func = TREE_TYPE(current_function_decl);
+  auto chain = TYPE_ARG_TYPES(func);
+
+  int s = 0;
+  for ( ; chain ; chain = TREE_CHAIN(chain)) {
+    auto arg = TREE_VALUE(chain);
+    auto mode = TYPE_MODE(arg);
+    int size = GET_MODE_SIZE(mode);
+    size = (size + 3) & ~3;
+    s += size;
+  }
+  return s;
+}
+
+void sparc_expand_prologue()
+{
+  auto size = get_frame_size() - sparc_incoming_args_size() + 96;
+  auto delta = gen_rtx_CONST_INT(Pmode, size);
+  emit_insn(gen_save(delta));
+}
+
+これで期待するコードが生成できている. hello world 11 もできている.
+
+(*4)
+現状 hello world 11 が動作している. そして sparc_expand_prologue で
+生成している rtx_insn* insn には
+
+    RTX_FRAME_RELATED_P(insn) = true;
+
+のようにはしていない. これで -g オプション付きでコンパイルしたところ以下の
+部分で内部エラーが発生している:
+
+a.c: 関数 ‘f’ 内:
+a.c:6:1: コンパイラ内部エラー: create_cie_data 内、位置 dwarf2cfi.c:3074
+
+dwarf2cfi.c:3074:
+      initial_return_save (INCOMING_RETURN_ADDR_RTX);
+
+「SPARC の gdb」で作業したことから実は .debug_frame を生成しなくても問題なさそうだが
+オリジナルの sparc-elf-gcc が .debug_frame を生成しているので, それを真似することに
+した. 以下を追加:
+
+rtx sparc_incoming_return_addr_rtx();
+#define INCOMING_RETURN_ADDR_RTX sparc_incoming_return_addr_rtx()
+
+rtx sparc_incoming_return_addr_rtx()
+{
+  auto o7 = gen_rtx_REG(Pmode, O0_REGNUM+7);
+  auto plus8 = gen_rtx_PLUS(o7, gen_rtx_CONST_INT(Pmode, 8));
+  return plus8;
+}
+
+%o7 + 8 を返しているつもりだが実はこれは正しく動作するのには関係ないと思われる.
+適当に何かを返すだけでいい. 但し「戻りアドレスがメモリに保存されている」のようにすると
+sparc-elf-gdb が誤作動することになるのでそれはだめ.
+
+この修正により step, where, finish が期待通り動作している.
+
