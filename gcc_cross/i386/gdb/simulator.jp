@@ -528,3 +528,80 @@ f (a=<error reading variable: Cannot access memory at address 0x8>,
 
 上記を修正して f にステップインできて a と b の値を正しく表示できている.
 そして step, where, finish が (*A) の WA があるものの期待通り動作している.
+
+CS (コードセグメントレジスタ)がどのように更新されるのかを理解する.
+bochs を普通に動かしたときに CS が変更されるかどうか確認してみた.
+
+GUI の画面がでてきたところで Quit を選択したところで
+
+(gdb) p (&bx_cpu)-> sregs[BX_SEG_REG_CS].cache.u.segment.limit_scaled
+$1 = 65535
+(gdb)
+
+変更されているらしい. この瞬間を捕える.
+
+Old value = 0
+New value = 65535
+BX_CPU_C::reset (source=11) at init.cc:758
+(gdb) up
+#1  0x080ad6da in bx_pc_system_c::Reset (this=0x8227120 <bx_pc_system>, type=11) at pc_system.cc:195
+(gdb)
+
+なるほど, リセットのタイミングで 0xffff に変更されるということらしい.
+というわけでリセットのシミュレーションは現状必要ないので i386-elf-gdb から
+セットするようにして対応することにしようと思った.
+(gdb) c
+
+Old value = 65535
+New value = -1
+0x0815dd8b in BX_CPU_C::load_cs (selector=0xbfffede6, descriptor=0xbfffedec, cpl=0 '\000') at ctrl_xfer_pro.cc:95
+(gdb)
+
+-1 に更新されている.
+
+(gdb) up
+...
+(gdb) p *i
+$6 = {execute1 = 0x811cbb6 <BX_CPU_C::JMP_Ap(bxInstruction_c*)>, handlers = {
+    execute2 = 0x0, next = 0x0}, metaInfo = {ia_opcode = 224, ilen = 8 '\b', 
+    metaInfo1 = 20 '\024'}, metaData = "\000\000\000\000\003\000\000", {
+    modRMForm = {{Id = 1022559, Iw = {39519, 15}, Ib = "_\232\017"}, {
+        displ16u = 16, displ32u = 16, Id2 = 16, Iw2 = {16, 0}, 
+        Ib2 = "\020\000\000"}}}}
+(gdb) 
+
+この命令でも変更できるらしい.
+
+(gdb) p debug_disasm_instruction((&bx_cpu)-> prev_rip)
+00000320311i[CPU0  ] 0x00009a57>> add byte ptr ds:[bx+si], al : 0000
+$7 = void
+(gdb)
+
+この逆アセンブル結果はあまり参考にはならないように思える.
+リセットはやらないにしてもこの
+
+jmp_far32
+
+自体がどのような命令なのか調べてみる.
+
+と思ったが, シミュレーションの前にリセット相当をすることは問題ないのでこれをやっておく.
+これならば i386-elf-gdb から CS レジスタを無理に変更する必要はない.
+
+これで (*A) の WA をしないで step, where, finish ができている.
+不完全ではあるがこの時点での
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/
+
+を
+
+bochs-2.7.mine.1.tar
+
+として
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i386-elf/sim/i386
+
+を
+
+i386.2.tar
+
+としてアップロードしておく.
