@@ -1,0 +1,530 @@
+インターネットを検索したところ i386 のシミュレータを開発している方を見つけた.
+
+https://bochs.sourceforge.io/
+
+ここから最新バージョンだった bochs-2.7.tar.gz をダウンロードした.
+これはインスラクションセットシミュレータを含む PC のエミュレータらしい.
+PCI のシミュレーションなどもしているようでもある.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% gunzip -c ../bochs-2.7.tar.gz | tar xf -
+% cd bochs-2.7
+% ./configure
+% make
+成功
+% ./bochs
+========================================================================
+                        Bochs x86 Emulator 2.7
+              Built from SVN snapshot on August  1, 2021
+                Timestamp: Sun Aug  1 10:07:00 CEST 2021
+========================================================================
+00000000000i[      ] BXSHARE not set. using compile time default '/usr/local/share/bochs'
+00000000000i[      ] reading configuration from .bochsrc
+00000000000e[      ] .bochsrc:197: wrong value for parameter 'model'
+00000000000p[      ] >>PANIC<< .bochsrc:197: cpu directive malformed.
+00000000000e[SIM   ] notify called, but no bxevent_callback function is registered
+00000000000e[SIM   ] notify called, but no bxevent_callback function is registered
+========================================================================
+Bochs is exiting with the following message:
+[      ] .bochsrc:197: cpu directive malformed.
+========================================================================
+00000000000i[SIM   ] quit_sim called with exit code 1
+%
+
+とりあえず何となくだが動いている.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/cpu/libcpu.a
+
+が作成されている. おそらくここを使わせてもらえばできそうなのだが.
+
+まずは今できている nop をシミュレーションできることを目指す.
+
+% g++ -o bochs -g -O2 -D_FILE_OFFSET_BITS=64 -D_LARGE_FILES -pthread -DBX_SHARE_PATH=\"/usr/local/share/bochs\" logio.o main.o config.o pc_system.o osdep.o plugin.o crc.o bxthread.o -Wl,--export-dynamic  iodev/libiodev.a iodev/display/libdisplay.a iodev/hdimage/libhdimage.a cpu/libcpu.a cpu/cpudb/libcpudb.a memory/libmemory.a gui/libgui.a cpu/fpu/libfpu.a -L/usr/local/lib /usr/local/lib/libXpm.so /usr/local/lib/libXrandr.so /usr/local/lib/libXext.so /usr/local/lib/libXrender.so /usr/local/lib/libX11.so /usr/local/lib/libxcb.so /usr/local/lib/libXau.so -ldl -Wl,--rpath -Wl,/usr/local/lib -Wl,--rpath -Wl,/usr/local/lib
+%
+これが正常終了している. cpu/libcpu.a を意図的に外して上を実行してみたところ以下のリンクエラー:
+
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: main.o: in function `bx_atexit()':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/main.cc:1440: undefined reference to `BX_CPU_C::atexit()'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: main.o: in function `bx_sr_after_restore_state()':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/main.cc:1120: undefined reference to `BX_CPU_C::after_restore_state()'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: main.o: in function `bx_init_hardware()':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/main.cc:1358: undefined reference to `BX_CPU_C::initialize()'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/main.cc:1359: undefined reference to `BX_CPU_C::sanity_checks()'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/main.cc:1360: undefined reference to `BX_CPU_C::register_state()'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: main.o: in function `bx_sr_after_restore_state()':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/main.cc:1120: undefined reference to `BX_CPU_C::after_restore_state()'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: main.o: in function `bx_begin_simulation(int, char**)':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/main.cc:1050: undefined reference to `BX_CPU_C::cpu_loop()'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: main.o: in function `_GLOBAL__sub_I_bx_startup_flags':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/main.cc:98: undefined reference to `BX_CPU_C::BX_CPU_C(unsigned int)'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: main.o: in function `__static_initialization_and_destruction_0':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/main.cc:98: undefined reference to `BX_CPU_C::~BX_CPU_C()'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: pc_system.o: in function `bx_pc_system_c::Reset(unsigned int)':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/pc_system.cc:195: undefined reference to `BX_CPU_C::reset(unsigned int)'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: pc_system.o: in function `bx_pc_system_c::MemoryMappingChanged()':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/pc_system.cc:177: undefined reference to `BX_CPU_C::TLB_flush()'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: pc_system.o: in function `bx_pc_system_c::Reset(unsigned int)':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/pc_system.cc:195: undefined reference to `BX_CPU_C::reset(unsigned int)'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: pc_system.o: in function `bx_pc_system_c::MemoryMappingChanged()':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/pc_system.cc:177: undefined reference to `BX_CPU_C::TLB_flush()'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: pc_system.o: in function `bx_pc_system_c::raise_INTR()':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/pc_system.cc:90: undefined reference to `BX_CPU_C::raise_INTR()'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/pc_system.cc:90: undefined reference to `BX_CPU_C::raise_INTR()'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: pc_system.o: in function `bx_pc_system_c::clear_INTR()':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/pc_system.cc:98: undefined reference to `BX_CPU_C::clear_INTR()'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/pc_system.cc:98: undefined reference to `BX_CPU_C::clear_INTR()'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: pc_system.o: in function `bx_pc_system_c::MemoryMappingChanged()':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/pc_system.cc:177: undefined reference to `BX_CPU_C::TLB_flush()'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/pc_system.cc:177: undefined reference to `BX_CPU_C::TLB_flush()'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: pc_system.o: in function `bx_pc_system_c::invlpg(unsigned int)':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/pc_system.cc:183: undefined reference to `BX_CPU_C::TLB_invlpg(unsigned int)'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: iodev/libiodev.a(ioapic.o): in function `bx_ioapic_c::service_ioapic()':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/iodev/ioapic.cc:314: undefined reference to `apic_bus_deliver_interrupt(unsigned char, unsigned int, unsigned char, bool, bool, bool)'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: iodev/libiodev.a(acpi.o): in function `bx_acpi_ctrl_c::generate_smi(unsigned char)':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/iodev/acpi.cc:286: undefined reference to `apic_bus_deliver_smi()'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: memory/libmemory.a(misc_mem.o): in function `BX_MEM_C::allocate_block(unsigned int)':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/memory/misc_mem.cc:213: undefined reference to `BX_CPU_C::check_addr_in_tlb_buffers(unsigned char const*, unsigned char const*)'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: memory/libmemory.a(misc_mem.o): in function `BX_MEM_C::is_monitor(unsigned long long, unsigned int)':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/memory/misc_mem.cc:1115: undefined reference to `BX_CPU_C::is_monitor(unsigned long long, unsigned int)'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/memory/misc_mem.cc:1115: undefined reference to `BX_CPU_C::is_monitor(unsigned long long, unsigned int)'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: memory/libmemory.a(misc_mem.o): in function `BX_MEM_C::check_monitor(unsigned long long, unsigned int)':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/memory/misc_mem.cc:1125: undefined reference to `BX_CPU_C::check_monitor(unsigned long long, unsigned int)'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: memory/libmemory.a(memory.o): in function `bxPageWriteStampTable::decWriteStamp(unsigned long long, unsigned int)':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/memory/../cpu/icache.h:80: undefined reference to `pageWriteStampTable'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/memory/../cpu/icache.h:80: undefined reference to `pageWriteStampTable'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/memory/../cpu/icache.h:86: undefined reference to `handleSMC(unsigned long long, unsigned int)'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/memory/../cpu/icache.h:87: undefined reference to `pageWriteStampTable'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/memory/../cpu/icache.h:86: undefined reference to `handleSMC(unsigned long long, unsigned int)'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/memory/../cpu/icache.h:87: undefined reference to `pageWriteStampTable'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: memory/libmemory.a(memory.o): in function `bxPageWriteStampTable::decWriteStamp(unsigned long long)':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/memory/../cpu/icache.h:70: undefined reference to `handleSMC(unsigned long long, unsigned int)'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/memory/../cpu/icache.h:71: undefined reference to `pageWriteStampTable'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: memory/libmemory.a(memory.o): in function `bxPageWriteStampTable::decWriteStamp(unsigned long long, unsigned int)':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/memory/../cpu/icache.h:86: undefined reference to `handleSMC(unsigned long long, unsigned int)'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/memory/../cpu/icache.h:87: undefined reference to `pageWriteStampTable'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/memory/../cpu/icache.h:86: undefined reference to `handleSMC(unsigned long long, unsigned int)'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/memory/../cpu/icache.h:87: undefined reference to `pageWriteStampTable'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/memory/../cpu/icache.h:86: undefined reference to `handleSMC(unsigned long long, unsigned int)'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/memory/../cpu/icache.h:87: undefined reference to `pageWriteStampTable'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/memory/../cpu/icache.h:86: undefined reference to `handleSMC(unsigned long long, unsigned int)'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/memory/../cpu/icache.h:87: undefined reference to `pageWriteStampTable'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: memory/libmemory.a(memory.o): in function `bxPageWriteStampTable::decWriteStamp(unsigned long long)':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/memory/../cpu/icache.h:69: undefined reference to `pageWriteStampTable'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/memory/../cpu/icache.h:70: undefined reference to `handleSMC(unsigned long long, unsigned int)'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/memory/../cpu/icache.h:71: undefined reference to `pageWriteStampTable'
+collect2: エラー: ld はステータス 1 で終了しました
+%
+
+これから推測すると BX_CPU_C なるクラスが宣言されていて, そのメソッドを
+利用すればできるのかもしれない.
+
+M-x gdb
+gdb --annotate=3 ./bochs
+(gdb) b BX_CPU_C::BX_CPU_C
+(gdb) run
+このブレークポイントにきている
+しかしシミュレーションしているものが巨大すぎて必要な部分が見えていない.
+
+一旦 -O2 を -O0 にしてビルドし直した. そして以下のように /usr/local/bin に
+インストールした.
+
+% sudo make install
+
+これで man マニュアルを以下のように参照できるようになっている.
+
+M-x man
+bochs
+
+M-x man
+/usr/local/share/man/man5/bochsrc.5.gz 
+
+とはいえ, このプログラムを動かす必要はないのでここはスルーしておく.
+
+cpu/cpu.h
+
+class BOCHSAPI BX_CPU_C : public logfunctions {
+...
+
+まずは cpu/cpu.h を include してコンパイルできるようにしてみる.
+
+#include "cpu/cpu.h"
+
+int main()
+{
+  BX_CPU_C obj(0);
+  return 0;
+}
+
+これをコンパイルできるようにしてみたかったが単純にはいかないらしい.
+include しているファイルを調べてみた:
+
+% cd cpu
+% cat a.cpp
+#define NEED_CPU_REG_SHORTCUTS 1
+#include "bochs.h"
+#include "cpu.h"
+
+int main()
+{
+  BX_CPU_C obj(0);
+  return 0;
+}
+% g++ -I.. -I./.. -I../instrument/stubs -I./../instrument/stubs -g -O0 -D_FILE_OFFSET_BITS=64 -D_LARGE_FILES -pthread   a.cpp -o myprog libcpu.a ../logio.o
+%
+これでビルドできている. と思ったがリンクエラーが発生している.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/logio.cc:262: undefined reference to `SIM'
+
+SIM が定義されているオブジェクトファイルはどこか.
+
+% cat b.c
+int SIM;
+% gcc -c b.c 
+% g++ -o bochs -g -O0 -D_FILE_OFFSET_BITS=64 -D_LARGE_FILES -pthread -DBX_SHARE_PATH=\"/usr/local/share/bochs\" b.o logio.o main.o config.o pc_system.o osdep.o plugin.o crc.o bxthread.o -Wl,--export-dynamic  iodev/libiodev.a iodev/display/libdisplay.a iodev/hdimage/libhdimage.a cpu/libcpu.a cpu/cpudb/libcpudb.a memory/libmemory.a gui/libgui.a cpu/fpu/libfpu.a -L/usr/local/lib /usr/local/lib/libXpm.so /usr/local/lib/libXrandr.so /usr/local/lib/libXext.so /usr/local/lib/libXrender.so /usr/local/lib/libX11.so /usr/local/lib/libxcb.so /usr/local/lib/libXau.so -ldl -Wl,--rpath -Wl,/usr/local/lib -Wl,--rpath -Wl,/usr/local/lib
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: gui/libgui.a(siminterface.o):/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/gui/siminterface.cc:32: multiple definition of `SIM'; b.o:(.bss+0x0): first defined here
+collect2: エラー: ld はステータス 1 で終了しました
+%
+
+なるほどこのようにすれば  gui/libgui.a(siminterface.o) だったと判明するわけだ.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7/logio.cc:551: undefined reference to `bx_user_quit'
+
+でリンクエラーしている.
+リンクエラーを回避するのが面倒になってきたので直接 libbochs.a を作成するようにしてみた.
+
+既存のビルド環境に既に組み込まれていたが不完全.
+
+以下のような a.cpp と Makefile とでビルドできている:
+% cat a.cpp
+#define NEED_CPU_REG_SHORTCUTS 1
+#include "bochs.h"
+#include "cpu/cpu.h"
+#include <memory>
+
+int main()
+{
+  auto p = std::unique_ptr<BX_CPU_C>{new BX_CPU_C(0)};
+  return 0;
+}
+% cat x
+MYPROG = myprog
+
+all:$(MYPROG)
+
+a.o:a.cpp
+	g++ -c -I. -I./. -Iinstrument/stubs -I./instrument/stubs -g -O0 -D_FILE_OFFSET_BITS=64 -D_LARGE_FILES -pthread      -DBX_SHARE_PATH='"/usr/local/share/bochs"' $< -o $@
+
+$(MYPROG):a.o
+	g++ -o $@ -g -O0 -D_FILE_OFFSET_BITS=64 -D_LARGE_FILES -pthread -DBX_SHARE_PATH=\"/usr/local/share/bochs\" a.o logio.o main.oo config.o pc_system.o osdep.o plugin.o crc.o bxthread.o -Wl,--export-dynamic iodev/libiodev.a iodev/display/libdisplay.a iodev/hdimage/libhdimage.a cpu/libcpu.a cpu/cpudb/libcpudb.a memory/libmemory.a gui/libgui.a cpu/fpu/libfpu.a -L/usr/local/lib /usr/local/lib/libXpm.so /usr/local/lib/libXrandr.so /usr/local/lib/libXext.so /usr/local/lib/libXrender.so /usr/local/lib/libX11.so /usr/local/lib/libxcb.so /usr/local/lib/libXau.so -ldl -Wl,--rpath -Wl,/usr/local/lib -Wl,--rpath -Wl,/usr/local/lib
+	
+clean:
+	rm -f $(MYPROG)
+%
+
+動かす方法は例えば以下のようにすればよいらしい.
+
+int main()
+{
+  BX_CPU(0)->cpu_loop();
+  return 0;
+}
+
+しかし不正メモリアクセスが発生している.
+結局本家と同じように
+
+int bxmain(void);
+    
+int main()
+{
+  bxmain();
+  return 0;
+}
+
+のようにする必要があった. しょうがないので bochs で何が起っているのが調べてみる.
+
+
+    if (bx_init_main(bx_startup_flags.argc, bx_startup_flags.argv) < 0) {
+
+ここで longjump している. 何かがエラーしているらしい.
+
+      } else if (bx_parse_param_from_list(context, params[i], (bx_list_c*) SIM->get_param("cpu")) < 0) {
+        PARSE_ERR(("%s: cpu directive malformed.", context));
+      }
+
+longjump しているのは上の部分だった.
+
+どうやら .bochsrc の
+
+cpu: model=core2_penryn_t9600, count=1, ips=50000000, reset_on_triple_fault=1, ignore_bad_msrs=1, msrs="msrs.def"
+
+には対応していないらしい.
+
+% touch mycfg
+% ./bochs -qf mycfg
+...
+何かがそれなりに動いてそして GUI の画面が表示された. とりあえずそれっぽく動いている.
+...
+00022013731i[CPU0  ] | EAX=0000040a  EBX=0000cd24  ECX=00090004  EDX=00000402
+00022013731i[CPU0  ] | ESP=0000ffa8  EBP=0000ffac  ESI=000e0000  EDI=0000ffac
+00022013731i[CPU0  ] | IOPL=0 id vip vif ac vm rf nt of df if tf sf ZF af PF cf
+00022013731i[CPU0  ] | SEG sltr(index|ti|rpl)     base    limit G D
+00022013731i[CPU0  ] |  CS:f000( 0004| 0|  0) 000f0000 0000ffff 0 0
+00022013731i[CPU0  ] |  DS:f000( 0005| 0|  0) 000f0000 0000ffff 0 0
+00022013731i[CPU0  ] |  SS:0000( 0005| 0|  0) 00000000 0000ffff 0 0
+00022013731i[CPU0  ] |  ES:07c0( 0005| 0|  0) 00007c00 0000ffff 0 0
+00022013731i[CPU0  ] |  FS:0000( 0005| 0|  0) 00000000 0000ffff 0 0
+00022013731i[CPU0  ] |  GS:0000( 0005| 0|  0) 00000000 0000ffff 0 0
+00022013731i[CPU0  ] | EIP=0000054b (0000054a)
+00022013731i[CPU0  ] | CR0=0x60000010 CR2=0x00000000
+00022013731i[CPU0  ] | CR3=0x00000000 CR4=0x00000000
+00022013731i[CPU0  ] 0x0000054a>> out dx, al : EE
+00022013731i[CMOS  ] Last time is 1650072249 (Sat Apr 16 10:24:09 2022)
+00022013731i[XGUI  ] Exit
+00022013731i[      ] restoring default signal behavior
+========================================================================
+Bochs is exiting with the following message:
+[BIOS  ] No bootable device.
+========================================================================
+00022013731i[SIM   ] quit_sim called with exit code 1
+% 
+
+おそらくだが CPU0 が動き出しているということなのだと思う.
+さてここからどうすれば目的のシミュレーションの部分を抽出できるかだが, 全く想像ができない.
+
+
+    int status = SIM->configuration_interface(ci_name, CI_START);
+
+この部分を実行したときに GUI の画面が表示されている.
+
+以下の函数に当りを付けた.
+(gdb) b decoder_simple32
+(gdb) c
+...
+decoder_simple32 のブレークポイントにヒット
+
+スタックを遡ってみると
+
+void BX_CPU_C::cpu_loop(void)
+{
+
+から呼び出されていた. 自前でやっていた
+
+  BX_CPU(0)->cpu_loop();
+
+で不正メモリアクセスエラーしていたが今度は大丈夫.
+
+    bxICacheEntry_c *entry = getICacheEntry();  ここでエラーしていない.
+
+おそらく getICacheEntry で自分が読み出して欲しいメモリから読み出せていれば
+目的が達成される.
+
+getICacheEntry では結局以下を読み出している.
+
+  BX_CPP_INLINE bxICacheEntry_c* get_entry(bx_phy_address pAddr, unsigned fetchModeMask)
+  {
+    return &(entry[hash(pAddr, fetchModeMask)]);
+  }
+
+最初は以下のアドレスらしい.
+(gdb) p/x pAddr
+$9 = 0xfffffff0
+(gdb)
+
+prefetch() の呼び出しで以下が呼び出されていることに気付いた:
+
+BX_MEM_C::getHostMemAddr
+
+ここで自前でやったときにエラーしていたところが呼び出されてもいる:
+
+  struct memory_handler_struct *memory_handler = BX_MEM_THIS memory_handlers[a20addr >> 20];
+
+そしてここでは 64KB くらいを一度に読み出しているらしい.
+どこまでを利用するべきか考え中.
+
+bxICacheEntry_c* BX_CPU_C::getICacheEntry(void)
+{
+
+を自前のものに置き換えるのが良さそうに思える.
+まずはこれをやってみる.
+
+int fetchDecode32(const Bit8u *iptr, bool is_32, bxInstruction_c *i, unsigned remainingInPage)
+
+を利用するのが良さそう. 但し, この函数は iptr の先に命令があるとして動作するので次の
+
+1 バイトを取得するのに
+
+b1 = *ptr++;
+
+のようにしているからその部分は変更する.
+
+2022.04.16 14:30 一応 0x100 番地に nop を数個並べたプログラムが動作するようになった.
+
+しかしロード/ストア命令や call や ret のようにメモリにアクセスする命令の対応はしていない.
+また i386 はこれ以外の命令でもオペランドにメモリを指定できたりするのでそれらも対応は
+必要ではある.
+
+現状
+
+cd ~/lang/53_GNU_tool/gcc_cross/i386/test/test002/
+run -q -x gdbcom.2 test.elf
+
+を実行するとスタートアップルーチンの 1 命令目を実行すると
+
+ 100:	bc 00 10 00 00       	mov    $0x1000,%esp
+ 105:	e8 0e 00 00 00       	call   118 <main>
+
+EIP が 0x103 になっている.
+
+    mov    $0x1000,%esp
+
+を実行すると最初の 0xbc を読んでから 0x00 0x10 を読んでいる. 確かに現状では
+0x103 番地は読み出されていない.
+
+0x00 0x10 は sim_core_read_aligned_2 で読み出している.
+
+そして 1 命令目に対するシミュレーションは以下:
+
+void BX_CPP_AttrRegparmN(1) BX_CPU_C::MOV_EwIwR(bxInstruction_c *i)
+{
+  BX_WRITE_16BIT_REG(i->dst(), i->Iw());
+
+  BX_NEXT_INSTR(i);
+}
+
+やっていることは 4 番のレジスタに 0x1000 を書き込んでいる.
+おそらく
+
+void BX_CPP_AttrRegparmN(1) BX_CPU_C::MOV_EdIdR(bxInstruction_c *i)
+{
+  BX_WRITE_32BIT_REGZ(i->dst(), i->Id());
+
+  BX_NEXT_INSTR(i);
+}
+
+が呼び出されるの期待値.
+
+myFetchDecode32(EIP, true, &i, fetchModeMask);  false にしていた. これが原因だった.
+
+2022.04.16 17:30 現状スタックポインタ %esp をセットした後
+
+	   call	 main
+
+としている部分でエラーしている. call 命令のシミュレーションは以下の函数
+
+BX_CPP_INLINE void BX_CPP_AttrRegparmN(1) BX_CPU_C::branch_near32(Bit32u new_EIP)
+{
+  BX_ASSERT(BX_CPU_THIS_PTR cpu_mode != BX_MODE_LONG_64);
+
+  // check always, not only in protected mode
+  if (new_EIP > BX_CPU_THIS_PTR sregs[BX_SEG_REG_CS].cache.u.segment.limit_scaled)
+  {
+    BX_ERROR(("branch_near32: offset outside of CS limits"));
+    exception(BX_GP_EXCEPTION, 0);
+
+で行なわれている. 上の部分のマクロ展開は以下:
+
+  if (new_EIP > (&bx_cpu)-> sregs[BX_SEG_REG_CS].cache.u.segment.limit_scaled)
+  {
+    ((&bx_cpu)-> error) ("branch_near32: offset outside of CS limits");
+    exception(BX_GP_EXCEPTION, 0);
+  }
+
+
+(gdb) p new_EIP
+$73 = 0x118               # これは main のアドレス.
+(gdb) 
+(gdb) p/x (&bx_cpu)-> sregs[BX_SEG_REG_CS].cache.u.segment.limit_scaled
+$74 = 0x0
+(gdb)
+
+のようになっている. cs レジスタなるものがある. 調べてみるとコードセグメントレジスタ
+というものらしい. 事前にこのレジスタに何かをセットしておくのかと思い以下のようにしてみた.
+
+start:
+	movl	$text_end, %eax
+	movl	%eax, %cs
+	movl	$stack, %esp
+	call	main
+end:
+	nop
+
+しかし 2 命令目は期待した結果にはならない. 2 命令目は 2 バイトの命令だが
+シミュレータで 15 バイトの命令として扱われている. というよりもおそらくだが
+Illegal instruction の扱いと同じにしているらしい.
+
+https://www.intel.co.jp/content/dam/www/public/ijkk/jp/ja/documents/developer/IA32_Arh_Dev_Man_Vol2A_i.pdf
+
+を調べてみたところ CALL 命令の部分でに以下の記述がある:
+
+この命令を使用して、以下の異なる4つのタイプのコールを実行できる。
+
+･ near コール - 現在のコード・セグメント（現在の CS レジスタの指示先のセグメ
+ント）内にあるプロシージャへのコール。セグメント内コールともいう。
+･ far コール - 現在のコード・セグメントとは異なるセグメント内にあるプロシー
+ジャへのコール。セグメント間コールともいう。
+･ 特権レベル間 far コール - 現在実行中のプログラムまたはプロシージャの特権レ
+ベルとは異なる特権レベルのセグメント内にあるプロシージャへのコール。
+･ タスクスイッチ - 異なるタスク内にあるプロシージャへのコール。
+
+また MOV 命令の部分で以下の記述がある:
+
+MOV命令を使用してCSレジスタをロードすることはできない。そうしようとすると、
+無効オペコード例外（#UD）が発生する。CS レジスタをロードするには、far JMP、
+CALL、またはRET命令を使用する。
+
+なるほど今回はロードではなくてセットしようとしたが, おそらくセットそのものが
+定義されていないのだろう.
+
+さてこのエラーはどのように回避すればよいのか不明. i386-elf-gdb から cs レジスタ
+を無理矢理変更しようかと思ったが, ネイティブ gdb で該当箇所を実行しようとしたときに
+0x130 に書き換えることにした.
+                                                (*A)
+
+main の 2 命令目
+
+     mov  %esp, %ebp
+
+を実行しようとしてエラーしている.
+
+  auto new_addr = parseModrm32(addr, remain, i, &modrm);
+  if (new_addr != addr) 
+    return(-1);  ここで -1 が返っている.
+
+上は
+
+  if (new_addr == addr) 
+    return(-1);
+
+の誤りだった. 他にもあったので修正.
+
+現状 (*A) の WA はあるものの f にステップインできている. しかし
+
+f (a=<error reading variable: Cannot access memory at address 0x8>, 
+    b=<error reading variable: Cannot access memory at address 0xc>)
+    at test.c:3
+3	  return a + b;
+
+
+のようになっている. 明らかに a と b のアドレスがおかしい.
+
+    <7d>   DW_AT_name        : a
+    <7f>   DW_AT_decl_file   : 1
+    <80>   DW_AT_decl_line   : 1
+    <81>   DW_AT_decl_column : 11
+    <82>   DW_AT_type        : <0x61>
+    <86>   DW_AT_location    : 2 byte block: 91 0 	(DW_OP_fbreg: 0)
+ <2><89>: 省略番号: 5 (DW_TAG_formal_parameter)
+    <8a>   DW_AT_name        : b
+    <8c>   DW_AT_decl_file   : 1
+    <8d>   DW_AT_decl_line   : 1
+    <8e>   DW_AT_decl_column : 18
+    <8f>   DW_AT_type        : <0x61>
+    <93>   DW_AT_location    : 2 byte block: 91 4 	(DW_OP_fbreg: 4)
+
+であるから, 上で言うところの DW_OP_fbreg が 0 になっているのだと思われる.
+これは %ebp だと思うのだが
+
+  case 5: return EBP; <- EBX に間違えていた.
+
+上記を修正して f にステップインできて a と b の値を正しく表示できている.
+そして step, where, finish が (*A) の WA があるものの期待通り動作している.
