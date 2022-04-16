@@ -1,0 +1,21 @@
+%.o : %.S
+	i386-elf-as -o $@ -g $<
+
+%.o : %.c
+	i386-elf-gcc -o $@ $< -c -g
+
+%.elf : %.o 
+	i386-elf-ld -o $@ ../default.o $< -T ../default.x
+
+%.objdump : %.elf
+	i386-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v i386-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.o *.s *.elf *.map *.objdump *.log TAGS *~
