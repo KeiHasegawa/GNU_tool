@@ -1,0 +1,158 @@
+(*1)
+いつものようにコンパイラをテストするツールを作成しようとしたが, 思いの他すんなり
+できていない.
+
+実は IA-32 は結構奥が深いことに気付く. i386 のコンパイラは自分のフロントエンド
+に対するバックエンドとして作成したが, あまりアーキテクチャを理解せず, gcc のコード
+を参考にしてそれっぽくコード生成していてそれなりに動作していた.
+
+
+(*2)
+現状 %esp に 0x20000 をセットしているが call 命令を発行すると
+
+  if (BX_CPU_THIS_PTR sregs[BX_SEG_REG_SS].cache.u.segment.d_b) { /* StackAddrSize = 32 */
+#if 0    
+    stack_write_dword((Bit32u) (ESP-4), value32);
+#else
+    sim_core_write_aligned_4_for_me((Bit32u) (ESP-4), value32);
+#endif    
+    ESP -= 4;
+  }
+  else /* StackAddrSize = 16 */
+  {
+#if 0    
+    stack_write_dword((Bit16u) (SP-4), value32);
+#else
+    sim_core_write_aligned_4_for_me((Bit16u) (SP-4), value32);  !こっちにきている
+#endif    
+    SP -= 4;
+  }
+
+なので 0x20000-4 = 0x1fffc ではなくて (Bit16u)0x1fffc = 0xfffc に戻りアドレスを
+書き込んでいる.
+
+bochs を動作させて BX_CPU_THIS_PTR sregs[BX_SEG_REG_SS].cache.u.segment.d_b
+を true に変更しているところを確認してみたところ
+
+void BX_CPP_AttrRegparmN(1) BX_CPU_C::MOV_SwEw(bxInstruction_c *i)
+{
+...
+
+リセットで変更しているわけではなかった.
+
+step, where, finish のプログラムを動作させる過程でも CS を 0xffffffff に更新する
+方法を棚上げしていたがそろそろここを踏み込んで調べる必要があるように思えてきた.
+
+以下の逆アセンブルがどの程度信頼できるかは疑問ではあるが MOV_SwEw を
+実行したときの結果は以下:
+
+(gdb) p debug_disasm_instruction((&bx_cpu)-> prev_rip)
+00000320315i[CPU0  ] 0x000f9a68>> mov ss, ax : 8ED0
+$6 = void
+(gdb) 
+
+しかし残念ながらまずはスタックが 0xffff 以下に制限されていても問題ないからやはり
+今回も棚上げしておく.
+
+と思ったが
+
+SECTIONS {
+	 /* ... */
+
+	 . = 0x1000;
+	 stack = .;
+}
+
+i386-elf-run --memory-fill 0xcc --memory-region 0xe00,0x200 sample.elf
+
+のようにコンパクトにしてもシミュレーションで例外が発生している. 例外を発生させている
+命令は main 函数の
+
+main:
+	leal	4(%esp), %ecx
+	andl	$-16, %esp
+	pushl	-4(%ecx)             この命令
+
+この命令の実行に伴なってセグメントレジスタが参照されていた.
+やはり棚上げできない問題なのだろうか.
+
+とここで step, where, finish ではどのように実行していたか調べてみた.
+
+00000118 <main>:
+ 118:	55                   	push   %ebp
+ 119:	89 e5                	mov    %esp,%ebp
+ 11b:	6a 06                	push   $0x6
+ 11d:	6a 05                	push   $0x5
+ 11f:	e8 e7 ff ff ff       	call   10b <f>
+ 124:	83 c4 08             	add    $0x8,%esp
+ 127:	c9                   	leave  
+ 128:	c3                   	ret    
+
+なるほど. このプログラムでは
+
+	  push      -4(%ecx)
+
+は実行していなかったわけだ.
+
+この機会にセグメントやセグメントレジスタについて知っておく.
+i386 のセグメントレジスタは以下:
+
+  ES
+  CS
+  SS
+  DS
+  FS
+  GS
+
+まずは CS レジスタは今, リセット時に 0xffff にセットされているが
+これを 0xffffffff にセットする方法を調べてみる.
+
+(gdb) p &(&bx_cpu)-> sregs[BX_SEG_REG_CS].cache.u.segment.limit_scaled
+$1 = (Bit32u *) 0x822836c <bx_cpu+204>
+(gdb) watch *(int*)0x822836c
+Hardware watchpoint 1: *(int*)0x822836c
+(gdb) run
+...
+Hardware watchpoint 1: *(int*)0x822836c
+
+Old value = 0
+New value = 65535
+BX_CPU_C::reset (source=11) at init.cc:758
+(gdb) c
+...
+Hardware watchpoint 1: *(int*)0x822836c
+
+Old value = 65535
+New value = -1
+0x0815dd8b in BX_CPU_C::load_cs (selector=0xbfffede6, descriptor=0xbfffedec, cpl=0 '\000') at ctrl_xfer_pro.cc:95
+(gdb) up
+#1  0x0815ddff in BX_CPU_C::branch_far (selector=0xbfffede6, descriptor=0xbfffedec, rip=1022559, cpl=0) at ctrl_xfer_pro.cc:147
+(gdb) up
+#2  0x0815bdce in BX_CPU_C::jump_protected (i=0x83872c4 <bx_cpu+1437732>, cs_raw=16, disp=1022559) at jmp_far.cc:53
+(gdb) up
+#3  0x0811c34c in BX_CPU_C::jmp_far32 (i=0x83872c4 <bx_cpu+1437732>, cs_raw=16, disp32=1022559) at ctrl_xfer32.cc:92
+(gdb) up
+#4  0x0811cc1f in BX_CPU_C::JMP_Ap (i=0x83872c4 <bx_cpu+1437732>) at ctrl_xfer32.cc:505
+(gdb) up
+#5  0x0811598d in BX_CPU_C::cpu_loop () at cpu.cc:128
+(gdb) p i
+$9 = (bxInstruction_c *) 0x83872c4 <bx_cpu+1437732>
+(gdb) p *i
+$10 = {execute1 = 0x811cbb6 <BX_CPU_C::JMP_Ap(bxInstruction_c*)>, handlers = {
+    execute2 = 0x0, next = 0x0}, metaInfo = {ia_opcode = 224, ilen = 8 '\b', 
+    metaInfo1 = 20 '\024'}, metaData = "\000\000\000\000\003\000\000", {
+    modRMForm = {{Id = 1022559, Iw = {39519, 15}, Ib = "_\232\017"}, {
+        displ16u = 16, displ32u = 16, Id2 = 16, Iw2 = {16, 0}, 
+        Ib2 = "\020\000\000"}}}}
+(gdb) p debug_disasm_instruction((&bx_cpu)-> prev_rip)
+00000320311i[CPU0  ] 0x00009a57>> add byte ptr ds:[bx+si], al : 0000
+$11 = void
+(gdb) 
+
+やはり逆アセンブルの結果はあまり参考にできないが
+
+https://www.intel.co.jp/content/dam/www/public/ijkk/jp/ja/documents/developer/IA32_Arh_Dev_Man_Vol2A_i.pdf
+
+でいうところの far JMP なのだろう.
+
+実際に far JMP をするプログラムを書いてみることにした.
