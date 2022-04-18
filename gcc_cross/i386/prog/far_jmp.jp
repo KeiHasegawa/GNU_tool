@@ -1,0 +1,87 @@
+https://www.intel.co.jp/content/dam/www/public/ijkk/jp/ja/documents/developer/IA32_Arh_Dev_Man_Vol2A_i.pdf
+
+によると far ジャンプは以下の 4 種類あるらしい.
+
+オペコード   命令	         	説明
+
+EA cd	   JMP ptr16:16         オペランドで指定されるアドレスに絶対 far ジャンプする。
+EA cp	   JMP ptr16:32         オペランドで指定されるアドレスに絶対 far ジャンプする。
+FF /5	   JMP m16:16           m16:16 で指定されるアドレスに絶対間接 far ジャンプする。
+FF /5	   JMP m16:32           m16:32 で指定されるアドレスに絶対間接 far ジャンプする。
+
+cp は 6 バイトの列を表わすので
+
+	.text
+start:	
+	.byte	0xea
+	.byte	0x12
+	.byte	0x34
+	.byte	0x56
+	.byte	0x78
+	.byte	0x9a
+	.byte	0xbc
+
+のようにしてアセンブルし, 逆アセンブルしてみた.
+
+00000100 <start>:
+ 100:	ea 12 34 56 78 9a bc 	ljmp   $0xbc9a,$0x78563412
+
+なるほど. i386-elf-as では
+
+	ljmp   $0x0, $label
+
+のように書けば良いらしい. 同様にもう一方も調べてみた:
+
+/5 はオペコードの次の 1 バイトが
+
+        reg/
+       opcode
+
+   +-+-+-+-+-+-+-+-+
+   |0 0|1 0 1|1 0 1|
+   +-+-+-+-+-+-+-+-+
+    mod        r/m
+ 
+のようになることを意味しているらしい. reg/opcode フィールドが /5 を表わしている.
+この例ではたまたま r/m フィールドも 5 になっている.
+
+	.text
+start:	
+	.byte	0xff
+	.byte	0x2d
+	.byte	0x12
+	.byte	0x34
+	.byte	0x56
+	.byte	0x78
+
+のようにしてアセンブルし, 逆アセンブルしてみたところ:
+
+00000100 <start>:
+ 100:	ff 2d 12 34 56 78    	ljmp   *0x78563412
+
+つまり
+
+	ljmp	*label
+
+のように書けば良いらしい. そこで以下のようなプログラムを実行してみた.
+
+	.text
+start:
+	ljmp   $0x0, $label
+	nop
+	nop
+label:
+	ljmp	*start
+	nop
+	nop
+end:
+	nop
+
+最初の far ジャンプはそれっぽく動いているが 2 つ目の far ジャンプの実行で
+例外が発生している.
+
+例外が発生している原因は不明だが bochs でそこそこ bios と思われるプログラムが動作している
+ので少しそれを参考にしてみる.
+
+
+	  
