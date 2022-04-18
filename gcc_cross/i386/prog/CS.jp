@@ -1,0 +1,170 @@
+bochs は i386-elf-gdb 用に書き換えが大幅に必要になるので
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7.org/
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7.mine/
+
+のようにディレクトリを完全に分けることにした.
+
+bocks を起動するとリセット後, 何らかのプログラムが動作しているらしい.
+
+00000000000i[XGUI  ] maximum host resolution: x=49 y=52126
+00000000000i[MEM0  ] rom at 0xc0000/38400 ('/usr/local/share/bochs/VGABIOS-lgpl-latest')
+00000000000i[PLUGIN] init_dev of 'floppy' plugin device by virtual method
+
+% ls -l /usr/local/share/bochs/VGABIOS-lgpl-latest
+-rw-r--r-- 1 root root 38400  4月 16 07:25 /usr/local/share/bochs/VGABIOS-lgpl-latest
+% ls -l bios/VGABIOS-lgpl-latest
+-rw-r--r-- 1 khasegawa khasegawa 38400  6月  4  2021 bios/VGABIOS-lgpl-latest
+%
+
+これらしい.
+
+現状 cpu.cc は以下のようにしている.
+
+#if BX_DEBUGGER
+      if (BX_CPU_THIS_PTR trace)
+        debug_disasm_instruction(BX_CPU_THIS_PTR prev_rip);
+#else      
+      debug_disasm_instruction(BX_CPU_THIS_PTR prev_rip);         (*A)
+#endif
+
+そしてこの結果
+
+00000000000i[CPU0  ] 0x0000fff0>> jmpf 0xf000:e05b : EA5BE000F0
+00000000001i[CPU0  ] 0x0000e05b>> xor ax, ax : 31C0
+00000000002i[CPU0  ] 0x0000e05d>> out 0x0d, al : E60D
+00000000003i[CPU0  ] 0x0000e05f>> out 0xda, al : E6DA
+00000000004i[CPU0  ] 0x0000e061>> mov al, 0xc0 : B0C0
+00000000005i[CPU0  ] 0x0000e063>> out 0xd6, al : E6D6
+...
+
+のようになっている.
+
+bios/rombios.c
+
+;--------
+;- POST -
+;--------
+.org 0xe05b ; POST Entry Point
+post:
+
+  xor ax, ax
+
+  ;; first reset the DMA controllers
+  out PORT_DMA1_MASTER_CLEAR,al
+  out PORT_DMA2_MASTER_CLEAR,al
+
+...
+
+.org 0xfff0 ; Power-up Entry Point
+  jmp 0xf000:post
+
+これっぽい.
+これはそのうち調査したいのだが, 今やりたいことはスタックやプログラムで 64 KB の制約を
+受けないことなのでこれを動かすことはしない.
+
+bochs では CS レジスタを以下のように保持している.
+
+(gdb) p/x (&bx_cpu)-> sregs[BX_SEG_REG_CS].cache.u.segment.limit_scaled
+$2 = 0xffff
+(gdb)
+
+これは Power On Reset で 0xffff に初期化されている. これにウォッチポイントをセットして
+みる.
+
+(gdb) p &(&bx_cpu)-> sregs[BX_SEG_REG_CS].cache.u.segment.limit_scaled
+$3 = (Bit32u *) 0x822836c <bx_cpu+204>
+(gdb) watch *(int*)0x822836c
+Hardware watchpoint 3: *(int*)0x822836c
+(gdb) run
+...
+Old value = 0
+New value = 65535
+BX_CPU_C::reset (source=11) at init.cc:758            これは Power On Reset
+(gdb) c
+...
+やはり命令の逆アセンブルトレースがあるとなかなかウォッチポイントにヒットしない.
+一旦 (*A) の修正をキャンセルした.
+
+リビルド後, 同じように 2 回目にウォッチポイントにヒットしたのは以下:
+
+Hardware watchpoint 3: *(int*)0x822836c
+
+Old value = 65535
+New value = -1
+0x0815dd8b in BX_CPU_C::load_cs (selector=0xbfffede6, descriptor=0xbfffedec, cpl=0 '\000') at ctrl_xfer_pro.cc:95
+(gdb) up
+#1  0x0815ddff in BX_CPU_C::branch_far (selector=0xbfffede6, descriptor=0xbfffedec, rip=1022559, cpl=0) at ctrl_xfer_pro.cc:147
+(gdb) up
+#2  0x0815bdce in BX_CPU_C::jump_protected (i=0x83872c4 <bx_cpu+1437732>, cs_raw=16, disp=1022559) at jmp_far.cc:53
+(gdb) up
+#3  0x0811c34c in BX_CPU_C::jmp_far32 (i=0x83872c4 <bx_cpu+1437732>, cs_raw=16, disp32=1022559) at ctrl_xfer32.cc:92
+(gdb) up
+#4  0x0811cc1f in BX_CPU_C::JMP_Ap (i=0x83872c4 <bx_cpu+1437732>) at ctrl_xfer32.cc:505
+(gdb) down
+#3  0x0811c34c in BX_CPU_C::jmp_far32 (i=0x83872c4 <bx_cpu+1437732>, cs_raw=16, disp32=1022559) at ctrl_xfer32.cc:92
+(gdb) p/x disp32
+$4 = 0xf9a5f
+(gdb) 
+
+なるほど, 改めて今気付いたがリアルアドレスモードからプロテクトモードに以降していたらしい.
+そして 0xffff から 0xffffffff に CS を更新していたということ.
+
+bochs では
+
+  if (protected_mode()) {
+    jump_protected(i, cs_raw, disp32);
+  }
+  else {
+    // CS.LIMIT can't change when in real/v8086 mode
+    if (disp32 > BX_CPU_THIS_PTR sregs[BX_SEG_REG_CS].cache.u.segment.limit_scaled) {
+      BX_ERROR(("%s: instruction pointer not within code segment limits", i->getIaOpcodeNameShort()));
+      exception(BX_GP_EXCEPTION, 0);
+    }
+
+のように
+
+o プロテクトモードならば, プロテクトモードの far ジャンプをしてこの結果 CS レジスタが
+  更新される.
+  
+o そうではなくリアルモードか仮想 8086 モードならば範囲外の far JMP に対しては例外を発生させる
+
+というようにしている. そしてこれらは
+
+https://www.intel.co.jp/content/dam/www/public/ijkk/jp/ja/documents/developer/IA32_Arh_Dev_Man_Vol2A_i.pdf
+
+の JMP の記述をおそらく実現しているということなのだろう.
+さてリアルアドレスモードでコンパイラの試験をすることが困難なのであれば
+プロテクトモードヘ移行する必要はあるのだが本当にその必要があるか調べてみる.
+
+https://www.intel.co.jp/content/dam/www/public/ijkk/jp/ja/documents/developer/IA32_Arh_Dev_Man_Vol1_Online_i.pdf
+
+「3.1 動作モード」によるとコンパイラの試験が困難かどうかは別だがプロテクトモードに移行する
+のが無難だと考えられる.
+
+https://www.intel.co.jp/content/dam/www/public/ijkk/jp/ja/documents/developer/IA32_Arh_Dev_Man_Vol3_i.pdf
+
+「9.9.1. 保護モードへの切り替え」がある. 何だかこれは大分面倒そうだ.
+
+モードを切り換えるだけなら
+
+	mov	$0x60000011, %eax
+	mov	%eax, %cr0
+
+でできそうなのでやってみた. さらにこれに続いて
+
+	ljmp	$8, $0x10000
+
+としてみたが例外が発生している. やはり単純にはうまくいかない.
+
+bios/rombios.c
+
+に以下を発見した:
+
+      mov  eax, cr0
+      or   al, #0x01
+      mov  cr0, eax
+      ;; far jump to flush CPU queue after transition to protected mode
+      JMP_AP(0x0020, protected_mode)
+
+これは i386-elf-as ではアセンブルできないが参考にはなりそう.
