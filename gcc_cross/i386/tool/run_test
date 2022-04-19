@@ -1,0 +1,11 @@
+#! /bin/csh -vf
+
+i386-elf-as -o start.o -g start.S || exit 1
+i386-elf-gcc -o sample.s sample.c -S || exit 1
+i386-elf-as -o sample.o -g sample.s || exit 1
+#i386-elf-gcc -o sample.o sample.c -g -c || exit 1
+i386-elf-ld -o sample.elf start.o sample.o -T sample.x || exit 1
+i386-elf-objdump -x -d sample.elf > sample.objdump || exit 1
+i386-elf-run --memory-fill 0xcc --memory-region 0xd00,0x300 sample.elf
+
+
