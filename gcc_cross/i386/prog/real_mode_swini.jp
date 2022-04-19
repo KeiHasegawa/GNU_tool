@@ -1,0 +1,131 @@
+経緯 : プロテクトモードへの移行の方法は単純でなかった
+
+https://www.intel.co.jp/content/dam/www/public/ijkk/jp/ja/documents/developer/IA32_Arh_Dev_Man_Vol3_i.pdf
+
+「9.7. 実アドレスモード動作に対するソフトウェア初期化」を参考にプログ
+ラムを書くことにした.
+
+idlt 命令を発行してみたがシミュレーション時に不正メモリアクセスしてしまう.
+
+bochs-2.7.mine/memory/misc_mem.c:
+
+  struct memory_handler_struct *memory_handler = BX_MEM_THIS memory_handlers[a20addr >> 20];
+
+マクロ展開は以下:
+
+  struct memory_handler_struct *memory_handler = (&bx_mem)-> memory_handlers[a20addr >> 20];
+
+(gdb) p (&bx_mem)-> memory_handlers
+$17 = (memory_handler_struct **) 0x0   # 0 番地アクセスしているということ.
+(gdb)
+
+bochs を通常通りビルドした場合は
+
+void BX_MEM_C::init_memory(Bit64u guest, Bit64u host)
+{
+...
+  BX_MEM_THIS memory_handlers = new struct memory_handler_struct *[BX_MEM_HANDLERS];
+
+ここでセットしている. このときのスタックは以下
+
+(gdb) where
+#0  BX_MEM_C::init_memory (guest=33554432, host=33554432) at misc_mem.cc:99
+#1  0x0809f548 in bx_init_hardware () at main.cc:1333
+#2  0x0809e6ae in bx_begin_simulation (argc=3, argv=0xbffff644) at main.cc:
+
+自分がやりたいシミュレーションはメモリは明示的に用意したものをアクセスしてほしいのだが
+さてこの場合はどうやって対処するべきか.
+
+bx_phy_address BX_CPU_C::translate_linear(bx_TLB_entry *tlbEntry, bx_address laddr, unsigned user, unsigned rw)
+{
+...
+#if 1
+  return laddr;
+#endif  
+  // Attempt to get a host pointer to this physical page. Put that
+  // pointer in the TLB cache. Note if the request is vetoed, NULL
+  // will be returned, and it's OK to OR zero in anyways.
+  tlbEntry->hostPageAddr = BX_CPU_THIS_PTR getHostMemAddr(ppf, rw);
+
+上のようにエラーする直前で値を返すようにしておいた. また以下のように
+
+void BX_CPU_C::access_read_physical(bx_phy_address paddr, unsigned len, void *data)
+
+...
+#if 1
+  switch (len) {
+  case 1:
+    *(uint8_t*)data = sim_core_read_aligned_1_for_me(paddr);
+    break;
+  case 2:
+..
+#else
+  BX_MEM(0)->readPhysicalPage(BX_CPU_THIS, paddr, len, data);
+#endif
+
+メモリを実際読んでいるところを自分のメモリを読み出すように修正した.
+
+しかしこの修正をすると問題となっていたテストツールの
+
+	push	-4(%ecx)
+
+ではエラーしなくなる.
+
+目標を少し替えてテストツールのプログラムが動作することを目指すことにした.
+
+現状 printf が呼び出されてシミュレータの do_printf に埋め込まれたブレークポイント
+がヒットしている.
+
+2022.04.19 11：45
+
+printf で 5 + 6 = 11
+puts で hello world
+putchar で改行
+
+を出力できている.
+続いて 9.0 を出力するコードで例外が発生している.
+例外の検出は
+
+ 536:	dd 1c 24             	fstpl  (%esp)
+
+の命令ではあるが, 発生させている命令は
+
+ 530:	d9 e8                	fld1   
+
+であった. FPU スタックオーバーフロー例外が発生しているらしい.
+
+  if (! IS_TAG_EMPTY(-1))
+  {
+    FPU_stack_overflow(i);   こっちにきている.
+  }
+  else {
+    BX_CPU_THIS_PTR the_i387.FPU_push();
+    BX_WRITE_FPU_REG(Const_1, 0);
+  }
+
+この部分のマクロ展開は以下:
+
+  if (! (((&bx_cpu)-> the_i387.FPU_gettagi(-1)) == FPU_Tag_Empty))
+  {
+    FPU_stack_overflow(i);
+  }
+  else {
+
+finit 命令を発行してみることにした.
+
+シミュレータで実際実行されている命令は fwait のように見える.
+
+fwait のオペコードは 0x9b で finit のオペコードは 0x9b 0xdb 0xe3
+
+なるほど fninit のオペコードは 0xdb 0xe3 なので
+
+finit = fwait finit
+
+ということらしい.
+
+2022.04.19 14:00 テストツールが .bss の初期化を除いてできている.
+
+2022.04.19 14:15 テストツールが .bss の初期化も含めできた.
+
+テストツールは 64 KB の壁を解消できていないがひとまず第一目標達成というところ.
+
