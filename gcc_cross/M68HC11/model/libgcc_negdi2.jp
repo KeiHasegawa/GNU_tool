@@ -1,0 +1,432 @@
+この記録の要点
+
+o -g -O2 と -g とで生成コードが異なるから一方でコンパイルが成功しても他方で成功するとは
+  限らないということ.
+
+o -O2 オプションをつけることでコンパイラの実行時に __negdi2(5) を -5L に評価すること
+  もある. だから -O2 なしでバグが発火することもある.
+
+o シフトカウントのオペランド a << b, a >> b
+  sizeof(int) = 4 だが UNITS_PER_WORD = 2 なので, 第 2 オペランドは short
+  の型にする(オリジナルの cc1 はそうしている). これはより自然な実装.
+
+
+20022.04.05 18:21 
+
+l4.c には libgcc.a に含まれる函数 __negdi2 をコンパイルするときのソースを
+コンパクトにしたものを作成してある.
+
+現状 -g オプション付きで l4.c をコンパイルすると
+
+const char* m68hc11_subsi3(rtx x, rtx y, rtx z)
+{
+...
+  if (REG_P(x) && fp_rel(y, &offy) && REG_P(z)) {
+    // ここにきている. 現状未対応.
+
+-g -O2 であればコンパイルできていたが, -O2 なしだと違うコードが生成されていたということ.
+それは十分考えられる.
+
+さてこれはどうやるべきか.
+
+単純に y (第 2 オペランド)を D, X レジスタにロードすると壊してしまう.
+
+1. D, X レジスタを _.d1, _.d2 に保存する
+
+2. fp 相対の y をロードする
+
+3. _.d1, _.d2 を offy にセットする
+
+これでいけると思ったが _.d1, _.d2 を offy にセットすることはできない.
+そしてそもそも本来 y があるべき場所に y 以外のものをセットするのは良くない.
+
+1. D, X レジスタをプッシュする. つまり z は sp 相対 +1 にある.
+
+2. fp 相対の y をロードする
+
+3. tsy を出力. (y := sp + 1)
+
+4. D, X レジスタとオフセット 0 に対して演算する.
+
+5. スタックポインタを元に戻しておく.
+
+これでできそう.
+
+2022.04.06 8:10
+
+現状 l4.c を -g オプションでコンパイルしたものを実行すると
+
+-1090921693189
+
+が結果になっている. 期待値は -5 で間違えている.
+
+(gdb) p/x -1090921693189
+$1 = 0xffffff01fffffffb
+       ^^^^^^^^
+
+であるから上位のワード 3 バイト目は間違えている. 下位ワードはできている.
+おそらく今回実装した
+
+const char* m68hc11_subsi3(rtx x, rtx y, rtx z)
+{
+...
+  if (REG_P(x) && fp_rel(y, &offy) && REG_P(z)) {
+    // ここができていない.
+
+と思ったが l4.s を確認したところ __ashrdi3 の呼び出しがある. これはそもそも
+実績がないから今回は保留しておく.
+
+と思ったが -g -O2 はできていてこっちも __ashrdi3 を使用している. だからこれが原因とは
+言えない.
+
+実際調べてみると __ashrdi3(0xffffffff, 0) の呼び出しでこの場合 0xffffffff が
+そのまま返されている. できていない原因は別のところにある.
+
+デバッグ情報を手で削除して再現できているからアセンブラレベルで調査できるようになった.
+
+__negdi2 で結果を書き込んでいるところは以下:
+
+;#(insn 34 44 41 (set (mem/c:DI (reg/f:HI 0 d [26]) [4 <retval>+0 S8 A8])
+;#        (mem/c:DI (plus:HI (reg/f:HI 9 *_.frame)
+;#                (const_int 25 [0x19])) [5 %sfp+25 S8 A8])) "l4.c":22:11 16 {movdi}
+;#     (nil))
+
+[d] := [fp+25]
+
+ということは fp+25 に何をセットしているかを調べる必要がある.
+
+(m68hc11-elf-gdb) b __negdi2
+(m68hc11-elf-gdb) run
+...
+__negdi2 のブレークポイントにヒット
+(m68hc11-elf-gdb) info register
+PC=0x1064  SP=0xfee1  FP=0xfeeb 
+CCR=0x08   ----N---   u> != < <= 
+D=0xfeec -276 X=0xff00 -256 Y=0x0000 0
+D1=0xcccc -13108 D2=0xcccc -13108 D3=0xcccc -13108 D4=0xcccc -13108 
+(m68hc11-elf-gdb) watch *(int*)(0xfeeb+25)
+(m68hc11-elf-gdb) c
+...
+-1090921693189
+Debugger finished
+
+ウォッチポイントにヒットしていない. これは何か勘違いしている.
+
+[d] := [fp+25]
+
+のコードで確認したところ
+
+
+(m68hc11-elf-gdb) info register
+PC=0x11cd  SP=0xfeb5  FP=0xfeb5 
+CCR=0x09   ----N--C   u<= != < <= 
+D=0xfeb5 -331 X=0xffff -1 Y=0xfeec -276
+D1=0xff00 -256 D2=0xfeec -276 D3=0xcccc -13108 D4=0xcccc -13108 
+(m68hc11-elf-gdb)
+
+このときの fp を参照するのが正しい.
+
+(m68hc11-elf-gdb) x/8bx 0xfeb5+25 
+0xfece:	0xff	0xff	0xff	0x01	0xff	0xff	0xff	0xfb
+(m68hc11-elf-gdb)
+
+見つけた. __negdi2 の先頭では fp をまだ更新していないことに気付いていなかった.
+
+問題の [fp+25] に値をセットしているのは以下:
+
+;#(insn 33 32 44 (set (mem/c:DI (plus:HI (reg/f:HI 9 *_.frame)
+;#                (const_int 25 [0x19])) [5 %sfp+25 S8 A8])
+;#        (mem/j/c:DI (plus:HI (reg/f:HI 9 *_.frame)
+;#                (const_int 9 [0x9])) [1 w.ll+0 S8 A8])) "l4.c":22:11 16 {movdi}
+;#     (nil))
+
+つまり [fp+9] の値が間違えているということ.
+
+
+;#(insn 27 26 28 (set (mem/j/c:SI (plus:HI (reg/f:HI 9 *_.frame)
+;#                (const_int 9 [0x9])) [1 w.s.high+0 S4 A8])
+;#        (reg:SI 0 d [orig:22 _6 ] [22])) "l4.c":19:17 7 {movsi}
+;#     (nil))
+	ldy	*_.frame
+	stx	9, y
+	std	11, y
+ここで
+
+(m68hc11-elf-gdb) x/8bx 0xfeb5+9
+0xfebe:	0xff	0xff	0xff	0x01	0xcc	0xcc	0xcc	0xcc
+(m68hc11-elf-gdb)
+
+間違えている.
+
+(m68hc11-elf-gdb) info register
+PC=0x1183  SP=0xfeb5  FP=0xfeb5 
+CCR=0x09   ----N--C   u<= != < <= 
+D=0xff01 -255 X=0xffff -1 Y=0xfeb5 -331
+D1=0xff00 -256 D2=0xfeec -276 D3=0xcccc -13108 D4=0xcccc -13108 
+(m68hc11-elf-gdb)
+
+D レジスタの値が違っている.
+
+この D レジスタの値を計算しているのは直前の
+
+;#(insn 26 25 27 (set (reg:SI 0 d [orig:22 _6 ] [22])
+;#        (minus:SI (mem/c:SI (plus:HI (reg/f:HI 9 *_.frame)
+;#                    (const_int 25 [0x19])) [5 %sfp+25 S4 A8])
+;#            (reg:SI 0 d [orig:21 _5 ] [21]))) "l4.c":20:29 9 {subsi3}
+;#     (nil))
+
+でこれはやり今回作り込んだところ. できていなかったらしい.
+しかしよくよく調べてみると
+
+(m68hc11-elf-gdb) info register
+PC=0x115c  SP=0xfeb5  FP=0xfeb5 
+CCR=0x04   -----Z--   u<= == >= <= 
+D=0x00ff 255 X=0x0000 0 Y=0xfeb5 -331
+D1=0xff00 -256 D2=0xfeec -276 D3=0xcccc -13108 D4=0xcccc -13108 
+(m68hc11-elf-gdb) p *(int*)(0xfeb5+25) 
+$1 = 0
+
+であるから 0-255 という計算をしているからここ自体はできている. この演算に
+先立って D レジスタの値が 1 であればできていることにはなる.
+
+そしてこの 255 を計算しているのが
+
+	__ashrdi3(0xffffffff, 0)
+
+の結果の 7 バイト目をゼロ拡張して 4 バイトにしたもの. すなわち 255.
+
+それではできている -g -O2 でコンパイルしたものはどのような計算をしていたか
+調べてみる.
+
+__negdi2 は -O2 の影響で呼び出されてはいなかった. -5 をコンパイル時に計算していた!!
+
+だからそもそもできていなかったということ.
+
+  const DWunion w = { {.low = -uu.s.low,
+         .high = -uu.s.high - ((USItype) -uu.s.low > 0) } };
+
+
+(m68hc11-elf-gdb) p w
+$3 = {s = {high = -255, low = -5}, ll = -1090921693189}
+(m68hc11-elf-gdb)
+
+つまり w.high が正しく計算できていない. w.high は -1 が正しい.
+
+.high = -uu.s.high - ((USItype) -uu.s.low > 0)
+
+であるが uu.s.high = 0 で  uu.s.low = 5 でそれぞれの - は negsi2 で
+正しく計算されていた.
+
+	bsr	___negsi2	; -0 を計算
+...
+	bsr	___negsi2	; -5 を計算
+...
+	bsr	__ashrdi3	; これは何を計算しているのか...
+
+
+;#(insn 15 13 16 (set (reg:SI 0 d [28])
+;#        (ior:SI (reg:SI 0 d [27])
+;#            (mem/c:SI (plus:HI (reg/f:HI 9 *_.frame)
+;#                    (const_int 33 [0x21])) [5 %sfp+33 S4 A8]))) "a.c":20:52 15 {iorsi3}
+
+d := d | [fp+33]
+
+;#(insn 16 15 17 (set (mem/c:DI (plus:HI (reg/f:HI 9 *_.frame)
+;#                (const_int 33 [0x21])) [5 %sfp+33 S8 A8])
+;#        (zero_extend:DI (reg:SI 0 d [28]))) "a.c":20:52 45 {zero_extendsidi2}
+;#     (nil))
+
+[fp+33] := (zero)d
+
+;#(insn 17 16 18 (set (mem:SI (pre_dec:HI (reg/f:HI 3 sp)) [0  S4 A8])
+;#        (const_int 31 [0x1f])) "a.c":20:52 7 {movsi}
+;#     (expr_list:REG_ARGS_SIZE (const_int 4 [0x4])
+;#        (nil)))
+
+[sp-=4] := 31
+
+;#(insn 18 17 19 (set (mem:DI (pre_dec:HI (reg/f:HI 3 sp)) [0  S8 A8])
+;#        (mem/c:DI (plus:HI (reg/f:HI 9 *_.frame)
+;#                (const_int 33 [0x21])) [5 %sfp+33 S8 A8])) "a.c":20:52 16 {movdi}
+;#     (expr_list:REG_ARGS_SIZE (const_int 12 [0xc])
+;#        (nil)))
+
+[sp-=4] := [fp+33]
+
+;#(insn 19 18 21 (set (reg:HI 0 d [31])
+;#        (plus:HI (reg/f:HI 9 *_.frame)
+;#            (const_int 17 [0x11]))) "a.c":20:52 6 {addhi3}
+;#     (nil))
+
+d := [fp+17]
+
+;#(call_insn 21 19 22 (call (mem:QI (symbol_ref:HI ("__ashrdi3")) [0  S1 A8])
+;#        (const_int 12 [0xc])) "a.c":20:52 29 {call}
+;#     (expr_list:REG_EH_REGION (const_int -2147483648 [0xffffffff80000000])
+;#        (nil))
+;#    (expr_list (use (reg:HI 0 d))
+;#        (expr_list (use (mem:SI (plus:HI (reg/f:HI 3 sp)
+;#                        (scratch:HI)) [0  S4 A8]))
+;#            (nil))))
+
+
+というわけでこれは __ashrdi3 の呼び出し方法を間違えている.
+
+ashrsi3 はライブラリ函数呼び出しを利用せずにシフトカウントを自分でセットしていた.
+これがそもそもできていない原因.
+
+2022.04.07 13:40
+改めて
+
+const char* m68hc11_ashldi3(rtx x, rtx y, rtx z)
+{
+  int offx, offy, offz;
+  if (fp_rel(x, &offx) && fp_rel(y, &offy) && fp_rel(z, &offz)) {
+    m68hc11_impl::d_reg::gard obj;
+    m68hc11_impl::di::load_and_push(offy);
+    fprintf(asm_out_file, "	ldy	*_.frame\n");
+    fprintf(asm_out_file, "	xgdy\n");
+    fprintf(asm_out_file, "	addd	#%d\n", offx);
+    fprintf(asm_out_file, "	ldy	*_.frame\n");
+    fprintf(asm_out_file, "	ldy	%d, y\n", offz+2);
+    fprintf(asm_out_file, "	bsr	__ashldi3\n");
+    return "";
+  }
+
+のようにシフトカウントを y にセットするようにしてみた. しかし
+これは正しく ashldi3 を呼び出せていない.
+
+一旦
+
+(define_insn "ashldi3"
+  [(set
+    (match_operand:DI 0 "nonimmediate_operand" "")
+    (ashift:DI
+     (match_operand:DI 1 "general_operand" "")
+     (match_operand:SI 2 "general_operand" "")))]
+  ""
+  "*
+  return m68hc11_ashldi3(operands[0], operands[1], operands[2]);")
+
+と修正したものを以下のようにライブラリ函数呼び出しにする:
+
+(define_expand "ashldi3"
+  [(set
+    (match_operand:DI 0 "nonimmediate_operand" "")
+    (ashift:DI
+     (match_operand:DI 1 "general_operand" "")
+     (match_operand:SI 2 "general_operand" "")))]
+  ""
+  "m68hc11_ashldi3(operands[0], operands[1], operands[2]);")
+
+これで m4.c が正しく動くか確認.
+
+20922.04.07 17:00 正しく動いていないことを確認.
+                            ^^^^^
+
+オリジナルの cc1
+
+(define_expand "ashrsi3"
+  [(parallel
+       [(set (match_dup 0) (match_operand:SI 1 "general_operand" ""))
+	(clobber (scratch:HI))])
+   (parallel
+       [(set (match_operand:SI 0 "register_operand" "")
+		(ashiftrt:SI (match_dup 0)
+		             (match_operand:HI 2 "general_operand" "")))
+        (clobber (scratch:HI))])]
+   ""
+   "")
+
+第 2 オペランドは SI ではなくて HI になっている. これがバグの原因.
+
+32 ビットの左シフト, 右シフトも対応した.
+
+2022.04.07 17:07 ビルド開始.
+
+2022.04.08 6:16 k.c に si << hi のテストがあるがレベルダウンしている.
+
+2022.04.08 18:00 レベルダウンを解消できた.
+
+現状 m4.c が正しく動作していない. 以下のようにシフトカウントは正しく
+セットできているが第 1 オペランドが正しくない.
+
+Breakpoint 1, main () at m4.s:93
+(m68hc11-elf-gdb) b __ashldi3
+Breakpoint 2 at 0x120b: file ../.././gcc/libgcc2.c, line 442.
+(m68hc11-elf-gdb) c
+Continuing.
+
+Breakpoint 2, __ashldi3 (u=-3689348599453384704, b=6) at ../.././gcc/libgcc2.c:442
+(m68hc11-elf-gdb)
+
+呼び出しを確認してみる:
+
+(m68hc11-elf-gdb) b m4.s:40
+(m68hc11-elf-gdb) run
+
+	bsr	__ashldi3
+
+__ashldi3 は int64 を返す函数だからその戻り値を格納するアドレスは d レジスタにセット
+されるとして, 引数は sp 相対にセットされる.
+
+
+(m68hc11-elf-gdb) x/11bx $sp
+0xfebf:	0xcc	0x00	0x00	0x00	0x00	0x00	0x00	0x00
+0xfec7:	0x05	0x00	0x06
+(m68hc11-elf-gdb)
+
+できているように思える.
+
+% ./zm4
+Breakpoint 1, main () at m4.c:12
+12	  printf("hello world %d\n", f(5, 6));
+f (a=5, b=6) at m4.c:7
+7	  return a << b;
+#0  f (a=5, b=6) at m4.c:7
+#1  0x00001161 in main () at m4.c:12
+0x00001161 in main () at m4.c:12
+12	  printf("hello world %d\n", f(5, 6));
+Value returned is $1 = 320
+hello world 0
+%
+
+なるほど. いくつか問題点はあるが
+
+  (1) __ashldi3 で停止したときに u の値を正しく表示できていない. この時点ではコンパイラ側
+      の問題かデバッガ側の問題かは不明
+
+  (2) __ashldi3 の戻り値はおそらく正しい. そして f の戻り値は正しい.
+
+  (3) printf に渡している引数が正しくない. 0 になっている. だから実行結果が
+      hello world 0 になっているということ.
+
+(1) の問題はそのうち対処するとしてまずは (3) を対処する. 
+
+(m68hc11-elf-gdb) b m4.s:146
+(m68hc11-elf-gdb) run
+...
+printf を呼び出す直前で停止.
+(m68hc11-elf-gdb) x/9bx $sp
+0xfee3:	0x00	0x00	0x00	0x00	0x00	0x00	0x00	0x01
+0xfeeb:	0x40
+(m68hc11-elf-gdb) p 0x140
+$1 = 320
+(m68hc11-elf-gdb)
+
+これはできているように思える.
+
+  printf("hello world %d\n", f(5, 6));
+
+なるほどバグはテストプログラムにあったということ. ヤレヤレ.
+
+このときテストプログラムがあまりにの多くなったので引っ越しをした. テストプログラムの
+名前も test012.c のような形式にした.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/m68hc11_test
+
+現状ではできていないと判明しているものは
+
+test016.c : di / di   「64 ビットの除算」で解析した結果保留
+test082.c : __muldi3
+test083.c : __negdi2
