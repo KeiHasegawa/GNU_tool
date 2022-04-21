@@ -1,0 +1,40 @@
+(*1) x64
+
+https://ja.wikipedia.org/wiki/x64
+
+(*2) binutils のインストール
+
+% xz -d -c ../binutils-2.36.1-2.src/binutils-2.36.1.tar.xz | tar xf -
+% mv binutils-2.36.1 binutils-2.36.1.x86_64-elf
+% cd binutils-2.36.1.x86_64-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=x86_64-elf
+% make
+% make install
+% cd ..
+
+(*3) gcc のインストール
+
+% xz -d -c ../gcc-10.2.0.tar.xz  | tar xf -
+% mv gcc-10.2.0 gcc-10.2.0.x86_64-elf
+% cd gcc-10.2.0.x86_64-elf
+% sed -e 's/host_subdir = @host_subdir@/host_subdir = host-i686-pc-linux-gnu/' libgcc/Makefile.in > libgcc/Makefile.in.new
+% mv libgcc/Makefile.in.new libgcc/Makefile.in
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=x86_64-elf
+% make all-gcc
+% make all-target-libgcc
+% make install-gcc
+% make install-target-libgcc
+% cd ..
+
+(*4) newlib のインストール
+
+% gunzip -c ../newlib-4.1.0.tar.gz  | tar xf -
+% mv newlib-4.1.0 newlib-4.1.0.x86_64-elf
+% cd newlib-4.1.0.x86_64-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=x86_64-elf
+% make
+% make install
+
+(*5) gdb のインストール
+
+「x64 の gdb」を参照.
