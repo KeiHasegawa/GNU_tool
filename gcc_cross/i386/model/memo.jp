@@ -1,0 +1,889 @@
+開発メモ
+
+(*1)
+#include <stdio.h>
+
+int main()
+{
+  printf("hello world\n");
+  return 0;
+}
+
+のように hello world をコンパイルしたところ以下の箇所でエラーしている.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/i386-elf/10.2.0/include/stddef.h:424:3: エラー: 不明な型名 ‘__float128’ です.
+...
+
+該当箇所は以下:
+#ifdef __i386__
+  __float128 __max_align_f128 __attribute__((__aligned__(__alignof(__float128))));
+#endif
+
+型として __float128 が認識されていないらしい.
+試しに以下を i386.h に追加してみた:
+
+#define LONG_DOUBLE_TYPE_SIZE 128
+
+./cc1 -o a.s a.c -quiet
+<組み込み>: コンパイラ内部エラー: builtin_define_float_constants 内、位置 c-family/c-cppbuiltin.c:143
+...
+内部エラーを引き起こしている. 該当箇所は以下:
+
+  widefmt = REAL_MODE_FORMAT (TYPE_MODE (long_double_type_node));
+
+そういえば aarch64 の自前の cc1 でも同じような問題があってそのときは原因を特定できてい
+なかった. 一旦上の修正をキャンセルしてこの問題は棚上げして宣言を直接書くことにした.
+
+(*2)
+2022.04.20 9:40 現状 hello world ができている.
+
+2022.04.20 9:45 現状 hello world 11 ができている.
+
+(*3)
+2022.04.20 9:50
+-g オプション付きでコンパイルしたプログラムを i386-elf-gdb で実行したところ以下のように
+なっている:
+
+Breakpoint 1 at 0x140: file a.c, line 10.
+
+Breakpoint 1, main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+f (a=5, b=6) at a.c:5
+5	  return a + b;
+#0  f (a=5, b=6) at a.c:5
+#1  0x00000ff8 in ?? ()
+#2  0x00000123 in start () at start.S:14
+hello world 11
+
+f の戻りアドレスは
+
+0000013d <main>:
+ 13d:	55                   	push   %ebp
+ 13e:	89 e5                	mov    %esp,%ebp
+ 140:	6a 06                	push   $0x6
+ 142:	6a 05                	push   $0x5
+ 144:	e8 e5 ff ff ff       	call   12e <f>
+ 149:	83 c4 08             	add    $0x8,%esp
+
+0x149 が正しい. 上では 0xff8 になっていてこれが正しくない.
+main の戻りアドレスは 0x123 でこれは正しい.
+
+現状 .debug_frame は以下のようになっている.
+
+00000000 00000010 ffffffff CIE
+  Version:               1
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -4
+  Return address column: 8
+
+  DW_CFA_def_cfa: r4 (esp) ofs 4
+  DW_CFA_offset: r8 (eip) at cfa-4
+  DW_CFA_nop
+  DW_CFA_nop
+
+00000014 00000014 00000000 FDE cie=00000000 pc=0000012e..0000013d
+  DW_CFA_advance_loc: 1 to 0000012f
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_offset: r5 (ebp) at cfa-4
+  DW_CFA_advance_loc: 2 to 00000131
+  DW_CFA_def_cfa_register: r5 (ebp)
+
+0000002c 00000014 00000000 FDE cie=00000000 pc=0000013d..00000163
+  DW_CFA_advance_loc: 1 to 0000013e
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_offset: r5 (ebp) at cfa-4
+  DW_CFA_advance_loc: 2 to 00000140
+  DW_CFA_def_cfa_register: r5 (ebp)
+
+オリジナルの cc1 の .debug_frame は以下
+
+00000000 00000010 ffffffff CIE
+  Version:               1
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -4
+  Return address column: 8
+
+  DW_CFA_def_cfa: r4 (esp) ofs 4
+  DW_CFA_offset: r8 (eip) at cfa-4
+  DW_CFA_nop
+  DW_CFA_nop
+
+00000014 0000001c 00000000 FDE cie=00000000 pc=0000012e..0000013b
+  DW_CFA_advance_loc: 1 to 0000012f
+  DW_CFA_def_cfa_offset: 8
+  DW_CFA_offset: r5 (ebp) at cfa-8
+  DW_CFA_advance_loc: 2 to 00000131
+  DW_CFA_def_cfa_register: r5 (ebp)
+  DW_CFA_advance_loc: 9 to 0000013a
+  DW_CFA_restore: r5 (ebp)
+  DW_CFA_def_cfa: r4 (esp) ofs 4
+  DW_CFA_nop
+  DW_CFA_nop
+  DW_CFA_nop
+
+00000034 00000028 00000000 FDE cie=00000000 pc=0000013b..00000176
+  DW_CFA_advance_loc: 4 to 0000013f
+  DW_CFA_def_cfa: r1 (ecx) ofs 0
+  DW_CFA_advance_loc: 7 to 00000146
+  DW_CFA_expression: r5 (ebp) (DW_OP_breg5 (ebp): 0)
+  DW_CFA_advance_loc: 3 to 00000149
+  DW_CFA_def_cfa_expression (DW_OP_breg5 (ebp): -4; DW_OP_deref)
+  DW_CFA_advance_loc: 40 to 00000171
+  DW_CFA_def_cfa: r1 (ecx) ofs 0
+  DW_CFA_advance_loc: 1 to 00000172
+  DW_CFA_restore: r5 (ebp)
+  DW_CFA_advance_loc: 3 to 00000175
+  DW_CFA_def_cfa: r4 (esp) ofs 4
+  DW_CFA_nop
+  DW_CFA_nop
+
+f の戻りアドレスを正しく計算できていない理由が不明.
+f にステップインしたときにメモリをダンプしてみた:
+
+(i386-elf-gdb) x/8bx $sp
+0xfe8:	0xf8	0x0f	0x00	0x00	0x49	0x01	0x00	0x00
+(i386-elf-gdb)
+
+なるほど 0xff8 は [sp] を参照していたということで本来ならば [s+4] を参照して
+いれば 0x149 が戻りアドレスだと判定できていたということ.
+
+不思議なのは f の戻りアドレスを正しく計算できていないのに main の戻りアドレス
+を正しく計算できているということ.
+
+できているオリジナルの cc1 と比較したところ以下のような a.1.S ならば期待通り動作している
+ことに気付いた:
+
+% diff a.s a.1.S
+14,15c14,15
+< 	.cfi_def_cfa_offset 4
+< 	.cfi_offset 5, -4
+---
+> 	.cfi_def_cfa_offset 8
+> 	.cfi_offset 5, -8
+41,42c41,42
+< 	.cfi_def_cfa_offset 4
+< 	.cfi_offset 5, -4
+---
+> 	.cfi_def_cfa_offset 8
+> 	.cfi_offset 5, -8
+%
+
+a.1.S をアセンブル, リンクし実行した結果は以下:
+
+Breakpoint 1, main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+f (a=5, b=6) at a.c:5
+5	  return a + b;
+#0  f (a=5, b=6) at a.c:5
+#1  0x00000149 in main () at a.c:10
+0x00000149 in main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+Value returned is $1 = 11
+hello world 11
+
+なんだか釈然とはしないが gcc の枠組みで作っているからしょうがないのだろうか. もしかすると
+i386-elf-gdb が関連しているかもしれないがここではスルーする.
+とりあえず a.1.S のように生成することを目指すことにした.
+
+.cfi_def_cfa_offset を出力している部分を確認する.
+
+    case DW_CFA_def_cfa_offset:
+    case DW_CFA_def_cfa_offset_sf:
+      fprintf (f, "\t.cfi_def_cfa_offset "
+	       HOST_WIDE_INT_PRINT_DEC"\n",
+	       cfi->dw_cfi_oprnd1.dw_cfi_offset);   ここだった.
+      break;
+
+(gdb) p cfi->dw_cfi_oprnd1.dw_cfi_offset
+$55 = 4
+(gdb) 
+
+この値を 8 に改竄することができれば期待する動作になると考えられる.
+
+(gdb) p &cfi->dw_cfi_oprnd1.dw_cfi_offset
+$56 = (long long *) 0xb78c4ef0
+(gdb) watch *(int*)0xb78c4ef0
+Hardware watchpoint 6: *(int*)0xb78c4ef0
+(gdb) run
+...
+
+
+      cfi->dw_cfi_oprnd1.dw_cfi_offset = const_offset;
+
+ここでセットしていた.
+
+(gdb) p const_offset
+$57 = 4
+(gdb)
+
+大元は以下で 4 をセットしている:
+	  /* Rule 11 */
+	case PRE_INC:
+	case PRE_DEC:
+	case POST_DEC:
+	  offset = GET_MODE_SIZE (GET_MODE (dest));
+	  if (GET_CODE (XEXP (dest, 0)) == PRE_INC)
+	    offset = -offset;
+
+	  gcc_assert ((REGNO (XEXP (XEXP (dest, 0), 0))
+		       == STACK_POINTER_REGNUM)
+		      && cur_trace->cfa_store.reg == dw_stack_pointer_regnum);
+
+	  cur_trace->cfa_store.offset += offset;  ここ
+
+オリジナルの cc1 ではどのように 8 にしているのか確認してみたところ以下を発見:
+
+  if (entry
+      && DEFAULT_INCOMING_FRAME_SP_OFFSET != INCOMING_FRAME_SP_OFFSET)
+    {
+      add_cfi_insn = insn;
+      gcc_assert (NOTE_P (insn) && NOTE_KIND (insn) == NOTE_INSN_DELETED);
+      this_cfa.offset = INCOMING_FRAME_SP_OFFSET;
+      def_cfa_1 (&this_cfa);
+    }
+
+オリジナルの cc1 ではここでやっているわけではなさそうだが, 自前の cc1 はこれを利用すれば
+よいらしい.
+
+#define INCOMING_FRAME_SP_OFFSET 4
+
+を追加してリビルド開始 2022.04.20 12:55
+
+2022.04.20 13:30 hello world 11 が i386-elf-gdb で step, where, finish
+コマンドが期待通り動作している.
+
+修正後の .debug_frame は以下:
+
+00000014 00000014 00000000 FDE cie=00000000 pc=0000012e..0000013d
+  DW_CFA_advance_loc: 1 to 0000012f
+  DW_CFA_def_cfa_offset: 8                         ★ 8 になっている
+  DW_CFA_offset: r5 (ebp) at cfa-8                 ★ 8 になっている
+  DW_CFA_advance_loc: 2 to 00000131
+  DW_CFA_def_cfa_register: r5 (ebp)
+
+0000002c 00000014 00000000 FDE cie=00000000 pc=0000013d..00000163
+  DW_CFA_advance_loc: 1 to 0000013e
+  DW_CFA_def_cfa_offset: 8                         ★ 8 になっている
+  DW_CFA_offset: r5 (ebp) at cfa-8                 ★ 8 になっている
+  DW_CFA_advance_loc: 2 to 00000140
+  DW_CFA_def_cfa_register: r5 (ebp)
+
+(*4)
+2022.04.20 13:40
+この時点で残りの問題は
+
+o stdio.h を include すると __float128 を型として認識していないためにエラーになる
+o sizeof(long double) = 8 になっている. sizeof(long double) = 12 が正しい.
+  また Intel 80 ビットの浮動小数点数フォーマットに対応していない.
+
+1 つ目と 2 つ目は関連しているかもしれないし, していないかもしれないがまずは 1 つ目
+を修正してみる.
+
+以下のようなソースファイルをオリジナルの cc1 でコンパイルしてみた:
+
+__float128 a = 1.0;
+
+生成されたソースはそれっぽい. 以下は抜粋:
+
+a:
+	.long	0
+	.long	0
+	.long	0
+	.long	1073676288
+
+自前の cc1 で同じようにコンパイルしたところ以下のようにエラーする:
+
+b.c:1:1: エラー: unknown type name ‘__float128’; did you mean ‘_Float128’?
+    1 | __float128 a = 1.0;
+      | ^~~~~~~~~~
+      | _Float128
+
+そこで試しに以下を代わりにコンパイルしてみたところ
+
+_Float128 a = 1.0;
+
+以下のようにエラーする:
+
+c.c:1:1: エラー: ‘_Float128’ is not supported on this target
+    1 | _Float128 a = 1.0;
+      | ^~~~~~~~~
+
+ということは何かを少し変えるだけで _Float128 が型として認識される可能性はある. まずは
+上をエラーにしている箇所を特定したい.
+
+(gdb) b write
+(gdb) run
+...
+write のブレークポイントにヒット. そしてそれはエラーメッセージを出力しているところだった.
+
+gcc-10.2.0.i386-elf.mine/gcc/c/c-decl.c:11160
+	      else if (FLOATN_NX_TYPE_NODE (specs->floatn_nx_idx) == NULL_TREE)
+		{
+		  specs->typespec_word = cts_floatn_nx;
+		  error_at (loc,
+			    "%<_Float%d%s%> is not supported on this target",
+			    floatn_nx_types[specs->floatn_nx_idx].n,
+			    (floatn_nx_types[specs->floatn_nx_idx].extended
+			     ? "x"
+			     : ""));
+		}
+
+この条件が成立しないのがオリジナルの cc1 なのでどのようにこの条件が成立しないのか
+調べてみる.
+
+この部分のマクロ展開は以下:
+
+       else if (global_trees[TI_FLOATN_NX_TYPE_FIRST + (specs->floatn_nx_idx)] == (tree) 
+# 11160 "../.././gcc/c/c-decl.c" 3 4
+                                                             __null
+# 11160 "../.././gcc/c/c-decl.c"
+
+自前の cc1 では
+(gdb) p global_trees[TI_FLOATN_NX_TYPE_FIRST + (specs->floatn_nx_idx)]
+$78 = (tree) 0x0
+(gdb) p specs->floatn_nx_idx
+$5 = 3
+(gdb) 
+
+であるから条件が成立する. 一方オリジナルの cc1 では
+
+(gdb) p global_trees[TI_FLOATN_NX_TYPE_FIRST + (specs->floatn_nx_idx)]
+$3 = (tree) 0xb7a50d80
+(gdb) p debug_tree((tree) 0xb7a50d80)
+ <real_type 0xb7a50d80 _Float128 TF
+    size <integer_cst 0xb7855bf4 type <integer_type 0xb7a500c0 bitsizetype> constant 128>
+    unit-size <integer_cst 0xb7855c08 type <integer_type 0xb7a50060 sizetype> constant 16>
+    align:128 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb7a50d80 precision:128>
+$4 = void
+(gdb) p specs->floatn_nx_idx
+$5 = 3
+(gdb) 
+
+のようになっている. 条件は成立しない.
+
+0      1       2            3
+float, double, long double, _Float128
+
+であるから 3 番目の浮動小数点数型が定義されているということ.
+
+オリジナルの cc1 でどこでセットしているか調べてみる:
+(gdb) p &global_trees[TI_FLOATN_NX_TYPE_FIRST + (specs->floatn_nx_idx)]
+$6 = (tree *) 0x9c3ef24 <global_trees+164>
+(gdb) watch *(int*)0x9c3ef24
+Hardware watchpoint 3: *(int*)0x9c3ef24
+(gdb) run
+...
+このウォッチポイントにヒット
+
+  for (i = 0; i < NUM_FLOATN_NX_TYPES; i++)
+    {
+...
+      FLOATN_NX_TYPE_NODE (i) = make_node (REAL_TYPE);
+
+(gdb) p i
+$7 = 3
+(gdb)
+
+この部分のマクロ展開は以下:
+
+  for (i = 0; i < (TI_FLOATN_NX_TYPE_LAST - TI_FLOATN_NX_TYPE_FIRST + 1); i++)
+    {
+
+
+(gdb) p (int)TI_FLOATN_NX_TYPE_LAST
+$9 = 44
+(gdb) p (int)TI_FLOATN_NX_TYPE_FIRST
+$10 = 38
+(gdb) p (TI_FLOATN_NX_TYPE_LAST - TI_FLOATN_NX_TYPE_FIRST + 1)
+$11 = 7
+(gdb)
+
+これは想像していたものと少し違っていた. これらは以下で宣言されていた:
+
+gcc-10.2.0.i386-elf/gcc/tree-core.h:
+
+  TI_FLOAT64_TYPE,
+  TI_FLOAT128_TYPE,
+  TI_FLOATN_TYPE_LAST = TI_FLOAT128_TYPE,
+#define NUM_FLOATN_TYPES (TI_FLOATN_TYPE_LAST - TI_FLOATN_TYPE_FIRST + 1)
+  TI_FLOAT32X_TYPE,
+  TI_FLOATNX_TYPE_FIRST = TI_FLOAT32X_TYPE,
+  TI_FLOAT64X_TYPE,
+  TI_FLOAT128X_TYPE,
+  TI_FLOATNX_TYPE_LAST = TI_FLOAT128X_TYPE,
+  TI_FLOATN_NX_TYPE_LAST = TI_FLOAT128X_TYPE,
+#define NUM_FLOATNX_TYPES (TI_FLOATNX_TYPE_LAST - TI_FLOATNX_TYPE_FIRST + 1)
+#define NUM_FLOATN_NX_TYPES (TI_FLOATN_NX_TYPE_LAST		\
+			     - TI_FLOATN_NX_TYPE_FIRST		\
+			     + 1)
+
+一方自前の cc1 は現状どうなっているかだが
+やはり for のマクロ展開は
+
+  for (i = 0; i < (TI_FLOATN_NX_TYPE_LAST - TI_FLOATN_NX_TYPE_FIRST + 1); i++)
+    {
+
+で
+
+(gdb) b tree.c:10364
+(gdb) run
+...
+tree.c:10364 のブレークポイントにヒット
+(gdb) p (int)TI_FLOATN_NX_TYPE_LAST 
+$80 = 44
+(gdb) p (int)TI_FLOATN_NX_TYPE_FIRST
+$81 = 38
+(gdb) p (TI_FLOATN_NX_TYPE_LAST - TI_FLOATN_NX_TYPE_FIRST + 1)
+$82 = 7
+(gdb)
+これはオリジナルの cc1 と状況は同じ.
+
+  for (i = 0; i < NUM_FLOATN_NX_TYPES; i++)
+    {
+      int n = floatn_nx_types[i].n;
+      bool extended = floatn_nx_types[i].extended;
+      scalar_float_mode mode;
+      if (!targetm.floatn_mode (n, extended).exists (&mode))  ★ ここ
+	continue;
+
+ポイントはここらしい. 実際はオリジナルの cc1 でも
+
+opt_scalar_float_mode
+default_floatn_mode (int n, bool extended)
+{
+
+を呼び出していたが
+
+	case 128:
+#ifdef HAVE_TFmode
+	  cand = TFmode;
+#endif
+	  break;
+
+これを利用すれば良さそう. と思ったがこれのマクロ展開を確認したが HAVE_TFmode は
+define されていない.
+  => 勘違いだった. 以下で define されていた. 
+
+$macro $def HAVE_TFmode "./insn-modes.h" 332 ;
+
+#endif
+  E_TFmode,                /* config/i386/i386-modes.def:25 */
+#define HAVE_TFmode
+
+なるほどこれはそういう仕掛けがあるということか. 以下を発見.
+
+/* The x86_64 ABI specifies both XF and TF modes.
+   XFmode is __float80 is IEEE extended; TFmode is __float128
+   is IEEE quad.  */
+
+FRACTIONAL_FLOAT_MODE (XF, 80, 12, ieee_extended_intel_96_format);
+FLOAT_MODE (TF, 16, ieee_quad_format);
+
+ここをうまく真似ることができれば long double の問題も同時に解決できるかもしれない.
+
+insn-modes.h はツール genmodes により生成されるファイルである. 以前の調査では
+このツールは入力ファイルなしとされていた.
+
+オリジナルの cc1 で以下のようにしてみた:
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf/host-i686-pc-linux-gnu/gcc
+% mv insn-modes.h insn-modes.h.org
+% make -n insn-modes.h
+true
+%
+
+だめらしい. 一旦 insn-modes.h を元に戻した.
+
+% mv insn-modes.h.org insn-modes.h
+
+以下を試してみた:
+
+% touch ../../gcc/config/i386/i386-modes.def 
+% make -n cc1
+g++ -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/genmodes.o ../.././gcc/genmodes.c
+g++   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -static-libstdc++ -static-libgcc   -no-pie -o build/genmodes \
+    build/genmodes.o build/errors.o ../../build-i686-pc-linux-gnu/libiberty/libiberty.a
+build/genmodes -h > tmp-modes.h
+/bin/sh ../.././gcc/../move-if-change tmp-modes.h insn-modes.h
+echo timestamp > s-modes-h
+...
+
+これは一応期待した結果. そしてやはり入力ファイルはないらしい. おそらく genmodes.c を
+コンパイルするときに仕掛けがあるのだと思った.
+
+自前の cc1 の insn-modes.h の抜粋は以下:
+
+#endif
+  E_SFmode,                /* machmode.def:226 */
+#define HAVE_SFmode
+#ifdef USE_ENUM_MODES
+#define SFmode E_SFmode
+#else
+#define SFmode (scalar_float_mode ((scalar_float_mode::from_int) E_SFmode))
+#endif
+  E_DFmode,                /* machmode.def:227 */
+
+machmode.def を参照している. 一方オリジナルの cc1 insn-modes.h の抜粋は以下:
+
+  E_DFmode,                /* machmode.def:227 */
+#define HAVE_DFmode
+#ifdef USE_ENUM_MODES
+#define DFmode E_DFmode
+#else
+#define DFmode (scalar_float_mode ((scalar_float_mode::from_int) E_DFmode))
+#endif
+  E_XFmode,                /* config/i386/i386-modes.def:24 */
+#define HAVE_XFmode
+#ifdef USE_ENUM_MODES
+#define XFmode E_XFmode
+#else
+#define XFmode (scalar_float_mode ((scalar_float_mode::from_int) E_XFmode))
+#endif
+  E_TFmode,                /* config/i386/i386-modes.def:25 */
+#define HAVE_TFmode
+#ifdef USE_ENUM_MODES
+#define TFmode E_TFmode
+#else
+#define TFmode (scalar_float_mode ((scalar_float_mode::from_int) E_TFmode))
+#endif
+  E_SDmode,                /* machmode.def:267 */
+
+
+machmode.def は参照しているが config/i386/i386-modes.def も参照している.
+
+gcc-10.2.0.i386-elf/gcc/genmodes.c:790
+
+#include "machmode.def"
+
+gcc-10.2.0.i386-elf.mine/gcc/machmode.def:257
+
+UACCUM_MODE (UTA, 16, 64, 64); /* 64.64 */
+
+/* Allow the target to specify additional modes of various kinds.  */
+#if HAVE_EXTRA_MODES
+# include EXTRA_MODES_FILE
+#endif
+
+これっぽい.
+gcc-10.2.0.i386-elf/gcc/genmodes.c:41
+#ifdef EXTRA_MODES_FILE
+# define HAVE_EXTRA_MODES 1
+#else
+# define HAVE_EXTRA_MODES 0
+# define EXTRA_MODES_FILE ""
+#endif
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf/host-i686-pc-linux-gnu/gcc/auto-host.h:290
+
+#ifndef USED_FOR_TARGET
+#define EXTRA_MODES_FILE "config/i386/i386-modes.def"
+#endif
+
+auto-host.h はおそらく生成されるファイルだと思うのだがそれを確認する.
+
+MSP430 のインストールログを確認したところ
+
+config.status: creating Makefile
+config.status: creating ada/gcc-interface/Makefile
+config.status: creating ada/Makefile
+config.status: creating auto-host.h   ★ これ
+
+を発見. ということはおそらくだが make configure-gcc で Makefile や auto-host.h
+が作成される可能性がある. これを確認する.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine
+% make configure-gcc
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/host-i686-pc-linux-gnu/libiberty' に入ります
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/host-i686-pc-linux-gnu/libiberty/testsuite' に入ります
+make[2]: 'all' に対して行うべき事はありません.
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/host-i686-pc-linux-gnu/libiberty/testsuite' から出ます
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/host-i686-pc-linux-gnu/libiberty' から出ます
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/host-i686-pc-linux-gnu/lto-plugin' に入ります
+make  all-am
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/host-i686-pc-linux-gnu/lto-plugin' に入ります
+make[2]: 'all-am' に対して行うべき事はありません.
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/host-i686-pc-linux-gnu/lto-plugin' から出ます
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/host-i686-pc-linux-gnu/lto-plugin' から出ます
+%
+
+Makefile を確認してみた:
+
+configure-gcc: 
+	@r=`${PWD_COMMAND}`; export r; \
+	s=`cd $(srcdir); ${PWD_COMMAND}`; export s; \
+	test ! -f $(HOST_SUBDIR)/gcc/Makefile || exit 0; \
+	$(SHELL) $(srcdir)/mkinstalldirs $(HOST_SUBDIR)/gcc; \
+...
+
+なるほど. おそらく host-i686-pc-linux-gnu/gcc/Makefile は現状あるから
+ここで新たに何かが作成されるというわけではないらしい.
+
+% mv host-i686-pc-linux-gnu host-i686-pc-linux-gnu.org
+% make configure-gcc
+...
+config.status: creating auto-host.h
+...
+%
+
+途中で何かがコンパイルされているのは予想外だったが, このビルドシステムでは何でもアリな
+わけだ.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/host-i686-pc-linux-gnu/gcc/config.log
+
+に以下を発見:
+
+  $ /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/gcc/configure --srcdir=../.././gcc --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --enable-languages=c,c++,fortran,lto,objc --program-transform-name=s&^&i386-elf-& --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=i386-elf
+...
+config.status:1385: creating auto-host.h
+...
+
+ということは
+
+% cd host-i686-pc-linux-gnu/gcc
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/gcc/configure --srcdir=../.././gcc --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --enable-languages=c,c++,fortran,lto,objc --program-transform-name=s/^/i386-elf-/ --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=i386-elf
+
+エラーしているが
+
+% rm config.cache
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/gcc/configure --srcdir=../.././gcc --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --enable-languages=c,c++,fortran,lto,objc --program-transform-name=s/^/i386-elf-/ --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=i386-elf
+...
+config.status: creating auto-host.h
+...
+%
+
+というわけでここまで絞り込めた.
+
+% rm config.cache
+% sh -vx /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/gcc/configure --srcdir=../.././gcc --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --enable-languages=c,c++,fortran,lto,objc --program-transform-name=s/^/i386-elf-/ --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=i386-elf
+...
++ /bin/sh ./config.status
+config.status: creating Makefile
+config.status: creating ada/gcc-interface/Makefile
+config.status: creating ada/Makefile
+config.status: creating auto-host.h
+config.status: executing depdir commands
+config.status: executing gccdepdir commands
+config.status: executing default commands
++ exec
++ :
+...
+%
+
+さてこれはどういうことかと言えば, configure スクリプトから
+
+/bin/sh ./config.status
+
+を実行しているということ. だから以下を試してみた:
+
+% /bin/sh -vx ./config.status
+...
+++ gawk -f ./confReejoV/defines.awk ../.././gcc/config.in
++ diff auto-host.h ./confReejoV/config.h
++ printf '%s\n' 'config.status:1541: auto-host.h is unchanged'
++ printf '%s\n' 'config.status: auto-host.h is unchanged'
+config.status: auto-host.h is unchanged
+...
+%
+
+これを他人が解析するのは人間技ではなさそうだが
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/gcc/config.in
+
+を見つけた. そしてこれは生成される auto-host.h のテンプレートみたいになっている.
+これから判断すると一時ディレクトリ
+
+confReejoV
+
+に
+
+defines.awk
+
+という awk スクリプトを作成して
+
+gawk -f ./confReejoV/defines.awk ../.././gcc/config.in
+
+を実行して ./confReejoV/config.h を作成しているということなのだと思われる. これを確認する.
+
+config.status から以下を発見:
+
+debug=false
+...
+$debug ||
+{
+  tmp= ac_tmp=
+  trap 'exit_status=$?
+  : "${ac_tmp:=$tmp}"
+  { test ! -d "$ac_tmp" || rm -fr "$ac_tmp"; } && exit $exit_status
+' 0
+  trap 'as_fn_exit 1' 1 2 13 15
+}
+
+ということはこの $debug を 1 にセットできればディレクトリは消さずに残ると思われる.
+
+debug=true
+
+に修正してもう一度トライ.
+
+% /bin/sh -vx ./config.status
+...
+++ gawk -f ./confYPq068/defines.awk ../.././gcc/config.in
++ diff auto-host.h ./confYPq068/config.h
++ printf '%s\n' 'config.status:1541: auto-host.h is unchanged'
++ printf '%s\n' 'config.status: auto-host.h is unchanged'
+config.status: auto-host.h is unchanged
+...
+% ls ./confYPq068/config.h
+./confYPq068/config.h
+% ls ./confYPq068/defines.awk 
+./confYPq068/defines.awk
+%
+
+残っている. ということは defines.awk をどのように作成しているかを調べればよい.
+
+オリジナルの config.status
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf/host-i686-pc-linux-gnu/gcc/config.status
+
+から以下を発見
+
+D["EXTRA_MODES_FILE"]=" \"config/i386/i386-modes.def\""
+
+ということは, config.status の生成方法を調べる必要がある. しかし何故このように複雑なのか
+理由はサッパリ理解できない. とりあえず今日はここまで.
+
+% rm config.cache
+% sh -vx /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/gcc/configure --srcdir=../.././gcc --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --enable-languages=c,c++,fortran,lto,objc --program-transform-name=s/^/i386-elf-/ --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=i386-elf
+...
+% ls -l config.status
+-rwxrwxr-x 1 khasegawa khasegawa 53193  4月 21 06:58 config.status*
+%
+
+configure スクリプト実行後に作成されていることを確認した.
+
+% rm config.cache
+% sh -vx /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/gcc/configure --srcdir=../.././gcc --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --enable-languages=c,c++,fortran,lto,objc --program-transform-name=s/^/i386-elf-/ --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=i386-elf
+...
+configure: creating ./config.status  ★ これ
+...
+cat >$CONFIG_STATUS <<_ASEOF || as_write_fail=1   ★ これ
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/gcc/configure
+
+から以下を発見:
+
+cat >$CONFIG_STATUS <<_ASEOF || as_write_fail=1   ★ これ
+
+それっぽい.
+
+さらに configure の実行ログから以下を発見
+
+D["\1"]=" \3\\\\\\n"\\/p          ★ これ
+
+そして
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/gcc/configure
+
+からも以下を発見:
+
+sed -n '
+...
+D["\1"]=" \3"/p
+...
+' <confdefs.h | sed '
+s/'"$ac_delim"'/"\\\
+"/g' >>$CONFIG_STATUS || ac_write_fail=1
+
+それっぽい. ということは confdefs.h が cofig.status の入力ということらしい.
+confdefs.h もやはり生成されるファイルらしく configure スクリプトの実行の最後で
+削除されているらしい. 発狂.
+
+探すポイントを変更してみたくなる.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf
+% find . -type f -exec grep --color -nH --null -e i386-modes.def \{\} +
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf/host-i686-pc-linux-gnu/gcc/Makefile
+
+から以下を発見
+
+extra_modes_file=$(srcdir)/config/i386/i386-modes.def  ★
+
+しかし Makefile が作成されるのは configure スクリプトの実行時でそれは config.status
+が作成されたときと同じ. この Makefile で make を実行するのはこの後なので上はおそらく
+違う.
+
+有益な情報は残念ながら発見できず.
+
+configure スクリプトの実行の最後で confdefs.h が削除されているがこの部分をコメント
+アウトしてみた:
+
+  rm -f core *.core core.conftest.* &&
+#    rm -f -r conftest* confdefs* conf$$* $ac_clean_files &&   ★ これ
+    exit $exit_status
+
+% rm config.cache
+% sh -vx /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/gcc/configure --srcdir=../.././gcc --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --enable-languages=c,c++,fortran,lto,objc --program-transform-name=s/^/i386-elf-/ --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=i386-elf
+...
+% ls -l confdefs.h
+
+confdefs.h が作成されていることを確認した.
+
+同様のことをオリジナルの cc1 でやってみた:
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf/host-i686-pc-linux-gnu/gcc
+% rm config.cache
+% sh -vx /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf/gcc/configure --srcdir=../.././gcc --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --disable-libstdc++-v3 --disable-libssp --disable-libquadmath --disable-libgfortran --disable-libobjc --enable-languages=c,c++,fortran,lto,objc --program-transform-name=s/^/i386-elf-/ --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=i386-elf
+...
+% ls -l confdefs.h
+
+confdefs.h が作成されていることを確認した.
+
+confdefs.h:190
+#define EXTRA_MODES_FILE "config/i386/i386-modes.def"
+
+ここまでの話を要約すると
+
+configure の実行で confdefs.h がまず作成される
+configure の実行で confdefs.h を入力として config.status が作成される.
+configure の実行で /bin/sh ./config.status が実行される.
+/bin/sh ./config.status の実行で auto-host.h が作成される.
+
+ということ.
+
+configure の実行で confdefs.h の 190 行目がどのように生成されるかを調べてみたところ
+configure の実行ログに以下を発見:
+
+++ extra_modes=
+if test -f ${srcdir}/config/${cpu_type}/${cpu_type}-modes.def
+then
+	extra_modes=${cpu_type}/${cpu_type}-modes.def
+fi
+++ test -f ../.././gcc/config/i386/i386-modes.def
+++ extra_modes=i386/i386-modes.def
+if test -f ${srcdir}/config/${cpu_type}/${cpu_type}.opt
+
+つまり gcc/config/i386/i386-modes.def があればそれが読み込まれるということ.
+
+そこで自前の cc1 で以下のようにしてみた:
+
+% touch ../../gcc/config/i386/i386-modes.def
+% rm config.cache
+% sh -vx /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf/gcc/configure --srcdir=../.././gcc --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --disable-libstdc++-v3 --disable-libssp --disable-libquadmath --disable-libgfortran --disable-libobjc --enable-languages=c,c++,fortran,lto,objc --program-transform-name=s/^/i386-elf-/ --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=i386-elf
+...
+% ls -l confdefs.h
+
+confdefs.h が作成されていることを確認
+
+confdefs.h:190
+#define EXTRA_MODES_FILE "config/i386/i386-modes.def"
+
+これがカラクリだった. そこで以下のようにしてみた
+
+% cat ../../gcc/config/i386/i386-modes.def
+FRACTIONAL_FLOAT_MODE (XF, 80, 12, ieee_extended_intel_96_format);
+FLOAT_MODE (TF, 16, ieee_quad_format);
+%
+
+とりあえずこの 2 行のみだけにしてみた.
