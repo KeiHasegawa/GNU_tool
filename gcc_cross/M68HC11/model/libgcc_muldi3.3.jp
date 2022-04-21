@@ -1,0 +1,48 @@
+2022.04.21 9:50
+現状 __muldi3 を通常通りコンパイルすると内部エラーしている:
+
+(gdb) run -quiet a.c
+Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/cc1 -quiet a.c
+during RTL pass: expand
+a.c: 関数 ‘__muldi3’ 内:
+a.c:20:181: コンパイラ内部エラー: int_mode_for_mode 内、位置 stor-layout.c:404
+...
+(gdb) b stor-layout.c:404
+(gdb) run
+...
+opt_scalar_int_mode
+int_mode_for_mode (machine_mode mode)
+{
+  switch (GET_MODE_CLASS (mode))
+    {
+...
+    default:
+      gcc_unreachable ();  ★ ここにきている
+
+(gdb) p mode
+$1 = E_VOIDmode
+(gdb) 
+
+void m68hc11_emit_libcall(const char* name, rtx x, rtx y, rtx z)
+{
+  auto fun = gen_rtx_SYMBOL_REF(Pmode, name);
+  auto xmode = GET_MODE(x);
+  auto ymode = GET_MODE(y);
+  if (!z) {
+    emit_library_call_value(fun, x, LCT_NORMAL, xmode, y, ymode);
+    return;
+  }
+  auto zmode = GET_MODE(z);  ★ ここで zmode = E_VOIDmode になっている.
+  emit_library_call_value(fun, x, LCT_NORMAL, xmode, y, ymode, z, zmode);  
+}
+
+以下のように修正した:
+
++ if (zmode == E_VOIDmode) {
++   std::string s = name;
++   assert(s == "__ashrdi3");
++   zmode = E_HImode;
++ }
+  emit_library_call_value(fun, x, LCT_NORMAL, xmode, y, ymode, z, zmode);  
+
+この修正で内部エラーを回避できていて, 期待通りテストプログラムが動いている.
