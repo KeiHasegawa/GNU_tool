@@ -1088,3 +1088,150 @@ ix86_init_builtins (void)
 
 そして stdio.h を include してもエラーすることはなくなった.
 現状では sizeof(long double) = 8 で 12 ではないがこれはそのうち対応することにする.
+
+(*5)
+通常通りビルドしようとすると driver-i386.o の WA が必要になるがこれを回避する.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% cat x
+#! /bin/csh -vxf
+
+setenv SHELL /bin/sh
+set PREFIX = `pwd`
+set short  = i386
+set TARGET = $short-elf
+
+if (-d gcc-10.2.0.$TARGET.mine) then
+  echo "gcc-10.2.0.$TARGET.mine already exists."
+  exit 1
+endif
+
+xz -d -c ../gcc-10.2.0.tar.xz | tar xf - || exit 1
+mv gcc-10.2.0 gcc-10.2.0.$TARGET.mine || exit 1
+cd gcc-10.2.0.$TARGET.mine || exit 1
+rm -r -f gcc/config/$short || exit 1
+rm -r -f gcc/common/config/$short || exit 1
+tar xvf ~/lang/53_GNU_tool/gcc_cross/i386/model/i386-elf.mine.tar || exit 1
+patch -p1 < ~/lang/53_GNU_tool/gcc_cross/i386/model/gcc-10.2.0.i386-elf.mine.diff || exit 1
+./configure --prefix=$PREFIX --target=$TARGET || exit 1
+make all-gcc || exit 1
+% ./x
+
+このスクリプトでエラーなしで make が成功することを目指す.
+
+現状では
+
+gcc-10.2.0.i386-elf.mine/host-i686-pc-linux-gnu/gcc/Makefile
+
+で
+
+EXTRA_GCC_OBJS =driver-i386.o
+
+のようになっていることが問題でこれが
+
+EXTRA_GCC_OBJS =
+
+のようになることが期待値. この Makefile は (*4) の auto-host.h と同様に
+
+gcc-10.2.0.i386-elf.mine/Makefile の configure-gcc のターゲットで生成される.
+
+./x の実行でエラーした状態で
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/
+% mv host-i686-pc-linux-gnu/ host-i686-pc-linux-gnu.org/
+% make configure-gcc
+...
+configure: creating ./config.status
+config.status: creating as
+config.status: creating collect-ld
+config.status: creating nm
+config.status: creating Makefile                       ★ これ
+config.status: creating ada/gcc-interface/Makefile
+config.status: creating ada/Makefile
+config.status: creating auto-host.h
+config.status: executing depdir commands
+...
+% cd host-i686-pc-linux-gnu/gcc
+config.log を確認.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/gcc/configure --srcdir=../.././gcc --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --enable-languages=c,c++,fortran,lto,objc --program-transform-name=s&^&i386-elf-& --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=i386-elf
+
+そこで以下のように実行:
+
+% rm -f config.cache ; sh -vx /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/gcc/configure --srcdir=../.././gcc --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --enable-languages=c,c++,fortran,lto,objc --program-transform-name=s/^/i386-elf-/ --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=i386-elf
+...
++ /bin/sh ./config.status
+config.status: creating Makefile
+config.status: creating ada/gcc-interface/Makefile
+config.status: creating ada/Makefile
+config.status: creating auto-host.h
+config.status: executing depdir commands
+config.status: executing gccdepdir commands
+config.status: executing default commands
+...
+
+つまり configure スクリプトを実行したときに
+
+/bin/sh ./config.status
+
+のように実行されその結果 Makefile が生成されているということ. そしてそれが期待しないものに
+なっているということ. そこで以下のように実行してみた:
+
+% /bin/sh -vx ./config.status
+...
++ printf '%s\n' 'config.status: creating Makefile'
+config.status: creating Makefile
+...
+
+gcc-10.2.0.i386-elf.mine/gcc/Makefile.in:
+
+# List of extra object files that should be compiled and linked with
+# the gcc driver.
+EXTRA_GCC_OBJS =@extra_gcc_objs@
+
+を入力として Makefile を生成しているが上の部分を書き替えているらしい.
+
+そこで config.status から以下を発見:
+
+S["extra_gcc_objs"]="driver-i386.o "
+
+ここが関係していらしい. ということは config.status がどのようにして生成されるかを
+調べる必要がある.
+
+% rm -f config.cache ; sh -vx /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/gcc/configure --srcdir=../.././gcc --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --enable-languages=c,c++,fortran,lto,objc --program-transform-name=s/^/i386-elf-/ --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=i386-elf
+...
++ printf '%s\n' 'configure: creating ./config.status'
+configure: creating ./config.status                          ★ これ
+as_write_fail=0
++ as_write_fail=0
+cat >$CONFIG_STATUS <<_ASEOF || as_write_fail=1
+...
++ echo 'cat >conf12532subs.awk <<_ACEOF'
++ sed 's/.*/&!$&$ac_delim/'
++ echo 'LTLIBOBJS
+LIBOBJS
+...
+extra_gcc_objs                                               ★ これ
+...
+SHELL'
++ echo _ACEOF
+...
++ eval 'ac_val=$extra_gcc_objs'
+ac_val=$extra_gcc_objs
+++ ac_val='driver-i386.o '                                   ★ これ
+...
+  i[34567]86-*-* \
+  | x86_64-*-* )
+    case ${target} in
+      i[34567]86-*-* \
+      | x86_64-*-* )
+	host_extra_gcc_objs="driver-i386.o"                  ★ これ  
+	host_xmake_file="${host_xmake_file} i386/x-i386"
+	;;
+    esac
+
+おそらくこのファイルがどこかにある.
+
+gcc-10.2.0.i386-elf.mine/gcc/config.host
+
+これだった.
