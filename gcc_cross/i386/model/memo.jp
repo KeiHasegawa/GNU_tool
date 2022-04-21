@@ -1,3 +1,8 @@
+cc1 の雛形
+
+「AARCH64」=>「cc1 の雛形」=>「メモ」 を参照.
+AARCH64 と同様の手順で cc1 の雛形をビルドすることができる.
+
 開発メモ
 
 (*1)
@@ -887,3 +892,199 @@ FLOAT_MODE (TF, 16, ieee_quad_format);
 %
 
 とりあえずこの 2 行のみだけにしてみた.
+
+% make cc1
+...
+i686-pc-linux-gnu-g++ -fno-PIE -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings  -Wno-strict-aliasing -DHAVE_CONFIG_H -I. -I. -I../.././gcc -I../.././gcc/. -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber -I../.././gcc/../libbacktrace   -o dfp.o -MT dfp.o -MMD -MP -MF ./.deps/dfp.TPo ../.././gcc/dfp.c
+In file included from ../.././gcc/../libdecnumber/decNumber.h:37,
+                 from ../.././gcc/../libdecnumber/dpd/decimal128.h:58,
+                 from ../.././gcc/dfp.c:30:
+../.././gcc/../libdecnumber/decContext.h:54:12: 致命的エラー: gstdint.h: そのようなファイルやディレクトリはありません
+   54 |   #include "gstdint.h"     /* C99 standard integers       */
+      |            ^~~~~~~~~~~
+コンパイルを停止しました。
+make: *** [Makefile:1116: dfp.o] エラー 1
+
+../.././gcc/../libdecnumber/decContext.h
+
+はオリジナルの cc1 でも同じように gstdint.h を include しているがエラーしていない.
+また実行しているコンパイラは g++ ではなくて i686-pc-linux-gnu-g++ になっている.
+これは見慣れない.
+
+トップディレクトリで configure の実行からやり直してみた:
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=i386-elf
+% make all-gcc
+...
+g++ -fno-PIE -c   -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H -I. -I. -I../.././gcc -I../.././gcc/. -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber -I../.././gcc/../libbacktrace   -o plugin.o -MT plugin.o -MMD -MP -MF ./.deps/plugin.TPo ../.././gcc/plugin.c
+../.././gcc/plugin.c: 関数 ‘bool try_init_one_plugin(plugin_name_args*)’ 内:
+../.././gcc/plugin.c:701:42: エラー: ‘RTLD_NOW’ was not declared in this scope
+  701 |   dl_handle = dlopen (plugin->full_name, RTLD_NOW | RTLD_GLOBAL);
+      |                                                     ^~~~~~~~~~~
+../.././gcc/plugin.c:701:15: エラー: ‘dlopen’ was not declared in this scope; did you mean ‘open’?
+
+コンパイルエラーしているが別の場所. これは以下がないためにエラーになっている.
+
+#include <dlfcn.h>
+
+しかし今までに見たことがないエラー. MSP430 のインストールログを確認したところ plugin.c は
+確かにコンパイル対象になっていて, 勿論エラーしていない.
+
+根拠はないが以下でもう一度トライ
+
+% find . -name config.cache -exec rm -f {} \;
+% find . -name '*.o' -exec rm -f {} \;
+% find . -name '*.a' -exec rm -f {} \;
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=i386-elf
+% make all-gcc
+...
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/host-i686-pc-linux-gnu/lto-plugin' に入ります
+/bin/sh ./libtool --tag=CC --tag=disable-static  --mode=link gcc -Wall  -g -O2 -Wc,-static-libgcc  -module -bindir /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/libexec/gcc/i386-elf/10.2.0    -Xcompiler '-static-libstdc++' -Xcompiler '-static-libgcc' -o liblto_plugin.la -rpath /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/libexec/gcc/i386-elf/10.2.0 lto-plugin.lo  -Wc,../libiberty/pic/libiberty.a 
+libtool: link: rm -fr  .libs/liblto_plugin.la .libs/liblto_plugin.lai .libs/liblto_plugin.so .libs/liblto_plugin.so.0 .libs/liblto_plugin.so.0.0.0
+libtool: link: gcc -shared  -fPIC -DPIC  .libs/lto-plugin.o    -static-libgcc -static-libstdc++ -static-libgcc ../libiberty/pic/libiberty.a   -Wl,-soname -Wl,liblto_plugin.so.0 -o .libs/liblto_plugin.so.0.0.0
+gcc: error: .libs/lto-plugin.o: No such file or directory
+make[2]: *** [Makefile:465: liblto_plugin.la] エラー 1
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/host-i686-pc-linux-gnu/lto-plugin' から出ます
+make[1]: *** [Makefile:376: all] エラー 2
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/host-i686-pc-linux-gnu/lto-plugin' から出ます
+make: *** [Makefile:10240: all-lto-plugin] エラー 2
+%
+
+原因不明のエラーが発生している.
+しょうがないのでアーカイブを展開するところからやり直してみた.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/
+% mv gcc-10.2.0.i386-elf.mine gcc-10.2.0.i386-elf.mine.NG
+% cat x
+#! /bin/csh -vxf
+
+setenv SHELL /bin/sh
+set short  = i386
+set TARGET = $short-elf
+
+xz -d -c ../gcc-10.2.0.tar.xz | tar xf - || exit 1
+mv gcc-10.2.0 gcc-10.2.0.$TARGET.mine || exit 1
+cd gcc-10.2.0.$TARGET.mine || exit 1
+rm -r -f gcc/config/$short || exit 1
+rm -r -f gcc/common/config/$short || exit 1
+% ./x
+% cd gcc-10.2.0.i386-elf.mine
+% mkdir gcc/config/i386
+% mkdir gcc/common/config/i386
+% cp ../gcc-10.2.0.i386-elf.mine.NG/gcc/config/i386/* gcc/config/i386
+% cp ../gcc-10.2.0.i386-elf.mine.NG/gcc/common/config/i386/* gcc/common/config/i386
+% ls gcc/config/i386 gcc/common/config/i386
+gcc/common/config/i386:
+i386-common.c
+
+gcc/config/i386:
+constraints.md	i386-modes.def~  i386.c   i386.h~   predicates.md
+cpuid.h		i386-protos.h	 i386.c~  i386.md
+i386-modes.def	i386-protos.h~	 i386.h   i386.md~
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=i386-elf
+% make all-gcc
+...
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/host-i686-pc-linux-gnu/gcc' から出ます
+make: *** [Makefile:4390: all-gcc] エラー 2
+%
+
+これはおそらく config.gcc をコピーするのを忘れていた.
+
+% cp ../gcc-10.2.0.i386-elf.mine.NG/gcc/config.gcc gcc/config.gcc
+% find . -name config.cache -exec rm -f {} \;
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=i386-elf
+% make all-gcc
+...
+g++ -no-pie   -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H -static-libstdc++ -static-libgcc  -o xgcc gcc.o gcc-main.o ggc-none.o \
+  c/gccspec.o driver-i386.o  libcommon-target.a \
+   libcommon.a ../libcpp/libcpp.a   ../libbacktrace/.libs/libbacktrace.a ../libiberty/libiberty.a ../libdecnumber/libdecnumber.a 
+g++: エラー: driver-i386.o: そのようなファイルやディレクトリはありません
+make[1]: *** [Makefile:2073: xgcc] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/host-i686-pc-linux-gnu/gcc' から出ます
+make: *** [Makefile:4390: all-gcc] エラー 2
+%
+
+gcc-10.2.0.i386-elf.mine/host-i686-pc-linux-gnu/gcc/Makefile
+
+を直接編集してこのエラーを回避した. driver-i386.o をどこで指定しているのかこの時点では不明.
+
+ビルドできた cc1 で stdio.h を include したソースファイルをコンパイルしてみたが同じエラー
+が発生している.
+
+そして
+
+c.c:1:1: エラー: ‘_Float128’ is not supported on this target
+    1 | _Float128 a = 1.0;
+      | ^~~~~~~~~
+
+変更されていないっぽい. しかし auto-host.h は以下のように期待したようになっている.
+
+#ifndef USED_FOR_TARGET
+#define EXTRA_MODES_FILE "config/i386/i386-modes.def"
+#endif
+
+そこで実際に確かめてみた:
+
+(gdb) b tree.c:10364
+(gdb) run
+...
+tree.c:10364 のブレークポイントにヒット
+(gdb)
+
+  for (i = 0; i < NUM_FLOATN_NX_TYPES; i++)
+    {
+      int n = floatn_nx_types[i].n;
+      bool extended = floatn_nx_types[i].extended;
+      scalar_float_mode mode;
+      if (!targetm.floatn_mode (n, extended).exists (&mode))
+	continue;  ★ i = 3 に対してはここでスキップされている.
+
+
+
+      if (cand.exists (&mode)                                      ★ 1
+	  && REAL_MODE_FORMAT (mode)->ieee_bits == n               ★ 2
+	  && targetm.scalar_mode_supported_p (mode)                ★ 3
+	  && targetm.libgcc_floating_mode_supported_p (mode))      ★ 4
+	return cand;
+
+この条件が成立していない. ★ 1 と ★ 2 は成立している. ★ 3 が成立していない.
+
+オリジナルの cc1 では以下のようにしている:
+
+#undef TARGET_SCALAR_MODE_SUPPORTED_P
+#define TARGET_SCALAR_MODE_SUPPORTED_P ix86_scalar_mode_supported_p
+
+自前の cc1 にも追加したところ _Float128 が型として認識されるようになっている.
+しかし __float128 はまだエラーになっている.
+
+オリジナルの cc1 でどのように型として認識されているか調べてみる.
+
+(gdb) b c_parser_translation_unit
+(gdb) run
+
+のように調査しようと思ったが以下を発見:
+
+static void
+ix86_init_builtin_types (void)
+{
+...
+  /* The __float128 type.  The node has already been created as
+     _Float128, so we only need to register the __float128 name for
+     it.  */
+  lang_hooks.types.register_builtin_type (float128_type_node, "__float128");
+
+void
+ix86_init_builtins (void)
+{
+...
+  ix86_init_builtin_types ();
+
+
+#undef TARGET_INIT_BUILTINS
+#define TARGET_INIT_BUILTINS ix86_init_builtins
+
+これを自前の cc1 でも追加して __float128 が型として認識されるようになった.
+
+そして stdio.h を include してもエラーすることはなくなった.
+現状では sizeof(long double) = 8 で 12 ではないがこれはそのうち対応することにする.
