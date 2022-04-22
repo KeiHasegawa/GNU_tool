@@ -19,3 +19,68 @@ x86_64-*-elf*)
 % cd ..
 % ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=x86_64-elf
 % make
+...
+make[2]: *** 'gdb' に必要なターゲット '../sim/x86_64/libsim.a' を make するルールがありません.  中止.
+...
+%
+
+% cd sim
+% tar xvf ~/lang/53_GNU_tool/gcc_cross/MMIX/gdb/mmix.1.tar
+% mv mmix x86_64
+% cd x86_64
+
+mmix を単純に x86_64 に置換した.
+
+% make
+% cd ../../gdb
+% make gdb
+
+一応ビルド成功.
+
+まずは 0x100 番地に nop 命令を数個置いたプログラムを動作させることを目指す.
+
+いつも通りプログラムをロードするときにメモリを割り当てるパッチを適用する:
+
+	      data_count += size;
+	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
++	      sim_do_commandf(sd, "memory-region 0x%llx,0x%llx", lma, size);
+	      do_write (sd, lma, buffer, size);
+	      found_loadable_section = 1;
+	      free (buffer);
+	    }
+	}
++       else if (s->flags & SEC_ALLOC) {
++         bfd_vma lma = lma_p ? bfd_section_lma(s) : bfd_section_vma(s);
++         bfd_size_type size = bfd_section_size(s);
++         sim_do_command(sd, "memory-fill 0xcc");
++         sim_do_commandf(sd, "memory-region 0x%llx,0x%llx", lma, size);
++       }
+
+そして libsim.a をビルドし直して, gdb をリンクし直す.
+
+M-x gdb
+gdb --annotate ./gdb
+(gdb) cd ~/lang/53_GNU_tool/gcc_cross/x64/test/test001/
+(gdb) run -q -x gdbcom test.elf
+...
+これで函数 x86_64_pc_set に埋め込んでおいたブレークポイントにヒットした.
+
+いつもであればここで簡易的な実装をしてからシミュレータを改めて組み込むのだが
+i386-elf-gdb での実績があったのでいきなり x64 用の bochs-2.7 を参照することにした:
+
+% cd ~/lang/53_GNU_tool/gcc_cross/i386/gdb/
+% tar xvf bochs-2.7.mine.2.tar
+% mv bochs-2.7.mine bochs-2.7.x64.mine
+% mv bochs-2.7.x64.mine /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7.x64.mine/
+% make
+
+これで i386-elf-gdb と同様に
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7.x64.mine/
+
+にあるオブジェクトファイルやアーカイブ (*.a) をリンク時に参照するようにする. 現状では
+これらは IA-32 のままなので正しくないが, そのうち修正する.
+
+2022.04.22 の時点で bochs 自体は IA-32 のままだが 0x100 番地に nop を数個置いた
+プログラムを x86_64-elf-gdb から期待通り実行できている.
