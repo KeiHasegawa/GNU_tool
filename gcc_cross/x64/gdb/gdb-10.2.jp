@@ -1,0 +1,21 @@
+gdb-10.2 のビルド
+
+i386 と同じようなやり方をしてみた:
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% xz -d -c ../gdb-10.2-1.src/gdb-10.2.tar.xz | tar xf -
+% mv gdb-10.2 gdb-10.2.x86_64-elf
+% cd gdb-10.2.x86_64-elf/gdb
+
+d30v, fr30, z8k, i960, mmix, z80, i386 と似た対処をした.
+
+gdb-10.2.i386-elf/gdb/configure.tgt:
+
+x86_64-*-elf*)
+	gdb_target_obs="${i386_tobjs}"
++	gdb_sim=../sim/x86_64/libsim.a
+	;;
+
+% cd ..
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=x86_64-elf
+% make
