@@ -1,5 +1,24 @@
 共通ソースファイルから参照されるターゲット固有部の宣言
 
+これらの宣言は普通ターゲットが h8300 ならば
+
+gcc-10.2.0/gcc/config/h8300/h8300.h
+
+にコーディングされ, cc1 のコンパイルだけではなく libgcc.a のオブジェクトファイルの
+コンパイルにも参照される.
+
+だから C++ 特有の宣言にしてしまうと以下のような対応が必要になる:
+
+#ifndef IN_LIBGCC2
+...
+constexpr UNITS_PER_WORD = 2
+...
+#else // IN_LIBGCC2
+
+#define UNITS_PER_WORD 2
+
+#endif // IN_LIBGCC2
+
 (*) REGISTER_NAMES
 
 参照箇所の 1 つ gcc/reginfo.c
@@ -37,8 +56,7 @@ static const char *const initial_reg_names[] = REGISTER_NAMES;
       builtin_define_with_int_value ("__LIBGCC_STACK_POINTER_REGNUM__",
 				     STACK_POINTER_REGNUM);
 
-    スタックポインタのレジスタ番号と等しくなるようにする. constexpr による宣言でも OK
-    だが後述の UNITS_PER_WORD の記述も参照. マクロにするのがおすすめ.
+    スタックポインタのレジスタ番号と等しくなるようにする.
 
 (*) FRAME_POINTER_REGNUM
 
@@ -117,7 +135,7 @@ static const char *const initial_reg_names[] = REGISTER_NAMES;
           return (*regno < FIRST_PSEUDO_REGISTER);
 
     初期化指定子 REGISTER_NAMES, FIXED_REGISTERS, CALL_USED_REGISTERS の要素数
-    と等しくする. constexpr による宣言でも OK.
+    と等しくする.
 
 (*) FIXED_REGISTERS
 
@@ -187,8 +205,7 @@ static const char initial_call_used_regs[] = CALL_USED_REGISTERS;
 
   HARD_REG_SET x_reg_class_contents[N_REG_CLASSES];
 
-    enum reg_class のメンバ LIM_REG_CLASSES と等しくする. constexpr に
-    よる宣言も OK.
+    enum reg_class のメンバ LIM_REG_CLASSES と等しくする.
 
 (*) REG_CLASS_CONTENTS
 
@@ -218,8 +235,7 @@ enum reg_class {
 
   return BASE_REG_CLASS;
       
-      調査中. enum reg_class のいずれかに等しくなるようにする. constexpr に
-      よる宣言も OK.
+      調査中. enum reg_class のいずれかに等しくなるようにする.
 
 (*) UNITS_PER_WORD
 
@@ -232,7 +248,7 @@ enum reg_class {
     cc1 をビルドするだけであれば constexpr による宣言で良いが libgcc.a をビルド
     するためにマクロにする必要がある:
 
-#ifdef IN_LIBGCC2
+#ifndef IN_LIBGCC2
 ...
 constexpr UNITS_PER_WORD = 2
 ...
@@ -334,8 +350,7 @@ constexpr UNITS_PER_WORD = 2
 #define MOVE_MAX_PIECES   MOVE_MAX
 
     ロード/ストア命令で指定できる最大バイト数と等しくする. 32 ビットプロセッサ
-    で 8 バイトのロード/ストアがないのであれば 4 を指定する. constexpr に
-    よる宣言も OK.
+    で 8 バイトのロード/ストアがないのであれば 4 を指定する.
 
 (*) STRICT_ALIGNMENT
 
@@ -344,7 +359,6 @@ constexpr UNITS_PER_WORD = 2
       if ((STRICT_ALIGNMENT || warn_cast_align == 2)
 
       ロード/ストアをワード境界をまたいで発行できないのならば 1 を指定する.
-      constexpr による宣言も OK.
 
 (*) BITS_BIG_ENDIAN
 
@@ -353,7 +367,6 @@ constexpr UNITS_PER_WORD = 2
 	      if (BITS_BIG_ENDIAN)
 
       通常は 0 に define する. 符号ビットが最下位ビットならば 1 に define する.
-      constexpr による宣言も OK.
 
 (*) BYTES_BIG_ENDIAN
 
@@ -361,7 +374,7 @@ constexpr UNITS_PER_WORD = 2
 
 	      if (BYTES_BIG_ENDIAN)
 
-      ビッグエンディアンならば 1 に define する. constexpr による宣言も OK.
+      ビッグエンディアンならば 1 に define する.
 
 (*) WORDS_BIG_ENDIAN
 
@@ -378,7 +391,6 @@ constexpr UNITS_PER_WORD = 2
       | 0x9abcdef0 |
       +------------+ +8
 
-      constexpr による宣言も OK.
 
 (*) FUNCTION_BOUNDARY
 
@@ -386,7 +398,7 @@ constexpr UNITS_PER_WORD = 2
 
 	  value = size_int (FUNCTION_BOUNDARY / BITS_PER_UNIT);
 
-      調査中. constexpr による宣言も OK.
+      調査中.
 
 (*) TRAMPOLINE_SIZE
 
@@ -395,7 +407,7 @@ constexpr UNITS_PER_WORD = 2
       builtin_define_with_int_value ("__LIBGCC_TRAMPOLINE_SIZE__",
 				     TRAMPOLINE_SIZE);
 			     
-      調査中. constexpr による宣言も OK.
+      調査中.
 
 (*) TARGET_CPU_CPP_BUILTINS
 
@@ -416,7 +428,7 @@ constexpr UNITS_PER_WORD = 2
 
 #define ATTRIBUTE_ALIGNED_VALUE BIGGEST_ALIGNMENT
 
-      調査中. constexpr による宣言も OK.
+      調査中.
 
 (*) ATTRIBUTE_ALIGNED_VALUE
 
@@ -424,7 +436,7 @@ constexpr UNITS_PER_WORD = 2
 
     align_expr = size_int (ATTRIBUTE_ALIGNED_VALUE / BITS_PER_UNIT);
 
-      調査中. constexpr による宣言も OK.
+      調査中.
 
 (*) Pmode
 
@@ -433,8 +445,7 @@ constexpr UNITS_PER_WORD = 2
   create_expand_operand (op, EXPAND_ADDRESS, value, Pmode, false);
 
       ポインタが 4 バイトならば Pmode を SImode に define する. 8 バイトならば
-      DImode に, 2 バイトのならば HImode に define する. constexpr による宣言
-      も OK.
+      DImode に, 2 バイトのならば HImode に define する.
 
 (*) MAX_REGS_PER_ADDRESS
 
@@ -442,7 +453,7 @@ constexpr UNITS_PER_WORD = 2
 
 #define MAX_RELOADS (2 * MAX_RECOG_OPERANDS * (MAX_REGS_PER_ADDRESS + 1))
 
-      調査中. constexpr による宣言も OK.
+      調査中.
 
 (*) FUNCTION_ARG_REGNO_P
 
@@ -463,7 +474,7 @@ constexpr UNITS_PER_WORD = 2
 
 #define MAX_STACK_ALIGNMENT STACK_BOUNDARY
       
-      調査中. constexpr による宣言も OK.
+      調査中.
 
 (*) PARM_BOUNDARY
 
@@ -471,7 +482,7 @@ constexpr UNITS_PER_WORD = 2
 
   set_mem_align (dest, PARM_BOUNDARY);
       
-      調査中. constexpr による宣言も OK.
+      調査中.
 
 (*) FUNCTION_MODE
 
@@ -479,7 +490,7 @@ constexpr UNITS_PER_WORD = 2
 
     function = memory_address (FUNCTION_MODE, function);
       
-      調査中. 大抵は QImode に define している. constexpr による宣言も OK.
+      調査中. 大抵は QImode に define している.
 
 (*) REGNO_OK_FOR_BASE_P
 
@@ -495,7 +506,7 @@ constexpr UNITS_PER_WORD = 2
 
       if (! SLOW_BYTE_ACCESS
 
-      調査中. constexpr による宣言も OK.
+      調査中.
 
 (*) ASM_OUTPUT_ALIGN
 
@@ -561,7 +572,7 @@ void ASM_OUTPUT_ALIGN(FILE* fp, int n)
 			       gen_int_mode (GET_MODE_SIZE (CASE_VECTOR_MODE),
 					     Pmode));
 
-      調査中. 大抵は Pmode に define されている. constexpr による宣言も OK.
+      調査中. 大抵は Pmode に define されている.
 
 (*) ASM_APP_ON
 
@@ -570,7 +581,7 @@ void ASM_OUTPUT_ALIGN(FILE* fp, int n)
       fputs (ASM_APP_ON, asm_out_file);
 
       プログラムにインラインアセンブラが出現したときに始まりのマークとしてこの文字列が生成
-      ファイルに書き込まれる. constexpr による宣言も OK.
+      ファイルに書き込まれる.
 
 (*) ASM_APP_OFF
 
@@ -579,7 +590,7 @@ void ASM_OUTPUT_ALIGN(FILE* fp, int n)
       fputs (ASM_APP_OFF, asm_out_file);
 
       ASM_APP_ON と対で生成ファイルに書き込まれる. インラインアセンブラの終りのマークとし
-      てこの文字列が生成ファイルに書き込まれる. constexpr による宣言も OK.
+      てこの文字列が生成ファイルに書き込まれる.
 
 (*) FUNCTION_PROFILER
 
@@ -655,7 +666,7 @@ void ASM_OUTPUT_ALIGN(FILE* fp, int n)
   opts->x_flag_signed_char = DEFAULT_SIGNED_CHAR;
 
       char が signed char と同じ範囲の値を取るか, あるいは unsigned char と同じ範囲の
-      値を取るかを指定する. constexpr による宣言も OK.
+      値を取るかを指定する.
 
 以下は cc1 等のコンパイル時には必要ないが実行時にエラーを起こさないために必要な宣言
 
@@ -681,7 +692,7 @@ extern void hasegawa_print_operand(FILE*, rtx, int);
 
       文字列リテラルをマクロで指定する. .text, .data, .bss セクションに切り替えるとき
       に生成する疑似命令を指定する. プリプロセッサのディレクティブで参照されているので
-      constexpr による宣言はできない.
+      マクロにする必要がある.
 
 (*) POINTER_SIZE
 
@@ -692,8 +703,7 @@ extern void hasegawa_print_operand(FILE*, rtx, int);
 #endif
 
       Pmode を DImode と等しくなるように宣言している場合は POINTER_SIZE が 8 と等しく
-      なるようにする. プリプロセッサのディレクティブで参照されているので
-      constexpr による宣言はできない.
+      なるようにする. プリプロセッサのディレクティブで参照されているのでマクロにする必要がある.
 
 (*) INCOMING_RETURN_ADDR_RTX
 
@@ -759,7 +769,7 @@ gcc/config/newlib-stdint.h:50
 
       UNITS_PER_WORD を 4 以外にする場合は以下のように宣言する. 以下は AVR の例:
 
-constexpr int UNITS_PER_WORD  = 1;
+#define UNITS_PER_WORD		1
 
 #define SHORT_TYPE_SIZE		16
 #define INT_TYPE_SIZE           16
@@ -796,7 +806,7 @@ constexpr int UNITS_PER_WORD  = 1;
 
       大抵は 1 に define する. プリプロセッサのディレクティブで使用されるので
       マクロでなくてはならない. アドレスの低い方にスタックが成長するならば
-      1 に define する.
+      1 に define する(i960 ではスタックがアドレスの高い方に成長する).
 
 (*) FRAME_GROWS_DOWNWARD
 
