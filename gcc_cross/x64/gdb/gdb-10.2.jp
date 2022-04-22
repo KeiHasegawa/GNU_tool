@@ -84,3 +84,182 @@ i386-elf-gdb での実績があったのでいきなり x64 用の bochs-2.7 を
 
 2022.04.22 の時点で bochs 自体は IA-32 のままだが 0x100 番地に nop を数個置いた
 プログラムを x86_64-elf-gdb から期待通り実行できている.
+
+そこでまずは IA-64 用に bochs をビルドしてみる.
+
+#if BX_SUPPORT_X86_64
+
+このマクロっぽい. 現状では 0 に define されている.
+
+config.h:
+// emulate x86-64 instruction set?
+#define BX_SUPPORT_X86_64 0
+
+これを 1 にする.
+
+% find . -name '*.o' -exec rm -f {} \;
+% find . -name '*.a' -exec rm -f {} \;
+% make clean
+% make bochs
+decoder/fetchdecode32.cc: 関数 ‘int fetchImmediate(u_int32_t, unsigned int&, bxInstruction_c*, Bit16u, bool)’ 内:
+decoder/fetchdecode32.cc:1476:37: エラー: ‘iptr’ was not declared in this scope
+ 1476 |           i->IqForm.Iq = FetchQWORD(iptr);
+      |                                     ^~~~
+decoder/fetchdecode32.cc:1528:41: エラー: ‘iptr’ was not declared in this scope
+ 1528 |               i->IqForm.Iq = FetchQWORD(iptr);
+      |                                         ^~~~
+make[1]: *** [Makefile:146: decoder/fetchdecode32.o] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7.x64.mine/cpu' から出ます
+make: *** [Makefile:347: cpu/libcpu.a] エラー 2
+
+%
+
+これは i386-elf-gdb と bochs-2.7 とを開通させるときに行なった作業の影響らしい.
+コンパイルエラーを回避した.
+この修正でリンク寸前までできているがリンクでエラーしている:
+
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: cpu/libcpu.a(icache.o): in function `BX_CPU_C::serveICacheMiss(unsigned int, unsigned long long)':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7.x64.mine/cpu/icache.cc:115: undefined reference to `fetchDecode64(unsigned char const*, bxInstruction_c*, unsigned int)'
+...
+
+bochs-2.7.x64.mine/cpu/Makefile
+
+を以下のように修正した:
+
+libcpu.a: $(OBJS) $(OBJS64)
+	rm -f  libcpu.a
+	ar rv $@ $(OBJS) $(OBJS64)
+	$(RANLIB) libcpu.a
+
+この修正を入れたがまだリンク時にエラーしている:
+
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: cpu/libcpu.a(fetchdecode64.o): in function `decoder64_modrm(unsigned char const*, unsigned int&, bxInstruction_c*, unsigned int, unsigned int, unsigned int, void const*)':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7.x64.mine/cpu/decoder/fetchdecode64.cc:1620: undefined reference to `fetchImmediate(unsigned char const*, unsigned int&, bxInstruction_c*, unsigned short, bool)'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: cpu/libcpu.a(fetchdecode64.o): in function `decoder64(unsigned char const*, unsigned int&, bxInstruction_c*, unsigned int, unsigned int, unsigned int, void const*)':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7.x64.mine/cpu/decoder/fetchdecode64.cc:1651: undefined reference to `fetchImmediate(unsigned char const*, unsigned int&, bxInstruction_c*, unsigned short, bool)'
+collect2: エラー: ld はステータス 1 で終了しました
+make: *** [Makefile:189: bochs] エラー 1
+
+
+fetchImmediate が定義されていないらしい. しかし以下はある.
+
+int fetchImmediate(u_int32_t addr, unsigned &remain, bxInstruction_c *i, Bit16u ia_opcode, bool is_64)
+{
+
+これは i386-elf-gdb と bochs-2.7 とを動作させるために行なった修正だった.
+
+fetchDecode64(const unsigned char*, ...);
+
+から
+
+fetchDecode64(u_int64_t addr, ...);
+
+に変更した. この変更に伴なって以下のリンクエラーが発生している.
+
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: cpu/libcpu.a(icache.o): in function `BX_CPU_C::serveICacheMiss(unsigned int, unsigned long long)':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7.x64.mine/cpu/icache.cc:115: undefined reference to `fetchDecode64(unsigned char const*, bxInstruction_c*, unsigned int)'
+
+以下のように myFetchDecode64 を呼び出すようにした.
+
+extern "C" void execute_for_me(u_int8_t)
+{
+  bxInstruction_c i;
+  u_int32_t reamain = 15;
+  if (BX_CPU_THIS_PTR cpu_mode == BX_MODE_LONG_64)
+    myFetchDecode64(RIP, &i, reamain);
+  else
+    myFetchDecode32(RIP, true, &i, reamain);
+...
+
+そして元々あったものは abort するようにしておいた:
+
+int fetchDecode64(const Bit8u *fetchPtr, bxInstruction_c *i, unsigned remainingInPage)
+{
+  abort();
+}
+
+2022.04.22 14:00
+現状 bochs を IA-64 で動かしている(つもりではいる).
+main 函数から step, where, finish をするプログラムが以下のようになっている:
+
+Breakpoint 1, main () at test.c:8
+8	  return f(5, 6);
+f (a=5, b=6) at test.c:3
+3	  return a + b;
+#0  f (a=5, b=6) at test.c:3
+#1  0x0000010c00000000 in ?? ()
+Backtrace stopped: Cannot access memory at address 0x1000
+Warning:
+Cannot insert breakpoint 0.
+Cannot access memory at address 0x10c00000000
+
+f の戻りアドレスは 0x134 で 0x10c は main の戻りアドレス.
+main の先頭のコードは
+
+main:
+.LFB1:
+	.loc 1 7 1
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset 6, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register 6
+	.loc 1 8 10
+	movl	$6, %esi
+	movl	$5, %edi
+	callq	f
+	.loc 1 9 1
+	popq	%rbp
+	.cfi_def_cfa 7, 8
+	ret
+	.cfi_endproc
+
+のように pushq になっている. しかし
+
+0000000000000121 <main>:
+ 121:	55                   	push   %rbp
+ 122:	48 89 e5             	mov    %rsp,%rbp
+ 125:	be 06 00 00 00       	mov    $0x6,%esi
+ 12a:	bf 05 00 00 00       	mov    $0x5,%edi
+ 12f:	e8 d9 ff ff ff       	call   10d <f>
+ 134:	5d                   	pop    %rbp
+ 135:	c3                   	ret    
+
+一方同じような i386 のプログラムは
+
+00000118 <main>:
+ 118:	55                   	push   %ebp
+ 119:	89 e5                	mov    %esp,%ebp
+ 11b:	6a 06                	push   $0x6
+ 11d:	6a 05                	push   $0x5
+ 11f:	e8 e7 ff ff ff       	call   10b <f>
+ 124:	83 c4 08             	add    $0x8,%esp
+ 127:	c9                   	leave  
+ 128:	c3                   	ret    
+
+のようになっている. つまり 0x55 は i386 での push %ebp であり
+x64 での pushq %rbp である.
+
+実際のシミュレーションは, まだ実アドレスモードで 64 KB の壁を突破できていないことも
+あるがこの命令の結果スタックポインタは 4 減算される.
+
+x86_64-elf-gdb では push %rbp でスタックポインタが 8 減算されることを仮定して
+実装されているのだが, これはこれで妥当な実装.
+
+つまりこの場合はテストが適切でないということ.
+
+ところで x86_64-elf-gcc が生成しているコードだが第 1 引数を %esi で, 第 2 引数を
+%edi レジスタで渡している. x86_64 の cygwin でインストールした gcc であれば
+第 1 引数を %rcx, 第 2 引数は %rdx を使用するのだがここいらは ABI に違いが出ている.
+
+テストが不完全であるため実装がそれなりのものになっているかどうかは疑問だが
+現時点での
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.x86_64-elf/sim/x86_64
+
+を x86_64.1.tar として
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7.x64.mine
+
+を bochs-2.7.x64.mine.1.tar としてアップロードしておく.
