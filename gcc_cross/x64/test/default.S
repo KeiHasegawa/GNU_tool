@@ -1,6 +1,6 @@
 	.text
 start:
-	movl	$stack, %rsp
+	movq	$stack, %rsp
 	call	main
 end:	
 	nop
