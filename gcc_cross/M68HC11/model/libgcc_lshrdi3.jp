@@ -1,0 +1,104 @@
+もう一度 libgcc.a のビルドをしてみた.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine
+% make all-target-libgcc
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include    -g -O2 -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../host-i686-pc-linux-gnu/gcc -I../.././libgcc -I../.././libgcc/. -I../.././libgcc/../gcc -I../.././libgcc/../include    -o _lshrdi3.o -MT _lshrdi3.o -MD -MP -MF _lshrdi3.dep -DL_lshrdi3 -c ../.././libgcc/libgcc2.c -fvisibility=hidden -DHIDE_EXPORTS
+cc1: ../.././gcc/config/m68hc11/m68hc11.c:633: void sthi_sp(int, int): Assertion `regno == X_REGNUM' が失敗しました.
+...
+
+__negdi2 のビルドは成功していたが, 続く __lshrdi3 のビルドで assertion エラーしている.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/m68hc11-elf/libgcc
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include    -g -O2 -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wstrict-prototypes -Wmissing-prototypes -Wno-error=format-diag -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../host-i686-pc-linux-gnu/gcc -I../.././libgcc -I../.././libgcc/. -I../.././libgcc/../gcc -I../.././libgcc/../include    -o _lshrdi3.o -MT _lshrdi3.o -MD -MP -MF _lshrdi3.dep -DL_lshrdi3 -c ../.././libgcc/libgcc2.c -fvisibility=hidden -DHIDE_EXPORTS
+
+エラーを再現させることができている. 上の xgcc の起動を -c を -E に
+-o _lshrdi3.o を -o _lshrdi3.i に置き替えることでコンパクトな再現ソースを作成することが
+できている.
+
+(gdb) run -g -O2 a.c
+
+で同じエラーが再現できている. また
+
+(gdb) run -g a.c
+
+や
+
+(gdb) run a.c
+
+で埋め込んだブレークポイントにヒットしている. 未対応の箇所が実行されている.
+まずは -O2 なしで正しく実行できることを目指す.
+
+2022.04.21 11:55
+
+現状 movdi が以下の引数で呼び出されている.
+
+(gdb) p debug_rtx(x)
+(mem/c:DI (mem/c:HI (plus:HI (reg/f:HI 9 *_.frame)
+            (const_int 31 [0x1f])) [6 %sfp+31 S2 A8]) [5 <retval>+0 S8 A8])
+$13 = void
+(gdb) p debug_rtx(y)
+(mem/c:DI (plus:HI (reg/f:HI 9 *_.frame)
+        (const_int 33 [0x21])) [6 %sfp+33 S8 A8])
+$14 = void
+(gdb) 
+
+[[fp+31]] := [fp+33]
+
+ということ.
+
+2022.04.21 14:30
+
+オリジナルの cc1 でもそのようにしていたので以下を追加:
+
+(define_insn "neghi2"
+  [(set (match_operand:HI 0 "nonimmediate_operand" "")
+	(neg:HI (match_operand:HI 1 "general_operand" "")))]
+  ""
+  "*
+  return m68hc11_neghi2(operands[0], operands[1]);")
+
+2022.04.21 14:30 ビルド開始.
+
+現状 neghi2 は使用されていない.
+
+__lshrdi3
+
+のコンパイルだが
+
+      const USItype carries = (USItype) uu.s.high << bm;
+
+ができていない. carries = 0xcccccccc になっている.
+
+uu.s.high << bm
+
+は
+
+	bsr	___ashlsi3
+
+の呼び出しなのでここを確認する.
+
+;#(insn 47 46 48 (set (mem/c:SI (plus:HI (reg/f:HI 9 *_.frame)
+;#                (const_int 3 [0x3])) [2 carries+0 S4 A8])
+;#        (ashift:SI (mem/c:SI (plus:HI (reg/f:HI 9 *_.frame)
+;#                    (const_int 33 [0x21])) [6 %sfp+33 S4 A8])
+;#            (reg:HI 1 x [orig:27 _11+2 ] [27]))) "a.c":34:21 11 {ashlsi3}
+;#     (nil))
+	stx	*_.d1
+	xgdx
+	stx	*_.d2
+	pshx
+	ldy	*_.frame
+	ldx	33, y
+	ldd	35, y
+	puly
+	bsr	___ashlsi3
+	ldx	*_.d2
+	xgdx
+	ldx	*_.d1
+
+[fp+3] := [fp+33] << x
+
+結果 の d レジスタ fp 相対 3 に保存していないように見える.
+=> 修正して期待通り動作していることを確認した.
+
