@@ -405,6 +405,9 @@ void BX_CPP_AttrRegparmN(1) BX_CPU_C::MOV_EdIdR(bxInstruction_c *i)
 
 myFetchDecode32(EIP, true, &i, fetchModeMask);  false にしていた. これが原因だった.
 
+   => これで辻褄が合うのは事実だが, 後で気付いたがオリジナルの bochs での最初の呼び出しは
+      fetchDeocode32(is_32 = false) で, これはリセット後のリアルアドレスモードだから.
+
 2022.04.16 17:30 現状スタックポインタ %esp をセットした後
 
 	   call	 main
