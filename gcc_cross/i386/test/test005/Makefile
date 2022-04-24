@@ -1,12 +1,16 @@
-all:test.objdump test.lof
+all:por.objdump por.lof
 
 include ../Makefile.common
 
 test.o:test.S
 
-test.elf:test.o ../power_on_reset.o
-	i386-elf-ld -o $@ $< -T ../use_por.x
+por.o:por.S
 
-test.objdump:test.elf
+OBJS = por.o test.o
 
-test.lof:test.log
+por.elf:$(OBJS)
+	i386-elf-ld -o $@ $(OBJS) -T por.x
+
+por.objdump:por.elf
+
+por.lof:por.log
