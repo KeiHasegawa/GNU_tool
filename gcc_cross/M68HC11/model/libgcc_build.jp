@@ -203,14 +203,24 @@ echo "*** HASEGAWA 5285 ***"
 
 を以下のように修正.
 
-m68hc11-*-*)
-	cpu_type=m68hc11
+tic6x-*-*)
+	cpu_type=c6x
 	;;
++m68hc11-*-*)
++	cpu_type=m68hc11
++	;;
+esac
 
 
-m68hc11-*-*)
-	tmake_file="$tmake_file m68hc11/t-m68hc11"
+nvptx-*)
+	tmake_file="$tmake_file nvptx/t-nvptx"
+	extra_parts="crt0.o"
 	;;
+
++m68hc11-*-*)
++	tmake_file="$tmake_file m68hc11/t-m68hc11"
++	;;
+*)
 
 % /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/libgcc/configure --srcdir=../.././libgcc --cache-file=./config.cache --enable-multilib --with-cross-host=i686-pc-linux-gnu --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --with-newlib --enable-languages=c,c++,fortran,lto,objc --program-transform-name=s/^/m68hc11-elf-/ --disable-option-checking --with-target-subdir=m68hc11-elf --build=i686-pc-linux-gnu --host=m68hc11-elf --target=m68hc11-elf
 エラーを回避できているっぽい.
@@ -245,7 +255,7 @@ configure: error: changes in the environment can compromise the build
 configure: error: run `make distclean' and/or `rm ./config.cache' and start over
 make: *** [Makefile:12629: configure-target-libgcc] エラー 1
 
-% rm  m68hc11-elf/libgcc/config.cache
+% rm m68hc11-elf/libgcc/config.cache
 % make configure-target-libgcc
 ...
 checking for m68hc11-elf-gcc...  /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.m68hc11-elf.mine/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/m68hc11-elf/sys-include   

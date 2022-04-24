@@ -1,0 +1,271 @@
+論理右シフトに対応していないことに気付いた. 以下を追加してビルド中.
+
+(define_insn "lshrsi3"
+  [(set
+    (match_operand:SI 0 "nonimmediate_operand" "")
+    (lshiftrt:SI
+     (match_operand:SI 1 "general_operand" "")
+     (match_operand:HI 2 "general_operand" "")))]
+  ""
+  "*
+  return m68hc11::si::lshr(operands[0], operands[1], operands[2]);")
+
+2022.04.24 13:30 期待した rtx_insn が生成されていることを確認した.
+
+しかし生成される rtx_insn が変更されたためか PASS していた
+
+test082.c : __muldi3
+test083.c : __negdi2
+test087.c : __lshrdi3
+
+が FAIL している. 一旦ソースファイルをきれいにしてリビルド中. 2022.04.24 13:50
+
+これまでは 32 ビットの論理右シフトが必要になった場合 32 ビットを 64 ビットに
+ゼロ拡張して 64 ビットの算術右シフトをしていた. これに早く気付くべきだった.
+
+test082.c はテストプログラムの実行時不正メモリアクセスが発生している.
+
+	ldd	23, y
+	ldy	#16
+	bsr	___lshrsi3
+	addd	27, y          ★ ここで不正メモリアクセス
+	xgdx
+
+これはおそらくフレーム相対 27 にアクセスしようとして
+
+	ldy    *_.frame
+
+が抜けているだけかと思われる.
+
+;#(insn 65 64 66 (set (mem/c:SI (plus:HI (reg/f:HI 9 *_.frame)
+;#                (const_int 25 [0x19])) [1 __x1+0 S4 A8])
+;#        (plus:SI (mem/c:SI (plus:HI (reg/f:HI 9 *_.frame)
+;#                    (const_int 25 [0x19])) [1 __x1+0 S4 A8])
+;#            (reg:SI 0 d [orig:25 _9 ] [25]))) "a.c":20:467 8 {addsi3}
+;#     (nil))
+	addd	27, y
+	xgdx
+	adcb	27, y
+	adca	25, y
+...
+
+明らかにおかしい. このコードは
+
+[fp+25] := [fp+25] + d
+
+に対するコード.
+現状以下のようになっている:
+
+    inline void add(int regno, int offset)
+    {
+      assert(regno == D_REGNUM);
+      fprintf(asm_out_file, "	addd	%d, y\n", offset+2);
+      fprintf(asm_out_file, "	xgdx\n");
+      fprintf(asm_out_file, "	adcb	%d, y\n", offset+2);
+      fprintf(asm_out_file, "	adca	%d, y\n", offset);
+      fprintf(asm_out_file, "	xgdx\n");
+    }
+
+この add は y レジスタに *_.frame をロードした状態で呼び出されることや
+
+    fprintf(asm_out_file, "	tsy\n"); // y = sp + 1
+...    
+    m68hc11::si::add(regno, offz-1);
+
+のように sp 相対のものと演算する目的で書かれていた. 大抵の場合は y レジスタに
+*_.frame がロードされたからこれまでバグが発火しなかったが, 直前でシフトの
+ランタイムライブラリ函数の呼び出しがあったので y レジスタが壊れていたということ.
+
+    enum add_t { curr_y, ldsp, ldfp };
+    inline void add_with(int regno, int offset, add_t type)
+    {
+
+のように修正することにしてみた. と思ったが ldsp は offz-1 のように
+調整しているから今回はそうではなくて
+
+    inline void add_fp(int regno, int offset, bool ldy_frame)
+    {
+
+くらいにしておくことにした.
+
+test083.c ではこれの ior バージョンの類似のバグがあった.
+
+test087.c では __lshrdi3(320, 6) の戻り値の期待値は 5 だが現状 320 になっている.
+
+Breakpoint 1, main () at a.s:476
+(m68hc11-elf-gdb) b __lshrdi3
+(m68hc11-elf-gdb) c
+...
+__lshrdi3 のブレークポイントにヒット
+(m68hc11-elf-gdb) x/13bx $sp
+0xfedf:	0xcc	0x12	0xd0	0x00	0x00	0x00	0x00	0x00
+0xfee7:	0x00	0x01	0x40	0x00	0x06
+(m68hc11-elf-gdb) p/x 320
+$1 = 0x140
+(m68hc11-elf-gdb)
+
+なので引数 320 と 6 は正しく渡されている.
+
+(m68hc11-elf-gdb) info register
+PC=0x1064  SP=0xfedf  FP=0xfeeb 
+CCR=0x08   ----N---   u> != < <= 
+D=0xfeec -276 X=0xff00 -256 Y=0x0000 0
+D1=0xcccc -13108 D2=0xcccc -13108 
+(m68hc11-elf-gdb)
+
+なので演算結果は 0xfeec に書き込まれるということ.
+
+(m68hc11-elf-gdb) watch *(int*)(0xfeec+4)
+
+このウォッチポイントにヒットしたのは以下の rtx_insn に対するコード
+
+;# SUCC: 8 (FALLTHRU)
+;#(insn 55 54 58 (set (mem/c:DI (mem/c:HI (plus:HI (reg/f:HI 9 *_.frame)
+;#                    (const_int 23 [0x17])) [6 %sfp+23 S2 A8]) [5 <retval>+0 S8 A8])
+;#        (mem/c:DI (plus:HI (reg/f:HI 9 *_.frame)
+;#                (const_int 25 [0x19])) [6 %sfp+25 S8 A8])) "a.c":40:11 18 {movdi}
+;#     (nil))
+
+[[fp+23]] := [fp+25]
+
+ということらしい. [fp+25] が既に間違えた値になっていたということ.
+
+(m68hc11-elf-gdb) info register
+PC=0x127e  SP=0xfebd  FP=0xfebd 
+CCR=0x00   --------   u> != >= > 
+D=0x0140 320 X=0x0140 320 Y=0xfebd -323
+D1=0x0000 0 D2=0x0140 320 
+(m68hc11-elf-gdb) p *(long long*)(0xfebd+25)
+$2 = 320
+(m68hc11-elf-gdb)
+
+なのでここへの書き込みを調べてみる.
+
+;#(insn 54 53 55 (set (mem/c:DI (plus:HI (reg/f:HI 9 *_.frame)
+;#                (const_int 25 [0x19])) [6 %sfp+25 S8 A8])
+;#        (mem/j/c:DI (plus:HI (reg/f:HI 9 *_.frame)
+;#                (const_int 15 [0xf])) [3 w.ll+0 S8 A8])) "a.c":40:11 18 {movdi}
+;#     (nil))
+
+[fp+25] := [fp+15]
+
+ということ.
+
+(m68hc11-elf-gdb) p *(long long*)(0xfebd+15)
+$3 = 320
+(m68hc11-elf-gdb)
+
+なのでここへの書き込みを調べてみる.
+
+;# SUCC: 7 (FALLTHRU)
+;#(insn 51 49 52 (set (mem/j/c:SI (plus:HI (reg/f:HI 9 *_.frame)
+;#                (const_int 19 [0x13])) [3 w.s.low+0 S4 A8])
+;#        (reg:SI 0 d [orig:38 _22 ] [38])) "a.c":37:15 7 {movsi}
+
+[fp+19] := d
+
+ということ.
+
+
+(m68hc11-elf-gdb) info register
+PC=0x122f  SP=0xfebd  FP=0xfebd 
+CCR=0x00   --------   u> != >= > 
+D=0x0140 320 X=0x0000 0 Y=0xfebd -323
+D1=0x0000 0 D2=0x001a 26 
+(m68hc11-elf-gdb)
+
+なので D レジスタの計算がおそらく違っている.
+
+とここまできて C のレベルで調べたほうが楽であることに気付く.
+
+      w.s.low = ((USItype) uu.s.low >> b) | carries;
+
+ここができていない uu.s.low = 320, b = 6 であるが w.s.low = 320 になる.
+現状 carries = 0 なのでこの iorsi3 自体は問題にならない.
+
+(USItype) uu.s.low >> b
+
+が今回追加した ___lshrsi3 の呼び出し. ここを調べてみる.
+
+#ifdef L_lshrsi3
+	declare_near ___lshrsi3   ★ これ
+
+	xgdy
+	clra
+	andb	#0x1f
+...
+
+
+なるほどアセンブラの函数だったわけだ.
+今まであまり意識してなかったが,
+
+
+#ifdef L_ashlsi3
+	declare_near ___ashlsi3   ★ これは今まで呼び出していたもの
+...
+#ifdef L_ashrsi3
+	declare_near ___ashrsi3   ★ これは今まで呼び出していたもの
+
+呼び出している側は y レジスタにシフトカウントを入れているつもりだがこういうカラクリだった
+わけだ.
+
+
+(m68hc11-elf-gdb) info register
+PC=0x1355  SP=0xfebb  FP=0xfebd 
+CCR=0x00   --------   u> != >= > 
+D=0x0140 320 X=0x0000 0 Y=0x0000 0
+D1=0x0000 0 D2=0x001a 26 
+(m68hc11-elf-gdb)
+
+y レジスタは 0 になっている. だから 320 がそのまま返っているというわけ.
+この呼び出しが正しくない.
+
+
+	pshx                 ★ この時点で x が 0 になっているので
+	ldy	*_.frame
+	ldx	25, y
+	ldd	27, y
+	puly                 ★ ここで y が 0 になる.
+	bsr	___lshrsi3
+
+実は pshx 命令の時点で d レジスタが 6 になっている.
+
+論理右シフトに対して以下のような rtx_insn が生成されている:
+
+  d := (sign)[fp+45]        # [fp+45] はシフトカウント
+  d := [fp+25] >>l x        # [fp+25] はシフトされるオペランド 
+
+つまり x レジスタにシフトカウントが入っているとしてのもの.
+しかし m68hc11 のコンパイラの実装では
+
+HI : d レジスタ
+
+SI : d レジスタを下位, x レジスタを上位
+
+#define REGISTER_NAMES \
+  { "d", "x", "y", "sp", "unuse0", "unuse1", "unuse2", "unuse3", "unuse4", \
+
+のようにねじ曲げている. この理由はオリジナルのコンパイラがそういうようにしているから
+合わせているということ.
+
+さてこれは困った. しょうがないので以下のような WA を入れた:
+
+      void common4(kind_t kind, int offx, int offy, int regno)
+      {
+	m68hc11_impl::d_reg::gard obj;
+	assert(regno == X_REGNUM);  // if not, nont implemented
+	fprintf(asm_out_file, "	xgdx\n");  // WA 2022.04.24 17:15
+	fprintf(asm_out_file, "	pshx\n");
+	m68hc11::si::ld_fp(D_REGNUM, offy);
+
+common7, common8 にも同様の WA を入れた.
+
+とは言え,
+
+#define REGISTER_NAMES \
+  { "x", "d", "y", "sp", "unuse0", "unuse1", "unuse2", "unuse3", "unuse4", \
+
+のようにしてレジスタアロケーションアルゴリズムで d レジスタが最初に選ばれるようにすれば
+ねじ曲げてはいない. おそらくオリジナルのコンパイラはこの工夫をしている可能性は十分ある.
+
+今回は上の WA だけで対応する.
