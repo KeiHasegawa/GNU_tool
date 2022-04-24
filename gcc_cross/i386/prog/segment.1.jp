@@ -104,8 +104,8 @@ i386 のセグメントレジスタは以下:
   FS
   GS
 
-まずは CS レジスタは今, リセット時に 0xffff にセットされているが
-これを 0xffffffff にセットする方法を調べてみる.
+CS レジスタは現状, リセット時に 0xffff にセットされているが
+まずはこれを 0xffffffff にセットする方法を調べてみる.
 
 (gdb) p &(&bx_cpu)-> sregs[BX_SEG_REG_CS].cache.u.segment.limit_scaled
 $1 = (Bit32u *) 0x822836c <bx_cpu+204>
