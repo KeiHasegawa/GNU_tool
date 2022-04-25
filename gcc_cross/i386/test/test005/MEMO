@@ -1,0 +1,15 @@
+2022.04.25 15:55
+現状 normal_post のラベルまで期待通り実行できている.
+
+normal_post:
+	# case 0: normal startup
+	cli
+	mov	$0xfffe, %ax           ★ この命令
+	mov	%ax, %sp
+	xor	%ax, %ax
+	mov	%ax, %ds
+	mov	%ax, %ss
+	nop                            ★ ここにブレークポイント
+
+しかし上の mov 命令をステップ実行すると nop のブレークポイントにヒットする.
+ちなみに cli は Clear Interrupt Flag という命令らしい.
