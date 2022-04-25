@@ -1,0 +1,69 @@
+2022.04.24 14:00
+現状 execute_for_me は以下のようになっている:
+
+extern "C" void execute_for_me(u_int8_t)
+{
+  bxInstruction_c i;
+  u_int32_t remain = 15;
+  myFetchDecode32(EIP, true, &i, remain);  ★ 第 2 引数が true
+...
+
+この経緯は「i386 のシミュレータ」で解析した通りだがこれは辻褄を合わせるためで本来ならば
+本家 bochs を踏襲するとすれば
+
+  bool is_32 = BX_CPU_THIS_PTR sregs[BX_SEG_REG_CS].cache.u.segment.d_b;
+  int ret = myFetchDecode32(EIP, is_32, &i, remain);
+
+のようにするべきである. そこで無理やり 32 ビットモードで動作させるのを止めてみる.
+このように修正するとこれまで辻褄の合っていた簡易的なスタートアップルーチン
+
+start:
+	movl	$stack, %esp
+	call	main
+
+は動作しなくなる. しかしまずは 32 ビットモード(?)への移行を本来あるべき形でやってみることに
+する.
+
+そしてその結果コンパイラのテストのためのシミュレーションを, 例えば i386-elf-gdb のコマンド
+
+sim start=32
+
+や i386-elf-run のオプション --start=32 で選択できれるのが妥当ならばそれでもよい.
+
+2022.04.25
+現状 my_init を
+
+extern "C" void my_init()
+{
+#if 0
+  bx_init_siminterface();
+  BX_CPU(0)->reset(BX_RESET_HARDWARE);
+#else
+  bxmain();
+#endif  
+}
+
+のように本家の bochs と同じようにしている.
+そして Power On Reset からシミュレーションしてみている.
+最初の命令
+
+	jmp	post
+
+で例外が発生している. BX_CPU_C::reset が呼び出されていないためセグメントレジスタが
+セットされていないらしい. 現状は以下:
+
+    ci_param->set_enabled(0);
+#if 1
+    return 0;
+#endif
+    int status = SIM->configuration_interface(ci_name, CI_START);
+
+早いタイミングでうこの函数から戻っているらしくこの修正が正しくないらしい.
+一旦この修正をキャンセルする.
+
+2022.04.25 13:50
+現状 Power On Reset から POST のエントリポイント 0xe0b5 にジャンプして
+2 つの out 命令が期待通りに動作している.
+
+
+

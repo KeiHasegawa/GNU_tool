@@ -1,0 +1,204 @@
+2022.04.25 15:55
+現状 normal_post のラベルまで期待通り実行できている.
+
+normal_post:
+	# case 0: normal startup
+	cli
+	mov	$0xfffe, %ax           ★ この命令
+	mov	%ax, %sp
+	xor	%ax, %ax
+	mov	%ax, %ds
+	mov	%ax, %ss
+	nop                            ★ ここにブレークポイント
+
+しかし上の mov 命令をステップ実行すると nop のブレークポイントにヒットする.
+ちなみに cli は Clear Interrupt Flag という命令らしい.
+さてこれは一体?
+
+2022.04.25 16:15
+
+SECTIONS {
+	. = 0x0
+	.text : {}
+...	
+
+のようにして
+
+	.text
+	.org 0xe0b5
+post:
+	...
+
+	.org 0xfff0
+power_on_reset:
+	ljmp	$0, $post
+
+
+のようにすると 64KB に近いプログラムになり, できれば余分なメモリを割り当てたくないので
+以下のようにした.
+
+SECTIONS {
+	. = 0xe0b5;
+	.post : { post.o(.text) }
+
+	. = 0xfff0;
+	.por : { por.o(.text) }
+
+
+リンカスクリプトファイルを上のようにした. そこで以下のバグに気付く.
+
+	# then initialize the DMA controllers
+	mov	0xc0, %al                       ★ 間違い
+
+上は $0xc0 が正しい. これだと 0xc0 番地にアクセスする.
+
+2022.04.25 16:22
+
+normal_post:
+	# case 0: normal startup
+	cli
+	mov	$0xfffe, %ax    ★
+	mov	%ax, %sp
+	xor	%ax, %ax
+
+現状上の mov 命令をステップ実行すると
+
+core: 2 byte read to unmapped address 0x33 at 0xe0e6
+
+Program received signal SIGSEGV, Segmentation fault.
+0x0000e0e6 in normal_post () at post.S:50
+
+のようになる. これは全く予想しない動作になっている.
+不正メモリアクセスしているときの PC は 0xe0e6 であるが
+
+0000e0df <normal_post>:
+    e0df:	fa                   	cli    
+    e0e0:	66 b8 fe ff          	mov    $0xfffe,%ax
+    e0e4:	66 89 c4             	mov    %ax,%sp
+    e0e7:	66 31 c0             	xor    %ax,%ax
+
+なのでそもそもフェッチが正しくない可能性がある. 0xe0e0 番地の命令のシミュレーションを
+確認してみる.
+
+調べてみたところ
+
+0xe0e0 番地の命令は 6 バイトの命令らしい
+
+	movl	$0xfffe, %eax
+
+をアセンブルしてみたところ以下:
+
+fff8:	b8 fe ff 00 00       	mov    $0xfffe,%eax
+
+自分が想像していた間違いとは異なっていた.
+単純に myFetchDecode32 が正しくない可能性がある.
+
+      switch(type) {
+...
+      case BX_IMMD:
+        if (remain > 3) {
+          i->modRMForm.Id = sim_core_read_aligned_4_for_me(addr);  ★ ここ
+          addr += 4;
+          remain -= 4;
+        }
+        else {
+
+上の部分が実行されている. 0x66 0xb8 をフェッチした後 4 バイトさらに読み進めているから
+6 バイトの命令になっているということ. さてこれはどこが間違いなのか.
+単純に考えれば type = BX_IMMD になっていることが期待した動作ではないということ.
+
+normal_post の 2 命令目を bochs でをどのようにデコードしているか確認してみることにした.
+
+00000000020i[CPU0  ] 0x0000e0a4>> mov ax, 0xfffe : B8FEFF
+
+これは予想していたものだがオペコードが自分のものと異なっている. 0x66 が余計らしい.
+
+とここで, 0x66 はインテルの命令フォーマットの「命令プレフィックス」であることに気付いた.
+ということはプレフィックスをスキップした形で myFetchDecode32 を呼び出すのが
+正しいのか?
+  => そうではない. 現状で問題なし.
+
+試しに
+
+	mov	$0xfffe, %ax
+	mov	%ax, %sp
+
+としている部分を
+
+	mov	$0xfffe, %sp
+
+のようにしてみたところ, この命令でメモリアクセスしているらしく不正メモリアクセスが発生している.
+これはもう訳が分からん.
+
+bochs で fetchDecode32(const unsigned char* iptr) の引数 iptr をダンプしてみた.
+
+(gdb) x/10bx iptr
+0xbfffee30:	0xb8	0xfe	0xff	0x89	0xc4	0x31	0xc0	0x8e
+0xbfffee38:	0xd8	0x8e
+(gdb) 
+
+これは
+
+	mov	$0xfffe, %ax	# 0xb8feff
+	mov	%ax, %sp 	# 0x89c4
+	xor	%ax, %ax	# 0x31c0
+
+ということなのだと思うが, i386-elf-as でのオブジェクトコードは以下
+
+0000e0df <normal_post>:
+    e0df:	fa                   	cli    
+    e0e0:	66 b8 fe ff          	mov    $0xfffe,%ax
+    e0e4:	66 89 c4             	mov    %ax,%sp
+    e0e7:	66 31 c0             	xor    %ax,%ax
+
+0x66 が付加されている.
+
+以下を試してみた:
+
+	cli
+	mov	$0xfffe, %eax     ★
+	mov	%ax, %sp
+
+しかし変更した mov 命令で不正メモリアクセスが発生している.
+
+しょうがないので以下のようにしてハンドアセンブルして対応した:
+
+normal_post:
+	# case 0: normal startup
+	cli
+	.byte	0xb8 ; .byte	0xfe ; .byte	0xff	# mov	$0xfffe, %ax
+	.byte	0x89 ; .byte	0xc4			# mov	%ax, %sp
+	xor	%ax, %ax
+	mov	%ax, %ds
+	mov	%ax, %ss
+
+気付くことは bochs で実行しているプログラムでは 0x66 のプレフィックスを持っている
+命令は実行していない
+
+	xor	%ax, %ax
+
+も
+
+00000000001i[CPU0  ] 0x0000e05b>> xor ax, ax : 31C0
+
+となっているが, i386-elf-as が生成するコードは
+
+0000e0b5 <post>:
+    e0b5:	66 31 c0             	xor    %ax,%ax
+...
+
+のようになっている. そういうものなのか.
+ここで言えることは, そもそも IA-32 の命令フォーマットのプレフィックスが何たるかを
+あまり知らずにプログラミングしているということ.
+
+そしてハンドアセンブルしたコードを逆アセンブルしてみると
+
+0000e0df <normal_post>:
+    e0df:	fa                   	cli    
+    e0e0:	b8 fe ff 89 c4       	mov    $0xc489fffe,%eax
+    e0e5:	66 31 c0             	xor    %ax,%ax
+    e0e8:	8e d8                	mov    %eax,%ds
+    e0ea:	8e d0                	mov    %eax,%ss
+
+のように意図しない結果になっている. つまり自分が目的とするオブジェクトコードと
+使っているツールとが合っていないということ.
