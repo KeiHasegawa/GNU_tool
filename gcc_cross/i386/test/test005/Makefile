@@ -1,16 +1,14 @@
-all:por.objdump por.lof
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test.o:test.S
-
 por.o:por.S
 
-OBJS = por.o test.o
+post.o:post.S
 
-por.elf:$(OBJS)
-	i386-elf-ld -o $@ $(OBJS) -T por.x
+test.elf:por.o post.o por.x
+	i386-elf-ld -o $@ -T por.x
 
-por.objdump:por.elf
+test.objdump:test.elf
 
-por.lof:por.log
+test.lof:test.log

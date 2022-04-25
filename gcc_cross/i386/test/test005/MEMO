@@ -13,3 +13,36 @@ normal_post:
 
 しかし上の mov 命令をステップ実行すると nop のブレークポイントにヒットする.
 ちなみに cli は Clear Interrupt Flag という命令らしい.
+さてこれは一体?
+
+2022.04.25 16:15
+
+SECTIONS {
+	. = 0x0
+	.text : {}
+...	
+
+のようにして
+
+	.text
+	.org 0xe0b5
+post:
+	...
+
+	.org 0xfff0
+power_on_reset:
+	ljmp	$0, $post
+
+
+のようにすると 64KB に近いプログラムになり, できれば余分なメモリを割り当てたくないので
+以下のようにした.
+
+SECTIONS {
+	. = 0xe0b5;
+	.post : { post.o(.text) }
+
+	. = 0xfff0;
+	.por : { por.o(.text) }
+
+
+リンカスクリプトファイルを以下のようにした.
