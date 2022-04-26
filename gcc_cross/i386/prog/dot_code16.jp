@@ -115,6 +115,9 @@ $14 = 0
 (gdb)
 
 おそらくデフォルトの 0 が CODE_32BIT ということなのだろう.
+
+そして以下を発見した:
+
 const pseudo_typeS md_pseudo_table[] =
 {
 ...
@@ -124,7 +127,7 @@ const pseudo_typeS md_pseudo_table[] =
 そこで以下のように修正した:
 % cat a.S
 	.text
-	.code16
+	.code16  ★ これ
 	mov	$0xfffe, %ax
 	
 (gdb) run
