@@ -1,11 +1,12 @@
+(*1) セグメントレジスタへの値のセット
+
 normal_post:
 ...
 	xor	%ax, %ax
 	mov	%ax, %ds
 	mov	%ax, %ss
 
-では DS や SS をクリアしている. この部分の実際のシミュレーションを確認
-してみた.
+では DS や SS をクリアしている. この部分の実際のシミュレーションを確認してみた.
 
   void BX_CPP_AttrRegparmN(2)
 BX_CPU_C::load_seg_reg(bx_segment_reg_t *seg, Bit16u new_value)  ★ ここ
@@ -25,7 +26,7 @@ $7 = {selector = {value = 0x0, index = 0x0, ti = 0x0, rpl = 0x0}, cache = {valid
 (gdb) 
 
 ...
-  seg->selector.value = new_value;          ★ この値が変更されるらしいが, 
+  seg->selector.value = new_value;      ★ この値が new_value で変更されるらしいが 
   seg->selector.rpl = real_mode() ? 0 : 3;
   seg->cache.valid = SegValidCache;
   seg->cache.u.segment.base = new_value << 4;
@@ -34,3 +35,34 @@ $7 = {selector = {value = 0x0, index = 0x0, ti = 0x0, rpl = 0x0}, cache = {valid
 
 他のメンバも更新されるということ. なるほど, これによれば 0 クリアすること自体にも意味があると
 いうこと.
+
+(*2) cld, rep, stosw
+
+20222.04.26 11:00
+ix86 である領域に値をセットするには以下のようにするらしい.
+
+	# clear BIOS data area
+	mov	%ax, %es
+	mov	$bios_data_size, %cx
+	sar	%cx
+	mov	$bios_data, %di 
+	cld
+	rep
+	stosw
+
+bios_data は 0x400 でこの 256 バイトの領域を %ax の値でセットするのが上のコード.
+ここで一応 cld, rep, stosw 命令について知っておく.
+
+cld は Clear Direction Flag という命令でフレグレジスタにある DF フラグ
+をクリアする命令らしい.
+
+rep, stosw 命令は
+
+この組み合わせで使用される.
+
+void BX_CPP_AttrRegparmN(1) BX_CPU_C::REP_STOSW_YwAX(bxInstruction_c*i) ★
+{
+
+シミュレーションしている函数は上だった. 用は rep 命令は次の命令を定数回繰り返すような
+命令らしい. そして stosw は %di レジスタをデスティネーションアドレスと
+して %es レジスタを書き込む命令らしい. これを %cx 回繰り返すということ.
