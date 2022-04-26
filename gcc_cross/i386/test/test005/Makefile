@@ -1,4 +1,4 @@
-all:test.objdump test.lof
+all:test.objdump
 
 include ../Makefile.common
 

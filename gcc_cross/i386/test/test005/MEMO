@@ -1,48 +1,36 @@
-2022.04.25 15:55
-現状 normal_post のラベルまで期待通り実行できている.
-
 normal_post:
-	# case 0: normal startup
-	cli
-	mov	$0xfffe, %ax           ★ この命令
-	mov	%ax, %sp
+...
 	xor	%ax, %ax
 	mov	%ax, %ds
 	mov	%ax, %ss
-	nop                            ★ ここにブレークポイント
 
-しかし上の mov 命令をステップ実行すると nop のブレークポイントにヒットする.
-ちなみに cli は Clear Interrupt Flag という命令らしい.
-さてこれは一体?
+では DS や SS をクリアしている. この部分の実際のシミュレーションを確認
+してみた.
 
-2022.04.25 16:15
+  void BX_CPP_AttrRegparmN(2)
+BX_CPU_C::load_seg_reg(bx_segment_reg_t *seg, Bit16u new_value)  ★ ここ
+{
+  if (protected_mode())
 
-SECTIONS {
-	. = 0x0
-	.text : {}
-...	
+この命令のシミュレーションでは上の函数が呼び出されている. 以下は
 
-のようにして
+	mov	%ax, %ds
 
-	.text
-	.org 0xe0b5
-post:
-	...
+に対するときの値:
 
-	.org 0xfff0
-power_on_reset:
-	ljmp	$0, $post
+(gdb) p new_value
+$6 = 0
+(gdb) p/x *seg
+$7 = {selector = {value = 0x0, index = 0x0, ti = 0x0, rpl = 0x0}, cache = {valid = 0x7, p = 0x1, dpl = 0x0, segment = 0x1, type = 0x3, u = {segment = {base = 0x0, limit_scaled = 0xffff, g = 0x0, d_b = 0x0, avl = 0x0}, gate = {param_count = 0x0, dest_selector = 0x0, dest_offset = 0xffff}, taskgate = {tss_selector = 0x0}}}}
+(gdb) 
 
+...
+  seg->selector.value = new_value;          ★ この値が変更されるらしいが, 
+  seg->selector.rpl = real_mode() ? 0 : 3;
+  seg->cache.valid = SegValidCache;
+  seg->cache.u.segment.base = new_value << 4;
+  seg->cache.segment = 1; /* regular segment */
+  seg->cache.p = 1; /* present */
 
-のようにすると 64KB に近いプログラムになり, できれば余分なメモリを割り当てたくないので
-以下のようにした.
-
-SECTIONS {
-	. = 0xe0b5;
-	.post : { post.o(.text) }
-
-	. = 0xfff0;
-	.por : { por.o(.text) }
-
-
-リンカスクリプトファイルを以下のようにした.
+他のメンバも更新されるということ. なるほど, これによれば 0 クリアすること自体にも意味があると
+いうこと.

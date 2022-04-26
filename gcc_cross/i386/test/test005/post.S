@@ -1,4 +1,5 @@
 	.text
+	.code16
 	.global	post
 post:
 	xor	%ax, %ax
