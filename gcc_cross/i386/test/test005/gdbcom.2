@@ -1,6 +1,13 @@
 set prompt (i386-elf-gdb) 
 target sim
 load
-sim memory-region 0xfff8,6
-b power_on_reset
+
+# stack
+sim memory-region 0xfff8,8
+
+# used by IPL SEQUENCE
+sim memory-region 0x9ff82,2
+
+#b power_on_reset
+b int19_function
 run

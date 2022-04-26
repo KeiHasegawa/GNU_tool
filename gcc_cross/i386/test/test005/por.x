@@ -3,12 +3,27 @@ ENTRY(power_on_reset)
 SECTIONS {
 	. = 0x0;
 	.vec : { vec.o(.bss) }
-	
+
 	. = 0x0400;
 	.bios_data : { bios_data.o(.bss) }
+
+	. = 0xe6f2;
+	.int19 : { int19.o(.text) }
 	
+	. = 0xefd2;
+	.int17 : { int17.o(.text) }
+
 	. = 0xe0b5;
-	.post : { post.o(.text) }
+	.post : { post.o(.text) cfun.o(.text) int18.o(.text) }
+
+	. = 0xf841;
+	.int12 : { int12.o(.text) }
+
+	. = 0xf84d;
+	.int11 : { int11.o(.text) }
+
+	. = 0xf859;
+	.int15 : { int15.o(.text) }
 
 	. = 0xff53;
 	.dih : { dih.o(.text) }
@@ -16,7 +31,7 @@ SECTIONS {
 	. = 0xfff0;
 	.por : { por.o(.text) }
 
-	. = 0xfffe;
+	. = 0x0;  /* 0x10000 */
 	stack = .;
 	 
 	PORT_DMA1_MASTER_CLEAR	= 0x000d;

@@ -1,3 +1,3 @@
 	.bss
-	.space 120 * 4
+	.space 4 * 256
 	

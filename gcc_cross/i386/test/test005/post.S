@@ -69,14 +69,13 @@ normal_post:
 
 	call	post_init_ivt
 
-	int3
-	nop
+	sti	# enable interrupts
+	int	$0x19
 
 s3_post:
 	nop
 	int3
 	nop
-	
 
 	.text
 	.global post_init_ivt
@@ -108,13 +107,66 @@ post_init_ivt:
 	add	$4, %bx
 	loop	.L2
 
-	int3
-
 	# Printer Services vector
-	# SET_INT_VECTOR(0x17, #0xF000, #int17_handler)
-	nop
+	mov	$int17_handler, %ax
+	mov	%ax, 0x17*4
+	mov	$0xf000, %ax
+	mov	%ax, 0x17*4+2
 	
-	int3
+	# Bootstrap failure vector
+	mov	$int18_handler, %ax
+	mov	%ax, 0x18*4
+	mov	$0xf000, %ax
+	mov	%ax, 0x18*4+2
+
+	# Bootstrap Loader vector
+	mov	$int19_handler, %ax
+	mov	%ax, 0x19*4
+	mov	$0xf000, %ax
+	mov	%ax, 0x19*4+2
+	
+	# Memory Size Check vector
+	mov	$int12_handler, %ax
+	mov	%ax, 0x12*4
+	mov	$0xf000, %ax
+	mov	%ax, 0x12*4+2
+
+	# Equipment Configuration Check vector
+	mov	$int11_handler, %ax
+	mov	%ax, 0x11*4
+	mov	$0xf000, %ax
+	mov	%ax, 0x11*4+2
+
+	# System Services
+	mov	$int15_handler, %ax
+	mov	%ax, 0x15*4
+	mov	$0xf000, %ax
+	mov	%ax, 0x15*4+2
+
+	# MDA/CGA Video Parameter Table is not available
+	mov	$0, %ax
+	mov	%ax, 0x1d*4
+	mov	$0, %ax
+	mov	%ax, 0x1d*4+2
+
+	# Character Font for upper 128 characters is not available
+	mov	$0, %ax
+	mov	%ax, 0x1f*4
+	mov	$0, %ax
+	mov	%ax, 0x1f*4+2
+
+	# set vectors 0x60 - 0x67h to zero (0:180..0:19f)
+	xor	%ax, %ax
+	mov	$16, %cx
+	mov	$0x0180, %di 
+	cld
+	rep    stosw
+	
+	# set vector 0x78 and above to zero
+	xor	%eax, %eax
+	mov	$136, %cl
+	mov	$0x1e0, %di
+	rep	stos %eax,%es:(%edi)
 
 	ret
 
