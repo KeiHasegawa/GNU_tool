@@ -1,0 +1,141 @@
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7.org/bios
+% make -n rombios16.bin
+cc    -c -o biossums.o biossums.c
+cc   biossums.o   -o biossums
+gcc -m32 -march=i386 -fno-stack-protector "-DBIOS_BUILD_DATE=\"`date -u -d ' Sun Aug  1 10:07:00 CEST 2021' '+%m/%d/%y'`\"" -E -P rombios.c > _rombios_.c
+bcc -o rombios.s -C-c -D__i86__ -0 -S _rombios_.c
+sed -e 's/^\.text//' -e 's/^\.data//' rombios.s > _rombios_.s
+as86 _rombios_.s -b tmp.bin -u- -w- -g -0 -j -O -l rombios.txt
+perl ./makesym.perl < rombios.txt > rombios.sym
+mv tmp.bin rombios16.bin
+./biossums rombios16.bin
+rm -f  _rombios_.s
+%
+
+as86 というツールを使うらしい. インターネットを検索したところ Oracle のページがヒット
+している. クロスアセンブラということか.
+
+gcc は -E オプションが指定されているから単にプリプロセスに使用しているらしい.
+そして bcc はおそらく Borland C Compiler なのかも.
+
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.i386-elf/gas
+% cat a.S
+	.text
+	mov	$0xfffe, %ax
+M-x gdb
+gdb --annotate=3 ./as-new
+(gdb) run -o a.o a.S
+
+% i386-elf-objdump -d a.o > a.o.objdump
+
+00000000 <.text>:
+   0:	66 b8 fe ff          	mov    $0xfffe,%ax
+        ★
+
+問題の 0x66 はどのようなときに付加されるのか, 本来ならばマニュアルを読むべきなのだが
+日本語がよく分からないのでアセンブラの実装を覗いてみることにした.
+
+これまでの経験から以下が呼び出されると予測した:
+
+(gdb) b bfd_set_section_contents
+(gdb) run
+...
+bfd_set_section_contents のブレークポイントにヒット
+
+(gdb) p section->name
+$2 = 0x811642c ".text"
+(gdb) x/4bx location
+0x81ed424:	0x66	0xb8	0xfe	0xff
+(gdb)           ★
+
+ということは 0x66 をセットしている瞬間を捕える.
+
+(gdb) p location
+(gdb) watch *(char*)0x81ed424
+(gdb) run
+...
+ウォッチポイントにヒット
+
+
+	  for (j = ARRAY_SIZE (i.prefix), q = i.prefix; j > 0; j--, q++)
+	    if (*q)
+	      frag_opcode_byte (*q);  ★
+
+(gdb) p/x *q
+$6 = 0x66
+(gdb) p q
+$7 = (unsigned char *) 0x81d4d43 <i+195> "f"
+(gdb) watch *(char*)0x81d4d43
+(gdb) run
+...
+ウォッチポイントにヒット
+
+	  if (!add_prefix (prefix))  ★
+	    return 0;
+
+(gdb) b add_prefix
+(gdb) run
+...
+add_prefix のブレークポイントにヒット
+(gdb) p/x prefix
+$9 = 0x66
+(gdb)
+
+それっぽい.
+
+(gdb) up
+(gdb) p flag_code
+$10 = CODE_32BIT
+(gdb)
+
+      if (i.suffix != QWORD_MNEM_SUFFIX
+	  && i.tm.opcode_modifier.mnemonicsize != IGNORESIZE
+	  && !i.tm.opcode_modifier.floatmf
+	  && !is_any_vex_encoding (&i.tm)
+	  && ((i.suffix == LONG_MNEM_SUFFIX) == (flag_code == CODE_16BIT) ★
+	      || (flag_code == CODE_64BIT
+		  && i.tm.opcode_modifier.jump == JUMP_BYTE)))
+	{
+...
+	  if (!add_prefix (prefix))
+	    return 0;
+
+おそらく flag_code が CODE_16BIT として使用できれば自分が今生成したいオブジェクトコード
+を生成できる.
+
+(gdb) p &flag_code
+$11 = (enum flag_code *) 0x81d6240 <flag_code>
+(gdb) watch *(int*)0x81d6240
+(gdb) run
+...
+残念. このウォッチポイントにはヒットしていない. add_prefix のブレークポイントにヒット
+(gdb) p (int)flag_code
+$14 = 0
+(gdb)
+
+おそらくデフォルトの 0 が CODE_32BIT ということなのだろう.
+const pseudo_typeS md_pseudo_table[] =
+{
+...
+  {"code16gcc", set_16bit_gcc_code_flag, CODE_16BIT},
+  {"code16", set_code_flag, CODE_16BIT},
+
+そこで以下のように修正した:
+% cat a.S
+	.text
+	.code16
+	mov	$0xfffe, %ax
+	
+(gdb) run
+...
+flag_code のウォッチポイントにヒット. そして add_prefix は呼び出されず.
+
+% i386-elf-objdump -d a.o > a.o.objdump
+00000000 <.text>:
+   0:	b8                   	.byte 0xb8
+   1:	fe                   	(bad)  
+   2:	ff                   	.byte 0xff
+%
+
+ということになった. 逆アセンブルが期待しない結果ではあるがこれはまた別の問題.
