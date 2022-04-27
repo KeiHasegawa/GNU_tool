@@ -57,7 +57,7 @@ void BX_CPP_AttrRegparmN(1) BX_CPU_C::MOV_SwEw(bxInstruction_c *i)
 $11 = 0x18
 (gdb) 
 
-リセットで変更しているわけではなかった. %ax レジスタが 0x18 の状態で
+リセットで変更しているわけではなかった. そりゃそうか. %ax レジスタが 0x18 の状態で
 i386-elf-as の書式ならば
 
 	mov	%ax, %ss
@@ -92,7 +92,7 @@ i386-elf-run --memory-fill 0xcc --memory-region 0xe00,0x200 sample.elf
 main:
 	leal	4(%esp), %ecx
 	andl	$-16, %esp
-	pushl	-4(%ecx)             この命令
+	pushl	-4(%ecx)            ★ この命令
 
 この命令の実行に伴なってセグメントレジスタが参照されていた.
 やはり棚上げできない問題なのだろうか.
@@ -127,7 +127,8 @@ i386 のセグメントレジスタは以下:
 
 https://www.intel.co.jp/content/dam/www/public/ijkk/jp/ja/documents/developer/IA32_Arh_Dev_Man_Vol1_Online_i.pdf
 
-の「セグメントレジスタ」の節も参照.
+の「セグメントレジスタ」の節も参照. DS, ES, FS, GS はどうやらソフトウェアで自由に使用で
+きるらしい.
 
 CS レジスタは現状, リセット時に限界値が 0xffff にセットされているが
 まずはこれを 0xffffffff にセットする方法を調べてみる.
