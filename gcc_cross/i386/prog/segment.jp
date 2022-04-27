@@ -45,6 +45,8 @@ $6 = (bool *) 0x822838d <bx_cpu+237>
 #0  BX_CPU_C::load_seg_reg (seg=0x8228374 <bx_cpu+212>, new_value=24) at segment_ctrl_pro.cc:92
 #1  0x0814cc4f in BX_CPU_C::MOV_SwEw (i=0x8387334 <bx_cpu+1437844>) at data_xfer16.cc:122  ★これ
 
+(gdb) up
+
 この函数らしい.
 void BX_CPP_AttrRegparmN(1) BX_CPU_C::MOV_SwEw(bxInstruction_c *i)
 {
@@ -63,6 +65,8 @@ i386-elf-as の書式ならば
 	mov	%ax, %ss
 
 の命令で変更している.
+
+  => このときは気付かなかったが既にプロテクトモードに移行していた.
 
 step, where, finish のプログラムを動作させる過程でも CS を 0xffffffff に更新する
 方法を棚上げしていたがそろそろここを踏み込んで調べる必要があるように思えてきた.
