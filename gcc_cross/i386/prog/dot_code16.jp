@@ -143,3 +143,16 @@ flag_code のウォッチポイントにヒット. そして add_prefix は呼�
 %
 
 ということになった. 逆アセンブルが期待しない結果ではあるがこれはまた別の問題.
+
+% i386-elf-objdump -d -M data16 a.o
+00000000 <.text>:
+   0:	b8 fe ff             	mov    $0xfffe,%ax   ★ OK!
+
+% i386-elf-objdump -d -M addr16 a.o
+00000000 <.text>:
+   0:	b8                   	.byte 0xb8
+   1:	fe                   	(bad)  
+   2:	ff                   	.byte 0xff
+%
+
+-M addr16 の意味はここでは不明だが -M data16 とすればよいらしい.
