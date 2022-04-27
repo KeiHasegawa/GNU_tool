@@ -50,7 +50,18 @@ void BX_CPP_AttrRegparmN(1) BX_CPU_C::MOV_SwEw(bxInstruction_c *i)
 {
 ...
 
-リセットで変更しているわけではなかった.
+(gdb) up
+(gdb) p debug_disasm_instruction(bx_cpu.prev_rip)
+00000320315i[CPU0  ] 0x000f9a68>> mov ss, ax : 8ED0  ★
+(gdb) p/x bx_cpu.gen_reg[0].dword.erx                ★ EAX のマクロ展開
+$11 = 0x18
+(gdb) 
+
+リセットで変更しているわけではなかった. %ax レジスタが 0x18 の状態で
+
+	mov	%ax, %ss
+
+としている.
 
 step, where, finish のプログラムを動作させる過程でも CS を 0xffffffff に更新する
 方法を棚上げしていたがそろそろここを踏み込んで調べる必要があるように思えてきた.
