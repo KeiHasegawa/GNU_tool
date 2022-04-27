@@ -1,0 +1,62 @@
+POST の 0x19 番の割り込みを参考に
+
+	mov	$xxxx, %ax
+	mov	%ax, %ss
+
+とすることでシミュレータの
+
+bx_cpu.sregs[BX_SEG_REG_SS].cache.u.segment.d_b
+
+が true になるのかと考えたがそうではないらしい. これが true になれば
+
+  BX_CPP_INLINE void BX_CPP_AttrRegparmN(1)
+BX_CPU_C::push_16(Bit16u value16)
+{
+...
+  if (BX_CPU_THIS_PTR sregs[BX_SEG_REG_SS].cache.u.segment.d_b) { /* StackAddrSize = 32 */
+    stack_write_word((Bit32u) (ESP-2), value16);   ★ こっちにくる
+    ESP -= 2;
+  }
+  else /* StackAddrSize = 16 */
+
+しかしそんなに単純じゃないらしい.
+
+void BX_CPP_AttrRegparmN(1) BX_CPU_C::SYSENTER(bxInstruction_c *i)
+{
+...
+  BX_CPU_THIS_PTR sregs[BX_SEG_REG_CS].cache.u.segment.limit_scaled = 0xFFFFFFFF;   ★
+...
+  BX_CPU_THIS_PTR sregs[BX_SEG_REG_CS].cache.u.segment.d_b          = !long_mode();   ★
+...
+  BX_CPU_THIS_PTR sregs[BX_SEG_REG_SS].cache.u.segment.limit_scaled = 0xFFFFFFFF;   ★
+...
+  BX_CPU_THIS_PTR sregs[BX_SEG_REG_SS].cache.u.segment.d_b          = 1;   ★
+
+ここが実行されるとすれば 32 ビットモードになりそう.
+
+sysenter という命令があるらしい. 残念ながらこの命令はリアルモードで実行されると例外を引
+き起こす. 命令の説明を読んでみたがおそらくだが自分が今やりたいことではないのかもしれない.
+
+他には以下も発見:
+
+bool BX_CPU_C::set_segment_ar_data(bx_segment_reg_t *seg, bool valid,
+            Bit16u raw_selector, bx_address base, Bit32u limit_scaled, Bit16u ar_data)
+{
+...
+    d->u.segment.d_b   = (ar_data >> 14) & 0x1;   ★
+
+この函数を呼び出しているのは
+
+bool BX_CPU_C::resume_from_system_management_mode(BX_SMM_State *smm_state)
+
+
+BX_CPP_INLINE void BX_CPU_C::svm_segment_read(bx_segment_reg_t *seg, unsigned offset)
+
+Bit32u BX_CPU_C::VMenterLoadCheckGuestState(Bit64u *qualification)
+
+これはやり方がまずい. やはりドキュメントを読んでやり方を知るべき.
+
+現状の問題点は, スタックのアドレス, コードのアドレスを 64 KB を超えて
+利用できていないこと.
+このために SS (スタックセグメント), CS(コードセグメント) を設定する必
+要があるが単純に mov 命令を使用しても期待した動作にはならないということ.
