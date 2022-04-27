@@ -43,6 +43,10 @@ void BX_CPP_AttrRegparmN(1) BX_CPU_C::MOV_SwEw(bxInstruction_c *i)
 step, where, finish のプログラムを動作させる過程でも CS を 0xffffffff に更新する
 方法を棚上げしていたがそろそろここを踏み込んで調べる必要があるように思えてきた.
 
+  => 正確には CS の限界値
+  
+     (&bx_cpu)-> sregs[BX_SEG_REG_CS].cache.u.segment.limit_scaled
+
 以下の逆アセンブルがどの程度信頼できるかは疑問ではあるが MOV_SwEw を
 実行したときの結果は以下:
 
@@ -104,7 +108,7 @@ i386 のセグメントレジスタは以下:
   FS
   GS
 
-CS レジスタは現状, リセット時に 0xffff にセットされているが
+CS レジスタは現状, リセット時に限界値が 0xffff にセットされているが
 まずはこれを 0xffffffff にセットする方法を調べてみる.
 
 (gdb) p &(&bx_cpu)-> sregs[BX_SEG_REG_CS].cache.u.segment.limit_scaled
