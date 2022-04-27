@@ -32,8 +32,20 @@
 書き込んでいる.
 
 bochs を動作させて BX_CPU_THIS_PTR sregs[BX_SEG_REG_SS].cache.u.segment.d_b
-を true に変更しているところを確認してみたところ
+を true に変更しているところを確認してみた:
 
+(gdb) p &bx_cpu.sregs[BX_SEG_REG_SS].cache.u.segment.d_b
+$6 = (bool *) 0x822838d <bx_cpu+237>
+(gdb) watch *(char*)0x822838d
+(gdb) run
+...
+このウォッチポイントにヒット
+
+(gdb) where
+#0  BX_CPU_C::load_seg_reg (seg=0x8228374 <bx_cpu+212>, new_value=24) at segment_ctrl_pro.cc:92
+#1  0x0814cc4f in BX_CPU_C::MOV_SwEw (i=0x8387334 <bx_cpu+1437844>) at data_xfer16.cc:122  ★これ
+
+この函数らしい.
 void BX_CPP_AttrRegparmN(1) BX_CPU_C::MOV_SwEw(bxInstruction_c *i)
 {
 ...
