@@ -65,14 +65,14 @@ post:
 
 bochs では CS レジスタの限界値を以下のように保持している.
 
-(gdb) p/x (&bx_cpu)-> sregs[BX_SEG_REG_CS].cache.u.segment.limit_scaled
+(gdb) p/x bx_cpu.sregs[BX_SEG_REG_CS].cache.u.segment.limit_scaled
 $2 = 0xffff
 (gdb)
 
 これは Power On Reset で 0xffff に初期化されている. これにウォッチポイントをセットして
 みる.
 
-(gdb) p &(&bx_cpu)-> sregs[BX_SEG_REG_CS].cache.u.segment.limit_scaled
+(gdb) p &bx_cpu.sregs[BX_SEG_REG_CS].cache.u.segment.limit_scaled
 $3 = (Bit32u *) 0x822836c <bx_cpu+204>
 (gdb) watch *(int*)0x822836c
 Hardware watchpoint 3: *(int*)0x822836c
@@ -84,7 +84,7 @@ BX_CPU_C::reset (source=11) at init.cc:758            これは Power On Reset
 (gdb) c
 ...
 やはり命令の逆アセンブルトレースがあるとなかなかウォッチポイントにヒットしない.
-一旦 ★ の修正をキャンセルした.
+一旦上の ★ の修正をキャンセルした.
 
 リビルド後, 同じように 2 回目にウォッチポイントにヒットしたのは以下:
 
