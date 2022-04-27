@@ -58,10 +58,11 @@ $11 = 0x18
 (gdb) 
 
 リセットで変更しているわけではなかった. %ax レジスタが 0x18 の状態で
+i386-elf-as の書式ならば
 
 	mov	%ax, %ss
 
-としている.
+の命令で変更している.
 
 step, where, finish のプログラムを動作させる過程でも CS を 0xffffffff に更新する
 方法を棚上げしていたがそろそろここを踏み込んで調べる必要があるように思えてきた.
@@ -70,13 +71,6 @@ step, where, finish のプログラムを動作させる過程でも CS を 0xff
   
      (&bx_cpu)-> sregs[BX_SEG_REG_CS].cache.u.segment.limit_scaled
 
-以下の逆アセンブルがどの程度信頼できるかは疑問ではあるが MOV_SwEw を
-実行したときの結果は以下:
-
-(gdb) p debug_disasm_instruction((&bx_cpu)-> prev_rip)
-00000320315i[CPU0  ] 0x000f9a68>> mov ss, ax : 8ED0
-$6 = void
-(gdb) 
 
 しかし残念ながらまずはスタックが 0xffff 以下に制限されていても問題ないからやはり
 今回も棚上げしておく.
