@@ -94,8 +94,8 @@ main:
 	andl	$-16, %esp
 	pushl	-4(%ecx)            ★ この命令
 
-この命令の実行に伴なってセグメントレジスタが参照されていた.
-やはり棚上げできない問題なのだろうか.
+この命令の実行に伴なってセグメントレジスタが参照されていた. どのセグメントレジスタかは
+忘れた. やはり棚上げできない問題なのだろうか.
 
 とここで step, where, finish ではどのように実行していたか調べてみた.
 
@@ -175,7 +175,7 @@ $10 = {execute1 = 0x811cbb6 <BX_CPU_C::JMP_Ap(bxInstruction_c*)>, handlers = {
 $11 = void
 (gdb) 
 
-やはり逆アセンブルの結果はあまり参考にできないが
+この場合逆アセンブルの結果が期待したものになっていないのだが原因が不明.
 
 https://www.intel.co.jp/content/dam/www/public/ijkk/jp/ja/documents/developer/IA32_Arh_Dev_Man_Vol2A_i.pdf
 
