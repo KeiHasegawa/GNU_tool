@@ -49,24 +49,64 @@ my_gdt_data:
 	.long	0,	0	 # 1 番目 
 ★	.long	0xffff, 0xcf9b00 # 2 番目 : 32 bit flat code segment (0x10)
 	.long	0xffff, 0xcf9300 # 3 番目 : 32 bit flat data segment (0x18)
-	.long	0xffff, 0x9b0f	 # 16 bit code segment base=0xf0000 limit=0xffff
-	.long	0xffff, 0x9300   # 16 bit data segment base=0x0 limit=0xffff
+	.long	0xffff, 0x0f9b00 # 16 bit code segment base=0xf0000 limit=0xffff
+	.long	0xffff, 0x009300 # 16 bit data segment base=0x0 limit=0xffff
 
-C 言語風に表現すれば
+C++ 言語風に表現すれば
 
-struc gdt_ent;
+struct seg_desc;
 
-struc gdt {
+struct gdt {
   uint16_t size;
-  struct gdt_ent* elem;
+  seg_desc* elem;
 };
 
-struct gdt_ent {
-  uint32_t limit;
-  uint32_t base;
+static_assert(sizeof(gdt) == 6);
+
+struct seg_desc {
+  unsigned int limit_lo:16;
+  unsigned int base_lo:16;
+  unsigned int base_mid:8;
+  unsigned int type:4;
+  unsigned int segment:1;
+  unsigned int dpl:2;  
+  unsigned int p:1;
+  unsigned int limit_hi:4;
+  unsigned int avl:1;
+  unsigned int l:1;
+  unsigned int d_b:1;
+  unsigned int g:1;
+  unsigned int base_hi:8;
 };
 
-といったところ. lgdt 命令に続く far JMP 命令
+static_assert(sizeof(seg_desc) == 8);
+
+extern seg_desc my_gdt_data[6];
+
+gdt my_gdt = { sizeof my_gdt_data, &my_gdt_data[0] };
+
+struct seg_desc my_gdt_data[] = {
+  { .limit_lo = 0 },
+  { .limit_lo = 0 },
+  { .limit_lo = 0xffff, .type = 0xb, .segment = 1, .dpl = 0, .p = 1,
+    .limit_hi = 0xf, .d_b = 1, .g = 1 },
+  { .limit_lo = 0xffff, .type = 0x3, .segment = 1, .dpl = 0, .p = 1,
+    .limit_hi = 0xf, .d_b = 1, .g = 1 },
+  { .limit_lo = 0xffff, .type = 0xb, .segment = 1, .dpl = 0, .p = 1,
+    .limit_hi = 0x0, .d_b = 0, .g = 0 },
+  { .limit_lo = 0xffff, .type = 0x3, .segment = 1, .dpl = 0, .p = 1,
+    .limit_hi = 0x0, .d_b = 0, .g = 0 },
+};
+
+といったところ.
+
+limit = limit_lo | limit_hi << 16
+
+メンバ g が 1 ならばセグメントの限界値は limit << 12 | 0xfff でそうでなければ
+limit の値そのものが限界値となる. すなわち 2 番目と 3 番目は限界値が 0xffffffff で
+4 番目と 5 番目は限界値が 0xffff になる.
+
+lgdt 命令に続く far JMP 命令
 
 	ljmpl	$0x10, $0x10000
 
