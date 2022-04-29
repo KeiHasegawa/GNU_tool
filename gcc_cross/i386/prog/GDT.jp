@@ -1,0 +1,107 @@
+Power On Reset でプログラムの制御は 0xf000 に移る. Power On Reset 直後はリアルモード
+なので 0xffff を超えてプログラムが実行されることはない(この境界を跨いだ場合の動作の仕様は調
+べていない).
+
+そこで一旦コードスペースを確保するために, 例えば bochs 付属の BIOS では 0xe05b (POST の
+エントリポイント)に far JMP している. ここで far JMP であることは本質ではないし, PC 相対
+ジャンプでも構わない. しかし far JMP にするなら気をつける点がある:
+
+	.text
+	.code16  ★ これ
+	.global	power_on_reset
+power_on_reset:
+	ljmp	$0xf000, $post
+
+far JMP するのならば 16 ビットのコードにすることが必要になる. 誤って 32 ビットのコードにす
+るとジャンプする先は合致していても, 意図せず CS レジスタが 0 になってしまうからである.
+16 ビットのコードならば上の far JMP 命令は 5 バイトで 32 ビットのコードならば 7 バイトに
+なる.
+
+プロテクトモードへの移行は %cr0 レジスタの PE ビット(ビット 0)をセットすればよいらしい.
+その後 bochs の BIOS と同様に far JMP してみた:
+
+	.text
+	.code16
+my_routine:
+	mov	%cr0, %eax
+	or	$1, %al
+	mov	%eax, %cr0       # プロテクトモードへ移行
+	ここで GDT をセットする
+	ljmpl	$0x10, $0x10000  # 0xffff の壁を超える
+
+Power On Reset 直後の far JMP とは異なり PC 相対ジャンプではなく far JMP である必要が
+ある. さらに far JMP 命令そのものも 16 ビットではなくて 32 ビットのコードである必要がある.
+そうでないと 64 KB の壁を超えることはできない.
+
+far JMP に先立って GDT(Global Descriptor Table) なるものをセットすることが
+必要になる. GDT をセットするには例えば以下のように lgdt 命令を実行する:
+
+...
+	lgdt	my_gdt
+...
+	.data
+my_gdt:
+	.word	0x30
+	.long	my_gdt_data
+
+my_gdt_data:
+	.long	0,	0	 # 0 番目
+	.long	0,	0	 # 1 番目 
+★	.long	0xffff, 0xcf9b00 # 2 番目 : 32 bit flat code segment (0x10)
+	.long	0xffff, 0xcf9300 # 3 番目 : 32 bit flat data segment (0x18)
+	.long	0xffff, 0x9b0f	 # 16 bit code segment base=0xf0000 limit=0xffff
+	.long	0xffff, 0x9300   # 16 bit data segment base=0x0 limit=0xffff
+
+C 言語風に表現すれば
+
+struc gdt_ent;
+
+struc gdt {
+  uint16_t size;
+  struct gdt_ent* elem;
+};
+
+struct gdt_ent {
+  uint32_t limit;
+  uint32_t base;
+};
+
+といったところ. lgdt 命令に続く far JMP 命令
+
+	ljmpl	$0x10, $0x10000
+
+の $0x10 は far JMP 命令後の CS レジスタの値と 2 番目のエントリを参照することを指定している.
+この far JMP の結果プログラムの制御は 0x10000 番地に移り CS レジスタの値は 0x10 になる.
+そしてこれまで 16 ビットのコードとしてフェッチされていたものが 32 ビットのコードとして実行され
+る. すなわち:
+
+	ljmpl	$0x10, $startup
+...	
+
+	.text
+	.global	startup
+startup:
+	mov	$stack, %esp  ★
+	...
+
+この mov 命令は 3 バイトではなくてプログラマが期待した通り 5 バイトの命令として解釈される.
+シンボル stack はやはり 64 KB の制約はない. 32 ビットのアドレスが許される. この mov 命令
+に続き call 命令が発行されればよいが SS(スタックセグメント)レジスタが 64 KB の壁を超えてい
+ないので ljmpl 命令に先立って以下のようにする:
+
+
+	lgdt	my_gdt
+	mov	$0x18, %ax
+	mov	%ax, %ss     ★
+	ljmpl	$0x10, $startup
+...
+	.text
+	.global	startup
+startup:
+	mov	$stack, %esp
+	call	main
+	nop
+
+これにより call 命令の発行では %esp 相対 0 に nop 命令のアドレスを格納し main へ
+ジャンプする. 勿論格納するアドレスは 64 KB の壁を超えている. %esp は 2 ではなくて
+4 減算される.
