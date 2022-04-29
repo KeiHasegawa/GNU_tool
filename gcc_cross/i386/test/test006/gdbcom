@@ -1,0 +1,17 @@
+set prompt (i386-elf-gdb) 
+target sim
+load
+sim memory-region 0x1b000,0x5000
+b power_on_reset
+run
+info register
+s
+b startup
+c
+info register
+b main
+c
+s
+where
+finish
+quit

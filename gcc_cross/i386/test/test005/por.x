@@ -13,7 +13,7 @@ SECTIONS {
 	. = 0xefd2;
 	.int17 : { int17.o(.text) }
 
-	. = 0xe0b5;
+	. = 0xe05b;
 	.post : { post.o(.text) cfun.o(.text) int18.o(.text) }
 
 	. = 0xf841;

@@ -37,5 +37,6 @@ test.elf:$(OBJS) por.x
 	i386-elf-ld -o $@ -T por.x
 
 test.objdump:test.elf
+	i386-elf-objdump -x -d -g -M data16 $< > $@
 
 test.lof:test.log
