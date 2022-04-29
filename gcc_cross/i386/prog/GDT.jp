@@ -100,9 +100,9 @@ struct seg_desc my_gdt_data[] = {
 
 といったところ.
 
-limit = limit_lo | limit_hi << 16
+limit = limit_hi << 16 | limit_lo
 
-メンバ g が 1 ならばセグメントの限界値は limit << 12 | 0xfff でそうでなければ
+とするときメンバ g が 1 ならばセグメントの限界値は limit << 12 | 0xfff でそうでなければ
 limit の値そのものが限界値となる. すなわち 2 番目と 3 番目は限界値が 0xffffffff で
 4 番目と 5 番目は限界値が 0xffff になる.
 
