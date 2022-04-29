@@ -187,10 +187,11 @@ $11 = void
      うに far JMP 前の CS レジスタを明示的に指定すれば期待した結果にな
      る.
 
-(gdb) p debug_disasm_instruction(0xf0000 | bx_cpu.prev_rip)
-00000320311i[CPU0  ] 0x000f9a57>> jmpf 0x0010:000f9a5f : 66EA5F9A0F001000
-$60 = void
-(gdb) 
+     (gdb) p debug_disasm_instruction(0xf0000 | bx_cpu.prev_rip)
+                                         ★
+     00000320311i[CPU0  ] 0x000f9a57>> jmpf 0x0010:000f9a5f : 66EA5F9A0F001000
+     $60 = void
+     (gdb) 
 
 
 https://www.intel.co.jp/content/dam/www/public/ijkk/jp/ja/documents/developer/IA32_Arh_Dev_Man_Vol2A_i.pdf
