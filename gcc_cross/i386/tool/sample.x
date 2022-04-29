@@ -8,6 +8,6 @@ SECTIONS {
 	 }
 	 _bss_end = .;
 
-	 . = 0x1000;
+	 . = 0x20000;
 	 stack = .;
 }
