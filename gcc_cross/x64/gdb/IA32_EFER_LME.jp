@@ -1,0 +1,99 @@
+経緯 : i386-elf-gdb で Power On Reset 後から 32 ビットのコードを動作さ
+      せる方法が判明したので x86_64-elf-gdb でも同様のことを行なってみている
+
+2022.04.30 11:45
+
+start16:
+...
+	lgdt	my_gdt
+	mov	$0x18, %ax
+	mov	%ax, %ss	★ これは期待した動作
+...
+
+start32:
+...
+	movw	$0x28, %ax
+	movw	%ax, %ss	★ これでアドレス 0 にアクセスしている 
+...
+
+これの原因は 1 つ目の %ss の更新は単純に my_gdt_data のオフセット 0x18
+をアクセスするだけだが 
+
+2 つ目のl %ss の更新で以下 long_mode になっているため以下が呼ばれる.
+
+
+#if BX_CPU_LEVEL >= 6
+#if BX_SUPPORT_X86_64
+    if (long_mode())
+★    paddress = translate_linear_long_mode(laddr, lpf_mask, pkey, user, rw);
+    else
+#endif
+      if (BX_CPU_THIS_PTR cr4.get_PAE())
+        paddress = translate_linear_PAE(laddr, lpf_mask, user, rw);
+      else
+#endif 
+
+
+BX_CPU_C::translate_linear_long_mode(bx_address laddr, Bit32u &lpf_mask, Bit32u &pkey, unsigned user, unsigned rw)
+
+そしてこの函数内でアドレス 0 にアクセスしているから.
+ところで以下の修正をしていることを思い出した
+
+
+BX_CPU_C::translate_linear(bx_TLB_entry *tlbEntry, bx_address laddr, unsigned user, unsigned rw)
+{
+...
+#if 1
+  return laddr;  // patch by khasegawa
+#endif  
+...
+}
+
+そこで以下のように修正してみた:
+
+BX_CPU_C::translate_linear_long_mode(bx_address laddr, Bit32u &lpf_mask, Bit32u &pkey, unsigned user, unsigned rw)
+{
+#if 1
+  return laddr;  // patch by khasegawa
+#endif  
+...
+
+と思ったがこの修正に関しては BX_CPU_C::translate_linear の修正よりも大分根拠は薄いのでや
+はり止めておくべきかもしれない.
+以下の 12:20 の結果はこの修正のもとでそこまで進んでいる.
+
+2022.04.30 12:20
+現状
+
+  parse_descriptor(dword1, dword2, &descriptor);  ★ dword2 = 0xef9b00
+
+  if (descriptor.segment) {
+    check_cs(&descriptor, cs_raw, BX_SELECTOR_RPL(cs_raw), CPL);  ★
+
+ここで例外が発生している. dword2 = 0xef9b00 なので start32 の ljmp で
+エラーしている状況.
+
+例外が発生している原因は以下:
+
+    if (descriptor->u.segment.l && descriptor->u.segment.d_b) {
+
+d_b は 0 が正しいらしい. テストプログラムを修正した.
+
+2022.04.30 14:15
+
+main で step, where, finish するテストが期待通り動作している. つまり
+%rsp が指すことができるアドレスが 4GB の壁を超え，　all 命令で保存され
+るアドレスが 8 バイトで, %rsp が 8 減算されている.
+
+疑問の修正は確かにあるが現時点での
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.x86_64-elf/sim/x86_64
+
+を x86_64.2.tar として
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7.x64.mine
+
+を bochs-2.7.x64.mine.2.tar としてアップロードしておく.
+
+
+
