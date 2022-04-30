@@ -1,7 +1,7 @@
 	.text
 start:
 	movq	$stack, %rsp
-	call	main
+	callq	main
 end:	
 	nop
 
