@@ -88,14 +88,10 @@ gdt my_gdt = { sizeof my_gdt_data, &my_gdt_data[0] };
 struct seg_desc my_gdt_data[] = {
   { .limit_lo = 0 },
   { .limit_lo = 0 },
-  { .limit_lo = 0xffff, .type = 0xb, .segment = 1, .dpl = 0, .p = 1,
-    .limit_hi = 0xf, .d_b = 1, .g = 1 },
-  { .limit_lo = 0xffff, .type = 0x3, .segment = 1, .dpl = 0, .p = 1,
-    .limit_hi = 0xf, .d_b = 1, .g = 1 },
-  { .limit_lo = 0xffff, .type = 0xb, .segment = 1, .dpl = 0, .p = 1,
-    .limit_hi = 0x0, .d_b = 0, .g = 0 },
-  { .limit_lo = 0xffff, .type = 0x3, .segment = 1, .dpl = 0, .p = 1,
-    .limit_hi = 0x0, .d_b = 0, .g = 0 },
+  { .limit_lo = 0xffff, .type = 0xb, .segment = 1, .dpl = 0, .p = 1, .limit_hi = 0xf, .d_b = 1, .g = 1 },
+  { .limit_lo = 0xffff, .type = 0x3, .segment = 1, .dpl = 0, .p = 1, .limit_hi = 0xf, .d_b = 1, .g = 1 },
+  { .limit_lo = 0xffff, .type = 0xb, .segment = 1, .dpl = 0, .p = 1, .limit_hi = 0x0, .d_b = 0, .g = 0 },
+  { .limit_lo = 0xffff, .type = 0x3, .segment = 1, .dpl = 0, .p = 1, .limit_hi = 0x0, .d_b = 0, .g = 0 },
 };
 
 といったところ.
