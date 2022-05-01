@@ -135,7 +135,8 @@ i386 のセグメントレジスタは以下:
 https://www.intel.co.jp/content/dam/www/public/ijkk/jp/ja/documents/developer/IA32_Arh_Dev_Man_Vol1_Online_i.pdf
 
 の「セグメントレジスタ」の節も参照. DS, ES, FS, GS はどうやらソフトウェアで自由に使用で
-きるらしい.
+きるらしい. 勿論命令によってはこれらのレジスタを参照するから間違った値をセットしておけば
+その命令が意図しない動作をしてしまうことにはなる. そういう意味では CS, SS も同じ.
 
 CS レジスタは現状, リセット時に限界値が 0xffff にセットされているが
 まずはこれを 0xffffffff にセットする方法を調べてみる.
