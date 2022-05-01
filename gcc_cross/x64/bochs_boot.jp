@@ -1,0 +1,38 @@
+(*1)
+
+既に x86_64-elf-gdb が期待通り動作していたので以下のように単純にビルドした.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/
+% gunzip -c ../bochs-2.7.tar.gz | tar xvf -
+% mv bochs-2.7 bochs-2.7.x64.org
+% cd bochs-2.7.x64.org
+% ./configure --enable-x86-64
+% make
+
+(*2)
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work
+% wget -q https://bochs.sourceforge.io/guestos/linux.x86-64.bzImage
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bochs-2.7.x64.org
+% cat mycfg
+floppya: image=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/linux.x86-64.bzImage, status=inserted
+% ./bochs -qf mycfg
+...
+00000000000p[      ] >>PANIC<< mycfg:1: floppya image size doesn't match one of the supported types.
+...
+%
+
+だめらしい.
+
+% ls -l /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/openbsd-img/a.img
+-rw-r--r-- 1 khasegawa khasegawa 1474560  4月 27  2001 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/openbsd-img/a.img
+% ls -l /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/pragmalinux-img/a.img
+-rw-r--r-- 1 khasegawa khasegawa 1474560  4月 27  2001 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/pragmalinux-img/a.img
+%
+
+1440 * 1024 = 1474560
+
+ということでファイルのサイズが期待したものになっていない.
+bochs のページには ", which can be used as a boot floppy." とあったかので
+他のフロッピーディスクイメージと同様にブートできるのかと思ったがそうではないらしい.
+
