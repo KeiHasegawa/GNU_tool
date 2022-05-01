@@ -119,9 +119,10 @@ lgdt 命令に続く far JMP 命令
 ...	
 
 	.text
+	.code32			★ 16 ビットのコードと同じファイルにするなら必要
 	.global	startup
 startup:
-	mov	$stack, %esp  ★
+	mov	$stack, %esp	★
 	...
 
 この mov 命令は 3 バイトではなくてプログラマが期待した通り 5 バイトの命令として解釈される.
@@ -132,7 +133,7 @@ startup:
 
 	lgdt	my_gdt
 	mov	$0x18, %ax
-	mov	%ax, %ss     ★
+	mov	%ax, %ss	★
 	ljmpl	$0x10, $startup
 ...
 	.text
