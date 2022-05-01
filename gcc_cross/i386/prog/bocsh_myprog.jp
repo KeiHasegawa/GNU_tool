@@ -1,0 +1,101 @@
+オリジナルの bochs で自分のプログラムを起動時に指定する. 
+
+(*1) 自分のプログラムを指定する方法
+
+bochs の起動時
+
+00000000000i[MEM0  ] rom at 0xfffe0000/131072 ('/usr/local/share/bochs/BIOS-bochs-latest')
+
+のようなメッセージが出るがこれは以下の部分
+
+main.cc:1333
+
+  BX_MEM(0)->init_memory(memSize, hostMemSize);
+
+  // First load the system BIOS (VGABIOS loading moved to the vga code)
+  BX_MEM(0)->load_ROM(SIM->get_param_string(BXPN_ROM_PATH)->getptr(),
+                      SIM->get_param_num(BXPN_ROM_ADDRESS)->get(), 0);
+
+自分のプログラムをロードする方法を探してみる.
+起動時に -f で指定するファイルに以下のように書いておけばよいらしい 
+
+romimage: file=mybios.bin, address=0xfff80000 # 512k at memory top
+
+                 512 K = 512 * 1024 = 0x80000
+
+ということだからおそらく 512 KByte の mybios.bin を作成しておけばよいということ
+なのだと思う.
+
+% ls -l /usr/local/share/bochs/BIOS-bochs-latest
+-rw-r--r-- 1 root root 131072  4月 16 07:25 /usr/local/share/bochs/BIOS-bochs-latest
+%
+
+131072 = 0x20000
+
+      0xfffe0000/131072
+
+ということで, アドレスを指定していなければファイルのサイズからロードポイントは判明するということ
+らしい.
+
+そこで
+romimage: file=/home/khasegawa/lang/53_GNU_tool/gcc_cross/i386/test/test005/test.objcopy
+
+のようにしてみた. 以下は自分で書いた far JMP
+
+...
+00000000000i[PLUGIN] reset of 'serial' plugin device by virtual method
+00000000000i[CPU0  ] 0x0000fff0>> ljmp $0xf000:e05b : EA5BE000F0  ★
+00000000001i[CPU0  ] 0x0000e05b>> xorw %ax, %ax : 31C0
+00000000002i[CPU0  ] 0x0000e05d>> outb %al, $0x0d : E60D
+00000000003i[CPU0  ] 0x0000e05f>> outb %al, $0xda : E6DA
+00000000004i[CPU0  ] 0x0000e061>> movb $0xc0, %al : B0C0
+00000000005i[CPU0  ] 0x0000e063>> outb %al, $0xd6 : E6D6
+00000000006i[CPU0  ] 0x0000e065>> movb $0x00, %al : B000
+...
+00000000552i[CPU0  ] 0x0000e180>> movw %ax, %ss:65534(%bp) : 8946FE
+00000000553i[CPU0  ] 0x0000e183>> nop  : 90
+00000000554i[CPU0  ] 0x0000e184>> leave  : 66C9
+00000000555i[CPU0  ] 0x0000e186>> ret  : 66C3
+00000000556i[CPU0  ] 0x00000000>> (invalid) : FFFF
+00000000557i[CPU0  ] 0x0000ff53>> iretw  : CF
+...
+
+これは自分が作成した POST が動作していると思われる. 例外が発生して 0 にプログラムの制御が
+移りそこでオブジェクトコード 0xffff を実行し, さらにプログラムの制御が 0xff53 に移り 
+
+	iretw
+
+命令を発行している. 例外が発生している原因はともかくプログラムを実行できている.
+
+
+(*2) 例外の原因
+
+上の ret 命令は int19_function の ret 命令らしく bochs によるシミュレーション
+ではそこで例外が発生している.
+
+i386-elf-gdb で同じプログラムを試してみたところ ret 命令で 0xfffc 番地に 4 バイト
+アクセスしているらしい.
+
+int19_function:
+.LFB1:
+	.loc 1 55 1
+	.cfi_startproc
+	push	%bp
+	.cfi_def_cfa_offset 4
+	.cfi_offset 5, -4
+	mov	%sp, %bp
+	.cfi_def_cfa_register 5
+	sub	$2, %sp
+	movw	2(%bp), %ax
+	movw	%ax, -2(%bp)
+	.loc 1 56 1
+	nop
+	leavew                     ★ leave のままになっていた.
+	.cfi_restore 5
+	.cfi_def_cfa 4, 4
+	ret
+	.cfi_endproc
+
+上の修正で ret 命令が期待通り動作している.
+
+そして改めて bochs で確認したところエラーは発生しなくなった.
