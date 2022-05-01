@@ -1,0 +1,90 @@
+(*1) bochs で OpenBSD をブートしてみた
+
+bochs のページ
+
+https://bochs.sourceforge.io/
+
+から Disk Images というタグをクリックすると例えば
+
+OpenBSD
+	Bootable floppy image.
+
+とあるのでこれをクリックして openbsd-img.tar.gz をダウンロードして展開した.
+
+そして -qf で指定するファイルに以下のように書いた.
+
+% cat mycfg
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/openbsd-img/a.img, status=inserted
+
+(gdb) run -qf mycfg
+...
+
+それっぽい. bochs を gdb の制御下で起動してもそれなりのスピードで起動している. bochs を直接
+起動してみたがそれほどスピードアップしたわけでもないらしい.
+
+(*2) Pragma Linux のブートl
+
+折角なので以下もダウンロードした:
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work
+% wget -q https://bochs.sourceforge.io/guestos/pragmalinux-img.tar.gz
+% gunzip -c pragmalinux-img.tar.gz | tar xf -
+
+-qf で指定するファイルは以下のようにした:
+
+% cat mycfg
+#floppya: image=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/openbsd-img/a.img, status=inserted
+
+floppya: image=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/pragmalinux-img/a.img, status=inserted
+
+これで同様に bochs を起動したところやはり linux が起動し login プロンプトが表示されている.
+
+ユーザー名 root
+パスワード root
+
+でログインできている.
+
+(*3) FreeDOS のブート
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work
+% wget -q https://bochs.sourceforge.io/guestos/freedos-img.tar.gz
+% gunzip -c freedos-img.tar.gz | tar xf -
+% cd freedos-img
+% bochs -qf bochsrc
+
+今回はインストールされている bochs を使用した. 終了しようとして C-c を押して SIGINT しよう
+としたがいつもと違う動作になっている. でもそれっぽく DOS が起動している.
+
+(*4) Linux のブート 
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work
+% wget -q https://bochs.sourceforge.io/guestos/linux-img.tar.gz
+% gunzip -c linux-img.tar.gz | tar xf -
+% cd linux-img
+% bochs -qf bochsrc
+
+途中まではそれっぽく動いていたが
+
+hda: lost interrupt
+
+のメッセージが 30 分くらい出続けている. 2022.05.01 19:10
+2022.05.02 7:00 bochs の GUI 画面の左下に IPS が表示されているがこの数字が変化している.
+画面は真っ暗になっている.
+
+C-c
+
+でシミュレーションを停止しようとしたところ, このときはいつものダイアログボックスが表示された.
+
+
+(*5) DLX Linux のブート 
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work
+% wget -q https://bochs.sourceforge.io/guestos/dlxlinux4.tar.gz
+% gunzip -c dlxlinux4.tar.gz | tar xf -
+% cd dlxlinux
+% bochs -qf bochsrc.txt
+
+割とすぐにログインプロンプトが表示された.
+
+
+(*1) から (*5) のいずれにしてもこれで OS の開発ができるように思える.
