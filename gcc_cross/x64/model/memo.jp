@@ -1,0 +1,461 @@
+cc1 の雛形
+
+「AARCH64」=>「cc1 の雛形」=>「メモ」 を参照.
+AARCH64 と同様の手順で cc1 の雛形をビルドすることができる.
+
+
+以下開発メモ
+
+(*1)
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.x86_64-elf.mine/gcc/config.gcc
+
+を修正して configure の実行から make all-gcc を実行してみた.
+
+% make all-gcc
+...
+g++  -I../.././libcpp -I. -I../.././libcpp/../include -I../.././libcpp/include  -g -O2 -W -Wall -Wno-narrowing -Wwrite-strings -Wmissing-format-attribute -pedantic -Wno-long-long  -fno-exceptions -fno-rtti -I../.././libcpp -I. -I../.././libcpp/../include -I../.././libcpp/include   -c -o lex.o -MT lex.o -MMD -MP -MF .deps/lex.Tpo ../.././libcpp/lex.c
+../.././libcpp/lex.c:492:10: 致命的エラー: ../gcc/config/i386/cpuid.h: そのようなファイルやディレクトリはありません
+  492 | #include "../gcc/config/i386/cpuid.h"
+
+これは i386 の cc1 の雛形の作成でも発生したエラー. 以下のようにして回避した:
+
+% mkdir gcc/config/i386
+% cp /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/gcc/config/i386/cpuid.h gcc/config/i386
+
+% make all-gcc
+...
+g++ -no-pie   -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H -static-libstdc++ -static-libgcc  -o xgcc gcc.o gcc-main.o ggc-none.o \
+  c/gccspec.o driver-i386.o  libcommon-target.a \
+   libcommon.a ../libcpp/libcpp.a   ../libbacktrace/.libs/libbacktrace.a ../libiberty/libiberty.a ../libdecnumber/libdecnumber.a 
+g++: エラー: driver-i386.o: そのようなファイルやディレクトリはありません
+
+これも i386 の cc1 の雛形でも発生したエラー.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.x86_64-elf.mine/gcc/config.host
+
+を修正しておくのを忘れていた. このときは単純に
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.x86_64-elf.mine/host-i686-pc-linux-gnu/gcc/Makefile
+
+を修正することで対応した.
+
+% make all-gcc
+...
+%
+
+ビルド成功.
+
+(*2)
+x86_64 用にファイルを修正してリビルドして再実行してみたところ以下でエラーしている:
+
+(gdb) run
+`/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.x86_64-elf.mine/host-i686-pc-linux-gnu/gcc/cc1' has changed; re-reading symbols.
+Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.x86_64-elf.mine/host-i686-pc-linux-gnu/gcc/cc1 -quiet a.c
+<組み込み>: コンパイラ内部エラー: builtin_define_float_constants 内、位置 c-family/c-cppbuiltin.c:143
+0x84b97c7 builtin_define_float_constants
+	../.././gcc/c-family/c-cppbuiltin.c:143
+0x84bcc44 c_cpp_builtins(cpp_reader*)
+	../.././gcc/c-family/c-cppbuiltin.c:1141
+0x84d1847 c_finish_options
+	../.././gcc/c-family/c-opts.c:1439
+0x84d1150 c_common_parse_file()
+	../.././gcc/c-family/c-opts.c:1184
+Please submit a full bug report,
+with preprocessed source if appropriate.
+Please include the complete backtrace with any bug report.
+See <https://gcc.gnu.org/bugs/> for instructions.
+[Inferior 1 (process 15123) exited with code 04]
+(gdb)
+
+
+  widefmt = REAL_MODE_FORMAT (TYPE_MODE (long_double_type_node)); ★ ここ
+
+これは以前にどこかで見たことがある. i386 の cc1 の雛形で対処していた. このとき調査した
+結果は
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/gcc/config/i386/i386-modes.def
+
+があれば他の修正なしでこのファイルがビルドツール genmode へ入力となるということだった.
+そこで以下のようにしてみた:
+
+  => 勘違い. そもそも i386 の雛形では stdio.h を include すると __float128 を型として
+     認識しないためエラーしていたから以下のような対応をしている.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.x86_64-elf.mine
+% cp /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/gcc/config/i386/i386-modes.def gcc/config/x86_64/x86_64-modes.def
+% find . -name config.cache -exec rm -f {} \;
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=x86_64-elf
+
+x86_64.c に以下を追加:
+
+bool x86_64_scalar_mode_supported_p(scalar_mode mode)
+{
+  if (mode == TFmode)
+    return true;
+  return default_scalar_mode_supported_p(mode);  
+}
+
+#undef TARGET_INIT_BUILTINS
+#define TARGET_INIT_BUILTINS x86_64_init_builtins
+
+void x86_64_init_builtins()
+{
+  lang_hooks.types.register_builtin_type (float128_type_node, "__float128");
+}
+
+#undef TARGET_SCALAR_MODE_SUPPORTED_P
+#define TARGET_SCALAR_MODE_SUPPORTED_P x86_64_scalar_mode_supported_p
+
+これでもう一度ビルド
+
+% make all-gcc
+...
+g++ -fno-PIE -c   -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H -I. -I. -I../.././gcc -I../.././gcc/. -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber -I../.././gcc/../libbacktrace   -o x86_64.o -MT x86_64.o -MMD -MP -MF ./.deps/x86_64.TPo ../.././gcc/config/x86_64/x86_64.c
+../.././gcc/config/x86_64/x86_64.c: 関数 ‘bool x86_64_scalar_mode_supported_p(scalar_mode)’ 内:
+../.././gcc/config/x86_64/x86_64.c:176:15: エラー: ‘TFmode’ was not declared in this scope; did you mean ‘TQmode’?
+  176 |   if (mode == TFmode)
+      |               ^~~~~~
+      |               TQmode
+make[1]: *** [Makefile:2322: x86_64.o] エラー 1
+
+%
+
+コンパイルエラーは予定外だった. 一旦このエラーを
+
+bool x86_64_scalar_mode_supported_p(scalar_mode mode)
+{
+#if 0  
+  if (mode == TFmode)
+    return true;
+#endif  
+  return default_scalar_mode_supported_p(mode);  
+}
+
+のように回避した.
+
+% make all-gcc
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.x86_64-elf.mine/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.x86_64-elf.mine/host-i686-pc-linux-gnu/gcc/ -xc -nostdinc /dev/null -S -o /dev/null -fself-test=../.././gcc/testsuite/selftests
+<組み込み>: コンパイラ内部エラー: セグメンテーション違反です
+0x8a1cbdc crash_signal
+	../.././gcc/toplev.c:328
+0x848d65d c_register_builtin_type(tree_node*, char const*)
+...
+%
+
+これはあまり見ないエラーが発生した. おそらくだが xgcc から起動された cc1 が何かエラーを発生
+させていると思われる.
+
+(gdb) run
+...
+
+Program received signal SIGSEGV, Segmentation fault.
+0x0848d65d in c_register_builtin_type (type=0x0, name=0x932226d "__float128") at ../.././gcc/c-family/c-common.c:2627
+
+--Type <RET> for more, q to quit, c to continue without paging--
+stopped
+(gdb) up
+#1  0x08d72044 in x86_64_init_builtins () at ../.././gcc/config/x86_64/x86_64.c:188
+
+今回修正したところ:
+
+void x86_64_init_builtins()
+{
+#if 0  
+  lang_hooks.types.register_builtin_type (float128_type_node, "__float128");
+#endif  
+}
+
+上のようにとりあえず回避した:
+
+% make all-gcc
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.x86_64-elf.mine/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.x86_64-elf.mine/host-i686-pc-linux-gnu/gcc/ -xc -nostdinc /dev/null -S -o /dev/null -fself-test=../.././gcc/testsuite/selftests
+<組み込み>: コンパイラ内部エラー: builtin_define_float_constants 内、位置 c-family/c-cppbuiltin.c:143
+0x84b9887 builtin_define_float_constants
+
+違う内部エラーが発生している.
+
+(gdb) run
+...
+
+  widefmt = REAL_MODE_FORMAT (TYPE_MODE (long_double_type_node)); ★ ここ
+
+本来解消しようとしていたバグだが解消できていない.
+
+#define UNITS_PER_WORD 8
+#define SHORT_TYPE_SIZE		16
+#define INT_TYPE_SIZE           32
+#define LONG_TYPE_SIZE		64
+#define LONG_LONG_TYPE_SIZE     64
+#define FLOAT_TYPE_SIZE         32
+#define DOUBLE_TYPE_SIZE        64
+#define LONG_DOUBLE_TYPE_SIZE   64    ★ 128 にしたいが 64 にしてまずは回避してみる
+
+上のようにしてもう一度トライ.
+
+% make all-gcc
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.x86_64-elf.mine/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.x86_64-elf.mine/host-i686-pc-linux-gnu/gcc/ -xc -nostdinc /dev/null -S -o /dev/null -fself-test=../.././gcc/testsuite/selftests
+<組み込み>: コンパイラ内部エラー: builtin_define_float_constants 内、位置 c-family/c-cppbuiltin.c:143
+
+エラーしている. gdb で cc1 を起動してみたがやはり
+
+  widefmt = REAL_MODE_FORMAT (TYPE_MODE (long_double_type_node)); ★ ここ
+
+になっている回避できていない.
+
+2022.05.01 18:36
+改めて確認したところ LONG_DOUBLE_TYPE_SIZE は 128 ままだったのでもう一度 64 にして
+トライ.
+
+2022.05.02 7:15
+確認したところ問題のエラーは回避できている. sizeof(long double) = 8 だがとりあえず
+ここは保留しておく.
+
+(*3)
+
+hello word をコンパイルするとオリジナルの x86_64-elf-gcc は以下のように .LC0 が
+32 ビットのアドレスとしてコードを生成している.
+
+	movl	$.LC0, %edi
+	call	puts
+
+一方自前の cc1 では現状以下のような x, y に対して x := y が生成されている:
+
+(gdb) p debug_rtx(x)
+(reg:DI 5 rdi)
+$14 = void
+(gdb) p debug_rtx(y)
+(symbol_ref/f:DI ("*.LC0") [flags 0x2] <var_decl 0xb794b3f0 *.LC0>)
+$15 = void
+(gdb)
+
+この内部ラベル .LC0 の扱いを DI ではなくて SI にすることがおそらくできるはず.
+
+オリジナルの cc1 でどのようにしているか調べてみたところ生成されている rtx_insn は以下:
+
+Breakpoint 1, final_1 (first=0xb79761c0, file=0x9c8ae28, seen=<optimized out>, optimize_p=0) at ../.././gcc/final.c:2020
+$19 = (rtx_insn *) 0xb785e894
+    5: di:DI=`*.LC0'
+
+つまりこれに対して DI ではなくて SI のコードを生成しているということ. だから自前の
+cc1 と同じ rtx_insn を生成している.
+
+なのでここは di::mov で対応することにした.
+
+(*4)
+
+2022.05.02 9:53 (*2) で途中までやった __float128 の対応をキャンセルした. これがなくても
+stdio.h を include してエラーが発生していないから.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.x86_64-elf.mine/gcc/config/x86_64/x86_64-modes.def
+
+も一旦削除した. またレジスタの名前の先頭に % を付加しておくのを忘れたからこれも修正しておく.
+
+2022.05.02 11:24 上の修正で期待通り動作していることを確認.
+
+(*5)
+
+現状 hello world 11 が x86_64-elf-run で期待通り動作している. そして
+x86_64::expand_prologue で生成している全ての rtx_insn* insn に
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+のようにしている. それだけで x86_64-elf-gdb で期待通り動作している.
+
+(*6)
+
+#define LONG_DOUBLE_TYPE_SIZE   128
+
+上のようにして再びトライ.
+
+  widefmt = REAL_MODE_FORMAT (TYPE_MODE (long_double_type_node));
+
+これのマクロ展開は以下:
+
+  widefmt = (real_format_for_mode[(((enum mode_class) mode_class[((((enum tree_code) ((global_trees[TI_LONG_DOUBLE_TYPE]))->base.code) == VECTOR_TYPE) ? vector_type_mode (global_trees[TI_LONG_DOUBLE_TYPE]) : (global_trees[TI_LONG_DOUBLE_TYPE])->type_common.mode)]) == MODE_DECIMAL_FLOAT) ? (((((((enum tree_code) ((global_trees[TI_LONG_DOUBLE_TYPE]))->base.code) == VECTOR_TYPE) ? vector_type_mode (global_trees[TI_LONG_DOUBLE_TYPE]) : (global_trees[TI_LONG_DOUBLE_TYPE])->type_common.mode)) - MIN_MODE_DECIMAL_FLOAT) + (MAX_MODE_FLOAT - MIN_MODE_FLOAT + 1)) : ((enum mode_class) mode_class[((((enum tree_code) ((global_trees[TI_LONG_DOUBLE_TYPE]))->base.code) == VECTOR_TYPE) ? vector_type_mode (global_trees[TI_LONG_DOUBLE_TYPE]) : (global_trees[TI_LONG_DOUBLE_TYPE])->type_common.mode)]) == MODE_FLOAT ? ((((((enum tree_code) ((global_trees[TI_LONG_DOUBLE_TYPE]))->base.code) == VECTOR_TYPE) ? vector_type_mode (global_trees[TI_LONG_DOUBLE_TYPE]) : (global_trees[TI_LONG_DOUBLE_TYPE])->type_common.mode)) - MIN_MODE_FLOAT) : ((fancy_abort ("../.././gcc/c-family/c-cppbuiltin.c", 143, __FUNCTION__)), 0)]);
+
+おそらく内部エラーしているのは fancy_abort が呼び出されたということ. fancy : 気まぐれな
+
+オリジナルの cc1 でこの部分のマクロ展開を確認してみた:
+
+  widefmt = (real_format_for_mode[(((enum mode_class) mode_class[((((enum tree_code) ((global_trees[TI_LONG_DOUBLE_TYPE]))->base.code) == VECTOR_TYPE) ? vector_type_mode (global_trees[TI_LONG_DOUBLE_TYPE]) : (global_trees[TI_LONG_DOUBLE_TYPE])->type_common.mode)]) == MODE_DECIMAL_FLOAT) ? (((((((enum tree_code) ((global_trees[TI_LONG_DOUBLE_TYPE]))->base.code) == VECTOR_TYPE) ? vector_type_mode (global_trees[TI_LONG_DOUBLE_TYPE]) : (global_trees[TI_LONG_DOUBLE_TYPE])->type_common.mode)) - MIN_MODE_DECIMAL_FLOAT) + (MAX_MODE_FLOAT - MIN_MODE_FLOAT + 1)) : ((enum mode_class) mode_class[((((enum tree_code) ((global_trees[TI_LONG_DOUBLE_TYPE]))->base.code) == VECTOR_TYPE) ? vector_type_mode (global_trees[TI_LONG_DOUBLE_TYPE]) : (global_trees[TI_LONG_DOUBLE_TYPE])->type_common.mode)]) == MODE_FLOAT ? ((((((enum tree_code) ((global_trees[TI_LONG_DOUBLE_TYPE]))->base.code) == VECTOR_TYPE) ? vector_type_mode (global_trees[TI_LONG_DOUBLE_TYPE]) : (global_trees[TI_LONG_DOUBLE_TYPE])->type_common.mode)) - MIN_MODE_FLOAT) : ((fancy_abort ("../.././gcc/c-family/c-cppbuiltin.c", 143, __FUNCTION__)), 0)]);
+
+この 2 つが同一のものであることを確認した.
+
+このステートメントは人間が理解するのが大変なのだが
+
+  widefmt = (real_format_for_mode[...]);
+
+ということ. つまり, おそらく配列の要素を参照しているが添字の計算で fancy_abort が呼び出されているということ.
+
+(gdb) b fancy_abort
+(gdb) p (((enum mode_class) mode_class[((((enum tree_code) ((global_trees[TI_LONG_DOUBLE_TYPE]))->base.code) == VECTOR_TYPE) ? vector_type_mode (global_trees[TI_LONG_DOUBLE_TYPE]) : (global_trees[TI_LONG_DOUBLE_TYPE])->type_common.mode)]) == MODE_DECIMAL_FLOAT) ? (((((((enum tree_code) ((global_trees[TI_LONG_DOUBLE_TYPE]))->base.code) == VECTOR_TYPE) ? vector_type_mode (global_trees[TI_LONG_DOUBLE_TYPE]) : (global_trees[TI_LONG_DOUBLE_TYPE])->type_common.mode)) - MIN_MODE_DECIMAL_FLOAT) + (MAX_MODE_FLOAT - MIN_MODE_FLOAT + 1)) : ((enum mode_class) mode_class[((((enum tree_code) ((global_trees[TI_LONG_DOUBLE_TYPE]))->base.code) == VECTOR_TYPE) ? vector_type_mode (global_trees[TI_LONG_DOUBLE_TYPE]) : (global_trees[TI_LONG_DOUBLE_TYPE])->type_common.mode)]) == MODE_FLOAT ? ((((((enum tree_code) ((global_trees[TI_LONG_DOUBLE_TYPE]))->base.code) == VECTOR_TYPE) ? vector_type_mode (global_trees[TI_LONG_DOUBLE_TYPE]) : (global_trees[TI_LONG_DOUBLE_TYPE])->type_common.mode)) - MIN_MODE_FLOAT) : ((fancy_abort ("../.././gcc/c-family/c-cppbuiltin.c", 143, __FUNCTION__)), 0)
+
+fancy_abort のブレークポイントにヒット.
+
+同じことをオリジナルの cc1 でやってみたところ 2 となっている. つまり添字の期待値は 2 ということ.
+オリジナルの cc1 で 2 になるのに自前の cc1 で fancy_abort が呼び出される原因を調べてみる.
+
+マクロ REAL_MODE_FORMAT は以下で定義されている:
+
+../.././gcc/real.h:184
+
+#define REAL_MODE_FORMAT(MODE)						\
+  (real_format_for_mode[DECIMAL_FLOAT_MODE_P (MODE)			\
+			? (((MODE) - MIN_MODE_DECIMAL_FLOAT)		\
+			   + (MAX_MODE_FLOAT - MIN_MODE_FLOAT + 1))	\
+			: GET_MODE_CLASS (MODE) == MODE_FLOAT		\
+			? ((MODE) - MIN_MODE_FLOAT)			\
+			: (gcc_unreachable (), 0)])
+
+
+自前の cc1 では
+
+(gdb) p MAX_MODE_FLOAT
+$19 = E_DFmode
+(gdb) p MIN_MODE_FLOAT
+$20 = E_SFmode
+(gdb)
+
+一方オリジナルの cc1 では以下:
+
+(gdb) p MAX_MODE_FLOAT
+$2 = E_TFmode
+(gdb) p MIN_MODE_FLOAT
+$3 = E_SFmode
+(gdb)
+
+つまりオリジナルの cc1 では long double が E_DFmode ではなくて E_TFmode として扱われ
+ているということ.
+
+これらは enum のメンバで自前の cc1 では
+
+  MIN_MODE_FLOAT = E_SFmode,
+  MAX_MODE_FLOAT = E_DFmode,
+
+一方オリジナルの cc1 では
+
+  MIN_MODE_FLOAT = E_SFmode,
+  MAX_MODE_FLOAT = E_TFmode,
+
+のように違いが出ている.
+
+./insn-modes.h
+
+でこれらは定義されている. オリジナルの cc1 の ./insn-mode.h は以下のようになっている:
+
+  E_DFmode,                /* machmode.def:227 */
+#define HAVE_DFmode
+#ifdef USE_ENUM_MODES
+#define DFmode E_DFmode
+#else
+#define DFmode (scalar_float_mode ((scalar_float_mode::from_int) E_DFmode))
+#endif
+  E_XFmode,                /* config/i386/i386-modes.def:24 */
+#define HAVE_XFmode
+#ifdef USE_ENUM_MODES
+#define XFmode E_XFmode
+#else
+#define XFmode (scalar_float_mode ((scalar_float_mode::from_int) E_XFmode))
+#endif
+  E_TFmode,                /* config/i386/i386-modes.def:25 */
+
+config/i386/i386-modes.def:24 は以下
+FRACTIONAL_FLOAT_MODE (XF, 80, 12, ieee_extended_intel_96_format);
+FLOAT_MODE (TF, 16, ieee_quad_format);
+
+やはりここにたどり着く.
+i386-elf-gcc の cc1 の雛形を作成したときの開発メモの抜粋:
+
+	++ extra_modes=
+	if test -f ${srcdir}/config/${cpu_type}/${cpu_type}-modes.def
+	then
+		extra_modes=${cpu_type}/${cpu_type}-modes.def
+	fi
+	++ test -f ../.././gcc/config/i386/i386-modes.def
+	++ extra_modes=i386/i386-modes.def
+	if test -f ${srcdir}/config/${cpu_type}/${cpu_type}.opt
+
+	つまり gcc/config/i386/i386-modes.def があればそれが読み込まれるということ.
+
+今回は cpu_type は x86_64 にしているつもり.
+
+gcc-10.2.0.x86_64-elf.mine/gcc/config.gcc:
+x86_64-*-*)
+	cpu_type=x86_64
+	;;
+
+なので一旦削除した
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.x86_64-elf.mine/gcc/config/x86_64/x86_64-modes.def
+
+を復活させることにした.
+そして configure からやり直してみた:
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.x86_64-elf.mine
+% find . -name config.cache -exec rm -f {} \;
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=x86_64-elf
+% make all-gcc
+
+おそらくこのビルドは途中でエラーする. 一回で期待した通りにはならないだろうがまずは
+
+insn-mode.h
+
+が期待したものになるかを確認する. 2022.05.02 14:23 ビルド開始.
+と思ったがオリジナルの cc1 が参照している i386-modes.def にさらに
+
+ADJUST_FLOAT_FORMAT (XF, (TARGET_128BIT_LONG_DOUBLE
+			  ? &ieee_extended_intel_128_format
+			  : TARGET_96_ROUND_53_LONG_DOUBLE
+			  ? &ieee_extended_intel_96_round_53_format
+			  : &ieee_extended_intel_96_format));
+ADJUST_BYTESIZE  (XF, TARGET_128BIT_LONG_DOUBLE ? 16 : 12);
+ADJUST_ALIGNMENT (XF, TARGET_128BIT_LONG_DOUBLE ? 16 : 4);
+
+のようにあったので以下を自前の x86_64-modes.def を以下のように追加修正した.
+
+FRACTIONAL_FLOAT_MODE (XF, 80, 12, ieee_extended_intel_96_format);
+FLOAT_MODE (TF, 16, ieee_quad_format);
+ADJUST_FLOAT_FORMAT (XF, &ieee_extended_intel_128_format);  ★
+ADJUST_BYTESIZE  (XF, 16);                                  ★
+ADJUST_ALIGNMENT (XF, 16);                                  ★
+
+これで configure からリビルド. 2022.05.02 14:30 開始.
+
+% make all-gcc
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.x86_64-elf.mine/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.x86_64-elf.mine/host-i686-pc-linux-gnu/gcc/ -xc -nostdinc /dev/null -S -o /dev/null -fself-test=../.././gcc/testsuite/selftests
+<組み込み>: コンパイラ内部エラー: builtin_define_float_constants 内、位置 c-family/c-cppbuiltin.c:143
+0x84be7c7 builtin_define_float_constants
+	../.././gcc/c-family/c-cppbuiltin.c:143
+
+%
+
+エラーしている. そして insn-modes.h を確認したが期待したものになっていない.
+
+% 
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.x86_64-elf.mine/gcc/config/x86_64/x86_64-modes.def
+
+が参照されていないらしい. cpu_type がどこかで i386 に上書きされている可能性がある.
+
+x86_64-*-elf*)
+	tm_file="dbxelf.h elfos.h newlib-stdint.h x86_64/x86_64.h"
+  	tm_p_file="x86_64/x86_64-protos.h"
+  	md_file="x86_64/x86_64.md"
+  	out_file="x86_64/x86_64.c"
+  	tmake_file="x86_64/t-x86_64"
+	extra_modes="x86_64/x86_64-modes.def"   ★
+  	use_gcc_stdint=wrap
+	;;
+
+これを config.gcc に追加してもう一度 configure からトライ.
+
+2022.05.02 16:34 正常動作を確認. また
+
+int a = sizeof(long double);
+
+に対して a の初期値が 16 になることも確認.
+
