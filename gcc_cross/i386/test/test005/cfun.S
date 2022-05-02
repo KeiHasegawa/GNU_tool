@@ -46,7 +46,7 @@ int19_function:
 	movw	%ax, -2(%bp)
 	.loc 1 56 1
 	nop
-	leave
+	leavew
 	.cfi_restore 5
 	.cfi_def_cfa 4, 4
 	ret

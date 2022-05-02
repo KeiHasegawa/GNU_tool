@@ -10,6 +10,9 @@
 %.objdump : %.elf
 	i386-elf-objdump -x -d -g $< > $@
 
+%.objcopy : %.elf
+	i386-elf-objcopy -O binary -S $< $@ --pad-to=0x10000
+
 %.log : %.elf
 	wdog.exe -v i386-elf-gdb -q -x gdbcom $< > $@
 
@@ -18,4 +21,4 @@
 	touch $@
 
 clean:
-	rm -f *.o *.s *.elf *.map *.objdump *.log TAGS *~
+	rm -f *.o *.s *.elf *.map *.objdump *.objcopy *.log TAGS *~

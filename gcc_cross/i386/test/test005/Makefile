@@ -1,4 +1,4 @@
-all:test.objdump
+all:test.objdump test.objcopy
 
 include ../Makefile.common
 
