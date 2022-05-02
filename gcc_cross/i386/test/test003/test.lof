@@ -1,0 +1,36 @@
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x29 lma 0xfe00
+Loading section .data, size 0x26 lma 0xfe29
+Loading section .por, size 0x5 lma 0xfff0
+Loading section .text32, size 0x1e lma 0x10000
+Start address 0xfff0
+Transfer rate: 912 bits in <1 sec.
+Breakpoint 1 at 0xfff0: file por.S, line 5.
+
+Breakpoint 1, power_on_reset () at por.S:5
+5		ljmp	$0xf000, $start16
+Breakpoint 2 at 0xfe00: file ../default.S, line 5.
+
+Breakpoint 2, start16 () at ../default.S:5
+5		mov	%cr0, %eax
+Breakpoint 3 at 0xfe1e: file ../default.S, line 29.
+
+Breakpoint 3, start32 () at ../default.S:29
+29		movl	$stack, %esp
+Breakpoint 4 at 0x10010: file test.c, line 8.
+
+Breakpoint 4, main () at test.c:8
+8	  return f(5, 6);
+f (a=5, b=6) at test.c:3
+3	  return a + b;
+#0  f (a=5, b=6) at test.c:3
+#1  0x00010019 in main () at test.c:8
+0x00010019 in main () at test.c:8
+8	  return f(5, 6);
+Value returned is $1 = 11
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]

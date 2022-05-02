@@ -1,11 +1,13 @@
-all:
+all:test.objdump test.lof
 
 include ../Makefile.common
 
-test.o:test.S
+por.o:por.S
 
-test.elf:test.o
-	i386-elf-ld -o $@ $< -T ../default.x
+test.o:test.c
+
+test.elf:por.o ../default.o test.o test.x
+	i386-elf-ld -o $@ -T test.x
 
 test.objdump:test.elf
 
