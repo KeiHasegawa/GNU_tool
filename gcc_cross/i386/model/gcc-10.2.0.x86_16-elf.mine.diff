@@ -1,0 +1,55 @@
+*** gcc-10.2.0.org/gcc/config.gcc	2021-10-16 10:31:18.000000000 +0900
+--- gcc-10.2.0.x86_16-elf.mine/gcc/config.gcc	2022-05-03 07:31:18.000000000 +0900
+***************
+*** 1677,1682 ****
+--- 1677,1686 ----
+  	tmake_file="h8300/t-h8300"
+  	tm_file="h8300/h8300.h dbxelf.h elfos.h newlib-stdint.h h8300/elf.h"
+  	;;
++ x86_16-*-elf*)
++ 	tmake_file="x86_16/t-x86_16"
++ 	tm_file="x86_16/x86_16.h dbxelf.h elfos.h newlib-stdint.h"
++ 	;;
+  h8300-*-linux*)
+  	tmake_file="${tmake_file} h8300/t-h8300 h8300/t-linux"
+  	tm_file="h8300/h8300.h dbxelf.h elfos.h gnu-user.h linux.h glibc-stdint.h h8300/linux.h"
+*** gcc-10.2.0.org/config.sub	2021-10-21 16:53:54.000000000 +0900
+--- gcc-10.2.0.x86_16-elf.mine/config.sub	2022-05-03 07:22:32.000000000 +0900
+***************
+*** 2,8 ****
+  # Configuration validation subroutine script.
+  #   Copyright 1992-2019 Free Software Foundation, Inc.
+  
+! timestamp='2021-10-21'
+  
+  # This file is free software; you can redistribute it and/or modify it
+  # under the terms of the GNU General Public License as published by
+--- 2,8 ----
+  # Configuration validation subroutine script.
+  #   Copyright 1992-2019 Free Software Foundation, Inc.
+  
+! timestamp='2022-05-03'
+  
+  # This file is free software; you can redistribute it and/or modify it
+  # under the terms of the GNU General Public License as published by
+***************
+*** 1250,1258 ****
+  			| x86 | x86_64 | xc16x | xgate | xps100 \
+  			| xstormy16 | xtensa* \
+  			| ymp \
+  			| z8k | z80)
+  				;;
+- 
+  			*)
+  				echo Invalid configuration \`"$1"\': machine \`"$cpu-$vendor"\' not recognized 1>&2
+  				exit 1
+--- 1250,1258 ----
+  			| x86 | x86_64 | xc16x | xgate | xps100 \
+  			| xstormy16 | xtensa* \
+  			| ymp \
++ 			| x86_16 \
+  			| z8k | z80)
+  				;;
+  			*)
+  				echo Invalid configuration \`"$1"\': machine \`"$cpu-$vendor"\' not recognized 1>&2
+  				exit 1

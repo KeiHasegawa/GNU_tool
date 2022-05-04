@@ -1,0 +1,79 @@
+(*1)
+
+出力ファイルに命令を生成する前に
+
+	.code16
+
+を生成する必要がある. 以下のようにして対応した;
+
+void x86_16_file_start()
+{
+  default_file_start ();
+
+  fprintf(asm_out_file, "	.code16\n");
+}
+
+#undef  TARGET_ASM_FILE_START
+#define TARGET_ASM_FILE_START x86_16_file_start
+
+(*2)
+
+16 ビットのコードのために i386-elf-gdb や i386-elf-sim にオプションを追加する
+必要がある. まずは i386-elf-sim へのオプションを追加してみる.
+
+--16bit
+
+を追加する. 以下のようにして対応した:
+
+static SIM_RC
+set16bit(SIM_DESC sd, sim_cpu* cpu, int opt, char* arg, int is_command)
+{
+  ...
+}
+
+OPTION my_opt[] = {
+  { { "16bit", 0, 0, 0 }, '\0', 0, "16 bit mode", set16bit, 0 },
+  0
+};
+
+SIM_DESC sim_open (SIM_OPEN_KIND kind, struct host_callback_struct *callback,
+		   struct bfd *abfd, char * const *argv)
+{
+...
+  if (sim_add_option_table(sd, 0, &my_opt[0]) != SIM_RC_OK)   ★
+    return 0;
+
+  if (sim_parse_args (sd, argv) != SIM_RC_OK)
+    return 0;
+
+
+(*3)
+2022.05.04 9:35 現状 hello world 11 が i386-elf-run で期待通り実行できている.
+
+i386-elf-gdb から hello world 11 を実行すると
+
+o main のブレークポイントで停止できている.
+
+o f にステップインするとプロローグを適切に表示できていない
+
+o プロローグをスキップすれば a と b の値を正しく表示できている.
+
+o where コマンドの結果は以下
+
+(i386-elf-gdb) where
+#0  f (a=5, b=6) at a.c:5
+#1  0x00060005 in ?? ()
+#2  0x01060000 in ?? ()
+#3  0xcccccccc in ?? ()
+#4  0xcccccccc in ?? ()
+#5  0xcccccccc in ?? ()
+#6  0xcccccccc in ?? ()
+Backtrace stopped: Cannot access memory at address 0x10000
+(i386-elf-gdb)
+
+o finish も現状は機能しないはず.
+
+o continue コマンドで hello world 11 が表示される. sim 16bit コマンドが機能している.
+
+sim 16bit コマンドが実行されたら g16bit が 1 にセットされるのでそれにより動作を
+変更できないか検討してみる.
