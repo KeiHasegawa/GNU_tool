@@ -1,0 +1,273 @@
+(*1) PDP11
+
+https://ja.wikipedia.org/wiki/PDP-11
+
+(*1) binutils のインストール
+
+% xz -d -c ../binutils-2.36.1-2.src/binutils-2.36.1.tar.xz | tar xf -
+% mv binutils-2.36.1 binutils-2.36.1.pdp11-elf
+% cd binutils-2.36.1.pdp11-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=pdp11-elf
+% make
+...
+libtool: link: gcc -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -Wwrite-strings -I./../zlib -g -O2 -o as-new app.o as.o atof-generic.o compress-debug.o cond.o depend.o dwarf2dbg.o dw2gencfi.o ecoff.o ehopt.o expr.o flonum-copy.o flonum-konst.o flonum-mult.o frags.o hash.o input-file.o input-scrub.o listing.o literal.o macro.o messages.o output-file.o read.o remap.o sb.o stabs.o subsegs.o symbols.o write.o config/tc-pdp11.o config/obj-elf.o config/atof-vax.o  ../opcodes/.libs/libopcodes.a ../bfd/.libs/libbfd.a -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/zlib -lz ../libiberty/libiberty.a -ldl
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: config/obj-elf.o: in function `obj_elf_change_section':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/gas/config/obj-elf.c:748: undefined reference to `bfd_elf_get_default_section_type'
+...
+
+as-new のリンクでエラーしている. これは見たことがないエラー.
+
+obj_elf_change_section という函数で bfd_elf_get_default_section_type というシンボル
+を参照しているということ.
+
+binutils-2.36.1.pdp11-elf/gas/config/obj-elf.c
+
+void
+obj_elf_change_section (const char *name,
+			unsigned int type,
+			bfd_vma attr,
+			int entsize,
+			struct elf_section_match *match_p,
+			int linkonce,
+			int push)
+{
+...
+	type = bfd_elf_get_default_section_type (flags);
+
+函数として呼び出しているらしい.
+
+obj-elf.o は以下のようにコンパイルしているらしい.
+
+gcc -DHAVE_CONFIG_H -I.  -I. -I. -I../bfd -I./config -I./../include -I./.. -I./../bfd -DLOCALEDIR="\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/share/locale\""  -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -Wwrite-strings -I./../zlib -g -O2 -MT config/obj-elf.o -MD -MP -MF $depbase.Tpo -c -o config/obj-elf.o config/obj-elf.c
+
+一応プリプロセスの結果を確認してみた.
+
+# 2106 "./../bfd/elf-bfd.h"
+...
+extern int bfd_elf_get_default_section_type (flagword);  ★
+
+void
+obj_elf_change_section (const char *name,
+   unsigned int type,
+   bfd_vma attr,
+   int entsize,
+   struct elf_section_match *match_p,
+   int linkonce,
+   int push)
+{
+...
+ type = bfd_elf_get_default_section_type (flags);  ★
+
+ということで elf-bfd.h で宣言されている函数らしい.
+
+正常にリンクができている x86_64-elf-as はどのようなっていたか確認してみる.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.x86_64-elf/gas
+% ls config/obj-elf.o
+config/obj-elf.o
+% mv config/obj-elf.{o,o.org}
+% make -n config/obj-elf.o
+depbase=`echo config/obj-elf.o | sed 's|[^/]*$|.deps/&|;s|\.o$||'`;\
+gcc -DHAVE_CONFIG_H -I.  -I. -I. -I../bfd -I./config -I./../include -I./.. -I./../bfd -DLOCALEDIR="\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/share/locale\""  -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -Wwrite-strings -I./../zlib -g -O2 -MT config/obj-elf.o -MD -MP -MF $depbase.Tpo -c -o config/obj-elf.o config/obj-elf.c &&\
+mv -f $depbase.Tpo $depbase.Po
+% cat x
+gcc -DHAVE_CONFIG_H -I.  -I. -I. -I../bfd -I./config -I./../include -I./.. -I./../bfd -DLOCALEDIR="\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/share/locale\""  -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -Wwrite-strings -I./../zlib -g -O2 -MT config/obj-elf.o -MD -MP  -E -o config/obj-elf.i config/obj-elf.c
+% sh -v x
+
+config/obj-elf.i を確認してみたところマクロ展開の結果は同じらしい. つまり x86_64-elf-as
+ではどこかで bfd_elf_get_default_section_type が定義されていたということ.
+
+% mv as-new as-new.org
+% make -n as-new
+rm -f as-new
+/bin/sh ./libtool  --tag=CC   --mode=link gcc -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -Wwrite-strings -I./../zlib -g -O2   -o as-new app.o as.o atof-generic.o compress-debug.o cond.o depend.o dwarf2dbg.o dw2gencfi.o ecoff.o ehopt.o expr.o flonum-copy.o flonum-konst.o flonum-mult.o frags.o hash.o input-file.o input-scrub.o listing.o literal.o macro.o messages.o output-file.o read.o remap.o sb.o stabs.o subsegs.o symbols.o write.o config/tc-i386.o config/obj-elf.o config/atof-ieee.o  ../opcodes/libopcodes.la ../bfd/libbfd.la ../libiberty/libiberty.a   -ldl 
+% cat a.c
+int bfd_elf_get_default_section_type;
+% cat x
+/bin/sh ./libtool  --tag=CC   --mode=link gcc -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -Wwrite-strings -I./../zlib -g -O2   -o as-new a.c app.o as.o atof-generic.o compress-debug.o cond.o depend.o dwarf2dbg.o dw2gencfi.o ecoff.o ehopt.o expr.o flonum-copy.o flonum-konst.o flonum-mult.o frags.o hash.o input-file.o input-scrub.o listing.o literal.o macro.o messages.o output-file.o read.o remap.o sb.o stabs.o subsegs.o symbols.o write.o config/tc-i386.o config/obj-elf.o config/atof-ieee.o  ../opcodes/libopcodes.la ../bfd/libbfd.la ../libiberty/libiberty.a   -ldl
+% sh -v x
+...
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: ../bfd/.libs/libbfd.a(elf.o): in function `bfd_elf_get_default_section_type':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.x86_64-elf/bfd/elf.c:3153: multiple definition of `bfd_elf_get_default_section_type'; /tmp/ccCzUzMj.o:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.x86_64-elf/gas/a.c:1: first defined here
+collect2: error: ld returned 1 exit status
+%
+
+binutils-2.36.1.x86_64-elf/bfd/elf.c
+
+に定義されているということ.
+
+binutils-2.36.1.x86_64-elf/bfd/elf.c:
+int
+bfd_elf_get_default_section_type (flagword flags)
+{
+...
+
+普通にある. ということは pdp11-elf-as の場合は libbfd.a に
+
+binutils-2.36.1.pdp11-elf/bfd/elf.o
+
+が含まれていなかった可能性がある. そこを調べてみる.
+
+pdp11-elf-as のビルドの途中で libbfd.a は以下のように作成していたらしい:
+
+libtool: link: ar rc .libs/libbfd.a  archive.o archures.o bfd.o bfdio.o bfdwin.o cache.o coff-bfd.o compress.o corefile.o elf-properties.o format.o hash.o init.o libbfd.o linker.o merge.o opncls.o reloc.o section.o simple.o stab-syms.o stabs.o syms.o targets.o binary.o ihex.o srec.o tekhex.o verilog.o pdp11.o cpu-pdp11.o
+
+確かに elf.o は含まれていない. 単純にそれが原因っぽい.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/bfd
+% make clean
+% make -n
+
+試行錯誤したが以下にたどり着く:
+
+Makefile:
+bfd_backends =  pdp11.lo elf.lo
+                          ★
+% cd ../gas
+% make
+...
+libtool: link: gcc -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -Wwrite-strings -I./../zlib -g -O2 -o as-new app.o as.o atof-generic.o compress-debug.o cond.o depend.o dwarf2dbg.o dw2gencfi.o ecoff.o ehopt.o expr.o flonum-copy.o flonum-konst.o flonum-mult.o frags.o hash.o input-file.o input-scrub.o listing.o literal.o macro.o messages.o output-file.o read.o remap.o sb.o stabs.o subsegs.o symbols.o write.o config/tc-pdp11.o config/obj-elf.o config/atof-vax.o  ../opcodes/.libs/libopcodes.a ../bfd/.libs/libbfd.a -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/zlib -lz ../libiberty/libiberty.a -ldl
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: config/obj-elf.o: in function `obj_elf_change_section':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/gas/config/obj-elf.c:748: undefined reference to `bfd_elf_get_default_section_type'
+
+これはエラーを回避できていない.
+
+% cd ../bfd
+% ar t libbfd.a
+...
+elf.o が入っていない. 上の Makefile の対処ではうまくいかないらしい.
+
+Makefile
+BFD_BACKENDS =  pdp11.lo elf.lo  ★
+
+
+% make
+% ar t libbfd.a
+...
+elf.o ★ OK!
+...
+% cd ../gas
+% make
+...
+libtool: link: gcc -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -Wwrite-strings -I./../zlib -g -O2 -o as-new app.o as.o atof-generic.o compress-debug.o cond.o depend.o dwarf2dbg.o dw2gencfi.o ecoff.o ehopt.o expr.o flonum-copy.o flonum-konst.o flonum-mult.o frags.o hash.o input-file.o input-scrub.o listing.o literal.o macro.o messages.o output-file.o read.o remap.o sb.o stabs.o subsegs.o symbols.o write.o config/tc-pdp11.o config/obj-elf.o config/atof-vax.o  ../opcodes/.libs/libopcodes.a ../bfd/.libs/libbfd.a -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/zlib -lz ../libiberty/libiberty.a -ldl
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: config/obj-elf.o: in function `obj_elf_vendor_attribute':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/gas/config/obj-elf.c:2012: undefined reference to `_bfd_elf_obj_attrs_arg_type'
+
+_bfd_elf_obj_attrs_arg_type が未解決ということらしい.
+
+% cd ../bfd
+% grep _bfd_elf_obj_attrs_arg_type *
+elf-attrs.c に定義を発見
+
+Makefile を以下のように修正
+
+BFD_BACKENDS =  pdp11.lo elf.lo elf-attrs.lo ★
+
+% cd ../gas
+% make
+...
+libtool: link: gcc -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -Wwrite-strings -I./../zlib -g -O2 -o as-new app.o as.o atof-generic.o compress-debug.o cond.o depend.o dwarf2dbg.o dw2gencfi.o ecoff.o ehopt.o expr.o flonum-copy.o flonum-konst.o flonum-mult.o frags.o hash.o input-file.o input-scrub.o listing.o literal.o macro.o messages.o output-file.o read.o remap.o sb.o stabs.o subsegs.o symbols.o write.o config/tc-pdp11.o config/obj-elf.o config/atof-vax.o  ../opcodes/.libs/libopcodes.a ../bfd/.libs/libbfd.a -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/zlib -lz ../libiberty/libiberty.a -ldl
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: ../bfd/.libs/libbfd.a(elf.o): in function `_bfd_elf_set_reloc_sh_name':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/bfd/elf.c:3104: undefined reference to `_bfd_elf_strtab_add'
+
+% cd ../bfd
+% grep _bfd_elf_strtab_add *
+
+以下のように Makefile を修正
+BFD_BACKENDS =  pdp11.lo elf.lo elf-attrs.lo elf-strtab.lo
+
+% cd ../gas
+% make
+...
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: ../bfd/.libs/libbfd.a(elf.o): in function `assign_section_numbers':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/bfd/elf.c:3880: undefined reference to `_bfd_elf_check_kept_section'
+...
+% cd ../bfd
+% grep _bfd_elf_check_kept_section *.c
+
+以下のように Makefile を修正
+BFD_BACKENDS =  pdp11.lo elf.lo elf-attrs.lo elf-strtab.lo elflink.lo
+
+% cd ../gas
+% make
+...
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: ../bfd/.libs/libbfd.a(elflink.o): in function `bfd_elf_size_dynamic_sections':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/bfd/elflink.c:7198: undefined reference to `_bfd_elf_maybe_strip_eh_frame_hdr'
+...
+% cd ../bfd
+% grep _bfd_elf_maybe_strip_eh_frame_hdr *.c
+
+以下のように Makefile を修正
+BFD_BACKENDS =  pdp11.lo elf.lo elf-attrs.lo elf-strtab.lo elflink.lo \
+		elf-eh-frame.lo
+
+
+% cd ../gas
+% make
+...
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: ../bfd/.libs/libbfd.a(elf.o): in function `_bfd_elf_find_nearest_line':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/bfd/elf.c:9178: undefined reference to `dwarf_debug_sections'
+...
+% cd ../bfd
+% grep dwarf_debug_sections *.c
+
+
+以下のように Makefile を修正
+BFD_BACKENDS =  pdp11.lo elf.lo elf-attrs.lo elf-strtab.lo elflink.lo \
+		elf-eh-frame.lo dwarf2.lo
+
+% cd ../gas
+% make
+...
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: ../bfd/.libs/libbfd.a(elf.o): in function `_bfd_elf_find_nearest_line':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/bfd/elf.c:9185: undefined reference to `_bfd_dwarf1_find_nearest_line'
+...
+% cd ../bfd
+% grep _bfd_dwarf1_find_nearest_line *.c
+
+以下のように Makefile を修正
+BFD_BACKENDS =  pdp11.lo elf.lo elf-attrs.lo elf-strtab.lo elflink.lo \
+		elf-eh-frame.lo dwarf2.lo dwarf1.lo
+
+
+% cd ../gas
+% make
+...
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: ../bfd/.libs/libbfd.a(elf.o): in function `_bfd_elf_slurp_secondary_reloc_section':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/bfd/elf.c:12681: undefined reference to `elf32_r_sym'
+...
+% cd ../bfd
+% grep elf32_r_sym *.c
+定義を簡単に見つけることができていない.
+
+宣言はある
+elf-bfd.h:
+extern bfd_vma elf32_r_sym (bfd_vma);
+
+前のように意図的にリンクエラーを発生させてみた:
+
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: ../bfd/.libs/libbfd.a(elf32.o): in function `elf32_r_sym':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.x86_64-elf/bfd/elfcode.h:1950: multiple definition of `elf32_r_sym'; /tmp/cc4m2GEO.o:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.x86_64-elf/gas/a.c:1: first defined here
+collect2: error: ld returned 1 exit status
+
+elfcode.h に定義があるようなエラーメッセージになっている.
+
+elf32.c:
+#include "elfcode.h"
+
+こういうカラクリらしい.
+
+以下のように Makefile を修正
+BFD_BACKENDS =  pdp11.lo elf.lo elf-attrs.lo elf-strtab.lo elflink.lo \
+		elf-eh-frame.lo dwarf2.lo dwarf1.lo elf32.lo
+
+
+% cd ../gas
+% make
+
+正常終了. 今回のエラーはおそらく Makefile.in が間違えていたということ.
+
+% cd ..
+% make
+% make install
+
