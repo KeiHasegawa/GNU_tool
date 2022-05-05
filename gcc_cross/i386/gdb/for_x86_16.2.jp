@@ -1,0 +1,53 @@
+経緯 : x86_16-elf-gcc の生成したプログラムに対して i386-elf-gdb でもデバッグ
+      できるように実装したかったが, x86_16-elf-gdb を実装した方が簡単だと考えた
+      のでそのようにすることにした. シミュレータは
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i386-elf/sim/i386/{run,libsim.a}
+
+      をそのまま使用する.
+
+gdb-10.2 のビルド
+
+i386 と同じようなやり方をしてみた:
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% xz -d -c ../gdb-10.2-1.src/gdb-10.2.tar.xz | tar xf -
+% mv gdb-10.2 gdb-10.2.x86_16-elf
+% cd gdb-10.2.x86_16-elf/gdb
+
+d30v, fr30, z8k, i960, mmix, z80, i386 と同じ対処をした.
+
+gdb-10.2.x86_16-elf/gdb/configure.tgt:
+
+h8300-*-*)
+	# Target: H8300 processor
+	gdb_target_obs="h8300-tdep.o"
+	gdb_sim=../sim/h8300/libsim.a
+	;;
+
++x86_16-*-*)
++	gdb_target_obs="x86_16-tdep.o"
++	gdb_sim=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i386-elf/sim/i386/libsim.a
++	;;
+
+% cp ~/lang/53_GNU_tool/gcc_cross/CompactRISC/cr16-tdep.c.000 x86_16-tdep.c
+
+cr16 を x86_16 に変換しておいた.
+
+
+% cd ..
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=x86_16-elf
+...
+configure: error: /bin/sh ./config.sub x86_16-elf failed
+%
+
+config.sub に以下を追加:
+
+			| ymp \
++			| x86_16 \
+			| z8k | z80)
+				;;
+
+しかしこれだと x86_16-tdep.c 以外のターゲット固有部ができていない.
+やるべきことは i386-tdep.c の代わりをやるだけでよいのでこの方法はそぐ
+わない.

@@ -1,0 +1,40 @@
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i386-elf/gdb/
+
+に Makefile.x86_16 を作成して Makefile.x86_16 で x86_16-elf-gdb をビルドできるように
+する.
+
+% diff Makefile Makefile.x86_16
+693c693
+< TARGET_OBS = i386-tdep.o arch/i386.o i387-tdep.o x86-tdep.o
+---
+> TARGET_OBS = x86_16-tdep.o arch/i386.o i387-tdep.o x86-tdep.o
+%
+
+2022.05.05 14:12
+
+x86_16-elf-gcc の生成している .debug_frame を確認してみたところ
+
+.debug_frame セクションの内容(a.elf より読み込んだもの):
+
+
+00000000 0000000e ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -2
+  Return address column: 9
+
+  DW_CFA_def_cfa: r4 (esp) ofs 0
+  DW_CFA_offset: r9 (eflags) at cfa+0
+
+00000012 00000008 00000000 FDE cie=00000000 pc=000f0111..000f0143  ★
+
+0000001e 00000032 00000000 FDE cie=00000000 pc=001e0120..001e0624  ★
+  DW_CFA_nop
+
+余分な 0f や 1e が付いている. まずはこれが正しくないから x86_16-elf-gcc を修正
+するべき.
+
+もしかすると i386-elf-gdb で x86_16-elf-gcc が生成したプログラムが期待した動作を
+しなかったのはこれが原因の可能性がある.
+
