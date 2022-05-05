@@ -1,0 +1,216 @@
+経緯 : 8086 のコンパイラの雛形を作成したがシミュレータの大部分は i386-elf-run なので
+      i386-elf-gdb で 8086 のコードもデバッグできるようにすることができないかと考えた.
+
+
+(*1)
+現状 hello world 11 は
+
+% i386-elf-run --memory-fill 0xcc --memory-region 0xe000,0x2000 --16bit a.elf
+                                                                   ★
+
+のように --16bit オプションで期待通り動作している.
+
+i386-elf-gdb で hello world 11 を動作させると
+
+main で停止して f にステップインしたときプロローグを適切にスキップできていない.
+
+M-x gdb
+gdb --annotate=3 ./gdb
+
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.x86_16-elf.mine/host-i686-pc-linux-gnu/gcc/
+(gdb) run -q -x gdbcom.2 a.elf
+
+で再現している.
+
+このプログラムは
+
+start:
+	code : 0x100
+	sp   : 0xfff0
+	ret  : なし 
+
+main:
+	code : 0x120
+	sp   : 0xffee
+	ret  : 0x106
+
+f:
+	code : 0x111
+	sp   : 0xffe6
+	ret  : 0x12c
+
+のようなスタックフレームを持っている. main::sp - f::sp = 8 であるが以下がその内訳:
+
+o main の先頭で push %bp
+o 引数の 5
+o 引数の 6
+o call 命令で戻りアドレスがスタックに積まれる
+
+(gdb) b i386_skip_prologue
+(gdb) run
+...
+i386_skip_prologue のブレークポイントに 4 回ヒットするが引数の start_pc は 0x120.
+つまり main のブレークポイントにヒットしたときのプロローグのスキップ処理.
+
+一方 8086 ではなくて自前の i386-elf-gcc の cc1 が生成したコードでは期待した動作に
+なっている. 以下は gdb から実行する手順:
+
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.i386-elf.mine/host-i686-pc-linux-gnu/gcc/
+(gdb) run -q -x gdbcom a.elf
+
+main に対してプロローグのスキップ処理が 4 回呼び出された後, f に対してプロローグの
+スキップ処理が 2 回呼び出されている.
+
+だから同じ i386-elf-gdb がそれぞれのコードに対してどのように動作として違いが出るか調べてみる.
+
+(gdb) b step_command
+(gdb) run
+...
+i386_skip_prologue のブレークポイントにヒット
+(gdb) disable 1 # i386_skip_prologue のブレークポイントを一旦無効化
+(gdb) c
+...
+step_command のブレークポイントにヒット
+(gdb) enable
+(gdb) c
+...
+i386_skip_prologue のブレークポイントにヒット
+(gdb) where
+
+(gdb) where
+#0  i386_skip_prologue (gdbarch=0x9f61260, start_pc=332) at i386-tdep.c:1851
+#1  0x081e11b8 in gdbarch_skip_prologue_noexcept (gdbarch=0x9f61260, pc=332) at arch-utils.c:1007
+#2  0x08344202 in handle_step_into_function (ecs=0xbffff0dc, gdbarch=0x9f61260) at infrun.c:7401
+#3  process_event_stop_test (ecs=0xbffff0dc) at infrun.c:6876
+#4  0x08346912 in handle_inferior_event (ecs=<optimized out>) at infrun.c:5549
+#5  0x083479e0 in fetch_inferior_event () at infrun.c:3931
+#6  0x081e24fc in check_async_event_handlers () at async-event.c:295
+#7  0x085c620b in gdb_do_one_event () at event-loop.cc:194
+#8  0x0848870c in wait_sync_command_done () at top.c:526
+#9  maybe_wait_sync_command_done (was_sync=<optimized out>) at top.c:543
+#10 0x0848a441 in execute_command (p=<optimized out>, from_tty=<optimized out>) at top.c:670
+#11 0x082e2b3c in command_handler (command=0x9fafdb0 "step") at event-top.c:588
+...
+
+上は期待通り動作する(自前の) i386-elf-gcc の cc1 が生成したコードに対する i386-elf-gdb
+の動作.
+
+一方自前の x86_16-elf-gcc の cc1 が静止したコードに対する i386-elf-gdb の動作は以下:
+
+(gdb) delete
+(gdb) b step_command
+(gdb) run
+...
+step_command のブレークポイントにヒット
+(gdb) where
+#0  step_command (count_string=0x0, from_tty=0) at infcmd.c:793
+#1  0x082363bc in cmd_func (cmd=0x9f1d8b0, args=0x0, from_tty=0) at cli/cli-decode.c:2181
+#2  0x0848a9be in execute_command (p=<optimized out>, from_tty=0) at top.c:668
+#3  0x082e2b3c in command_handler (command=0x9fade10 "step") at event-top.c:588
+...
+
+一旦 infrun.o を -g オプション付きでリコンパイルして gdb を再リンク.
+そこで以下が呼び出されていると山を張ってみた:
+(gdb) b wait_sync_command_done
+(gdb) c
+...
+wait_sync_command_done のブレークポイントにヒット. きている.
+(gdb) b gdb_do_one_event
+(gdb) c
+...
+gdb_do_one_event のブレークポイントにヒット. ここもきている.
+(gdb) b check_async_event_handlers
+(gdb) c
+...
+check_async_event_handlers のブレークポイントにヒット. ここもきている.
+(gdb) b fetch_inferior_event
+(gdb) c
+...
+fetch_inferior_event のブレークポイントにヒット. ここもきている.
+(gdb) b handle_inferior_event
+(gdb) c
+...
+handle_inferior_event のブレークポイントにヒット. ここもきている.
+(gdb) b process_event_stop_test
+(gdb) c
+...
+process_event_stop_test のブレークポイントにヒット. ここもきている.
+(gdb) b handle_step_into_function
+(gdb) c
+...
+handle_step_into_function のブレークポイントにはヒットしていない.
+
+だから process_event_stop_test で何故 handle_step_into_function が
+呼び出されないかを調べてみる.
+
+step_command の後 process_event_stop_test は複数回呼び出されるらしい.
+1 回目の動作は同じであった.
+
+期待通り動作している i386-elf-gcc の生成したプログラムの場合 step_command の後の
+process_event_stop_test は 3 回呼び出されている.
+一方 x86_16-elf-gcc の生成したプログラムの場合 step_command の後の
+process_event_stop_test は 3 回呼び出されている. ここは合致しているが
+3 回目の呼び出しで i386-elf-gcc では handle_step_into_function の呼び出しが
+発生する.
+
+3 回目の呼び出しを比較してみた. 以下の条件が成立しているのが i386-elf-gcc の生成した
+プログラムに対する i386-elf-gdb の動作. 一方 x86_16-elf-gcc の生成したプログラム
+に対しては成立していない.
+
+  if (!frame_id_eq (get_stack_frame_id (frame),
+		    ecs->event_thread->control.step_stack_frame_id)
+      && (frame_id_eq (frame_unwind_caller_id (get_current_frame ()),
+		       ecs->event_thread->control.step_stack_frame_id)
+	  && (!frame_id_eq (ecs->event_thread->control.step_stack_frame_id,
+			    outer_frame_id)
+	      || (ecs->event_thread->control.step_start_function
+		  != find_pc_function (ecs->event_thread->suspend.stop_pc)))))
+    {
+
+以下は x86_16-elf-gcc の生成したプログラムに対して変数の値を調べてみた:
+
+(gdb) p frame_id_eq (get_stack_frame_id (frame), ecs->event_thread->control.step_stack_frame_id)
+$5 = false
+(gdb) p frame_id_eq (frame_unwind_caller_id (get_current_frame ()), ecs->event_thread->control.step_stack_frame_id)  ★
+$6 = false
+(gdb)
+
+一方 i386-elf-gcc の生成したプログラムに対して変数の値を調べると
+
+(gdb) p frame_id_eq (frame_unwind_caller_id (get_current_frame ()), ecs->event_thread->control.step_stack_frame_id)  ★
+$1 = true
+(gdb)
+
+ここで違いが出ている. おそらくだがアドレスの扱いが 32 ビットのままなので違いが出ていると思われる.
+それを確認してみる.
+
+以下は x86_16-elf-gcc の生成したプログラムに対して変数の値を調べてみた:
+(gdb) p/x frame_unwind_caller_id (get_current_frame ())
+$8 = {stack_addr = 0xffee, code_addr = 0x0, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) p/x ecs->event_thread->control.step_stack_frame_id
+$9 = {stack_addr = 0xfff4, code_addr = 0x120, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb)
+
+この 2 つのフレーム ID はアドレスのビット数に関係なく異なるものと思える.
+
+
+以下は i386-elf-gcc の生成したプログラムに対して変数の値を調べてみた:
+(gdb) p/x frame_unwind_caller_id (get_current_frame ())
+$2 = {stack_addr = 0x20000, code_addr = 0x15b, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) p/x ecs->event_thread->control.step_stack_frame_id
+$3 = {stack_addr = 0x20000, code_addr = 0x15b, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb)
+
+これは合致している. やはりここではアドレスのビット数は関係ないらしい.
+ともあれまずは明らかにできていそうにないところを修正してみる.
+
+と思ったが i386-tdep.c は例によって大作. やはり x86_16-elf-gcc 用にスクラッチから
+作成した方が簡単だと考えた.
