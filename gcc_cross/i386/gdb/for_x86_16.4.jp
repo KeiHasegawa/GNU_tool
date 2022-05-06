@@ -1,0 +1,199 @@
+現状
+
+% i386-elf-objdump -dwarf=frames /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.x86_16-elf.mine/host-i686-pc-linux-gnu/gcc/b.elf
+...
+00000000 00000012 ffffffff CIE
+  Version:               3
+  Augmentation:          "zR"
+  Code alignment factor: 1
+  Data alignment factor: -2
+  Return address column: 9
+  Augmentation data:     02
+  DW_CFA_def_cfa: r4 (esp) ofs 0
+  DW_CFA_offset: r9 (eflags) at cfa+0
+
+00000016 00000008 00000000 FDE cie=00000000 pc=00000111..00000120
+  Augmentation data:    
+ 00 00 00 00 00 00 00 20 01 1e 00 04 05 00 00 00 0e 02 04 02 00 00 00 0e 04 04
+ 06 00 00 00 0e 00 04 01 00 00 00 0e 02 04 03 00 00 00 0e 04 04 06 00 00
+
+00000022 00000032 00000000 FDE cie=00000000 pc=00000120..0000013e
+  Augmentation data:     05 00 00 00
+  DW_CFA_def_cfa_offset: 2
+  DW_CFA_advance_loc4: 2 to 00000122
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_advance_loc4: 6 to 00000128
+  DW_CFA_def_cfa_offset: 0
+  DW_CFA_advance_loc4: 1 to 00000129
+  DW_CFA_def_cfa_offset: 2
+  DW_CFA_advance_loc4: 3 to 0000012c
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_advance_loc4: 6 to 00000132
+  DW_CFA_def_cfa_offset: 0
+%
+
+少し見慣れない形になっているが, 例のアドレスの問題は解消できている.
+
+M-x gdb
+gdb --annotate=3 ./gdb
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.x86_16-elf.mine/host-i686-pc-linux-gnu/gcc/
+(gdb) run -q -x gdbcom.2 b.elf
+...
+Start address 0x100
+Transfer rate: 624 bits in <1 sec.
+Breakpoint 1 at 0x123: file a.c, line 10.
+
+Breakpoint 1, main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+f (a=-13108, b=-13108) at a.c:4
+4	{
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+
+しかし状況はあまり改善されていないらしい.
+
+以下のように f にブレークポイントをセットすればプロローグは適切にスキップできている:
+
+% cat /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.x86_16-elf.mine/host-i686-pc-linux-gnu/gcc/gdbcom.3
+set prompt (i386-elf-gdb) 
+dir /home/khasegawa/lang/53_GNU_tool/gcc_cross/i386/tool16
+target sim
+sim memory-fill 0xcc
+sim memory-region 0xe000,0x2000
+sim 16bit
+load
+b f           ★
+run
+quit
+%
+
+(gdb) run -q -x gdbcom.3 b.elf
+...
+Loading section .text, size 0x3e lma 0x100
+Loading section .rodata, size 0x10 lma 0x13e
+Start address 0x100
+Transfer rate: 624 bits in <1 sec.
+Breakpoint 1 at 0x114: file a.c, line 5.
+
+Breakpoint 1, f (a=5, b=6) at a.c:5
+5	  return a + b;
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
+
+f にステップインしたときにプロローグを適切にスキップできない理由は例のアドレスの
+問題は, もしかすると関係なかったらしい.
+
+(gdb) b step_command
+(gdb) run -q -x gdbcom.2 b.elf
+(gdb) run
+...
+step_command のブレークポイントにヒット
+(gdb) b process_event_stop_test
+(gdb) c
+...
+process_event_stop_test のブレークポイントに 3 回ヒットするまで continue
+(gdb)
+
+  if (!frame_id_eq (get_stack_frame_id (frame),
+		    ecs->event_thread->control.step_stack_frame_id)
+      && (frame_id_eq (frame_unwind_caller_id (get_current_frame ()),
+		       ecs->event_thread->control.step_stack_frame_id)
+	  && (!frame_id_eq (ecs->event_thread->control.step_stack_frame_id,
+			    outer_frame_id)
+	      || (ecs->event_thread->control.step_start_function
+		  != find_pc_function (ecs->event_thread->suspend.stop_pc)))))
+    {
+
+問題の箇所
+
+(gdb) p frame_id_eq (frame_unwind_caller_id (get_current_frame ()), ecs->event_thread->control.step_stack_frame_id)
+$4 = false  ★ true になるのが期待値
+(gdb) p/x frame_unwind_caller_id (get_current_frame ())
+$5 = {stack_addr = 0xffe6, code_addr = 0x10e, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) p/x ecs->event_thread->control.step_stack_frame_id
+$6 = {stack_addr = 0xffec, code_addr = 0x120, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb)
+
+確かに違っている. 0x120 は main のアドレス.
+0x10e は putchar のアドレス. これは全く予期しない値.
+
+main が呼び出された時点での %sp は 0xffee でそこから 2 減算されているのは
+
+main:
+	pushw	%bp
+
+の分. 0xffe6 は f が呼び出された時点での %sp の値.
+
+現状フレーム ID をテキトーに作成しているが, 本来はここが使用される予定ではなかったのだが...
+
+
+例のこの部分:
+
+  for (entry = table->list; entry != NULL; entry = entry->next)
+    if (frame_unwind_try_unwinder (this_frame, this_cache, entry->unwinder))
+      return;
+
+
+(gdb) p *table->list
+$13 = {unwinder = 0x8900cc0 <dummy_frame_unwind>, next = 0x9fd39e8}
+(gdb) p *table->list->next
+$14 = {unwinder = 0x8902140 <dwarf2_tailcall_frame_unwind>, next = 0x9fd39f0}
+(gdb) p *table->list->next->next
+$15 = {unwinder = 0x8930e60 <inline_frame_unwind>, next = 0xa058a5c}
+(gdb) p *table->list->next->next->next
+$16 = {unwinder = 0x8931bc0 <jit_frame_unwind>, next = 0x9fd3a34}
+(gdb) p *table->list->next->next->next->next
+$17 = {unwinder = 0x9fd3a14, next = 0x9fd39f8}
+(gdb) p *table->list->next->next->next->next->next
+$18 = {unwinder = 0x8902aa0 <dwarf2_frame_unwind>, next = 0x9fd3a00}
+(gdb) p *table->list->next->next->next->next->next->next
+$19 = {unwinder = 0x8902a80 <dwarf2_signal_frame_unwind>, next = 0x9fd3a08}
+(gdb) p *table->list->next->next->next->next->next->next->next
+$20 = {unwinder = 0x8d3a940 <x86_16_frame_unwind>, next = 0x0}
+(gdb)
+
+なので x86_16_frame_unwind の前の前に dwarf2_frame_unwind で条件が成立するのが
+期待値. 条件が成立しない原因を調べてみる.
+
+(gdb) b frame-unwind.c:193
+(gdb) run
+...
+
+
+unwinder = dwarf2_frame_unwind の状態で
+
+      res = unwinder->sniffer (unwinder, this_frame, this_cache);  ★
+
+res = 0 になっている. res = 1 が期待値.
+
+  struct dwarf2_fde *fde = dwarf2_frame_find_fde (&block_addr, NULL);
+
+0 になるのは以下で fde が nullptr になるのが直接の原因. block_addr = 0x123 で
+呼び出している.
+
+
+  for (objfile *objfile : current_program_space->objfiles ())
+    {
+       // 1 回だけループする. objfile = b.elf になっている
+      dwarf2_fde_table *fde_table = &unit->fde_table;
+      if (fde_table->empty ())  この条件が成立する.
+	continue;
+       
+    }
+
+そして nullptr が返っている.
+
+そもそも例のアドレスの問題を解決したものコンパイラの生成した .debug_frame を手で
+修正して b.elf が作成されているが, ダンプしたものもかなり見慣れないものになっていて
+これは動かなくてもしょうがないといったところだろうか.
+
+それならば自力で作成したフレーム ID で何とかできるようにしてみる.
