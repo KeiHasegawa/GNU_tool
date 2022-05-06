@@ -1,0 +1,86 @@
+.debug_frame が正しく生成されていない件
+
+00000012 00000008 00000000 FDE cie=00000000 pc=000f0111..000f0143  ★
+
+0000001e 00000032 00000000 FDE cie=00000000 pc=001e0120..001e0624  ★
+
+0f や 1e が付加されている. また f は 0x111 から 0x120,
+main は 0x120 から 0x13e なので単純に 0xffff と & 演算しても正しいわけ
+ではない.
+
+まずは
+
+% i386-elf-objdump --dwarf=frames a.elf
+
+で上の部分がダンプされるのでなぜ pc=000f0111..000f0143 となるのか原因を調査する.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.i386-elf/binutils
+
+M-x gdb
+gdb --annotate=3 ./objdump
+(gdb) run  --dwarf=frames /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.x86_16-elf.mine/host-i686-pc-linux-gnu/gcc/a.elf
+
+
+gdb の制御下で実行しても再現している.
+
+	  if (fc->segment_size)
+	    printf ("%04lx:", segment_selector);
+
+	  printf ("%s..%s\n",
+		  dwarf_vmatoa_1 (NULL, fc->pc_begin, fc->ptr_size),
+		  dwarf_vmatoa_1 (NULL, fc->pc_begin + fc->pc_range,		  fc->ptr_size)); ★
+
+
+(gdb) p/x fc->pc_begin
+$3 = 0xf0111                    ★
+(gdb) p/x fc->ptr_size
+$4 = 0x4                        ★
+(gdb) p/x fc->pc_range
+$5 = 0x32                       ★
+(gdb) 
+
+いずれも違っている. それぞれの期待値は 0x111, 0x2, 0x120 - 0x111 = 0xf
+まずは fc->pc_begin がどのように計算されているか確認してみる.
+値がセットされるのは 3 つのうち以下が最初:
+
+	      fc->ptr_size = cie->ptr_size;    ★
+
+cie->ptr_size が 4 になる原因を調べる.
+
+見た目が cie->ptr_size ではないが値をセットしているのは以下:
+
+      fc->ptr_size = eh_addr_size;  ★
+
+
+eh_addr_size に値をセットしているのは以下
+
+      eh_addr_size = bfd_arch_bits_per_address (abfd) / 8;
+
+(gdb) p bfd_arch_bits_per_address (abfd)
+$20 = 32
+(gdb) p abfd->arch_info->bits_per_address   ★
+$21 = 32
+(gdb)
+
+これが fc->ptr_size = 4 になる原因.
+となるとこれはアセンブラが未対応ということなのだろうか.
+16 ビットのコードを生成するためにコンパイラは
+
+	.code16   ★
+	.text
+
+のように .code16 疑似命令を生成している. オプションは特に指定していない.
+試しに以下のようにしてみた:
+
+% i386-elf-as -march=8087 a.s -g -o a.o
+% i386-elf-objdump --dwarf=frames a.o
+...
+00000012 00000008 00000000 FDE cie=00000000 pc=000f0000..000f0032
+
+0000001e 00000032 00000000 FDE cie=00000000 pc=001e000f..001e0513
+...
+%
+
+期待する結果にはなっていない.
+さてこの場合はどうしたものか.
+
