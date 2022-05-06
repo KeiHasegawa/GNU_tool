@@ -197,3 +197,17 @@ res = 0 になっている. res = 1 が期待値.
 これは動かなくてもしょうがないといったところだろうか.
 
 それならば自力で作成したフレーム ID で何とかできるようにしてみる.
+
+  => 実はこの後, 改めて x86_16::expand_prologue を見てみたところ
+
+     RTX_FRAME_RELATED_P(insn) = true;
+
+     のような rtx_insn* insn は全く生成していないことに気付いた. そし
+     て改めて x86_16::expand_prologue で生成している全ての rtx_insn* insn
+     に対して
+     
+     RTX_FRAME_RELATED_P(insn) = true;
+
+     のようにしたところ期待通り step, where が動作している. finish で
+     ソースに埋め込んでおいたブレークポイントにヒットしていた.
+     
