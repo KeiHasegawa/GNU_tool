@@ -1,0 +1,48 @@
+経緯 : .debug_frame を正しく生成することが困難な状況.
+
+回避策 : cc1 では .debug_frame を生成しない.
+
+と考えたが改めて x86_16:expand_prologue を見てみると
+
+    RTX_FRAME_RELATED_P(insn) = true;
+
+のような rtx_insn* insn を 1 つも生成していないことに気付いた.
+そこでまずは上の回避策とは真逆に x86_16:expand_prologue で生成している全ての
+rtx_insn* insn に対して
+
+    RTX_FRAME_RELATED_P(insn) = true;
+
+とした. そして x86_16-tdep.c を使用した gdb で動作させてみたところ期待通り
+dwarf2_frame_unwind を利用できている.
+
+さらに気付いたことは通常通り生成した a.elf すなわち
+
+	.section	.debug_frame,"",@progbits
+.Lframe0:
+	.4byte	.LECIE0-.LSCIE0
+.LSCIE0:
+	.4byte	0xffffffff
+	.byte	0x3
+	.string	"zR"              ★ z は augmentation (増大) R はポンタサイズ
+	.byte	0x1
+	.byte	0x7e
+	.byte	0x9
+	.uleb128	1         ★ 次の .byte のサイズ
+	.byte	2                 ★ ポインタサイズ
+	.byte	0xc
+
+のような修正をしないプログラムであれば f にステップインできていて, where コマンドが期待した
+動作になっている.
+
+現状は finish コマンドで
+
+static enum return_value_convention
+x86_16_return_value(gdbarch* arch, value* function,
+		    type *T, regcache* rc,
+		    gdb_byte* readbuf, const gdb_byte* writebuf)
+{
+  asm("int3");
+  return return_value_convention(0);
+}
+
+上の埋め込んだブレークポイントにヒットしている.
