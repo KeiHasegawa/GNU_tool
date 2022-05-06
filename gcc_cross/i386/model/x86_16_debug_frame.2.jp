@@ -1,0 +1,150 @@
+(gdb) b main
+(gdb) run
+...
+(gdb) p bfd_i386_arch
+$10 = {bits_per_word = 32, bits_per_address = 32, bits_per_byte = 8,  ★
+  arch = bfd_arch_i386, mach = 4, arch_name = 0x819a0d6 "i386", 
+  printable_name = 0x819a0d6 "i386", section_align_power = 3, 
+  the_default = 1, compatible = 0x810d800 <bfd_i386_compatible>, 
+  scan = 0x80ad190 <bfd_default_scan>, 
+  fill = 0x810d760 <bfd_arch_i386_short_nop_fill>, 
+  next = 0x81a3380 <bfd_x86_64_arch>, max_reloc_offset_into_insn = 0}
+(gdb)
+
+これは入力ファイルを読み込んで決まるわけではなくて, 変数の初期値.
+一旦 fc->ptr_size が 4 になる件は保留.
+次に fc->pc_begin が 0xf0111 になってしまう原因を調べてみる.
+
+(gdb) run  --dwarf=frames /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.x86_16-elf.mine/host-i686-pc-linux-gnu/gcc/a.elf
+
+
+	  fc->pc_begin = get_encoded_value (&start, fc->fde_encoding, section, end);  ★
+
+ここでセットしている.
+
+  unsigned int size = size_of_encoded_value (encoding);
+...
+  if (encoding & DW_EH_PE_signed)
+    val = byte_get_signed (data, size);
+  else
+    val = byte_get (data, size);   ★
+
+ここでセットしている.
+
+(gdb) p/x byte_get(data, 4)
+$21 = 0xf0111
+(gdb) p/x byte_get(data, 2)
+$22 = 0x111
+(gdb) 
+
+だから size = 2 になっているべきところで 4 になっているということ.
+
+static unsigned int
+size_of_encoded_value (int encoding)
+{
+  switch (encoding & 0x7)
+    {
+    default:	/* ??? */
+    case 0:	return eh_addr_size;
+    case 2:	return 2;
+    case 3:	return 4;
+    case 4:	return 8;
+    }
+}
+
+encoding = 0 になっているから例の eh_addr_size = 4 が返っているということ.
+encoding = 2 にすることができないか調べてみる.
+
+
+	  start = read_cie (start, end, &cie, &version,
+			    &augmentation_data_len, &augmentation_data);
+
+ここで読み出しているっぽい.
+
+試しに gdb から値を 2 になるように随時変更してみた:
+
+(gdb) run
+...
+Hardware watchpoint 12: *(char*)0x8223e00
+
+Old value = <unreadable>
+New value = 0 '\000'
+bfd_elf32_swap_symbol_in (abfd=0x821ba08, psrc=0x8223d18, pshn=0x0, dst=0x8223dfc) at elfcode.h:189
+(gdb) set *(char*)0x8223e00=2           ★
+(gdb) c
+...
+Hardware watchpoint 12: *(char*)0x8223e00
+
+Old value = 2 '\002'
+New value = 0 '\000'
+0x0805e08d in read_cie (start=0x8223cb0 "\003", end=end@entry=0x8223cfc "", p_cie=p_cie@entry=0xbffff26c, p_version=<optimized out>, p_aug_len=<optimized out>, p_aug=<optimized out>) at dwarf.c:8268
+(gdb) set *(char*)0x8223e00=2            ★
+(gdb) c
+...
+
+Hardware watchpoint 12: *(char*)0x8223e00
+
+Old value = 2 '\002'
+New value = 0 '\000'
+read_cie (start=0x8223cb0 "\003", end=end@entry=0x8223cfc "", p_cie=p_cie@entry=0xbffff26c, p_version=<optimized out>, p_aug_len=<optimized out>, p_aug=<optimized out>) at dwarf.c:8270
+(gdb) set *(char*)0x8223e00=2            ★
+(gdb) c
+...
+
+00000012 00000008 00000000 FDE cie=00000000 pc=00000111..00000120  ★
+
+0000001e 00000032 00000000 FDE cie=00000000 pc=00000120..0000013e  ★
+  DW_CFA_advance_loc4: 5 to 00000125
+  DW_CFA_def_cfa_offset: 2
+  DW_CFA_advance_loc4: 2 to 00000127
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_advance_loc4: 6 to 0000012d
+  DW_CFA_def_cfa_offset: 0
+  DW_CFA_advance_loc4: 1 to 0000012e
+  DW_CFA_def_cfa_offset: 2
+  DW_CFA_advance_loc4: 3 to 00000131
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_advance_loc4: 6 to 00000137
+  DW_CFA_def_cfa_offset: 0
+
+[Inferior 1 (process 29053) exited normally]
+(gdb)
+
+なので fde_encoding に 2 をセットするような状況をどうすれば作り出せるか調べてみる.
+
+	.section	.debug_frame,"",@progbits
+.Lframe0:
+	.4byte	.LECIE0-.LSCIE0
+.LSCIE0:
+	.4byte	0xffffffff
+	.byte	0x3
+	.string	"zR"              ★ z は augmentation (増大) R はポンタサイズ
+	.byte	0x1
+	.byte	0x7e
+	.byte	0x9
+	.uleb128	1         ★ 次の .byte のサイズ
+	.byte	2                 ★ ポインタサイズ
+	.byte	0xc
+	.byte	0x4
+	.byte	0
+	.byte	0x89
+	.byte	0
+	.align	1
+
+i386-elf-objdump の出力結果は以下
+
+00000000 00000012 ffffffff CIE
+  Version:               3
+  Augmentation:          "zR"               ★
+  Code alignment factor: 1
+  Data alignment factor: -2
+  Return address column: 9
+  Augmentation data:     02                 ★
+  DW_CFA_def_cfa: r4 (esp) ofs 0
+  DW_CFA_offset: r9 (eflags) at cfa+0
+
+00000016 00000016 00000000 FDE cie=00000000 pc=00000111..00000124   ★
+  Augmentation data:     06 00 00 00
+  DW_CFA_def_cfa_offset: 2
+  DW_CFA_advance_loc4: 6 to 00000117
+  DW_CFA_def_cfa_offset: 0
