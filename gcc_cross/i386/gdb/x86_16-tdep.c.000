@@ -1,0 +1,358 @@
+#include "defs.h"
+#include "value.h"
+#include "arch-utils.h"
+#include "regcache.h"
+#include "gdbcore.h"
+#include "objfiles.h"
+#include "dis-asm.h"
+#include "dwarf2/frame.h"
+#include "frame-base.h"
+#include "frame-unwind.h"
+#include "i386-tdep.h"
+
+#include <cassert>
+#include <utility>
+
+type* i387_ext_type(gdbarch*);
+
+type* i387_ext_type(gdbarch* arch)
+{
+#if 0
+  struct gdbarch_tdep *tdep = gdbarch_tdep(arch);
+
+  if (!tdep->i387_ext_type)
+    {
+      tdep->i387_ext_type = tdesc_find_type(arch, "i387_ext");
+      gdb_assert (tdep->i387_ext_type != NULL);
+    }
+
+  return tdep->i387_ext_type;
+#else
+  return nullptr;
+#endif  
+}
+
+int i386_fp_regnum_p(gdbarch*, int);
+
+int i386_fp_regnum_p(gdbarch* arch, int regnum)
+{
+#if 0  
+  struct gdbarch_tdep *tdep = gdbarch_tdep (arch);
+
+  if (I387_ST0_REGNUM (tdep) < 0)
+    return 0;
+
+  return (I387_ST0_REGNUM (tdep) <= regnum
+	  && regnum < I387_FCTRL_REGNUM (tdep));
+#else
+  return false;
+#endif  
+}
+
+
+static int
+x86_16_register_sim_regno(struct gdbarch *gdbarch, int regnum)
+{
+  return regnum;
+}
+
+static int
+x86_16_dbg_reg_to_regnum(struct gdbarch *gdbarch, int regnum)
+{
+  return regnum;
+}
+
+static const char* x86_16_register_names[] = {
+    "eax",  "ecx",   "edx",  "ebx",
+    "sp",   "bp",    "si",   "di",
+    "ip",   "flags", "cs",    "ss",
+    "ds",   "es",    "fs",    "gs",
+};
+
+static const char* x86_16_register_name(gdbarch* arch, int regno)
+{
+  int N = sizeof x86_16_register_names/sizeof x86_16_register_names[0];
+  if (regno < N)
+    return x86_16_register_names[regno];
+  return nullptr;
+}
+
+static bool is_aggregate(type_code code)
+{
+  switch (code) {
+  case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
+    return true;
+  default:
+    return false;
+  }
+}
+
+static void
+x86_16_extract_return_value(gdbarch* arch, type *valtype, regcache* rc,
+			    gdb_byte* readbuf)
+{
+  auto len = TYPE_LENGTH (valtype);
+  if (len == 2) {
+    ULONGEST tmp;
+    regcache_raw_read_unsigned(rc, I386_EAX_REGNUM, &tmp);
+    union {
+      uint16_t i;
+      char c[2];
+    } u = { tmp };
+    int n = 1;
+    if (!*(char*)&n) {
+      // simulator runs at big endian processor
+      std::swap(u.c[0], u.c[1]);
+    }
+    memcpy(readbuf, &u.c[0], len);
+    return;
+  }
+  asm("int3");
+}
+
+static enum return_value_convention
+x86_16_return_value(gdbarch* arch, value* function,
+		    type* valtype, regcache* rc,
+		    gdb_byte* readbuf, const gdb_byte* writebuf)
+{
+  auto code = valtype->code();
+  if (is_aggregate(code)) {
+    if (readbuf) {
+      ULONGEST addr;
+      regcache_raw_read_unsigned(rc, I386_EAX_REGNUM, &addr);
+      read_memory (addr, readbuf, TYPE_LENGTH (valtype));
+    }
+    return RETURN_VALUE_ABI_RETURNS_ADDRESS;
+  }
+
+  assert(!writebuf);
+
+  if (readbuf)
+    x86_16_extract_return_value(arch, valtype, rc, readbuf);
+
+  return RETURN_VALUE_REGISTER_CONVENTION;
+}
+
+static type*
+x86_16_register_type(gdbarch* arch, int regno)
+{
+  switch (regno) {
+  case I386_EAX_REGNUM:
+  case I386_EBX_REGNUM:
+  case I386_ECX_REGNUM:
+  case I386_EDX_REGNUM:
+    return builtin_type(arch)->builtin_int32;
+  case I386_EIP_REGNUM:
+    return builtin_type(arch)->builtin_func_ptr;
+  case I386_EBP_REGNUM:
+  case I386_ESP_REGNUM:
+    return builtin_type(arch)->builtin_data_ptr;
+  default:
+    return builtin_type(arch)->builtin_int16;
+  }
+}
+
+static void
+x86_16_print_registers_info(gdbarch* arch, ui_file* file,
+			    frame_info* frame, int regno, int cpregs)
+{
+  fprintf_filtered (file, "%s at %s:%d called\n", __func__, __FILE__, __LINE__);
+}
+
+static CORE_ADDR x86_16_skip_prologue(gdbarch* arch, CORE_ADDR pc)
+{
+  CORE_ADDR func_addr, func_end;
+  if (!find_pc_partial_function (pc, nullptr, &func_addr, &func_end))
+    return pc;
+  
+  symtab_and_line sal = find_pc_line (func_addr, 0);
+  if (sal.end && sal.end < func_end)
+    return sal.end;
+
+  return pc;
+}
+
+struct x86_16_frame {
+  bool available;
+  CORE_ADDR prologue_start;
+  CORE_ADDR prev_sp;
+  int size;
+  x86_16_frame(frame_info* frame)
+  {
+    available = false;
+    prologue_start = -1;
+    prev_sp = get_frame_sp(frame);
+    size = 0;
+  }
+};
+
+inline void update(uint8_t insn, x86_16_frame* frame)
+{
+}
+
+static x86_16_frame* x86_16_create_frame(frame_info* frame)
+{
+  using namespace std;
+  auto ret = new x86_16_frame(frame);
+  CORE_ADDR pc = get_frame_pc(frame);
+  auto block_addr = get_frame_address_in_block(frame);
+  CORE_ADDR func_end;
+  bool found = find_pc_partial_function(block_addr, nullptr,
+					&ret->prologue_start, &func_end);
+  if (!found) {
+    ret->available = false;
+    ret->prologue_start = pc;
+    return ret;
+  }
+
+  symtab_and_line sal = find_pc_line(ret->prologue_start, 0);
+  auto end = sal.end ? min(pc, sal.end) : pc;
+  ret->available = true;
+  for (auto addr = ret->prologue_start; addr != end ; addr += 1) {
+    ULONGEST insn;
+    if (!safe_read_memory_unsigned_integer(addr, 1, BFD_ENDIAN_LITTLE, &insn))
+      return ret;
+    update(insn, ret);
+  }
+  return ret;
+}
+
+static void
+x86_16_frame_this_id(frame_info* frame, void** ptr, frame_id* id)
+{
+  auto pf  = reinterpret_cast<x86_16_frame*>(*ptr);
+  if (!pf)
+    *ptr = pf = x86_16_create_frame(frame);
+
+  if (!pf->available)
+    *id = frame_id_build_unavailable_stack(pf->prologue_start);
+  else
+    *id = frame_id_build(pf->prev_sp, pf->prologue_start);
+}
+
+static value*
+x86_16_frame_prev_register(frame_info* frame, void** ptr, int regno)
+{
+  if (regno == I386_EIP_REGNUM) {
+#if 1
+    auto pc = get_frame_pc(frame);
+    return frame_unwind_got_constant(frame, regno, pc);
+#else
+    return frame_unwind_got_constant(frame, regno, -1);
+#endif    
+  }
+
+  if (regno == I386_ESP_REGNUM) {
+    auto sp = get_frame_sp(frame);
+    return frame_unwind_got_constant(frame, regno, sp);
+  }
+
+  asm("int3");
+  return nullptr;
+}
+
+static struct frame_unwind x86_16_frame_unwind = {
+  NORMAL_FRAME,
+  default_frame_unwind_stop_reason,
+  x86_16_frame_this_id,
+  x86_16_frame_prev_register,
+  nullptr,
+  default_frame_sniffer
+};
+
+static CORE_ADDR
+x86_16_frame_base_address(frame_info* frame, void** ptr)
+{
+  asm("int3");
+  return 0;
+}
+
+static frame_base x86_16_frame_base = {
+  &x86_16_frame_unwind,
+  x86_16_frame_base_address,
+  x86_16_frame_base_address,
+  x86_16_frame_base_address
+};
+
+static
+int x86_16_kind_from_pc(gdbarch*, CORE_ADDR*)
+{
+  return 0;
+}
+
+static
+const unsigned char* x86_16_from_kind(gdbarch*, int kind, int* size)
+{
+  static unsigned char break_inst[] = { 0xcc };
+  *size = sizeof break_inst;
+  return &break_inst[0];
+}
+
+static CORE_ADDR
+x86_16_push_dummy_call(gdbarch* arch, value* function,
+		       regcache* rc, CORE_ADDR bp_addr,
+		       int nargs, value** args, CORE_ADDR sp,
+		       function_call_return_method rm,
+		       CORE_ADDR struct_addr)
+{
+  asm("int3");
+  return 0;
+}
+
+static struct gdbarch*
+x86_16_gdbarch_init(struct gdbarch_info info, struct gdbarch_list *arches)
+{
+  auto arch = gdbarch_alloc (&info, 0);
+
+  int N = sizeof x86_16_register_names/sizeof x86_16_register_names[0];
+  set_gdbarch_num_regs(arch, N);
+  set_gdbarch_register_type(arch, x86_16_register_type);
+  set_gdbarch_register_sim_regno(arch, x86_16_register_sim_regno);
+  set_gdbarch_dwarf2_reg_to_regnum(arch, x86_16_dbg_reg_to_regnum);
+  set_gdbarch_stab_reg_to_regnum(arch, x86_16_dbg_reg_to_regnum);
+  set_gdbarch_register_name(arch, x86_16_register_name);
+
+  set_gdbarch_sp_regnum(arch, I386_ESP_REGNUM);
+  set_gdbarch_pc_regnum(arch, I386_EIP_REGNUM);
+  set_gdbarch_ps_regnum(arch, I386_EFLAGS_REGNUM);
+  set_gdbarch_print_registers_info(arch, x86_16_print_registers_info);
+
+  set_gdbarch_ptr_bit(arch, 2 * TARGET_CHAR_BIT);
+  set_gdbarch_addr_bit(arch, 2 * TARGET_CHAR_BIT);
+  set_gdbarch_return_value(arch, x86_16_return_value);
+
+  set_gdbarch_skip_prologue(arch, x86_16_skip_prologue);
+  frame_base_set_default(arch, &x86_16_frame_base);
+  dwarf2_append_unwinders(arch);
+  frame_unwind_append_unwinder(arch, &x86_16_frame_unwind);
+
+  set_gdbarch_inner_than(arch, core_addr_lessthan);
+  set_gdbarch_breakpoint_kind_from_pc(arch, x86_16_kind_from_pc);
+  set_gdbarch_sw_breakpoint_from_kind(arch, x86_16_from_kind);
+  set_gdbarch_push_dummy_call(arch, x86_16_push_dummy_call);
+
+  set_gdbarch_char_signed(arch, 0);
+  set_gdbarch_int_bit(arch, 2 * TARGET_CHAR_BIT);
+  set_gdbarch_long_bit(arch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_long_long_bit(arch, 8 * TARGET_CHAR_BIT);
+
+  set_gdbarch_wchar_signed(arch, 0);
+  set_gdbarch_wchar_bit(arch, 2 * TARGET_CHAR_BIT);
+
+  set_gdbarch_double_bit(arch, 8 * TARGET_CHAR_BIT);
+  set_gdbarch_double_format(arch, floatformats_ieee_double);
+  set_gdbarch_long_double_bit(arch, 8 * TARGET_CHAR_BIT);
+  set_gdbarch_long_double_format(arch, floatformats_ieee_double);
+
+  set_gdbarch_believe_pcc_promotion(arch, 1);
+ 
+  return arch;
+}
+
+void _initialize_x86_16_tdep();
+void
+_initialize_x86_16_tdep()
+{
+  register_gdbarch_init(bfd_arch_i386, x86_16_gdbarch_init);
+}
+
