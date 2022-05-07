@@ -1,0 +1,23 @@
+(*1) PDP11
+
+https://en.wikipedia.org/wiki/PDP-11
+
+(*1) binutils install
+
+% xz -d -c ../binutils-2.36.1-2.src/binutils-2.36.1.tar.xz | tar xf -
+% mv binutils-2.36.1 binutils-2.36.1.pdp11-elf
+% cd binutils-2.36.1.pdp11-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=pdp11-elf
+% make
+...
+Error may occur. Fix like below
+
+binutils-2.36.1.pdp11-elf/bfd/Makefile:
+ALL_BACKENDS = $(BFD32_BACKENDS)
++BFD_BACKENDS = pdp11.lo elf.lo elf-attrs.lo elf-strtab.lo elflink.lo \
++		elf-eh-frame.lo dwarf2.lo dwarf1.lo elf32.lo
+-BFD_BACKENDS = pdp11.lo
+BFD_MACHINES =  cpu-pdp11.lo
+
+After this fix, execute `make' and `make install'
+

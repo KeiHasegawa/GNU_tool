@@ -1,0 +1,21 @@
+%.o : %.S
+	pdp11-elf-as -o $@ -g $<
+
+%.o : %.c
+	pdp11-elf-gcc -o $@ $< -c -g
+
+%.elf : %.o 
+	pdp11-elf-ld -o $@ ../default.o $< -T ../default.x
+
+%.objdump : %.elf
+	pdp11-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v pdp11-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.o *.s *.elf *.map *.objdump *.objcopy *.log TAGS *~
