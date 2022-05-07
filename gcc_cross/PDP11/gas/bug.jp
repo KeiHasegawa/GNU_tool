@@ -1,0 +1,311 @@
+nop を数個並べたプログラムを書いてアセンブルしてみたところ不正メモリアクセスしているらしい.
+
+M-x gdb
+gdb --annotate ./as-new
+(gdb) run -o test.o -g test.S
+
+static void
+build_additional_section_info (bfd *abfd ATTRIBUTE_UNUSED,
+				  asection *sec, void *inf)
+{
+  struct group_list *list = (struct group_list *) inf;
+  const char *group_name = elf_group_name (sec);            ★
+
+再現している.
+
+(gdb) b build_additional_section_info
+(gdb) run
+...
+build_additional_section_info のブレークポイントにヒット
+(gdb) n
+(gdb) n
+
+不正メモリアクセスが発生. つまり最初の呼び出しで不正メモリアクセスが発生している.
+期待通りできていた x86_64-elf-as で同じことをやってみた.
+
+(gdb) b build_additional_section_info
+(gdb) run -o test.o -g test.S
+...
+build_additional_section_info のブレークポイントにヒット
+
+group_name = 0 になっていることを確認した. この部分のマクロの定義とマクロ展開を確認してみる.
+
+../bfd/elf-bfd.h：1773
+#define elf_group_name(sec)	(elf_section_data(sec)->group.name)   ★
+
+static void
+build_additional_section_info (bfd *abfd __attribute__ ((__unused__)),
+      asection *sec, void *inf)
+{
+  struct group_list *list = (struct group_list *) inf;
+  const char *group_name = (((struct bfd_elf_section_data*)(sec)->used_by_bfd)->group.name);  ★
+
+このマクロの定義を変更することでこのエラーを回避することはおそらく間違った修正方法だと考えられる.
+
+期待通り動作している x86_64-elf-as では
+
+(gdb) p (((struct bfd_elf_section_data*)(sec)->used_by_bfd)->group.name)
+$2 = 0x0
+(gdb)
+
+一方 pdp11-elf-as では
+
+(gdb) p (((struct bfd_elf_section_data*)(sec)->used_by_bfd)->group.name)
+Cannot access memory at address 0x70
+(gdb) p ((struct bfd_elf_section_data*)(sec)->used_by_bfd)->group.name
+Cannot access memory at address 0x70
+(gdb) p ((struct bfd_elf_section_data*)(sec)->used_by_bfd)
+$1 = (struct bfd_elf_section_data *) 0x0
+(gdb)
+
+これが不正メモリアクセスが発生している原因.
+
+x86_64-elf-as で used_by_bfd をセットしているのは以下:
+
+  if (sdata == NULL)
+    {
+      sdata = (struct bfd_elf_section_data *) bfd_zalloc (abfd,
+							  sizeof (*sdata));
+      if (sdata == NULL)
+	return FALSE;
+      sec->used_by_bfd = sdata; ★
+    }
+
+このときのスタックは以下:
+
+(gdb) where
+#0  _bfd_elf_new_section_hook (abfd=0x81fe198, sec=0x81ff288) at elf.c:2880
+#1  0x0809b738 in bfd_section_init (abfd=abfd@entry=0x81fe198, newsect=0x81ff288) at section.c:845
+#2  0x0809bc36 in bfd_make_section_old_way (abfd=0x81fe198, name=<optimized out>) at section.c:1134
+#3  0x0806c6bd in subseg_get (force_new=0, segname=0x8124437 ".text") at subsegs.c:162
+#4  subseg_new (segname=0x8124437 ".text", subseg=0) at subsegs.c:182
+#5  0x0804b91c in perform_an_assembly_pass (argv=0x81e9e30, argc=2) at as.c:1194
+#6  main (argc=<optimized out>, argv=<optimized out>) at as.c:1404
+(gdb)
+
+pdp11-elf-as でも bfd_section_init が呼び出されているらしい:
+
+(gdb) b bfd_section_init
+(gdb) run
+...
+bfd_section_init のブレークポイントにヒット
+
+static asection *
+bfd_section_init (bfd *abfd, asection *newsect)
+{
+  newsect->id = _bfd_section_id;
+  newsect->index = abfd->section_count;
+  newsect->owner = abfd;
+
+  if (! BFD_SEND (abfd, _new_section_hook, (abfd, newsect)))  ★ ここ
+    return NULL;
+
+この部分のマクロ展開は以下:
+
+  if (! ((*((abfd)->xvec->_new_section_hook)) (abfd, newsect)))
+    return 
+
+x86_64-elf-as では _new_section_hook メンバの値は
+
+(gdb) p abfd->xvec->_new_section_hook
+$6 = (bfd_boolean (*)(bfd *, sec_ptr)) 0x80b9550 <_bfd_elf_new_section_hook>
+(gdb)
+
+一方 pdp11-elf-as では
+(gdb) p abfd->xvec->_new_section_hook
+$2 = (bfd_boolean (*)(bfd *, sec_ptr)) 0x8086b00 <aout_16_new_section_hook>
+(gdb)
+
+ここで違いが出ている.
+
+aout_16_new_section_hook は pdp11.c で定義されているのでこれを修正すればよい.
+以下のように修正した:
+
+*** /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.x86_64-elf/bfd/pdp11.c	2021-01-09 19:47:33.000000000 +0900
+--- /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/bfd/pdp11.c	2022-05-07 07:23:30.000000000 +0900
+***************
+*** 1177,1185 ****
+--- 1177,1197 ----
+  
+  /* Called by the BFD in response to a bfd_make_section request.  */
+  
++ #include "elf-bfd.h"
++ 
+  bfd_boolean
+  NAME (aout, new_section_hook) (bfd *abfd, asection *newsect)
+  {
++   struct bfd_elf_section_data* sdata =
++     (struct bfd_elf_section_data *) newsect->used_by_bfd;
++   if (sdata == NULL) {
++     sdata = (struct bfd_elf_section_data *) bfd_zalloc (abfd,
++ 							sizeof (*sdata));
++     if (sdata == NULL)
++       return FALSE;
++     newsect->used_by_bfd = sdata;
++   }
++   
+    /* Align to double at least.  */
+    newsect->alignment_power = bfd_get_arch_info(abfd)->section_align_power;
+
+この修正を入れたところ, build_additional_section_info が呼び出される前に
+
+segT
+subseg_get (const char *segname, int force_new)
+{
+...
+  if (!force_new
+      && now_seg_name
+      && (now_seg_name == segname
+	  || !strcmp (now_seg_name, segname)))  ★ 不正メモリアクセス.
+    return now_seg;
+
+segname が文字列が配置されているアドレスを指していないために不正メモリアクセスしている.
+単純にはいかないらしい.
+
+正常に動作している x86_64-elf-as と比較すると segname が ".debug_line" を指している
+べきところでそうなっていない.
+
+このときのスタックは以下:
+(gdb) where
+#0  subseg_get (segname=0x20732520 <error: Cannot access memory at address 0x20732520>, force_new=0) at subsegs.c:153
+#1  0x08067d67 in subseg_new (segname=0x20732520 <error: Cannot access memory at address 0x20732520>, subseg=0) at subsegs.c:182
+#2  0x0806f5f0 in create_obj_attrs_section () at write.c:1897  ★
+#3  0x0806fd40 in write_object_file () at write.c:2191
+#4  0x0804bbe0 in main (argc=<optimized out>, argv=<optimized out>) at as.c:1440
+(gdb)
+
+x86_64-elf-as では create_obj_attrs_section が呼び出されていない.
+write_object_file も呼び出されていない.
+
+  => -O2 ビルドしていた x86_64-elf-as でブレークポイントがヒットしていないために
+     このように判断したが write.o を -g -O0 でビルドし直して create_obj_attrs_section
+     が呼び出されていることを確認した.
+
+static void
+create_obj_attrs_section (void)
+{
+  segT s;
+  char *p;
+  offsetT size;
+  const char *name;
+
+  size = bfd_elf_obj_attr_size (stdoutput);
+  if (size == 0)
+    return;      ★ x86_64-elf-as ではここで戻っている.
+
+  name = get_elf_backend_data (stdoutput)->obj_attrs_section;
+
+
+bfd_vma
+bfd_elf_obj_attr_size (bfd *abfd)
+{
+  bfd_vma size;
+
+  size = vendor_obj_attr_size (abfd, OBJ_ATTR_PROC);
+  size += vendor_obj_attr_size (abfd, OBJ_ATTR_GNU);  ★ ここで 18 が返っている
+
+
+vendor_obj_attr_size の 2 回目の呼び出しで 18 が返っているのが pdp11-elf-as
+0 が返っているのが x86_64-elf-as
+
+
+  for (i = LEAST_KNOWN_OBJ_ATTRIBUTE; i < NUM_KNOWN_OBJ_ATTRIBUTES; i++)
+    size += obj_attr_size (i, &attr[i]);  ★
+
+ここで i = 0 のときに size = 5 になるのが pdp11-elf-as で 0 のままなのが x86_64-elf-as
+これは, 意図的に 0 でない値にしているように思える.
+
+  name = get_elf_backend_data (stdoutput)->obj_attrs_section;
+
+のマクロ展開は以下:
+
+  name = ((const struct elf_backend_data *) ((stdoutput)->xvec)->backend_data)->obj_attrs_section;
+
+
+
+(gdb) p ((const struct elf_backend_data *) ((stdoutput)->xvec)->backend_data)
+$41 = (const struct elf_backend_data *) 0x810ef80 <pdp11_aout_backend_data>
+(gdb) 
+(gdb) p sizeof pdp11_aout_backend_data
+$44 = 40
+(gdb) p sizeof(struct elf_backend_data)
+$45 = 512
+(gdb) 
+
+どうやらこれが原因らしい. pdp11_aout_backend_data は以下のように定義されている:
+
+static const struct aout_backend_data pdp11_aout_backend_data =
+{
+  0,
+  1,
+  1,
+  0,
+  0,
+  pdp11_aout_set_sizes,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0
+};
+
+但し上はマクロ展開の結果. これのカラクリは以下:
+
+pdp11.c:
+...
+#define MY(OP) CONCAT2 (pdp11_aout_,OP)
+...
+#include "aout-target.h"
+
+aout-target.h:305
+static const struct aout_backend_data MY (backend_data) =
+{
+  MY_zmagic_contiguous,
+  MY_text_includes_header,
+  MY_entry_is_text_address,
+  MY_exec_hdr_flags,
+  0,				/* Text vma?  */
+  MY_set_sizes,
+  MY_exec_header_not_counted,
+  MY_add_dynamic_symbols,
+  MY_add_one_symbol,
+  MY_link_dynamic_object,
+  MY_write_dynamic_symbol,
+  MY_check_dynamic_reloc,
+  MY_finish_dynamic_link
+};
+
+ということ.
+
+pdp11 以外でも例えば
+
+aout-cris.c 109:#include "aout-target.h"
+
+のようにしている. 動作の比較は cris-elf-as としてみたほうが良さそかと考えたが
+vendor_obj_attr_size の 2 回目の呼び出しは 0 を返している.
+
+そこで少しずるいが以下のように修正してみた:
+
+static void
+create_obj_attrs_section (void)
+{
+  segT s;
+  char *p;
+  offsetT size;
+  const char *name;
+
+  size = bfd_elf_obj_attr_size (stdoutput);
+#if 0  
+  if (size == 0)
+    return;
+#else
+  return;         ★
+#endif  
+
+これで期待通り動作している. ということはおそらく vendor_obj_attr_size の 2 回目の呼び出
+しは 0 を返すことが期待される.
+
+このバグだが新しい問題が発生するまではこの状態で運用することにする.
+
