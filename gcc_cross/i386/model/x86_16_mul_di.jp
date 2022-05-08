@@ -1,0 +1,59 @@
+2022.05.08 13:00
+di * di の実装中.
+
+typedef long long T;
+
+T f(T a, T b)
+{
+  return a * b;
+}
+
+オリジナルの i386-elf-gcc は以下のコードを生成している:
+
+f:
+	pushl	%ebp
+	movl	%esp, %ebp
+	subl	$16, %esp
+	movl	8(%ebp), %eax
+	movl	%eax, -8(%ebp)
+	movl	12(%ebp), %eax
+	movl	%eax, -4(%ebp)
+	movl	16(%ebp), %eax
+	movl	%eax, -16(%ebp)
+	movl	20(%ebp), %eax
+	movl	%eax, -12(%ebp)
+	movl	-4(%ebp), %eax      a_{hi} を %eax にロード
+	imull	-16(%ebp), %eax     b_{lo} に対して imull
+	movl	%eax, %edx 	    一旦 %edx に退避
+	movl	-12(%ebp), %eax     b_{hi} を %eax にロード
+	imull	-8(%ebp), %eax	    a_{lo} に対して imull
+	leal	(%edx,%eax), %ecx   %ecx := %edx + %eax
+	movl	-16(%ebp), %eax	    b_{lo} を %eax にロード
+	mull	-8(%ebp)   	    a_{lo} に対して mull
+	addl	%edx, %ecx	    %ecx += %edx
+	movl	%ecx, %edx	    %edx = %ecx
+	leave
+	ret
+
+	+---------------+ -16
+	|	b_{lo}	|
+	+---------------+ -12
+	|	b_{hi}	|
+	+---------------+ -8
+	|	a_{lo}	|
+	+---------------+ -4
+	|	a_{hi}	|
+	+---------------+ <- %bp
+
+x = 0x100000000
+
+  (a_{hi} * x + a_{lo}) * (b_{hi} * x + b_{lo})
+= a{hi} * b_{hi} * x^2 + (a_{hi} * b_{lo} + a_{lo} * b_{hi}) * x
+  + a_{lo} * b_{lo}
+
+この方法のポイントは a_{lo} * b_{lo} の上位ワードが mull 命令で %edx にセットされるので
+
+   %ecx = a_{hi} * b_{lo} + a_{lo} * b_{hi}
+
+の状態で %edx を足し込むということ.
+
