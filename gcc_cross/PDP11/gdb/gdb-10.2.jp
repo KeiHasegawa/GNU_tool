@@ -1,0 +1,111 @@
+PDP11 の gdb
+
+i386 と同じようなやり方をしてみた:
+
+% xz -d -c ../gdb-10.2-1.src/gdb-10.2.tar.xz | tar xf -
+% mv gdb-10.2 gdb-10.2.pdp11-elf
+% cd gdb-10.2.pdp11-elf/gdb
+
+d30v, fr30, z8k, i960, mmix, z80, i386 と同じ対処をした.
+
+gdb-10.2.i386-elf/gdb/configure.tgt:
+
+h8300-*-*)
+	# Target: H8300 processor
+	gdb_target_obs="h8300-tdep.o"
+	gdb_sim=../sim/h8300/libsim.a
+	;;
+
++pdp11-*-*)
++	gdb_target_obs="pdp11-tdep.o"
++	gdb_sim=../sim/pdp11/libsim.a
++	;;
+
+% cd ..
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=pdp11-elf
+% make
+
+../sim/pdp11/libsim.a を make するルールがないというエラーが出るかと思ったがエラーして
+いない.
+
+% cd gdb
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=pdp11-elf
+% make
+...
+./../gdbsupport/common-defs.h:23:10: 致命的エラー: gdbsupport/config.h: そのようなファイルやディレクトリはありません
+   23 | #include <gdbsupport/config.h>
+...   
+% cd ../gdbsupport
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=pdp11-elf
+% make
+...
+common-defs.h:31:10: 致命的エラー: gnulib/config.h: そのようなファイルやディレクトリはありません
+   31 | #include "gnulib/config.h"
+      |          ^~~~~~~~~~~~~~~~~
+...
+% cd ../gnulib
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=pdp11-elf
+% make
+% cd ../gdbsupport
+% make
+% cd ../gdb
+% make
+...
+make: *** 'pdp11-tdep.o' に必要なターゲット 'pdp11-tdep.c' を make するルールがありません.  中止.
+% cp /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.i386-elf/gdb/x86_16-tdep.c pdp11-tdep.c
+
+pdp11-tdep.c の x86_16 を pdp11 に置換.
+
+% make
+...
+echo "  GEN    stamp-version"; /bin/sh ./../gdbsupport/create-version.sh . \
+     pdp11-elf version-t.t
+  GEN    stamp-version
+mv: 'version.c-tmp' から '' へ移動できません: そのようなファイルやディレクトリはありません
+mv: 'version-t.t' を stat できません: そのようなファイルやディレクトリはありません
+make: *** [Makefile:2085: stamp-version] エラー 1
+...
+
+Makefile の以下の部分を修正
+
++host_alias = i686-pc-linux-gnu
+-host_alias =
+
+% make
+...
+make: *** 'gdb' に必要なターゲット '../sim/pdp11/libsim.a' を make するルールがありません.  中止.
+% cd ../sim
+% tar xvf ~/lang/53_GNU_tool/gcc_cross/MMIX/gdb/mmix.1.tar
+% mv mmix pdp11
+% cd pdp11
+
+mmix を pdp11 に修正
+
+Makefile の以下の部分を修正
+
+%.o : %.c
+	gcc -g -o $@ $< -c -I../../include -I. -I../../bfd -DHAVE_CONFIG_H -I../common -DWITH_PROFILE=-1 -DWITH_ALIGNMENT=4
+                                ★
+% make
+% cd ../gdb
+% make
+
+一応 gdb をビルドできている.
+
+次はまずは 0x100 番地に nop 命令を数個並べたプログラムを実行してみる.
+
+M-x gdb
+gdb --annotate=3 ./gdb
+
+(gdb) cd ~/lang/53_GNU_tool/gcc_cross/PDP11/test/test001/
+(gdb) run -q -x gdbcom test.elf
+
+これで以下のブレークポイントにヒットしている.
+
+void pdp11_pc_set(sim_cpu* cpu, sim_cia pc)
+{
+  asm("int3");
+}
+
+ここまでくれば後はシミュレータ部分をインターネットから拾ってきてビルドするのを優先した
+ほうがよいと考えて一旦この作業を中断することにした.

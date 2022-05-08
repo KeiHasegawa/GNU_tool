@@ -1,0 +1,61 @@
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work
+% mkdir PDP11_Simulator
+% cd PDP11_Simulator
+% git init
+% git pull https://github.com/bornhorst/PDP11_Simulator
+% gcc -DDEBUG -o pdpdebug core/main.c core/pdp.c -w
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: /tmp/ccFAHr8O.o:(.bss+0x0): multiple definition of `R0'; /tmp/cchS3rmr.o:(.bss+0x0): first defined here
+...
+
+リンクでエラーしている.
+
+% mv Makefile Makefile.org
+
+自前の Makefile を作成.
+
+pdp.h の宣言に extern を付加
+
+extern uint16_t R0;
+extern uint16_t R1;
+extern uint16_t R2;
+extern uint16_t R3;
+extern uint16_t R4;
+extern uint16_t R5;
+extern uint16_t R6;
+extern uint16_t R7;
+
+extern uint8_t N[LINE_SIZE];
+extern uint8_t Z[LINE_SIZE];
+extern uint8_t V[LINE_SIZE];
+extern uint8_t C[LINE_SIZE];
+
+これらの定義を pdp.c の最後に追加.
+
+% make clean ; make
+rm -f pdp11 core/main.o core/pdp.o
+gcc -o core/main.o -g -c core/main.c
+gcc -o core/pdp.o -g -c core/pdp.c
+gcc -o pdp11 core/main.o core/pdp.o
+%
+
+ビルド成功.
+
+% ./pdp11
+Generate Ascii: ./pdp obj2ascii
+Run Simulator:  ./pdp <filename> *<address of first instruction>
+%
+
+M-x gdb
+gdb --annotate=3 ./pdp11
+(gdb) b main
+(gdb) run JMP \*0
+...
+それっぽく動いている.
+
+% ./pdp11 JMP \*0
+
+SIMULATOR RESULTS
+Total Instructions:       1
+2 000032
+
+%
