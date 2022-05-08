@@ -5,7 +5,7 @@ include ../Makefile.common
 test.o:test.S
 
 test.elf:test.o
-	i386-elf-ld -o $@ $< -T ../default.x
+	pdp11-elf-ld -o $@ $< -T ../default.x
 
 test.objdump:test.elf
 
