@@ -1,0 +1,164 @@
+現状逆アセンブルが 16 ビットに対応していない.
+また場合によってだが, ブレークポイントにヒットしたとき函数の引数が正しく表示できていない.
+
+M-x gdb
+gdb --annotate=3 ./gdb
+(gdb) cd ~/lang/53_GNU_tool/gcc_cross/i386/test/test005
+(gdb) run -q -x gdbcom test.elf
+
+Start address 0xfff0
+Transfer rate: 3168 bits in <1 sec.
+Breakpoint 1 at 0xe183: file cfun.c, line 56.
+
+Breakpoint 1, int19_function (
+    seq_nr=<error reading variable: Cannot access memory at address 0xffe8>) ★
+    at cfun.c:56
+56	}
+Dump of assembler code for function int19_function:
+   0x0000e176 <+0>:	push   %ebp             ★
+   0x0000e177 <+1>:	mov    %esp,%ebp        ★
+   0x0000e179 <+3>:	sub    $0x4,%esp        ...
+   0x0000e17c <+6>:	mov    0x8(%ebp),%eax
+   0x0000e17f <+9>:	mov    %ax,-0x4(%ebp)
+=> 0x0000e183 <+13>:	nop
+   0x0000e184 <+14>:	leave  
+   0x0000e185 <+15>:	ret    
+End of assembler dump.
+A debugging session is active.
+
+上のように再現している. 
+まずは逆アセンブルの問題.
+
+(gdb) b disassemble_command
+(gdb) run
+...
+disassemble_command のブレークポイントにヒット
+(gdb) b write
+(gdb) c
+...
+write のブレークポイントにヒット
+(gdb) c
+...
+write のブレークポイントにヒット
+(gdb) where
+#0  string_file::write (this=0xbfffeea4, buf=0xbfffea98 "push   ", length_buf=7) at ui-file.c:125
+#1  0x084e92d3 in ui_file::puts (str=0xbfffea98 "push   ", this=0xbfffeea4) at ui-file.h:65
+#2  fputs_maybe_filtered (linebuffer=0xbfffea98 "push   ", stream=0xbfffeea4, filter=1) at utils.c:1694
+#3  0x084ea32f in vfprintf_styled_no_gdbfmt (stream=0xbfffeea4, style=..., filter=true, format=0xa00d741 "%s", args=0xbfffeb4c "`+\353\t\004") at /usr/local/include/c++/10.2.0/bits/basic_string.h:186
+#4  0x0825c211 in cli_ui_out::do_message (args=0xbfffeb4c "`+\353\t\004", format=0xa00d741 "%s", style=..., this=0xbfffebe8) at /usr/local/include/c++/10.2.0/bits/stl_iterator.h:953
+#5  cli_ui_out::do_message (this=0xbfffebe8, style=..., format=0xa00d741 "%s", args=0xbfffeb4c "`+\353\t\004") at cli-out.c:227
+#6  0x084e317a in ui_out::call_do_message (this=0xbfffebe8, style=..., format=0xa00d741 "%s") at ui-out.c:597
+#7  0x084e3703 in ui_out::vmessage (this=<optimized out>, in_style=..., format=<optimized out>, args=0xbfffec8c "\227\222V\b\020\356\377\277\001") at ui-out.c:778
+--Type <RET> for more, q to quit, c to continue without paging--c
+#8  0x084e9592 in vfprintf_maybe_filtered (stream=0xbfffeea4, format=0x897b1d9 "%s", args=0xbfffec88 "`+\353\t\227\222V\b\020\356\377\277\001", filter=true, gdbfmt=true) at utils.c:2064
+#9  0x084e9618 in vfprintf_filtered (stream=0xbfffeea4, format=0x897b1d9 "%s", args=0xbfffec88 "`+\353\t\227\222V\b\020\356\377\277\001") at utils.c:2077
+#10 0x082ab748 in fprintf_disasm (stream=0xbfffeea4, format=0x897b1d9 "%s") at disasm.c:723
+#11 0x08569067 in print_insn (pc=<optimized out>, info=0xbfffeec8) at i386-dis.c:9983 ★
+...
+(gdb) 
+
+
+gdb-10.2.i386-elf/opcodes/i386-dis.c:
+
+static int
+print_insn (bfd_vma pc, disassemble_info *info)
+{
+...
+  (*info->fprintf_func) (info->stream, "%s", obuf);  ★
+
+(gdb) b print_insn
+(gdb) run
+
+
+現状は info->mach を参照して 16, 32, 64 ビットモードを選択しているらしい.
+
+static int
+print_insn (bfd_vma pc, disassemble_info *info)
+{
+...
+  priv.orig_sizeflag = AFLAG | DFLAG;
+  if ((info->mach & bfd_mach_i386_i386) != 0)
+    address_mode = mode_32bit;                       ★
+  else if (info->mach == bfd_mach_i386_i8086)
+    {
+      address_mode = mode_16bit;                     ★
+      priv.orig_sizeflag = 0;
+    }
+  else
+    address_mode = mode_64bit;
+
+本来ならプログラムを作成したときに
+
+info->march = bfd_mach_i386_i8086
+
+になっているべきなのだがそうなっていないから, 強制的にそうする.
+
+  m_di.arch = gdbarch_bfd_arch_info (gdbarch)->arch;
+  m_di.mach = gdbarch_bfd_arch_info (gdbarch)->mach;  ★
+  m_di.endian = gdbarch_byte_order (gdbarch);
+
+これを参照しているらしい. m_di.march を 2 に書き変えれば期待した動作になることを確認した.
+
+static struct gdbarch*
+x86_16_gdbarch_init(struct gdbarch_info info, struct gdbarch_list *arches)
+{
+...
+  gdbarch_bfd_arch_info(arch)->mach = bfd_mach_i386_i8086;  // エラー
+  
+  const_cast<bfd_arch_info*>(gdbarch_bfd_arch_info(arch))->mach =
+    bfd_mach_i386_i8086;  // コンパイルは OK だが実行時に読み出しメモリに書き込んでエラー
+
+上の方法ではだめ.
+
+(gdb) p gdbarch_bfd_arch_info(arch)
+$16 = (const bfd_arch_info *) 0x8a0cee0 <bfd_i386_arch>   ★
+(gdb)
+
+bfd_i386_arch がどこで定義されているか確認してみる.
+
+gdb-10.2.i386-elf/bfd/config.bfd:
+
+i[3-7]86)	 targ_archs=bfd_i386_arch ;;
+
+どうやらこれらしい.
+
+% diff Makefile Makefile.x86_16
+453c453
+< tdefaults =  -DDEFAULT_VECTOR=i386_elf32_vec -DSELECT_VECS='&i386_elf32_vec,&iamcu_elf32_vec,&i386_coff_vec,&elf32_le_vec,&elf32_be_vec' -DSELECT_ARCHITECTURES='&bfd_i386_arch,&bfd_iamcu_arch'
+---
+> tdefaults =  -DDEFAULT_VECTOR=i386_elf32_vec -DSELECT_VECS='&i386_elf32_vec,&iamcu_elf32_vec,&i386_coff_vec,&elf32_le_vec,&elf32_be_vec' -DSELECT_ARCHITECTURES='&i8086_arch,&bfd_iamcu_arch'
+% mv libbfd.a libbfd.a.i386   
+% make -f Makefile.x86_16 clean
+% cd ../gdb
+% make -f Makefile.x86_16
+
+期待したようにはなっていない.
+
+
+(gdb) p gdbarch_bfd_arch_info (gdbarch)
+$18 = (const bfd_arch_info *) 0x8f3a700 <bfd_i386_arch>
+(gdb) p bfd_archures_list
+$19 = {0x8f3a700 <bfd_i386_arch>, 0x8f3a920 <bfd_iamcu_arch>, 0x0}
+(gdb)
+
+Makefile を変更しただけではだめらしい.
+
+% cd ../bfd
+% make clean
+% make
+...
+このログを収集
+%
+
+自前の Makefile.x86_16 を作成したが, それでも bfd_i386_arch に変わる bfd_i8086_arch
+を作成する必要があった. i8086_arch の定義があるのだが単純ではないらしい.
+
+面倒なので単純に以下のように修正した.:
+
+#if 0  
+  m_di.mach = gdbarch_bfd_arch_info (gdbarch)->mach;
+#else
+  m_di.mach = 2;
+#endif  
+
+これで逆アセンブルに関しては期待する動作になっている.
