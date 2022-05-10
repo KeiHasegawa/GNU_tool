@@ -1,0 +1,84 @@
+2022.05.10 7:12
+引数が long (si)のときに函数で停止したときの引数が正しくない:
+
+Breakpoint 1, main () at a.c:12
+12	  printf("%d\n", f(5, 6));
+f (a=6, b=-858993460) at a.c:7          ★
+7	  return a * b;
+#0  f (a=6, b=-858993460) at a.c:7      ★
+#1  0x000001b8 in main () at a.c:12
+
+引数が int (hi)のときは勿論できている.
+
+#define UNITS_PER_WORD		2
+#define SHORT_TYPE_SIZE		16
+#define INT_TYPE_SIZE           16
+#define LONG_TYPE_SIZE		32    ★  確認
+
+これは今までに見たことがないバグ. と思ったが objdump の結果は以下:
+
+int32 f (int32 a /* 0xfffffffc */, int32 b /* 0xfffffff8 */)
+{ /* 0x17c */
+
+つまりコンパイラは通常の .debug_frame や .debug_line を出しているわけではない.
+
+そこで改めて以前の作業を見直してみたところ, int(hi) に対して似たようなバグがあって
+それを修正していた. つまり long(si) に対してはできていなかっただけということ.
+
+
+Breakpoint 2, f (a=6, b=-858993460) at a.c:7
+
+(z8k-coff-gdb) p/x $r10
+$2 = 0xff8                                  ★ フレームポインタの値は 0xff8
+(z8k-coff-gdb) x/4bx (0xff8-4)
+0xff4:	0x00	0x00	0x00	0x05        ★ [fp-4] に 5
+(z8k-coff-gdb) x/4bx (0xff8-8)
+0xff0:	0x00	0x00	0x00	0x06        ★ [fp-8] に 6 
+(z8k-coff-gdb) p &a
+$3 = (T *) 0xff0                            ★ 間違い 0xff4 が正しい
+(z8k-coff-gdb) p &b
+$4 = (T *) 0xfec                            ★ 間違い 0xff0 が正しい
+(z8k-coff-gdb) 
+
+そこで以下のように修正してみた:
+
+static CORE_ADDR z8k_frame_base_address(frame_info* frame, void** ptr)
+{
+#if 0  
+  auto pf = reinterpret_cast<z8k_frame*>(*ptr);
+  if (!pf)
+    *ptr = pf = z8k_frame_create(frame);
+  return pf->prev_sp - pf->size + 2;
+#else
+  return 0xff8;                     ★ 即値を返す
+#endif  
+}
+
+これで実行してみると期待通り a と b の値を正しく表示できている.
+
+(gdb) p/x pf->prev_sp
+$1 = 0xffa                ★ 間違っている(?)
+(gdb) p/x pf->size
+$2 = 0x8
+(gdb) 
+
+どのように pf->prev_sp を計算しているか確認してみる.
+と思ったが f の先頭アドレスで $sp = 0xffa なので pf->prev_sp は正しい.
+
+Z8000 のスタックフレームはフレームポインタがスタックフレームの底を指す
+タイプのもので計算の仕方が違っていた. 以下のように修正:
+
+static CORE_ADDR z8k_frame_base_address(frame_info* frame, void** ptr)
+{
+  auto pf = reinterpret_cast<z8k_frame*>(*ptr);
+  if (!pf)
+    *ptr = pf = z8k_frame_create(frame);
+#if 0  
+  return pf->prev_sp - pf->size + 2;   ここが間違い
+#else
+  return pf->prev_sp - 2;
+#endif  
+}
+
+これならばこれまでできていた int の引数に対しても期待通り動作する.
+この時点での z8k-tdep.c を z8k-tdep.c.003 としてアップロードしておく.
