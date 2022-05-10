@@ -10,7 +10,8 @@ cc1 のリンクで参照される. 以下はこのツールについてのメ�
 
 (*) genmodes
 
-入力ファイルはなし
+このツール自体への入力ファイルはないが, コンパイル時にターゲット固有のファイルを include
+している.
 
 -h オプションで enum machine_mode の宣言を生成する.
 -i オプションで mode_size_inline(machine_mode), mode_nunits_inline(machine_mode)
@@ -23,6 +24,17 @@ const char *const mode_name[NUM_MACHINE_MODES] =
   "BLK",
 
 の定義などを生成する.
+ターゲットによっては固有の E_XXmode を定義する必要がある. 例えば i386 の浮動小数点数
+フォーマットでは Intel 80 ビットをサポートし, これを E_TFmode としたいならば
+
+gcc-10.2.0/gcc/config/i386/i386-modes.def
+
+のようなファイルを作成する必要がある. そしてこれを genmodes のコンパイル時に include
+するようにする. 通常であれば xxx-elf-gcc のビルド時には
+
+gcc-10.2.0/gcc/config/xxx/xxx-modes.def
+
+があればそれが include されるようになっている.
 
 (*) genmddeps
 

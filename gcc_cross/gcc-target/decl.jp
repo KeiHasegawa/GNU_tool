@@ -298,13 +298,7 @@ constexpr UNITS_PER_WORD = 2
 
   INIT_CUMULATIVE_ARGS (args_so_far_v, funtype, NULL_RTX, fndecl, n_named_args);
 
-      以下の宣言を追加する:
-      
-      extern void INIT_CUMULATIVE_ARGS(CUMULATIVE_ARGS& cum,
-                                       tree fntype, rtx,
-                                       tree fundecl, int);
-
-      もしくは以下のように函数の宣言とマクロを追加する:
+      例えば以下のように函数の宣言とマクロを追加する:
 
       extern void mmix_init_cumulative_args(CUMULATIVE_ARGS*,
 					    tree, rtx, tree, int);
@@ -641,7 +635,7 @@ void ASM_OUTPUT_ALIGN(FILE* fp, int n)
 
       INITIAL_ELIMINATION_OFFSET (ep->from, ep->to, ep->offset);
 
-      以下のように宣言を追加する:
+      例えば以下のように宣言を追加する:
       
       extern int mmix_initial_elimination_offset(int, int);
       #define INITIAL_ELIMINATION_OFFSET(FROM, TO, OFFSET) \
@@ -680,6 +674,20 @@ void ASM_OUTPUT_ALIGN(FILE* fp, int n)
 
 extern void hasegawa_print_operand(FILE*, rtx, int);
 #define PRINT_OPERAND hasegawa_print_operand
+
+もしくは
+
+void hasegawa_print_operand(FILE* fp, rtx x, int)
+{
+  ...
+}
+
+#undef TARGET_PRINT_OPERAND
+#define TARGET_PRINT_OPERAND hasegawa_print_operand
+
+gcc_target targetm = TARGET_INITIALIZER;
+
+のようにする.
 
 (*) TEXT_SECTION_ASM_OP, DATA_SECTION_ASM_OP, BSS_SECTION_ASM_OP
 
