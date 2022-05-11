@@ -1,0 +1,44 @@
+2022.04.06 13:00
+
+-float, -double 
+を実装中. 試しに以下を削除してコンパイル中.
+
+(define_insn "negsf2"
+  [(set
+    (match_operand:SF 0 "nonimmediate_operand" "")
+    (neg:SF
+     (match_operand:SF 1 "general_operand" "")))]
+  ""
+  "%0 := -%1")
+
+(define_insn "negdf2"
+  [(set
+    (match_operand:DF 0 "nonimmediate_operand" "")
+    (neg:DF
+     (match_operand:DF 1 "general_operand" "")))]
+  ""
+  "%0 := -%1")
+
+これでライブラリ函数の呼び出しになるか確認する.
+
+=> ライブラリ函数の呼び出しにはなっていないが符号ビットを反転するコードが生成されている.
+
+m68hc11.md では
+
+(define_insn "negsf2"
+  [(set
+    (match_operand:SF 0 "nonimmediate_operand" "")
+    (neg:SF
+     (match_operand:SF 1 "general_operand" "")))]
+  ""
+  "*
+  return m68hc11_negsf2(operands[0], operands[1]);")
+
+のように自力で符号反転していた. これの経緯は
+
+トップ => gcc クロスコンパイル環境 => M68HC11 => cc1 の雛形 => float, double に対する単項の -
+
+~/lang/53_GNU_tool/gcc_cross/M68HC11/model/negsf2_negdf2.jp
+
+にある. ここで分かることはライブラリ函数の呼び出しに展開されるわけではないということと
+d10v の場合は m68hc11 と同じ対応をせず, 現状生成されているコードを変換すればよいということ.
