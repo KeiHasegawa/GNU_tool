@@ -1,0 +1,550 @@
+(*1)
+0x100 番地に nop を数個配置したプログラムをビルドしたところ
+
+o デバッグ情報がない
+o 0x100 番地に配置されるはずが 0x0 番地に配置されている
+
+という問題が発生している. まずはデバッグ情報がない原因を調査する.
+
+M-x gdb
+gdb --annotate ./as-new
+(gdb) run -o test.o -g test.S
+
+見た目は正常終了.
+
+% pdp11-elf-objdump -x -d -g test.o > test.o.objdump
+
+確かに .debug_line 等のあるはずのセクションがない.
+
+-g ではなくて --gstabs で試してみた:
+
+(gdb) run -o test.o --gstabs test.S
+Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/gas/as-new -o test.o --gstabs test.S
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/gas/as-new: test.o: can not represent section `.stab' in a.out object file format
+test.S: Assembler messages:
+test.S: Fatal error: can't write 72 bytes to section .stab of test.o: 'nonrepresentable section on output'
+[Inferior 1 (process 20525) exited with code 01]
+(gdb)
+
+アセンブル時にエラーを引き起こしている. メッセージを理解しようとすれば
+「 a.out 形式の生成ファイルに .stab セクションを含めることはできない」とも解
+釈できる. もしかするとそういう仕様なのかもしれない.
+
+おそらく動作が一番近いのではと(あくまでも)推測される cris-elf-as とで動作の比較をしてみる.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.cris-elf/gas
+
+M-x gdb
+gdb --annotate ./as-new
+(gdb) run -o test.o -g test.S
+
+正常終了
+
+% cris-elf-objdump -x -d -g test.o > test.o.objdump
+
+当然だが, 期待したものになっている.
+
+(gdb) b bfd_set_section_contents
+(gdb) run
+...
+bfd_set_section_contents のブレークポイントにヒット
+(gdb) p section->name
+$1 = 0x81065e0 ".text"
+(gdb) c
+...
+bfd_set_section_contents のブレークポイントにヒット
+(gdb) p section->name
+$2 = 0x810878e ".debug_line"                          ★
+(gdb) where
+#0  bfd_set_section_contents (abfd=0x8180470, section=0x8194608, location=0x819e494, offset=0, count=55) at section.c:1496
+#1  0x0806f090 in write_contents (abfd=<optimized out>, sec=<optimized out>, xxx=<optimized out>) at write.c:1625
+#2  0x0808881d in bfd_map_over_sections (abfd=0x8180470, operation=0x806ee50 <write_contents>, user_storage=0x0) at section.c:1382
+#3  0x080729ed in write_object_file () at write.c:2514
+#4  0x0804be2c in main (argc=<optimized out>, argv=<optimized out>) at as.c:1440
+(gdb) 
+
+.debug_line セクションが生成されるタイミングを捕える. と考えたが,
+
+(gdb) b main
+(gdb) run
+...
+main のブレークポイントにヒット
+(gdb) p (char*)0x810878e
+$7 = 0x810878e ".debug_line"
+(gdb)  
+
+動的に確保されているわけではないらしい. アドレス 0x8xxxxxx は .data らしい.
+
+.text -> .data -> .bss -> .debug_line -> ...
+
+のように継がっているのだが .data や .bss が空で .debug_line が空でない
+から .text の次に .debug_line が bfd_set_section_contents にきていると
+いうこと.
+
+以下は pdp11-elf-as での結果
+(gdb) b bfd_set_section_contents
+(gdb) run
+...
+bfd_set_section_contents のブレークポイントにヒット
+(gdb) p section->name
+$1 = 0x80f043e ".text"
+(gdb) p section->next->name
+$2 = 0x80f0444 ".data"
+(gdb) p section->next->next->name
+$3 = 0x8111933 ".bss"
+(gdb) p section->next->next->next->name
+$4 = 0x80f64be ".stab"                                  ★
+(gdb) p section->next->next->next->next->name
+$5 = 0x817bb18 ".stabstr"
+(gdb) p section->next->next->next->next->next->name
+Cannot access memory at address 0x0
+(gdb) 
+
+.stab が .bss の次にきている. これは --gstabs オプションで起動しているから.
+
+(gdb) run -o test.o -g test.S
+...
+bfd_set_section_contents のブレークポイントにヒット
+(gdb) p section->name
+$8 = 0x80f043e ".text"
+(gdb) p section->next->name
+$9 = 0x80f0444 ".data"
+(gdb) p section->next->next->name
+$10 = 0x8111933 ".bss"
+(gdb) p section->next->next->next->name
+Cannot access memory at address 0x0                 ★ .debug_line がない 
+(gdb)
+
+そういうものなのだろうか. ところでこの調査の途中で以下のメッセージの原因を偶然だが発見した.
+
+can not represent section `.stab' in a.out object file format
+
+(gdb) run -o test.o --gstabs test.S
+...
+bfd_set_section_contents のブレークポイントにヒット
+(gdb) c
+...
+bfd_set_section_contents のブレークポイントにヒット
+(gdb) p section->name
+$11 = 0x80f64be ".stab"           ★
+(gdb)
+	  x = bfd_set_section_contents (stdoutput, sec,
+					f->fr_literal, (file_ptr) offset,
+					(bfd_size_type) f->fr_fix);
+	  if (!x)
+	    as_fatal (ngettext ("can't write %ld byte "            ★
+				"to section %s of %s: '%s'",
+				"can't write %ld bytes "
+				"to section %s of %s: '%s'",
+				(long) f->fr_fix),
+		      (long) f->fr_fix,
+		      bfd_section_name (sec), bfd_get_filename (stdoutput),
+		      bfd_errmsg (bfd_get_error ()));
+
+つまり bfd_set_section_contents が 0 を返したことがエラーの直接の原因らしい.
+
+調査の優先度
+
+1. -g オプションで .debug_line 等が生成されない原因を調査する
+2. --gstabs オプションで bfd_set_section_contents が 0 を返す原因を調査する
+
+(*2)  -g オプションで .debug_line 等が生成されない原因を調査する
+
+crsi-elf-gas で .bss の次のセクションは
+*GAS `reg' section* や *GAS `expr' section*
+であったりするが, これらのセクションがリストから削除されて結果的に
+.debug_line が .bss の次のセクションになっている.
+
+*GAS `expr' section* の次のセクションが .debug_line であるがこれがセッ
+トされるタイミングを捕える.
+
+  if (!force_new)
+    secptr = bfd_make_section_old_way (stdoutput, segname);  ★
+  else
+
+(gdb) p segname
+$29 = 0x812f947 ".debug_line"  ★
+(gdb) 
+
+このときのスタックは以下
+
+(gdb) where
+#0  0x0809133f in bfd_section_list_append (abfd=0x818b470, s=0x819f608) at bfd.h:6978
+#1  0x080914db in bfd_section_init (abfd=0x818b470, newsect=0x819f608) at section.c:850
+#2  0x080918ca in bfd_make_section_old_way (abfd=0x818b470, name=0x812f947 ".debug_line") at section.c:1134
+#3  0x0806c555 in subseg_get (segname=0x812f947 ".debug_line", force_new=0) at subsegs.c:162
+#4  0x0806c5d8 in subseg_new (segname=0x812f947 ".debug_line", subseg=0) at subsegs.c:182
+#5  0x0805521f in dwarf2_finish () at dwarf2dbg.c:2813
+#6  0x0804e501 in main (argc=2, argv=0x8189c80) at as.c:1427
+(gdb)
+
+dwarf2_finish が pdp11-elf-as で呼び出されているか確認してみたところき
+ている.
+
+  if ((!all_segs && emit_other_sections)
+      || (!emit_other_sections && !empty_debug_line))
+    /* If there is no line information and no non-empty .debug_info
+       section, or if there is both a non-empty .debug_info and a non-empty
+       .debug_line, then we do nothing.  */
+    return;  ★ ここで返っているのが pdp11-elf-as
+
+以下は pdp11-elf-as の結果
+
+(gdb) p (!all_segs && emit_other_sections) || (!emit_other_sections && !empty_debug_line)
+$1 = 1
+(gdb) p (!all_segs && emit_other_sections)
+$2 = 1
+(gdb) p (!emit_other_sections && !empty_debug_line)    
+$3 = 0
+(gdb) p all_segs
+$4 = (struct line_seg *) 0x0
+(gdb) p emit_other_sections
+$5 = 1
+(gdb) 
+
+一方 cris-elf-as では
+
+(gdb) p (!all_segs && emit_other_sections) || (!emit_other_sections && !empty_debug_line)
+$31 = 0
+(gdb) p (!all_segs && emit_other_sections)
+$32 = 0
+(gdb) p all_segs
+$33 = (struct line_seg *) 0x81a88e8
+(gdb) p emit_other_sections
+$34 = 1
+(gdb)
+
+all_segs に違いが出ている. cris-elf-as で all_segs に値をセットしてい
+る瞬間を捕える:
+
+      s->head = NULL;
+      *last_seg_ptr = s;          ★
+      last_seg_ptr = &s->next;
+
+このときのスタックは以下:
+
+(gdb) where
+#0  get_line_subseg (seg=0x819f1d0, subseg=0, create_p=1) at dwarf2dbg.c:297
+#1  0x08051199 in dwarf2_gen_line_info_1 (label=0x818c488, loc=0xbffff214) at dwarf2dbg.c:528
+#2  0x08051308 in dwarf2_gen_line_info (ofs=0, loc=0xbffff214) at dwarf2dbg.c:584
+#3  0x08051e22 in dwarf2_emit_insn (size=2) at dwarf2dbg.c:950
+#4  0x08078ff3 in cris_insn_first_word_frag () at config/tc-cris.c:1179
+#5  0x080793bf in md_assemble (str=0x818e1a8 "nop") at config/tc-cris.c:1322
+#6  0x08062fb5 in read_a_source_file (name=0xbffff832 "test.S") at read.c:1232
+#7  0x0804e084 in perform_an_assembly_pass (argc=0, argv=0x8189c84) at as.c:1240
+#8  0x0804e495 in main (argc=2, argv=0x8189c80) at as.c:1404
+(gdb)
+
+上を見る限りターゲット固有の処理のにおいて dwarf2_emit_insn が呼び出されているように見える.
+つまり実装によってこの症状が出る可能性はいくらでもあるということ.
+
+static char *
+cris_insn_first_word_frag (void)
+{
+...
+  if (OUTPUT_FLAVOR == bfd_target_elf_flavour)
+    dwarf2_emit_insn (2);                          ★
+
+試しに以下のように pdp11-elf-as を修正してみた:
+
+void
+md_assemble (char *instruction_string)
+{
+...
+  if (OUTPUT_FLAVOR == bfd_target_elf_flavour)
+    dwarf2_emit_insn(2);  // よく分からないが今は nop 命令 4 つなので
+    			  // これは限定してならば OK
+}
+
+そして実行してみた結果
+
+% ./as-new -o test.o -g test.S
+./as-new: test.o: can not represent section `.debug_line' in a.out object file format
+test.S: Assembler messages:
+test.S: Fatal error: can't write 53 bytes to section .debug_line of test.o: 'nonrepresentable section on output'
+./as-new: test.o: can not represent section `.debug_info' in a.out object file format
+test.S: Fatal error: test.o: nonrepresentable section on output
+%
+
+.debug_line を .bss の後に追加することができている. そして --gstabs を
+指定したときと同じように bfd_set_section_contents でエラーしている.
+
+(*3) bfd_set_section_contents が 0 を返す原因を調査する
+
+  if (BFD_SEND (abfd, _bfd_set_section_contents,
+		(abfd, section, location, offset, count))) ★
+    {
+
+ここで 0 が返っているのが直接の原因. これのマクロ展開は以下:
+
+  if (((*((abfd)->xvec->_bfd_set_section_contents)) (abfd, section, location, offset, count))
+                                           )
+    {
+      abfd->output_has_begun = 1;
+      return 1;
+    }
+
+そして実際呼び出された函数は以下:
+
+pdp11.c:
+bfd_boolean
+NAME (aout, set_section_contents) (bfd *abfd,
+				   sec_ptr section,
+				   const void * location,
+				   file_ptr offset,
+				   bfd_size_type count)
+{
+
+この函数の名前は where コマンドの結果から
+
+aout_16_set_section_contents
+
+になっていることに気付いた. この函数で 0 が返る直接の原因は以下:
+
+  if (section != obj_textsec (abfd)
+      && section != obj_datasec (abfd))  ★
+    {
+      _bfd_error_handler
+	/* xgettext:c-format */
+	(_("%pB: can not represent section `%pA' in a.out object file format"),
+	 abfd, section);
+
+おそらく, このアセンブラでは .text か .data 以外は出力できないということになる.
+そしておそらく a.out なるオブジェクトフォーマットが単純にそういう仕様なのかもしれない.
+
+しかし自分がやりたいことではないのでこれを何とか変更する. a.out フォーマットには固執しない.
+とは言え a.out フォーマットが何たるかを知らないでそのように考えていることは事実.
+
+(gdb) p (abfd)->xvec->_bfd_set_section_contents
+$12 = (bfd_boolean (*)(bfd *, sec_ptr, const void *, file_ptr, 
+    bfd_size_type)) 0x808e540 <aout_16_set_section_contents>  ★
+(gdb)
+
+この値をセットしている部分を特定する.
+
+pdp11.c:
+
+const bfd_target MY (vec) =
+{
+  TARGETNAME,			/* Name.  */
+...
+
+マクロ展開の結果は以下:
+const bfd_target pdp11_aout_vec =
+{
+  "a.out-pdp11",
+  bfd_target_aout_flavour,
+  BFD_ENDIAN_LITTLE,
+  BFD_ENDIAN_LITTLE,
+...
+  aout_16_set_arch_mach, aout_16_set_section_contents,  ★
+...
+ ((void *)0)
+# 4741 "pdp11.c"
+
+
+  (void *) &pdp11_aout_backend_data
+};
+
+これらしい.
+
+マクロ MY の定義は以下:
+
+pdp11.c:
+#define MY(OP) CONCAT2 (pdp11_aout_,OP)
+
+同じことを cris-elf-as で確認してみた:
+
+aout-cris.c:
+
+#include "aout-target.h" ★
+
+
+マクロ展開が以下:
+
+# 644 "aout-target.h"
+const bfd_target cris_aout_vec =
+{
+  "a.out-cris",
+  bfd_target_aout_flavour,
+...
+     cris_aout_32_set_arch_mach, cris_aout_32_set_section_contents,     ★
+...
+
+  &cris_aout_backend_data
+};
+
+おそらく共通ルーチンの aout_16_set_section_contents ではなくて
+
+pdp11_aout_16_set_section_contents
+
+が使用されるようになれば期待する動作になるということ. つまり a.out フォーマットの仕様ではなさ
+そう.
+
+  => 実はこれは間違いだと後で考えられている. やはり a.out フォーマット
+     の仕様らしい.
+
+ところで cris-elf-as では
+
+  if (BFD_SEND (abfd, _bfd_set_section_contents,
+		(abfd, section, location, offset, count)))
+    {
+
+の呼び出しはマクロ展開は確認していないが
+
+bfd_boolean
+_bfd_elf_set_section_contents (bfd *abfd,
+			       sec_ptr section,
+			       const void *location,
+			       file_ptr offset,
+			       bfd_size_type count)
+{
+
+への呼び出しになっていることを確認した. cris_aout_32_set_section_contents ではないらしい.
+この理由はそのうち調べるとして, pdp11-elf-as はどこか他のプロセッサのツールと少し違う作りに
+なっているために単純に期待する動作になっていないらしい.
+
+cris_aout_32_set_section_contents は以下のようになっている.
+
+aoutx.h:   ★ cris 固有のファイルではない
+
+bfd_boolean
+NAME (aout, set_section_contents) (bfd *abfd,            ★
+				   sec_ptr section,
+				   const void * location,
+				   file_ptr offset,
+				   bfd_size_type count)
+{
+...
+  if (section != obj_textsec (abfd)
+      && section != obj_datasec (abfd))                  ★ 似ている
+    {
+      if (aout_section_merge_with_text_p (abfd, section))
+	section->filepos = obj_textsec (abfd)->filepos +
+			   (section->vma - obj_textsec (abfd)->vma);
+      else
+	{
+	  _bfd_error_handler
+	    /* xgettext:c-format */
+	   (_("%pB: can not represent section `%pA' in a.out object file format"),
+	     abfd, section);
+	  bfd_set_error (bfd_error_nonrepresentable_section);
+	  return FALSE;
+	}
+    }
+
+共通ルーチンになっている. そして全く同じではないものの aout_16_set_section_contents
+と似たようなエラー処理が行なわれている.
+
+ということはやはり a.out フォーマットに .debug_line や .stabs を入れる
+ことはそもそもできない可能性がある.
+
+(*4)
+
+  if (BFD_SEND (abfd, _bfd_set_section_contents,
+		(abfd, section, location, offset, count))) ★
+    {
+
+これはマクロ展開の結果 abfd->xvec->_bfd_set_section_contents のポインタ経由の函数呼び
+出しで一般的なこれまでのツールでは以下の函数呼び出しになっていた:
+
+bfd_boolean
+_bfd_elf_set_section_contents (bfd *abfd,
+			       sec_ptr section,
+			       const void *location,
+			       file_ptr offset,
+			       bfd_size_type count)
+{
+
+
+まずは cris-elf-gcc で abfd->xvec がセットされるタイミングを捕える.
+
+
+  target_vec = bfd_find_target (target, nbfd);  ★
+...
+  if (abfd)
+    abfd->xvec = target;
+
+(gdb) p target
+$45 = (const bfd_target *) 0x81516e0 <cris_elf32_us_vec>
+(gdb) p targname
+$46 = 0x8135331 "elf32-us-cris"
+(gdb) 
+
+一方同様のことを pdp11-elf-as で試してみた.
+
+(gdb) p targname
+$15 = 0x80f7bf6 "a.out-pdp11"
+(gdb) n
+(gdb) p target
+$16 = (const bfd_target *) 0x81127a0 <pdp11_aout_vec>
+(gdb)
+
+そして pdp11-elf-objdump の結果気付く:
+
+test.o:     ファイル形式 a.out-pdp11    ★
+test.o
+アーキテクチャ: pdp11, フラグ 0x0000003e:
+
+つまり自分が勝手に elf ファイルを pdp11-elf-as が生成していると思い込んでいた.
+
+(gdb) run -o test.o test.S   ★ -g なし
+
+
+test.o を emacs の hexl-mode で見た
+
+          0701 0800 0000 0000 2800 0000 0000 0100  ........(.......
+00000010: a000 a000 a000 a000 0000 0400 0200 0000  ................
+00000020: 0000 0a00 0300 0800 0000 1000 0400 0800  ................
+00000030: 0000 1500 0200 0000 0000 1b00 0200 0600  ................
+00000040: 0000 1f00 2e74 6578 7400 2e64 6174 6100  .....text..data.
+00000050: 2e62 7373 0073 7461 7274 0065 6e64 00
+
+先頭に 'E' 'L' 'F' のマジックコードがない. つまりツールはその仕様通り動作していたということ.
+
+おそらく何かを追加すると自分が期待した動作になる.
+
+  => 実はそんなに単純ではないことに後で気付く.
+
+cris-elf-as で以下を発見した:
+
+extern const char *cris_target_format (void);
+#define TARGET_FORMAT cris_target_format ()        ★
+
+const char *
+cris_target_format (void)
+{
+  switch (OUTPUT_FLAVOR)
+    {
+    case bfd_target_aout_flavour:
+      return "a.out-cris";              ★
+
+    case bfd_target_elf_flavour:
+      if (symbols_have_leading_underscore)
+	return "elf32-us-cris";
+      return "elf32-cris";              ★
+
+
+pdp11 のアセンブラは
+
+#define TARGET_FORMAT "a.out-pdp11"
+
+のように固定になっている. pdp11-elf-as のときにリンクエラーしていたのはこういった経緯があ
+ったということ.
+
+そして以下に気付いた:
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/bfd
+% ls *pdp11*.{c,h}
+cpu-pdp11.c  pdp11.c
+% ls *cr16*.{c,h}
+cpu-cr16.c  elf32-cr16.c  elf32-cr16.h
+% ls *cris*.{c,h} 
+aout-cris.c  cpu-cris.c  elf32-cris.c
+%
+
+すなわち cr16-elf-as や cris-elf-as を正常に動作することができたのは ELF にそれらのツール
+が対応していたからということ.
+
+cris-aout-as や pdp11-aout-as が a.out フォーマット形式に対応しているが, おそらく
+cr16-aout-as は対応していないということ.
