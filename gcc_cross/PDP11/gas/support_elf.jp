@@ -1,0 +1,386 @@
+現状以下のようにしている. 
+
+binutils-2.36.1.pdp11-elf/gas/config/tc-pdp11.h:
+const char* pdp11_target_format(void);
+#define TARGET_FORMAT pdp11_target_format()
+
+
+binutils-2.36.1.pdp11-elf/gas/config/tc-pdp11.c:
+const char* pdp11_target_format(void)
+{
+  switch (OUTPUT_FLAVOR) {
+  case bfd_target_aout_flavour:
+    return "a.out-pdp11";
+  case bfd_target_elf_flavour:
+    return "elf32-pdp11";
+  default:
+      abort ();
+  }
+}
+
+(gdb) run -o test.o -g test.S
+...
+Assembler messages:
+Fatal error: selected target format 'elf32-pdp11' unknown
+...
+
+まだ elf32-pdp11 に対応するテーブルが定義されていないので bfd_find_target
+で 0 ポインタが返されているので対応するテーブルを他のツールと同様に
+
+binutils-2.36.1.pdp11-elf/bfd/elf32-pdp11.c
+
+に定義する. elf32-pdp11.c の内容だがこれも他のツールと同様に
+
+...
+種々のマクロの宣言
+...
+#include "elf32-target.h"
+
+のようにする. こうすることで
+
+const bfd_target TARGET_BIG_SYM =
+{
+
+か
+
+const bfd_target TARGET_LITTLE_SYM =
+{
+
+がテーブルとして定義される. ここで初めてテーブルが bfd_target 型であることに気付く.
+まずは宣言なしで単純に
+
+#include "elf32-target.h"
+
+のみ書いてコンパイルしてみた.
+
+% make
+...
+libtool: compile:  gcc -DHAVE_CONFIG_H -I. -DBINDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin\" -DLIBDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib\" -I. -I. -I./../include -DHAVE_pdp11_aout_vec -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g -O0 -MT elf32-pdp11.lo -MD -MP -MF .deps/elf32-pdp11.Tpo -c elf32-pdp11.c -o elf32-pdp11.o
+...
+In file included from elf32-pdp11.c:1:
+elf32-target.h:374:3: エラー: #error ELF_MAXPAGESIZE is not defined
+  374 | # error ELF_MAXPAGESIZE is not defined
+...
+%
+
+当然だがエラーする. 他のツールを丸ごと真似してもいいが初見ということでスクラッチから
+1 つ 1 つエラーを回避してみる.
+
+以下を追加:
+
+#define ELF_MAXPAGESIZE			0x1
+
+次のエラーは以下:
+
+elf32-target.h:805:21: エラー: 変数 ‘elf32_bed’ には初期化子がありますが不完全型です
+  805 | static const struct elf_backend_data elf32_bed =
+
+elf32_bed は elf-bfd.h で定義されているらしい. 単純に include してみたがエラーする:
+
+./../include/elf/external.h:291:21: エラー: expected ‘=’, ‘,’, ‘;’, ‘asm’ or ‘__attribute__’ before ‘Elf_External_Versym’
+
+マクロ展開を確認してみた.
+
+typedef struct {
+  unsigned char vs_vers[2];
+} ATTRIBUTE_PACKED Elf_External_Versym;
+
+期待した形になっていない. 他のツールであれば
+
+typedef struct {
+  unsigned char vs_vers[2];
+} __attribute__ ((packed)) Elf_External_Versym;
+
+のようになっている.
+
+./../include/ansidecl.h:258
+
+#ifndef ATTRIBUTE_PACKED
+# define ATTRIBUTE_PACKED __attribute__ ((packed))
+#endif
+
+このファイルを事前に include する必要があるらしい. 結局以下を追加:
+
+#include "ansidecl.h"
+#include "elf-bfd.h"
+
+次のエラーは以下:
+
+./../include/elf/internal.h:69:3: エラー: 不明な型名 ‘bfd_vma’ です
+   69 |   bfd_vma  e_entry; /* Entry point virtual address */
+
+bfd_vma は bfd-in.h で宣言されている. 単純に include してみた.
+
+In file included from elf32-pdp11.c:5:
+bfd-in.h:28:2: エラー: #error config.h must be included before this header
+   28 | #error config.h must be included before this header
+
+
+#if !defined PACKAGE && !defined PACKAGE_VERSION   ★
+#error config.h must be included before this header
+#endif
+
+以下のようにしてみた:
+
+#include "config.h"
+#include "bfd-in.h"
+
+bfd-in.h:89:5: エラー: token "@" is not valid in preprocessor expressions
+   89 | #if @BFD_HOST_64_BIT_DEFINED@
+
+さてこのエラーはどうやって回避するのか?
+
+cr16-elf-as の対応するファイルを確認してみた:
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.cr16-elf/bfd/bfd-in.h
+
+#if @BFD_HOST_64_BIT_DEFINED@
+
+これがエラーしない仕組みがあるらしいが想像できない. しかし単純にこの部分がプリプロセスされなければ
+エラーしないことは言える.
+
+エラーの回避の方法がここにまできて不明.
+
+ずるいが elf32-cr16.c を真似して以下のようにしてみた:
+
+#define ELF_MAXPAGESIZE			0x1
+
+#include "sysdep.h"         ★
+#include "bfd.h"            ★
+#include "bfdlink.h"        ★
+#include "libbfd.h"         ★   
+#include "libiberty.h"      ★
+#include "elf-bfd.h"        ★
+
+#include "elf32-target.h"
+
+そしてコンパイルしてみると
+
+elf32-target.h:807:3: エラー: ‘ELF_ARCH’ がここでは宣言されていません (関数内ではない)
+  807 |   ELF_ARCH,   /* arch */
+
+エラーを回避できている. ここは長いものに巻かれておく.
+以下を追加した
+
+#define ELF_MAXPAGESIZE			0x1
+
+#include "sysdep.h"
+#include "bfd.h"
+#include "bfdlink.h"
+#include "libbfd.h"
+#include "libiberty.h"
+#include "elf-bfd.h"
+
+#define ELF_ARCH bfd_arch_pdp11    ★
+
+#include "elf32-target.h"
+
+次のエラーは以下:
+elf32-target.h:810:3: エラー: ‘ELF_MACHINE_CODE’ undeclared here (not in a function); did you mean ‘ELF_MACHINE_ALT2’?
+  810 |   ELF_MACHINE_CODE,  /* elf_machine_code */
+
+以下を追加:
+
+#define ELF_MAXPAGESIZE			0x1
+
+#include "sysdep.h"
+#include "bfd.h"
+#include "bfdlink.h"
+#include "libbfd.h"
+#include "libiberty.h"
+#include "elf-bfd.h"
+
+#define ELF_ARCH bfd_arch_pdp11
+#define ELF_MACHINE_CODE		 EM_PDP11   ★
+
+#include "elf32-target.h"
+
+EM_PDP11 そのものは
+
+binutils-2.36.1.pdp11-elf/include/elf/common.h
+
+に定義がある. これで一応コンパイルのみは正常終了.
+
+elf32-pdp11.c のプリプロセスの結果を確認してみた: 
+
+static const struct elf_backend_data elf32_bed =
+{
+...
+};
+
+予定していた
+
+const bfd_target TARGET_LITTLE_SYM =
+{
+
+が出ていない. 以下を追加
+
+#define TARGET_LITTLE_SYM		pdp11_elf32_vec  ★
+
+コンパイルして以下でエラー:
+...
+elf32-target.h:1076:3: エラー: ‘TARGET_LITTLE_NAME’ undeclared here (not in a function); did you mean ‘TARGET_LITTLE_SYM’?
+ 1076 |   TARGET_LITTLE_NAME,
+...
+
+以下を追加:
+
+#define TARGET_LITTLE_NAME		"elf32-cr16"  ★
+
+コンパイルして以下でエラー:
+...
+In file included from elf32-pdp11.c:4:
+elf32-target.h:1159:26: エラー: ‘bfd_elf32_bfd_reloc_type_lookup’ undeclared here (not in a function); did you mean ‘_bfd_norelocs_bfd_reloc_type_lookup’?
+ 1159 |   BFD_JUMP_TABLE_RELOCS (bfd_elf32),
+...
+
+おそらくこれは函数の宣言がないということ. elf32-cr16.c では
+
+static reloc_howto_type *
+elf_cr16_reloc_type_lookup (bfd *abfd,
+			    bfd_reloc_code_real_type code)
+{
+...
+
+#define bfd_elf32_bfd_reloc_type_lookup	  elf_cr16_reloc_type_lookup
+
+のようにしている. そこで以下を追加:
+
+static reloc_howto_type* 
+elf_pdp11_reloc_type_lookup(bfd *abfd,
+			    bfd_reloc_code_real_type code)
+{
+  (void)abfd;
+  (void)code;
+  asm("int3");
+  abort();
+}
+
+#define bfd_elf32_bfd_reloc_type_lookup	elf_pdp11_reloc_type_lookup
+
+コンパイルして以下でエラー:
+...
+elf32-target.h:1159:26: エラー: ‘bfd_elf32_bfd_reloc_name_lookup’ undeclared here (not in a function); did you mean ‘bfd_elf32_bfd_reloc_type_lookup’?
+ 1159 |   BFD_JUMP_TABLE_RELOCS (bfd_elf32),
+...
+そこで以下を追加:
+
+static reloc_howto_type*
+elf_pdp11_reloc_name_lookup(bfd* abfd,
+			    const char *r_name)
+{
+  (void)abfd;
+  (void)r_name;
+  asm("int3");
+  abort();
+}
+
+#define bfd_elf32_bfd_reloc_name_lookup	elf_pdp11_reloc_name_lookup
+
+一応これでコンパイルは成功.
+as-new を再リンクしたが bfd_find_target で 0 ポインタが返っている状況はまだ同じ.
+
+static const bfd_target *
+find_target (const char *name)
+{
+...
+  for (target = &bfd_target_vector[0]; *target != NULL; target++)
+    if (strcmp (name, (*target)->name) == 0)
+      return *target;  ★
+
+cr16-elf-as であればこのループの 1 回目でこの条件が成立している.
+
+
+(gdb) ptype bfd_target_vector
+type = const struct bfd_target {
+...
+} * const * const
+(gdb)
+
+ということらしい. ポインタの配列ではなくて, ポインタのポインタ. このコンテナに今回追加した
+pdp11_elf32_vec を追加する方法を調べてみる.
+
+現状では pdp11_aout_vec がこのコンテナの先頭にある. main 函数が呼び出された時点で
+
+(gdb) p bfd_target_vector[0]
+$12 = (const bfd_target * const) 0x81269e0 <pdp11_aout_vec>
+(gdb)
+
+
+これはコンパイルの仕方に工夫があった. -D オプションを指定している: 
+
+% make -n  targets.lo 
+/bin/sh ./libtool  --tag=CC   --mode=compile gcc -DHAVE_CONFIG_H -I.  -DBINDIR='"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin"' -DLIBDIR='"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib"' -I. -I. -I./../include  -DHAVE_cr16_elf32_vec -DHAVE_elf32_le_vec -DHAVE_elf32_be_vec   -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g3 -O0 -MT targets.lo -MD -MP -MF .deps/targets.Tpo -c -o targets.lo -DDEFAULT_VECTOR=cr16_elf32_vec -DSELECT_VECS='&cr16_elf32_vec,&elf32_le_vec,&elf32_be_vec' -DSELECT_ARCHITECTURES='&bfd_cr16_arch' ./targets.c
+mv -f .deps/targets.Tpo .deps/targets.Plo
+%
+
+Makefile:
+...
+tdefaults =  -DDEFAULT_VECTOR=pdp11_aout_vec -DSELECT_VECS='&pdp11_aout_vec' -DSELECT_ARCHITECTURES='&bfd_pdp11_arch' ★
+...
+TDEFAULTS =  -DDEFAULT_VECTOR=pdp11_aout_vec -DSELECT_VECS='&pdp11_aout_vec' -DSELECT_ARCHITECTURES='&bfd_pdp11_arch'  ★
+...
+
+おそらく 1 つ目は無関係なのだが両方修正する.
+
+これで as-new を再リンクして実行してみたところ elf_pdp11_reloc_type_lookup に埋め込んだ
+ブレークポイントにヒットしている.
+
+そこで以下のように修正した:
+
+reloc_howto_type* aout_16_reloc_type_lookup(bfd *, bfd_reloc_code_real_type);  ★
+
+static reloc_howto_type* 
+elf_pdp11_reloc_type_lookup(bfd* abfd,
+			    bfd_reloc_code_real_type code)
+{
+  return aout_16_reloc_type_lookup(abfd, code);  ★
+}
+
+(gdb) run
+...
+一応正常終了している.
+
+% pdp11-elf-objdump -d -g -x test.o > test.o.objdump
+pdp11-elf-objdump: test.o: file format not recognized
+%
+
+多分 objdump もビルドし直す必要があるのだろう.
+
+% objdump -x -g test.o > test.o.objdump
+
+一応期待したものになっている. .debug_line 等のセクションも生成されている.
+
+% pdp11-elf-as -o test.o -g test.S
+% pdp11-elf-ld -o test.elf test.o -T ../default.x
+pdp11-elf-objdump: test.o: file format not recognized
+%
+
+これは binutils 全体の問題らしい.
+
+% cd ../ld
+% make
+% make install
+% cd ../binutils
+% make
+% make install
+
+% cd /home/khasegawa/lang/53_GNU_tool/gcc_cross/PDP11/test/test001
+% make clean
+% make
+pdp11-elf-as -o test.o -g test.S
+pdp11-elf-ld -o test.elf test.o -T ../default.x
+pdp11-elf-ld: BFD デフォルトターゲットを `pdp11-dec-elf' に設定できません: invalid bfd target
+%
+
+違うエラーが発生している.
+
+% pdp11-elf-objdump -x -d -g test.o
+pdp11-elf-objdump: BFD デフォルトターゲットを `pdp11-dec-elf' に設定できません: invalid bfd target
+%
+
+これも同じ. 今回の修正で
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/bfd/libbfd.a
+
+を修正したのだが ld や objdump がまだ対応できてきないということ.
+
