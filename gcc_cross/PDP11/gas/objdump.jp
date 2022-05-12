@@ -1,0 +1,115 @@
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/binutils/
+% ./objdump -x ../gas/test.o
+./objdump: BFD デフォルトターゲットを `pdp11-dec-elf' に設定できません: invalid bfd target
+%
+
+M-x gdb
+gdb --annotate=3 ./objdump
+(gdb) run -x ../gas/test.o
+
+gdb から実行してもやはり再現している.
+
+  if (! bfd_set_default_target (target))
+    fatal (_("can't set BFD default target to `%s': %s"),  ★
+	   target, bfd_errmsg (bfd_get_error ()));
+
+bfd_set_default_target がエラーしている原因を調べてみる.
+
+
+bfd_boolean
+bfd_set_default_target (const char *name)
+{
+  const bfd_target *target;
+
+  if (bfd_default_vector[0] != NULL
+      && strcmp (name, bfd_default_vector[0]->name) == 0)  ★
+    return TRUE;
+
+  target = find_target (name);  ★
+  if (target == NULL)
+    return FALSE;
+
+pdp11-dec-elf と elf32-pdp11 とを比較して違うので, find_target を呼び出して,
+その結果 0 ポインタが返ってエラーしているということ.
+
+今回の修正で pdp11_elf32_vec を追加したがこれが不十分とうことだろう.
+
+単純に以下を修正した:
+
+#define TARGET_LITTLE_NAME		"pdp11-dec-elf" ★
+
+const char* pdp11_target_format(void)
+{
+  switch (OUTPUT_FLAVOR) {
+  case bfd_target_aout_flavour:
+    return "a.out-pdp11";
+  case bfd_target_elf_flavour:
+    return "pdp11-dec-elf";                 ★
+
+libbfd.a と as-new をビルドし直した. 改めて
+
+(gdb) run -x ../gas/test.o
+
+../gas/test.o:     ファイル形式 pdp11-dec-elf  ★
+../gas/test.o
+アーキテクチャ: pdp11, フラグ 0x00000011:
+HAS_RELOC, HAS_SYMS
+開始アドレス 0x00000000
+
+セクション:
+Idx Name          Size      VMA       LMA       File off  Algn
+  0 .text         00000008  00000000  00000000  00000034  2**0
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+  1 .data         00000000  00000000  00000000  0000003c  2**0
+                  CONTENTS, ALLOC, LOAD, DATA
+  2 .bss          00000000  00000000  00000000  0000003c  2**0
+                  ALLOC
+  3 .debug_line   00000036  00000000  00000000  0000003c  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING, OCTETS
+  4 .debug_info   00000022  00000000  00000000  00000072  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING, OCTETS
+  5 .debug_abbrev 00000014  00000000  00000000  00000094  2**0
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+  6 .debug_aranges 00000014  00000000  00000000  000000a8  2**2
+                  CONTENTS, RELOC, READONLY, DEBUGGING, OCTETS
+  7 .debug_str    0000006e  00000000  00000000  000000bc  2**0
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+SYMBOL TABLE:
+00000000 l    d  .text	00000000 .text
+00000000 l    d  .data	00000000 .data
+00000000 l    d  .bss	00000000 .bss
+00000000 l       .text	00000000 start
+00000006 l       .text	00000000 end
+00000000 l    d  .debug_info	00000000 .debug_info
+00000000 l    d  .debug_abbrev	00000000 .debug_abbrev
+00000000 l    d  .debug_line	00000000 .debug_line
+00000000 l    d  .debug_str	00000000 .debug_str
+00000000 l    d  .debug_aranges	00000000 .debug_aranges
+
+
+
+Program received signal SIGSEGV, Segmentation fault.
+0x00000000 in ?? ()
+(gdb) up
+
+	  || ebd->elf_info_to_howto_rel == NULL)
+	res = ebd->elf_info_to_howto (abfd, relent, &rela); ★
+
+(gdb) p ebd->elf_info_to_howto 
+$5 = (bfd_boolean (*)(bfd *, arelent *, Elf_Internal_Rela *)) 0x0
+(gdb) 
+
+この呼び出しが 0 ポインタ経由ということ.
+以下のようにすればこのメンバをセットできる
+
+static bfd_boolean
+elf_pdp11_info_to_howto(bfd* abfd, arelent* cache_ptr,
+			Elf_Internal_Rela* dst)
+{
+  ...
+}
+
+#define elf_info_to_howto		elf_pdp11_info_to_howto
+
+この函数を cr16-elf-objdump の参照する libbfd.a を参考に実装し, objdump が正常
+終了している.
