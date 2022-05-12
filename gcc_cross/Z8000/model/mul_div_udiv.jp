@@ -1,0 +1,70 @@
+(*1)
+2022.03.30 14:00
+
+int32 * int32 の実装中
+
+ライブラリ函数呼び出し. ビルド中.
+
+	r4 := -8(r10)
+	r6 := -4(r10)
+	r0 := call ___mulsi3
+	r2 := r0
+
+のようになっていることを確認.
+
+と思ったが, オリジナルの cc1 は
+
+	ldl	rr4,-4(r10)        rr4 := y
+	ldl	rr2,-8(r10)	   rr2 := z
+	ldl	rr6,rr4		   rr6 := y
+	multl	rq4,rr2		   (r4, r5, r6, r7) := (r6, r7) * (r2, r3)
+
+のようにしている rq4 をデスティネーションに指定するらしい.
+一旦 ___mulsi3 の呼び出しはキャンセルする.
+
+(*2)
+2022.05.10 11:00
+
+int32 / int32 の実装中
+
+オリジナルの cc1 は以下のようなコードを生成している. これを真似する.
+
+	ldl	-4(r10),rr6
+	ldl	-8(r10),rr4
+	ldl	rr6,-4(r10)         rr6 := y
+	extsl	rq4		    (r4, r5, r6, r7) = (sign)(r6, r7)
+	divl	rq4,-8(r10)	    (r4, r5, r6, r7) /= z
+
+(*3)
+
+int16 /u int16 の実装中
+Z8000 には udiv を実現する命令がないので ___udivsi3 の呼び出すコードを生成する.
+
+2022.05.11 10:36 現状以下のようなコードが生成されている.
+
+	rr2 := (zero)-2(r10)
+	rr4 := (zero)-4(r10)
+	ldl	rr6, rr2
+call	___udivsi3
+
+call 命令の前にタブがない理由は不明であるが, まずは uint32 <- uint16 を gcc の共通部分
+でやってもらうように z8k.md を修正. ビルド中.
+
+タブが入らない原因は
+
+  if (REG_P(x) && MEM_P(fun)) {
+    int regno = REGNO(x);
+    if (regno == 2)
+      return "call	%1";
+    fprintf(asm_out_file, "call	"); ★ タブがない
+
+とそもそもこれが想定していなくて
+
+rtx z8k_libcall_value (machine_mode mode, const_rtx fun)
+{
+  (void)fun;
+  return gen_rtx_REG(mode, 0);  ★ 2 が正しい
+}
+
+上も間違えていた. r0 を戻り値にする別のプロセッサのツールのソースを単純にコピーしたバグと思わ
+れる.
