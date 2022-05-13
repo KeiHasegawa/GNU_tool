@@ -1,0 +1,452 @@
+(*1)
+
+di + di の実装中. 現状以下のようになっている:
+
+_f:
+	push	@r15, r10
+	ld	r10, r15
+	dec	r15, #8
+	-8(r10) := r2q
+	r4q := -8(r10) + 8(r10)
+	r2q := r4q
+	ld	r15, r10
+	pop	r10, @r15
+	ret	t
+
+また FIXED_REGISTERS は以下:
+
+#define FIXED_REGISTERS      { \
+    1,    1,     0,     0,     0,     0,     0,     0,  \
+    1,    1,     1,     1,     1,     1,     1,     1,  \
+    1  }
+
+そこで以下のようにして r2 しか選択されないようにしてみる.
+
+   => 実は後で気付くが最初の引数は r2q ではなくて r4q になるのが正しい.
+
+#define FIXED_REGISTERS      { \
+    1,    1,     0,     1,     1,     1,     1,     1,  \
+    1,    1,     1,     1,     1,     1,     1,     1,  \
+    1  }
+
+2022.05.11 16:39 ビルド開始.
+2022.05.11 17:14 期待したコードが生成されている.
+
+しかし今まで pass していたテストが fail するようになっている. これは
+
+    x := y op z
+
+で x がレジスタだったのが x が fp 相対になったため. しかしこれはこれで対応する.
+
+(*2)
+(*1) の修正で
+
+const char* z8k::si::xxx(rtx x, rtx y, rtx z)
+{
+  int offy, offz;
+  if (REG_P(x) && fp_rel(y, &offy) && fp_rel(z, &offz))
+    ...
+
+  int offx;
+  if (fp_rel(x, &offx) && fp_rel(y, &offy) && fp_rel(z, &offz))   ★
+    ...
+....
+
+
+のようにデスティネーションがレジスタではなくて fp 相対に対応する必要があるが, offx が
+意図せず 4 にアラインメントされていない.
+
+  => 実は後で気付くが Z8000 はダブルワード(4 バイト)のストアをワード(2 バイト)境界をまた
+     いで発行されることが許されているのでアラインメントされている必要がなかった. このとき
+     はそれに気付いていなかった. とはいえ, 似たような修正は他のプロセッサで必要になるので
+     以下は参考になる.
+     
+x のオフセット -10 は以下
+
+(gdb) p (((((x)->u.fld[0]).rt_rtx)->u.fld[1]).rt_rtx)->u.hwint[0]
+$8 = -10
+(gdb) p &(((((x)->u.fld[0]).rt_rtx)->u.fld[1]).rt_rtx)->u.hwint[0]
+$9 = (long long *) 0xb7857398
+(gdb)
+
+この値がセットされる瞬間を捕える.
+
+  for (i = - MAX_SAVED_CONST_INT; i <= MAX_SAVED_CONST_INT; i++)
+    const_int_rtx[i + MAX_SAVED_CONST_INT] =
+      gen_rtx_raw_CONST_INT (VOIDmode, (HOST_WIDE_INT) i);  ★
+
+これは意図していない箇所だった. おそらく勘違いをしている.
+グラフィカルに表現すれば以下のようなこと:
+
+
+	+---------------+
+	|	       -----+  この値をセットしている瞬間を捕えるべき.
+	+---------------+   |
+	|	...	|   |
+	~		~   |
+	|	...	|   |
+	+---------------+   |
+	|	-9	|   |
+	+---------------+ <-+
+	|	-10	|      この値をセットされる瞬間ではなくて
+	+---------------+
+	|	-11	|
+	+---------------+
+	|	...	|
+	+---------------+
+
+rtx
+shallow_copy_rtx (const_rtx orig MEM_STAT_DECL)
+{
+  const unsigned int size = rtx_size (orig);
+  rtx const copy = ggc_alloc_rtx_def_stat (size PASS_MEM_STAT);
+  memcpy (copy, orig, size);   ★
+
+(gdb) p debug_rtx(orig)
+(plus:HI (reg/f:HI 10 r10)
+    (const_int -10 [0xfffffffffffffff6]))
+$13 = void
+(gdb)
+
+多分だがそれっぽい. orig の値が -10 ではなくて -8 や -12 になるのが期待する動作.
+
+
+static bool
+remove_pseudos (rtx *loc, rtx_insn *insn)
+{
+...
+	  rtx x = lra_eliminate_regs_1 (insn, pseudo_slots[i].mem,
+					GET_MODE (pseudo_slots[i].mem),
+					false, false, 0, true);
+	  *loc = x != pseudo_slots[i].mem ? x : copy_rtx (x);
+
+(gdb) p debug_insn_slim(insn)
+    7: r23:SI=[r10:HI-0x4]<<[r10:HI-0x6]
+$15 = void
+(gdb) p debug_rtx(x)
+(mem/c:SI (plus:HI (reg/f:HI 10 r10)
+        (const_int -10 [0xfffffffffffffff6])) [3 %sfp+-10 S4 A8])
+$16 = void
+(gdb) 
+
+上でいううところの r23 を fp 相対 -10 にしているのが期待しない動作. おそらく -12
+にするのが期待する動作.
+
+static void
+assign_mem_slot (int i)
+{
+...
+      x = assign_stack_local (BLKmode, slots[slot_num].size,
+			      slots[slot_num].align);
+
+(gdb) p debug_rtx(x)
+(mem/c:BLK (plus:HI (reg/f:HI 10 r10)
+        (const_int -10 [0xfffffffffffffff6])) [0  A8])
+$37 = void
+(gdb) p slots[slot_num].size
+$38 = {<poly_int_pod<1, long long>> = {coeffs = {4}}, <No data fields>}
+(gdb) p slots[slot_num].align
+$39 = 8
+(gdb)
+
+size も align も期待したものだが assign_stack_local の戻り値が期待したものになっていない.
+
+rtx
+assign_stack_local_1 (machine_mode mode, poly_int64 size,
+		      int align, int kind)
+{
+...
+    alignment = align / BITS_PER_UNIT;
+
+(gdb) p alignment
+$40 = 1
+(gdb)
+
+自分が思っていた align ではなくて 8 ではなくて 8 * 4 になっているのが正しいということ.
+
+  unsigned int align = spill_slot_alignment (mode);
+  slots[slot_num].align = MAX (slots[slot_num].align, align);  ★
+  slots[slot_num].size = upper_bound (slots[slot_num].size,
+				      GET_MODE_SIZE (mode));
+
+
+unsigned int
+spill_slot_alignment (machine_mode mode ATTRIBUTE_UNUSED)
+{
+  return STACK_SLOT_ALIGNMENT (NULL_TREE, mode, GET_MODE_ALIGNMENT (mode));  ★
+}
+
+おそらく STACK_SLOT_ALIGNMENT か GET_MODE_ALIGNMENT のマクロを定義するかそれに近い
+ことをやればできそう.
+
+gcc-10.2.0.z8k-coff.mine/gcc/defaults.h:
+#ifndef STACK_SLOT_ALIGNMENT
+#define STACK_SLOT_ALIGNMENT(TYPE,MODE,ALIGN) \
+  ((TYPE) ? LOCAL_ALIGNMENT ((TYPE), (ALIGN)) : (ALIGN))
+#endif
+
+gcc-10.2.0.z8k-coff.mine/gcc/machmode.h:
+extern unsigned get_mode_alignment (machine_mode);
+
+#define GET_MODE_ALIGNMENT(MODE) get_mode_alignment (MODE)
+
+
+gcc-10.2.0.z8k-coff.mine/gcc/stor-layout.c:
+unsigned int
+get_mode_alignment (machine_mode mode)
+{
+  return MIN (BIGGEST_ALIGNMENT, MAX (1, mode_base_align[mode]*BITS_PER_UNIT));
+}
+
+gcc-10.2.0.z8k-coff.mine/gcc/config/z8k/z8k.h
+#define BIGGEST_ALIGNMENT 8                          ★
+
+というわけでこの定義を修正する. 上を 8 ではなくて 64 に修正したがまだ期待通り
+動作していない.
+
+
+  alignment_in_bits = alignment * BITS_PER_UNIT;
+
+  /* Ignore alignment if it exceeds MAX_SUPPORTED_STACK_ALIGNMENT.  */
+  if (alignment_in_bits > MAX_SUPPORTED_STACK_ALIGNMENT)   ★
+    {
+      alignment_in_bits = MAX_SUPPORTED_STACK_ALIGNMENT;
+      alignment = MAX_SUPPORTED_STACK_ALIGNMENT / BITS_PER_UNIT;
+    }
+
+この条件が成立してやはり alignment が 4 から 1 に変更されている.
+
+#ifdef MAX_STACK_ALIGNMENT
+#define MAX_SUPPORTED_STACK_ALIGNMENT MAX_STACK_ALIGNMENT
+#else
+#define MAX_STACK_ALIGNMENT STACK_BOUNDARY
+#define MAX_SUPPORTED_STACK_ALIGNMENT PREFERRED_STACK_BOUNDARY
+#endif
+
+gcc-10.2.0.z8k-coff.mine/gcc/config/z8k/z8k.h
+#define STACK_BOUNDARY 8  ★
+
+これも 64 が正しいように思える.
+
+#define PARM_BOUNDARY 8
+
+ついでにこれも 64 に修正しておくのが良さそう.
+
+2022.05.12 10:34 コンパイルが正常終了している. 問題のオフセットは -10 から -12
+に修正されていた.
+
+しかし現状実行時不正メモリアクセスしている.
+
+f を呼び出して戻ってこれている. そして $r2 = 0, $r3 = 320 なのでここはできている.
+
+	ldl	-4(r10), rr2
+	ldl	rr0, -4(r10)
+	pushl	@r15, rr0
+	inc	r15, #-4	★
+	push	@r15, #.LC0
+	inc	r15, #-6	★
+	call	_printf
+
+ここが間違い.
+おそらくだがついでに直した
+
+#define PARM_BOUNDARY 64
+
+が影響していると考えて元に戻した.
+
+2022.05.12 11:21 確認したところ以下のようになっている. 何だか期待したものになっていない.
+
+	(mem:QI (pre_dec:HI (reg/f:HI 15 r15)) [0  S1 A8]) := -1(r10)
+	(mem:QI (pre_dec:HI (reg/f:HI 15 r15)) [0  S1 A8]) := -2(r10)
+	(mem:QI (pre_dec:HI (reg/f:HI 15 r15)) [0  S1 A8]) := -3(r10)
+	(mem:QI (pre_dec:HI (reg/f:HI 15 r15)) [0  S1 A8]) := -4(r10)
+	-6(r10) := .LC0
+	(mem:QI (pre_dec:HI (reg/f:HI 15 r15)) [0  S1 A8]) := -5(r10)
+	(mem:QI (pre_dec:HI (reg/f:HI 15 r15)) [0  S1 A8]) := -6(r10)
+	call	_printf
+
+おそらくだが以下が正解かと推測した:
+
+#define PARM_BOUNDARY 16
+
+2022.05.12 12:04
+
+以下を確認した. まだ期待するコードが生成されていない:
+
+	call	_f
+	ldl	-8(r10), rr2
+	inc	r15, #-2
+	ldl	rr0, -8(r10)
+	ldl	-4(r10), rr0
+	(mem:HI (pre_dec:HI (reg/f:HI 15 r15)) [0  S2 A16]) := -2(r10)
+	(mem:HI (pre_dec:HI (reg/f:HI 15 r15)) [0  S2 A16]) := -4(r10)
+	push	@r15, #.LC0
+	call	_printf
+
+
+全く自信がないが以下のように修正した:
+
+#define FIXED_REGISTERS      { \
+    1,    1,     0,     0,★   1,     1,     1,     1,  \
+    1,    1,     1,     1,     1,     1,     1,     1,  \
+    1  }
+
+2022.05.12 13:14 以下を確認:
+
+	call	_f
+	inc	r15, #-2
+	ldl	-4(r10), rr2
+	(mem:HI (pre_dec:HI (reg/f:HI 15 r15)) [0  S2 A16]) := -2(r10)
+	(mem:HI (pre_dec:HI (reg/f:HI 15 r15)) [0  S2 A16]) := -4(r10)
+	push	@r15, #.LC0
+	call	_printf
+
+これは一応期待したコード. つまりまぐれできたということ. 本当は 2 バイトのプッシュ 2 つ
+が生成されるのではなくて 4 バイトのプッシュ 1 つが生成されるのが期待したコードなのだが
+ここはとりあえず妥協しておく. そのうち修正するかも. しかし 4 バイトのプッシュが 4 バイト
+境界をまたぐのを cc1 のビルド時に無効にしているからこのコードが生成されているのはある意味
+必然なのかもしれない.
+
+FIXED_REGISTERS を修正したことで状況が変わったのでもう一度以下をトライしてみる.
+
+#define PARM_BOUNDARY 32
+
+	call	_f
+	pushl	@r15, rr2            ★ こうなるけど
+	push	@r15, #.LC0
+	inc	r15, #-2             ★ これが NG
+	call	_printf
+
+そりゃそうだ. なのでこの場合は
+
+#define PARM_BOUNDARY 16
+
+が正しい. これでビルド.
+
+  => 実は間違えていた.
+
+2022.05.12
+
+現状以下のように余計なスタックポインタの操作が生成されている
+
+	ld	r5, #6
+	ldl	rr6, #5
+	call	_f
+	inc	r15, #-2    ★
+
+これが生成されてしまう原因を調査する.
+やはり
+
+#define PARM_BOUNDARY 16
+
+が影響しているらしい. そもそもの問題の出発点は
+
+long f(long a, int b)
+{
+  return a << b;
+}
+
+に対して x := y << z の x の fp 相対オフセットが -10 になることだったが Z8000 では
+ワード(2 バイト)境界をまたいでダブルワードのストアをすることが認められている.
+
+#define STRICT_ALIGNMENT 0            ★ 1 から 0 に変更
+
+#define BIGGEST_ALIGNMENT 8           ★ 8 に戻す
+
+#define STACK_BOUNDARY 8              ★ 8 に戻す
+
+#define PARM_BOUNDARY 8               ★ 8 に戻す
+
+
+  namespace si {
+    void ld_fp(int regno, int offset)
+    {
+      assert(!(regno & 1));
+#if 0      
+      assert(!(offset & 3));          ★ コンパイルアウト
+#endif      
+      auto rn = reg_names[regno];
+
+これでもう一度トライ.
+2022.05.12 15:46 正常動作を確認できている. これまで pass していた全てのテストも pass
+している.
+
+
+2022.05.12 18:22
+現状
+
+% z8k-coff-run --memory-fill 0xcc --memory-region 0x0e00,0x200 a.coff
+0xffffffffcccccccc
+%
+
+のようになっている. 期待値は
+
+0x100000000
+
+となること. f の先頭アドレスで
+
+r4 = -1 , r5 = -1, r6 = 0, r7 = 0
+
+となっていて第 1 引数は期待した形で渡されている. ところが
+
+(z8k-coff-gdb) x/10bx $sp
+0xfea:	0x01	0xf8	0x00	0x00	0x00	0x01	0x00	0x00
+0xff2:	0x00	0x00
+(z8k-coff-gdb)
+
+ここで今さらだが Z8000 はリトルエンディアンなのにスタックに保存されている戻りアドレス
+がビッグエンディアンになっている...
+
+しかし今までのテストで where コマンドは期待した動作になっていた. これは一体?
+
+2022.05.13 06:49 シミュレータのソースを確認したところ戻りアドレスをスタックに保存するのに
+ビッグエンディアン形式にしていることを確認した:
+
+void 
+put_word_mem_da (context, addr, value)
+...
+{
+...
+  put_byte_mem_da(context, addr, value>>8);     ★
+  put_byte_mem_da(context, addr+1, value);      ★
+}
+
+とここで Z8000 はビッグエンディアン, Z80 がリトルエンディアンであることを確認した.
+
+だとすれば f の先頭で
+
+r4 = -1 , r5 = -1, r6 = 0, r7 = 0
+
+は 1 周回って正しい.
+
+(*3) 現状 0xffffffff + 1 = 0x100000000 のプログラムを z8k-elf-run で実行して
+     できている. しかし z8k-elf-gdb で実行すると以下のように引数の値を正しく表示できて
+     いない.
+
+Breakpoint 1, main () at a.c:12
+12	  printf("0x%llx\n", f(0xffffffff, 1));
+f (a=-3689348814741910324, b=1) at a.c:6             ★
+6	{
+
+まず引数の問題もあるが, プロローグを適切にスキップできていない.
+ここは z8k-coff-gdb 視点から調べてみる.
+
+(*4)
+z8k-coff-gdb を修正してプロローグを適切にスキップできるようになったが変数を正しく
+表示できない原因はどうやら cc1 の生成しているコードに問題があるらしい.
+
+	ldl	rr4, #-1    ★ エンディアンを間違えている
+	ldl	rr6, #0     ★ エンディアンを間違えている
+	call	_f
+
+この部分を修正したところ期待通り動作している. つまり 64 ビットの add は辻褄を合わせて
+できていたわけではなくて, 以外にも正しかったということ. これは
+
+0xffffffff + 1 = 0x100000000
+
+をテストしていたつもりだが, 何故だろう. しかしその原因を調査するには疲れてしまった.
+今回はこれまで.
+
+
+
+
