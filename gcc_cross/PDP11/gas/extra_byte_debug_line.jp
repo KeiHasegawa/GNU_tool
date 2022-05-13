@@ -1,0 +1,33 @@
+pdp11-elf-as が生成したファイルを pdp11-elf-objdump でダンプすると .debug_line
+セクションが 53 バイトであるべきところで余計に 1 バイト大きくなる件の調査.
+
+(gdb) b bfd_set_section_contents
+(gdb) run -o test.o -g test.S
+
+(gdb) p section->name
+$1 = 0x8108c22 ".text"
+(gdb) c
+Continuing.
+
+Breakpoint 1, bfd_set_section_contents (abfd=0x815e440, section=0x8172590, location=0x817ced8, offset=0, count=53) at section.c:1496
+(gdb) p section->name
+$2 = 0x8109816 ".debug_line"
+(gdb) c
+Continuing.
+
+Breakpoint 1, bfd_set_section_contents (abfd=0x815e440, section=0x8172590, location=0xbffff1d4, offset=53, count=1) at section.c:1496
+(gdb) p section->name
+$3 = 0x8109816 ".debug_line"
+(gdb)
+
+これは一体? 1 バイトのデータを追加しようとしている. これが直接の原因.
+紆余曲折あって以下にたどり着いた.
+
+valueT
+md_section_align (segT segment ATTRIBUTE_UNUSED,
+		  valueT size)
+{
+  return (size + 1) & ~1;
+}
+
+ここで 53 が 54 に変更されている原因を作っている.
