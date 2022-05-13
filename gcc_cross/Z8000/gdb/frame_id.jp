@@ -1,0 +1,307 @@
+自前の cc1 の生成した
+
+long long f(long long a, long long b)
+{
+  return a + b;
+}
+
+に対するコードに対してプロローグを適切にスキップできていない
+
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.z8k-coff.mine/host-i686-pc-linux-gnu/gcc/
+(gdb) run -q -x gdbcom a.coff
+
+で再現する.
+
+一方
+
+long f(long a, long b)
+{
+  return a + b;
+}
+
+に対しては期待通りプロローグをスキップできている.
+
+(gdb) run -q -x gdbcom b.coff
+
+で確認できる. まずは step コマンドの後の z8k_skip_prologue が呼び出されたときのスタック
+を確認してみる.
+
+(gdb) where
+#0  z8k_skip_prologue (pc=380) at z8k-tdep.c:124  ★
+#1  0x080a8f98 in gdbarch_skip_prologue_noexcept (gdbarch=0x8b67fc0, pc=380) at arch-utils.c:1007
+#2  0x081f4f02 in handle_step_into_function (ecs=0xbffff0dc, gdbarch=0x8b67fc0) at infrun.c:7393
+#3  process_event_stop_test (ecs=0xbffff0dc) at infrun.c:6868
+#4  0x081f7642 in handle_inferior_event (ecs=<optimized out>) at infrun.c:5549
+#5  0x081f8710 in fetch_inferior_event () at infrun.c:3931
+#6  0x080a930c in check_async_event_handlers () at async-event.c:295
+#7  0x0843ac1b in gdb_do_one_event () at event-loop.cc:194
+#8  0x08336bac in wait_sync_command_done () at top.c:526
+#9  maybe_wait_sync_command_done (was_sync=<optimized out>) at top.c:543
+#10 0x083388e1 in execute_command (p=<optimized out>, from_tty=<optimized out>) at top.c:670
+#11 0x081a504c in command_handler (command=0x8b77e60 "step") at event-top.c:588
+#12 0x0833746c in read_command_file (stream=0x8b77cd0) at top.c:447
+#13 0x081037e1 in script_from_file (stream=0x8b77cd0, file=0xbffff81e "gdbcom") at cli/cli-script.c:1622
+#14 0x080fa074 in source_script_from_stream (file_to_open=0xbffff81e "gdbcom", file=0xbffff81e "gdbcom", stream=0x8b77cd0) at cli/cli-cmds.c:700
+#15 source_script_with_search (file=0xbffff81e "gdbcom", file@entry=<error reading variable: value has been optimized out>, from_tty=<error reading variable: value has been optimized out>, search_path=<error reading variable: value has been optimized out>) at cli/cli-cmds.c:736
+#16 0x0821963a in catch_command_errors (command=<optimized out>, arg=<optimized out>, from_tty=<optimized out>) at main.c:457
+#17 0x0821b320 in captured_main_1 (context=<optimized out>) at main.c:1214
+#18 0x0821b71d in captured_main (data=0xbffff524) at main.c:1243
+#19 gdb_main (args=0xbffff524) at main.c:1268
+#20 0x080716bc in main (argc=5, argv=0xbffff5f4) at gdb.c:32
+(gdb) p/x pc
+$8 = 0x17c
+(gdb) 
+
+0000017c <_f>:
+ 17c:	93fa           	push	@r15,r10  ★
+
+(gdb) b step_command
+(gdb) b process_event_stop_test
+(gdb) b z8k_skip_prologue
+(gdb) disable 2 3         # process_event_stop_test, z8k_skip_prologue
+                          # のブレークポイントを一旦無効化
+(gdb) run
+...
+step_command のブレークポイントにヒット
+(gdb) enable
+(gdb) c
+...
+process_event_stop_test のブレークポイントにヒット
+(gdb) c
+...
+process_event_stop_test のブレークポイントにヒット
+(gdb) c
+...
+process_event_stop_test のブレークポイントにヒット
+(gdb) c
+...
+z8k_skip_prologue のブレークポイントにヒット
+
+期待通り動作する場合にはこのような動きになっている. 一方期待通り動作しない a.coff の場合
+にどのようになっているか調べてみたところ 3 回 process_event_stop_test のブレークポイント
+にヒットした後 z8k_skip_prologue のブレークポイントにヒットしていない.
+
+だから 3 回目の process_event_stop_test の動作を確認してみる.
+
+  if (pc_in_thread_step_range (ecs->event_thread->suspend.stop_pc,
+			       ecs->event_thread)
+      && (execution_direction != EXEC_REVERSE
+	  || frame_id_eq (get_frame_id (frame),
+			  ecs->event_thread->control.step_frame_id)))  ★
+    {
+a.coff の場合この条件が成立するが b.coff の場合条件が成立していない.
+
+a.coff の場合
+(gdb) p pc_in_thread_step_range(ecs->event_thread->suspend.stop_pc, ecs->event_thread)
+$9 = 1
+(gdb) p execution_direction != EXEC_REVERSE
+$10 = true
+(gdb) p frame_id_eq(get_frame_id(frame), ecs->event_thread->control.step_frame_id)
+$11 = false
+(gdb)
+
+b.coff の場合
+(gdb) p pc_in_thread_step_range(ecs->event_thread->suspend.stop_pc, ecs->event_thread)
+$1 = 0
+(gdb) p execution_direction != EXEC_REVERSE
+$2 = true
+(gdb) p frame_id_eq(get_frame_id(frame), ecs->event_thread->control.step_frame_id)
+$3 = false
+(gdb) 
+
+フレーム ID の部分で差異が出るのかと推測したがそうでもないらしい.
+pc_in_thread_step_range の戻り値に違いが出る原因を調査する.
+
+a.coff の場合
+(gdb) p/x ecs->event_thread->suspend.stop_pc
+$13 = 0x1e8
+(gdb)
+
+b.coff の場合
+(gdb) p/x ecs->event_thread->suspend.stop_pc
+$4 = 0x17c
+(gdb) 
+
+いずれの場合も f のアドレスは 0x17c でおそらくこの値が違っている可能性がある.
+
+a.coff の場合
+(gdb) p pc_in_thread_step_range(0x17c, ecs->event_thread)
+$16 = 0                          ★ 即値指定
+(gdb)
+
+だから stop_pc の値がなぜ 0x1e8 になっているのかを調べてみる.
+
+0x1e8 は以下のように main+0x18 のアドレス
+
+000001d0 <_main>:
+ 1d0:	93fa           	push	@r15,r10
+ 1d2:	a1fa           	ld	r10,r15
+ 1d4:	abf7           	dec	r15,#0x8
+ 1d6:	5f00 017a      	call	0x17a
+ 1da:	1400 0000 0001 	ldl	rr0,#0x1
+ 1e0:	91f0           	pushl	@r15,rr0
+ 1e2:	1400 0000 0000 	ldl	rr0,#0x0
+ 1e8:	91f0           	pushl	@r15,rr0             ★
+ 1ea:	1404 ffff ffff 	ldl	rr4,#0xffffffff
+ 1f0:	1406 0000 0000 	ldl	rr6,#0x0
+ 1f6:	5f00 017c      	call	0x17c
+
+一方 b.coff の main のダンプは以下:
+
+0000019a <_main>:
+ 19a:	93fa           	push	@r15,r10
+ 19c:	a1fa           	ld	r10,r15
+ 19e:	5f00 017a      	call	0x17a
+ 1a2:	1404 0539 7fb1 	ldl	rr4,#0x5397fb1
+ 1a8:	1406 00bc 614e 	ldl	rr6,#0xbc614e
+ 1ae:	5f00 017c      	call	0x17c                ★
+
+call	0x17c は call	_f であるが引数 87654321(= 0x5397fb1) と
+12345678(= 0xbc614e) をセットしている命令が 2 命令なので 3 回目の
+process_event_stop_test の呼び出しが z8k_skip_prologue の呼び出しに継がるということ.
+
+ということは a.coff の場合は 3 回目ではなくて 6 回目を確認する必要がある.
+
+a.coff の 6 回目の process_event_stop_test と b.coff の 3 回目の
+process_event_stop_test とを比較してみる.
+
+  if (!frame_id_eq (get_stack_frame_id (frame),
+		    ecs->event_thread->control.step_stack_frame_id)
+      && (frame_id_eq (frame_unwind_caller_id (get_current_frame ()),
+		       ecs->event_thread->control.step_stack_frame_id)
+	  && (!frame_id_eq (ecs->event_thread->control.step_stack_frame_id,
+			    outer_frame_id)
+	      || (ecs->event_thread->control.step_start_function
+		  != find_pc_function (ecs->event_thread->suspend.stop_pc))))) ★
+    {
+...
+	      handle_step_into_function (gdbarch, ecs);
+
+a.coff はこの条件が成立しないが b.coff は成立している. そしてこの部分はこれまでに何度か
+出てきている.
+
+以下は a.coff の場合
+
+(gdb) p frame_id_eq (get_stack_frame_id (frame), ecs->event_thread->control.step_stack_frame_id)
+$29 = false
+(gdb) p frame_id_eq (frame_unwind_caller_id (get_current_frame ()), ecs->event_thread->control.step_stack_frame_id)
+$30 = false                                 ★
+(gdb) p frame_id_eq (ecs->event_thread->control.step_stack_frame_id, outer_frame_id)
+$31 = false
+(gdb) p ecs->event_thread->control.step_start_function != find_pc_function (ecs->event_thread->suspend.stop_pc)
+$32 = true
+(gdb)
+
+以下は b.coff の場合
+
+(gdb) p frame_id_eq (get_stack_frame_id (frame), ecs->event_thread->control.step_stack_frame_id)
+$9 = false
+(gdb) p frame_id_eq (frame_unwind_caller_id (get_current_frame ()), ecs->event_thread->control.step_stack_frame_id)
+$10 = true                                  ★
+(gdb) p frame_id_eq (ecs->event_thread->control.step_stack_frame_id, outer_frame_id)
+$11 = false
+(gdb) p ecs->event_thread->control.step_start_function != find_pc_function (ecs->event_thread->suspend.stop_pc
+A syntax error in expression, near `'.
+(gdb) p ecs->event_thread->control.step_start_function != find_pc_function (ecs->event_thread->suspend.stop_pc)
+$12 = true
+(gdb) 
+
+つまり
+
+frame_id_eq (frame_unwind_caller_id (get_current_frame ()), ecs->event_thread->control.step_stack_frame_id)
+
+が a.coff では false であることが期待しない結果になっている.
+
+以下は a.coff での結果:
+
+(gdb) p/x frame_unwind_caller_id (get_current_frame ())
+$33 = {stack_addr = 0xff6, code_addr = 0x1d0, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) p/x ecs->event_thread->control.step_stack_frame_id
+$34 = {stack_addr = 0xffe, code_addr = 0x1d0, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb)
+
+0x1d0 は main のアドレスで stack_addr = 0xff6 が間違い. これはフレーム ID
+を計算している部分にバグがある. そこで以下のように強制的に書き変えてみた:
+
+static void z8k_frame_this_id(frame_info* frame, void** ptr, frame_id *id)
+{
+  auto pf = reinterpret_cast<z8k_frame*>(*ptr);
+  if (!pf)
+    *ptr = pf = z8k_frame_create(frame);
+#if 1
+  if (pf->prologue_start == 0x1d0)
+    pf->prev_sp = 0xffe;               ★
+#endif  
+
+こうすることで引数の a の表示がまだ正しくないものの f のプロローグを適切にスキップできている.
+
+static z8k_frame* z8k_frame_create(frame_info* frame)
+{
+...
+  auto end = sal.end ? min(sal.end, pc) : pc;
+
+この部分に誤りがありそう. 問題のフレーム ID を作成しているとき pc = 0x1fa
+sal.end = 0x1d6 になっている.
+
+000001d0 <_main>:
+ 1d0:	93fa           	push	@r15,r10
+ 1d2:	a1fa           	ld	r10,r15
+ 1d4:	abf7           	dec	r15,#0x8
+ 1d6:	5f00 017a      	call	0x17a
+ 1da:	1400 0000 0001 	ldl	rr0,#0x1
+ 1e0:	91f0           	pushl	@r15,rr0             ★ このスタック差分が計算されていない
+ 1e2:	1400 0000 0000 	ldl	rr0,#0x0
+ 1e8:	91f0           	pushl	@r15,rr0             ★ このスタック差分が計算されていない
+ 1ea:	1404 ffff ffff 	ldl	rr4,#0xffffffff
+ 1f0:	1406 0000 0000 	ldl	rr6,#0x0
+ 1f6:	5f00 017c      	call	0x17c
+ 1fa:	a9f7           	inc	r15,#0x8
+
+2022.05.13 11:57
+
+inline CORE_ADDR get_end(frame_info* frame, symtab_and_line sal, CORE_ADDR pc)
+{
+...
+
+  auto end = get_end(frame, sal, pc);
+
+のようにしてプロローグを適切にスキップできている. 不完全かもしれないがこの時点での z8k-tdep.c
+を z8k-tdep.c.004 としてアップロードしておく.
+
+(*2) 引数 a を正しく表示できない件
+
+Breakpoint 1, main () at a.c:12
+12	  printf("0x%llx\n", f(0xffffffff, 1));
+(z8k-coff-gdb) s
+
+Breakpoint 2, f (a=-4294967296, b=1) at a.c:7  ★ 正しくない
+7	  return a + b;
+
+(z8k-coff-gdb) p &a
+$1 = (T *) 0xfe0
+(z8k-coff-gdb) p *(long long*)0xfe0
+$2 = -4294967296
+(z8k-coff-gdb) x/8bx 0xfe0
+0xfe0:	0xff	0xff	0xff	0xff	0x00	0x00	0x00	0x00  ★ a は正しくない
+(z8k-coff-gdb) p &b
+$3 = (T *) 0xfec
+(z8k-coff-gdb) x/8bx 0xfec
+0xfec:	0x00	0x00	0x00	0x00	0x00	0x00	0x00	0x01  ★ b は正しい
+(z8k-coff-gdb)
+
+これはおそらくだが, コンパイラがレジスタ r4, r5, r6, r7 で渡された a をスタックに保存
+するときにエンディアンを間違えているらしい.
+
+そして di + di をするときに辻褄を合わせているように見える.
+
+0xfe0 をダンプしたときの期待値は以下:
+
+(z8k-coff-gdb) x/8bx 0xfe0
+0xfe0:	0x00	0x00	0x00	0x00	0xff	0xff	0xff	0xff
+(z8k-coff-gdb)
+
+一旦コンパイラ側からこの件を調査してみる.
