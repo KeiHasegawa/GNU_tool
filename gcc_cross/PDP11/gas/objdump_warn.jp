@@ -1,0 +1,125 @@
+現状以下のように pdp11-elf-gdb でエラーしている.
+
+% pdp11-elf-as -o test.o -g test.S
+% export GNUTARGET=pdp11-dec-elf ; pdp11-elf-ld -o test.elf test.o -T ../default.x
+% pdp11-elf-objdump -x -d -g test.elf > test.objdump
+pdp11-elf-objdump: 警告: 現在のところ、DWARF バージョン 2, 3, 4 および 5 のみ行情報をサポートしています。
+% pdp11-elf-gdb -q test.elf
+"0xbf992314s": not in executable format: file format not recognized
+(gdb) quit
+%
+
+おそらく pdp11-elf-ld で生成している test.elf が少し間違えている可能性がある. まずは
+pdp11-elf-objdump の警告を確認してみる. objdump の結果はそれほど異常なものにはなって
+いない. またファイルの先頭にあるマジックコードも確認できている.
+
+% pdp11-elf-objdump -x -d -g test.o > test.o.objdump
+pdp11-elf-objdump: 警告: 現在のところ、DWARF バージョン 2, 3, 4 および 5 のみ行情報をサポートしています。
+%
+
+ということは pdp11-elf-ld の問題ではなくて pdp11-elf-as の問題らしい.
+
+M-x gdb
+gdb --annotate=3 ./objdump
+(gdb) run -x -d -g ../gas/test.o > test.o.objdump
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/binutils/objdump: 警告: 現在のところ、DWARF バージョン 2, 3, 4 および 5 のみ行情報をサポートしています。
+[Inferior 1 (process 28472) exited normally]
+(gdb)
+
+gdb から実行しても再現している.
+
+(gdb) run --dwarf=rawline ../gas/test.o
+
+これでも警告が出ている. どうやら .debug_line に問題があるらしい. しかし出力結果には
+
+セクション .debug_line のデバッグ内容の生ダンプ:
+
+  オフセット:                  0x0
+  長さ:                        49
+  DWARF バージョン:            3                 ★ これ
+  Prologue の長さ:             29
+  最小命令長:                  1
+
+のように出ているのでどれに対して警告が出ているのかは不明. まずは警告の対象をつきとめる.
+
+  /* Get and check the version number.  */
+  SAFE_BYTE_GET_AND_INC (linfo->li_version, hdrptr, 2, end);
+
+  if (linfo->li_version != 2
+      && linfo->li_version != 3
+      && linfo->li_version != 4
+      && linfo->li_version != 5)
+    {
+      warn (_("Only DWARF version 2, 3, 4 and 5 line info "
+	      "is currently supported.\n"));    ★
+	      
+(gdb) p linfo->li_version
+$1 = 0
+(gdb) 
+
+つまりバージョンがあるべき場所に違う何かがきているということ.
+上の部分のマクロ展開を調べてみた.
+
+  do { do { unsigned int amount = (2); if (sizeof (linfo->li_version) < amount) { error (ngettext ("internal error: attempt to read %d byte " "of data in to %d sized variable", "internal error: attempt to read %d bytes " "of data in to %d sized variable", amount), amount, (int) sizeof (linfo->li_version)); amount = sizeof (linfo->li_version); } if (((hdrptr) + amount) >= (end)) { if ((hdrptr) < (end)) amount = (end) - (hdrptr); else amount = 0; } if (amount == 0 || amount > 8) linfo->li_version = 0; else linfo->li_version = byte_get ((hdrptr), amount); } while (0); hdrptr += 2; } while (0);
+
+  if (linfo->li_version != 2
+
+これは人間が読めるものではない. ともあれ hdrptr が指す領域から値を読み出していることは分かる.
+SAFE_BYTE_GET_AND_INC の行で停止してダンプしてみた:
+
+(gdb) x/10bx hdrptr
+0x81b2b5c:	0x03	0x00	0x1d	0x00	0x00	0x00	0x01	0x01
+0x81b2b64:	0xfb	0x0e
+(gdb)
+
+これならば linfo->li_version が 3 になりそうだがそうでもないらしい.
+
+(gdb) p sizeof(linfo->li_version)
+$8 = 2
+(gdb)
+
+これも期待した値. 実は SAFE_BYTE_GET_AND_INC の行に 2 回きていることに気付いた. そして
+
+(gdb) x/2bx hdrptr
+0x81b2b91:	0x00	0x00
+(gdb) 
+
+のようになっている.
+
+Contents of section .debug_line:
+               ★ ★
+ 0000 31000000 03001d00 00000101 fb0e0d00  1...............
+ 0010 01010101 00000001 00000100 74657374  ............test
+ 0020 2e530000 00000000 03020000 142f2f30  .S...........//0
+ 0030 02020001 0100                        ......
+                 ★ 
+
+1 回目が 0300 を読み込んで linfo->li_version = 3 になるのは良いとして,
+何故 2 回目がきているのか...
+
+2 回目の read_debug_line_header が呼び出される直前:
+(gdb) p data
+$26 = (unsigned char *) 0x81b2b8d ""
+(gdb) p end
+$27 = (unsigned char *) 0x81b2b8e ""
+(gdb)
+
+1 バイトしか有効なものがないところから読み出そうとしている.
+
+1 回目に read_debug_line_header が呼び出されたとき
+(gdb) p linfo->li_length
+$29 = 49
+(gdb) x/53bx hdrptr-4
+0x81b2b58:	0x31	0x00	0x00	0x00	0x03	0x00	0x1d	0x00
+0x81b2b60:	0x00	0x00	0x01	0x01	0xfb	0x0e	0x0d	0x00
+0x81b2b68:	0x01	0x01	0x01	0x01	0x00	0x00	0x00	0x01
+0x81b2b70:	0x00	0x00	0x01	0x00	0x74	0x65	0x73	0x74
+0x81b2b78:	0x2e	0x53	0x00	0x00	0x00	0x00	0x00	0x00
+0x81b2b80:	0x03	0x02	0x00	0x00	0x14	0x2f	0x2f	0x30
+0x81b2b88:	0x02	0x02	0x00	0x01	0x01
+(gdb)
+
+つまり .debug_line セクションが 1 バイト大きいということ. .debug_line セクションは
+53 バイトであるべきところで 54 バイトになっているということ.
+
+pdp11-elf-as を調査してみる.
