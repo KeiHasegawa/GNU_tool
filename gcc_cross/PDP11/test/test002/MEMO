@@ -1,0 +1,31 @@
+現状
+
+start:
+	nop
+	nop
+	nop
+end:
+	nop
+
+であれば適切にデバッグ情報を生成できているが, これの経緯は 「PDP11 の as」 =>
+「数個の nop のプログラムができていない件の調査」にあるが以下のような対応を行なっているから:
+
+void
+md_assemble (char *instruction_string)
+{
+...
+  if (OUTPUT_FLAVOR == bfd_target_elf_flavour)
+    dwarf2_emit_insn(2);  // よく分からないが今は nop 命令 4 つなので
+    			  // これは限定してならば OK
+}
+
+だから 4 バイトの命令を含むプログラム
+
+	.text
+start:
+	mov	$stack, sp	★ 4 バイト
+	jsr	pc, _main	★ 4 バイト
+	halt
+
+に対しては現状ステップ実行しても期待した動作にはなっていない. まずはこれを修正する.
+
