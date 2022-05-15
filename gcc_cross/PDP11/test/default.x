@@ -1,5 +1,5 @@
 SECTIONS {
-	 . = 0x0;
+	 . = 0x100;
 	 .text : {}
 	 .rodata : {}
 	 .data : {}
