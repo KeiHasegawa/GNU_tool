@@ -5,7 +5,7 @@
 	pdp11-elf-gcc -o $@ $< -c -g
 
 %.elf : %.o 
-	pdp11-elf-ld -o $@ ../default.o $< -T ../default.x
+	export GNUTARGET=pdp11-dec-elf ; pdp11-elf-ld -o $@ ../default.o $< -T ../default.x
 
 %.objdump : %.elf
 	pdp11-elf-objdump -x -d -g $< > $@
