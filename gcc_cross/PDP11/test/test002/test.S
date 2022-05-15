@@ -1,9 +1,17 @@
 	.text
 start:
-	add	r1, r2
-	inc	r3
-	nop
+	mov	r1, #5
+	add	r1, #5
+	jmp	label
+	
+	br	next
 	halt
-	nop
+
+label:
+	mov	r1, #1
+	halt
+
+next:
+	mov	r1, #2
 	halt
 	
