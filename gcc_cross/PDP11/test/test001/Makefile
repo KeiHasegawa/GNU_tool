@@ -5,7 +5,7 @@ include ../Makefile.common
 test.o:test.S
 
 test.elf:test.o
-	pdp11-elf-ld -o $@ $< -T ../default.x
+	export GNUTARGET=pdp11-dec-elf ; pdp11-elf-ld -o $@ $< -T ../default.x
 
 test.objdump:test.elf
 
