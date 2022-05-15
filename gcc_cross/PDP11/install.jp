@@ -1,0 +1,38 @@
+(*1) PDP11
+
+https://ja.wikipedia.org/wiki/PDP-11
+
+(*2) binutils のインストール
+
+     「PDP11 の as」 => 「インストール」
+
+
+(*3) gcc のインストール
+
+gcc-3.4.4 で pdp11 の gcc がサポートされているように思えたのでビルドしてみた:
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% bunzip2 -c ../gcc-3.4.4.tar.bz2 | tar xf -
+% mv gcc-3.4.4 gcc-3.4.4.pdp11-elf
+% cd gcc-3.4.4.pdp11-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=pdp11-elf
+% setenv SHELL /bin/sh
+% make all-gcc LANGUAGES="c c++"
+% make install-gcc LANGUAGES="c c++"
+
+意外にもすんなりインストールできている.
+
+
+(*4) newlib のインストール
+
+% cd ..
+% gunzip -c ../newlib-1.13.0.tar.gz | tar xf -
+% mv newlib-1.13.0 newlib-1.13.0.pdp11-elf
+% cd newlib-1.13.0.pdp11-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=pdp11-elf
+checking whether to enable maintainer-specific portions of Makefiles... no
+*** Newlib does not support CPU pdp11
+make: *** [Makefile:5549: configure-target-newlib] エラー 1
+%
+
+
