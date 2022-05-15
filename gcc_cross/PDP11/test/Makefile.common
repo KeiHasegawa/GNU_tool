@@ -1,8 +1,11 @@
 %.o : %.S
 	pdp11-elf-as -o $@ -g $<
 
-%.o : %.c
-	pdp11-elf-gcc -o $@ $< -c -g
+%.s : %.c
+	pdp11-elf-gcc -o $@ $< -S
+
+%.o : %.s
+	pdp11-elf-as -o $@ -g $<
 
 %.elf : %.o 
 	export GNUTARGET=pdp11-dec-elf ; pdp11-elf-ld -o $@ ../default.o $< -T ../default.x
