@@ -1,0 +1,307 @@
+(*1) アセンブラレベルでデバッグできない件
+(*2) -g オプション付きでコンパイルしたプログラムが pdp11-elf-gdb で期待通り動作しない件
+
+(*1)
+現状 hello world 11 が pdp11-elf-run で実行できているが, アセンブラレベルで
+hello world 11 がデバッグできていない:
+
+M-x gdb
+pdp11-elf-gdb --annotate=3 a.elf -x gdbcom.2
+...
+(pdp11-elf-gdb) b start
+(pdp11-elf-gdb) run
+...
+start のブレークポイントにヒット. ソースも表示されている.
+(pdp11-elf-gdb) stepi
+start () at start.S:4
+(pdp11-elf-gdb) x/i $pc
+=> 0x104 <start+4>:	jsr	pc, 0x12a <_main>
+(pdp11-elf-gdb)  stepi                              ★ これで main に函数コール
+_main () at a.s:23
+(pdp11-elf-gdb)
+
+ソースが表示されていない.
+
+(pdp11-elf-gdb) list
+Line number 23 out of range; a.s has 6 lines.       ★
+(pdp11-elf-gdb)
+
+% cat -n a.s
+     1		.file	"a.c"
+     2		.text
+     3		.align	0
+     4		.global	_f
+     5		.type	_f, @function
+     6	_f:
+     7		mov	r5, -(sp)
+...
+    21		.type	_main, @function
+    22	_main:
+    23		mov	r5, -(sp)                   ★
+    24		mov	sp, r5
+
+つまり行番号情報は正しいのだが a.s が 6 行しかないのでソースを表示できないと pdp11-elf-gdb
+が判断しているということ.
+
+これはおそらくだが pdp11-elf-as に問題があるものと思われる. おそらく行番号情報とは
+別にソースファイルのトータルの行数を保持している可能性がある.
+
+試してみたところファイルの拡張子が .S だと期待通りソースを表示できているが, .s だと
+表示できていない. それ以外は全て同じ. つまり a.s と a.S は同じ内容のファイルだが
+行番号情報が異なっているらしいということ. と思ったのだが:
+
+% diff z2 z22
+3c3
+< pdp11-elf-as -o a.o a.s -g || exit 1
+---
+> pdp11-elf-as -o a.o a.S -g || exit 1
+11c11
+< pdp11-elf-objdump -x -d -g a.elf > a.s.objdump
+---
+> pdp11-elf-objdump -x -d -g a.elf > a.S.objdump
+% ./z2
+...
+Breakpoint 1 at 0x100: file start.S, line 3.
+
+Breakpoint 1, start () at start.S:3
+3		mov	$stack, sp
+_main () at a.s:22
+A debugging session is active.               ★ ソースが表示されていない
+...
+% ./z22
+...
+Breakpoint 1 at 0x100: file start.S, line 3.
+
+Breakpoint 1, start () at start.S:3
+3		mov	$stack, sp           ★ ソースが表示されていない
+_main () at a.S:22
+22		mov	r5, -(sp)
+A debugging session is active.
+
+% diff a.{s,S}.objdump
+172c172
+<   1	0	0	0	a.s
+---
+>   1	0	0	0	a.S
+226c226
+<     <36>   DW_AT_name        : (間接文字列、オフセット: 0x4c): a.s
+---
+>     <36>   DW_AT_name        : (間接文字列、オフセット: 0x4c): a.S
+281c281
+<   0x00000040 55204153 20322e33 362e3100 612e7300 U AS 2.36.1.a.s.
+---
+>   0x00000040 55204153 20322e33 362e3100 612e5300 U AS 2.36.1.a.S.
+
+つまり行番号情報自体には差分がない. しかし一方でソースが表示されていて一方では表示されていない.
+ということは普通に考えれば pdp11-elf-gdb の問題と思われる.
+
+一応回避策はあるがこれはおいおい調査する必要がある.
+
+とここで以下のファイルがあることに気付いた:
+
+/home/khasegawa/lang/53_GNU_tool/gcc_cross/PDP11/tool/a.s
+
+そして
+
+gdbcom.2
+...
+dir /home/khasegawa/lang/53_GNU_tool/gcc_cross/PDP11/tool  ★
+
+つまり a.s はカレントディレクトリにある a.s ではなくて dir 指定したディレクトリの a.s
+を参照していたということ.
+
+問題の a.s を削除して期待する動作を確認できた.
+
+(*2)
+現状 hello world 11 が pdp11-elf-run で実行できている. そしてプロローグで
+生成している全ての rtx_insn* insn に対して
+
+    RTX_FRAME_RELATED_P(insn) = true;
+
+のようにしている. hello world 11 を -g オプション付きでンパイルし, リンクした a.elf
+に対して
+
+% pdp11-elf-objdump -x -d -g a.elf
+pdp11-elf-objdump: 警告: Debug info is corrupted, .debug_info header at 0x22 has length 620000
+pdp11-elf-objdump: 警告: Debug info is corrupted, .debug_aranges header at 0x14 has length 100000
+%
+
+のようになっている. そして pdp11-elf-gdb で hello world 11 を動作させたところ
+
+(pdp11-elf-gdb) b main
+Function "main" not defined.                                          ★
+Make breakpoint pending on future shared library load? (y or [n]) n   ★
+(pdp11-elf-gdb)
+
+main にブレークポイントをセットできていない. pdp11-elf-gdb の動作の確認の前に
+まずは pdp11-elf-objdump の警告を確認すべきだと考えた.
+
+警告は以下のような実行の仕方でも出ている:
+
+% pdp11-elf-objdump --dwarf=info a.elf > a.objdump
+pdp11-elf-objdump: 警告: Debug info is corrupted, .debug_info header at 0x22 has length 620000
+%
+
+おそらく .debug_info セクションのヘッダ情報を生成するのに PDP11 エンディアンを pdp11-elf-as
+が採用していないが, pdp11-elf-objdump が採用しているからこうなっていると推測できる.
+
+しかしまずは pdp11-elf-objdump の警告の箇所を確認する.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/binutils/
+M-x gdb
+gdb --annotate ./objdump
+(gdb) run --dwarf=info /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.pdp11-elf.mine/host-i686-pc-linux-gnu/gcc/a.elf
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/binutils/objdump: 警告: Debug info is corrupted, .debug_info header at 0x22 has length 620000
+
+[Inferior 1 (process 18379) exited normally]
+(gdb) 
+
+gdb から実行して再現している.
+
+(gdb) b warn
+(gdb) run
+...
+warn のブレークポイントにヒット
+(gdb) up
+
+      if (sec_off + compunit.cu_length < sec_off
+	  || sec_off + compunit.cu_length > section->size)
+	{
+	  warn (_("Debug info is corrupted, %s header at %#lx has length %s\n"),  ★
+
+
+(gdb) p sec_off + compunit.cu_length < sec_off
+$2 = 0
+(gdb) p sec_off + compunit.cu_length > section->size
+$3 = 1
+(gdb) p sec_off
+$4 = 38
+
+(gdb) p/x compunit.cu_length
+$7 = 0x620000                        ★ おそらく異常な値
+(gdb) p section->size
+$8 = 136
+(gdb)
+
+compunit.cu_length の計算方法を確認してみる.
+
+(gdb) b process_debug_info
+(gdb) run
+...
+process_debug_info のブレークポイントにヒット
+
+そして以下を発見:
+
+      SAFE_BYTE_GET_AND_INC (compunit.cu_length, hdrptr, 4, end);  ★
+
+
+(gdb) x/16bx hdrptr
+0x81b2b80:	0x1e	0x00	0x00	0x00	0x02	0x00	0x00	0x00
+0x81b2b88:	0x00	0x00	0x02	0x01	0x00	0x00	0x00	0x00
+(gdb) n
+(gdb) p/x compunit.cu_length
+$11 = 0x1e
+(gdb)
+
+このタイミングではないらしい. 以下はループの 2 回目.
+
+
+(gdb) x/16bx hdrptr
+0x81b2ba2:	0x00	0x00	0x62	0x00	0x04	0x00	0x14	0x00
+0x81b2baa:	0x00	0x00	0x02	0x01	0xbb	0x00	0x00	0x00
+(gdb) n
+(gdb) p/x compunit.cu_length
+$12 = 0x620000                     ★ これだ
+(gdb)
+
+00 00 62 00 04 00 14 00
+
+のような並びが a.elf にあるはず:
+
+00000170: 0000 003e 0000 0001 8000 0062 0004 0014  ...>.......b....
+00000180: 0000 0002 01bb 0000 000c 612e 6300 4c00  ..........a.c.L.
+00000190: 0000 1801 3e00 3800 0000 02cd 0000 0001  ....>.8.........
+000001a0: 0805 0000 3300 2a01 2c00 019c 0302 0569  ....3.*.,......i
+000001b0: 6e74 0004 6600 0103 0500 0033 0018 0112  nt..f......3....
+
+ファイルオフセット 0x179 にこの並びがある. a.elf を生成しているのは pdp11-elf-ld
+だが元となる a.o を生成しているのは pdp11-elf-as なのでそちらの調べてみる.
+
+(gdb) run --dwarf=info /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.pdp11-elf.mine/host-i686-pc-linux-gnu/gcc/a.o
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/binutils/objdump: 警告: Debug info is corrupted, .debug_info header at 0 has length 620000    ★
+
+(gdb)
+
+というわけで pdp11-elf-as の生成している .debug_line をまず確認してみる.
+
+  => 確認してみたところ pdp11-elf-as は PDP11 エンディアン形式で生成していた.
+     迷ったが pdp11-elf-as はこのままで pdp11-elf-objdump を修正することに
+     した.
+
+  => pdp11-elf-objdump で PDP11 エンディアンを解釈するようにしたところ, 今度は
+     今まで期待通り動作していた -g オプションなしで生成したプログラムに対して警告
+     メッセージが出力されるようになってしまった.
+
+紆余曲折あったが以下に気付く.
+
+	.section	.debug_info,"",@progbits
+.Ldebug_info0:
+	.4byte	0x62    ★
+	.2byte	0x4
+
+上の 0x62 が通常通りリトルエンディアン形式で生成されれば問題ないのだが PDP11 エンディアン
+形式で生成しているのが今回の警告の原因らしい. 試しに以下を試してみた.
+
+	.section	.debug_info,"",@progbits
+.Ldebug_info0:
+	.2byte	0x62	★
+	.2byte	0x0	★
+	.2byte	0x4
+
+これで「警告: Debug info is corrupted, .debug_info header at 0 has length 620000」
+は出なくなる.
+
+さてどうやって修正するべきか改めて考え中.
+
+(cc1 の -g なし) + (pdp11-elf-as の -g あり)で 0x1e が 1e 00 00 00 の並び
+でどのように生成されていたか一応調べてみるべきだと考えた.
+
+.4byte 疑似命令をこれまでと異なる扱いにできないか.
+.sleb128, .uleb128 は変更する必要がないか. => どうやらないらしい.
+
+とすれば .4byte 疑似命令を修正する方針で考えてみる.
+
+  => pdp11-elf-as を修正した. そしてもともとできていた
+     (cc1 で -g なし) + (pdp11-elf-as で -g 付き) は期待通り動作している.
+     また (cc1 で -g 付き) + (pdp11-elf-as で -g なし) で生成したプログラムに
+     対して警告が出されなくなった.
+
+そして現状以下のようになっている:
+
+% pdp11-elf-gdb a.elf -x gdbcom -q
+...
+Connected to the simulator.
+Loading section .text, size 0x56 lma 0x100
+Loading section .rodata, size 0x10 lma 0x156
+Start address 0x100
+Transfer rate: 816 bits in <1 sec.
+Breakpoint 1 at 0x12e: file a.c, line 10.
+
+Breakpoint 1, main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+f (a=5, b=6) at a.c:5
+5	  return a + b;
+#0  f (a=5, b=6) at a.c:5
+#1  0x0000013a in main () at a.c:10
+#2  0x00000108 in start () at start.S:4
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+トレース・ブレークポイントトラップ
+
+%
+
+where コマンドでエラーメッセージが出ていることと, 埋め込んでおいたブレークポイントにヒット
+して終了してしまっているが, これは期待した動作.
+
+pdp11-elf-gdb の上の 2 つのバグは 修正はそれほど時間をかけずに修正することができている.
