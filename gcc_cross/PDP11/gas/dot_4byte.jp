@@ -1,0 +1,170 @@
+cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/gas/
+
+M-x gdb
+gdb --annotate ./as-new
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.pdp11-elf.mine/host-i686-pc-linux-gnu/gcc/
+(gdb) run -o a.o a.s
+
+% pdp11-elf-objdump --dwarf=info /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.pdp11-elf.mine/host-i686-pc-linux-gnu/gcc/a.o
+...
+pdp11-elf-objdump: 警告: Debug info is corrupted, .debug_info header at 0 has length 620000   ★
+%
+
+gdb から as-new を実行して再現している.
+
+(gdb) b bfd_set_section_contents
+(gdb) run
+...
+bfd_set_section_contents のブレークポイントにヒットして続行を数度繰り返す.
+...
+Breakpoint 1, bfd_set_section_contents (abfd=0x815e430, section=0x8172700, location=0x817fc70, offset=0, count=102) at section.c:1496
+(gdb) p section->name
+$6 = 0x815c998 ".debug_info"  ★
+(gdb) 
+(gdb) x/102bx location
+0x817fc70:	0x00	0x00	0x62	0x00	0x04	0x00	0x00	0x00 ★
+0x817fc78:	0x00	0x00	0x02	0x01	0x6f	0x00	0x00	0x00
+0x817fc80:	0x0c	0x61	0x2e	0x63	0x00	0x00	0x00	0x00
+0x817fc88:	0x00	0x00	0x00	0x3e	0x00	0x00	0x00	0x00
+0x817fc90:	0x00	0x02	0x81	0x00	0x00	0x00	0x01	0x08
+0x817fc98:	0x05	0x00	0x00	0x33	0x00	0x12	0x00	0x2c
+0x817fca0:	0x00	0x01	0x9c	0x03	0x02	0x05	0x69	0x6e
+0x817fca8:	0x74	0x00	0x04	0x66	0x00	0x01	0x03	0x05
+0x817fcb0:	0x00	0x00	0x33	0x00	0x00	0x00	0x12	0x00
+0x817fcb8:	0x01	0x9c	0x05	0x61	0x00	0x01	0x03	0x0b
+0x817fcc0:	0x00	0x00	0x33	0x00	0x02	0x75	0x04	0x05
+0x817fcc8:	0x62	0x00	0x01	0x03	0x12	0x00	0x00	0x33
+0x817fcd0:	0x00	0x02	0x75	0x06	0x00	0x00
+(gdb)
+
+問題の並びがきている. そこでこれを書き込んでいる瞬間を捕える:
+
+(gdb) p/x ((char*)location)[2]
+$13 = 0x62
+(gdb) p/x &((char*)location)[2]
+$14 = 0x817fc72
+(gdb) watch *(char*)0x817fc72
+Hardware watchpoint 2: *(char*)0x817fc72
+(gdb) run
+
+void
+md_number_to_chars (char con[], valueT value, int nbytes)
+{
+...
+    case 4:
+      con[0] = (value >> 16) & 0xff;
+      con[1] = (value >> 24) & 0xff;
+      con[2] =  value        & 0xff;  ★
+      con[3] = (value >>  8) & 0xff;
+      break;
+
+(gdb) p/x value
+$15 = 0x62
+(gdb)
+
+ということは... pdp11-elf-as は 0x62 = 98 を PDP11 エンディアン形式で書き込んでいたとい
+うこと. なるほどこれは自分が想像していたのと反対のことが起こっていたということ.
+
+そしてどちらを修正するべきだが, pdp11-elf-as を修正すれば pdp11-elf-objdump も
+pdp11-elf-gdb も修正する必要がないように思えるし, 逆に pdp11-elf-as はそのままで
+他のツールを修正するべきだとも思える. どちらが正しいか判断できていない.
+
+迷ったが pdp11-elf-as で .debug_xxx セクションのみ長さを通常のリトルエンディアン形式で
+生成することにした.
+
+  => pdp11-elf-as を修正するのは大変そうと考えた. 2022.05.16 13:50 pdp11-elf-objdump
+     を修正することにした.
+
+
+(cc1 の -g なし) + (pdp11-elf-as の -g あり) で 0x1e を 1e 00 00 00
+の並びで生成できているが, これはどのようにして実現しているか確認してみた:
+
+(gdb) b bfd_set_section_contents
+(gdb) run -o a.o a.s -g
+...
+bfd_set_section_contents のブレークポイントに数回ヒット
+(gdb) p section->name
+$20 = 0x8109877 ".debug_info"
+(gdb) x/34bx location
+0x8181208:	0x1e	0x00	0x00	0x00	0x02	0x00	0x00	0x00  ★
+0x8181210:	0x00	0x00	0x02	0x01	0x00	0x00	0x00	0x00
+0x8181218:	0x00	0x00	0x3e	0x00	0x00	0x00	0x00	0x00
+0x8181220:	0x04	0x00	0x00	0x00	0x73	0x00	0x00	0x00
+0x8181228:	0x01	0x80
+(gdb) 
+
+これをセットしている瞬間を捕える.
+
+(gdb) p &((char*)location)[0]
+$22 = 0x8181208 "\036"
+(gdb) watch *(char*)0x8181208
+Hardware watchpoint 4: *(char*)0x8181208
+(gdb) run
+...
+void
+number_to_chars_littleendian (char *buf, valueT val, int n)
+{
+  if (n <= 0)
+    abort ();
+  while (n--)
+    {
+      *buf++ = val & 0xff;   ★
+      val >>= 8;
+    }
+}
+
+(gdb) up
+
+tc-pdp11.c:293        ★
+void
+md_apply_fix (fixS *fixP,
+	       valueT * valP,
+	       segT seg ATTRIBUTE_UNUSED)
+{
+...
+  number_to_chars_littleendian (buf, code, size);        ★
+
+これだけからは何とも言えない. 方針が決まらない.
+
+.4byte 疑似命令の仕様を変更することがよいのではないかと考えた.
+
+	.4byte	0x12345678
+
+現状これに対して PDP11 エンディアンの列 0x34 0x12 0x78 0x56 を生成しているが,
+通常通り 0x78 0x56 0x34 0x12 を生成するようにすればよい.
+
+binutils-2.36.1.pdp11-elf/gas/read.c:1198
+		      /* Input_line is restored.
+			 Input_line_pointer->1st non-blank char
+			 after pseudo-operation.  */
++		      extern int out_normal_little_endian;
++		      if (strcmp(pop->poc_name, "4byte") == 0)
++			normal_little_endian = 1;
+		      (*pop->poc_handler) (pop->poc_val);
++		      normal_little_endian = 0;
+
+やり方が不明なので共通部分を直接修正した. そして pdp11-elf-as 固有の部分を以下のように
+修正した.
+
++int out_normal_little_endian;
+
+void
+md_number_to_chars (char con[], valueT value, int nbytes)
+{
+...
+    case 4:
+      if (out_normal_little_endian) {
+	con[0] =  value        & 0xff;
+	con[1] = (value >>  8) & 0xff;
+	con[2] = (value >> 16) & 0xff;
+	con[3] = (value >> 24) & 0xff;
+      }
+      else {
+	con[0] = (value >> 16) & 0xff;
+	con[1] = (value >> 24) & 0xff;
+	con[2] =  value        & 0xff;
+	con[3] = (value >>  8) & 0xff;
+      }
+      break;
+
+問題はこれで即値でない場合ができないように思えるのだがまずはこうしてみた.
