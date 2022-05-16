@@ -1,0 +1,12 @@
+#! /bin/csh -vf
+
+pdp11-elf-as -o start.o -g start.S || exit 1
+pdp11-elf-gcc -o sample.s sample.c -S || exit 1
+pdp11-elf-as -o sample.o -g sample.s || exit 1
+setenv GNUTARGET pdp11-dec-elf || exit 1
+pdp11-elf-ld -o sample.elf start.o sample.o -T sample.x || exit 1
+pdp11-elf-objdump -x -d sample.elf > sample.objdump || exit 1
+pdp11-elf-run --memory-fill 0xcc --memory-region 0xefc0,0x1000 sample.elf
+
+
+
