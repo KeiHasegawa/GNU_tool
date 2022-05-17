@@ -1,0 +1,75 @@
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/
+% mkdir simhv312-2
+% cd simhv312-2
+% unzip unzip ../simhv312-2.zip
+% cd sim
+% make
+...
+gcc  -U__STRICT_ANSI__  -O2 -finline-functions -fgcse-after-reload -fpredictive-commoning -fipa-cp-clone -fno-unsafe-loop-optimizations -fno-strict-overflow   -DSIM_COMPILER="GCC Version: " -DSIM_BUILD_TOOL=simh-makefile -I . -D_GNU_SOURCE -DUSE_READER_THREAD -DSIM_ASYNCH_IO  -DHAVE_SEMAPHORE -DHAVE_SYS_IOCTL -DHAVE_LINUX_CDROM -DSIM_HAVE_DLOPEN=so -DHAVE_UTIME -DHAVE_GLOB -DHAVE_SHM_OPEN  PDP11/pdp11_cis.c PDP11/pdp11_cpu.c PDP11/pdp11_cpumod.c PDP11/pdp11_cr.c PDP11/pdp11_fp.c PDP11/pdp11_io.c PDP11/pdp11_io_lib.c PDP11/pdp11_lp.c PDP11/pdp11_rh.c PDP11/pdp11_rk.c PDP11/pdp11_stddev.c PDP11/pdp11_sys.c PDP11/pdp11_uc15.c scp.c sim_console.c sim_fio.c sim_timer.c sim_sock.c sim_tmxr.c sim_ether.c sim_tape.c sim_shmem.c sim_card.c -DVM_PDP11 -DUC15 -I PDP11 -I PDP18B -DHAVE_TAP_NETWORK -DUSE_NETWORK -o BIN/uc15 -lm -lrt -lpthread -ldl
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: /tmp/ccgkKREN.o:(.bss+0x3d4): multiple definition of `uc15_memsize'; /tmp/ccgIrp30.o:(.bss+0x0): first defined here
+...
+
+#ifdef UC15_MEMSIZE_JUST_DECL
+extern
+#endif // UC15_MEMSIZE_JUST_DECL
+uint32 uc15_memsize;
+
+上のように対応. そして BIN/uc15 のビルドのみ自前の Makefile.uc15 を使用するようにして回避し
+た. これ以外はエラーは発生していない.
+
+折角なので Makefile.pdp11 も作成し -g オプション付きでコンパイルし直した.
+
+% BIN/pdp11
+
+PDP-11 simulator V3.12-2
+sim> go 100
+
+HALT instruction, PC: 000102 (HALT)
+sim> quit
+Goodbye
+%
+
+halt 命令のオペコードは 0x0000 でおそらくメモリの初期値を 0 にしている. つまり halt 命令
+がおそらくシミュレーションできているということ.
+
+% cat mycmd
+go 100
+quit
+%
+
+M-x gdb
+gdb --annotate BIN/pdp11
+(gdb) run -x ../mycmd
+
+PDP-11 simulator V3.12-2
+
+HALT instruction, PC: 000102 (HALT)                      ★
+Goodbye                                                  ★
+[Inferior 1 (process 24214) exited normally]
+(gdb)
+
+gdb から実行して期待する結果になっている. そこで PC をセットしたり実行を開始したり
+する箇所を調べてみるl.
+
+
+        put_rval (sim_PC, 0, pcv);			/* store new PC */
+
+しかし pcv = 0x40 であった. おそらく 0x40 << 2 = 0x100 ということなのかもしれない.
+
+r = sim_instr();  ★
+
+t_stat sim_instr (void)
+{
+...
+R0 から R5 レジスタのセットなどしている.
+R6(SP) のセットなどしている.
+
+while (reason == 0)  {
+...
+    IR = ReadE (PC | isenable);                         /* fetch instruction */
+    sim_interval = sim_interval - 1;
+    srcspec = (IR >> 6) & 077;                          /* src, dst specs */
+    dstspec = IR & 077;
+
+それっぽい. そして halt 命令のシミュレーションをしてこの函数 sim_instr から戻っている.
+

@@ -1,0 +1,76 @@
+(*1)
+現状 mul 命令のシミュレーションができていない.
+
+00000118 <_f>:
+ 118:	1166           	mov	r5, -(sp)
+ 11a:	1185           	mov	sp, r5
+ 11c:	1d40 0004      	mov	4(r5), r0
+ 120:	7035 0006      	mul	6(r5), r0    ★
+
+原因を調べたところそもそも未実装になっていた. つまり動作としては nop になっている.
+その結果 5 * 6 = 30 という演算は行なわれず r0 は 5 のまま.
+
+アドレッシングモードは直前の mov 命令に似ているから掛け算をして書き込めばよいと
+単純に思っていたがそうでもないらしい.
+
+    case 7:
+      {
+	// MUL
+	asm("int3");
+	src_temp = memory->Read(address(src));          // Get value at address of src
+	dst_temp = memory->Read(address(dst));          // Get destination value
+	tmp = src_temp * dst_temp;
+	memory->Write(address(dst),tmp);
+
+src_temp = 5, dst_temp = 6 になっているが期待する動作は
+src_temp = 6, dst_temp = 5 である. そして続く Write メンバ函数の呼び出しで不正
+メモリアクセスエラーしている.
+
+まずは src_temp = 6 ではなくて src_temp = 5 になってしまう理由を調べてみる.
+詳細は省略するが以下が正解らしい.
+
+    case 7:
+      {
+	// MUL
+	src_temp = memory->Read(address(1));
+	dst_temp = memory->Read(address(3));
+	tmp = src_temp * dst_temp;
+	memory->Write(address(3),tmp);
+	resultIsZero(tmp);                              // Update Z bit
+	resultLTZero(tmp << 8);                         // Update N bit
+	(tmp >= 0xffff) ?
+	  update_flags(1,Vbit) : update_flags(0,Vbit);  // Update V bit
+	return instruction;
+      }
+
+このシミュレータだが完成度がおそらくそこまで高くない. これまで修正したバグをこの機会に
+挙げてみると
+
+o call 命令で戻りアドレス-2 をスタックにプッシュしていた. -2 は必要ない.
+o sub 命令でキャリーフラグが逆の値にセットされていた 
+o mul 命令未実装
+
+(*2)
+現状 ash 命令のシミュレーションができていない. 調べてみると何と MUL 命令にデコードされている.
+
+00000118 <_f>:
+ 118:	1166           	mov	r5, -(sp)
+ 11a:	1185           	mov	sp, r5
+ 11c:	1d40 0004      	mov	4(r5), r0
+ 120:	7435 0006      	ash	6(r5), r0   ★
+ 
+つまり 先頭 1 ニブルが 7 の場合 mul か ash かは不明ということ. 第 2 ニブルで判定する
+必要があるということ
+
+
+(*3)
+どうやら div 命令もシミュレーションできていないらしい. そろそろこのシミュレータは卒業するべき
+かと考えた.
+
+(*4)
+「PDP エンディアン」を Google 検索したところ
+
+https://oraccha.hatenadiary.org/entry/20090921/1253549177
+
+のページを発見. そこでマルチ計算機シミュレータ SIMH なるものが紹介されている.
+他にも UNIX の 1st.ed など何やら楽しそうなことを考えていらっしゃる.
