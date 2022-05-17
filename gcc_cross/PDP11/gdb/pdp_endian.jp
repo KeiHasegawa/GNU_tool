@@ -11,7 +11,7 @@ inline void for_pdp_endian(value* val)
   auto len = TYPE_LENGTH(T);
   if (len < 4)
     return;
-  gdb_byte* valaddr = const_cast<gdb_byte*>(value_contents_for_printing(val));
+  gdb_byte* valaddr = value_contents_all_raw(val);
   if (len == 4) {
     std::swap(valaddr[0], valaddr[2]);  // 通常のリトルエンディアンの並びにする
     std::swap(valaddr[1], valaddr[3]);
