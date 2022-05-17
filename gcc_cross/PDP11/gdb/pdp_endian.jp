@@ -1,0 +1,68 @@
+PDP エンディアン対応
+
+現状 32 ビットの引数に対して pdp11-elf-gdb で引数を期待通り表示できていない.
+単純に PDP エンディアンに pdp11-elf-gdb が対応していないの以下のように対応した:
+
+gdb-10.2.pdp11-elf/gdb/c-valprint.c:
+
+inline void for_pdp_endian(value* val)
+{
+  type* T = value_type(val);
+  auto len = TYPE_LENGTH(T);
+  if (len < 4)
+    return;
+  gdb_byte* valaddr = const_cast<gdb_byte*>(value_contents_for_printing(val));
+  if (len == 4) {
+    std::swap(valaddr[0], valaddr[2]);  // 通常のリトルエンディアンの並びにする
+    std::swap(valaddr[1], valaddr[3]);
+    return;
+  }
+  ...
+}
+
+void
+c_value_print_inner (struct value *val, struct ui_file *stream, int recurse,
+		     const struct value_print_options *options)
+{
+...
+    case TYPE_CODE_INT:
+      for_pdp_endian(val);                             ★
+      c_value_print_int (val, stream, options);
+      break;
+
+この修正を入れると finish の結果が期待しないものになった. 事前に finish は独自に PDP
+エンディアンを意識して辻褄を合わせていたが, 実はそれは間違いだったということ.
+以下のようなプログラムに対して:
+
+% cat a.c
+extern int printf(const char*, ...);
+
+typedef long T;
+
+T f(T a, T b)
+{
+  return a + b;
+}
+
+int main()
+{
+  printf("hello world %ld\n", f(5, 6));
+  return 0;
+}
+
+実行結果は以下のように期待する結果になった:
+
+% pdp11-elf-gdb -x -q gdbcom a.elf
+...
+Breakpoint 1, main () at a.c:12
+12	  printf("hello world %ld\n", f(5, 6));
+f (a=5, b=6) at a.c:7                                  ★
+7	  return a + b;
+#0  f (a=5, b=6) at a.c:7
+#1  0x00000174 in main () at a.c:12                    ★
+#2  0x00000108 in start () at start.S:4
+0x00000174 in main () at a.c:12
+12	  printf("hello world %ld\n", f(5, 6));
+Value returned is $1 = 11                              ★
+hello world 11
+%
