@@ -1,0 +1,235 @@
+(*1) binutils のインストール
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/
+% xz -d -c ../binutils-2.36.1-2.src/binutils-2.36.1.tar.xz
+% mv binutils-2.36.1 binutils-2.36.1.vax-elf
+% cd binutils-2.36.1.vax-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=vax-elf
+% make
+...
+checking for cos in -lm... yes
+*** BFD does not support target vax-dec-elf.
+*** Look in bfd/config.bfd for supported targets.
+make[1]: *** [Makefile:2717: configure-bfd] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.vax-elf' から出ます
+make: *** [Makefile:853: all] エラー 2
+% make
+...
+*** BFD does not support target vax-dec-elf.
+*** Look in bfd/config.bfd for supported targets.
+make: *** [Makefile:2717: configure-bfd] エラー 1
+%
+
+エラーを再現できている.
+
+Makefile:
+configure-bfd:
+...
+	module_srcdir=bfd; \
+	$(SHELL) -vx \                   ★ -vx を付加
+	  $$s/$$module_srcdir/configure \
+	  --srcdir=$${topdir}/$$module_srcdir \
+	  $(HOST_CONFIGARGS) --build=${build_alias} --host=${host_alias} \
+	  --target=${target_alias}  \
+	  || exit 1
+
+% make configure-bfd
+...
+  bpf-*-*)
+    echo "*** Configuration $targ is not fully supported." >&2
+    echo "*** Use bpf or bpf-*-none as the target instead." >&2
+    exit 1
+    ;;
+
+  *)
+    echo 1>&2 "*** BFD does not support target ${targ}."             ★
+    echo 1>&2 "*** Look in bfd/config.bfd for supported targets."    ★
+    exit 1
+    ;;
+esac
+++ case "${targ}" in
+++ echo '*** BFD does not support target vax-dec-elf.'
+*** BFD does not support target vax-dec-elf.
+++ echo '*** Look in bfd/config.bfd for supported targets.'
+...
+
+bfd/config.bfd を見てみた.
+
+binutils-2.36.1.vax-elf/bfd/config.bfd:
+
+
+  vax-*-linux-*)
+    targ_defvec=vax_elf32_vec
+    ;;
+
++ vax-*-elf)
++   targ_defvec=vax_elf32_vec
++   ;;
+
+  visium-*-elf)
+    targ_defvec=visium_elf32_vec
+    ;;
+
+上のように修正してみた.
+
+% make configure-bfd
+一応エラーしていない.
+
+% make
+...
+checking size of void *... 4
+*** ld does not support target vax-dec-elf
+*** see ld/configure.tgt for supported targets
+make[1]: *** [Makefile:7164: configure-ld] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.vax-elf' から出ます
+make: *** [Makefile:853: all] エラー 2
+%
+
+% make configure-ld
+...
+*** ld does not support target vax-dec-elf
+*** see ld/configure.tgt for supported targets
+make[1]: *** [Makefile:7164: configure-ld] エラー 1
+%
+
+エラーが再現している.
+
+binutils-2.36.1.vax-elf/ld/configure.tgt:
+
+vax-*-linux-*)		targ_emul=elf32vax
+			;;
++vax-*-elf)		targ_emul=elf32vax
++			;;
+visium-*-elf)		targ_emul=elf32visium
+			;;
+
+上のように修正.
+
+% make configure-ld
+一応成功
+
+% make
+% make install
+% cd ..
+
+(*2) gcc のインストール
+
+% xz -d -c ../gcc-10.2.0.tar.xz  | tar xf -
+% mv gcc-10.2.0 gcc-10.2.0.vax-elf
+% cd gcc-10.2.0.vax-elf
+% sed -e 's/host_subdir = @host_subdir@/host_subdir = host-i686-pc-linux-gnu/' libgcc/Makefile.in > libgcc/Makefile.in.new
+% mv libgcc/Makefile.in.new libgcc/Makefile.in
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=vax-elf
+% make all-gcc
+...
+checking if mkdir takes one argument... no
+*** Configuration vax-dec-elf not supported
+make: *** [Makefile:4332: configure-gcc] エラー 1
+exit 1
+% make configure-gcc
+...
+checking if mkdir takes one argument... no
+*** Configuration vax-dec-elf not supported
+make: *** [Makefile:4332: configure-gcc] エラー 1
+%
+
+エラーを再現できている.
+
+gcc-10.2.0.vax-elf/gcc/config.gcc:
+vax-*-linux*)
+	tm_file="${tm_file} dbxelf.h elfos.h gnu-user.h linux.h vax/elf.h vax/linux.h"
+	extra_options="${extra_options} vax/elf.opt"
+	;;
++vax-*-elf)	
++	tm_file="${tm_file} dbxelf.h elfos.h gnu-user.h linux.h vax/elf.h vax/linux.h"
++	extra_options="${extra_options} vax/elf.opt"
++	;;
+vax-*-netbsdelf*)
+
+上のように修正してみた.
+
+% make configure-gcc
+一応成功.
+
+% make all-gcc
+...
+g++ -c   -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -fno-PIE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/genpreds.o ../.././gcc/genpreds.c
+In file included from ./tm.h:22,
+                 from ../.././gcc/genpreds.c:26:
+../.././gcc/config/linux.h:90:2: エラー: #error "Unsupported DEFAULT_LIBC"
+   90 | #error "Unsupported DEFAULT_LIBC"
+      |  ^~~~~
+make[1]: *** [Makefile:2722: build/genpreds.o] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.vax-elf/host-i686-pc-linux-gnu/gcc' から出ます
+make: *** [Makefile:4390: all-gcc] エラー 2
+%
+
+もう一度 config.gcc を以下のように修正してみた:
+
+gcc-10.2.0.vax-elf/gcc/config.gcc:
+vax-*-linux*)
+	tm_file="${tm_file} dbxelf.h elfos.h gnu-user.h linux.h vax/elf.h vax/linux.h"
+	extra_options="${extra_options} vax/elf.opt"
+	;;
++vax-*-elf)	
++	tm_file="${tm_file} dbxelf.h elfos.h gnu-user.h vax/elf.h"
++	extra_options="${extra_options} vax/elf.opt"
++	;;
+vax-*-netbsdelf*)
+
+% make configure-gcc
+...
+configure が動作しているようには思えない.
+
+% rm host-i686-pc-linux-gnu/gcc/Makefile   # これがポイントらしい
+% make configure-gcc
+% make all-gcc
+成功
+% make all-target-libgcc
+...
+checking for target glibc version... 0.0
+*** Configuration vax-dec-elf not supported
+make: *** [Makefile:12629: configure-target-libgcc] エラー 1
+% make configure-target-libgcc
+...
+*** Configuration vax-dec-elf not supported
+make: *** [Makefile:12629: configure-target-libgcc] エラー 1
+%
+
+例によってエラーは再現できている.
+
+gcc-10.2.0.vax-elf/libgcc/config.host:
+
+vax-*-linux*)
+	tmake_file="$tmake_file vax/t-linux"
+	;;
++vax-*-elf)
++	tmake_file="$tmake_fil"
++	;;
+vax-*-netbsdelf*)
+
+上のように修正してみた.
+
+% make configure-target-libgcc
+エラーを回避できている.
+
+% make install-gcc
+% make install-target-libgcc
+% cd ..
+
+(*3) newlib のインストール
+
+% gunzip -c ../newlib-4.1.0.tar.gz  | tar xf -
+% mv newlib-4.1.0 newlib-4.1.0.vax-elf
+% cd newlib-4.1.0.vax-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=vax-elf
+% make
+% make install
+% cd ..
+
+(*4) gdb のインストール
+
+「VAX の gdb」を参照.
+
+

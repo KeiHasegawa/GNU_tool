@@ -1,0 +1,97 @@
+VAX の gdb
+
+pdp11 と同じようなやり方をしてみた:
+
+% xz -d -c ../gdb-10.2-1.src/gdb-10.2.tar.xz | tar xf -
+% mv gdb-10.2 gdb-10.2.pdp11-elf
+% cd gdb-10.2.pdp11-elf/gdb
+
+d30v, fr30, z8k, i960, mmix, z80, i386, pdp11 と同じ対処をした.
+
+gdb-10.2.i386-elf/gdb/configure.tgt:
+
+vax-*-openbsd*)
+	# Target: OpenBSD/vax
+	gdb_target_obs="vax-tdep.o"
+	;;
+vax-*-*)
+	# Target: VAX
+	gdb_target_obs="vax-tdep.o"
++	gdb_sim=../sim/vax/libsim.a
+	;;
+
+x86_64-*-darwin*)
+
+% cd ..
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=vax-elf
+% make
+...
+checking for cos in -lm... yes
+*** BFD does not support target vax-dec-elf.
+*** Look in bfd/config.bfd for supported targets.
+make[1]: *** [Makefile:2715: configure-bfd] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.vax-elf' から出ます
+make: *** [Makefile:853: all] エラー 2
+%
+
+gdb-10.2.vax-elf/bfd/config.bfd:
+  vax-*-linux-*)
+    targ_defvec=vax_elf32_vec
+    ;;
+
++ vax-*-elf)
++   targ_defvec=vax_elf32_vec
++   ;;
+
+  visium-*-elf)
+    targ_defvec=visium_elf32_vec
+    ;;
+
+上のように修正.
+
+% make
+...
+  CXX    init.o
+make[2]: *** 'gdb' に必要なターゲット '../sim/vax/libsim.a' を make するルールがありません.  中止.
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.vax-elf/gdb' から出ます
+make[1]: *** [Makefile:10065: all-gdb] エラー 2
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.vax-elf' から出ます
+make: *** [Makefile:853: all] エラー 2
+%
+
+
+% cd sim
+% tar xf ~/lang/53_GNU_tool/gcc_cross/PDP11/gdb/pdp11.1.tar 
+% mv pdp11 vax
+% cd vax
+
+pdp11 を vax に置換
+
+% make
+...
+gcc -g -o nrun.o ../common/nrun.c -c -I../../include -I. -I../../bfd -DHAVE_CONFIG_H -I../common -DWITH_PROFILE=-1 -DWITH_ALIGNMENT=4
+make: *** 'run' に必要なターゲット '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/simhv312-2.mine/sim/libvax.a' を make するルールがありません.  中止.
+%
+
+普通であれば nop の動作を実現することをまずは目指すが, PDP11 のシミュレータで SIMH なるものが
+あることを既に知っているので, いきなり完成形を目指す.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/simhv312-2.mine/sim/
+
+Makefile.vax を作成
+
+% make -f Makefile.vax clean
+% make -f Makefile.vax
+
+libvax.a を作成. libvax.a は libpdp11.a と同一の名前のオブジェクトファイルを参照しているが
+コンパイルオプションが異なるようなので一旦 clean のターゲットを make しておく.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.vax-elf/sim/vax
+% make
+libsim.a と run を作成できている.
+
+% cd ../../gdb
+% make
+一応ビルドできている.
+
+例によって nop を数個配置したプログラムを動作させてみる.
