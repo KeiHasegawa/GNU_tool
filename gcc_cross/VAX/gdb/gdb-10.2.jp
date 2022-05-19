@@ -1,6 +1,6 @@
 VAX の gdb
 
-pdp11 と同じようなやり方をしてみた:
+PDP11 と同じようなやり方をしてみた:
 
 % xz -d -c ../gdb-10.2-1.src/gdb-10.2.tar.xz | tar xf -
 % mv gdb-10.2 gdb-10.2.pdp11-elf
@@ -95,3 +95,21 @@ libsim.a と run を作成できている.
 一応ビルドできている.
 
 例によって nop を数個配置したプログラムを動作させてみる.
+
+プログラムのロード時にメモリを割り当てるように以下のように修正する.
+
+  	      data_count += size;
+  	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
++ 	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
+  	      do_write (sd, lma, buffer, size);
+  	      found_loadable_section = 1;
+  	      free (buffer);
+  	    }
+  	}
++       else if (s->flags & SEC_ALLOC) {
++         bfd_vma vma = bfd_section_vma(s);
++         bfd_size_type size = bfd_section_size(s);
++         sim_do_command(sd, "memory-fill 0xcc");
++         sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", vma, size);
++       }
+      }
