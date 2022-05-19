@@ -1,0 +1,24 @@
+%.o : %.S
+	vax-elf-as -o $@ -g $<
+
+%.s : %.c
+	vax-elf-gcc -o $@ $< -S
+
+%.o : %.s
+	vax-elf-as -o $@ -g $<
+
+%.elf : %.o 
+	vax-elf-ld -o $@ ../default.o $< -T ../default.x
+
+%.objdump : %.elf
+	vax-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v vax-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.o *.s *.elf *.map *.objdump *.objcopy *.log TAGS *~
