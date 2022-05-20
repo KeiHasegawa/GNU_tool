@@ -88,17 +88,19 @@ void h3(void)
   printf("test_h3 = %d\n", test_h3);
 }
 
+void f4(char* s)
+{
+  printf("%s\n", s);
+}
+
 int main()
 {
-#if 0  
   f(5, 6);
   g();
   printf("\n");
-#endif  
   h(1.0);
-#if 0  
   ff(9LL);
-  char a[] = "hasegawa kei";
+  char a[] = "hasegawa kei";  
   gg(&a[0], 5, 6.0);
   hh(3.0L);
   f2(1.0, 2.0, 3.0);
@@ -109,8 +111,5 @@ int main()
   f3(123);
   g3();
   h3();
-#endif  
   return 0;
 }
-
-double d = 1.0;

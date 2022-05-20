@@ -1,6 +1,7 @@
 SECTIONS {
 	 . = 0x100;
 	 .text : {}
+	 . = ALIGN(4);
 	 .rodata : {}
 	 .data : {}
 	 .bss : {
