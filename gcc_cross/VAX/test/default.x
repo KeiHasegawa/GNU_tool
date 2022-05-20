@@ -5,6 +5,6 @@ SECTIONS {
 	 .data : {}
 	 .bss  : {}
 
-	 . = 0x20000;
+	 . = 0xfffe;
 	 stack = .;
 }

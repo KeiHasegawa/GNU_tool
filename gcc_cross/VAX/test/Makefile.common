@@ -1,11 +1,8 @@
 %.o : %.S
 	vax-elf-as -o $@ -g $<
 
-%.s : %.c
-	vax-elf-gcc -o $@ $< -S
-
-%.o : %.s
-	vax-elf-as -o $@ -g $<
+%.o : %.c
+	vax-elf-gcc -o $@ $< -g -c
 
 %.elf : %.o 
 	vax-elf-ld -o $@ ../default.o $< -T ../default.x
