@@ -34,6 +34,25 @@ main:
      C 言語レベルでは vax-elf-gdb がこの部分を調整してくれていたが, アセンブラレベル
      ではこの調整はプログラマが自分で行なう必要がある.
 
+5. シミュレータが 4 バイト単位でフェッチしているため .text セクションのサイズが 4 の
+   倍数でないときに不正メモリアクセスしてしまう.
+
+   => リンカスクリプトファイルを以下のようにする:
+
+SECTIONS {
+	 . = 0x100;
+	 .text : {}
+	 . = ALIGN(4);      ★
+	 .rodata : {}
+
+
+       そして .text セクションをロードするときに割り当てるメモリのサイズを 4 の倍数に
+       する:
+
+	      if (strcmp(s->name, ".text") == 0)
+		size = (size + 3) & ~3;                  ★
+ 	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
+	      do_write (sd, lma, buffer, size);
 
 (*2)
 まずは double を正しく表示できない原因を調査する.
@@ -214,4 +233,121 @@ c.o に, cc1 を a.out に差し替えるということ.
 
 これは期待した結果になっている.
 
-(*2)
+(*3)
+文字列が化ける問題.
+
+void f4(char* s)
+{
+  printf("%s\n", s);
+}
+
+int main()
+{
+  char a[] = "hasegawa kei";  
+  f4(&a[0]);
+  return 0;
+}
+
+これで問題の現象が再現している. main のコードは以下.
+
+main:
+	.word 0
+	subl2 $20,%sp
+	subl3 $17,%fp,%r0
+	movq $7023189240619164008,(%r0)     ★
+	addl2 $8,%r0
+	movl $1768254240,(%r0)              ★
+	addl2 $4,%r0
+	clrb (%r0)
+	incl %r0
+	subl3 $17,%fp,%r0
+	pushl %r0
+	calls $1,f4
+	clrl %r0
+	ret
+
+
+(vax-elf-gdb) p/x 7023189240619164008
+$4 = 0x6177616765736168         ★ 'a', 'w', 'a', 'g', 'e', 's', 'a', 'h'
+(vax-elf-gdb) p/c 0x61
+$5 = 97 'a'
+(vax-elf-gdb) p/c 0x77
+$6 = 119 'w'
+(vax-elf-gdb) p/c 0x61
+$7 = 97 'a'
+(vax-elf-gdb) p/c 0x67
+$8 = 103 'g'
+(vax-elf-gdb) p/c 0x65
+$9 = 101 'e'
+(vax-elf-gdb) p/c 0x73
+$11 = 115 's'
+(vax-elf-gdb) p/c 0x61
+$12 = 97 'a'
+(vax-elf-gdb) p/c 0x68
+$13 = 104 'h'
+
+(vax-elf-gdb) p/x 1768254240
+$14 = 0x69656b20                ★ 'i', 'e', 'k', ' '
+(vax-elf-gdb)
+(vax-elf-gdb) p/c 0x69
+$19 = 105 'i'
+(vax-elf-gdb) p/c 0x65
+$20 = 101 'e'
+(vax-elf-gdb) p/c 0x6b
+$21 = 107 'k'
+(vax-elf-gdb) p/c 0x20
+$22 = 32 ' '
+(vax-elf-gdb)
+
+ということはこれはシミュレータに問題がありそう. 問題の movq 命令と movl 命令を調べてみる.
+
+調べた結果シミュレータでメモリアクセスしている部分を修正した方法がまずかったらしい. 改めて
+期待通り動作していることを確認.
+
+(*4)
+スタックのアドレスが 64 KB に限定されて動作している問題.
+
+リンカスクリプトを以下のように修正:
+
+	 _bss_end = .;
+
+	 . = 0x20000;          ★
+	 stack = .;
+}
+
+これでスタックを [0x1b000, 0x20000) にする:
+
+% vax-elf-run --memory-fill 0xcc --memory-region 0x1b000,0x5000 sample.elf
+core: 1 byte read to unmapped address 0xffe8 at 0x122
+program stopped with signal 11 (Segmentation fault).
+%
+
+意図しない領域にアクセスしている.
+
+M-x gdb
+vax-elf-gdb --annotate=3 sample.elf -x gdbcom
+
+Breakpoint 2, start () at start.S:13
+(vax-elf-gdb) s
+core: 1 byte read to unmapped address 0xffe8 at 0x122
+
+Program received signal SIGSEGV, Segmentation fault.
+start () at start.S:13
+(vax-elf-gdb) p/x $sp
+$2 = 0x20000
+(vax-elf-gdb) 
+
+	calls	$2, main  ★
+
+おそらく戻りアドレスをプッシュしているのだと思うが sp と関係ないアドレスにアクセスしている
+ように見える.
+
+調べてみると単純な間違い. PDP11 をコピーして間違えている:
+
+void sim_core_write_aligned_4_for_me(uint16_t addr, uint32_t v)
+{                                       ★
+  return sim_core_write_aligned_4(g_cpu, g_cia, write_map, addr, v);
+}
+
+似たようなバグがいくつかあったので修正しておいた. これで 64 KB の制限を超えて期待通り動作
+している.
