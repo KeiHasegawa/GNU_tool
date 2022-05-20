@@ -68,3 +68,146 @@ d:
 	.long	0
 
 16512 = 0x4080 なのでやはり自分の知っている 1.0 のビット表現ではない.
+
+
+    case CONST_FIXED:
+      fprintf (file, HOST_WIDE_INT_PRINT_DEC, CONST_FIXED_VALUE_LOW (x)); ★
+      break;
+
+(gdb) p debug_rtx(x)
+(const_int 16512 [0x4080])  ★
+$5 = void
+(gdb) 
+(gdb) where
+#0  output_addr_const (file=0x9218b70, x=0xb788df40) at ../.././gcc/final.c:4152
+#1  0x088e3790 in assemble_integer_with_op (x=0xb788df40, op=<optimized out>) at ../.././gcc/varasm.c:2779
+#2  default_assemble_integer (x=0xb788df40, size=4, aligned_p=1) at ../.././gcc/varasm.c:2795
+#3  0x088e3823 in assemble_integer (x=0xb788df40, size=4, align=32, force=1) at ../.././gcc/varasm.c:2811
+#4  0x088e7034 in assemble_real (d=..., mode=..., align=32, reverse=false) at ../.././gcc/varasm.c:2889
+...
+(gdb) up 4
+#4  0x088e7034 in assemble_real (d=..., mode=..., align=32, reverse=false) at ../.././gcc/varasm.c:2889
+(gdb)
+
+void
+assemble_real (REAL_VALUE_TYPE d, scalar_float_mode mode, unsigned int align,
+	       bool reverse)
+{
+...
+  assemble_integer (elt, chunk_nunits, align, 1);
+
+
+(gdb) p d
+$6 = {cl = 1, decimal = 0, sign = 0, signalling = 0, canonical = 0, uexp = 1, 
+  sig = {0, 0, 0, 0, 2147483648}}
+(gdb)
+
+これだけ見てもよく分からないが以下にたどり着いた:
+
+(gdb) b output_constant
+(gdb) run
+...
+output_constant のブレークポイントにヒット
+(gdb) p debug_tree(exp)
+ <real_cst 0xb788df10
+    type <real_type 0xb7a50c00 double DF
+        size <integer_cst 0xb7855320 constant 64>
+        unit-size <integer_cst 0xb7855334 constant 8>
+        align:32 warn_if_not_align:0 symtab:0 alias-set 1 canonical-type 0xb7a50c00 precision:64
+        pointer_to_this <pointer_type 0xb7a50d20>>
+    constant 1.0e+0>  ★
+$7 = void
+(gdb)
+
+おそらくこの時点ではビット表現がまだ計算されていない. そこで assemble_real が以下のように
+呼び出されている:
+
+	assemble_real (TREE_REAL_CST (exp),
+		       SCALAR_FLOAT_TYPE_MODE (TREE_TYPE (exp)),
+		       align, reverse);
+
+ここで TREE_REAL_CST の定義だが
+
+#define TREE_REAL_CST_PTR(NODE) (REAL_CST_CHECK (NODE)->real_cst.real_cst_ptr)
+#define TREE_REAL_CST(NODE) (*TREE_REAL_CST_PTR (NODE))
+
+例によってこれだけ見ても意味不明. しかし
+
+TREE_REAL_CST (exp) =
+{cl = 1, decimal = 0, sign = 0, signalling = 0, canonical = 0, uexp = 1, 
+  sig = {0, 0, 0, 0, 2147483648}}
+
+ということらしい. そして以下で変換していることに気付いた:
+
+long
+real_to_target (long *buf, const REAL_VALUE_TYPE *r_orig,
+		format_helper fmt)
+{
+...
+  (*fmt->encode) (fmt, buf, &r);
+
+  return *buf;
+}
+
+(gdb) x/8bx buf
+0xbffff204:	0x80	0x40	0x00	0x00	0x00	0x00	0x00	0x00  ★
+(gdb)
+
+問題のビット表現がここで計算されている. そしてそれは以下で計算されていた:
+
+gcc-10.2.0.vax-elf/gcc/real.c:
+static void
+encode_vax_d (const struct real_format *fmt ATTRIBUTE_UNUSED, long *buf,
+	      const REAL_VALUE_TYPE *r)
+{
+...
+
+この函数は共通ファイルで定義されている. そしてこの函数の下に以下が定義されている.
+
+static void
+decode_vax_d (const struct real_format *fmt ATTRIBUTE_UNUSED,
+	      REAL_VALUE_TYPE *r, const long *buf)
+{
+...
+
+現時点で参考になるかどうかは不明だがこれと近いことをやってあげるとよいらしい.
+試行錯誤の結果以下にたどり着いた:
+
+% cat c.cpp
+#include "config.h"
+#include "system.h"
+#include "coretypes.h"
+#include "tm.h"
+#include "rtl.h"
+#include "tree.h"
+#include "realmpfr.h"
+#include "dfp.h"
+
+int main()
+{
+  REAL_VALUE_TYPE r;
+  long data[] = { 0x4080, 0 };
+  vax_d_format.decode(&vax_d_format, &r, &data[0]);    
+
+  long data2[2];
+  ieee_double_format.encode(&ieee_double_format, &data2[0], &r);
+
+  return 0;
+}
+%
+
+このプログラムは cc1 のビルドディレクトリで
+
+% g++ -fno-PIE -c   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H -I. -I. -I../.././gcc -I../.././gcc/. -I../.././gcc/../include -I../.././gcc/../libcpp/include  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber -I../.././gcc/../libbacktrace   -o c.o c.cpp
+% g++ -no-pie   -g   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wno-error=format-diag -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H -static-libstdc++ -static-libgcc   -o a.out c/c-lang.o c-family/stub-objc.o attribs.o c/c-errors.o c/c-decl.o c/c-typeck.o c/c-convert.o c/c-aux-info.o c/c-objc-common.o c/c-parser.o c/c-fold.o c/gimple-parser.o c-family/c-common.o c-family/c-cppbuiltin.o c-family/c-dump.o c-family/c-format.o c-family/c-gimplify.o c-family/c-indentation.o c-family/c-lex.o c-family/c-omp.o c-family/c-opts.o c-family/c-pch.o c-family/c-ppoutput.o c-family/c-pragma.o c-family/c-pretty-print.o c-family/c-semantics.o c-family/c-ada-spec.o c-family/c-ubsan.o c-family/known-headers.o c-family/c-attribs.o c-family/c-warn.o c-family/c-spellcheck.o default-c.o cc1-checksum.o libbackend.a c.o libcommon-target.a libcommon.a ../libcpp/libcpp.a ../libdecnumber/libdecnumber.a libcommon.a ../libcpp/libcpp.a   ../libbacktrace/.libs/libbacktrace.a ../libiberty/libiberty.a ../libdecnumber/libdecnumber.a   -lmpc -lmpfr -lgmp -rdynamic -ldl  -L./../zlib -lz -lzstd
+
+のようにしてビルドすることができる. つまり cc1 をビルドするのと同じ形式でビルドするが main.o を
+c.o に, cc1 を a.out に差し替えるということ.
+
+上のやり方でビルドされた a.out を実行した結果は以下のようになる
+
+% ./a.out
+0x00000000 0x3ff00000
+%
+
+これは期待した結果になっている.
