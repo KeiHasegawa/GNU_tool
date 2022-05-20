@@ -9,6 +9,6 @@ SECTIONS {
 	 }
 	 _bss_end = .;
 
-	 . = 0xfffc;
+	 . = 0x20000;
 	 stack = .;
 }
