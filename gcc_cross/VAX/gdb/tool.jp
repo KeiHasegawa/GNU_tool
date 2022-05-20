@@ -232,6 +232,9 @@ c.o に, cc1 を a.out に差し替えるということ.
 %
 
 これは期待した結果になっている.
+vax-elf-run は上のようにリンクすることができている. 残念ながら vax-elf-gdb は gdb と gcc
+のシンボルで名前の衝突がありリンクエラーになってしまっている. とりあえず今回はl vax-elf-gdb
+は妥協しておく.
 
 (*3)
 文字列が化ける問題.
@@ -351,3 +354,13 @@ void sim_core_write_aligned_4_for_me(uint16_t addr, uint32_t v)
 
 似たようなバグがいくつかあったので修正しておいた. これで 64 KB の制限を超えて期待通り動作
 している.
+
+この時点での
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.vax-elf/sim/vax/
+
+を vax.2.tar として
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/simhv312-2.mine/sim/
+
+を sim.5.tar としてアップロードしておく.
