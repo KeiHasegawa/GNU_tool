@@ -10,7 +10,7 @@ start:
 	jbr	.L1
 .L2:	
 	movl	$stack, %sp
-	calls	$2, main
+	calls	$0, main
 	halt
 
 	.global	printf
