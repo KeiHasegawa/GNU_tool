@@ -1,0 +1,98 @@
+(*0) Alpha
+
+https://ja.wikipedia.org/wiki/DEC_Alpha
+
+(*1) binutils のインストール
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/
+% xz -d -c ../binutils-2.36.1-2.src/binutils-2.36.1.tar.xz
+% mv binutils-2.36.1 binutils-2.36.1.alpha-elf
+% cd binutils-2.36.1.alpha-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=alpha-elf
+% make
+...
+checking size of void *... 4
+*** ld does not support target alpha-unknown-elf
+*** see ld/configure.tgt for supported targets
+make[1]: *** [Makefile:7167: configure-ld] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.alpha-elf' から出ます
+make: *** [Makefile:856: all] エラー 2
+exit 1
+%
+
+以下のように ld/configure.tgt を修正:
+
+alpha*-*-gnu*)		targ_emul=elf64alpha
+			;;
++alpha*-*-elf)		targ_emul=elf64alpha
++			;;
+alpha*-*-netbsd*)	targ_emul=elf64alpha_nbsd
+			;;
+
+% make all
+ビルド成功
+% make install
+% cd ..
+
+(*2) gcc のインストール
+
+% xz -d -c ../gcc-10.2.0.tar.xz  | tar xf -
+% mv gcc-10.2.0 gcc-10.2.0.alpha-elf
+% cd gcc-10.2.0.alpha-elf
+% sed -e 's/host_subdir = @host_subdir@/host_subdir = host-i686-pc-linux-gnu/' libgcc/Makefile.in > libgcc/Makefile.in.new
+% mv libgcc/Makefile.in.new libgcc/Makefile.in
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=alpha-elf
+% make all-gcc
+...
+
+checking if mkdir takes one argument... no
+*** Configuration alpha-unknown-elf not supported
+make: *** [Makefile:4335: configure-gcc] エラー 1
+exit 1
+%
+
+以下のように修正:
+
+gcc-10.2.0.alpha-elf/gcc/config.gcc:
+
+alpha*-*-linux*)
+	tm_file="elfos.h ${tm_file} alpha/elf.h alpha/linux.h alpha/linux-elf.h glibc-stdint.h"
+	tmake_file="${tmake_file} alpha/t-linux alpha/t-alpha"
+	extra_options="${extra_options} alpha/elf.opt"
+	;;
++alpha-*-elf)	
++	tm_file="${tm_file} dbxelf.h elfos.h alpha/elf.h"
++	tmake_file="${tmake_file} alpha/t-alpha"
++	extra_options="${extra_options} alpha/elf.opt"
++	;;
+alpha*-*-netbsd*)
+
+% make all-gcc
+ビルド成功
+% make all-target-libgcc
+...
+checking for target glibc version... 0.0
+*** Configuration alpha-unknown-elf not supported
+make: *** [Makefile:12632: configure-target-libgcc] エラー 1
+% 
+
+以下のように修正:
+gcc-10.2.0.alpha-elf/libgcc/config.host:
+alpha*-*-netbsd*)
+	tmake_file="${tmake_file} alpha/t-alpha alpha/t-ieee"
+	;;
++alpha*-*-elf)
++	tmake_file="${tmake_file} alpha/t-alpha alpha/t-ieee"
++	;;
+alpha*-*-openbsd*)
+
+% make all-target-libgcc
+ビルド成功
+% make install-gcc
+% make install-target-libgcc
+% cd ..
+
+(*3) gdb のインストール
+
+「Alpha の gdb」を参照.
+
