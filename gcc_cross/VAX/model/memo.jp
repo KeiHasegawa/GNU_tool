@@ -1,0 +1,124 @@
+(*1)
+
+VAX の calls 命令の仕様により函数の先頭で以下のように 2 バイトの 0 を生成する必要がある.
+
+f:
+	.word 0
+...
+
+
+現状 f: を出力ファイルに書き込んでいるのは以下:
+
+#ifdef ASM_DECLARE_FUNCTION_NAME
+  ASM_DECLARE_FUNCTION_NAME (asm_out_file, fnname, current_function_decl);  ★
+#else
+  /* Standard thing is just output label for the function.  */
+  ASM_OUTPUT_FUNCTION_LABEL (asm_out_file, fnname, current_function_decl);
+#endif /* ASM_DECLARE_FUNCTION_NAME */
+
+そしてプロローグの開始で以下が呼び出されている.
+
+  /* First output the function prologue: code to set up the stack frame.  */
+  targetm.asm_out.function_prologue (file);   ★
+
+固有の処理をしたいのであれば以下のようにすればよい:
+
+void vax_asm_function_prologue(FILE* fp)
+{
+...
+
+#undef TARGET_ASM_FUNCTION_PROLOGUE
+#define TARGET_ASM_FUNCTION_PROLOGUE vax_asm_function_prologue
+
+(*2)
+現状 hello world 11 のプログラムに対して以下のようなコードを生成している.
+
+main:
+	.word	0
+	pushl	$6
+	pushl	$5
+	calls	$2, f
+	addl2	$8, %sp            ★
+	pushl	%r0
+	pushab	.LC0
+	calls	$2, printf
+	addl2	$8, %sp            ★
+	clrl	%r0
+	ret
+
+VAX の ret 命令の仕様からすると calls 命令に続く sp の調整は必要ない. この命令が生成される
+のは以下:
+
+  if (!ACCUMULATE_OUTGOING_ARGS)
+    {
+...    
+      if (maybe_ne (rounded_stack_size, 0))
+	{
+	  if (ecf_flags & ECF_NORETURN)
+	    /* Just pretend we did the pop.  */
+	    stack_pointer_delta -= rounded_stack_size;
+	  else if (flag_defer_pop && inhibit_defer_pop == 0
+	      && ! (ecf_flags & (ECF_CONST | ECF_PURE)))
+	    pending_stack_adjust += rounded_stack_size;
+	  else
+	    adjust_stack (rounded_stack_size_rtx);         ★
+	}
+
+そこで試しに以下を追加してみた:
+
+#define ACCUMULATE_OUTGOING_ARGS 1           (*A)
+
+2022.05.23 11:57 ビルド開始.
+
+2022.05.23 12:31 以下を確認:
+
+main:
+	.word	0
+	(mem:SI (plus:SI (reg/f:SI 14 %sp)
+        (const_int 4 [0x4])) [0  S4 A8]) := 6
+	(mem:SI (reg/f:SI 14 %sp) [0  S4 A8]) := 5
+	calls	$2, f
+	(mem:SI (plus:SI (reg/f:SI 14 %sp)
+        (const_int 4 [0x4])) [0  S4 A8]) := %r0
+	(mem:SI (reg/f:SI 14 %sp) [0  S4 A8]) := .LC0
+	calls	$2, printf
+	clrl	%r0
+	ret
+
+自分が期待した結果にはなっていない. pushl 命令が生成されていない.
+一旦 (*A) の修正をキャンセルする.
+
+calls 命令を生成した直後に sp := sp + 8 のような rtx_insn が生成されるので単純にそれに
+対してコードを生成しないという方法を採用してみる.
+
+const char* vax::si::add(rtx x, rtx y, rtx z)
+{
+...
+  if (x == stack_pointer_rtx && x == y && CONST_INT_P(z)) {  // sp := sp + delta
+    int v = INTVAL(z);
+    assert(call::argc == v);
+    return "";   ★
+  }
+
+これは一応だが機能する. 正式なやり方かどうかは不明だが今回はこのようにしておく.
+
+(*3)
+現状 vax::expand_prologue() で生成している rtx_insn* insn に対して
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+のようにしていない. また
+
+extern rtx vax_incoming_return_addr_rtx();
+#define INCOMING_RETURN_ADDR_RTX vax_incoming_return_addr_rtx()
+...
+rtx vax_incoming_return_addr_rtx()
+{
+  return gen_rtx_MEM(Pmode, stack_pointer_rtx);
+}
+
+のように実は間違った値に INCOMING_RETURN_ADDR_RTX を define している. しかし -g オプション
+付きでコンパイルされた hello world 11 を vax-elf-gdb で step, where, finish コマンド
+を実行すると期待通り(?)動作している. これは .debug_frame セクションを vax-elf-gdb が
+無視して自力でプログラムを解析し, そしてそれが動作として現われているからである.
+
