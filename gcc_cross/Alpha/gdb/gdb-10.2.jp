@@ -17,7 +17,7 @@ alpha*-*-linux*)
 	;;
 +alpha*-*-elf)
 +	gdb_target_obs="alpha-mdebug-tdep.o"
-+	gdb_sim=../sim/vax/libsim.a
++	gdb_sim=../sim/alpha/libsim.a
 +	;;
 alpha*-*-netbsd* | alpha*-*-knetbsd*-gnu)
 
@@ -26,67 +26,41 @@ alpha*-*-netbsd* | alpha*-*-knetbsd*-gnu)
 % ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=alpha-elf
 % make
 ...
-checking for cos in -lm... yes
-*** BFD does not support target vax-dec-elf.
-*** Look in bfd/config.bfd for supported targets.
-make[1]: *** [Makefile:2715: configure-bfd] エラー 1
-make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.vax-elf' から出ます
-make: *** [Makefile:853: all] エラー 2
-%
-
-gdb-10.2.vax-elf/bfd/config.bfd:
-  vax-*-linux-*)
-    targ_defvec=vax_elf32_vec
-    ;;
-
-+ vax-*-elf)
-+   targ_defvec=vax_elf32_vec
-+   ;;
-
-  visium-*-elf)
-    targ_defvec=visium_elf32_vec
-    ;;
-
-上のように修正.
-
-% make
-...
-  CXX    init.o
-make[2]: *** 'gdb' に必要なターゲット '../sim/vax/libsim.a' を make するルールがありません.  中止.
-make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.vax-elf/gdb' から出ます
-make[1]: *** [Makefile:10065: all-gdb] エラー 2
-make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.vax-elf' から出ます
-make: *** [Makefile:853: all] エラー 2
-%
-
+  GEN    stamp-version
+  GEN    xml-builtin.c
+make[2]: *** 'gdb' に必要なターゲット '../sim/alpha/libsim.a' を make するルールがありません.  中止.
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.alpha-elf/gdb' から出ます
+make[1]: *** [Makefile:10068: all-gdb] エラー 2
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.alpha-elf' から出ます
+make: *** [Makefile:856: all] エラー 2
 
 % cd sim
-% tar xf ~/lang/53_GNU_tool/gcc_cross/PDP11/gdb/pdp11.1.tar 
-% mv pdp11 vax
-% cd vax
+% tar xf ~/lang/53_GNU_tool/gcc_cross/PDP11/gdb/pdp11.3.tar
+% mv pdp11 alpha
+% cd alpha
 
-pdp11 を vax に置換
+pdp11 を alpha に置換
 
 % make
 ...
-gcc -g -o nrun.o ../common/nrun.c -c -I../../include -I. -I../../bfd -DHAVE_CONFIG_H -I../common -DWITH_PROFILE=-1 -DWITH_ALIGNMENT=4
-make: *** 'run' に必要なターゲット '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/simhv312-2.mine/sim/libvax.a' を make するルールがありません.  中止.
+make: *** 'run' に必要なターゲット '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/simhv312-2.mine/sim/libalpha.a' を make するルールがありません.  中止.
 %
 
-普通であれば nop の動作を実現することをまずは目指すが, PDP11 のシミュレータで SIMH なるものが
-あることを既に知っているので, いきなり完成形を目指す.
+普通であれば nop の動作を実現することをまずは目指すが, PDP11, VAX のシミュレータで SIMH なる
+ものがあることを既に知っているので, いきなり完成形を目指す.
 
 % cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/simhv312-2.mine/sim/
 
-Makefile.vax を作成
+Makefile.alpha を作成
 
-% make -f Makefile.vax clean
-% make -f Makefile.vax
+% make -f Makefile.alpha clean
+% make -f Makefile.alpha
 
-libvax.a を作成. libvax.a は libpdp11.a と同一の名前のオブジェクトファイルを参照しているが
-コンパイルオプションが異なるようなので一旦 clean のターゲットを make しておく.
+libalpha.a を作成. libalpha.a は libpdp11.a や libvax.a と同一の名前のオブジェクト
+ファイルを参照しているがコンパイルオプションが異なるようなので一旦 clean のターゲットを make
+しておく.
 
-% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.vax-elf/sim/vax
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.alpha-elf/sim/alpha
 % make
 libsim.a と run を作成できている.
 
@@ -95,6 +69,10 @@ libsim.a と run を作成できている.
 一応ビルドできている.
 
 例によって nop を数個配置したプログラムを動作させてみる.
+
+と思ったが alpha-elf-as の生成したファイルにデバッグ情報がないことに気付く.
+
+★★★★★★★★★★★★ 2022.05.23 17:58 ここまで. ★★★★★★★★★★★★★
 
 プログラムのロード時にメモリを割り当てるように以下のように修正する.
 
