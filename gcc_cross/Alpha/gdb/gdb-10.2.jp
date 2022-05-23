@@ -1,29 +1,29 @@
-VAX の gdb
+Alpha の gdb
 
-PDP11 と同じようなやり方をしてみた:
+VAX と同じようなやり方をしてみた:
 
 % xz -d -c ../gdb-10.2-1.src/gdb-10.2.tar.xz | tar xf -
-% mv gdb-10.2 gdb-10.2.pdp11-elf
-% cd gdb-10.2.pdp11-elf/gdb
+% mv gdb-10.2 gdb-10.2.alpha-elf
+% cd gdb-10.2.alpha-elf/gdb
 
-d30v, fr30, z8k, i960, mmix, z80, i386, pdp11 と同じ対処をした.
+d30v, fr30, z8k, i960, mmix, z80, i386, pdp11, vax と同じ対処をした.
 
-gdb-10.2.i386-elf/gdb/configure.tgt:
+gdb-10.2.vax-elf/gdb/configure.tgt:
 
-vax-*-openbsd*)
-	# Target: OpenBSD/vax
-	gdb_target_obs="vax-tdep.o"
+alpha*-*-linux*)
+	# Target: Little-endian Alpha running Linux
+	gdb_target_obs="alpha-mdebug-tdep.o alpha-linux-tdep.o \
+			linux-tdep.o solib-svr4.o"
 	;;
-vax-*-*)
-	# Target: VAX
-	gdb_target_obs="vax-tdep.o"
++alpha*-*-elf)
++	gdb_target_obs="alpha-mdebug-tdep.o"
 +	gdb_sim=../sim/vax/libsim.a
-	;;
++	;;
+alpha*-*-netbsd* | alpha*-*-knetbsd*-gnu)
 
-x86_64-*-darwin*)
 
 % cd ..
-% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=vax-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=alpha-elf
 % make
 ...
 checking for cos in -lm... yes
