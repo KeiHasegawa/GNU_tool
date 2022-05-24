@@ -72,13 +72,15 @@ libsim.a と run を作成できている.
 
 と思ったが alpha-elf-as の生成したファイルにデバッグ情報がないことに気付く.
 
-★★★★★★★★★★★★ 2022.05.23 17:58 ここまで. ★★★★★★★★★★★★★
+2022.05.23 17:58 ここまで.
+
+2022.05.24 12:42 デバッグ情報を生成するように alpha-elf-as を修正した.
 
 プログラムのロード時にメモリを割り当てるように以下のように修正する.
 
   	      data_count += size;
   	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
-+ 	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
++ 	      sim_do_commandf(sd, "memory-region 0x%llx,0x%llx", lma, size);
   	      do_write (sd, lma, buffer, size);
   	      found_loadable_section = 1;
   	      free (buffer);
@@ -88,23 +90,60 @@ libsim.a と run を作成できている.
 +         bfd_vma vma = bfd_section_vma(s);
 +         bfd_size_type size = bfd_section_size(s);
 +         sim_do_command(sd, "memory-fill 0xcc");
-+         sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", vma, size);
++         sim_do_commandf(sd, "memory-region 0x%llx,0x%llx", vma, size);
 +       }
       }
 
 
-2022.05.19 14:52 の時点で以下のようなステータス
+2022.05.24 13:37 の時点で以下のようなステータス
 
-1. 0x100 番地に数個の nop を配置したプログラムをステップ実行できている
-2. main で停止して step, where, finsh コマンドを実行できている
-3. 簡易版 printf, puts, putchar が動作しているが一部まだ不完全
+o start や end にブレークポイントをセットすることができている.
+o ステップ実行すると以下のようにエラーメッセージが表示される:
 
-まだ完全ではないがこの時点での
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x10 lma 0x100
+Start address 0x100
+Transfer rate: 128 bits in <1 sec.
+Breakpoint 1 at 0x100: file test.S, line 3.
 
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.vax-elf/sim/vax/
+Breakpoint 1, start () at test.S:3
+3		nop
+(alpha-elf-gdb) s
+Cannot access memory at address 0x110  ★
+(alpha-elf-gdb) 
 
-を vax.1.tar として
 
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/simhv312-2.mine/sim/
+unsigned int
+alpha_read_insn (struct gdbarch *gdbarch, CORE_ADDR pc)
+{
+...
+  res = target_read_memory (pc, buf, sizeof (buf));  ★
+...  
+}
 
-を sim.4.tar としてアップロードしておく.
+(gdb) p/x pc
+$20 = 0x110        ★
+(gdb)
+
+0x110 から読み出している. pc の計算の仕方を確認してみる.
+
+
+	  while (cur_pc < (limit_pc + 80) && cur_pc < (start_pc + 80))
+	    {
+	      unsigned int word = alpha_read_insn (gdbarch, cur_pc);  ★
+
+cur_pc = 0x110 になっている. while の条件式とシミュレータの実装に整合性がない.
+そこで以下のように修正してみた:
+
+	  while (cur_pc < (limit_pc + 80) && cur_pc < (start_pc + 80))
+	    {
++	      ULONGEST dummy;
++	      if (!safe_read_memory_unsigned_integer(cur_pc, 4,
++						     BFD_ENDIAN_LITTLE, &dummy))
++		break;
+
+	      unsigned int word = alpha_read_insn (gdbarch, cur_pc);
+
+これで期待通り 0x100 番地に nop を数個配置したプログラムが期待通り動作している.
+
