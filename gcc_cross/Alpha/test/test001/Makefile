@@ -4,9 +4,9 @@ include ../Makefile.common
 
 test.o:test.S
 
-test.coff:test.o
-	alpha-coff-ld -o $@ $< -T ../default.x
+test.elf:test.o
+	alpha-elf-ld -o $@ $< -T ../default.x
 
-test.objdump:test.coff
+test.objdump:test.elf
 
 test.lof:test.log
