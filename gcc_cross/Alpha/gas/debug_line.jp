@@ -100,3 +100,79 @@ binutils-2.36.1.vax-elf/bfd/coff-alpha.c
 してもできていなさそう.
 
 そこで「PDP11」 => 「PDP11 の as」 => 「ELF 形式の対応」を参考にしようと考えた.
+
+static void
+emit_insn (struct alpha_insn *insn)
+{
+...
+  dwarf2_emit_insn (4);  ★
+
+ここにきている. pdp11-elf-as のときはこの呼び出しを入れることで .bss の次に .debug_line
+がくるようになっているが, その限りではないらしい.
+
+(gdb) b dwarf2_finish
+(gdb) run
+...
+dwarf2_finish のブレークポイントにヒット
+(gdb)
+
+  if ((!all_segs && emit_other_sections)
+      || (!emit_other_sections && !empty_debug_line))
+    /* If there is no line information and no non-empty .debug_info
+       section, or if there is both a non-empty .debug_info and a non-empty
+       .debug_line, then we do nothing.  */
+    return;   ★
+
+やはりここで返っている.
+
+(gdb) p all_segs
+$2 = (struct line_seg *) 0x0
+(gdb) p emit_other_sections
+$3 = 1
+(gdb) p emit_other_sections
+$4 = 1
+(gdb) p empty_debug_line
+$5 = 1
+(gdb)
+
+all_segs が 0 でないのが期待値だが 0 になっている. この値がセットされるのは get_line_subseg
+という函数で, その函数は dwarf2_emit_insn から呼び出されることが既に分かっている. そこで
+
+(gdb) b dwarf2_emit_insn
+(gdb) b get_line_subseg
+(gdb) run
+...
+dwarf2_emit_insn のブレークポイントにヒット
+(gdb)
+
+void
+dwarf2_emit_insn (int size)
+{
+  struct dwarf2_line_info loc;
+
+  if (debug_type != DEBUG_DWARF2
+      ? !dwarf2_loc_directive_seen
+      : !seen_at_least_1_file ())
+    return;   ★  ここで返っている.
+    
+
+(gdb) p debug_type
+$6 = DEBUG_UNSPECIFIED
+(gdb)
+
+これが原因らしい. debug_type は vax-elf-as であれば parse_args でセットされていた:
+
+(gdb) b parse_args
+(gdb) run
+...
+parse_args のブレークポイントにヒット.
+(gdb)
+
+以下で処理していた. そこで以下のように追加:
+
+    case 'g':
+      alpha_debug = 1;
++     debug_type = DEBUG_DWARF2;
+      break;
+
+この修正で期待通り .debug_line 等のセクションが出力されていることを確認した.
