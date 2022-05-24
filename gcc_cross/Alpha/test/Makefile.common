@@ -1,21 +1,21 @@
 %.o : %.S
-	alpha-coff-as -o $@ --gstabs $<
+	alpha-elf-as -o $@ -g $<
 
 %.o : %.c
-	alpha-coff-gcc -o $@ $< -g -c
+	alpha-elf-gcc -o $@ $< -g -c
 
-%.coff : %.o 
-	alpha-coff-ld -o $@ ../default.o $< -T ../default.x
+%.elf : %.o 
+	alpha-elf-ld -o $@ ../default.o $< -T ../default.x
 
-%.objdump : %.coff
-	alpha-coff-objdump -x -d -G $< > $@
+%.objdump : %.elf
+	alpha-elf-objdump -x -d -g $< > $@
 
-%.log : %.coff
-	wdog.exe -v alpha-coff-gdb -q -x gdbcom $< > $@
+%.log : %.elf
+	wdog.exe -v alpha-elf-gdb -q -x gdbcom $< > $@
 
 %.lof : %.log
 	wdog.exe -v diff $< $@
 	touch $@
 
 clean:
-	rm -f *.o *.s *.coff *.map *.objdump *.objcopy *.log TAGS *~
+	rm -f *.o *.s *.elf *.map *.objdump *.objcopy *.log TAGS *~
