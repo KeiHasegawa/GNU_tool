@@ -1,0 +1,97 @@
+cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.alpha-elf/gas
+
+M-x gdb
+gdb --annotate=3 ./as-new
+(gdb) run -o test.o -g test.S
+...
+[Inferior 1 (process 16722) exited normally]
+(gdb) 
+
+% alpha-elf-objdump -x -g test.o
+...
+.text セクションは生成されているが
+.debug_line セクションがない.
+%
+
+gdb から実行して再現している.
+
+(gdb) b bfd_set_section_contents
+(gdb) run
+...
+bfd_set_section_contents のブレークポイントにヒット
+(gdb) p section->name
+$2 = 0x81293c4 ".text"
+(gdb) c
+...
+[Inferior 1 (process 17161) exited normally]
+(gdb)
+.debug_line セクションに対して bfd_set_section_contents は呼び出されていない. 当然と
+言えば当然.
+
+(gdb) run
+...
+bfd_set_section_contents のブレークポイントにヒット
+(gdb) p section->next->name
+$3 = 0x8126442 ".data"
+(gdb) p section->next->next->name
+$4 = 0x8151352 ".bss"
+(gdb) p section->next->next->next->name
+Cannot access memory at address 0x0
+(gdb) 
+
+そもそも .debug_line がセクションリストに入っていない.
+期待通り動作している vax-elf-as と動作の比較を行なってみる.
+
+cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.vax-elf/gas
+
+M-x gdb
+gdb --annotate=3 ./as-new
+(gdb) b bfd_set_section_contents
+(gdb) run -o test.o -g test.S
+...
+bfd_set_section_contents のブレークポイントにヒット
+(gdb) p section->name
+$1 = 0x80eb438 ".text"
+(gdb) p section->next->name
+$2 = 0x80eb43e ".data"
+(gdb) p section->next->next->name
+$3 = 0x8109cd7 ".bss"
+(gdb) p section->next->next->next->name
+$4 = 0x80ed56e ".debug_line"                          ★
+(gdb) p section->next->next->next->next->name
+$5 = 0x80ed562 ".debug_info"
+(gdb) p section->next->next->next->next->next->name
+$6 = 0x80ed59a ".debug_abbrev"
+(gdb) p section->next->next->next->next->next->next->name
+$7 = 0x80ed5a8 ".debug_aranges"
+(gdb) p section->next->next->next->next->next->next->next->name
+$8 = 0x80ed5b7 ".debug_str"
+(gdb) p section->next->next->next->next->next->next->next->next->name
+Cannot access memory at address 0x0
+(gdb) 
+
+当然であるがセクションリストに .debug_line 等がある. .bss セクションの次が .debug_line
+セクションになるタイミングを調査する.
+
+(gdb) b main
+(gdb) run
+...
+main のブレークポイントにヒット
+(gdb) p (char*)0x80eb438
+$9 = 0x80eb438 ".text"
+(gdb) p (char*)0x80ed56e
+$10 = 0x80ed56e ".debug_line"    ★
+(gdb)
+
+つまり静的な変数で既にリストに入っているということ. 
+
+
+binutils-2.36.1.vax-elf/bfd/coff-alpha.c
+
+というファイルがあることに気付く. そこで一旦これまでインストールしたものを削除した:
+
+% rm -f /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/alpha-elf-*
+
+% rm -f -r /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/alpha-elf
+
+もう一度 --target=alpha-coff でインストールをトライ.
