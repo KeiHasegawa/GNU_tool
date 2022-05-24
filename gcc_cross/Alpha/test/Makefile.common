@@ -1,0 +1,21 @@
+%.o : %.S
+	alpha-coff-as -o $@ --gstabs $<
+
+%.o : %.c
+	alpha-coff-gcc -o $@ $< -g -c
+
+%.coff : %.o 
+	alpha-coff-ld -o $@ ../default.o $< -T ../default.x
+
+%.objdump : %.coff
+	alpha-coff-objdump -x -d -G $< > $@
+
+%.log : %.coff
+	wdog.exe -v alpha-coff-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.o *.s *.coff *.map *.objdump *.objcopy *.log TAGS *~

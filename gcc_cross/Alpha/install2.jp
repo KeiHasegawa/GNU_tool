@@ -1,0 +1,165 @@
+(*1) binutils のインストール
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/
+% xz -d -c ../binutils-2.36.1-2.src/binutils-2.36.1.tar.xz
+% mv binutils-2.36.1 binutils-2.36.1.alpha-coff
+% cd binutils-2.36.1.alpha-coff
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=alpha-coff
+% make
+...
+checking whether byte ordering is bigendian... no
+configure: error: GAS does not know what format to use for target alpha-unknown-coff
+make[1]: *** [Makefile:4893: configure-gas] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.alpha-coff' から出ます
+make: *** [Makefile:856: all] エラー 2
+exit 1
+%
+
+binutils-2.36.1.alpha-coff/Makefile:
+
+configure-gas: 
+	@r=`${PWD_COMMAND}`; export r; \
+	...
+	$(SHELL) -vx \  ★ -vx を付ける.
+
+% make configure-gas
+...
+
+
+以下のように修正:
+binutils-2.36.1.alpha-coff/gas/configure.tgt:
+...
+  alpha-*-osf*)				fmt=ecoff ;;
++ alpha-*-coff)				fmt=ecoff ;;
+  alpha-*-linux*ecoff*)			fmt=ecoff ;;
+...
+
+% make
+...
+checking size of void *... 4
+*** ld does not support target alpha-unknown-coff
+*** see ld/configure.tgt for supported targets
+make[1]: *** [Makefile:7167: configure-ld] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.alpha-coff' から出ます
+make: *** [Makefile:856: all] エラー 2
+%
+
+以下のように修正:
+binutils-2.36.1.alpha-coff/ld/configure.tgt:
+
+alpha*-*-linux*ecoff*)	targ_emul=alpha
+			targ_extra_emuls=elf64alpha
+			tdir_elf64alpha=`echo ${targ_alias} | sed -e 's/ecoff//'`
+			;;
++alpha-*-coff)		targ_emul=alpha
++			targ_extra_emuls=elf64alpha
++			tdir_elf64alpha=`echo ${targ_alias} | sed -e 's/coff//'`
++			;;
+alpha*-*-linux-*)	targ_emul=elf64alpha
+
+% make
+...
+libtool: link: gcc -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -DELF_LIST_OPTIONS=TRUE -DELF_SHLIB_LIST_OPTIONS=TRUE -DELF_PLT_UNWIND_LIST_OPTIONS=FALSE -g -O2 -o ld-new ldgram.o ldlex-wrapper.o lexsup.o ldlang.o mri.o ldctor.o ldmain.o ldwrite.o ldexp.o ldemul.o ldver.o ldmisc.o ldfile.o ldcref.o plugin.o ldbuildid.o ealpha.o eelf64alpha.o ldelf.o ldelfgen.o  ../bfd/.libs/libbfd.a -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.alpha-coff/zlib ../libctf/.libs/libctf.a /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.alpha-coff/bfd/.libs/libbfd.a -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.alpha-coff/libctf/../libiberty -liberty ../libiberty/libiberty.a -lz -ldl
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: eelf64alpha.o: in function `gldelf64alpha_handle_option':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.alpha-coff/ld/eelf64alpha.c:545: undefined reference to `elf64_alpha_use_secureplt'
+...
+
+先ほどの修正をさらに修正してみた:
+			;;
++alpha-*-coff)		targ_emul=alpha
+-			targ_extra_emuls=elf64alpha
++			tdir_elf64alpha=`echo ${targ_alias} | sed -e 's/coff//'`
++			;;
+alpha*-*-linux-*)	targ_emul=elf64alpha
+
+% make
+...
+libtool: link: gcc -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -DELF_LIST_OPTIONS=FALSE -DELF_SHLIB_LIST_OPTIONS=FALSE -DELF_PLT_UNWIND_LIST_OPTIONS=FALSE -g -O2 -o ld-new ldgram.o ldlex-wrapper.o lexsup.o ldlang.o mri.o ldctor.o ldmain.o ldwrite.o ldexp.o ldemul.o ldver.o ldmisc.o ldfile.o ldcref.o plugin.o ldbuildid.o ealpha.o ldelf.o ldelfgen.o  ../bfd/.libs/libbfd.a -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.alpha-coff/zlib ../libctf/.libs/libctf.a /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.alpha-coff/bfd/.libs/libbfd.a -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.alpha-coff/libctf/../libiberty -liberty ../libiberty/libiberty.a -lz -ldl
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: ldelf.o: in function `ldelf_check_needed':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.alpha-coff/ld/ldelf.c:951: undefined reference to `bfd_elf_get_dyn_lib_class'
+...
+
+以下のように修正:
+binutils-2.36.1.alpha-coff/ld/Makefile:
+-EMUL_EXTRA_OFILES =  ldelf.o ldelfgen.o
++EMUL_EXTRA_OFILES =
+
+% make
+一応成功
+% make install
+
+
+% cd /home/khasegawa/lang/53_GNU_tool/gcc_cross/Alpha/test/test001
+% make -n test.objdump
+alpha-coff-as -o test.o --gstabs test.S
+alpha-coff-ld -o test.coff test.o -T ../default.x
+alpha-coff-objdump -x -d -G test.coff > test.objdump
+% make test.objdump
+
+test.objdump は以下
+
+セクション:
+Idx Name          Size      VMA               LMA               File off  Algn
+  0 .text         00000010  0000000000000100  0000000000000100  00000100  2**4
+                  CONTENTS, ALLOC, LOAD, CODE
+SYMBOL TABLE:
+[  0] e 0000000000001000 st 1 sc 1 indx fffff     stack
+[  1] l 0000000000000000 st b sc 1 indx a     test.S
+      End+1 シンボル: 11
+[  2] l 00000000ffffffff st 0 sc b indx 8f300     @stabs
+[  3] l 0000000000000100 st 5 sc 1 indx 8f364     test.S
+[  4] l 0000000000000100 st 5 sc 1 indx 3     
+[  5] l 0000000000000104 st 5 sc 1 indx 4     
+[  6] l 0000000000000108 st 5 sc 1 indx 5     
+[  7] l 000000000000010c st 5 sc 1 indx 7     
+[  8] l 0000000000000100 st 5 sc 1 indx fffff     start
+[  9] l 000000000000010c st 5 sc 1 indx fffff     end
+[ 10] l 0000000000000000 st 8 sc 1 indx 0     test.S
+      最初のシンボル: 1
+
+
+
+セクション .text の逆アセンブル:
+
+0000000000000100 <stack-0xf00>:
+ 100:	1f 04 ff 47 	nop	
+ 104:	1f 04 ff 47 	nop	
+ 108:	1f 04 ff 47 	nop	
+ 10c:	1f 04 ff 47 	nop	
+
+これはおそらく行番号情報が出ていない.
+以下は z8k-coff-objdump の結果
+
+セクション:
+Idx Name          Size      VMA       LMA       File off  Algn
+  0 .text         00000008  00000100  00000100  000000a8  2**1
+                  CONTENTS, ALLOC, LOAD, CODE
+  1 .stab         00000048  00000000  00000000  000000b0  2**1   ★
+                  CONTENTS
+  2 .stabstr      0000000f  00000000  00000000  000000f8  2**0   ★
+                  CONTENTS
+SYMBOL TABLE:
+[  0](sec -2)(fl 0x00)(ty   0)(scl 103) (nx 1) 0x00000000 fake
+File 
+[  2](sec  1)(fl 0x00)(ty   0)(scl   6) (nx 0) 0x00000100 L0F0
+[  3](sec  1)(fl 0x00)(ty   0)(scl   6) (nx 0) 0x00000100 start
+[  4](sec  1)(fl 0x00)(ty   0)(scl   6) (nx 0) 0x00000100 L0L0
+...
+test.S:
+/* file test.S line 3 addr 0x100 */  ★
+/* file test.S line 4 addr 0x102 */  ★
+/* file test.S line 5 addr 0x104 */  ★
+/* file test.S line 7 addr 0x106 */  ★
+
+そして以下に気付く:
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.alpha-coff/bfd
+% ls *alpha*
+coff-alpha.c  coff-alpha.lo  cpu-alpha.c  cpu-alpha.lo	elf64-alpha.c
+coff-alpha.j  coff-alpha.o   cpu-alpha.j  cpu-alpha.o	vms-alpha.c
+%
+
+初回のインストールではおそらく elf64-alpha.c がビルド対象で, 今回は coff-alpha.c が
+ビルド対象になっている.
+
+さてどうしたものか. アセンブラレベルのデバッグ情報が欲しいだけなのだが.
