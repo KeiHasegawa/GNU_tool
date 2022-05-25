@@ -1,0 +1,15 @@
+*** gcc-10.2.0.org/gcc/config.gcc	2021-10-16 10:31:18.000000000 +0900
+--- gcc-10.2.0.alpha-elf.mine/gcc/config.gcc	2022-05-25 13:58:50.000000000 +0900
+***************
+*** 1121,1126 ****
+--- 1121,1130 ----
+  	tmake_file="${tmake_file} alpha/t-linux alpha/t-alpha"
+  	extra_options="${extra_options} alpha/elf.opt"
+  	;;
++ alpha-*-elf)	
++ 	tm_file="${tm_file} dbxelf.h elfos.h"
++ 	tmake_file="${tmake_file} alpha/t-alpha"
++ 	;;
+  alpha*-*-netbsd*)
+  	tm_file="elfos.h ${tm_file} ${nbsd_tm_file} alpha/elf.h alpha/netbsd.h"
+  	tmake_file="${tmake_file} alpha/t-alpha"
