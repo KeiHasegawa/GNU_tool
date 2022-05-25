@@ -1,0 +1,148 @@
+MC68000 の gdb
+
+Alpha と同じようなやり方をしてみた:
+
+% xz -d -c ../gdb-10.2-1.src/gdb-10.2.tar.xz | tar xf -
+% mv gdb-10.2 gdb-10.2.m68k-elf
+% cd gdb-10.2.m68k-elf/gdb
+
+d30v, fr30, z8k, i960, mmix, z80, i386, pdp11, vax, alpha と同じ対処をした.
+
+gdb-10.2.m68k-elf/gdb/configure.tgt:
+
+
+
+% cd ..
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=alpha-elf
+% make
+...
+  GEN    stamp-version
+  GEN    xml-builtin.c
+make[2]: *** 'gdb' に必要なターゲット '../sim/alpha/libsim.a' を make するルールがありません.  中止.
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.alpha-elf/gdb' から出ます
+make[1]: *** [Makefile:10068: all-gdb] エラー 2
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.alpha-elf' から出ます
+make: *** [Makefile:856: all] エラー 2
+
+% cd sim
+% tar xf ~/lang/53_GNU_tool/gcc_cross/PDP11/gdb/pdp11.3.tar
+% mv pdp11 alpha
+% cd alpha
+
+pdp11 を alpha に置換
+
+% make
+...
+make: *** 'run' に必要なターゲット '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/simhv312-2.mine/sim/libalpha.a' を make するルールがありません.  中止.
+%
+
+普通であれば nop の動作を実現することをまずは目指すが, PDP11, VAX のシミュレータで SIMH なる
+ものがあることを既に知っているので, いきなり完成形を目指す.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/simhv312-2.mine/sim/
+
+Makefile.alpha を作成
+
+% make -f Makefile.alpha clean
+% make -f Makefile.alpha
+
+libalpha.a を作成. libalpha.a は libpdp11.a や libvax.a と同一の名前のオブジェクト
+ファイルを参照しているがコンパイルオプションが異なるようなので一旦 clean のターゲットを make
+しておく.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.alpha-elf/sim/alpha
+% make
+libsim.a と run を作成できている.
+
+% cd ../../gdb
+% make
+一応ビルドできている.
+
+例によって nop を数個配置したプログラムを動作させてみる.
+
+と思ったが alpha-elf-as の生成したファイルにデバッグ情報がないことに気付く.
+
+2022.05.23 17:58 ここまで.
+
+2022.05.24 12:42 デバッグ情報を生成するように alpha-elf-as を修正した.
+
+プログラムのロード時にメモリを割り当てるように以下のように修正する.
+
+  	      data_count += size;
+  	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
++ 	      sim_do_commandf(sd, "memory-region 0x%llx,0x%llx", lma, size);
+  	      do_write (sd, lma, buffer, size);
+  	      found_loadable_section = 1;
+  	      free (buffer);
+  	    }
+  	}
++       else if (s->flags & SEC_ALLOC) {
++         bfd_vma vma = bfd_section_vma(s);
++         bfd_size_type size = bfd_section_size(s);
++         sim_do_command(sd, "memory-fill 0xcc");
++         sim_do_commandf(sd, "memory-region 0x%llx,0x%llx", vma, size);
++       }
+      }
+
+
+2022.05.24 13:37 の時点で以下のようなステータス
+
+o start や end にブレークポイントをセットすることができている.
+o ステップ実行すると以下のようにエラーメッセージが表示される:
+
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x10 lma 0x100
+Start address 0x100
+Transfer rate: 128 bits in <1 sec.
+Breakpoint 1 at 0x100: file test.S, line 3.
+
+Breakpoint 1, start () at test.S:3
+3		nop
+(alpha-elf-gdb) s
+Cannot access memory at address 0x110  ★
+(alpha-elf-gdb) 
+
+
+unsigned int
+alpha_read_insn (struct gdbarch *gdbarch, CORE_ADDR pc)
+{
+...
+  res = target_read_memory (pc, buf, sizeof (buf));  ★
+...  
+}
+
+(gdb) p/x pc
+$20 = 0x110        ★
+(gdb)
+
+0x110 から読み出している. pc の計算の仕方を確認してみる.
+
+
+	  while (cur_pc < (limit_pc + 80) && cur_pc < (start_pc + 80))
+	    {
+	      unsigned int word = alpha_read_insn (gdbarch, cur_pc);  ★
+
+cur_pc = 0x110 になっている. while の条件式とシミュレータの実装に整合性がない.
+そこで以下のように修正してみた:
+
+	  while (cur_pc < (limit_pc + 80) && cur_pc < (start_pc + 80))
+	    {
++	      ULONGEST dummy;
++	      if (!safe_read_memory_unsigned_integer(cur_pc, 4,
++						     BFD_ENDIAN_LITTLE, &dummy))
++		break;
+
+	      unsigned int word = alpha_read_insn (gdbarch, cur_pc);
+
+これで期待通り 0x100 番地に nop を数個配置したプログラムが期待通り動作している.
+
+2022.05.25 printf, puts, putchar のテストツールの機能を実装. この時点での
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.alpha-elf/sim/alpha
+
+を alpha.1.tar として
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/simhv312-2.mine/sim
+
+を sim.6.tar としてこのページにアップロードしておく.
