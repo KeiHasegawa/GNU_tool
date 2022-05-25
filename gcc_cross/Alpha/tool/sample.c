@@ -113,3 +113,17 @@ int main()
   h3();
   return 0;
 }
+
+void clear_area(char* b, char* e)
+{
+  while (b!=e)
+    *b++ = 0;
+}
+
+void f5(int a, int b)
+{
+  if (a != b)
+    f(a, b);
+  else
+    g();
+}
