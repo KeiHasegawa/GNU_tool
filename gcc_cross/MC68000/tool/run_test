@@ -1,0 +1,8 @@
+#! /bin/csh -vf
+
+m68k-elf-as -o start.o -g start.S || exit 1
+m68k-elf-gcc -o sample.s sample.c -S || exit 1
+m68k-elf-as -o sample.o -g sample.s || exit 1
+m68k-elf-ld -o sample.elf start.o sample.o -T sample.x || exit 1
+m68k-elf-objdump -x -d sample.elf > sample.objdump || exit 1
+m68k-elf-run --memory-fill 0xcc --memory-region 0x1b000,0x5000 sample.elf
