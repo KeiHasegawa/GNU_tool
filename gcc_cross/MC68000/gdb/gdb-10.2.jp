@@ -10,61 +10,69 @@ d30v, fr30, z8k, i960, mmix, z80, i386, pdp11, vax, alpha と同じ対処をし�
 
 gdb-10.2.m68k-elf/gdb/configure.tgt:
 
+m68*-*-aout* | m68*-*-coff* | m68*-*-elf* | m68*-*-rtems* | m68*-*-uclinux* | \
+fido-*-elf*)
+	# Target: Motorola m68k embedded
+	gdb_target_obs="m68k-tdep.o"
++	gdb_sim=../sim/m68k/libsim.a         ★
+	;;
 
 
 % cd ..
-% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=alpha-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=m68k-elf
 % make
 ...
   GEN    stamp-version
   GEN    xml-builtin.c
-make[2]: *** 'gdb' に必要なターゲット '../sim/alpha/libsim.a' を make するルールがありません.  中止.
-make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.alpha-elf/gdb' から出ます
+make[2]: *** 'gdb' に必要なターゲット '../sim/m68k/libsim.a' を make するルールがありません.  中止.
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.m68k-elf/gdb' から出ます
 make[1]: *** [Makefile:10068: all-gdb] エラー 2
-make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.alpha-elf' から出ます
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.m68k-elf' から出ます
 make: *** [Makefile:856: all] エラー 2
 
 % cd sim
-% tar xf ~/lang/53_GNU_tool/gcc_cross/PDP11/gdb/pdp11.3.tar
-% mv pdp11 alpha
-% cd alpha
+% tar xf ~/lang/53_GNU_tool/gcc_cross/Alpha/gdb/alpha.1.tar
+% mv alpha m68k
+% cd m68k
 
-pdp11 を alpha に置換
+alpha を m68k に置換
 
 % make
 ...
-make: *** 'run' に必要なターゲット '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/simhv312-2.mine/sim/libalpha.a' を make するルールがありません.  中止.
+make: *** 'run' に必要なターゲット '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/EASy68K/Sim68Kv5.16.1/libm68k.a' を make するルールがありません.  中止.
 %
 
-普通であれば nop の動作を実現することをまずは目指すが, PDP11, VAX のシミュレータで SIMH なる
-ものがあることを既に知っているので, いきなり完成形を目指す.
+インターネットを検索したところ EASy68K というシミュレータを開発されている方がいたので
+それを利用させていただくことにした:
 
-% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/simhv312-2.mine/sim/
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/
+% mkdir EASy68K
+% cd EASy68K/
+% git init
+% git pull https://github.com/ProfKelly/EASy68K
+% unzip Sim68Kv5.16.1.zip
+% cd Sim68Kv5.16.1
 
-Makefile.alpha を作成
+このソースコードは Borland C++ Builder 6.0 でビルドできるらしいのだが自分は利用しないので
+このソースコードを自分用に直接修正することにする.
 
-% make -f Makefile.alpha clean
-% make -f Makefile.alpha
+まずは libm68k.a をビルドするための簡単な Makefile を作成しておく.
 
-libalpha.a を作成. libalpha.a は libpdp11.a や libvax.a と同一の名前のオブジェクト
-ファイルを参照しているがコンパイルオプションが異なるようなので一旦 clean のターゲットを make
-しておく.
+% make -f Makefile.lib
+...
+libm68k.a を作成
+%
 
-% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.alpha-elf/sim/alpha
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.m68k-elf/sim/m68k
 % make
-libsim.a と run を作成できている.
-
+...
+run と libsim.a をビルドできている.
 % cd ../../gdb
 % make
-一応ビルドできている.
+gdb をビルドできている.
+%
 
-例によって nop を数個配置したプログラムを動作させてみる.
-
-と思ったが alpha-elf-as の生成したファイルにデバッグ情報がないことに気付く.
-
-2022.05.23 17:58 ここまで.
-
-2022.05.24 12:42 デバッグ情報を生成するように alpha-elf-as を修正した.
+まずは 0x100 番地に nop を数個配置したプログラムを実行できることを目指す.
 
 プログラムのロード時にメモリを割り当てるように以下のように修正する.
 
@@ -84,65 +92,158 @@ libsim.a と run を作成できている.
 +       }
       }
 
-
-2022.05.24 13:37 の時点で以下のようなステータス
-
-o start や end にブレークポイントをセットすることができている.
-o ステップ実行すると以下のようにエラーメッセージが表示される:
+2022.05.26 10:57 現状 run コマンドを実行すると以下のようになっている:
 
 Reading symbols from test.elf...
 Connected to the simulator.
-Loading section .text, size 0x10 lma 0x100
+Loading section .text, size 0x8 lma 0x100
 Start address 0x100
-Transfer rate: 128 bits in <1 sec.
-Breakpoint 1 at 0x100: file test.S, line 3.
+Transfer rate: 64 bits in <1 sec.
+Breakpoint 1 at 0x100: file test.S, line 3.     ★
+(m68k-elf-gdb) run
+Starting program: /home/khasegawa/lang/53_GNU_tool/gcc_cross/MC68000/test/test001/test.elf 
+Warning:
+Cannot insert breakpoint 1.                ★
+Cannot access memory at address 0x100      ★
 
-Breakpoint 1, start () at test.S:3
-3		nop
-(alpha-elf-gdb) s
-Cannot access memory at address 0x110  ★
-(alpha-elf-gdb) 
+そしてここで 17 番のレジスタの値が問い合わされている.
 
+まずは run コマンドを契機にブレークポイントをセットできていない理由を調査する.
 
-unsigned int
-alpha_read_insn (struct gdbarch *gdbarch, CORE_ADDR pc)
+M-x gdb
+gdb --annotate=3 ./gdb
+(gdb) cd ~/lang/53_GNU_tool/gcc_cross/MC68000/test/test001/
+(gdb) run -q -x gdbcom test.elf
+
+gdb から実行しても再現している.
+
+(gdb) b run_command
+(gdb) run
+...
+run_command のブレークポイントにヒット
+(gdb) b write
+(gdb) c
+...
+write のブレークポイントにヒット
+(gdb) up
+static void
+insert_breakpoint_locations (void)
 {
 ...
-  res = target_read_memory (pc, buf, sizeof (buf));  ★
-...  
-}
+  tmp_error_stream.puts ("Warning:\n");  ★
 
-(gdb) p/x pc
-$20 = 0x110        ★
+そもそもこのメッセージが表示されることが期待した動作ではないから insert_breakpoint_locations
+が呼び出されること自体が期待した動作ではない.
+
+  => 当初はそう思われたが apha-elf-gdb でもこの函数は呼び出されていた. 上を実行したから
+     といって即警告メッセージが出るわけではないらしい.
+
+正しくできている alpha-elf-gdb と動作を比較してみる. 調べてみたところ alpha-elf-gdb でも
+insert_breakpoint_locations は呼び出されていた.
+改めて m68k-elf-gdb で問題のメッセージを出しているところを確認した:
+
+static int
+insert_bp_location (struct bp_location *bl,
+		    struct ui_file *tmp_error_stream,
+		    int *disabled_breaks,
+		    int *hw_breakpoint_error,
+		    int *hw_bp_error_explained_already)
+{
+...
+		  if (bp_excpt.message == NULL)
+		    {
+		      std::string message
+			= memory_error_message (TARGET_XFER_E_IO,
+						bl->gdbarch, bl->address);
+
+		      fprintf_unfiltered (tmp_error_stream,
+				★	  "Cannot insert breakpoint %d.\n" ★
+					  "%s\n",
+					  bl->owner->number, message.c_str ());
+		    }
+
+
+この函数の動作を比較してみる. 動作として違いが出るのは以下:
+
+      if (bp_excpt.reason != 0)   ★
+	{
+
+alpha-elf-gdb ではこの条件が成立しない. つまりエラーが発生していない. 一方 m68k-elf-gdb
+ではこの条件が成立している. そしてエラーメッセージが出力されている.
+この値がセットされているのは以下:
+
+	  try
+	    {
+	      int val;
+
+	      val = bl->owner->ops->insert_location (bl);
+	      if (val)
+		bp_excpt = gdb_exception {RETURN_ERROR, GENERIC_ERROR}; ★
+	    }
+
+実は既にこの時点で動作に違いが出ていたが気付かなかった. つまり val の値が 0 に
+なっているのが正常動作の alpha-elf-gdb で val の値が -1 になっているのが
+m68k-elf-gdb.
+
+int
+default_memory_insert_breakpoint (struct gdbarch *gdbarch,
+				  struct bp_target_info *bp_tgt)
+{
+...
+  val = target_read_memory (addr, readbuf, bplen);  ★
+
+
+(gdb) p val
+$6 = -1                    ★
+(gdb) p/x addr
+$7 = 0x100
 (gdb)
 
-0x110 から読み出している. pc の計算の仕方を確認してみる.
+そもそも期待しない動作. メモリは割り当てられているはずだが読み出しでエラーしている.
+単純に sim_read で 0 が返っている. これが直接の原因らしい.
 
+run コマンドを実行する前にメモリ割り当てを確認してみた:
 
-	  while (cur_pc < (limit_pc + 80) && cur_pc < (start_pc + 80))
-	    {
-	      unsigned int word = alpha_read_insn (gdbarch, cur_pc);  ★
+(m68k-elf-gdb) sim memory-info
+Memory maps:
+ memory region 0xffffffff,0xffffffff
+(m68k-elf-gdb)
 
-cur_pc = 0x110 になっている. while の条件式とシミュレータの実装に整合性がない.
-そこで以下のように修正してみた:
+これがそもそも期待しない結果 0x100 に 8 バイト割り当てられていない.
+そして以下に気付いた:
 
-	  while (cur_pc < (limit_pc + 80) && cur_pc < (start_pc + 80))
-	    {
-+	      ULONGEST dummy;
-+	      if (!safe_read_memory_unsigned_integer(cur_pc, 4,
-+						     BFD_ENDIAN_LITTLE, &dummy))
-+		break;
+ 	      sim_do_commandf(sd, "memory-region 0x%llx,0x%llx", lma, size); ★
 
-	      unsigned int word = alpha_read_insn (gdbarch, cur_pc);
+書式が %llx なっている %lx が正しい. Alpha のものをコピーしたためにこうなった.
 
-これで期待通り 0x100 番地に nop を数個配置したプログラムが期待通り動作している.
+2022.05.26 14:37 現状 0x100 番地に nop を数個配置したプログラムを期待通り動作させる
+ことができている.
 
-2022.05.25 printf, puts, putchar のテストツールの機能を実装. この時点での
+2022.05.26 16:45 現状 main で停止し, step, where, finish コマンドが期待通り動作し
+ている.
 
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.alpha-elf/sim/alpha
+2022.05.26 18:24 現状 printf, puts, putchar がほぼできている. これを実装しているときに
+気付いたことは
 
-を alpha.1.tar として
+1. long double の引数に対して fmov 命令をコンパイラが生成しているが, シミュレータが未対応
+   であるということ
 
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/simhv312-2.mine/sim
+2. .bss の初期化で
 
-を sim.6.tar としてこのページにアップロードしておく.
+    clr.b	(%d0)
+
+    を実行しているが対象アドレスを間違えている. しかし %d0 ではなくて %a0 を使用すれば
+    期待通りできている. そういうものなのだろうか...
+
+この時点での
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.m68k-elf/sim/m68k
+
+を m68k.1.tar として
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/EASy68K/Sim68Kv5.16.1
+
+を Sim68Kv5.16.1.1.tar としてアップロードしておく.
+
+    
+    
