@@ -1,0 +1,33 @@
+ns32-elf-objdump で以下のエラーメッセージが生成される件の調査
+
+ns32k-elf-objdump: BFD デフォルトターゲットを `ns32k-unknown-elf' に設定できません: invalid bfd target
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf/binutils
+M-x gdb
+gdb --annotate=3 ./objdump
+(gdb) run -x ../gas/test.o
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf/binutils/objdump: BFD デフォルトターゲットを `ns32k-unknown-elf' に設定できません: invalid bfd target
+[Inferior 1 (process 8474) exited with code 01]
+(gdb)
+
+gdb から再現できている. 問題のメッセージは以下
+
+void
+set_default_bfd_target (void)
+{
+  /* The macro TARGET is defined by Makefile.  */
+  const char *target = TARGET;
+
+  if (! bfd_set_default_target (target))
+    fatal (_("can't set BFD default target to `%s': %s"),  ★
+	   target, bfd_errmsg (bfd_get_error ()));
+}
+
+TARGET のマクロは config.h で定義されていた. そこで以下のように修正:
+
+/* Configured target name. */
+-#define TARGET "ns32k-unkown-elf"
++#define TARGET "ns32k-elf"
+
+これでビルドし直して期待通り動作している.
