@@ -1,0 +1,51 @@
+(*0) NS32000
+
+https://ja.wikipedia.org/wiki/NS320xx
+
+(*1) binutilis のインストール
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/
+% xz -d -c ../binutils-2.36.1-2.src/binutils-2.36.1.tar.xz | tar xf -
+% mv binutils-2.36.1 binutils-2.36.1.ns32k-elf
+% cd binutils-2.36.1.ns32k-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=ns32k-elf
+% make
+...
+checking for cos in -lm... yes
+*** BFD does not support target ns32k-unknown-elf.
+*** Look in bfd/config.bfd for supported targets.
+make[1]: *** [Makefile:2717: configure-bfd] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf' から出ます
+make: *** [Makefile:853: all] エラー 2
+%
+
+以下のように修正:
+binutils-2.36.1.ns32k-elf/bfd/config.bfd:
+
+  ns32k-pc532-mach* | ns32k-pc532-ux*)
+    targ_defvec=ns32k_aout_pc532mach_vec
+    targ_underscore=yes
+    ;;
++ ns32k-*-elf)
++   targ_defvec=ns32k_aout_pc532mach_vec
++   targ_underscore=yes
++   ;;
+  ns32k-*-netbsd* | ns32k-*-lites* | ns32k-*-openbsd*)
+
+  => この後のリンクエラーで気付くが上の修正だと ELF フォーマットは利用できない.
+     a.out フォーマットだと期待するデバッグ情報を生成できないので上の修正自体は機能しない.
+     
+% make
+...
+libtool: link: gcc -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -Wwrite-strings -I./../zlib -g -O2 -o as-new app.o as.o atof-generic.o compress-debug.o cond.o depend.o dwarf2dbg.o dw2gencfi.o ecoff.o ehopt.o expr.o flonum-copy.o flonum-konst.o flonum-mult.o frags.o hash.o input-file.o input-scrub.o listing.o literal.o macro.o messages.o output-file.o read.o remap.o sb.o stabs.o subsegs.o symbols.o write.o config/tc-ns32k.o config/obj-elf.o config/atof-ieee.o  ../opcodes/.libs/libopcodes.a ../bfd/.libs/libbfd.a -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf/zlib -lz ../libiberty/libiberty.a -ldl
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: config/obj-elf.o: in function `obj_elf_change_section':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf/gas/config/obj-elf.c:748: undefined reference to `bfd_elf_get_default_section_type'
+...
+%
+
+このエラーは「PDP11 の as」で述べられているエラーとおそらく同じ理由のエラーと推測できる.
+
+binutils-2.36.1.ns32k-elf/bfd/Makefile:
+
+BFD_BACKENDS =  pc532-mach.lo aout-ns32k.lo  ★ これ
+
