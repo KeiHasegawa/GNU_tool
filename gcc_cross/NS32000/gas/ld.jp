@@ -1,0 +1,100 @@
+ns32k-elf-ld で以下のエラーメッセージが生成される件の調査
+ns32k-elf-ld: target a.out-pc532-mach not found
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf/ld
+M-x gdb
+gdb --annotate=3 ./ld-new
+(gdb) run -o test.elf test.o -x ~/lang/53_GNU_tool/gcc_cross/NS32000/test/default.x
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf/ld/ld-new: target a.out-pc532-mach not found   ★
+[Inferior 1 (process 12809) exited with code 01]
+(gdb)
+
+  => 後で気付いたが -x は -T の間違いだった.
+
+gdb から再現できている. 問題のエラーメッセージを出力しているのは以下:
+
+  link_info.output_bfd = bfd_openw (name, output_target);
+
+  if (link_info.output_bfd == NULL)
+    {
+      if (bfd_get_error () == bfd_error_invalid_target)
+	einfo (_("%F%P: target %s not found\n"), output_target);  ★
+
+      einfo (_("%F%P: cannot open output file %s: %E\n"), name);
+    }
+
+(gdb) p output_target
+$2 = 0x8180208 "a.out-pc532-mach"       ★
+(gdb)
+
+当初これはアセンブラの生成結果に問題があるのかと思っていたが, .debug_line セクションを
+正しく生成できていない問題がありそれを修正してもまだ同じエラーメッセージが出ている. つまり
+理由はアセンブラの生成結果には関係ないらしい.
+
+static void
+open_outputxo (const char *name)
+{
+  output_target = lang_get_output_target ();
+...
+
+(gdb) p output_target
+$2 = 0x8180208 "a.out-pc532-mach"
+(gdb)
+
+ここで既に期待しない結果になっている.
+
+void
+lang_add_output_format (const char *format,
+			const char *big,
+			const char *little,
+			int from_script)
+{
+...
+      output_target = format;    ★
+
+
+(gdb) where
+#0  lang_add_output_format (format=0x8180208 "a.out-pc532-mach", big=0x8180220 "a.out-pc532-mach", little=0x8180238 "a.out-pc532-mach", from_script=1) at ldlang.c:8476
+#1  0x0804c98f in yyparse () at ldgram.y:335
+#2  0x0806143f in main (argc=6, argv=0xbffff5b4) at ./ldmain.c:407
+(gdb) up
+
+ldgram.y:335:
+	|	OUTPUT_FORMAT '(' NAME ',' NAME ',' NAME ')'
+		  { lang_add_output_format ($3, $5, $7, 1); }
+(gdb)
+
+自分のつもりではリンカスクリプトとして以下を読ませているつもりだが:
+~/lang/53_GNU_tool/gcc_cross/NS32000/test/default.x
+
+OUTPUT_FORMAT(a.out-pc532-mach, a.out-pc532-mach, a.out-pc532-mach);
+
+のような指定がどこかでされているということだろうか.
+と, ここで -x オプションは -T の間違いであることに気付く. 改めて
+
+(gdb) run -o test.elf test.o -T ~/lang/53_GNU_tool/gcc_cross/NS32000/test/default.x
+
+const char *
+lang_get_output_target (void)
+{
+...
+  return default_target;   ここで返している.
+}
+
+(gdb) p default_target
+$7 = 0x811421f "a.out-pc532-mach"  それがこれ
+(gdb)
+
+struct ld_emulation_xfer_struct ld_pc532macha_emulation =
+{
+...
+#if 0  
+  "a.out-pc532-mach",
+#else
+  "ns32k-elf",
+#endif  
+
+これっぽい. 期待通り動作している. これにより 0x100 番地に nop を 4 つ並べたプログラム
+を生成できている.
+
