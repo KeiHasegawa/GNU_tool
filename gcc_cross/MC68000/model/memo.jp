@@ -1,0 +1,135 @@
+cc1 の雛形
+
+「AARCH64」=>「cc1 の雛形」=>「メモ」 を参照.
+AARCH64 と同様の手順で cc1 の雛形をビルドすることができる.
+
+以下開発メモ
+
+現状 hello world 11 が m68k-elf-run で動作している. そしてどの rtx_insn* insn に
+対しても
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+のようにはしていない. これで -g オプションでコンパイルして m68k-elf-gdb で動作させたところ
+以下のようになっている:
+
+Connected to the simulator.
+Loading section .text, size 0x68 lma 0x100
+Loading section .rodata, size 0x10 lma 0x168
+Start address 0x100
+Transfer rate: 960 bits in <1 sec.
+Breakpoint 1 at 0x144: file a.c, line 10.
+
+Breakpoint 1, main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+f (a=<error reading variable: Cannot access memory at address 0x20000>, 
+    b=<error reading variable: Cannot access memory at address 0x20004>)
+    at a.c:4
+4	{
+#0  f (a=<error reading variable: Cannot access memory at address 0x20000>, 
+    b=<error reading variable: Cannot access memory at address 0x20004>)
+    at a.c:4
+#1  0x00000150 in main () at a.c:10
+0x00000150 in main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+Value returned is $1 = 11
+hello world 11
+
+おそらくだが f に適切にステップインできていない. そこで m68k::expand_prologue で生成している
+全ての rtx_insn* insn に対して
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+のようにしたところ以下のようになっている:
+
+Connected to the simulator.
+Loading section .text, size 0x68 lma 0x100
+Loading section .rodata, size 0x10 lma 0x168
+Start address 0x100
+Transfer rate: 960 bits in <1 sec.
+Breakpoint 1 at 0x144: file a.c, line 10.
+
+Breakpoint 1, main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+f (a=5, b=6) at a.c:5
+5	  return a + b; 
+#0  f (a=5, b=6) at a.c:5
+#1  0x0001fff8 in ?? ()                         ★
+#2  0x00000150 in main () at a.c:10
+hello world 11
+
+引数を正しく表示できているが, where コマンドの結果が間違っている.
+
+現状の .debug_frame は以下:
+
+00000000 00000010 ffffffff CIE
+  Version:               1
+  Augmentation:          ""
+  Code alignment factor: 2
+  Data alignment factor: -4
+  Return address column: 24
+
+  DW_CFA_def_cfa: r15 ofs 4
+  DW_CFA_offset: r24 at cfa-4
+  DW_CFA_nop
+  DW_CFA_nop
+
+00000014 00000014 00000000 FDE cie=00000000 pc=00000130..00000140
+  DW_CFA_advance_loc: 4 to 00000134
+  DW_CFA_offset: r14 at cfa-4
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_nop
+  DW_CFA_nop
+  DW_CFA_nop
+
+0000002c 00000024 00000000 FDE cie=00000000 pc=00000140..00000168
+  DW_CFA_advance_loc: 4 to 00000144
+  DW_CFA_offset: r14 at cfa-4
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_advance_loc: 4 to 00000148
+  DW_CFA_def_cfa_offset: 8
+  DW_CFA_advance_loc: 4 to 0000014c
+  DW_CFA_def_cfa_offset: 12
+  DW_CFA_advance_loc: 6 to 00000152
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_advance_loc: 2 to 00000154
+  DW_CFA_def_cfa_offset: 8
+  DW_CFA_advance_loc: 6 to 0000015a
+  DW_CFA_def_cfa_offset: 12
+  DW_CFA_advance_loc: 8 to 00000162
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_nop
+
+一方オリジナルの .debug_frrame は以下:
+
+00000000 00000010 ffffffff CIE
+  Version:               1
+  Augmentation:          ""
+  Code alignment factor: 2
+  Data alignment factor: -4
+  Return address column: 24
+
+  DW_CFA_def_cfa: r15 ofs 4
+  DW_CFA_offset: r24 at cfa-4
+  DW_CFA_nop
+  DW_CFA_nop
+
+00000014 00000014 00000000 FDE cie=00000000 pc=00000130..00000140
+  DW_CFA_advance_loc: 4 to 00000134
+  DW_CFA_offset: r14 at cfa-8
+  DW_CFA_def_cfa: r14 ofs 8
+  DW_CFA_nop
+  DW_CFA_nop
+
+0000002c 00000014 00000000 FDE cie=00000000 pc=00000140..00000168
+  DW_CFA_advance_loc: 4 to 00000144
+  DW_CFA_offset: r14 at cfa-8
+  DW_CFA_def_cfa: r14 ofs 8
+  DW_CFA_nop
+  DW_CFA_nop
+
+2022.05.27 11:58 根拠は全くないが以下を入れてビルド開始
+
+#define INCOMING_FRAME_SP_OFFSET 4
+
+2022.05.27 12:48 期待通り動作していることを確認した. これはもはや論理を超越している.
