@@ -45,3 +45,326 @@ binutils-2.36.1.ns32k-elf/bfd/Makefile:
 
 BFD_BACKENDS =  pc532-mach.lo aout-ns32k.lo  ★ これ
 
+「PDP11 の as」と同様の対応をしてみる. まずはリンクでエラーしないようにすることを目指す.
+以下のように修正:
+
+(1)
+binutils-2.36.1.ns32k-elf/bfd/Makefile:
+-BFD_BACKENDS =  pc532-mach.lo aout-ns32k.lo
++BFD_BACKENDS =  pc532-mach.lo elf-attrs.lo elf-strtab.lo elflink.lo \
+		elf-eh-frame.lo dwarf2.lo dwarf1.lo elf32.lo elf32-ns32.lo
+
+-TDEFAULTS =  -DDEFAULT_VECTOR=ns32k_aout_pc532mach_vec -DSELECT_VECS='&ns32k_aout_pc532mach_vec' -DSELECT_ARCHITECTURES='&bfd_ns32k_arch'
++TDEFAULTS =  -DDEFAULT_VECTOR=ns32k_elf32_vec -DSELECT_VECS='&ns32k_elf32_vec' -DSELECT_ARCHITECTURES='&bfd_ns32k_arch'
+-HAVEVECS = -DHAVE_ns32k_aout_pc532mach_vec
++HAVEVECS = -DHAVE_ns32k_elf32_vec
+
+(2)
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf/bfd
+% cp /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/bfd/elf32-pdp11.c elf32-ns32k.c  ★ pdp11-elf-as で作成したものをコピー
+
+elf32-ns32k.c の pdp11 を ns32k に置換
+
+(3)
+binutils-2.36.1.ns32k-elf/bfd/targets.c:
+extern const bfd_target ns32k_aout_pc532mach_vec;
+extern const bfd_target ns32k_aout_pc532nbsd_vec;
++extern const bfd_target ns32k_elf32_vec;                ★
+extern const bfd_target or1k_elf32_vec;
+
+% make clean
+% make
+
+% cd ../gas
+% make clean
+% make
+...
+libtool: link: gcc -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -Wwrite-strings -I./../zlib -g -O2 -o as-new app.o as.o atof-generic.o compress-debug.o cond.o depend.o dwarf2dbg.o dw2gencfi.o ecoff.o ehopt.o expr.o flonum-copy.o flonum-konst.o flonum-mult.o frags.o hash.o input-file.o input-scrub.o listing.o literal.o macro.o messages.o output-file.o read.o remap.o sb.o stabs.o subsegs.o symbols.o write.o config/tc-ns32k.o config/obj-elf.o config/atof-ieee.o  ../opcodes/.libs/libopcodes.a ../bfd/.libs/libbfd.a -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf/zlib -lz ../libiberty/libiberty.a -ldl
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: config/obj-elf.o: in function `obj_elf_change_section':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf/gas/config/obj-elf.c:748: undefined reference to `bfd_elf_get_default_section_type'
+...
+%
+
+これはリンクエラーを回避できていない.
+
+% cd ../bfd
+% ar t libbfd.a
+archive.o
+archures.o
+bfd.o
+bfdio.o
+bfdwin.o
+cache.o
+coff-bfd.o
+compress.o
+corefile.o
+elf-properties.o
+format.o
+hash.o
+init.o
+libbfd.o
+linker.o
+merge.o
+opncls.o
+reloc.o
+section.o
+simple.o
+stab-syms.o
+stabs.o
+syms.o
+targets.o
+binary.o
+ihex.o
+srec.o
+tekhex.o
+verilog.o
+pc532-mach.o
+elf-attrs.o
+elf-strtab.o
+elflink.o
+elf-eh-frame.o
+dwarf2.o
+dwarf1.o
+elf32.o
+elf32-ns32k.o
+cpu-ns32k.o
+%
+
+elf.o が入っていない. Makefile の修正に誤りがあったらしい.
+   => 単純に BFD_BACKENDS に elf.lo が入ていない
+
+% make clean ; make
+% cd ../gas
+% make clean ; make
+...
+libtool: link: gcc -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -Wwrite-strings -I./../zlib -g -O2 -o as-new app.o as.o atof-generic.o compress-debug.o cond.o depend.o dwarf2dbg.o dw2gencfi.o ecoff.o ehopt.o expr.o flonum-copy.o flonum-konst.o flonum-mult.o frags.o hash.o input-file.o input-scrub.o listing.o literal.o macro.o messages.o output-file.o read.o remap.o sb.o stabs.o subsegs.o symbols.o write.o config/tc-ns32k.o config/obj-elf.o config/atof-ieee.o  ../opcodes/.libs/libopcodes.a ../bfd/.libs/libbfd.a -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf/zlib -lz ../libiberty/libiberty.a -ldl
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: ../bfd/.libs/libbfd.a(cpu-ns32k.o): in function `_bfd_ns32k_final_link_relocate':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf/bfd/cpu-ns32k.c:800: undefined reference to `_bfd_ns32k_relocate_contents'
+...
+%
+
+Makefile の修正に誤りがあったらいしい:
+
+BFD_BACKENDS =  pc532-mach.lo elf.lo elf-attrs.lo elf-strtab.lo elflink.lo \
+		elf-eh-frame.lo dwarf2.lo dwarf1.lo elf32.lo elf32-ns32k.lo \
++		aout-ns32k.lo    ★
+
+% pushd ../bfd
+% make
+% pushd
+% make
+...
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: ../bfd/.libs/libbfd.a(elf32-ns32k.o): in function `elf_ns32k_info_to_howto':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf/bfd/elf32-ns32k.c:46: undefined reference to `howto_table_ns32k_tbl_sz'
+...
+%
+
+これは確か pdp11-elf-as で独自に入れた修正で, ns32k-elf-as に対応していなかった.
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.pdp11-elf/bfd/pdp11.c:
++unsigned int howto_table_pdp11_tbl_sz = TABLE_SIZE (howto_table_pdp11);
+
+そこで以下のように追加:
+
+binutils-2.36.1.ns32k-elf/bfd/aout-ns32k.c:
+unsigned int howto_table_ns32k_tbl_sz =
+  sizeof ns32k_aout_howto_table/sizeof ns32k_aout_howto_table[0];
+
+% pushd ; make
+% pushd ; make
+...
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: ../bfd/.libs/libbfd.a(elf32-ns32k.o): in function `elf_ns32k_info_to_howto':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf/bfd/elf32-ns32k.c:51: undefined reference to `howto_table_ns32k'
+...
+%
+
+配列の名前が違っていた.
+
+binutils-2.36.1.ns32k-elf/bfd/elf32-ns32k.c:
+-  extern reloc_howto_type howto_table_ns32k[];
++  extern reloc_howto_type ns32k_aout_howto_table[];
+-  cache_ptr->howto = howto_table_ns32k + r_type;
++  cache_ptr->howto = ns32k_aout_howto_table + r_type;
+
+% pushd ; make
+% pushd ; make
+...
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: ../bfd/.libs/libbfd.a(elf32-ns32k.o): in function `elf_ns32k_reloc_type_lookup':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf/bfd/elf32-ns32k.c:22: undefined reference to `aout_16_reloc_type_lookup'
+...
+%
+
+函数名が違っていた:
+
+-reloc_howto_type* aout_16_reloc_type_lookup(bfd *, bfd_reloc_code_real_type);
++reloc_howto_type* ns32k_aout_bfd_reloc_type_lookup(bfd *, bfd_reloc_code_real_type);
+
+static reloc_howto_type* 
+elf_ns32k_reloc_type_lookup(bfd* abfd,
+			    bfd_reloc_code_real_type code)
+{
+-  return aout_16_reloc_type_lookup(abfd, code);
++  return ns32k_aout_bfd_reloc_type_lookup(abfd, code);
+}
+
+% pushd ; make
+% pushd ; make
+一応成功
+
+nop を並べたアセンブラソース test.S を作成
+
+M-x gdb
+gdb --annotate=3 ./as-new
+(gdb) run -g -o test.o test.S
+Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf/gas/as-new -g -o test.o test.S
+Assembler messages:
+Fatal error: selected target format 'a.out-pc532-mach' unknown  ★
+[Inferior 1 (process 11320) exited with code 01]
+(gdb)
+
+エラーメッセージを出力しているのは以下:
+
+  else if (!(stdoutput = bfd_openw (name, TARGET_FORMAT)))
+    {
+      bfd_error_type err = bfd_get_error ();
+
+      if (err == bfd_error_invalid_target)
+	as_fatal (_("selected target format '%s' unknown"), TARGET_FORMAT);  ★
+
+TARGET_FORMAT はおそらくマクロ. define している箇所を調べてみた.
+
+#ifndef TARGET_FORMAT		/* Maybe defined in te-*.h.  */
+-#define TARGET_FORMAT		"a.out-pc532-mach"
++#define TARGET_FORMAT		"ns32k-elf"
+#endif
+
+指定する文字列は以下と合わせておく必要がある.
+
+#define TARGET_LITTLE_NAME		"ns32k-elf"
+
+% make
+
+(gdb) run
+...
+(gdb)
+一応アセンブル成功.
+
+% cd ..
+% make
+...
+checking size of void *... 4
+*** ld does not support target ns32k-unknown-elf
+*** see ld/configure.tgt for supported targets
+make[1]: *** [Makefile:7164: configure-ld] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf' から出ます
+make: *** [Makefile:853: all] エラー 2
+%
+
+以下のように修正:
+binutils-2.36.1.ns32k-elf/ld/configure.tgt:
+
+ns32k-pc532-mach* | ns32k-pc532-ux*)  targ_emul=pc532macha
+			targ_extra_ofiles=
+			;;
++ns32k-*elf)		targ_emul=pc532macha
++			targ_extra_ofiles=
++			;;
+ns32k-*-netbsd* | ns32k-pc532-lites*) targ_emul=ns32knbsd
+
+% make
+% make install
+
+インストールして使用して気付いたが以下のようにリンクでエラーする.
+
+% ns32k-elf-as -o test.o -g test.S
+% ns32k-elf-ld -o test.elf test.o -T ../default.x
+ns32k-elf-ld: BFD デフォルトターゲットを `ns32k-unknown-elf' に設定できません: invalid bfd target
+%
+
+
+M-x gdb
+gdb --annotate=3 ./ld-new
+
+(gdb) run -o test.elf test.o -x ~/lang/53_GNU_tool/gcc_cross/NS32000/test/default.x
+Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf/ld/ld-new -o test.elf test.o -x ~/lang/53_GNU_tool/gcc_cross/NS32000/test/default.x
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf/ld/ld-new: BFD デフォルトターゲットを `ns32k-unknown-elf' に設定できません: invalid bfd target
+[Inferior 1 (process 29605) exited with code 01]
+(gdb)
+
+gdb から再現している. エラーメッセージを出力しているのは以下
+
+  if (!bfd_set_default_target (TARGET))
+    {
+      einfo (_("%X%P: can't set BFD default target to `%s': %E\n"), TARGET);
+      xexit (1);
+    }
+
+binutils-2.36.1.ns32k-elf/ld/Makefile:
+ldmain.o: ldmain.c config.status
+	$(COMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ \
+	  -DDEFAULT_EMULATION='"$(EMUL)"' \
+	  -DBINDIR='"$(bindir)"' -DTOOLBINDIR='"$(tooldir)/bin"' \
+	  -DTARGET='"ns32k-unknown-elf"' -DTARGET_SYSTEM_ROOT=\"\" \   ★
+	  $(srcdir)/ldmain.c
+
+面倒なので Makefile を直接修正した. そしてビルド & インストールし直した.
+
+
+% ns32k-elf-as -o test.o -g test.S
+% ns32k-elf-ld -o test.elf test.o -T ../default.x
+ns32k-elf-ld: target a.out-pc532-mach not found             ★
+make: *** [Makefile:8: test.elf] エラー 1
+%
+
+期待したように修正できていないらしい. エラーメッセージは以下で出ているらしい:
+
+  link_info.output_bfd = bfd_openw (name, output_target);
+
+  if (link_info.output_bfd == NULL)
+    {
+      if (bfd_get_error () == bfd_error_invalid_target)
+	einfo (_("%F%P: target %s not found\n"), output_target);  ★
+
+      einfo (_("%F%P: cannot open output file %s: %E\n"), name);
+    }
+
+(gdb) p output_target
+$2 = 0x8180208 "a.out-pc532-mach"       ★
+(gdb)
+
+どこかで強制的にセットされているのだろうか.
+
+これとは関係あるかどうか不明だがアセンブルしたオブジェクトファイルをダンプしてみた:
+% ns32k-elf-objdump -x test.o
+ns32k-elf-objdump: BFD デフォルトターゲットを `ns32k-unknown-elf' に設定できません: invalid bfd target
+%
+
+どうやらリンカだけの問題ではないらしい.
+
+この段階になってアセンブラが期待した動作をしているのが大分怪しくなってきた.
+
+% cd ../gas
+M-x gdb
+gdb --annotate=3 ./as-new
+(gdb) b bfd_set_section_contents
+(gdb) run -o test.o -g test.S             ★ -g オプション付き
+...
+bfd_set_section_contents のブレークポイントにヒット
+(gdb) p section->name
+$1 = 0x80ef43c ".text"
+(gdb) c
+Continuing.
+[Inferior 1 (process 31527) exited normally]
+(gdb) 
+
+つまり本来生成されるはずの .debug_line セクションが生成されていない.
+
+現状の問題点を整理すると
+
+(1) -g オプションで .debug_line セクションが生成されていない
+(2) ns32k-elf-objdump で以下のエラーメッセージが生成される:
+
+ns32k-elf-objdump: BFD デフォルトターゲットを `ns32k-unknown-elf' に設定できません: invalid bfd target
+
+(3) ns32k-elf-ld で以下のエラーメッセージが生成される:
+ns32k-elf-ld: target a.out-pc532-mach not found

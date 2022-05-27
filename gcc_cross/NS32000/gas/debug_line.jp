@@ -1,0 +1,81 @@
+-g オプションで .debug_line セクションが生成されていない件
+
+「PDP11 の as」でも解析したが .debug_line セクションが生成されるきっかけは
+dwarf2_emit_insn の呼び出しでそれはターゲット固有部分で呼び出す必要があった.
+
+だから今回 ELF を生成するようにアセンブラをビルドしたのだが, 改めてターゲット固有部を
+修正する必要があったということ.
+
+(gdb) b md_assemble
+(gdb) run -o test.o -g test.S
+...
+md_assemble のブレークポイントにヒット
+(gdb)
+
+binutils-2.36.1.ns32k-elf/gas/config/tc-ns32k.c:
+void
+md_assemble (char *line)
+{
+  freeptr = freeptr_static;
+  parse (line, 0);		/* Explode line to more fix form in iif.  */
+  convert_iif ();		/* Convert iif to frags, fix's etc.  */
+#ifdef SHOW_NUM
+  printf (" \t\t\t%s\n", line);
+#endif
+}
+
+ターゲット固有部になっている. test.S は 4 つの nop で .text は
+
+a2a2a2a2
+
+になっている. つまりこの test.S だけにとりあえず対応するだけであれば以下のように修正すれば
+よいことになる:
+
+void
+md_assemble (char *line)
+{
+  freeptr = freeptr_static;
+  parse (line, 0);		/* Explode line to more fix form in iif.  */
+  convert_iif ();		/* Convert iif to frags, fix's etc.  */
+#ifdef SHOW_NUM
+  printf (" \t\t\t%s\n", line);
+#endif
++ if (OUTPUT_FLAVOR == bfd_target_elf_flavour)  ★
++   dwarf2_emit_insn(1);                        ★
+}
+
+暫定的に上のように修正することで bfd_set_section_contents が .debug_line セクション
+等に対して呼び出されていることを確認した.
+
+命令のオペコードのバイト数は上のコードならば parse でそれを決定しているはずだから一旦上の
+修正をキャンセルする.
+
+static int
+parse (const char *line, int recursive_level)
+{
+...
+      desc = (struct ns32k_opcode *) str_hash_find (inst_hash_handle, line);
+...
+
+  /* Build opcode iif-entry.  */
+  iif.instr_size = desc->opcode_size / 8;
+
+(gdb) p *desc
+$6 = {name = 0x80f7a5d "nop", opcode_id_size = 8 '\b', opcode_size = 8 '\b', 
+  opcode_seed = 162, operands = 0x80f750a "", im_size = 0 '\000', 
+  default_args = 0x80f750a "", default_modec = 20 '\024', 
+  default_model = 20 '\024'}
+(gdb) p/x 162
+$8 = 0xa2        ★
+(gdb) 
+
+どうやら desc->opcode_size / 8 が現在アセンブルしている命令のサイズらしい.
+そこで以下のように修正:
+
+  /* Build opcode iif-entry.  */
+  iif.instr_size = desc->opcode_size / 8;
++ if (OUTPUT_FLAVOR == bfd_target_elf_flavour)  ★
++   dwarf2_emit_insn(iif.instr_size);           ★
+  IIF (1, 1, iif.instr_size, desc->opcode_seed, 0, 0, 0, 0, 0, 0, -1, 0);
+
+これで期待通り .debug_line セクション等が出ている(はず).
