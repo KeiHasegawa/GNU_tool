@@ -1,0 +1,167 @@
+NS32000 の gdb
+
+MC68000 と同じようなやり方をしてみた:
+
+% xz -d -c ../gdb-10.2-1.src/gdb-10.2.tar.xz | tar xf -
+% mv gdb-10.2 gdb-10.2.ns32k-elf
+% cd gdb-10.2.ns32k-elf/gdb
+
+d30v, fr30, z8k, i960, mmix, z80, i386, pdp11, vax, alpha, m68k と同じ対処をした.
+
+gdb-10.2.ns32k-elf/gdb/configure.tgt:
+
+h8300-*-*)
+	# Target: H8300 processor
+	gdb_target_obs="h8300-tdep.o"
+	gdb_sim=../sim/h8300/libsim.a
+	;;
+
++ns32k-*-*)
++	gdb_target_obs="ns32k-tdep.o"
++	gdb_sim=../sim/ns32k/libsim.a
++	;;
+
+hppa*-*-linux*)
+
+% cp ~/lang/53_GNU_tool/gcc_cross/MCORE/gdb/mcore-tdep.c.001 ns32k-tdep.c
+
+mcore を ns32k に置換
+
+% cd ..
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=ns32k-elf
+% make
+...
+checking for cos in -lm... yes
+*** BFD does not support target ns32k-unknown-elf.
+*** Look in bfd/config.bfd for supported targets.
+make[1]: *** [Makefile:2715: configure-bfd] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.ns32k-elf' から出ます
+make: *** [Makefile:853: all] エラー 2
+%
+
+以下のように修正:
+gdb-10.2.ns32k-elf/bfd/config.bfd:
+
+  ns32k-pc532-mach* | ns32k-pc532-ux*)
+    targ_defvec=ns32k_aout_pc532mach_vec
+    targ_underscore=yes
+    ;;
++ ns32k-*-elf)
++   targ_defvec=elf32_ns32k_vec
++   targ_underscore=yes
++   ;;
+  ns32k-*-netbsd* | ns32k-*-lites* | ns32k-*-openbsd*)
+    targ_defvec=ns32k_aout_pc532nbsd_vec
+    targ_underscore=yes
+    ;;
+
+% make
+...
+checking for cos in -lm... yes
+configure: error: *** unknown target vector elf32_ns32k_vec
+make[1]: *** [Makefile:2715: configure-bfd] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.ns32k-elf' から出ます
+make: *** [Makefile:853: all] エラー 2
+%
+
+Makefile を以下のように修正:
+configure-bfd: 
+	@r=`${PWD_COMMAND}`; export r; \
+...
+	$(SHELL) -vx \           ★ -vx を付加
+
+% make
+...
+    xc16x_elf32_vec)		 tb="$tb elf32-xc16x.lo elf32.lo $elf" ;;
+    xgate_elf32_vec)		 tb="$tb elf32-xgate.lo elf32.lo $elf" ;;
+    xstormy16_elf32_vec)	 tb="$tb elf32-xstormy16.lo elf32.lo $elf" ;;
+    xtensa_elf32_be_vec)	 tb="$tb xtensa-isa.lo xtensa-modules.lo elf32-xtensa.lo elf32.lo $elf" ;;
+    xtensa_elf32_le_vec)	 tb="$tb xtensa-isa.lo xtensa-modules.lo elf32-xtensa.lo elf32.lo $elf" ;;
+    z80_coff_vec)		 tb="$tb coff-z80.lo reloc16.lo $coffgen" ;;
+    z80_elf32_vec)		 tb="$tb elf32-z80.lo elf32.lo $elf" ;;
+    z8k_coff_vec)		 tb="$tb coff-z8k.lo reloc16.lo $coff" ;;  ★
+
+    # These appear out of order in targets.c
+    srec_vec)			 tb="$tb srec.lo" ;;
+    symbolsrec_vec)		 tb="$tb srec.lo" ;;
+    tekhex_vec)			 tb="$tb tekhex.lo" ;;
+    core_cisco_be_vec)		 tb="$tb cisco-core.lo" ;;
+    core_cisco_le_vec)		 tb="$tb cisco-core.lo" ;;
+
+    "")				 ;;
+    *) as_fn_error $? "*** unknown target vector $vec" "$LINENO" 5 ;;
+    esac
+
+    if test ${target_size} = 64; then
+	target64=true
+    fi
+    if test x"${vec}" = x"${defvec}"; then
+	bfd_default_target_size=${target_size}
+    fi
+done
++ for vec in '$selvecs'
++ target_size=32
++ case "$vec" in
++ as_fn_error 0 '*** unknown target vector elf32_ns32k_vec' 15017 5  ★
++ as_status=0
++ test 0 -eq 0
+...
+%
+
+以下のように修正:
+gdb-10.2.ns32k-elf/bfd/configure:
+
+    z8k_coff_vec)		 tb="$tb coff-z8k.lo reloc16.lo $coff" ;;
++   elf32_ns32k_vec)		 tb="$tb elf32-ns32k.lo elf32.lo $coff" ;; ★
+
+    # These appear out of order in targets.c
+    srec_vec)			 tb="$tb srec.lo" ;;
+
+% make
+...
+libtool: compile:  gcc -DHAVE_CONFIG_H -I. -DBINDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin\" -DLIBDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib\" -I. -I. -I./../include -DHAVE_elf32_ns32k_vec -DHAVE_elf32_le_vec -DHAVE_elf32_be_vec -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g -O2 -MT targets.lo -MD -MP -MF .deps/targets.Tpo -c -DDEFAULT_VECTOR=elf32_ns32k_vec "-DSELECT_VECS=&elf32_ns32k_vec,&elf32_le_vec,&elf32_be_vec" "-DSELECT_ARCHITECTURES=&bfd_ns32k_arch" ./targets.c -o targets.o
+<コマンドライン>: エラー: ‘elf32_ns32k_vec’ undeclared here (not in a function); did you mean ‘elf32_le_vec’?
+./targets.c:958:2: 備考: in expansion of macro ‘SELECT_VECS’
+..
+%
+
+以下のように修正:
+gdb-10.2.ns32k-elf/bfd/targets.c:
+...
+extern const bfd_target ns32k_aout_pc532mach_vec;
++extern const bfd_target elf32_ns32k_vec;              ★
+extern const bfd_target ns32k_aout_pc532nbsd_vec;
+
+% make
+...
+make[4]: *** 'libbfd.la' に必要なターゲット 'elf32-ns32k.lo' を make するルールがありません.  中止.
+...
+%
+
+binutils のインストールで作成したものをコピーする:
+
+% cp /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf/bfd/elf32-ns32k.c bfd
+% make
+...
+  GEN    stamp-version
+  GEN    xml-builtin.c
+make[2]: *** 'gdb' に必要なターゲット '../sim/ns32k/libsim.a' を make するルールがありません.  中止.
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.ns32k-elf/gdb' から出ます
+make[1]: *** [Makefile:10068: all-gdb] エラー 2
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.ns32k-elf' から出ます
+make: *** [Makefile:856: all] エラー 2
+
+% cd sim
+% tar xf ~/lang/53_GNU_tool/gcc_cross/Alpha/gdb/m68k.1.tar
+% mv m68k ns32k
+% cd ns32k
+
+m68k を ns32k に置換
+
+% make
+...
+make: *** 'run' に必要なターゲット '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/PiTubeClient/NS32016/libns32k.a' を make するルールがありません.  中止.
+%
+
+インターネットを検索したところシミュレータを開発されている方がいたので
+それを利用させていただくことにした.
