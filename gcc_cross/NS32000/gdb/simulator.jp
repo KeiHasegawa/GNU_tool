@@ -19,3 +19,153 @@ libns32k.a をビルド
 ...
 %
 一応ビルド成功.
+
+% cd ../../gdb
+% make
+成功
+
+いつも通り 0x100 番地に nop を数個配置したプログラムの正常動作を目指す.
+
+M-x gdb
+gdb --annotate=3 ./gdb
+(gdb) cd ~/lang/53_GNU_tool/gcc_cross/NS32000/test/test001/
+(gdb) run -q -x gdbcom test.elf
+...
+Reading symbols from test.elf...
+I'm sorry, Dave, I can't do that.  Symbol format `ns32k-elf' unknown.  ★
+Connected to the simulator.
+...
+
+これは以前にも見たことがあるメッセージ. まずは該当箇所を特定した:
+
+static const struct sym_fns *
+find_sym_fns (bfd *abfd)
+{
+...
+  for (const registered_sym_fns &rsf : symtab_fns)
+    if (our_flavour == rsf.sym_flavour)
+      return rsf.sym_fns;
+
+  error (_("I'm sorry, Dave, I can't do that.  Symbol format `%s' unknown."),
+	 bfd_get_target (abfd));  ★
+}
+
+(gdb) p our_flavour
+$4 = bfd_target_elf_flavour
+
+(gdb) p rsf.sym_flavour
+$5 = bfd_target_coff_flavour
+(gdb) n
+(gdb) 
+
+(gdb) p rsf.sym_flavour
+$6 = bfd_target_aout_flavour
+(gdb) n
+(gdb) 
+
+(gdb) p rsf.sym_flavour
+$7 = bfd_target_ecoff_flavour
+(gdb) n
+(gdb) n
+(gdb) 
+(gdb)
+
+symtab_fns に bfd_target_elf_flavour が入っていないことが原因らしい.
+「MMIX の gdb」でも同じメッセージが出ていたがそのときの原因とは別らしいので今回は新規に調べて
+みる.
+
+void
+add_symtab_fns (enum bfd_flavour flavour, const struct sym_fns *sf)
+{
+  symtab_fns.emplace_back (flavour, sf);   ★
+}
+
+(gdb) up
+
+coffread.c:
+void _initialize_coffread ();
+void
+_initialize_coffread ()
+{
+  add_symtab_fns (bfd_target_coff_flavour, &coff_sym_fns);  ★
+
+ということはおそらく elfread.c がビルド対象になっていないことが原因.
+
+gdb-10.2.m68k-elf/gdb/Makefile:
+CONFIG_OBS =  $(SUBDIR_MI_OBS) $(SUBDIR_TUI_OBS) $(SUBDIR_PYTHON_OBS) guile/guile.o elfread.o stap-probe.o dtrace-probe.o posix-hdep.o
+
+gdb-10.2.ns32k-elf/gdb/Makefile:
+CONFIG_OBS =  $(SUBDIR_MI_OBS) $(SUBDIR_TUI_OBS) $(SUBDIR_PYTHON_OBS) guile/guile.o posix-hdep.o
+
+m68k-elf-gdb の Makefile を真似したが _initialize_elfread () が呼び出
+されていないので直接 init.c を修正した. そして以下のようになっている:
+
+(gdb) run
+...
+Reading symbols from test.elf...
+Connected to the simulator.                    ★ エラーメッセージなし
+Loading section .text, size 0x4 lma 0x100
+Start address 0x100
+Transfer rate: 32 bits in <1 sec.
+Breakpoint 1 at 0x100
+Breakpoint 2 at 0x103
+gdbcom:6: Error in sourced command file:
+Warning:
+Cannot insert breakpoint 1.
+Cannot access memory at address 0x100
+Cannot insert breakpoint 2.
+Cannot access memory at address 0x103
+...
+別のエラーが発生しているが問題のエラーは回避できている.
+例によってプログラムロード時にメモリを割り当てるようにする:
+
+  	      data_count += size;
+  	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
++ 	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
+  	      do_write (sd, lma, buffer, size);
+  	      found_loadable_section = 1;
+  	      free (buffer);
+  	    }
+  	}
++       else if (s->flags & SEC_ALLOC) {
++         bfd_vma vma = bfd_section_vma(s);
++         bfd_size_type size = bfd_section_size(s);
++         sim_do_command(sd, "memory-fill 0xcc");
++         sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", vma, size);
++       }
+      }
+
+2022.05.29 7:07 現状実行すると以下のようになっている:
+
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x4 lma 0x100
+Start address 0x100
+Transfer rate: 32 bits in <1 sec.
+Breakpoint 1 at 0x100
+Breakpoint 2 at 0x103
+
+Breakpoint 1, 0x00000100 in start ()
+Single stepping until exit from function start,   ★
+which has no line number information.             ★
+
+どうやら行番号情報が正しくないか, あるいはそれを読み出せていないらしい.
+
+.debug_line
+
+ Line Number Statements:
+  [0x00000027]  拡張命令コード 2: 設定アドレス 0xff000000  ★
+  [0x0000002e]  Special opcode 7: advance Address by 0 to 0xff000000 and Line by 2 to 3
+  [0x0000002f]  Special opcode 20: advance Address by 1 to 0xff000001 and Line by 1 to 4
+  [0x00000030]  Special opcode 20: advance Address by 1 to 0xff000002 and Line by 1 to 5
+  [0x00000031]  Special opcode 21: advance Address by 1 to 0xff000003 and Line by 2 to 7
+  [0x00000032]  Advance PC by 2 to 0xff000005
+  [0x00000034]  拡張命令コード 1: 列の終り
+
+正しく動作していた MC68000 では以下
+
+ Line Number Statements:
+  [0x00000027]  拡張命令コード 2: 設定アドレス 0x100  ★
+
+ということはこれはリンカに問題がありそう. まずはそこを調べてみる.
+
