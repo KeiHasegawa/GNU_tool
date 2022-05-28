@@ -47,7 +47,7 @@ gdb-10.2.ns32k-elf/bfd/config.bfd:
     targ_underscore=yes
     ;;
 + ns32k-*-elf)
-+   targ_defvec=elf32_ns32k_vec
++   targ_defvec=ns32k_elf32_vec
 +   targ_underscore=yes
 +   ;;
   ns32k-*-netbsd* | ns32k-*-lites* | ns32k-*-openbsd*)
@@ -58,7 +58,7 @@ gdb-10.2.ns32k-elf/bfd/config.bfd:
 % make
 ...
 checking for cos in -lm... yes
-configure: error: *** unknown target vector elf32_ns32k_vec
+configure: error: *** unknown target vector ns32k_elf32_vec
 make[1]: *** [Makefile:2715: configure-bfd] エラー 1
 make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.ns32k-elf' から出ます
 make: *** [Makefile:853: all] エラー 2
@@ -102,7 +102,7 @@ done
 + for vec in '$selvecs'
 + target_size=32
 + case "$vec" in
-+ as_fn_error 0 '*** unknown target vector elf32_ns32k_vec' 15017 5  ★
++ as_fn_error 0 '*** unknown target vector ns32k_elf32_vec' 15017 5  ★
 + as_status=0
 + test 0 -eq 0
 ...
@@ -112,15 +112,15 @@ done
 gdb-10.2.ns32k-elf/bfd/configure:
 
     z8k_coff_vec)		 tb="$tb coff-z8k.lo reloc16.lo $coff" ;;
-+   elf32_ns32k_vec)		 tb="$tb elf32-ns32k.lo elf32.lo $coff" ;; ★
++   ns32k_elf32_vec)		 tb="$tb elf32-ns32k.lo elf32.lo $coff" ;; ★
 
     # These appear out of order in targets.c
     srec_vec)			 tb="$tb srec.lo" ;;
 
 % make
 ...
-libtool: compile:  gcc -DHAVE_CONFIG_H -I. -DBINDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin\" -DLIBDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib\" -I. -I. -I./../include -DHAVE_elf32_ns32k_vec -DHAVE_elf32_le_vec -DHAVE_elf32_be_vec -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g -O2 -MT targets.lo -MD -MP -MF .deps/targets.Tpo -c -DDEFAULT_VECTOR=elf32_ns32k_vec "-DSELECT_VECS=&elf32_ns32k_vec,&elf32_le_vec,&elf32_be_vec" "-DSELECT_ARCHITECTURES=&bfd_ns32k_arch" ./targets.c -o targets.o
-<コマンドライン>: エラー: ‘elf32_ns32k_vec’ undeclared here (not in a function); did you mean ‘elf32_le_vec’?
+libtool: compile:  gcc -DHAVE_CONFIG_H -I. -DBINDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin\" -DLIBDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib\" -I. -I. -I./../include -DHAVE_ns32k_elf32_vec -DHAVE_elf32_le_vec -DHAVE_elf32_be_vec -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g -O2 -MT targets.lo -MD -MP -MF .deps/targets.Tpo -c -DDEFAULT_VECTOR=ns32k_elf32_vec "-DSELECT_VECS=&ns32k_elf32_vec,&elf32_le_vec,&elf32_be_vec" "-DSELECT_ARCHITECTURES=&bfd_ns32k_arch" ./targets.c -o targets.o
+<コマンドライン>: エラー: ‘ns32k_elf32_vec’ undeclared here (not in a function); did you mean ‘elf32_le_vec’?
 ./targets.c:958:2: 備考: in expansion of macro ‘SELECT_VECS’
 ..
 %
@@ -129,7 +129,7 @@ libtool: compile:  gcc -DHAVE_CONFIG_H -I. -DBINDIR=\"/media/ca850f52-0605-42a7-
 gdb-10.2.ns32k-elf/bfd/targets.c:
 ...
 extern const bfd_target ns32k_aout_pc532mach_vec;
-+extern const bfd_target elf32_ns32k_vec;              ★
++extern const bfd_target ns32k_elf32_vec;              ★
 extern const bfd_target ns32k_aout_pc532nbsd_vec;
 
 % make
