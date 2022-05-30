@@ -124,3 +124,30 @@ md_assemble (char *str)
 
 これに相当することを ns32k-elf-as でやっていなかった.
 
+2022.05.30 13:42 現状該当箇所は修正できている. しかし ns32k-elf-gdb から動作させると
+以下のように start と end のラベルにブレークポイントをセットしてもソースとの対応が取れてい
+ない.
+
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x4 lma 0x100
+Start address 0x100
+Transfer rate: 32 bits in <1 sec.
+Breakpoint 1 at 0x100       ★
+Breakpoint 2 at 0x103       ★
+
+ns32k-elf-objdump の結果は以下:
+
+ Line Number Statements:
+  [0x00000027]  拡張命令コード 2: 設定アドレス 0x10000  ★
+  [0x0000002e]  Special opcode 7: advance Address by 0 to 0x10000 and Line by 2 to 3
+  [0x0000002f]  Special opcode 20: advance Address by 1 to 0x10001 and Line by 1 to 4
+  [0x00000030]  Special opcode 20: advance Address by 1 to 0x10002 and Line by 1 to 5
+  [0x00000031]  Special opcode 21: advance Address by 1 to 0x10003 and Line by 2 to 7
+  [0x00000032]  Advance PC by 1 to 0x10004
+  [0x00000034]  拡張命令コード 1: 列の終り
+
+0x10000 は 0x100 のエンディアンの並びを間違えていると思われる. そしてそれはリンカに問題
+がありそう.
+
+
