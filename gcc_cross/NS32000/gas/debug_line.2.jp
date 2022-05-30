@@ -1,0 +1,126 @@
+経緯 : 0x100 に nop を数個配置したプログラムを ns32k-elf-gdb で実行したところ行番号情報
+      が正しくないことに気付いた. そしてアセンブラが生成している .debug_line が正しくない
+      ことに気付いた.
+
+以下は m68k-elf-as の生成した .debug_line 
+
+Line Number Statements:
+  [0x00000027]  拡張命令コード 2: 設定アドレス 0x0  ★
+  [0x0000002e]  Special opcode 7: advance Address by 0 to 0x0 and Line by 2 to 3
+  [0x0000002f]  Special opcode 20: advance Address by 2 to 0x2 and Line by 1 to 4
+  [0x00000030]  Special opcode 20: advance Address by 2 to 0x4 and Line by 1 to 5
+  [0x00000031]  Special opcode 21: advance Address by 2 to 0x6 and Line by 2 to 7
+  [0x00000032]  Advance PC by 2 to 0x8
+  [0x00000034]  拡張命令コード 1: 列の終り
+
+以下は ns32k-elf-as の生成した .debug_line
+
+ Line Number Statements:
+  [0x00000027]  拡張命令コード 2: 設定アドレス 0xffffffff   ★
+  [0x0000002e]  Special opcode 7: advance Address by 0 to 0xffffffff and Line by 2 to 3
+  [0x0000002f]  Special opcode 20: advance Address by 1 to 0x100000000 and Line by 1 to 4
+  [0x00000030]  Special opcode 20: advance Address by 1 to 0x100000001 and Line by 1 to 5
+  [0x00000031]  Special opcode 21: advance Address by 1 to 0x100000002 and Line by 2 to 7
+  [0x00000032]  Advance PC by 2 to 0x100000004
+  [0x00000034]  拡張命令コード 1: 列の終り
+
+(gdb) run -o test.o -g test.S
+
+(gdb)
+
+% ns32k-elf-objdump --dwarf=line test.o
+...
+
+勿論 gdb から実行して再現している.
+
+(gdb) b bfd_set_section_contents
+(gdb) run
+...
+bfd_set_section_contents のブレークポイントにヒット
+(gdb) p section->name
+$1 = 0x80f256e ".debug_line"   ★
+(gdb) x/55bx location
+0x818057c:	0x33	0x00	0x00	0x00	0x03	0x00	0x1d	0x00
+0x8180584:	0x00	0x00	0x01	0x01	0xfb	0x0e	0x0d	0x00
+0x818058c:	0x01	0x01	0x01	0x01	0x00	0x00	0x00	0x01
+0x8180594:	0x00	0x00	0x01	0x00	0x74	0x65	0x73	0x74
+0x818059c:	0x2e	0x53	0x00	0x00	0x00	0x00	0x00	0x00
+0x81805a4:	0x05	0x02	0xff	0xff	0xff	0xff	0x14	0x21
+0x81805ac:	0x21	0x22	0x02	0x02	0x00	0x01	0x01
+(gdb)
+
+      if (!fixP->fx_done)
+	md_apply_fix (fixP, &add_number, this_segment);  ★
+
+(gdb) p add_number
+$6 = -1    ★
+(gdb)
+
+add_number の計算の方法を確認してみる.
+
+	fixp->fx_offset += S_GET_VALUE (sym);   ★
+
+(gdb) p fixp->fx_offset
+$23 = 4294967295
+(gdb) p *sym
+$25 = {flags = {local_symbol = 0, written = 0, resolved = 1, resolving = 0, 
+    used_in_reloc = 0, used = 0, volatil = 0, forward_ref = 0, 
+    mri_common = 0, weakrefr = 0, weakrefd = 0}, hash = 0, 
+  name = 0x8162308 "L0\001", frag = 0x81762e0, bsym = 0x8175148, 
+  x = 0x8162324}
+(gdb) 
+
+上の部分のマクロ展開を確認したがそのまま. S_GET_VALUE は函数らしい.
+
+(gdb) p S_GET_VALUE (sym)
+$26 = 4294967295
+(gdb)
+
+ということは何故 S_GET_VALUE が 4294967295 を返すのか調べてみるべき.
+
+
+  return (valueT) s->x->value.X_add_number;  ★
+
+(gdb) p ((symbolS *) 0x816230c)->x->value.X_add_number
+$30 = -1
+(gdb) 
+
+
+  s->x->value.X_add_number = (offsetT) val;  ★
+
+(gdb) p val
+$32 = 4294967295
+(gdb) 
+
+
+void
+dwarf2_emit_insn (int size)
+{
+...
+  dwarf2_gen_line_info ((frag_now_fix_octets () - size) / OCTETS_PER_BYTE, &loc);  ★
+
+
+(gdb) p (frag_now_fix_octets () - size)
+$38 = 4294967295
+(gdb) p size
+$39 = 1
+(gdb) 
+
+size は意図して 1 を指定している. ということは frag_now_fix_octets () が 0 を返すこと
+が期待しない動作のように思える.
+
+正しくできてい m68k-elf-as と動作を比較してみることにした.
+
+(gdb) p frag_now_fix_octets () - size
+$2 = 0
+(gdb) up
+
+void
+md_assemble (char *str)
+{
+...
+  /* Tie dwarf2 debug info to the address at the start of the insn.  */
+  dwarf2_emit_insn (0);  ★
+
+これに相当することを ns32k-elf-as でやっていなかった.
+
