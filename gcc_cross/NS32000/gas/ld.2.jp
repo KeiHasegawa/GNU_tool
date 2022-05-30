@@ -1,0 +1,89 @@
+開始アドレスが 0x100 ではなくて 0x10000 のようにエンディアンが正しくない件の調査
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf/ld
+
+M-x gdb
+gdb --annotate=3 ./ld-new
+(gdb) cd ~/lang/53_GNU_tool/gcc_cross/NS32000/test/test001/
+(gdb) run -o test.elf test.o -T ../default.x
+
+% ns32k-elf-objdump --dwarf=line ~/lang/53_GNU_tool/gcc_cross/NS32000/test/test001/test.elf
+...
+  [0x00000027]  拡張命令コード 2: 設定アドレス 0x10000 ★
+  [0x0000002e]  Special opcode 7: advance Address by 0 to 0x10000 and Line by 2 to 3
+
+gdb から実行して再現できている.
+
+(gdb) b bfd_set_section_contents
+(gdb) run
+...
+bfd_set_section_contents のブレークポイントにヒット:
+Breakpoint 1, bfd_set_section_contents (abfd=0x817ecd8, section=0x8184b50, location=0x8180568, offset=0, count=55) at section.c:1496
+(gdb) p section->name
+$2 = 0x818c48d ".debug_line"
+(gdb) x/55bx location
+0x8180568:	0x33	0x00	0x00	0x00	0x03	0x00	0x1d	0x00
+0x8180570:	0x00	0x00	0x01	0x01	0xfb	0x0e	0x0d	0x00
+0x8180578:	0x01	0x01	0x01	0x01	0x00	0x00	0x00	0x01
+0x8180580:	0x00	0x00	0x01	0x00	0x74	0x65	0x73	0x74
+0x8180588:	0x2e	0x53	0x00	0x00	0x00	0x00	0x00	0x00
+0x8180590:	0x05	0x02	0x00	0x00	0x01	0x00	0x14	0x21
+0x8180598:	0x21	0x22	0x02	0x01	0x00	0x01	0x01
+(gdb) p/x *(char*)0x8180594
+$4 = 0x1
+(gdb) watch *(char*)0x8180594
+Hardware watchpoint 2: *(char*)0x8180594
+(gdb) run
+...
+void
+_bfd_ns32k_put_immediate (bfd_vma value, bfd_byte *buffer, int size)
+{
+  buffer += size - 1;
+  switch (size)
+    {
+    case 4:
+      *buffer-- = (value & 0xff); value >>= 8;         ★
+      *buffer-- = (value & 0xff); value >>= 8;         ★
+      /* Fall through.  */
+    case 2:
+      *buffer-- = (value & 0xff); value >>= 8;
+      /* Fall through.  */
+    case 1:
+      *buffer-- = (value & 0xff); value >>= 8;
+    }
+}
+
+以下のように修正してみた:
+
++#include <assert.h>
+
+void
+_bfd_ns32k_put_immediate (bfd_vma value, bfd_byte *buffer, int size)
+{
+#if 0
+  ...
+#else
+  buffer[0] = value;
+  if (size == 1)
+    return;
+  
+  buffer[1] = value >> 8;
+  if (size == 2)
+    return;
+
+  assert(size == 4);
+  buffer[2] = value >> 16;
+  buffer[3] = value >> 24;
+#endif  
+}
+
+一応これで期待通りだが気になる記述を発見.
+
+https://wikipredia.net/ja/320xx_microprocessor
+
+「それ以外の場合、プロセッサは一貫してリトルエンディアンですが、命令ストリーム内の変位はビッグエンディアンの順序で格納されます」
+
+これは具体的にどういうことを言っているのかは不明だが問題が起こるまで放置しておく.
+
+この修正により 0x100 番地に nop を数個配置したプログラムが ns32k-elf-gdb から実行
+できている.
