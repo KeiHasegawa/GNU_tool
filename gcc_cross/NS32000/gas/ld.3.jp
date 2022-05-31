@@ -1,0 +1,175 @@
+現状以下のようにリンク時にエラーする.
+
+% ns32k-elf-ld -o test.elf ../default.o test.o -T ../default.x
+ns32k-elf-ld: 最終リンクに失敗しました: bad value
+%
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf/ld
+
+M-x gdb
+gdb --annotate=3 ./ld-new
+(gdb) cd ~/lang/53_GNU_tool/gcc_cross/NS32000/test/test002/
+(gdb) run -o test.elf ../default.o test.o -T ../default.x
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf/ld/ld-new: 最終リンクに失敗しました: bad value
+[Inferior 1 (process 7420) exited with code 01]
+(gdb)
+
+gdb から実行して再現している.
+
+  if (!bfd_final_link (link_info.output_bfd, &link_info))
+    {
+      /* If there was an error recorded, print it out.  Otherwise assume
+	 an appropriate error message like unknown symbol was printed
+	 out.  */
+
+      if (bfd_get_error () != bfd_error_no_error)
+	einfo (_("%F%P: final link failed: %E\n"));  ★
+      else
+	xexit (1);
+    }
+
+エラーメッセージを生成しているのは上の部分. エラーの直接の原因は
+
+bfd_final_link (link_info.output_bfd, &link_info)
+
+の呼び出しでエラーしているから.  bfd_final_link の部分のマクロ展開は以下:
+
+  if (!((*((link_info.output_bfd)->xvec->_bfd_final_link)) (link_info.output_bfd, &link_info)))
+
+
+実際呼び出されている函数は
+
+_bfd_generic_final_link
+
+であった. そしてエラーを返している部分は以下:
+
+
+	    case bfd_indirect_link_order:
+	      if (! default_indirect_link_order (abfd, info, o, p, TRUE))
+		return FALSE;   ★
+	      break;
+
+
+default_indirect_link_order の呼び出しの 2 回目でエラーしている.
+
+と, ここでエラーしているのは ns32k-elf-ld だけではなかった.
+
+% ns32k-elf-objdump -x -d -g test.o > test.o.objdump 
+ns32k-elf-objdump: test.o: bad value  ★
+%
+
+自分で作成した単純なアセンブラソースではエラーしていないが, 例えば r0 をセットするのに:
+
+	addr	stack(pc), r0
+
+としたところこのエラーが発生している.
+
+      new_contents = (bfd_get_relocated_section_contents
+		      (output_bfd, info, link_order, contents,
+		       bfd_link_relocatable (info),
+		       _bfd_generic_link_get_symbols (input_bfd)));
+      if (!new_contents)
+	goto error_return;   ★
+
+bfd_get_relocated_sectin_contents の戻り値が 0 ポインタになっている.
+
+
+  reloc_count = bfd_canonicalize_reloc (input_bfd,
+					input_section,
+					reloc_vector,
+					symbols);
+  if (reloc_count < 0)
+    goto error_return;   ★
+
+bfd_canonicalize_reloc の戻り値が -1 になっている.
+
+long
+_bfd_elf_canonicalize_reloc (bfd *abfd,
+			     sec_ptr section,
+			     arelent **relptr,
+			     asymbol **symbols)
+{
+...
+  return section->reloc_count;  ★
+}
+
+(gdb) p section->reloc_count
+$35 = 1                         ★
+(gdb) fin
+Run till exit from #0  _bfd_elf_canonicalize_reloc (abfd=0x81811c8, section=0x81956cc, relptr=<optimized out>, symbols=0x819aa5c) at elf.c:8565
+bfd_generic_get_relocated_section_contents (abfd=0x817fcd8, link_info=0x817bd40 <link_info>, link_order=0x8180d20, data=<optimized out>, relocatable=0, symbols=0x819aa5c) at reloc.c:8406
+Value returned is $36 = -1      ★ 
+(gdb)
+
+1 だったものが -1 になっている. どこかに重大なバグがありそう.
+
+(gdb) disass
+   0x08098512 <+82>:	movl   $0x0,(%ebx)
+=> 0x08098518 <+88>:	add    $0x4,%esp
+   0x0809851b <+91>:	pop    %ebx
+   0x0809851c <+92>:	pop    %esi
+   0x0809851d <+93>:	ret    
+   0x0809851e <+94>:	mov    $0xffffffff,%eax    ★
+   0x08098523 <+99>:	jmp    0x8098518 <_bfd_elf_canonicalize_reloc+88>
+
+最適化の影響でデバッグの仕方が間違えていた. 改めて:
+
+  if (! bed->s->slurp_reloc_table (abfd, section, symbols, FALSE))
+    return -1;    ★
+
+
+
+  if (rel_hdr2
+      && !elf_slurp_reloc_table_from_section (abfd, asect,
+					      rel_hdr2, reloc_count2,
+					      relents + reloc_count,
+					      symbols, dynamic))
+    return FALSE;  ★
+    
+
+
+      if ((entsize == sizeof (Elf_External_Rela)
+	   && ebd->elf_info_to_howto != NULL)
+	  || ebd->elf_info_to_howto_rel == NULL)
+	res = ebd->elf_info_to_howto (abfd, relent, &rela);
+      else
+	res = ebd->elf_info_to_howto_rel (abfd, relent, &rela);
+
+      if (! res || relent->howto == NULL)
+	goto error_return;  ★
+
+
+(gdb) p res
+$57 = 0
+(gdb) 
+
+static bfd_boolean
+elf_ns32k_info_to_howto(bfd* abfd, arelent* cache_ptr,
+			Elf_Internal_Rela* dst)
+{
+  (void)abfd;
+  unsigned int r_type = ELF32_R_TYPE(dst->r_info);
+  extern unsigned int howto_table_ns32k_tbl_sz;
+  if (r_type >= howto_table_ns32k_tbl_sz) {
+    bfd_set_error(bfd_error_bad_value);   ★
+
+
+(gdb) p r_type
+$58 = 167
+(gdb) p howto_table_ns32k_tbl_sz
+$59 = 18
+(gdb) 
+
+ELF32_R_TYPE のマクロ展開は以下:
+
+  unsigned int r_type = ((dst->r_info) & 0xff);
+
+以下のように修正:
+
+static bfd_boolean
+elf_ns32k_info_to_howto(bfd* abfd, arelent* cache_ptr,
+			Elf_Internal_Rela* dst)
+{
+  (void)abfd;
+  unsigned int r_type = dst->r_info >> 8; ★
+  
