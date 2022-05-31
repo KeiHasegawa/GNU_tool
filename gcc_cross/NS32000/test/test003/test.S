@@ -1,6 +1,6 @@
 	.text
 start:
-	addr	stack(pc), r0
+	addr	_stack(pc), r0
 	lprd	sp, r0
 	bsr	func
 	nop

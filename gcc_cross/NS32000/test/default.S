@@ -1,12 +1,10 @@
 	.text
 start:
-	bsr	func
+	addr	_stack(pc), r0
+	lprd	sp, r0
+	bsr	_main
 	nop
-	nop
-	nop
-	
 
-func:
+	.global	___main
+___main:
 	ret	0
-	
-	
