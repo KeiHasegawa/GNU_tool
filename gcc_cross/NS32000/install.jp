@@ -5,3 +5,125 @@ https://ja.wikipedia.org/wiki/NS320xx
 (*1) binutilis のインストール
 
 「NS32000 の as」を参照.
+
+(*2) gdb のインストール
+
+「NS32000 の gdb」を参照.
+
+(*3) gcc のインストール
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/
+% bunzip2 -c ../gcc-3.4.4.tar.bz2  | tar xf -
+% mv gcc-3.4.4 gcc-3.4.4.ns32k-elf
+% cd gcc-3.4.4.ns32k-elf
+% ./configure --target=ns32k-elf --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --with-newlib
+% setenv SHELL /bin/sh
+% make all-gcc LANGUAGES="c c++"
+...
+checking for .preinit_array/.init_array/.fini_array support... yes
+checking if mkdir takes one argument... no
+*** Configuration ns32k-unknown-elf not supported
+make: *** [Makefile:23328: configure-gcc] エラー 1
+%
+
+以下のように修正:
+gcc-3.4.4.ns32k-elf/Makefile:
+configure-gcc:
+	@test ! -f gcc/Makefile || exit 0; \
+...
+	$(SHELL) -vx $${libsrcdir}/configure \   ★ -vx を付加
+...
+% make configure-gcc
+...
+エラーの場所を特定した:
+gcc-3.4.4.ns32k-elf/gcc/config.gcc:
+...
+	;;
+ns32k-*-netbsdelf*)
+	echo "GCC does not yet support the ${target} target"; exit 1
+	;;
+ns32k-*-netbsd*)
+	tm_file="${tm_file} netbsd.h netbsd-aout.h ns32k/netbsd.h"
+	# On NetBSD, the headers are already okay, except for math.h.
+	tmake_file="t-netbsd ns32k/t-ns32k"
+	extra_parts=""
+	use_collect2=yes
+	;;
+pdp11-*-bsd)
+...
+
+以下ように修正:
+% ./configure --target=ns32k-netbsd --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --with-newlib
+% make all-gcc LANGUAGES="c c++"
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.ns32k-elf/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.ns32k-elf/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ns32k-netbsd/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ns32k-netbsd/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ns32k-netbsd/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ns32k-netbsd/sys-include -O2  -DIN_GCC -DCROSS_COMPILE   -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition  -isystem ./include   -g  -DIN_LIBGCC2 -D__GCC_FLOAT_NOT_NEEDED -Dinhibit_libc -I. -I. -I. -I./. -I./../include   -DL_muldi3 -c ./libgcc2.c -o libgcc/./_muldi3.o
+In file included from ./tsystem.h:44,
+                 from ./libgcc2.c:41:
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.ns32k-elf/gcc/include/stddef.h:57:26: machine/ansi.h: そのようなファイルやディレクトリはありません
+make[2]: *** [libgcc.mk:8: libgcc/./_muldi3.o] エラー 1
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.ns32k-elf/gcc' から出ます
+make[1]: *** [Makefile:1228: libgcc.a] エラー 2
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.ns32k-elf/gcc' から出ます
+make: *** [Makefile:23373: all-gcc] エラー 2
+%
+
+
+gcc-3.4.4.ns32k-elf/gcc/tsystem.h:
+...
+#include <stddef.h>  ★
+
+gcc-3.4.4.ns32k-elf/gcc/include/stddef.h:
+...
+#if defined (__BSD_NET2__) || defined (____386BSD____) || (defined (__FreeBSD__) && (__FreeBSD__ < 5)) || defined(__NetBSD__)
+#include <machine/ansi.h>         ★
+#endif
+...
+
+エラーの回避の方法が不明なので. 単純にコンパイルアウトしてみた.
+
+% make all-gcc LANGUAGES="c c++"
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.ns32k-elf/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.ns32k-elf/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ns32k-netbsd/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ns32k-netbsd/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ns32k-netbsd/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ns32k-netbsd/sys-include -O2  -DIN_GCC -DCROSS_COMPILE   -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition  -isystem ./include   -g  -DIN_LIBGCC2 -D__GCC_FLOAT_NOT_NEEDED -Dinhibit_libc -I. -I. -I. -I./. -I./../include   -DL_muldi3 -c ./libgcc2.c -o libgcc/./_muldi3.o
+/tmp/cccSgQ9o.s: Assembler messages:
+/tmp/cccSgQ9o.s:50: Error: invalid char '[' beginning operand 1 `[r3'
+/tmp/cccSgQ9o.s:51: Error: junk `(fp)' after expression
+/tmp/cccSgQ9o.s:51: Error: too many memory references for `movd'
+...
+おそらく単純に起動しているアセンブラに問題がある. これは確か i960 の gcc のインストールでも
+発生した問題.
+
+% cd gcc
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.ns32k-elf/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.ns32k-elf/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ns32k-netbsd/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ns32k-netbsd/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ns32k-netbsd/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ns32k-netbsd/sys-include -O2  -DIN_GCC -DCROSS_COMPILE   -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition  -isystem ./include   -g  -DIN_LIBGCC2 -D__GCC_FLOAT_NOT_NEEDED -Dinhibit_libc -I. -I. -I. -I./. -I./../include   -DL_muldi3 -c ./libgcc2.c -o libgcc/./_muldi3.o -###
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.ns32k-elf/gcc/specs から spec を読み込んでいます
+configure 設定: ./configure --target=ns32k-netbsd --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --with-newlib
+スレッドモデル: single
+gcc version 3.4.4
+ "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.ns32k-elf/gcc/cc1" "-quiet" "-I." "-I." "-I." "-I./." "-I./../include" "-iprefix" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.ns32k-elf/gcc/../lib/gcc/ns32k-netbsd/3.4.4/" "-isystem" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.ns32k-elf/gcc/include" "-isystem" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ns32k-netbsd/bin/include" "-isystem" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ns32k-netbsd/lib/include" "-DIN_GCC" "-DCROSS_COMPILE" "-DIN_LIBGCC2" "-D__GCC_FLOAT_NOT_NEEDED" "-Dinhibit_libc" "-DL_muldi3" "-isystem" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ns32k-netbsd/include" "-isystem" "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ns32k-netbsd/sys-include" "-isystem" "./include" "./libgcc2.c" "-quiet" "-dumpbase" "libgcc2.c" "-auxbase-strip" "libgcc/./_muldi3.o" "-g" "-O2" "-W" "-Wall" "-Wwrite-strings" "-Wstrict-prototypes" "-Wmissing-prototypes" "-Wold-style-definition" "-o" "/tmp/ccpTgZsL.s"
+ "as" "-o" "libgcc/./_muldi3.o" "/tmp/ccpTgZsL.s" ★
+
+
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.ns32k-elf/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.ns32k-elf/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ns32k-netbsd/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ns32k-netbsd/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ns32k-netbsd/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ns32k-netbsd/sys-include -O2  -DIN_GCC -DCROSS_COMPILE   -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition  -isystem ./include   -g  -DIN_LIBGCC2 -D__GCC_FLOAT_NOT_NEEDED -Dinhibit_libc -I. -I. -I. -I./. -I./../include   -DL_muldi3 -c ./libgcc2.c -o libgcc/./_muldi3.s -S
+% ns32k-elf-as -o libgcc/./_muldi3.o libgcc/./_muldi3.s
+
+エラーしない. 何とか起動するアセンブラを指定できないか.
+
+% ./configure --help
+...
+  --with-as               arrange to use the specified as (full pathname)
+...
+
+% cat x
+#! /bin/sh
+
+./configure --cache-file=./config.cache --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=ns32k-netbsd --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --with-newlib --with-gcc-version-trigger=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.4.4.ns32k-elf/gcc/version.c --program-transform-name=s/^/ns32k-netbsd-/  --srcdir=. --with-as=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin/ns32k-elf-as 
+% rm config.cache
+% sh -vx x
+% cd ..
+% make all-gcc LANGUAGES="c c++"
+
+cc1plus のリンクでエラーしてしまうが cc1 はビルドできているらしい. 今
+回は cc1plus はあきらめる.
+
+% make all-gcc LANGUAGES="c"
+% make install-gcc LANGUAGES="c"
+
