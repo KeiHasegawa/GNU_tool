@@ -2,7 +2,9 @@ set prompt (ns32k-elf-gdb)
 target sim
 load
 sim memory-fill 0xcc
-sim memory-region 0xe00,0x200
-p $pc
-set $sp = 0x1000
+sim memory-region 0xffff00,0x100
+b start
+run
+s
+s
 quit
