@@ -65,3 +65,142 @@ Contents of section .debug_info:
  0040 0000875b 0000875b 00000180           ...[...[....    
 ...
 この値にしているのはリンカなのでリンカ視点から調べてみる.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf/ld
+
+M-x gdb
+gdb --annotate=3 ./ld-new
+(gdb) cd ~/lang/53_GNU_tool/gcc_cross/NS32000/test/test003
+(gdb) b bfd_set_section_contents
+(gdb) run -o test.elf ../default.o test.o -T ../default.x
+...
+bfd_set_section_contents のブレークポイントに数回ヒット
+Breakpoint 1, bfd_set_section_contents (abfd=0x817ecd8, section=0x8184c10, location=0x8180530, offset=0, count=38) at section.c:1496
+(gdb) p section->name
+$7 = 0x818c4e3 ".debug_info"   ★
+(gdb) x/38bx location
+0x8180530:	0x22	0x00	0x00	0x00	0x02	0x00	0x00	0x00
+0x8180538:	0x00	0x00	0x04	0x01	0x00	0x00	0x00	0x00
+0x8180540:	0x00	0x01	0x00	0x00	0x00	0x11	0x00	0x00
+0x8180548:	0x00	0x00	0x00	0x00	0x0d	0x00	0x00	0x00
+0x8180550:	0x4d	0x00	0x00	0x00	0x01	0x80
+(gdb) c
+Continuing.
+
+Breakpoint 1, bfd_set_section_contents (abfd=0x817ecd8, section=0x8184c10, location=0x8180530, offset=38, count=38) at section.c:1496
+(gdb) x/38bx location
+0x8180530:	0x22	0x00	0x00	0x00	0x02	0x00	0xee	0xff
+0x8180538:	0xff	0xff	0x04	0x01	0x3e	0x00	0x00	0x00
+0x8180540:	0x10	0x01	0x00	0x00	0x10	0x25	0x00	0x00
+0x8180548:	0x80	0x5b	0x00	0x00	0x87	0x5b	0x00	0x00
+0x8180550:	0x87	0x5b	0x00	0x00	0x01	0x80
+(gdb)
+
+何故 2 回目なのかはここではスルーしておく.
+
+  => 後で気付いたことは ../default.o と test.o の 2 つの入力ファイルがあるからだと考えた.	
+
+アドレス 0x8180536 から 4 バイトに問題の ffffffee がセットされている.
+
+void
+_bfd_ns32k_put_immediate (bfd_vma value, bfd_byte *buffer, int size)
+{
+  if (!work_around) {
+    // ビッグエンディアン形式
+    ...
+  }
+  else {
+    // リトルエンディアン形式
+    buffer[0] = value;          ★
+    if (size == 1)
+      return;
+  
+    buffer[1] = value >> 8;
+    if (size == 2)
+      return;
+
+    assert(size == 4);
+    buffer[2] = value >> 16;
+    buffer[3] = value >> 24;
+  }
+}
+
+これは正しい .debug_line セクションを生成するために入れた修正のところであるが, 仮に
+ビッグエンディアン形式で格納したとしてもやはりエラーになりそうに思える.
+
+最近作成した m68k-elf-xxx で試してみたところ以下のようにオフセット 0 になっている: 
+
+  Compilation Unit @ offset 0x0:
+   Length:        0x22 (32-bit)
+   Version:       2
+   Abbrev Offset: 0x0          ★
+   Pointer Size:  4
+
+test.o.objdump は test.o を ns32k-elf-objdump に入力した結果であるが
+
+  Compilation Unit @ offset 0x0:
+   Length:        0x22 (32-bit)
+   Version:       2
+   Abbrev Offset: 0x0          ★
+   Pointer Size:  4
+
+これもそれっぽい. ということはリンカで ffffffee をどのように計算していたか確認してみるべき.
+
+      if (relocation)
+	{
+	  bfd_vma x = get_data (location, 4);
+	  DOIT (x);                               ★
+	  put_data ((bfd_vma) x, location, 4);
+	}
+      break;
+
+ここで x = 0xffffffee に計算している. DOIT マクロは同一ファイル内にある:
+
+#define DOIT(x) \
+  x = ( (x & ~howto->dst_mask) | (((x & howto->src_mask) +  relocation) & howto->dst_mask))
+
+そもそも relocation が非 0 になっているのが期待しない動作かもしれない.
+
+(gdb) p/x relocation
+$82 = 0xffffffee
+(gdb) 
+
+どうやらそれっぽい.
+
+% cat z2
+b do_ns32k_reloc
+command
+if ((int)strcmp(input_section->name, ".debug_info"))
+c
+end
+if ((int)strcmp(symbol->name, ".debug_abbrev"))
+c
+end
+end
+(gdb) so z2
+
+このブレークポイントに 2 回目ヒットしたとき relocation = 0xffffffee になっている.
+
+試しに以下のように回避してみた:
+
+bfd_reloc_status_type
+_bfd_ns32k_reloc_imm (bfd *abfd,
+		      arelent *reloc_entry,
+		      struct bfd_symbol *symbol,
+		      void * data,
+		      asection *input_section,
+		      bfd *output_bfd,
+		      char **error_message)
+{
++ const char* n1 = input_section->name;
++ const char* n2 = symbol->name;
++ if (strcmp(n1, ".debug_info") == 0 && strcmp(n2, ".debug_abbrev") == 0)
++   return bfd_reloc_ok;
+  return do_ns32k_reloc (abfd, reloc_entry, symbol, data, input_section,
+			 output_bfd, error_message, _bfd_ns32k_get_immediate,
+			 _bfd_ns32k_put_immediate);
+}
+
+一応これで回避はできているが正しい対処ではなさそう.
+本来リロケーションでないべきものがリロケーションの扱いになっていること自体が問題.
+
