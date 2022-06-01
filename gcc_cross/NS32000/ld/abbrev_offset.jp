@@ -1,0 +1,67 @@
+現状 -g オプションなしでコンパイラの生成したプログラムをアセンブル, リンクして objdump に入力
+させると以下のように警告メッセージを出力している:
+
+% ns32k-elf-gcc -S test.c
+% ns32k-elf-as -o test.o test.s -g
+% ns32k-elf-as -o ../default.o -g ../default.S
+% ns32k-elf-ld -o test.elf ../default.o test.o -T ../default.x
+% ns32k-elf-objdump -x -d -g test.elf > test.objdump
+ns32k-elf-objdump: Warning: Debug info is corrupted, abbrev offset (ffffffee) is larger than abbrev section size (28)
+...
+
+そして ns32k-elf-gdb で実行すると以下のようにエラーメッセージが出力される:
+% ns32k-elf-gdb -q -x gdbcom test.elf > test.log
+Dwarf Error: bad offset (0xffffffee) in compilation unit header (offset 0x26 + 6) [in module /home/khasegawa/lang/53_GNU_tool/gcc_cross/NS32000/test/test003/test.elf]
+%
+
+そこで以下も試してみた:
+
+% ns32k-elf-objdump -x -d -g test.o > test.o.objdump
+%
+
+警告メッセージは表示されない. ということはおそらくリンカの出力に問題がある可能性が多いにある.
+異常が最初に検出されている ns32k-elf-objdump の視点でこの問題を調査してみる.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf/binutils
+
+M-x gdb
+gdb --annotate=3 ./objdump
+(gdb) cd ~/lang/53_GNU_tool/gcc_cross/NS32000/test/test003
+(gdb) run --dwarf=info test.elf
+test.elf:     ファイル形式 ns32k-elf
+
+.debug_info セクションの内容:
+
+  コンパイル単位 @ オフセット 0x0:
+   長さ:        0x22 (32-bit)
+   バージョン:    2
+   省略オフセット: 0x0
+   ポインタサイズ:4
+ <0><b>: 省略番号: 1 (DW_TAG_compile_unit)
+    <c>   DW_AT_stmt_list   : 0x0
+    <10>   DW_AT_low_pc      : 0x100
+    <14>   DW_AT_high_pc     : 0x1100
+    <18>   DW_AT_name        : (間接文字列、オフセット: 0x0): ../default.S
+    <1c>   DW_AT_comp_dir    : (間接文字列、オフセット: 0xd): /home/khasegawa/lang/53_GNU_tool/gcc_cross/NS32000/test/test003
+    <20>   DW_AT_producer    : (間接文字列、オフセット: 0x4d): GNU AS 2.36.1
+    <24>   DW_AT_language    : 32769	(MIPS assembler)
+  コンパイル単位 @ オフセット 0x26:
+   長さ:        0x22 (32-bit)
+   バージョン:    2
+   省略オフセット: 0xffffffee  ★
+   ポインタサイズ:4
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf/binutils/objdump: 警告: デバッグ情報が壊れています。省略オフセット (ffffffee) が省略セクションサイズ (28) より大きいです  ★
+...
+
+gdb から実行して再現できている.
+
+% ns32k-elf-objdump -s test.elf
+...
+Contents of section .debug_info:
+ 0000 22000000 02000000 00000401 00000000  "...............
+ 0010 00010000 00110000 00000000 0d000000  ................
+ 0020 4d000000 01802200 00000200 eeffffff  M.....".........   ★
+ 0030 04013e00 00001001 00001025 0000805b  ..>........%...[
+ 0040 0000875b 0000875b 00000180           ...[...[....    
+...
+この値にしているのはリンカなのでリンカ視点から調べてみる.
