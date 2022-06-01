@@ -97,13 +97,13 @@ https://wikipredia.net/ja/320xx_microprocessor
      この時点では _stack のアドレスは決まっていないので(先頭を 0 バイト目とすると) 2 バイト
      目から 5 バイト目はリローケータブルになっている.
      
-     0xc0 は 30 ビットの値がくることを表している. 例えば 30 ビットが 0x12345678
+     0xc0 は 30 ビットの値がくることを表している. 例えば _stack のアドレスが 0x12345678
      であればリンク後には
 
    0:	27 d8 d2 34
    4:	56 78
 
-     になるということ. この d2 34 56 78 の並びがビッグエンディアン形式ということ.
+     になるということ. この d2 34 56 78 の並びがビッグエンディアン形式になる.
      つまり, 今回の修正はリンカの該当部分にのみ適用する必要があるということになる.
      そこで共通ソースに手を入れることになるのだが以下のように後で修正した:
 
@@ -121,6 +121,7 @@ void
 _bfd_ns32k_put_immediate (bfd_vma value, bfd_byte *buffer, int size)
 {
   if (!work_around) {  ★
+    // ビッグエンディアン形式で格納
     buffer += size - 1;
     switch (size)
       {
@@ -137,6 +138,7 @@ _bfd_ns32k_put_immediate (bfd_vma value, bfd_byte *buffer, int size)
     return;
   }
   else {
+    // リトルエンディアン形式で格納
     buffer[0] = value;
     if (size == 1)
       return;
