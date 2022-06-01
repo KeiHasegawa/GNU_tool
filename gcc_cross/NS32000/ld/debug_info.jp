@@ -1,36 +1,46 @@
 現状 -g オプションなしでコンパイラの生成したプログラムをアセンブル, リンクして ns32k-elf-gdb
-で実行すると以下のようにエラーする:
+で実行すると以下のように _main のブレークポイントがソースファイルとの対応が取れていない:
 
 % ns32k-elf-gcc -S test.c
 % ns32k-elf-as -o test.o test.s -g
 % ns32k-elf-ld -o test.elf ../default.o test.o -T ../default.x
 % ns32k-elf-objdump -x -d -g test.elf > test.objdump
-% ns32k-elf-gdb -q -x gdbcom test.elf
+% ns32k-elf-gdb -q -x gdbcom.2 test.elf
+ns32k-elf-gdb -q -x gdbcom.2 test.elf
 Reading symbols from test.elf...
 Connected to the simulator.
 Loading section .text, size 0x34 lma 0x100
 Start address 0x100
 Transfer rate: 416 bits in <1 sec.
-Breakpoint 1 at 0x100                    ★
+Breakpoint 1 at 0x100: file ../default.S, line 3.
+Breakpoint 2 at 0x120                                ★
 
-Breakpoint 1, 0x00000100 in start ()
-Single stepping until exit from function start,
-which has no line number information.
-Trace/BPT trap
+Breakpoint 1, _start () at ../default.S:3
+3		addr	_stack(pc), r0
+...
 %
 
-ラベル start は 0x100 にアドレス解決されてそこにブレークポイントをセットしてもソースファイル
-との対応が取れていない.
+ラベル _start は 0x100 にアドレス解決されてそこにブレークポイントをセットしてソースファイル
+と対応が取れている.
+一方, ラベル _main は 0x120 にアドレス解決されてそこにブレークポイントをセットして
+いるがソースファイルと対応が取れていない.
 
 % addr2line -e test.elf -a 0x100
 0x00000100
-??:?             ★
+/home/khasegawa/lang/53_GNU_tool/gcc_cross/NS32000/test/test003/../default.S:3 ★
+% addr2line -e test.elf -a 0x120
+0x00000120
+??:?                                                                           ★
 %
 
-例えば期待通り動作している m68k-elf-xxx では以下のようになる.
-% m68k-elf-addr2line -e test.elf -a 0x100
+期待通り動作している m68k-elf-xxx では以下のようになっている:
+
+% addr2line -e test.elf  -a 0x100
 0x00000100
-/home/khasegawa/lang/53_GNU_tool/gcc_cross/MC68000/test/test002/../default.S:3 ★
+/home/khasegawa/lang/53_GNU_tool/gcc_cross/MC68000/test/test002/../default.S:3
+% addr2line -e test.elf  -a 0x120
+0x00000120
+/home/khasegawa/lang/53_GNU_tool/gcc_cross/MC68000/test/test002/test.c:7
 %
 
 ns32k-elf-gdb が期待通り動作しない理由と ns32k-elf-addr2line が期待通り動作しない理由は
@@ -47,8 +57,8 @@ Contents of the .debug_info section (loaded from test.elf):
    Pointer Size:  4
  <0><b>: Abbrev Number: 1 (DW_TAG_compile_unit)
     <c>   DW_AT_stmt_list   : 0x0
-    <10>   DW_AT_low_pc      : 0x0      ★
-    <14>   DW_AT_high_pc     : 0x10     ★
+    <10>   DW_AT_low_pc      : 0x100    ★
+    <14>   DW_AT_high_pc     : 0x1100   ★
     <18>   DW_AT_name        : (indirect string, offset: 0x0): ../default.S
     <1c>   DW_AT_comp_dir    : (indirect string, offset: 0xd): /home/khasegawa/lang/53_GNU_tool/gcc_cross/NS32000/test/test003
     <20>   DW_AT_producer    : (indirect string, offset: 0x4d): GNU AS 2.36.1
@@ -60,12 +70,13 @@ Contents of the .debug_info section (loaded from test.elf):
    Pointer Size:  4
  <0><31>: Abbrev Number: 1 (DW_TAG_compile_unit)
     <32>   DW_AT_stmt_list   : 0x0
-    <36>   DW_AT_low_pc      : 0x0       ★
-    <3a>   DW_AT_high_pc     : 0x24      ★
-    <3e>   DW_AT_name        : (indirect string, offset: 0x0): ../default.S ★
-    <42>   DW_AT_comp_dir    : (indirect string, offset: 0x7): ult.S        ★
-    <46>   DW_AT_producer    : (indirect string, offset: 0x47): st003       ★
+    <36>   DW_AT_low_pc      : 0x110    ★
+    <3a>   DW_AT_high_pc     : 0x2510   ★
+    <3e>   DW_AT_name        : (indirect string, offset: 0x0): ../default.S   ★
+    <42>   DW_AT_comp_dir    : (indirect string, offset: 0x7): ult.S          ★
+    <46>   DW_AT_producer    : (indirect string, offset: 0x47): st003         ★
     <4a>   DW_AT_language    : 32769	(MIPS assembler)
+
 
 期待通り動作している m68k-elf-xxx では以下:
 
