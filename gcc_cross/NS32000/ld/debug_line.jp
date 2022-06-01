@@ -85,5 +85,71 @@ https://wikipredia.net/ja/320xx_microprocessor
 
 これは具体的にどういうことを言っているのかは不明だが問題が起こるまで放置しておく.
 
+  => 例えば以下は r0 レジスタに _stack のアドレスをセットするコード:
+
+	addr	_stack(pc), r0
+
+     アセンブル後の時点では以下のようなオブジェクトコードになっている:
+
+   0:	27 d8 c0 00
+   4:	00 00
+
+     この時点では _stack のアドレスは決まっていないので(先頭を 0 バイト目とすると) 2 バイト
+     目から 5 バイト目はリローケータブルになっている.
+     
+     0xc0 は 30 ビットの値がくることを表している. 例えば 30 ビットが 0x12345678
+     であればリンク後には
+
+   0:	27 d8 d2 34
+   4:	56 78
+
+     になるということ. この d2 34 56 78 の並びがビッグエンディアン形式ということ.
+     つまり, 今回の修正はリンカの該当部分にのみ適用する必要があるということになる.
+     そこで共通ソースに手を入れることになるのだが以下のように後で修正した:
+
+void
+ldwrite (void)
+{
+...
++ extern int work_around; work_around = 1;                    ★
+  if (!bfd_final_link (link_info.output_bfd, &link_info))
+
+binutils-2.36.1.ns32k-elf/bfd/cpu-ns32k.c:
+int work_around;
+
+void
+_bfd_ns32k_put_immediate (bfd_vma value, bfd_byte *buffer, int size)
+{
+  if (!work_around) {  ★
+    buffer += size - 1;
+    switch (size)
+      {
+      case 4:
+	*buffer-- = (value & 0xff); value >>= 8;
+	*buffer-- = (value & 0xff); value >>= 8;
+	/* Fall through.  */
+      case 2:
+	*buffer-- = (value & 0xff); value >>= 8;
+	/* Fall through.  */
+      case 1:
+	*buffer-- = (value & 0xff); value >>= 8;
+      }
+    return;
+  }
+  else {
+    buffer[0] = value;
+    if (size == 1)
+      return;
+  
+    buffer[1] = value >> 8;
+    if (size == 2)
+      return;
+
+    assert(size == 4);
+    buffer[2] = value >> 16;
+    buffer[3] = value >> 24;
+  }
+}
+     
 この修正により 0x100 番地に nop を数個配置したプログラムが ns32k-elf-gdb から実行
 できている.
