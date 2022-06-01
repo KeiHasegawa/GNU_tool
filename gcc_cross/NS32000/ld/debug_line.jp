@@ -97,8 +97,8 @@ https://wikipredia.net/ja/320xx_microprocessor
      この時点では _stack のアドレスは決まっていないので(先頭を 0 バイト目とすると) 2 バイト
      目から 5 バイト目はリローケータブルになっている.
      
-     0xc0 は 30 ビットの値がくることを表している. 例えば _stack のアドレスが 0x12345678
-     であればリンク後には
+     0xc0 は 30 ビットの値がくることを表している. 例えば _stack のアドレスが pc 相対
+     0x12345678 であればリンク後には
 
    0:	27 d8 d2 34
    4:	56 78
@@ -115,13 +115,14 @@ ldwrite (void)
   if (!bfd_final_link (link_info.output_bfd, &link_info))
 
 binutils-2.36.1.ns32k-elf/bfd/cpu-ns32k.c:
+...
 int work_around;
 
 void
 _bfd_ns32k_put_immediate (bfd_vma value, bfd_byte *buffer, int size)
 {
   if (!work_around) {  ★
-    // ビッグエンディアン形式で格納
+    // ビッグエンディアン形式で格納. これまでのコード.
     buffer += size - 1;
     switch (size)
       {
@@ -135,7 +136,6 @@ _bfd_ns32k_put_immediate (bfd_vma value, bfd_byte *buffer, int size)
       case 1:
 	*buffer-- = (value & 0xff); value >>= 8;
       }
-    return;
   }
   else {
     // リトルエンディアン形式で格納
