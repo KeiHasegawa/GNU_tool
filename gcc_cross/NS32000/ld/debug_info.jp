@@ -1,0 +1,104 @@
+現状 -g オプションなしでコンパイラの生成したプログラムをアセンブル, リンクして ns32k-elf-gdb
+で実行すると以下のようにエラーする:
+
+% ns32k-elf-gcc -S test.c
+% ns32k-elf-as -o test.o test.s -g
+% ns32k-elf-ld -o test.elf ../default.o test.o -T ../default.x
+% ns32k-elf-objdump -x -d -g test.elf > test.objdump
+% ns32k-elf-gdb -q -x gdbcom test.elf
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x34 lma 0x100
+Start address 0x100
+Transfer rate: 416 bits in <1 sec.
+Breakpoint 1 at 0x100                    ★
+
+Breakpoint 1, 0x00000100 in start ()
+Single stepping until exit from function start,
+which has no line number information.
+Trace/BPT trap
+%
+
+ラベル start は 0x100 にアドレス解決されてそこにブレークポイントをセットしてもソースファイル
+との対応が取れていない.
+
+% addr2line -e test.elf -a 0x100
+0x00000100
+??:?             ★
+%
+
+例えば期待通り動作している m68k-elf-xxx では以下のようになる.
+% m68k-elf-addr2line -e test.elf -a 0x100
+0x00000100
+/home/khasegawa/lang/53_GNU_tool/gcc_cross/MC68000/test/test002/../default.S:3 ★
+%
+
+ns32k-elf-gdb が期待通り動作しない理由と ns32k-elf-addr2line が期待通り動作しない理由は
+おそらく同じでそれは ns32k-elf-ld が生成した test.elf に問題があるということ.
+
+とこで test.objdump に以下を発見した:
+
+Contents of the .debug_info section (loaded from test.elf):
+
+  Compilation Unit @ offset 0x0:
+   Length:        0x22 (32-bit)
+   Version:       2
+   Abbrev Offset: 0x0
+   Pointer Size:  4
+ <0><b>: Abbrev Number: 1 (DW_TAG_compile_unit)
+    <c>   DW_AT_stmt_list   : 0x0
+    <10>   DW_AT_low_pc      : 0x0      ★
+    <14>   DW_AT_high_pc     : 0x10     ★
+    <18>   DW_AT_name        : (indirect string, offset: 0x0): ../default.S
+    <1c>   DW_AT_comp_dir    : (indirect string, offset: 0xd): /home/khasegawa/lang/53_GNU_tool/gcc_cross/NS32000/test/test003
+    <20>   DW_AT_producer    : (indirect string, offset: 0x4d): GNU AS 2.36.1
+    <24>   DW_AT_language    : 32769	(MIPS assembler)
+  Compilation Unit @ offset 0x26:
+   Length:        0x22 (32-bit)
+   Version:       2
+   Abbrev Offset: 0x0
+   Pointer Size:  4
+ <0><31>: Abbrev Number: 1 (DW_TAG_compile_unit)
+    <32>   DW_AT_stmt_list   : 0x0
+    <36>   DW_AT_low_pc      : 0x0       ★
+    <3a>   DW_AT_high_pc     : 0x24      ★
+    <3e>   DW_AT_name        : (indirect string, offset: 0x0): ../default.S ★
+    <42>   DW_AT_comp_dir    : (indirect string, offset: 0x7): ult.S        ★
+    <46>   DW_AT_producer    : (indirect string, offset: 0x47): st003       ★
+    <4a>   DW_AT_language    : 32769	(MIPS assembler)
+
+期待通り動作している m68k-elf-xxx では以下:
+
+Contents of the .debug_info section (loaded from test.elf):
+
+  Compilation Unit @ offset 0x0:
+   Length:        0x22 (32-bit)
+   Version:       2
+   Abbrev Offset: 0x0
+   Pointer Size:  4
+ <0><b>: Abbrev Number: 1 (DW_TAG_compile_unit)
+    <c>   DW_AT_stmt_list   : 0x0
+    <10>   DW_AT_low_pc      : 0x100    ★
+    <14>   DW_AT_high_pc     : 0x10e    ★
+    <18>   DW_AT_name        : (indirect string, offset: 0x0): ../default.S
+    <1c>   DW_AT_comp_dir    : (indirect string, offset: 0xd): /home/khasegawa/lang/53_GNU_tool/gcc_cross/MC68000/test/test002
+    <20>   DW_AT_producer    : (indirect string, offset: 0x4d): GNU AS 2.36.1
+    <24>   DW_AT_language    : 32769	(MIPS assembler)
+  Compilation Unit @ offset 0x26:
+   Length:        0x99 (32-bit)
+   Version:       4
+   Abbrev Offset: 0x14
+   Pointer Size:  4
+ <0><31>: Abbrev Number: 1 (DW_TAG_compile_unit)
+    <32>   DW_AT_producer    : (indirect string, offset: 0x61): GNU C17 10.2.0 -mcpu=68020 -g
+    <36>   DW_AT_language    : 12	(ANSI C99)
+    <37>   DW_AT_name        : (indirect string, offset: 0x84): test.c
+    <3b>   DW_AT_comp_dir    : (indirect string, offset: 0xd): /home/khasegawa/lang/53_GNU_tool/gcc_cross/MC68000/test/test002
+    <3f>   DW_AT_low_pc      : 0x110
+    <43>   DW_AT_high_pc     : 0x34
+    <47>   DW_AT_stmt_list   : 0x3c
+ <1><4b>: Abbrev Number: 2 (DW_TAG_subprogram)
+....
+
+m68k-elf-xxx の結果は -g オプション付きでコンパイルしたプログラムを利用しているから単純な
+比較はできないが動かない理由が .debug_info にありそうにも思える.
