@@ -6,8 +6,9 @@ int main()
 }
 
 のようなプログラムと tool/start.S のスタートアップルーチンのプログラムをビルドすると
-___main の呼び出しが printf の呼び出しになっている. つまり ns32k-elf-ld のアドレス
-解決が間違えている.
+___main の呼び出しが printf の呼び出しになっている. つまり ns32k-elf-ld で
+bsr ___main を期待したオブジェクトコードに変換できていない. ___main のアドレス解決自体は
+問題なし.
 
   => ~/lang/53_GNU_tool/gcc_cross/NS32000/test/test005
 
@@ -24,7 +25,7 @@ int main()
 }
 
 のようなプログラムと tool/start.S のスタートアップルーチンのプログラムをビルドすれば
-___main のアドレス解決は期待したものになっている.
+bsr ___main のオブジェクトコードは期待したものになっている
 
   => ~/lang/53_GNU_tool/gcc_cross/NS32000/test/test006
 
@@ -58,3 +59,109 @@ ns32k-elf-objdump: 警告: DW_FORM_strp オフセットが大きすぎます: 4e
 のように例のオフセットが間違った値になる.
 
   => ~/lang/53_GNU_tool/gcc_cross/NS32000/test/test007
+
+
+まずは test005 から調査する. 現状以下のようなコードが生成されている.
+
+0000011c <_main>:
+ 11c:	82 00 00    	enter	[], 0
+ 11f:	02 bf f1    	bsr	110 <_printf>   ★
+ 122:	ff          	0377
+ 123:	fd          	0375
+ 124:	5f 00       	movqd	0, r0
+ 126:	92 00       	exit	[]
+ 128:	12 00       	ret	0
+
+セクション .text の内容:
+ 0100 27d89f00 0000ef04 02c00000 14061200  '...............
+ 0110 16120036 12004612 00000000 82000002  ...6..F.........  ★
+ 0120 bff1fffd 5f009200 1200               ...._.....        ★
+
+0x02 0xbf 0xf1 0xff 0xfd の並びになっている理由を調べてみる.
+
+(gdb) b bfd_set_section_contents
+(gdb) run
+...
+Breakpoint 31, bfd_set_section_contents (abfd=0x817fcd8, section=0x8185a70, location=0x81815a0, offset=28, count=14) at section.c:1496
+(gdb) x/14bx location
+0x81815a0:	0x82	0x00	0x00	0x02	0xbf	0xf1	0xff	0xfd ★
+0x81815a8:	0x5f	0x00	0x92	0x00	0x12	0x00
+(gdb)
+
+
+0000011c <_main>:
+ 11c:	82 00 00    	enter	[], 0
+ 11f:	02 ff ff ff 	bsr	10e <___main>
+ 123:	ef 
+
+この部分の期待値は上のように 0xff 0xff 0xff 0xef らしい.
+期待通りできている test006 の test.o は以下:
+
+00000010 <_main>:
+  10:	82 00 00    	enter	[], 0
+  13:	02 ff ff ff 	bsr	0 <_f>
+  17:	ed 
+			14: PCREL_NS32K_DISP_32	___main        ★
+
+一方 test005 の test.o は以下:
+
+00000000 <_main>:
+   0:	82 00 00    	enter	[], 0
+   3:	02 ff ff ff 	bsr	0 <_main>
+   7:	fd 
+			4: PCREL_NS32K_DISP_16	___main        ★
+
+test005 の test.o も PCREL_NS32K_DISP_32 になっていればできていそう.
+ということはこれはリンカの問題ではなくてアセンブラの問題のように思える.
+
+ns32k-elf-objdump の以下の部分で PCREL_NS32K_DISP_16 や PCREL_NS32K_DISP_32
+が表示されている:
+
+	      else if (q->howto->name)
+		printf ("%s\t", q->howto->name);
+	      else
+
+
+test005 に対しては以下:
+(gdb) p (**relppp)->howto
+$11 = (reloc_howto_type *) 0x813d850 <ns32k_aout_howto_table+240>
+(gdb) 
+
+tets006 に対しては以下:
+
+(gdb) p (**relppp)->howto
+$9 = (reloc_howto_type *) 0x813d868 <ns32k_aout_howto_table+264>
+(gdb)
+
+上のように違いが出ている.
+
+ns32k-elf-as 視点で調べてみる
+
+static bfd_reloc_code_real_type
+reloc (int size, int pcrel, int type)
+{
+...
+    return relocs[rel_index];
+
+(gdb) b (上の return 文)
+(gdb) command
+> p relocs[rel_index]
+> c
+> end
+(gdb) run
+...
+
+test005 の場合も test006 の場合も返しているのは以下であった.
+...
+$93 = BFD_RELOC_NS32K_DISP_32_PCREL
+
+$94 = BFD_RELOC_NS32K_DISP_32_PCREL
+...
+
+test005 で BFD_RELOC_NS32K_DISP_16_PCREL は返されていない. さてこれは一体どういうこと
+なのか.
+
+ns32k-elf-objdump や ns32k-elf-ld 視点では PCREL_NS32K_DISP_32 であるべきものが
+PCREL_NS32K_DISP_16 になっているのは入力ファイルのどの部分から判断しているのか明確にするべき.
+
+
