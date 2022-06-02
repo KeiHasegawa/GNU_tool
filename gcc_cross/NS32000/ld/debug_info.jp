@@ -113,3 +113,363 @@ Contents of the .debug_info section (loaded from test.elf):
 
 m68k-elf-xxx の結果は -g オプション付きでコンパイルしたプログラムを利用しているから単純な
 比較はできないが動かない理由が .debug_info にありそうにも思える.
+
+このファイルを生成しているのは ns32k-elf-ld なのでまずはその視点から調べてみる.
+
+% cat z3
+b bfd_set_section_contents
+command
+if ((int)strcmp(section->name, ".debug_info"))
+continue
+end
+end
+%
+(gdb) so z3
+(gdb) run
+...
+Breakpoint 19, bfd_set_section_contents (abfd=0x817ecd8, section=0x8184c10, location=0x8180530, offset=0, count=38) at section.c:1496
+(gdb) x/38bx location
+0x8180530:	0x22	0x00	0x00	0x00	0x02	0x00	0x00	0x00
+0x8180538:	0x00	0x00	0x04	0x01	0x00	0x00	0x00	0x00
+0x8180540:	0x00	0x01	0x00	0x00	0x00	0x11	0x00	0x00  ★
+0x8180548:	0x00	0x00	0x00	0x00	0x0d	0x00	0x00	0x00
+0x8180550:	0x4d	0x00	0x00	0x00	0x01	0x80
+(gdb)
+
+0x8180544 にリトルエンディアン形式で 0x00001100 がセットされているのが間違い. 期待値は
+0x00000110 がセットされること.
+
+void
+_bfd_ns32k_put_immediate (bfd_vma value, bfd_byte *buffer, int size)
+{
+  if (!work_around) {
+    ...
+  }
+  else {
+    buffer[0] = value;
+    if (size == 1)
+      return;
+  
+    buffer[1] = value >> 8;   ★
+    if (size == 2)
+      return;
+
+    assert(size == 4);
+    buffer[2] = value >> 16;
+    buffer[3] = value >> 24;
+  }
+}
+
+セットしているのは上の箇所で, 今回修正した部分であるが, そもそも value の値が間違いなので
+この修正自体が問題ではない.
+
+ここで 0x100 に nop を数個並べたプログラムの .debug_info が以下のようになっていること
+に気付いた:
+
+Contents of the .debug_info section (loaded from test.elf):
+
+  Compilation Unit @ offset 0x0:
+   Length:        0x22 (32-bit)
+   Version:       2
+   Abbrev Offset: 0x0
+   Pointer Size:  4
+ <0><b>: Abbrev Number: 1 (DW_TAG_compile_unit)
+    <c>   DW_AT_stmt_list   : 0x0
+    <10>   DW_AT_low_pc      : 0x100  ★
+    <14>   DW_AT_high_pc     : 0x500  ★
+    <18>   DW_AT_name        : (indirect string, offset: 0x0): test.S
+    <1c>   DW_AT_comp_dir    : (indirect string, offset: 0x7): /home/khasegawa/lang/53_GNU_tool/gcc_cross/NS32000/test/test001
+    <20>   DW_AT_producer    : (indirect string, offset: 0x47): GNU AS 2.36.1
+    <24>   DW_AT_language    : 32769	(MIPS assembler)
+
+0x500 は間違いでおそらく 0x104 が正しい.
+
+以下は m68k-elf-xxx の対応するプログラム:
+
+.debug_info セクションの内容(test.elf より読み込んだもの):
+
+  コンパイル単位 @ オフセット 0x0:
+   長さ:        0x22 (32-bit)
+   バージョン:    2
+   省略オフセット: 0x0
+   ポインタサイズ:4
+ <0><b>: 省略番号: 1 (DW_TAG_compile_unit)
+    <c>   DW_AT_stmt_list   : 0x0
+    <10>   DW_AT_low_pc      : 0x100   ★
+    <14>   DW_AT_high_pc     : 0x108   ★
+    <18>   DW_AT_name        : (間接文字列、オフセット: 0x0): test.S
+    <1c>   DW_AT_comp_dir    : (間接文字列、オフセット: 0x7): /home/khasegawa/lang/53_GNU_tool/gcc_cross/MC68000/test/test001
+    <20>   DW_AT_producer    : (間接文字列、オフセット: 0x47): GNU AS 2.36.1
+    <24>   DW_AT_language    : 32769	(MIPS assembler)
+
+ここで nop の命令長は NS32000 では 1 で MC68000 では 2 である.
+
+ここで test.o の ns32k-elf-objdump の結果は以下:
+
+Contents of the .debug_info section (loaded from test.o):
+
+  Compilation Unit @ offset 0x0:
+   Length:        0x22 (32-bit)
+   Version:       2
+   Abbrev Offset: 0x0
+   Pointer Size:  4
+ <0><b>: Abbrev Number: 1 (DW_TAG_compile_unit)
+    <c>   DW_AT_stmt_list   : 0x0
+    <10>   DW_AT_low_pc      : 0x0   ★
+    <14>   DW_AT_high_pc     : 0x4   ★
+    <18>   DW_AT_name        : (indirect string, offset: 0x0): test.S
+    <1c>   DW_AT_comp_dir    : (indirect string, offset: 0x7): /home/khasegawa/lang/53_GNU_tool/gcc_cross/NS32000/test/test001
+    <20>   DW_AT_producer    : (indirect string, offset: 0x47): GNU AS 2.36.1
+    <24>   DW_AT_language    : 32769	(MIPS assembler)
+
+つまり ns32k-elf-as はできているが ns32k-elf-ld で間違った値にしているということ.
+まずは 0x100 に nop を 4 つ配置したプログラムに対して期待するプログラムを生成できることを
+目指す:
+
+(gdb) cd ../test001
+(gdb) run -o test.elf test.o -T ../default.x
+...
+Breakpoint 19, bfd_set_section_contents (abfd=0x817ecd8, section=0x8184c10, location=0x8180500, offset=0, count=38) at section.c:1496
+(gdb) x/38bx location
+0x8180500:	0x22	0x00	0x00	0x00	0x02	0x00	0x00	0x00
+0x8180508:	0x00	0x00	0x04	0x01	0x00	0x00	0x00	0x00
+0x8180510:	0x00	0x01	0x00	0x00	0x00	0x05	0x00	0x00  ★
+0x8180518:	0x00	0x00	0x00	0x00	0x07	0x00	0x00	0x00
+0x8180520:	0x47	0x00	0x00	0x00	0x01	0x80
+(gdb) 
+
+0x8180514 に 0x00000500 がセットされているのが間違い. 0x00000104 が期待値.
+
+以下のように修正:
+
+bfd_vma
+_bfd_ns32k_get_immediate (bfd_byte *buffer, int size)
+{
+  if (!work_around) {  ★
+    // これまでのビッグエンディアン用のコード
+  }
+  else {
+    // リトルエンディアン用のコード
+    if (size == 1)
+      return buffer[0];
+    if (size == 2)
+      return buffer[0] | (buffer[1] << 8);
+    assert(size == 4);
+    return buffer[0] | (buffer[1] << 8) | (buffer[2] << 16) | (buffer[3] << 24);
+  }
+}
+
+この修正により 0x104 にできている.
+
+しかしこの修正が入った状態でも -g オプションなしでコンパイラの生成したプログラムをアセンブル,
+リンクして ns32k-elf-gdb で実行すると以下のように _main のブレークポイントがソースファイル
+との対応が取れていない:
+
+% ns32k-elf-gdb -q -x gdbcom.2 test.elf
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x34 lma 0x100
+Start address 0x100
+Transfer rate: 416 bits in <1 sec.
+Breakpoint 1 at 0x100: file ../default.S, line 3.
+Breakpoint 2 at 0x120  ★
+...
+
+.debug_info セクションは以下:
+
+Contents of the .debug_info section (loaded from test.elf):
+
+  Compilation Unit @ offset 0x0:
+   Length:        0x22 (32-bit)
+   Version:       2
+   Abbrev Offset: 0x0
+   Pointer Size:  4
+ <0><b>: Abbrev Number: 1 (DW_TAG_compile_unit)
+    <c>   DW_AT_stmt_list   : 0x0
+    <10>   DW_AT_low_pc      : 0x100
+    <14>   DW_AT_high_pc     : 0x110
+    <18>   DW_AT_name        : (indirect string, offset: 0x0): ../default.S
+    <1c>   DW_AT_comp_dir    : (indirect string, offset: 0xd): /home/khasegawa/lang/53_GNU_tool/gcc_cross/NS32000/test/test003
+    <20>   DW_AT_producer    : (indirect string, offset: 0x4d): GNU AS 2.36.1
+    <24>   DW_AT_language    : 32769	(MIPS assembler)
+  Compilation Unit @ offset 0x26:
+   Length:        0x22 (32-bit)
+   Version:       2
+   Abbrev Offset: 0x0
+   Pointer Size:  4
+ <0><31>: Abbrev Number: 1 (DW_TAG_compile_unit)
+    <32>   DW_AT_stmt_list   : 0x0
+    <36>   DW_AT_low_pc      : 0x110
+    <3a>   DW_AT_high_pc     : 0x134
+    <3e>   DW_AT_name        : (indirect string, offset: 0x0): ../default.S ★
+    <42>   DW_AT_comp_dir    : (indirect string, offset: 0x7): ult.S        ★
+    <46>   DW_AT_producer    : (indirect string, offset: 0x47): st003       ★
+    <4a>   DW_AT_language    : 32769	(MIPS assembler)
+
+2 つ目の入力ファイル test.o の .debug_info セクションが正しくないがこれは
+「"DW_FORM_strp offset too big: 5b80" のエラーの調査」で行なった修正がそもそも
+正しくないらしい. 一回この修正をキャンセルした.
+そしてその修正が入った状態で .debug_info を確認してみた:
+
+ <0><31>: Abbrev Number: 1 (DW_TAG_compile_unit)
+    <32>   DW_AT_stmt_list   : 0x3e
+    <36>   DW_AT_low_pc      : 0x110
+    <3a>   DW_AT_high_pc     : 0x134
+    <3e>   DW_AT_name        : (indirect string, offset: 0x5b80): <offset is too big>  ★
+    <42>   DW_AT_comp_dir    : (indirect string, offset: 0x5b87): <offset is too big>  ★
+    <46>   DW_AT_producer    : (indirect string, offset: 0x5b87): <offset is too big>  ★
+    <4a>   DW_AT_language    : 32769	(MIPS assembler)
+
+.debug_str セクションへのオフセットが正しくない.
+.debug_str セクションは以下:
+
+Contents of the .debug_str section (loaded from test.elf):
+
+  0x00000000 2e2e2f64 65666175 6c742e53 002f686f ../default.S./ho
+  0x00000010 6d652f6b 68617365 67617761 2f6c616e me/khasegawa/lan
+  0x00000020 672f3533 5f474e55 5f746f6f 6c2f6763 g/53_GNU_tool/gc
+  0x00000030 635f6372 6f73732f 4e533332 3030302f c_cross/NS32000/
+  0x00000040 74657374 2f746573 74303033 00474e55 test/test003.GNU
+  0x00000050 20415320 322e3336 2e310074 6573742e  AS 2.36.1.test.    ★
+  0x00000060 73002f68 6f6d652f 6b686173 65676177 s./home/khasegaw
+  0x00000070 612f6c61 6e672f35 335f474e 555f746f a/lang/53_GNU_to
+  0x00000080 6f6c2f67 63635f63 726f7373 2f4e5333 ol/gcc_cross/NS3
+  0x00000090 32303030 2f746573 742f7465 73743030 2000/test/test00
+  0x000000a0 3300474e 55204153 20322e33 362e3100 3.GNU AS 2.36.1.
+
+0x5b80 は 0x5b が期待値
+最初の 0x5b87 は 0x5b + 7 = 0x62 が期待値
+しかし最後の 0x5b87 は 0xa2 が期待値
+
+そこで以下のように修正してみた:
+
+void
+_bfd_ns32k_put_displacement (bfd_vma value, bfd_byte *buffer, int size)
+{
+  if (!work_around) {  ★
+    // これまでのコード
+  }
+  else {
+    if (size == 1) {
+      value &= 0x7f;
+      buffer[0] = value;
+      return;
+    }
+    if (size == 2) {
+      if (value == 0x5b) {
+	buffer[0] = 0x5b;
+	buffer[1] = 0;
+	return;
+      }
+      if (value == 0x75b) {
+	static int n;
+	++n;
+	if (n == 1) {
+	  buffer[0] = 0x62;
+	  buffer[1] = 0;
+	  return;
+	}
+	if (n == 2) {
+	  buffer[0] = 0xa2;
+	  buffer[1] = 0;
+	  return;
+	}
+	abort();
+	return;
+      }
+      value &= 0x3fff;
+      value |= 0x8000;
+      buffer[0] = value >> 8;
+      buffer[1] = value;
+      return;
+    }
+    assert(size == 4);
+    value |= (bfd_vma) 0xc0000000;
+    buffer[0] = value >> 24;
+    buffer[1] = value >> 16;
+    buffer[2] = value >> 8;
+    buffer[3] = value;
+  }
+}
+
+size == 2 の部分で値を改竄しているが, これにより .debug_info は以下のようになっている:
+
+ <0><b>: Abbrev Number: 1 (DW_TAG_compile_unit)
+    <c>   DW_AT_stmt_list   : 0x0
+    <10>   DW_AT_low_pc      : 0x100
+    <14>   DW_AT_high_pc     : 0x110
+    <18>   DW_AT_name        : (indirect string, offset: 0x0): ../default.S
+    <1c>   DW_AT_comp_dir    : (indirect string, offset: 0xd): /home/khasegawa/lang/53_GNU_tool/gcc_cross/NS32000/test/test003
+    <20>   DW_AT_producer    : (indirect string, offset: 0x4d): GNU AS 2.36.1
+    <24>   DW_AT_language    : 32769	(MIPS assembler)
+  Compilation Unit @ offset 0x26:
+   Length:        0x22 (32-bit)
+   Version:       2
+   Abbrev Offset: 0x0
+   Pointer Size:  4
+ <0><31>: Abbrev Number: 1 (DW_TAG_compile_unit)
+    <32>   DW_AT_stmt_list   : 0x3e
+    <36>   DW_AT_low_pc      : 0x110
+    <3a>   DW_AT_high_pc     : 0x134
+    <3e>   DW_AT_name        : (indirect string, offset: 0x5b): test.s  ★
+    <42>   DW_AT_comp_dir    : (indirect string, offset: 0x62): /home/khasegawa/lang/53_GNU_tool/gcc_cross/NS32000/test/test003  ★
+    <46>   DW_AT_producer    : (indirect string, offset: 0xa2): GNU AS 2.36.1  ★
+    <4a>   DW_AT_language    : 32769	(MIPS assembler)
+
+0x75b から 0x5b + 7 = 0x62 を捻り出すことはできなくはないが 2 つ目の 0x75b から 0xa2
+を算出するのは無理がある.
+
+まずは 0x5b や 0x75b がどのように計算されたかを確認してみる.
+
+static int work_around2;
+
+bfd_vma
+_bfd_ns32k_get_displacement (bfd_byte *buffer, int size)
+{
+...
+    case 2:
+      if (!work_around2) {                            ★
+	value = ((*buffer++ & 0x3f) ^ 0x20) - 0x20;   ここで計算していた
+	value = (value << 8) | (0xff & *buffer);
+      }
+      else
+	value = buffer[0] | (buffer[1] << 8);         ★
+      break;
+...
+
+bfd_reloc_status_type
+_bfd_ns32k_reloc_disp (bfd *abfd,
+...
+{
+  const char* n1 = input_section->name;
+  const char* n2 = symbol->name;
+  if (strcmp(n1, ".debug_info") == 0 && strcmp(n2, ".debug_str") == 0)  ★ これが条件
+    work_around2 = 1;
+  bfd_reloc_status_type ret =
+    do_ns32k_reloc (abfd, reloc_entry, symbol, data, input_section,
+			 output_bfd, error_message,
+			 _bfd_ns32k_get_displacement,
+			 _bfd_ns32k_put_displacement);
+  work_around2 = 0;
+  return ret;
+}
+
+void
+_bfd_ns32k_put_displacement (bfd_vma value, bfd_byte *buffer, int size)
+{
+...
+      case 2:
+	if (!work_around2) {   ★
+	  value &= 0x3fff;
+	  value |= 0x8000;
+	  *buffer++ = (value >> 8);
+	  *buffer++ = value;
+	}
+	else {
+	  buffer[0] = value;
+	  buffer[1] = value >> 8;
+	}
+	break;
+...
+
+値の取得とリロケーションの分を変更するのにこのようにする必要がある.
