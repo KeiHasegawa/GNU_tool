@@ -1,0 +1,49 @@
+現状 -g オプション付きでコンパイラの生成したプログラムをアセンブル, リンクすると以下のように
+エラーしてしまう:
+
+% ns32k-elf-gcc -o test.o test.c -g -c
+% ns32k-elf-ld -o test.elf ../default.o test.o -T ../default.x
+ns32k-elf-ld: unsupported .stab relocation
+test.o:(.stab+0x158): relocation truncated to fit: PCREL_NS32K_DISP_8 against `_f'
+%
+
+エラーメッセージが 2 つ出ているがまずは 1 つ目のメッセージが出力れている場所を特定する.
+
+(gdb) cd /home/khasegawa/lang/53_GNU_tool/gcc_cross/NS32000/test/test004
+(gdb) run -o test.elf ../default.o test.o -T ../default.x
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ns32k-elf/ld/ld-new: unsupported .stab relocation
+test.o:(.stab+0x158): relocation truncated to fit: PCREL_NS32K_DISP_8 against `_f'
+[Inferior 1 (process 32561) exited with code 01]
+(gdb) 
+
+gdb から実行して再現している.
+
+(gdb) b einfo
+(gdb run
+...
+einfo のブレークポイントにヒット
+
+  einfo ("%X%H:", abfd, section, address);  ★
+
+(gdb) p section->name
+$209 = 0x818d396 ".stab"
+(gdb) p abfd->filename
+$211 = 0x818c7c8 "test.o"
+(gdb) p address
+$212 = 344
+(gdb) 
+
+どうやらここらしい.
+
+(gdb) where
+#0  einfo (fmt=0x8111ad5 "%X%H:") at ldmisc.c:612
+#1  0x080615f6 in reloc_overflow (info=0x817bd20 <link_info>, entry=0x0, name=0x819a8ec "_f", reloc_name=0x8128edc "PCREL_NS32K_DISP_8", addend=0, abfd=0x81811c8, section=0x819590c, address=344) at ./ldmain.c:1538
+#2  0x0807964b in bfd_generic_get_relocated_section_contents (abfd=0x817fcd8, link_info=0x817bd20 <link_info>, link_order=0x818ba50, data=<optimized out>, relocatable=0, symbols=0x819a634) at reloc.c:8491
+#3  0x08073a99 in default_indirect_link_order (output_bfd=output_bfd@entry=0x817fcd8, info=info@entry=0x817bd20 <link_info>, output_section=output_section@entry=0x8185f10, link_order=0x818ba50, generic_linker=1) at linker.c:2660
+#4  0x0807588b in _bfd_generic_final_link (abfd=<optimized out>, info=0x817bd20 <link_info>) at linker.c:1938
+#5  0x08062683 in ldwrite () at ldwrite.c:546
+#6  0x0805f8dd in main (argc=7, argv=0xbffff5f4) at ./ldmain.c:512
+(gdb)
+
+とりあえずこのエラーを回避するのを保留する. 必要があれば対応する.
