@@ -1,0 +1,60 @@
+現状
+
+int main()
+{
+  return 0;
+}
+
+のようなプログラムと tool/start.S のスタートアップルーチンのプログラムをビルドすると
+___main の呼び出しが printf の呼び出しになっている. つまり ns32k-elf-ld のアドレス
+解決が間違えている.
+
+  => ~/lang/53_GNU_tool/gcc_cross/NS32000/test/test005
+
+しかし一方
+
+int f(int a, int b)
+{
+  return a + b;
+}
+
+int main()
+{
+  return f(5, 6);
+}
+
+のようなプログラムと tool/start.S のスタートアップルーチンのプログラムをビルドすれば
+___main のアドレス解決は期待したものになっている.
+
+  => ~/lang/53_GNU_tool/gcc_cross/NS32000/test/test006
+
+さらに以下のようなプログラム
+
+extern int printf(const char*, ...);
+
+void f(int a, int b)
+{
+  printf("%d + %d = %d\n", a, b, a + b);
+}
+
+int main()
+{
+  f(5, 6);
+  return 0;
+}
+
+と tool/start.S のスタートアップルーチンとをビルドすれば __main のアドレスはやはり
+正しくない. さらに
+
+% ns32k-elf-gcc -S test.c
+% ns32k-elf-as -o test.o test.s -g
+% ns32k-elf-ld -o test.elf  /home/khasegawa/lang/53_GNU_tool/gcc_cross/NS32000/tool/start.o test.o -T /home/khasegawa/lang/53_GNU_tool/gcc_cross/NS32000/tool/sample.x
+% ns32k-elf-objdump -x -d -g test.elf > test.objdump
+ns32k-elf-objdump: 警告: DW_FORM_strp オフセットが大きすぎます: 4e0000c0
+ns32k-elf-objdump: 警告: DW_FORM_strp オフセットが大きすぎます: 4e0000c7
+ns32k-elf-objdump: 警告: DW_FORM_strp オフセットが大きすぎます: 4e0000c7
+%
+
+のように例のオフセットが間違った値になる.
+
+  => ~/lang/53_GNU_tool/gcc_cross/NS32000/test/test007
