@@ -1,0 +1,84 @@
+経緯 : 「NS32000 の ld」 => 「bsr ___main のコードが正しくない件の調査」を参照.
+
+test005/test.o でファイルオフセット 0x1f0 に a70a になっているが a70b が正しい.
+
+test006/test.o でファイルオフセット 0x220 が a70b になっている. これはできている.
+
+まずは test005/test.o が間違える原因を調べてみる.
+
+
+	  if (bfd_seek (abfd, i_shdrp[count]->sh_offset, SEEK_SET) != 0
+	      || bfd_bwrite (i_shdrp[count]->contents, amt, abfd) != amt)  ★
+	    return FALSE;
+
+(gdb) p *i_shdrp[count]
+$20 = {sh_name = 27, sh_type = 4, sh_flags = 64, sh_addr = 0, 
+  sh_offset = 492, sh_size = 12, sh_link = 13, sh_info = 1, sh_addralign = 4, 
+  sh_entsize = 12, bfd_section = 0x0, contents = 0x818208c "\004"}
+(gdb) x/12bx i_shdrp[count]->contents
+0x818208c:	0x04	0x00	0x00	0x00	0xa7	0x0a	0x00	0x00
+0x8182094:	0x00	0x00	0x00	0x00
+(gdb) p/x i_shdrp[count]->sh_offset
+$22 = 0x1ec
+(gdb)
+
+0x1f0 に確かに a70a を書き込んでいる.
+
+      src_rela.r_offset = ptr->address + addr_offset;
+      src_rela.r_info = ELF_R_INFO (n, ptr->howto->type);  ★
+      src_rela.r_addend = ptr->addend;
+      (*swap_out) (abfd, &src_rela, dst_rela);
+
+(gdb) p/x src_rela.r_info
+$28 = 0xaa7
+(gdb) p ptr->howto
+$29 = (reloc_howto_type *) 0x811b3c8 <ns32k_aout_howto_table+264>  ★
+(gdb)
+
+ptr->howto は期待値. 上の部分のマクロ展開は以下:
+
+      src_rela.r_info = (((unsigned) (n) << 8) + ((ptr->howto->type) & 0xff));
+
+
+(gdb) p n
+$33 = 10
+(gdb) p/x ptr->howto->type
+$35 = 0x1a7
+(gdb)
+
+これはマクロの定義に問題があるように思える. しかしそれならば何故 test006/test.o が
+できているのか謎.
+
+調べてみたところ n = 11 になっていた. ということはマクロの定義が問題なのではなくて
+n の計算方法に問題があったということ. n を 10 に計算していたのは以下:
+
+static bfd_boolean
+elf_map_symbols (bfd *abfd, unsigned int *pnum_locals)
+{
+...
+  for (idx = 0; idx < symcount; idx++)
+    {
+      asymbol *sym = syms[idx];
+      unsigned int i;
+
+      if (sym_is_global (abfd, sym))
+	i = num_locals + num_globals2++;
+      /* Don't include ignored section symbols.  */
+      else if (!ignore_section_sym (abfd, sym))
+	i = num_locals2++;
+      else
+	continue;
+      new_syms[i] = sym;
+      sym->udata.i = i + 1;   ★
+    }
+
+(gdb) p i
+$54 = 9
+(gdb) 
+
+これは何番目のシンボルか計算しているようなコードだと思える. だとすればリロケータブルの
+種別とは関係なさそう.
+
+もう一度
+「NS32000 の ld」 => 「"最終リンクに失敗しました: bad value" のエラーの調査」を見直す
+必要がありそう.
