@@ -1,0 +1,105 @@
+現状 ns32k-elf-ld でリロケーションを操作するのを以下のようにしている:
+
+static bfd_boolean
+elf_ns32k_info_to_howto(bfd* abfd, arelent* cache_ptr,
+			Elf_Internal_Rela* dst)
+{
+  (void)abfd;
+  unsigned int r_type = dst->r_info >> 8; ★
+  if (r_type >= howto_table_ns32k_tbl_sz) {
+    bfd_set_error(bfd_error_bad_value);
+    return FALSE;
+  }
+  extern reloc_howto_type ns32k_aout_howto_table[];
+  cache_ptr->howto = ns32k_aout_howto_table + r_type;
+  return TRUE;
+}  
+
+これの経緯は「"最終リンクに失敗しました: bad value" のエラーの調査」にある.
+これを以下のように修正することにした:
+
++static unsigned int get_type(unsigned long r_info)
++{
++  unsigned int tmp = (0x100 | (r_info & 0xff));
++  if (BFD_RELOC_NS32K_IMM_8 <= tmp && tmp <= BFD_RELOC_NS32K_DISP_32_PCREL)
++    return tmp - BFD_RELOC_NS32K_IMM_8;
++  tmp &= 0xff;
++  return tmp;
++}
+
+static bfd_boolean
+elf_ns32k_info_to_howto(bfd* abfd, arelent* cache_ptr,
+			Elf_Internal_Rela* dst)
+{
+  (void)abfd;
++ unsigned int r_type = get_type(dst->r_info);
+  extern unsigned int howto_table_ns32k_tbl_sz;
++ assert(r_type < howto_table_ns32k_tbl_sz);
+  extern reloc_howto_type ns32k_aout_howto_table[];
+  cache_ptr->howto = ns32k_aout_howto_table + r_type;
+  return TRUE;
+}
+
+つまりリンカはリロケーションの方法をアセンブラから指示されるのだが, それが適切に伝えられて
+いなかったということ.
+
+リロケーションの方法は以下のように構造体の配列で指定されている:
+
+reloc_howto_type ns32k_aout_howto_table[] =
+{
+
+  { (unsigned) BFD_RELOC_NS32K_IMM_8, 0 < 0 ? -0 : 0, 8, 0, 0, complain_overflow_signed, 0 < 0, 0, 1, 0, 0x000000ff, 0x000000ff, _bfd_ns32k_reloc_imm, "NS32K_IMM_8" }
+
+                                     ,
+  { (unsigned) BFD_RELOC_NS32K_IMM_16, 1 < 0 ? -1 : 1, 16, 0, 0, complain_overflow_signed, 1 < 0, 0, 1, 0, 0x0000ffff, 0x0000ffff, _bfd_ns32k_reloc_imm, "NS32K_IMM_16" }
+
+                                     ,
+  { (unsigned) BFD_RELOC_NS32K_IMM_32, 2 < 0 ? -2 : 2, 32, 0, 0, complain_overflow_signed, 2 < 0, 0, 1, 0, 0xffffffff, 0xffffffff, _bfd_ns32k_reloc_imm, "NS32K_IMM_32" }
+
+                                     ,
+  { (unsigned) BFD_RELOC_NS32K_IMM_8_PCREL, 0 < 0 ? -0 : 0, 8, 0, 0, complain_overflow_signed, 0 < 0, 1, 1, 0, 0x000000ff, 0x000000ff, _bfd_ns32k_reloc_imm, "PCREL_NS32K_IMM_8" }
+
+                                      ,
+  { (unsigned) BFD_RELOC_NS32K_IMM_16_PCREL, 1 < 0 ? -1 : 1, 16, 0, 0, complain_overflow_signed, 1 < 0, 1, 1, 0, 0x0000ffff, 0x0000ffff, _bfd_ns32k_reloc_imm, "PCREL_NS32K_IMM_16" }
+
+                                     ,
+  { (unsigned) BFD_RELOC_NS32K_IMM_32_PCREL, 2 < 0 ? -2 : 2, 32, 0, 0, complain_overflow_signed, 2 < 0, 1, 1, 0, 0xffffffff, 0xffffffff, _bfd_ns32k_reloc_imm, "PCREL_NS32K_IMM_32" }
+
+                                     ,
+
+
+  { (unsigned) BFD_RELOC_NS32K_DISP_8, 0 < 0 ? -0 : 0, 7, 0, 0, complain_overflow_signed, 0 < 0, 0, 1, 0, 0x000000ff, 0x000000ff, _bfd_ns32k_reloc_disp, "NS32K_DISP_8" }
+
+                                     ,
+  { (unsigned) BFD_RELOC_NS32K_DISP_16, 1 < 0 ? -1 : 1, 14, 0, 0, complain_overflow_signed, 1 < 0, 0, 1, 0, 0x0000ffff, 0x0000ffff, _bfd_ns32k_reloc_disp, "NS32K_DISP_16" }
+
+                                      ,
+  { (unsigned) BFD_RELOC_NS32K_DISP_32, 2 < 0 ? -2 : 2, 30, 0, 0, complain_overflow_signed, 2 < 0, 0, 1, 0, 0xffffffff, 0xffffffff, _bfd_ns32k_reloc_disp, "NS32K_DISP_32" }
+
+                                      ,
+  { (unsigned) BFD_RELOC_NS32K_DISP_8_PCREL, 0 < 0 ? -0 : 0, 7, 0, 0, complain_overflow_signed, 0 < 0, 1, 1, 0, 0x000000ff, 0x000000ff, _bfd_ns32k_reloc_disp, "PCREL_NS32K_DISP_8" }
+
+                                     ,
+  { (unsigned) BFD_RELOC_NS32K_DISP_16_PCREL, 1 < 0 ? -1 : 1, 14, 0, 0, complain_overflow_signed, 1 < 0, 1, 1, 0, 0x0000ffff, 0x0000ffff, _bfd_ns32k_reloc_disp, "PCREL_NS32K_DISP_16" }
+
+                                     ,
+  { (unsigned) BFD_RELOC_NS32K_DISP_32_PCREL, 2 < 0 ? -2 : 2, 30, 0, 0, complain_overflow_signed, 2 < 0, 1, 1, 0, 0xffffffff, 0xffffffff, _bfd_ns32k_reloc_disp, "PCREL_NS32K_DISP_32" }
+
+                                     ,
+
+
+  { (unsigned) BFD_RELOC_8, 0 < 0 ? -0 : 0, 8, 0, 0, complain_overflow_bitfield, 0 < 0, 0, 1, 0, 0x000000ff, 0x000000ff, 0, "8" }
+                                          ,
+  { (unsigned) BFD_RELOC_16, 1 < 0 ? -1 : 1, 16, 0, 0, complain_overflow_bitfield, 1 < 0, 0, 1, 0, 0x0000ffff, 0x0000ffff, 0, "16" }
+                                           ,
+  { (unsigned) BFD_RELOC_32, 2 < 0 ? -2 : 2, 32, 0, 0, complain_overflow_bitfield, 2 < 0, 0, 1, 0, 0xffffffff, 0xffffffff, 0, "32" }
+                                           ,
+  { (unsigned) BFD_RELOC_8_PCREL, 0 < 0 ? -0 : 0, 8, 0, 0, complain_overflow_signed, 0 < 0, 1, 1, 0, 0x000000ff, 0x000000ff, 0, "PCREL_8" }
+                                                ,
+  { (unsigned) BFD_RELOC_16_PCREL, 1 < 0 ? -1 : 1, 16, 0, 0, complain_overflow_signed, 1 < 0, 1, 1, 0, 0x0000ffff, 0x0000ffff, 0, "PCREL_16" }
+                                                 ,
+  { (unsigned) BFD_RELOC_32_PCREL, 2 < 0 ? -2 : 2, 32, 0, 0, complain_overflow_signed, 2 < 0, 1, 1, 0, 0xffffffff, 0xffffffff, 0, "PCREL_32" }
+                                                 ,
+};
+
+これのいずれかを選択してリロケーションをリンカが行なう.
