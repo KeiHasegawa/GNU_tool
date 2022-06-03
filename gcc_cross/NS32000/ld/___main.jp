@@ -165,3 +165,76 @@ ns32k-elf-objdump や ns32k-elf-ld 視点では PCREL_NS32K_DISP_32 であるべ
 PCREL_NS32K_DISP_16 になっているのは入力ファイルのどの部分から判断しているのか明確にするべき.
 
 
+ns32k-elf-ld 視点:
+
+bfd_byte *
+bfd_generic_get_relocated_section_contents (bfd *abfd,
+					    struct bfd_link_info *link_info,
+					    struct bfd_link_order *link_order,
+					    bfd_byte *data,
+					    bfd_boolean relocatable,
+					    asymbol **symbols)
+{
+...
+  reloc_count = bfd_canonicalize_reloc (input_bfd,
+					input_section,
+					reloc_vector,
+					symbols);  ★
+
+この函数の呼び出しで bsr ___main のオブジェクトコードが決定する準備をする.
+この函数を呼び出す直前では
+
+input_section は .text セクションで input_section->relocatable = nullptr であるが
+この函数の呼び出しで
+
+(gdb) p input_section->relocation->howto
+$43 = (reloc_howto_type *) 0x812df90 <ns32k_aout_howto_table+240>
+(gdb)
+
+のようになる. 上の値の期待値は ns32k_aout_howto_table+264 で現状はできていない.
+sizeof(reloc_howto_type) = 24 なので次のエントリということ.
+
+問題の relocation メンバをセットしているのは以下:
+
+bfd_boolean
+elf_slurp_reloc_table (bfd *abfd,
+		       asection *asect,
+		       asymbol **symbols,
+		       bfd_boolean dynamic)
+{
+...
+  asect->relocation = relents;   ★
+
+
+そしてそれを決定しているのは以下:
+
+static bfd_boolean
+elf_ns32k_info_to_howto(bfd* abfd, arelent* cache_ptr,
+			Elf_Internal_Rela* dst)
+{
+  (void)abfd;
+  unsigned int r_type = dst->r_info >> 8;  ★
+
+(gdb) p/x *dst
+$67 = {r_offset = 0x4, r_info = 0xaa7, r_addend = 0x0}
+(gdb) 
+
+だから howto メンバの値が ns32k_aout_howto_table+240
+(240 = sizeof(reloc_howto_type) * (0xaa7 >> 8)) になるということ.
+
+test005/test.o を emacs の hexl-mode で見たものが以下:
+
+          005f 5f5f 6d61 696e 0000 0000 0400 0000  .___main........
+000001f0: a70a 0000 0000 0000 2a00 0000 0201 0000  ........*.......
+00000200: 
+
+つまりファイルオフセット 0x1f0 に a70a とあるが, これの期待値が a70b ということ.
+
+一方正しくできている test006/test.o を emacs の hexl-mode で見たものが以下:
+
+          005f 6600 5f5f 5f6d 6169 6e00 1400 0000  ._f.___main.....
+00000220: a70b 0000 0000 0000 2a00 0000 0201 0000  ........*.......
+00000230:
+
+ファイルオフセット 0x220 が a70b になっていてこれは正しい.
+だからこれ以降はアセンブラ視点から調査する.
