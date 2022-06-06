@@ -48,3 +48,126 @@ hello world 11
 %
 
 まずは ns32k-elf-objdump で異常を検出しているのでそれを調べてみる.
+
+% ns32k-elf-objdump --dwarf=info a.elf
+
+a.elf:     ファイル形式 ns32k-elf
+
+.debug_info セクションの内容:
+
+  コンパイル単位 @ オフセット 0x0:
+   長さ:        0x22 (32-bit)
+   バージョン:    2
+   Abbrev Offset: 0x0
+   ポインタサイズ:4
+ <0><b>: 省略番号: 1 (DW_TAG_compile_unit)
+    <c>   DW_AT_stmt_list   : 0x0
+    <10>   DW_AT_low_pc      : 0x100
+    <14>   DW_AT_high_pc     : 0x130
+    <18>   DW_AT_name        : (indirect string, offset: 0x0): start.S
+    <1c>   DW_AT_comp_dir    : (indirect string, offset: 0x8): /home/khasegawa/lang/53_GNU_tool/gcc_cross/NS32000/tool
+    <20>   DW_AT_producer    : (indirect string, offset: 0x40): GNU AS 2.36.1
+    <24>   DW_AT_language    : 32769	(MIPS assembler)
+  コンパイル単位 @ オフセット 0x26:
+   長さ:        0x6e (32-bit)
+   バージョン:    4
+   Abbrev Offset: 0x0
+   ポインタサイズ:4
+ <0><31>: 省略番号: 1 (DW_TAG_compile_unit)
+    <32>   DW_AT_stmt_list   : 0xbd
+    <36>   DW_AT_low_pc      : 0x632e610c    ★
+    <3a>   DW_AT_high_pc     : 0x4e00
+    <3e>   DW_AT_name        :ns32k-elf-objdump: 警告: DW_FORM_strp オフセットが大きすぎます: 13000   ★
+ (indirect string, offset: 0x13000): <オフセットが大きすぎます>
+    <42>   DW_AT_comp_dir    :ns32k-elf-objdump: 警告: DW_FORM_strp オフセットが大きすぎます: 3500    ★
+ (indirect string, offset: 0x3500): <オフセットが大きすぎます>
+    <46>   DW_AT_producer    :ns32k-elf-objdump: 警告: DW_FORM_strp オフセットが大きすぎます: 4200    ★
+ (indirect string, offset: 0x4200): <オフセットが大きすぎます>
+    <4a>   DW_AT_language    : 512	(Unknown: 200)
+ <0><4c>: 省略番号: 79
+ns32k-elf-objdump: 警告: DIE at offset 0x4c refers to abbreviation number 79 which does not exist
+%
+
+警告は出ていないが DW_AT_low_pc の値も異常. hello world 11 は -g オプションなしでビルド
+した場合は
+
+0x100 - 0x12f が start.S のコード
+0x130 - 0x165 が test.c  のコード
+
+なので .debug_info セクションが正しく生成できていない. 上の部分の期待値は以下のようになること:
+
+ <0><31>: 省略番号: 1 (DW_TAG_compile_unit)
+    <32>   DW_AT_stmt_list   : 0x42
+    <36>   DW_AT_low_pc      : 0x130    ★
+    <3a>   DW_AT_high_pc     : 0x165    ★
+
+以下のようにアセンブル後の a.o に対して objdump を実行してみた:
+
+% ns32k-elf-objdump --dwarf=info a.o
+
+a.o:     ファイル形式 ns32k-elf
+
+.debug_info セクションの内容:
+
+  コンパイル単位 @ オフセット 0x0:
+   長さ:        0x6e (32-bit)
+   バージョン:    4
+   Abbrev Offset: 0x0
+   ポインタサイズ:4
+ <0><b>: 省略番号: 1 (DW_TAG_compile_unit)
+    <c>   DW_AT_producer    : (indirect string, offset: 0x6f): GNU C17 10.2.0 -g
+    <10>   DW_AT_language    : 12	(ANSI C99)
+    <11>   DW_AT_name        : a.c
+    <15>   DW_AT_comp_dir    : (indirect string, offset: 0x0): /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.ns32k-elf.mine/host-i686-pc-linux-gnu/gcc
+    <19>   DW_AT_low_pc      : 0x0
+    <1d>   DW_AT_high_pc     : 0x35
+    <21>   DW_AT_stmt_list   : 0x0
+ <1><25>: 省略番号: 2 (DW_TAG_subprogram)
+    <26>   DW_AT_external    : 1
+    <26>   DW_AT_name        : (indirect string, offset: 0x81): main
+    <2a>   DW_AT_decl_file   : 1
+    <2b>   DW_AT_decl_line   : 8
+    <2c>   DW_AT_decl_column : 5
+    <2d>   DW_AT_type        : <0x3b>
+    <31>   DW_AT_low_pc      : 0xd
+    <35>   DW_AT_high_pc     : 0x28
+    <39>   DW_AT_frame_base  : 1 byte block: 9c 	(DW_OP_call_frame_cfa)
+    <3b>   DW_AT_GNU_all_tail_call_sites: 1
+ <1><3b>: 省略番号: 3 (DW_TAG_base_type)
+    <3c>   DW_AT_byte_size   : 4
+    <3d>   DW_AT_encoding    : 5	(signed)
+    <3e>   DW_AT_name        : int
+ <1><42>: 省略番号: 4 (DW_TAG_subprogram)
+    <43>   DW_AT_external    : 1
+    <43>   DW_AT_name        : f
+    <45>   DW_AT_decl_file   : 1
+    <46>   DW_AT_decl_line   : 3
+    <47>   DW_AT_decl_column : 5
+    <48>   DW_AT_prototyped  : 1
+    <48>   DW_AT_type        : <0x3b>
+    <4c>   DW_AT_low_pc      : 0x0
+    <50>   DW_AT_high_pc     : 0xd
+    <54>   DW_AT_frame_base  : 1 byte block: 9c 	(DW_OP_call_frame_cfa)
+    <56>   DW_AT_GNU_all_call_sites: 1
+ <2><56>: 省略番号: 5 (DW_TAG_formal_parameter)
+    <57>   DW_AT_name        : a
+    <59>   DW_AT_decl_file   : 1
+    <5a>   DW_AT_decl_line   : 3
+    <5b>   DW_AT_decl_column : 11
+    <5c>   DW_AT_type        : <0x3b>
+    <60>   DW_AT_location    : 2 byte block: 7b 8 	(DW_OP_breg11 (r11): 8)
+ <2><63>: 省略番号: 5 (DW_TAG_formal_parameter)
+    <64>   DW_AT_name        : b
+    <66>   DW_AT_decl_file   : 1
+    <67>   DW_AT_decl_line   : 3
+    <68>   DW_AT_decl_column : 18
+    <69>   DW_AT_type        : <0x3b>
+    <6d>   DW_AT_location    : 2 byte block: 7b c 	(DW_OP_breg11 (r11): 12)
+ <2><70>: Abbrev Number: 0
+ <1><71>: Abbrev Number: 0
+
+%
+
+極端な異常は確認できない. おそらくリンカに問題があるものと思われる. リンカ視点で調査してみる.
+
+
