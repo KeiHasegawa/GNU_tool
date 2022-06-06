@@ -118,3 +118,14 @@ gdb_bfd.c:426:3: エラー: ‘bfd_set_usrdata’ was not declared in this scope
 ビルド成功
 % make install
 
+例によって 0x100 番地に nop を数個配置したプログラムを動かしてみた: 
+% sh64-elf-gdb -q -x gdbcom test.elf
+Reading symbols from test.elf...
+I'm sorry, Dave, I can't do that.  Symbol format `elf32-sh' unknown.  ★
+unsupported machine `sh'
+gdbcom:2: Error in sourced command file:
+unable to create simulator instance
+(sh64-elf-gdb) q
+%
+
+これもどこかで見たエラーメッセージ. そのうち修正する.
