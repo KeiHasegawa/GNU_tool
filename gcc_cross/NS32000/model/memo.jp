@@ -1,0 +1,50 @@
+以下開発メモ
+
+(*1) 以下がアセンブルエラーになる.
+
+	addr	.LC0(pc), tos
+
+     エラーを回避するには
+     
+	addr	LC0(pc), tos
+
+     のように . から始まるラベルを使用しなければよいが, ローカルラベルが扱えないと
+     不便なのでアセンブルできるように ns32k-elf-as を修正するべき.
+
+(*2)
+
+2022.06.06 11:16 現状アセンブラを修正して hello world 11 が ns32k-elf-run で
+動作している. そして ns32k::expand_prologue で生成している全ての rtx_insn* insn
+に対して
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+のようにしている.
+hello world 11 を -g オプション付きでコンパイルすると以下のようになっている：
+
+% ./cc1 -o a.s a.c -g -quiet
+% ns32k-elf-as -o a.o a.s
+% ns32k-elf-ld -o a.elf /home/khasegawa/lang/53_GNU_tool/gcc_cross/NS32000/tool/start.o a.o /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/ns32k-netbsd/3.4.4/libgcc.a -T /home/khasegawa/lang/53_GNU_tool/gcc_cross/NS32000/tool/sample.x
+% ns32k-elf-objdump -x -d -g a.elf
+ns32k-elf-objdump: 警告: DW_FORM_strp オフセットが大きすぎます: 13000 ★
+ns32k-elf-objdump: 警告: DW_FORM_strp オフセットが大きすぎます: 3500  ★
+ns32k-elf-objdump: 警告: DW_FORM_strp オフセットが大きすぎます: 4200  ★
+ns32k-elf-objdump: 警告: DIE at offset 0x4c refers to abbreviation number 79 which does not exist ★
+ns32k-elf-objdump: 警告: DW_FORM_strp オフセットが大きすぎます: 3500 ★
+ns32k-elf-objdump: 警告: DIE at offset 0x4c refers to abbreviation number 79 which does not exist ★
+% ns32k-elf-gdb a.elf -x gdbcom -q
+Reading symbols from a.elf...
+DW_FORM_strp pointing outside of .debug_str section [in module /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.ns32k-elf.mine/host-i686-pc-linux-gnu/gcc/a.elf]
+(No debugging symbols found in a.elf) ★
+...
+Connected to the simulator.
+Loading section .text, size 0x65 lma 0x100
+Loading section .rodata, size 0x10 lma 0x165
+Start address 0x100
+Transfer rate: 936 bits in <1 sec.
+Function "main" not defined.
+Make breakpoint pending on future shared library load? (y or [n]) [answered N; input not from terminal]
+hello world 11
+%
+
+まずは ns32k-elf-objdump で異常を検出しているのでそれを調べてみる.
