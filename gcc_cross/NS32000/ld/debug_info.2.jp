@@ -177,9 +177,44 @@ start.o の .debug_info のサイズが 4 の倍数になっていないこと�
 a.o の部分は正常だが start.o の部分は壊れている. 
 
 おそらくこれは .debug_aranges セクションが正しくない.
+「.debug_info offset of 0x6 in .debug_aranges section does not point to a CU header の警告の調査」で行なった以下の対応がおそらく正しくない:
 
+bfd_reloc_status_type
+_bfd_ns32k_reloc_imm (bfd *abfd,
+		      arelent *reloc_entry,
+		      struct bfd_symbol *symbol,
+		      void * data,
+		      asection *input_section,
+		      bfd *output_bfd,
+		      char **error_message)
+{
+...
    if (strcmp(n1, ".debug_aranges") == 0)
-     return bfd_reloc_ok;
+     return bfd_reloc_ok;  ★
 
 
+もう一度この修正を見直してみたところ必要ないことに気付いた. おそらく
+「bsr ___main のコードが正しくない件の調査(2)」で行なった修正の影響と思われる.
+そしてそのときの修正をさらに以下のように修正した:
+
+static unsigned int get_type(unsigned long r_info)
+{
+  unsigned int tmp = (0x100 | (r_info & 0xff));
+  if (BFD_RELOC_NS32K_IMM_8 <= tmp && tmp <= BFD_RELOC_NS32K_DISP_32_PCREL)
+    return tmp - BFD_RELOC_NS32K_IMM_8;
+  tmp &= 0xff;
++ switch (tmp) {
++ case BFD_RELOC_8:        return 12;
++ case BFD_RELOC_16:       return 13;
++ case BFD_RELOC_32:       return 14;
++ case BFD_RELOC_8_PCREL:  return 15;
++ case BFD_RELOC_16_PCREL: return 16;
++ case BFD_RELOC_32_PCREL: return 17;
++ default: abort();
++ }
+}
+
+この修正を入れみたがまた期待する出力ファイルにはなっていない.
+
+2022.06.06 15:45 現時点の問題点
 
