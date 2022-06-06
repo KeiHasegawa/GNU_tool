@@ -216,5 +216,301 @@ static unsigned int get_type(unsigned long r_info)
 
 この修正を入れみたがまた期待する出力ファイルにはなっていない.
 
-2022.06.06 15:45 現時点の問題点
+2022.06.06 15:45 現時点の問題点 .debug_info セクションが正しくない:
 
+Contents of the .debug_info section (loaded from a.elf):
+
+  コンパイル単位 @ オフセット 0x0:
+   長さ:        0x22 (32-bit)
+   バージョン:    2
+   Abbrev Offset: 0x0
+   ポインタサイズ:4
+ <0><b>: 省略番号: 1 (DW_TAG_compile_unit)
+    <c>   DW_AT_stmt_list   : 0x0
+    <10>   DW_AT_low_pc      : 0x100
+    <14>   DW_AT_high_pc     : 0x130
+    <18>   DW_AT_name        : (indirect string, offset: 0x0): start.S
+    <1c>   DW_AT_comp_dir    : (indirect string, offset: 0x8): /home/khasegawa/lang/53_GNU_tool/gcc_cross/NS32000/tool
+    <20>   DW_AT_producer    : (indirect string, offset: 0x40): GNU AS 2.36.1
+    <24>   DW_AT_language    : 32769	(MIPS assembler)
+  コンパイル単位 @ オフセット 0x26:
+   長さ:        0x6e (32-bit)
+   バージョン:    4
+   Abbrev Offset: 0x0
+   ポインタサイズ:4
+ <0><31>: 省略番号: 1 (DW_TAG_compile_unit)
+    <32>   DW_AT_stmt_list   : 0xbd
+    <36>   DW_AT_low_pc      : 0x632e610c   ★
+    <3a>   DW_AT_high_pc     : 0x4e00       ★
+    <3e>   DW_AT_name        : (indirect string, offset: 0x13000): <オフセットが大きすぎます>  ★
+    <42>   DW_AT_comp_dir    : (indirect string, offset: 0x3500): <オフセットが大きすぎます>   ★
+    <46>   DW_AT_producer    : (indirect string, offset: 0x4200): <オフセットが大きすぎます>   ★
+    <4a>   DW_AT_language    : 512	(Unknown: 200)   ★
+ <0><4c>: 省略番号: 79
+
+一周回って何も改善されていない.
+
+一方 a.o.objdump の結果は以下:
+
+Contents of the .debug_info section (loaded from a.o):
+
+  コンパイル単位 @ オフセット 0x0:
+   長さ:        0x6e (32-bit)
+   バージョン:    4
+   Abbrev Offset: 0x0
+   ポインタサイズ:4
+ <0><b>: 省略番号: 1 (DW_TAG_compile_unit)
+    <c>   DW_AT_producer    : (indirect string, offset: 0x6f): GNU C17 10.2.0 -g
+    <10>   DW_AT_language    : 12	(ANSI C99)
+    <11>   DW_AT_name        : a.c
+    <15>   DW_AT_comp_dir    : (indirect string, offset: 0x0): /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.ns32k-elf.mine/host-i686-pc-linux-gnu/gcc
+
+となると以下が怪しい:
+
+    <32>   DW_AT_stmt_list   : 0xbd
+
+これがどのように計算されたか確認する. 0x6f + 78 = 0xbd ということらしい. .debug_str
+セクションのオフセットでこれは正しいらしい. むしろ正しくないのは
+
+    <32>   DW_AT_stmt_list   : 0xbd
+           ^^^^^^^^^^^^^^^
+           これ
+
+
+           DW_AT_producer    : (indirect string, offset: 0xbd): GNU C17 10.2.0 -g
+
+のようになるのが期待値. objdump 視点で何故これが  DW_AT_stmt_list になるか確認する.
+
+a.o.objdump:
+セクション .debug_info の内容:
+ 0000 6e000000 04000000 00000401 6f000000  n...........o...
+ 0010 0c612e63 00000000 00000000 00350000  .a.c.........5..
+ 0020 00000000 00028100 00000108 053b0000  .............;..
+ 0030 000d0000 00280000 00019c03 0405696e  .....(........in
+ 0040 74000466 00010305 3b000000 00000000  t..f....;.......
+ 0050 0d000000 019c0561 0001030b 3b000000  .......a....;...
+ 0060 027b0805 62000103 123b0000 00027b0c  .{..b....;....{.
+ 0070 0000                                 ..              
+
+a.objdump:
+セクション .debug_info の内容:
+ 0000 22000000 02000000 00000401 00000000  "...............
+ 0010 00010000 30010000 00000000 08000000  ....0...........
+ 0020 40000000 01806e00 00000400 00000000  @.....n.........
+ 0030 0401bd00 00000c61 2e63004e 00000030  .......a.c.N...0
+ 0040 01000035 00000042 00000002 cf000000  ...5...B........
+ 0050 0108053b 0000003d 01000028 00000001  ...;...=...(....
+ 0060 9c030405 696e7400 04660001 03053b00  ....int..f....;.
+ 0070 00003001 00000d00 0000019c 05610001  ..0..........a..
+ 0080 030b3b00 0000027b 08056200 0103123b  ..;....{..b....;
+ 0090 00000002 7b0c0000                    ....{...        
+
+      6e000000 04000000 00000401 bd000000
+      0c612e63
+
+.debug_abbrev セクションが正しくないから省略番号が正しく解釈されていないのではと推測している
+があくまでも推測.
+
+objdump の視点から DW_AT_producer が期待値のところで DW_AT_stmt_list になってしまう
+原因を調査するべき.
+
+static unsigned char *
+read_and_display_attr (unsigned long           attribute,
+...
+{
+  if (!do_loc)
+    printf ("   %-18s:", get_AT_name (attribute));    ★ ここで表示 
+  data = read_and_display_attr_value (attribute, form, implicit_const,
+
+
+(gdb) p get_AT_name (attribute)
+$8 = 0x81603d3 "DW_AT_stmt_list"  ★
+(gdb) p attribute
+$9 = 16
+(gdb) 
+
+おそらく attribute の値が正しくないから期待しない結果になっていると推測. attribute を
+どのように計算しているか確認する.
+
+
+static bfd_boolean
+process_debug_info (struct dwarf_section *           section,
+...
+{
+...
+      while (tags < start)
+	{
+...	
+	  abbrev_attr *attr;  ★
+...
+	  for (attr = entry->first_attr;
+	       attr && attr->attribute;
+	       attr = attr->next)
+	    {
+...
+	      tags = read_and_display_attr (attr->attribute,  ★
+
+これを見る限りでは .debug_abbrev セクションがリストの構造をしていてそれをたどっているように
+思える.
+
+(gdb) b dwarf.c:3336 # printf ("   %-18s:", get_AT_name (attribute)); の行
+(gdb) run
+...
+dwarf.c:3336 のブレークポイントにヒット
+(gdb) p get_AT_name (attribute)
+$21 = 0x81603d3 "DW_AT_stmt_list"
+(gdb) up
+(gdb) p *attr
+$22 = {attribute = 16, form = 6, implicit_const = -1, next = 0x81b4e50}
+(gdb) c
+...
+dwarf.c:3336 のブレークポイントにヒット
+(gdb) p get_AT_name (attribute)
+$23 = 0x81603e3 "DW_AT_low_pc"
+(gdb) up
+(gdb) p *attr
+$24 = {attribute = 17, form = 1, implicit_const = -1, next = 0x81b4e68}
+(gdb) c
+(gdb) p get_AT_name (attribute)
+$25 = 0x81603f0 "DW_AT_high_pc"
+(gdb) up
+(gdb) p *attr
+$26 = {attribute = 18, form = 1, implicit_const = -1, next = 0x81b4e80}
+(gdb) c
+(gdb) p get_AT_name (attribute)
+$27 = 0x8160364 "DW_AT_name"
+(gdb) up
+(gdb) p *attr
+$28 = {attribute = 3, form = 14, implicit_const = -1, next = 0x81b4e98}
+(gdb) c
+(gdb) p get_AT_name (attribute)
+$29 = 0x8160481 "DW_AT_comp_dir"
+(gdb) up
+(gdb) p *attr
+$30 = {attribute = 27, form = 14, implicit_const = -1, next = 0x81b4eb0}
+(gdb) c
+(gdb) p get_AT_name (attribute)
+$31 = 0x81604fd "DW_AT_producer"
+(gdb) up
+(gdb) p *attr
+$32 = {attribute = 37, form = 14, implicit_const = -1, next = 0x81b4ec8}
+(gdb) c
+(gdb) p get_AT_name (attribute)
+$35 = 0x81603d3 "DW_AT_stmt_list"
+(gdb) up
+(gdb) p *attr
+
+以上の結果から
+
+attribute  get_AT_name (attribute)
+16         DW_AT_stmt_list
+17         DW_AT_low_pc
+18         DW_AT_high_pc
+3          DW_AT_name
+27         DW_AT_comp_dir
+37         DW_AT_producer
+16         DW_AT_stmt_list    ★ ここが間違い
+
+という対応がある.
+
+start.o.objdump:
+...
+  Number TAG (0x0)
+   1      DW_TAG_compile_unit    [子なし]
+    DW_AT_stmt_list    DW_FORM_data4
+    DW_AT_low_pc       DW_FORM_addr
+    DW_AT_high_pc      DW_FORM_addr
+    DW_AT_name         DW_FORM_strp
+    DW_AT_comp_dir     DW_FORM_strp
+    DW_AT_producer     DW_FORM_strp
+    DW_AT_language     DW_FORM_data2
+    DW_AT value: 0     DW_FORM value: 0
+...
+セクション .debug_abbrev の内容:
+ 0000 01110010 06110112 01030e1b 0e250e13  .............%..
+ 0010 05000000                             ....            
+
+a.o.objdump:
+...
+Contents of the .debug_abbrev section (loaded from a.o):
+
+  Number TAG (0x0)
+   1      DW_TAG_compile_unit    [子あり]
+    DW_AT_producer     DW_FORM_strp
+    DW_AT_language     DW_FORM_data1
+    DW_AT_name         DW_FORM_string
+    DW_AT_comp_dir     DW_FORM_strp
+    DW_AT_low_pc       DW_FORM_addr
+    DW_AT_high_pc      DW_FORM_data4
+    DW_AT_stmt_list    DW_FORM_sec_offset
+    DW_AT value: 0     DW_FORM value: 0
+...
+セクション .debug_abbrev の内容:
+ 0000 01110125 0e130b03 081b0e11 01120610  ...%............
+ 0010 17000002 2e003f19 030e3a0b 3b0b390b  ......?...:.;.9.
+ 0020 49131101 12064018 96421900 00032400  I.....@..B....$.
+ 0030 0b0b3e0b 03080000 042e013f 1903083a  ..>........?...:
+ 0040 0b3b0b39 0b271949 13110112 06401897  .;.9.'.I.....@..
+ 0050 42190000 05050003 083a0b3b 0b390b49  B........:.;.9.I
+ 0060 13021800 0000                        ......          
+
+a.objdump
+...
+セクション .debug_abbrev の内容:
+ 0000 01110010 06110112 01030e1b 0e250e13  .............%..  ★
+ 0010 05000000 01110125 0e130b03 081b0e11  .......%........
+ 0020 01120610 17000002 2e003f19 030e3a0b  ..........?...:.
+ 0030 3b0b390b 49131101 12064018 96421900  ;.9.I.....@..B..
+ 0040 00032400 0b0b3e0b 03080000 042e013f  ..$...>........?
+ 0050 1903083a 0b3b0b39 0b271949 13110112  ...:.;.9.'.I....
+ 0060 06401897 42190000 05050003 083a0b3b  .@..B........:.;
+ 0070 0b390b49 13021800 0000               .9.I......      
+
+オフセット  3 が 0x10
+オフセット  5 が 0x11
+オフセット  7 が 0x12
+オフセット  9 が 0x03
+オフセット 11 が 0x1b = 27
+オフセット 13 が 0x25 = 37
+
+ここで期待通り動作している m68k-elf-xxx と比較してみた:
+
+start.o.objdump:
+...
+  Number TAG (0x0)
+   1      DW_TAG_compile_unit    [子なし]
+    DW_AT_stmt_list    DW_FORM_data4
+    DW_AT_low_pc       DW_FORM_addr
+    DW_AT_high_pc      DW_FORM_addr
+    DW_AT_name         DW_FORM_strp
+    DW_AT_comp_dir     DW_FORM_strp
+    DW_AT_producer     DW_FORM_strp
+    DW_AT_language     DW_FORM_data2
+    DW_AT value: 0     DW_FORM value: 0
+...
+セクション .debug_abbrev の内容:
+ 0000 01110010 06110112 01030e1b 0e250e13  .............%..
+ 0010 05000000                             ....            
+
+a.o.objdump:
+...
+  Number TAG (0x0)
+   1      DW_TAG_compile_unit    [子あり]
+    DW_AT_producer     DW_FORM_strp
+    DW_AT_language     DW_FORM_data1
+    DW_AT_name         DW_FORM_string
+    DW_AT_comp_dir     DW_FORM_strp
+    DW_AT_low_pc       DW_FORM_addr
+    DW_AT_high_pc      DW_FORM_data4
+    DW_AT_stmt_list    DW_FORM_sec_offset
+    DW_AT value: 0     DW_FORM value: 0
+...
+セクション .debug_abbrev の内容:
+ 0000 01110125 0e130b03 081b0e11 01120610  ...%............
+ 0010 17000002 24000b0b 3e0b030e 00000324  ....$...>......$
+ 0020 000b0b3e 0b030800 00042e00 3f19030e  ...>........?...
+ 0030 3a0b3b0b 390b4913 11011206 40189642  :.;.9.I.....@..B
+ 0040 19000005 2e013f19 03083a0b 3b0b390b  ......?...:.;.9.
+ 0050 27194913 11011206 40189742 19000006  '.I.....@..B....
+ 0060 05000308 3a0b3b0b 390b4913 02180000  ....:.;.9.I.....
+ 0070 00                                   .               
