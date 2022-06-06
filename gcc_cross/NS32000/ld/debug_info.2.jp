@@ -1,0 +1,180 @@
+自前の cc1 で -g を指定して生成したオブジェクトファイルをリンカに入力すると期待しない
+.debug_info セクションが生成されてしまう件の調査
+
+M-x gdb
+gdb --annotate=3 ./ld-new
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.ns32k-elf.mine/host-i686-pc-linux-gnu/gcc
+(gdb) run -o a.elf /home/khasegawa/lang/53_GNU_tool/gcc_cross/NS32000/tool/start.o a.o /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/ns32k-netbsd/3.4.4/libgcc.a -T /home/khasegawa/lang/53_GNU_tool/gcc_cross/NS32000/tool/sample.x
+[Inferior 1 (process 13230) exited normally]
+(gdb) 
+
+% ns32k-elf-objdump --dwarf=info a.elf
+
+a.elf:     ファイル形式 ns32k-elf
+
+.debug_info セクションの内容:
+
+  コンパイル単位 @ オフセット 0x0:
+   長さ:        0x22 (32-bit)
+   バージョン:    2
+   Abbrev Offset: 0x0
+   ポインタサイズ:4
+ <0><b>: 省略番号: 1 (DW_TAG_compile_unit)
+    <c>   DW_AT_stmt_list   : 0x0
+    <10>   DW_AT_low_pc      : 0x100
+    <14>   DW_AT_high_pc     : 0x130
+    <18>   DW_AT_name        : (indirect string, offset: 0x0): start.S
+    <1c>   DW_AT_comp_dir    : (indirect string, offset: 0x8): /home/khasegawa/lang/53_GNU_tool/gcc_cross/NS32000/tool
+    <20>   DW_AT_producer    : (indirect string, offset: 0x40): GNU AS 2.36.1
+    <24>   DW_AT_language    : 32769	(MIPS assembler)
+  コンパイル単位 @ オフセット 0x26:
+   長さ:        0x6e (32-bit)
+   バージョン:    4
+   Abbrev Offset: 0x0
+   ポインタサイズ:4
+ <0><31>: 省略番号: 1 (DW_TAG_compile_unit)
+    <32>   DW_AT_stmt_list   : 0xbd
+    <36>   DW_AT_low_pc      : 0x632e610c  ★
+    <3a>   DW_AT_high_pc     : 0x4e00      ★
+    <3e>   DW_AT_name        :ns32k-elf-objdump: 警告: DW_FORM_strp オフセットが大きすぎます: 13000      ★
+ (indirect string, offset: 0x13000): <オフセットが大きすぎます>
+    <42>   DW_AT_comp_dir    :ns32k-elf-objdump: 警告: DW_FORM_strp オフセットが大きすぎます: 3500       ★
+ (indirect string, offset: 0x3500): <オフセットが大きすぎます>
+    <46>   DW_AT_producer    :ns32k-elf-objdump: 警告: DW_FORM_strp オフセットが大きすぎます: 4200       ★
+ (indirect string, offset: 0x4200): <オフセットが大きすぎます>
+    <4a>   DW_AT_language    : 512	(Unknown: 200)
+ <0><4c>: 省略番号: 79
+ns32k-elf-objdump: 警告: DIE at offset 0x4c refers to abbreviation number 79 which does not exist
+%
+gdb から実行して再現している. DW_AT_low_pc をどのようにリンカが計算しているか確認する.
+
+(gdb) b bfd_set_section_contents
+(gdb) run
+...
+bfd_set_section_contents のブレークポイントに 6 回ヒット
+Breakpoint 1, bfd_set_section_contents (abfd=0x8180cd8, section=0x8186cb0, location=0x819d090, offset=38, count=114) at section.c:1496
+(gdb) p section->name
+$5 = 0x818e5b3 ".debug_info"
+(gdb) x/114bx location
+0x819d090:	0x6e	0x00	0x00	0x00	0x04	0x00	0x00	0x00
+0x819d098:	0x00	0x00	0x04	0x01	0xbd	0x00	0x00	0x00
+0x819d0a0:	0x0c	0x61	0x2e	0x63	0x00	0x4e	0x00	0x00 ★
+0x819d0a8:	0x00	0x30	0x01	0x00	0x00	0x35	0x00	0x00
+0x819d0b0:	0x00	0x42	0x00	0x00	0x00	0x02	0xcf	0x00
+0x819d0b8:	0x00	0x00	0x01	0x08	0x05	0x3b	0x00	0x00
+0x819d0c0:	0x00	0x3d	0x01	0x00	0x00	0x28	0x00	0x00
+0x819d0c8:	0x00	0x01	0x9c	0x03	0x04	0x05	0x69	0x6e
+0x819d0d0:	0x74	0x00	0x04	0x66	0x00	0x01	0x03	0x05
+0x819d0d8:	0x3b	0x00	0x00	0x00	0x30	0x01	0x00	0x00
+0x819d0e0:	0x0d	0x00	0x00	0x00	0x01	0x9c	0x05	0x61
+0x819d0e8:	0x00	0x01	0x03	0x0b	0x3b	0x00	0x00	0x00
+0x819d0f0:	0x02	0x7b	0x08	0x05	0x62	0x00	0x01	0x03
+0x819d0f8:	0x12	0x3b	0x00	0x00	0x00	0x02	0x7b	0x0c
+0x819d100:	0x00	0x00
+(gdb)
+
+
+問題の値を書き変えているのは以下:
+
+(gdb) where
+#0  memcpy () at ../sysdeps/i386/i686/memcpy.S:75
+#1  0x00000072 in ?? ()
+#2  0xb7ec5b28 in _IO_file_xsgetn (fp=0xb7fdd104, data=0x819d090, n=114) at fileops.c:1406
+#3  0xb7ec7fd8 in _IO_sgetn (fp=0x81822c0, data=0x819d090, n=114) at genops.c:500
+#4  0xb7ebb6ee in _IO_fread (buf=0x819d090, size=1, count=114, fp=0x81822c0) at iofread.c:44
+#5  0x0806f95f in cache_bread_1 (nbytes=114, buf=0x819d090, f=0x81822c0) at cache.c:319
+#6  cache_bread (abfd=0x81821f8, buf=0x819d090, nbytes=114) at cache.c:358
+#7  0x0806e9d3 in bfd_bread (ptr=0x819d090, size=114, abfd=<optimized out>) at bfdio.c:255
+--Type <RET> for more, q to quit, c to continue without paging--
+#8  0x08072801 in _bfd_generic_get_section_contents (abfd=0x81821f8, section=0x8196b2c, location=0x819d090, offset=0, count=114) at libbfd.c:911
+#9  0x0808830b in bfd_get_full_section_contents (abfd=0x81821f8, sec=0x8196b2c, ptr=0xbffff32c) at compress.c:288
+#10 0x08079553 in bfd_generic_get_relocated_section_contents (abfd=0x8180cd8, link_info=0x817cd20 <link_info>, link_order=0x818cb98, data=0x819d090 "n", relocatable=0, symbols=0x819be64) at reloc.c:8389
+#11 0x08073ab9 in default_indirect_link_order (output_bfd=output_bfd@entry=0x8180cd8, info=info@entry=0x817cd20 <link_info>, output_section=output_section@entry=0x8186cb0, link_order=0x818cb98, generic_linker=1) at linker.c:2660
+#12 0x080758ab in _bfd_generic_final_link (abfd=<optimized out>, info=0x817cd20 <link_info>) at linker.c:1938
+#13 0x080626a3 in ldwrite () at ldwrite.c:546
+#14 0x0805f8fd in main (argc=8, argv=0xbffff4f4) at ./ldmain.c:512
+
+
+bfd_get_full_section_contents の呼び出しで値がセットされている. ということは
+a.o の時点ですでに値がセットされていたということだろうか.
+
+% ns32k-elf-objdump -s a.o
+...
+セクション .debug_info の内容:
+ 0000 6e000000 04000000 00000401 6f000000  n...........o...
+ 0010 0c612e63 00000000 00000000 00350000  .a.c.........5..   ★
+ 0020 00000000 00028100 00000108 053b0000  .............;..
+ 0030 000d0000 00280000 00019c03 0405696e  .....(........in
+ 0040 74000466 00010305 3b000000 00000000  t..f....;.......
+ 0050 0d000000 019c0561 0001030b 3b000000  .......a....;...
+ 0060 027b0805 62000103 123b0000 00027b0c  .{..b....;....{.
+ 0070 0000                                 ..              
+...
+
+つまりアセンブラの出力では DW_AT_low_pc でないものをリンカが DW_AT_low_pc として扱っている
+ということ.
+
+% ns32k-elf-objdump --dwarf=info a.o
+...
+    <10>   DW_AT_language    : 12	(ANSI C99)
+    <11>   DW_AT_name        : a.c
+    <15>   DW_AT_comp_dir    : (indirect string, offset: 0x0): /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.ns32k-elf.mine/host-i686-pc-linux-gnu/gcc
+    <19>   DW_AT_low_pc      : 0x0
+    <1d>   DW_AT_high_pc     : 0x35
+    <21>   DW_AT_stmt_list   : 0x0
+...
+
+おそらく DW_AT_language の 12 はオフセット 0x10 の値
+
+DW_AT_low_pc はオフセット 0x18
+DW_AT_high_pc はオフセット 0x1c
+
+0x61 = 'a'
+0x2e = '.'
+0x63 = 'c'
+
+ということ. つまり DW_AT_language : 12 や DW_AT_name : a.c をリンカが正しく認識できてい
+ない.
+
+
+% ns32k-elf-objdump -s /home/khasegawa/lang/53_GNU_tool/gcc_cross/NS32000/tool/start.o
+...
+セクション .debug_info の内容:
+ 0000 22000000 02000000 00000401 00000000  "...............
+ 0010 00000000 30000000 00000000 08000000  ....0...........
+ 0020 40000000 0180                        @.....          
+...
+
+% 
+
+start.o の .debug_info のサイズが 4 の倍数になっていないことが原因のように思える.
+
+% ns32k-elf-objdump --dwarf=info /home/khasegawa/lang/53_GNU_tool/gcc_cross/NS32000/tool/start.o 
+
+/home/khasegawa/lang/53_GNU_tool/gcc_cross/NS32000/tool/start.o:     ファイル形式 ns32k-elf
+
+.debug_info セクションの内容:
+
+  コンパイル単位 @ オフセット 0x0:
+   長さ:        0x22 (32-bit)
+   バージョン:    2
+   Abbrev Offset: 0x0
+   ポインタサイズ:4
+ <0><b>: 省略番号: 1 (DW_TAG_compile_unit)
+    <c>   DW_AT_stmt_list   : 0x0
+    <10>   DW_AT_low_pc      : 0x0
+    <14>   DW_AT_high_pc     : 0x30
+    <18>   DW_AT_name        : (indirect string, offset: 0x0): start.S
+    <1c>   DW_AT_comp_dir    : (indirect string, offset: 0x8): /home/khasegawa/lang/53_GNU_tool/gcc_cross/NS32000/tool
+    <20>   DW_AT_producer    : (indirect string, offset: 0x40): GNU AS 2.36.1
+    <24>   DW_AT_language    : 32769	(MIPS assembler)
+
+%
+
+32769 = 0x8001
+
+試しにリンカへの入力を a.o を先に start.o を後にしてみたところ .debug_info セクションの
+a.o の部分は正常だが start.o の部分は壊れている. 
+
+
+
