@@ -7,3 +7,26 @@
 	addr	LC0(pc), tos
 
 ローカルラベルを指定できないとソースレベルデバッグがやり辛いのでエラーしないように修正する.
+
+static int
+addr_mode (char *operand,
+	   addr_modeS *addrmodeP,
+	   int recursive_level)
+{
+...
+    case '.':
+...
+	    default:
+	      as_bad (_("Invalid syntax in PC-relative addressing mode")); ★
+	      return 0;
+
+エラーしているのは上の箇所で '.' から始まるラベルに対する処理らしい.
+'.' から始まらない場合の処理と同じようになるようにする. そこで以下のように修正:
+
+
+    case '.':
++     if (str[strl - 1] == ')')
++	break;
+
+
+これで期待通り '.' から始まってもアセンブルできている.
