@@ -170,4 +170,41 @@ a.o:     ファイル形式 ns32k-elf
 
 極端な異常は確認できない. おそらくリンカに問題があるものと思われる. リンカ視点で調査してみる.
 
+2022.06.07 12:48 リンカの修正を確認した. 現状 ns32k-elf-gdb の実行結果は以下のようになる:
 
+% ns32k-elf-gdb a.elf -x gdbcom -q
+Reading symbols from a.elf...
+Connected to the simulator.
+Loading section .text, size 0x65 lma 0x100
+Loading section .rodata, size 0x10 lma 0x165
+Start address 0x100
+Transfer rate: 936 bits in <1 sec.
+Breakpoint 1 at 0x140: file a.c, line 10.
+
+Breakpoint 1, main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+f (a=<error reading variable: Cannot access memory at address 0x2000>, 
+    b=<error reading variable: Cannot access memory at address 0x2004>)
+    at a.c:4
+4	{
+#0  f (a=<error reading variable: Cannot access memory at address 0x2000>, 
+    b=<error reading variable: Cannot access memory at address 0x2004>)
+    at a.c:4
+#1  0x00000146 in main () at a.c:10
+#2  0x00000000 in ?? ()
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+hello world 11
+
+main で停止することはできているが
+
+1. f にステップインしたとき適切にプロローグをスキップできていない
+2. 引数の a と b が正しく表示できていない
+3. where コマンドの結果が正しくない
+4. finish コマンドも正しくない
+
+
+ns32k-elf-gdb 視点での調査をしたところおそらく以下があれば良さそう:
+
+#define INCOMING_FRAME_SP_OFFSET 4
+
+20222.06.07 14:08 ビルド開始.
