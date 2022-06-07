@@ -72,9 +72,9 @@ static const char *const initial_reg_names[] = REGISTER_NAMES;
 (*) ARG_POINTER_REGNUM
 
     函数が呼び出されたときにスタック渡しした最初の引数があるアドレスを指すレジスタの番号を指定
-    する. このレジスタは実際には存在しない仮想的なレジスタである. フレームポインタがスタック
-    フレームの底を指すタイプのものであれば FRAME_POINTER_REGNUM と同じ値を指定することが
-    できるが, 区別することもできる.
+    する. 一般的なプロセッサでは, このレジスタは実際には存在しない仮想的なレジスタである. フ
+    レームポインタがスタックフレームの底を指すタイプのものであれば FRAME_POINTER_REGNUM と
+    同じ値を指定することができるが, 区別することもできる.
     例えばターゲットプロセッサに r0, r1, ..., r15 のレジスタがあり,
     r14 をフレームポインタ r15 をスタックポインタとする場合
 
@@ -127,6 +127,8 @@ static const char *const initial_reg_names[] = REGISTER_NAMES;
 {{ ARG_POINTER_REGNUM, STACK_POINTER_REGNUM},	\
  { ARG_POINTER_REGNUM, FRAME_POINTER_REGNUM},	\
  { FRAME_POINTER_REGNUM, STACK_POINTER_REGNUM}}	\
+
+    一方, VAX のようにこれに相当するレジスタが存在するプロセッサもある.
  
 (*) FIRST_PSEUDO_REGISTER
 
@@ -905,3 +907,16 @@ gcc/config/newlib-stdint.h:50
      ...
 
      true に define すれば [sp:SI]=0x5 のような rtx_insn が生成される.
+
+(*) INCOMING_FRAME_SP_OFFSET
+
+参照箇所の 1 つ gcc/dwarf2cfi.c
+
+#ifndef DEFAULT_INCOMING_FRAME_SP_OFFSET
+#define DEFAULT_INCOMING_FRAME_SP_OFFSET INCOMING_FRAME_SP_OFFSET
+#endif
+
+      i386 のように函数呼び出し命令が戻りアドレスをスタックに積むタイプのプロセッサの場合
+      に戻りアドレスのサイズに define する. これにより DWARF を利用したスタック解析が
+      gdb で正しく機能するようになる. gdb で自力でプログラムの解析を行なってスタックの解析
+      をするのであれば必要ない.
