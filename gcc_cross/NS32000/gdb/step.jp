@@ -1,2 +1,142 @@
 現状自前の cc1 で -g オプション付きでコンパイルしたプログラムに対して函数にステップイン
 したときに適切にプロローグをスキップできていない.
+
+cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.ns32k-elf/gdb/
+M-x gdb
+gdb --annotate=3 ./gdb
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.ns32k-elf.mine/host-i686-pc-linux-gnu/gcc
+(gdb) run -q -x gdbcom.2 a.elf
+
+で再現している. 期待通り動作している mcore-elf-gdb と動作を比較してみることにした.
+以下は step_command の後に mcore_skip_prologue が呼び出されたときのスタックフレーム.
+
+(gdb) where
+#0  mcore_skip_prologue (pc=380) at mcore-tdep.c:148
+#1  0x08267487 in gdbarch_skip_prologue (gdbarch=0x8dd4258, ip=380) at gdbarch.c:2783
+#2  0x0809d421 in gdbarch_skip_prologue_noexcept (gdbarch=0x8dd4258, pc=380) at arch-utils.c:1007
+#3  0x082abc3d in handle_step_into_function (gdbarch=0x8dd4258, ecs=0xbfffeef0) at infrun.c:7402
+#4  0x082aa888 in process_event_stop_test (ecs=0xbfffeef0) at infrun.c:6876
+#5  0x082a921c in handle_signal_stop (ecs=0xbfffeef0) at infrun.c:6306
+#6  0x082a788f in handle_inferior_event (ecs=0xbfffeef0) at infrun.c:5549
+#7  0x082a41aa in fetch_inferior_event () at infrun.c:3931
+--Type <RET> for more, q to quit, c to continue without paging--
+#8  0x0828c3ce in inferior_event_handler (event_type=INF_REG_EVENT) at inf-loop.c:42
+#9  0x082af42b in infrun_async_inferior_event_handler (data=0x0) at infrun.c:9215
+#10 0x0809d914 in check_async_event_handlers () at async-event.c:295
+#11 0x085e5a2b in gdb_do_one_event () at event-loop.cc:194
+#12 0x08488155 in wait_sync_command_done () at top.c:526
+#13 0x084881c6 in maybe_wait_sync_command_done (was_sync=0) at top.c:543
+#14 0x0848869d in execute_command (p=0x8de0ffc "", from_tty=0) at top.c:670
+#15 0x0824027b in command_handler (command=0x8de0ff8 "step") at event-top.c:588
+#16 0x08488018 in read_command_file (stream=0x8dce0c8) at top.c:447
+#17 0x081364fe in script_from_file (stream=0x8dce0c8, file=0xbffff81b "gdbcom.2") at cli/cli-script.c:1622
+#18 0x0811faf5 in source_script_from_stream (stream=0x8dce0c8, file=0xbffff81b "gdbcom.2", file_to_open=0xbffff81b "gdbcom.2") at cli/cli-cmds.c:700
+#19 0x0811fbce in source_script_with_search (file=0xbffff81b "gdbcom.2", from_tty=1, search_path=0) at cli/cli-cmds.c:736
+#20 0x0811fc21 in source_script (file=0xbffff81b "gdbcom.2", from_tty=1) at cli/cli-cmds.c:746
+#21 0x082e38f2 in catch_command_errors (command=0x811fc0b <source_script(char const*, int)>, arg=0xbffff81b "gdbcom.2", from_tty=1) at main.c:457
+#22 0x082e4c73 in captured_main_1 (context=0xbffff524) at main.c:1214
+#23 0x082e4ea4 in captured_main (data=0xbffff524) at main.c:1243
+
+--Type <RET> for more, q to quit, c to continue without paging--
+frame-begin 24 0x82e4f0c
+#24 0x082e4f0c in gdb_main (args=0xbffff524) at main.c:1268
+#25 0x0805f5d7 in main (argc=5, argv=0xbffff5f4) at gdb.c:32
+(gdb) 
+
+static void
+process_event_stop_test (struct execution_control_state *ecs)
+{
+...
+	tmp_sal = find_pc_line (ecs->stop_func_start, 0);
+	if (tmp_sal.line != 0
+	    && !function_name_is_marked_for_skip (ecs->stop_func_name,
+						  tmp_sal)
+	    && !inline_frame_is_marked_for_skip (true, ecs->event_thread))
+	  {
+	    if (execution_direction == EXEC_REVERSE)
+	      handle_step_into_function_backward (gdbarch, ecs);
+	    else
+	      handle_step_into_function (gdbarch, ecs);  ★
+	    return;
+	  }
+
+mcore で f(int, int) を呼び出すコードは以下:
+
+ 1a6:	6063      	movi	r3, 6
+ 1a8:	6052      	movi	r2, 5
+ 1aa:	7f06      	jsri	0x17C	// 17c <f>
+
+(gdb) b step_command
+(gdb) run
+...
+step_command のブレークポイントにヒット
+(gdb) b process_event_stop_test
+(gdb) b mcore_skip_prologue
+(gdb) c
+...
+process_event_stop_test のブレークポイントにヒット
+(gdb) c
+...
+process_event_stop_test のブレークポイントにヒット
+(gdb) c
+...
+process_event_stop_test のブレークポイントにヒット
+(gdb) c
+...
+mcore_skip_prologue のブレークポイントにヒット
+(gdb)
+
+上のような動きになっている.
+
+一方, ns32k で f(int, int) を呼び出すコードは以下:
+
+ 140:	5f bb       	movqd	6, tos
+ 142:	df ba       	movqd	5, tos
+ 144:	02 6c       	bsr	130 <_f>
+
+なので mcore と同じように 3 回目の process_event_stop_test で ns32k_skip_prologue
+が呼び出されるのが期待値だが現状そうなっていない.
+
+以下の条件が成立していないのが期待しない動作:
+
+  if (!frame_id_eq (get_stack_frame_id (frame),
+		    ecs->event_thread->control.step_stack_frame_id)
+      && (frame_id_eq (frame_unwind_caller_id (get_current_frame ()),
+		       ecs->event_thread->control.step_stack_frame_id)
+	  && (!frame_id_eq (ecs->event_thread->control.step_stack_frame_id,
+			    outer_frame_id)
+	      || (ecs->event_thread->control.step_start_function
+		  != find_pc_function (ecs->event_thread->suspend.stop_pc)))))
+    {
+
+
+(gdb) p frame_id_eq (get_stack_frame_id (frame), ecs->event_thread->control.step_stack_frame_id)
+$20 = false
+(gdb) p frame_id_eq (frame_unwind_caller_id (get_current_frame ()), ecs->event_thread->control.step_stack_frame_id)
+$21 = false   ★
+(gdb)
+
+上の条件が成立しない直接の原因がコレ.
+
+(gdb) p/x ecs->event_thread->control.step_stack_frame_id
+$23 = {stack_addr = 0x1ffc, code_addr = 0x13d, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) p/x frame_unwind_caller_id (get_current_frame ())
+$24 = {stack_addr = 0x1ff8, code_addr = 0x13d, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) 
+
+確かに上のように違っている. ここで code_addr = 0x13d は main のアドレス.
+
+そこで
+
+#define INCOMING_FRAME_SP_OFFSET 4
+
+を ns32k.h に入れて cc1 をビルドし直すことにしてみた. 2022.06.07 14:11 ビルド開始.
+
+2022.06.07 15:21 期待通り動作していることを確認.
+
+2022.06.07 15:31 finish コマンドに対応. この時点での ns32k-tdep.c を ns32k-tdep.c.2
+としてアップロードしておく.
