@@ -129,3 +129,528 @@ unable to create simulator instance
 %
 
 これもどこかで見たエラーメッセージ. そのうち修正する.
+
+(gdb) b find_sym_fns
+(gdb) run
+...
+  for (const registered_sym_fns &rsf : symtab_fns)
+    if (our_flavour == rsf.sym_flavour)
+      return rsf.sym_fns;
+
+  error (_("I'm sorry, Dave, I can't do that.  Symbol format `%s' unknown."),
+	 bfd_get_target (abfd));  ★
+
+(gdb) p our_flavour
+$6 = bfd_target_elf_flavour
+(gdb)
+
+symtab_fns に bfd_target_elf_flavour がないらしい. coff, aout, ecoff
+はある.
+
+elfread.c をビルドに組み込むことでこのエラーは回避できた.
+
+% sh64-elf-gdb -q -x gdbcom test.elf
+Reading symbols from test.elf...
+unsupported machine `sh'                     ★
+gdbcom:2: Error in sourced command file:
+unable to create simulator instance
+(sh64-elf-gdb) q
+%
+
+static SIM_RC
+sim_model_init (SIM_DESC sd)
+{
+...
+      const SIM_MACH *mach = sim_mach_lookup_bfd_name (STATE_ARCHITECTURE (sd)->printable_name);
+
+      if (mach == NULL)
+	{
+	  sim_io_eprintf (sd, "unsupported machine `%s'\n",
+			  STATE_ARCHITECTURE (sd)->printable_name);   ★
+
+以下の函数が NULL を返すということだが:
+
+const SIM_MACH *
+sim_mach_lookup_bfd_name (const char *name)
+{
+  const SIM_MACH **machp;
+
+  for (machp = & sim_machs[0]; *machp != NULL; ++machp)
+    {
+      if (strcmp (MACH_BFD_NAME (*machp), name) == 0)
+	return *machp;
+    }
+  return NULL;
+}
+
+(gdb) p *machp
+$7 = (const SIM_MACH *) 0x8774d20 <sh2_mach>
+(gdb) n
+(gdb) 
+
+(gdb) p *machp
+$9 = (const SIM_MACH *) 0x8774ce0 <sh2e_mach>
+(gdb) n
+(gdb) 
+
+(gdb) p *machp
+$10 = (const SIM_MACH *) 0x8774ca0 <sh2a_fpu_mach>
+(gdb) n
+(gdb) 
+
+(gdb) p *machp
+$11 = (const SIM_MACH *) 0x8774c60 <sh2a_nofpu_mach>
+(gdb) n
+(gdb) 
+
+(gdb) p *machp
+$12 = (const SIM_MACH *) 0x8774c20 <sh3_mach>
+(gdb) n
+(gdb) 
+
+(gdb) p sim_machs
+$13 = 0x8abae40 <sim_machs>
+(gdb) p *machp
+$14 = (const SIM_MACH *) 0x8774be0 <sh3e_mach>
+(gdb) n
+(gdb) 
+
+(gdb) 
+(gdb) 
+
+(gdb) p *machp
+$15 = (const SIM_MACH *) 0x8774ba0 <sh4_mach>
+(gdb) n
+(gdb) 
+
+(gdb) p *machp
+$16 = (const SIM_MACH *) 0x8774ae0 <sh4a_nofpu_mach>
+(gdb) n
+(gdb) 
+
+(gdb) p *machp
+$17 = (const SIM_MACH *) 0x8774b20 <sh4a_mach>
+(gdb) n
+(gdb) 
+
+(gdb) p *machp
+$18 = (const SIM_MACH *) 0x8774aa0 <sh4al_mach>
+(gdb) n
+(gdb) 
+
+(gdb) p *machp
+$19 = (const SIM_MACH *) 0x8774a60 <sh5_mach>
+(gdb) n
+(gdb) 
+
+というわけでどうやら sh5_mach が返れば良さそう. これはアセンブラを修正
+するべきかも. と思ったが --isa=shmedia とすればいいらしい.
+
+
+% sh64-elf-as -o test.o -g test.S --isa=shmedia  ★
+% sh64-elf-ld -o test.elf test.o -T ../default.x
+sh64-elf-ld: sh5 アーキテクチャ (入力ファイル`test.o') は sh 出力と互換性がありません
+%
+
+今度はリンカでひっかかっている.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.30.sh64-elf/ld
+M-x gdb
+gdb --annotate=3 ./ld-new
+(gdb) cd ~/lang/53_GNU_tool/gcc_cross/SH64/test/test001/
+(gdb) run -o test.elf test.o -T ../default.x
+...
+再現している. エラーしているのは以下の箇所:
+
+      if (compatible == NULL)
+	{
+	  if (command_line.warn_mismatch)
+	    einfo (_("%P%X: %s architecture of input file `%B'"  ★
+		     " is incompatible with %s output\n"),
+		   bfd_printable_name (input_bfd), input_bfd,
+		   bfd_printable_name (link_info.output_bfd));
+	}
+
+--oformat elf32-sh64 や --oformat elf64-sh64 を試してみたが同じエラーになる.
+
+(gdb) b bfd_arch_get_compatible
+(gdb) run -o test.elf test.o -T ../default.x --oformat elf64-sh64
+...
+
+const bfd_arch_info_type *
+bfd_default_compatible (const bfd_arch_info_type *a,
+			const bfd_arch_info_type *b)
+{
+  if (a->arch != b->arch)
+    return NULL;
+
+  if (a->bits_per_word != b->bits_per_word)
+    return NULL;     ★
+
+NULL が返っている直接の原因は以下:
+
+(gdb) p a->bits_per_word
+$5 = 64
+(gdb) p b->bits_per_word
+$6 = 32
+(gdb) 
+
+面倒なので以下のように修正してみた:
+
+const bfd_arch_info_type *
+bfd_default_compatible (const bfd_arch_info_type *a,
+			const bfd_arch_info_type *b)
+{
++#if 0  
+  if (a->arch != b->arch)
+    return NULL;
+
+  if (a->bits_per_word != b->bits_per_word)
+    return NULL;
+
+  if (a->mach > b->mach)
+    return a;
+
+  if (b->mach > a->mach)
+    return b;
++#endif
+  return a;
+}
+
+この修正で以下のような ELF ファイルを生成することができている.
+
+test.elf:     ファイル形式 elf64-sh64
+test.elf
+アーキテクチャ: sh5, フラグ 0x00000112:
+EXEC_P, HAS_SYMS, D_PAGED
+開始アドレス 0x0000000000000101
+...
+セクション .text の逆アセンブル:
+
+0000000000000100 <start>:
+ 100:	6ff0fff0 	nop	
+ 104:	6ff0fff0 	nop	
+ 108:	6ff0fff0 	nop	
+
+000000000000010c <end>:
+ 10c:	6ff0fff0 	nop	
+...
+
+開始アドレスが 0x101 になっているのは気になるが nop の命令長が 4 になっている.
+
+以下は sh-elf-xxx の同じプログラム
+
+test.elf:     ファイル形式 elf32-sh
+test.elf
+アーキテクチャ: sh, フラグ 0x00000112:
+EXEC_P, HAS_SYMS, D_PAGED
+開始アドレス 0x00000100
+...
+セクション .text の逆アセンブル:
+
+00000100 <start>:
+ 100:	00 09       	nop	
+ 102:	00 09       	nop	
+ 104:	00 09       	nop	
+
+00000106 <end>:
+ 106:	00 09       	nop	
+...
+
+開始アドレスを 0x100 になるように修正する.
+
+
+          7f45 4c46 0202 0100 0000 0000 0000 0000  .ELF............
+00000010: 0002 002a 0000 0001 0000 0000 0000 0101  ...*............
+00000020:
+
+オフセット 0x14 に 0x101 がある.
+
+
+  if (bfd_seek (abfd, (file_ptr) 0, SEEK_SET) != 0
+      || bfd_bwrite (&x_ehdr, amt, abfd) != amt)
+
+(gdb) p/x x_ehdr
+$37 = {e_ident = {0x7f, 0x45, 0x4c, 0x46, 0x2, 0x2, 0x1, 0x0, 0x0, 0x0, 0x0, 
+    0x0, 0x0, 0x0, 0x0, 0x0}, e_type = {0x0, 0x2}, e_machine = {0x0, 0x2a}, 
+  e_version = {0x0, 0x0, 0x0, 0x1}, e_entry = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 
+    0x1, 0x1}, e_phoff = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x40}, 
+  e_shoff = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x3, 0x18}, e_flags = {0x0, 0x0, 
+    0x0, 0xa}, e_ehsize = {0x0, 0x40}, e_phentsize = {0x0, 0x38}, e_phnum = {
+    0x0, 0x1}, e_shentsize = {0x0, 0x40}, e_shnum = {0x0, 0xa}, e_shstrndx = {
+    0x0, 0x9}}
+(gdb)
+
+セットしているのは直前のコード:
+
+  elf_swap_ehdr_out (abfd, i_ehdrp, &x_ehdr);  ★
+
+そして i_ehdrp もまたその直前でセットされている:
+
+
+  i_ehdrp = elf_elfheader (abfd);  ★
+
+マクロ展開は以下:
+
+  i_ehdrp = (((abfd) -> tdata.elf_obj_data) -> elf_header);
+
+(gdb) p/x ((abfd) -> tdata.elf_obj_data) -> elf_header
+$51 = {{e_ident = {0x7f, 0x45, 0x4c, 0x46, 0x2, 0x2, 0x1, 0x0, 0x0, 0x0, 0x0, 
+      0x0, 0x0, 0x0, 0x0, 0x0}, e_entry = 0x101, e_phoff = 0x40, 
+    e_shoff = 0x318, e_version = 0x1, e_flags = 0xa, e_type = 0x2, 
+    e_machine = 0x2a, e_ehsize = 0x40, e_phentsize = 0x38, e_phnum = 0x1, 
+    e_shentsize = 0x40, e_shnum = 0xa, e_shstrndx = 0x9}}
+(gdb) 
+
+確かに 0x101 になっている.
+
+static void
+sh64_elf64_final_write_processing (bfd *abfd,
+				   bfd_boolean linker ATTRIBUTE_UNUSED)
+{
++#if 0
+  /* FIXME: Perhaps we shouldn't do this if the entry address was supplied
+     numerically, but we currently lack the infrastructure to recognize
+     that: The entry symbol, and info whether it is numeric or a symbol
+     name is kept private in the linker.  */
+  if (elf_elfheader (abfd)->e_type == ET_EXEC)
+    elf_elfheader (abfd)->e_entry |= 1;    ★
++#endif    
+} 
+
+これは意図的にやっているらしい. しかし採用しないことにする. 上のようにコンパイルアウトしておく.
+
+2022.06.08 9:19 例によって 0x100 番地に nop を数個並べたプログラムを sh64-elf-gdb で
+実行できることを目指す. 現状以下のようになっている:
+
+% sh64-elf-gdb -q -x gdbcom test.elf
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x10 lma 0x100
+Start address 0x100
+Transfer rate: 128 bits in <1 sec.
+Breakpoint 1 at 0x100                           ★
+Breakpoint 2 at 0x10c: file test.S, line 5.     ★
+
+Program received signal SIGTRAP, Trace/breakpoint trap.
+0x00000000 in ?? ()
+gdbcom:7: Error in sourced command file:
+Cannot find bounds of current function
+(sh64-elf-gdb) quit
+%
+
+まず start ラベルとソースファイルの対応がとれていない. そして end ラベルとソースファイル
+の対応はとれているように見えるが実は間違えている. 5 行目ではなくて 7 行目が正しい.
+
+.debug_line セクションは以下:
+
+ The File Name Table (offset 0x1c):
+  Entry	Dir	時刻	サイズ	名前
+  1	0	0	0	test.S
+
+ Line Number Statements:
+  [0x00000027]  拡張命令コード 2: 設定アドレス 0x102  ★
+  [0x00000032]  Special opcode 7: advance Address by 0 to 0x102 and Line by 2 to 3
+  [0x00000033]  Special opcode 62: advance Address by 4 to 0x106 and Line by 1 to 4
+  [0x00000034]  Special opcode 62: advance Address by 4 to 0x10a and Line by 1 to 5
+  [0x00000035]  Special opcode 63: advance Address by 4 to 0x10e and Line by 2 to 7
+  [0x00000036]  Advance PC by 2 to 0x110
+  [0x00000038]  拡張命令コード 1: 列の終り
+
+アドレスが間違えている. 0x102 ではなくて 0x100 が正しい.
+
+% sh64-elf-objdump --dwarf=line test.o
+
+test.o:     ファイル形式 elf64-sh64
+...
+セクション .debug_line のデバッグ内容の生ダンプ:
+...
+ The File Name Table (offset 0x1c):
+  Entry	Dir	時刻	サイズ	名前
+  1	0	0	0	test.S
+
+ Line Number Statements:
+  [0x00000027]  拡張命令コード 2: 設定アドレス 0x2  ★
+  [0x00000032]  Special opcode 7: advance Address by 0 to 0x2 and Line by 2 to 3
+  [0x00000033]  Special opcode 62: advance Address by 4 to 0x6 and Line by 1 to 4
+  [0x00000034]  Special opcode 62: advance Address by 4 to 0xa and Line by 1 to 5
+  [0x00000035]  Special opcode 63: advance Address by 4 to 0xe and Line by 2 to 7
+  [0x00000036]  Advance PC by 2 to 0x10
+  [0x00000038]  拡張命令コード 1: 列の終り
+
+%
+
+これはアセンブラが間違えている.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.30.sh64-elf/gas/
+M-x gdb
+gdb --annotate=3 ./as-new
+
+(gdb) p section->name
+$2 = 0x8156463 ".debug_line"
+(gdb) x/59bx location
+0x8202114:	0x00	0x00	0x00	0x37	0x00	0x02	0x00	0x00
+0x820211c:	0x00	0x1d	0x01	0x01	0xfb	0x0e	0x0d	0x00
+0x8202124:	0x01	0x01	0x01	0x01	0x00	0x00	0x00	0x01
+0x820212c:	0x00	0x00	0x01	0x00	0x74	0x65	0x73	0x74
+0x8202134:	0x2e	0x53	0x00	0x00	0x00	0x00	0x00	0x00
+0x820213c:	0x09	0x02	0x00	0x00	0x00	0x00	0x00	0x00
+0x8202144:	0x00	0x00	0x14	0x4b	0x4b	0x4c	0x02	0x02
+                          ★
+0x820214c:	0x00	0x01	0x01
+(gdb)
+
+実は調べてみたところ sh64-elf-objdump でアドレス 0x8202144+1 に相当するデータを 2 加算
+していたためそのようになっていたことが判明した.
+
+つまりアセンブラはできていて sh64-elf-objdump が間違えていたということ.
+
+% sh64-elf-objdump -s test.o
+...
+セクション .debug_line の内容:
+ 0000 00000037 00020000 001d0101 fb0e0d00  ...7............
+ 0010 01010101 00000001 00000100 74657374  ............test
+ 0020 2e530000 00000000 09020000 00000000  .S..............
+ 0030 0000144b 4b4c0202 000101             ...KKL.....     
+        ★
+...
+% sh64-elf-objdump -s test.elf
+...
+セクション .debug_line の内容:
+ 0000 00000037 00020000 001d0101 fb0e0d00  ...7............
+ 0010 01010101 00000001 00000100 74657374  ............test
+ 0020 2e530000 00000000 09020000 00000000  .S..............
+ 0030 0102144b 4b4c0202 000101             ...KKL.....     
+        ★
+...
+%
+
+正常に動作している aarch64-elf-objdump と動作の比較を行なってみる.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.aarch64-elf/binutils
+M-x gdb
+gdb --annotate=3 ./objdump
+(gdb) b bfd.c:2163
+(gdb) cd ~/lang/53_GNU_tool/gcc_cross/AARCH64/test/test001/
+(gdb) run --dwarf=line test.o
+...
+bfd.c:2163 のブレークポイントにヒット
+(gdb) p fn
+$2 = (bfd_byte *(*)(bfd *, struct bfd_link_info *, struct bfd_link_order *, 
+    bfd_byte *, bfd_boolean, 
+    asymbol **)) 0x8158460 <bfd_generic_get_relocated_section_contents>  ★
+(gdb) 
+
+同じことを sh64-elf-objdump でやってみると
+
+(gdb) p fn
+$33 = (bfd_byte *(*)(bfd *, struct bfd_link_info *, struct bfd_link_order *, 
+    bfd_byte *, bfd_boolean, 
+    asymbol **)) 0x810af71 <sh_elf64_get_relocated_section_contents>  ★
+(gdb)
+
+であるのだが
+
+static bfd_byte *
+sh_elf64_get_relocated_section_contents (bfd *output_bfd,
+					 struct bfd_link_info *link_info,
+					 struct bfd_link_order *link_order,
+					 bfd_byte *data,
+					 bfd_boolean relocatable,
+					 asymbol **symbols)
+{
+...
+  if (relocatable
+      || elf_section_data (input_section)->this_hdr.contents == NULL)
+    return bfd_generic_get_relocated_section_contents (output_bfd, link_info,
+						       link_order, data,
+						       relocatable,
+						       symbols);  ★
+
+のようにしているのでこれに関しては問題なさそう. 問題は引数にあると思われる.
+
+% cat z
+b bfd_generic_get_relocated_section_contents
+command
+if ((int)strcmp(link_order->u.indirect.section->name, ".debug_line"))
+c
+end
+end
+%
+
+(gdb) so z
+(gdb) run
+...
+bfd_generic_get_relocated_section_contents のブレークポイントにヒット
+(gdb)
+
+
+      cont = howto->special_function (abfd, reloc_entry, symbol, data,
+				      input_section, output_bfd,
+				      error_message);
+      if (cont != bfd_reloc_continue)  ★
+	return cont;
+
+期待通り動作する aarch64-elf-objdump ではこの条件が成立しないのに対して
+sh64-elf-objdump ではこの条件が成立している.
+
+  => 勘違い. sh64-elf-objdump の .debug_info セクションの動作. .debug_line
+     の動作では上の条件は成立していない.
+
+binutils のバージョンの違いもあるが期待通り動作する aarch64-elf-objdump では
+函数 bfd_perform_relocation のローカル変数 relocation が 0 であるが
+sh64-elf-objdump では relocation = 2 になっているのが一番の違い.
+relocation = 0 になれば期待した動作になる.
+
+relocation の計算方法を確認する.
+
+  /* Add in supplied addend.  */
+  relocation += reloc_entry->addend;  ★
+
+ここで 2 になっている. この直接の原因は以下:
+
+      relent->addend = rela.r_addend;   ★
+
+さらにこれの直接の原因は直前の
+
+	elf_swap_reloca_in (abfd, native_relocs, &rela);  ★
+
+void
+elf_swap_reloca_in (bfd *abfd,
+		    const bfd_byte *s,
+		    Elf_Internal_Rela *dst)
+{
+  const Elf_External_Rela *src = (const Elf_External_Rela *) s;
+  dst->r_offset = H_GET_WORD (abfd, src->r_offset);
+  dst->r_info = H_GET_WORD (abfd, src->r_info);
+  dst->r_addend = H_GET_SIGNED_WORD (abfd, src->r_addend);
+}
+
+
+(gdb) x/24bx s
+0x81f5000:	0x00	0x00	0x00	0x00	0x00	0x00	0x00	0x2a
+0x81f5008:	0x00	0x00	0x00	0x01	0x00	0x00	0x00	0xfe
+0x81f5010:	0x00	0x00	0x00	0x00	0x00	0x00	0x00	0x02
+                                                                         ★
+(gdb)
+
+以下は期待通り動作している aarch64-elf-objdump
+
+(gdb) x/24bx src
+0x82ded48:	0x2a	0x00	0x00	0x00	0x00	0x00	0x00	0x00
+0x82ded50:	0x01	0x01	0x00	0x00	0x01	0x00	0x00	0x00
+0x82ded58:	0x00	0x00	0x00	0x00	0x00	0x00	0x00	0x00
+(gdb) 
+
+エンディアンの違い等や数字が違っている部分はあるが r_addend メンバは 0 にセットされるか
+2 にセットされるかの違いがある.
+
+test.o を emacs の hexl-mode で見たものが以下:
+
+          6e64 0000 0000 0000 0000 0000 0000 002a  nd.............*
+00000270: 0000 0001 0000 00fe 0000 0000 0000 0002  ................
+00000280:                                     ★
+
+一周回ってやはりアセンブラの出力に問題があったということ. ファイルオフセット 0x278
+から 8 バイトにわたって 2 をセットしているがこの期待値は 0 ということ.
+
