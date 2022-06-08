@@ -654,3 +654,86 @@ test.o を emacs の hexl-mode で見たものが以下:
 一周回ってやはりアセンブラの出力に問題があったということ. ファイルオフセット 0x278
 から 8 バイトにわたって 2 をセットしているがこの期待値は 0 ということ.
 
+
+	  if (bfd_seek (abfd, i_shdrp[count]->sh_offset, SEEK_SET) != 0
+	      || bfd_bwrite (i_shdrp[count]->contents, amt, abfd) != amt) ★
+
+(gdb) x/24bx i_shdrp[count]->contents
+0x8213690:	0x00	0x00	0x00	0x00	0x00	0x00	0x00	0x2a
+0x8213698:	0x00	0x00	0x00	0x01	0x00	0x00	0x00	0xfe
+0x82136a0:	0x00	0x00	0x00	0x00	0x00	0x00	0x00	0x02
+                                                                          ★ 
+(gdb) 
+
+上の直接の原因は以下:
+
+      src_rela.r_addend = ptr->addend;  ★
+
+さらに上の直接の原因は以下:
+
+static int
+shmedia_init_reloc (arelent *rel, fixS *fixP)
+{
+  /* Adjust parts of *relp according to *fixp, and tell that it has been
+     done, so default initializations will not happen.   */
+  switch (fixP->fx_r_type)
+    {
+    case BFD_RELOC_64:
+    case BFD_RELOC_64_PCREL:
+    case BFD_RELOC_SH_IMM_LOW16:
+...
+      rel->addend = fixP->fx_addnumber + fixP->fx_offset; ★
+      
+(gdb) p fixP->fx_r_type
+$25 = BFD_RELOC_64
+(gdb)
+
+試しに以下のように修正してみた:
+
+static int
+shmedia_init_reloc (arelent *rel, fixS *fixP)
+{
+  /* Adjust parts of *relp according to *fixp, and tell that it has been
+     done, so default initializations will not happen.   */
+  switch (fixP->fx_r_type)
+    {
++#if 0    
+    case BFD_RELOC_64:
+    case BFD_RELOC_64_PCREL:
++#endif    
+    case BFD_RELOC_SH_IMM_LOW16:
+
+
+この修正で以下のようにソースファイルとアドレスの対応がとれている:
+
+% sh64-elf-addr2line -e test.elf -a 0x100
+0x0000000000000100
+/home/khasegawa/lang/53_GNU_tool/gcc_cross/SH64/test/test001/test.S:3
+% sh64-elf-addr2line -e test.elf -a 0x10c
+0x000000000000010c
+/home/khasegawa/lang/53_GNU_tool/gcc_cross/SH64/test/test001/test.S:7
+%
+
+sh64-elf-gdb からこのプログラムを実行してみたが現状以下のようになっている:
+
+% sh64-elf-gdb -q -x gdbcom test.elf
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x10 lma 0x100
+Start address 0x100
+Transfer rate: 128 bits in <1 sec.
+Breakpoint 1 at 0x100   ★
+Breakpoint 2 at 0x10c   ★
+
+Program received signal SIGTRAP, Trace/breakpoint trap.
+0x00000000 in ?? ()
+gdbcom:7: Error in sourced command file:
+Cannot find bounds of current function
+(sh64-elf-gdb) q
+
+sh64-elf-gdb 視点ではソースファイルとアドレスの対応がとれていない.
+
+2022.06.08 13:48 gdb をビルド中. binutils をビルドし直したためリビルドが必要に
+なったらしいが詳しいことは不明. リンクし直す必要はあるのは理解できるのだがリコンパイル
+が必要な理由は不明.
+
