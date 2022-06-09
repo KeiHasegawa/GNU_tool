@@ -1135,3 +1135,131 @@ sh-tdep.c が SH64 用になっていなかったということ.
 ではやはり nop ではなくて mov.b @r?, r? として命令を解釈しているので不正メモリアクセス
 が発生している. さてこれは何が正しいのか確認する必要がある.
 
+「SuprH 64 bit RISC Series SH-5 CPU Core, Volume 1: Architecutre」
+によると SHmedia と SHcompact の 2 つの命令セットがある.
+
+SHmedia
+32 ビット
+
+SHcompact
+16 ビット
+
+という特徴がある. 1.2.3 Mode switch では
+
+Mode switch can be effected while executing an unconditional branch or a return
+from exception. The lowest bit of the branch target denotes the target
+instrunction set. If this is 0 the target is SHcompact, otherwise it is SHmedia.
+
+という記述がある.
+
+シミュレータで何かのタイミングでこのモードを切り変えているか確認してみる.
+
+
+void
+sh64_engine_run_fast (SIM_CPU *cpu)
+{
+  if (sh64_h_ism_get (cpu) == ISM_MEDIA)  ★
+
+やっているっぽい.
+
+BI
+sh64_h_ism_get (SIM_CPU *current_cpu)
+{
+  return GET_H_ISM ();
+}
+
+int
+sh64_fetch_register (SIM_CPU *cpu, int nr, unsigned char *buf, int len)
+{
+...
+  /* Fetch PC.  */
+  if (nr == SIM_SH64_PC_REGNUM && len == 8)
+    {
+      *((unsigned64*) buf) = H2T_8 (sh64_h_pc_get (cpu) | sh64_h_ism_get (cpu));
+      return len;                                                  ★
+    }
+
+なるほどこれが開始アドレスと 1 を論理和に取っている理由. 但しプログラムカウンタは sh64-elf-gdb
+の視点ではそのままアドレスとして解釈されるのでこのままでは良くない.
+
+-     *((unsigned64*) buf) = H2T_8 (sh64_h_pc_get (cpu) | sh64_h_ism_get (cpu));
++     *((unsigned64*) buf) = H2T_8 (sh64_h_pc_get (cpu));
+
+そして
+
+SIM_RC
+sim_create_inferior (sd, abfd, argv, envp)
+
+で sh64_h_ism_get() が SHmedia を返すように値をセットするようにした.
+そしてここで SH64 用のブレーク命令が必要であることに気付いた.
+
+2022.06.09 14:56
+現状 SHmedia のモードで 0x100 番地に nop を 4 つ配置したプログラムが動作しつつあるが,
+brk 命令を実行し gdb から停止理由を問い合わされ再び実行し brk 命令を実行し, ...
+と延々繰り返している. もしかすると 0x100 番地に一度セットされたブレーク命令をキャッシュして
+それを保持し続けている可能性がある.
+
+2022.06.09 17:13
+0x100 番地から step 実行するときに 0x100 番地が brk 命令のまま実行しているのが上の原因.
+このバグの原因が不明. 期待通り動作している ns32k-elf-gdb と動作の比較を行なってみたところ
+やはり 0x100 番地から step 実行するときにセットされているブレークポイントは end ラベルの
+もののみで 0x100 のブレークポイントはセットされていない状態になっている.
+
+だから 0x100 から step 実行するときに何故 0x100 にブレークポイントがセットされているのか
+確認する.
+
+0x0000000000000101 in start () at test.S:3    ★
+3		nop
+
+これだったか. 気をつけていたつもりだが修正し切れていなかった.
+
+  if (nr == SIM_SH64_PC_REGNUM && len == 8)
+    {
+-     *((unsigned64*) buf) = H2T_8 (sh64_h_pc_get (cpu) | sh64_h_ism_get (cpu));  ★
++     *((unsigned64*) buf) = H2T_8 (sh64_h_pc_get (cpu));  ★
+      return len;
+    }
+
+2022.06.09 17:37 0x100 番地に nop を 4 つ配置したプログラムが SHmedia モードで正常に
+動作している:
+
+% sh64-elf-as -o test.o -g test.S --isa=shmedia
+% sh64-elf-ld -o test.elf test.o -T ../default.x --oformat elf64-sh64
+% sh64-elf-objdump -x -d -g test.elf > test.objdump
+% sh64-elf-gdb -q -x gdbcom test.elf
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x10 lma 0x100
+Start address 0x100
+Transfer rate: 128 bits in <1 sec.
+Breakpoint 1 at 0x100: file test.S, line 3.
+Breakpoint 2 at 0x10c: file test.S, line 7.
+
+Breakpoint 1, start () at test.S:3
+3		nop
+4		nop
+5		nop
+
+Breakpoint 2, end () at test.S:7
+7		nop
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
+%
+
+(*4) gcc のインストール
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% xz -d -c ../gcc-10.2.0.tar.xz  | tar xf -
+% mv gcc-10.2.0 gcc-10.2.0.sh64-lef
+% cd gcc-10.2.0.sh64-elf
+% sed -e 's/host_subdir = @host_subdir@/host_subdir = host-i686-pc-linux-gnu/' libgcc/Makefile.in > libgcc/Makefile.in.new
+% mv libgcc/Makefile.in.new libgcc/Makefile.in
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=sh64-elf
+% make all-gcc
+% make all-target-libgcc
+% make install-gcc
+% make install-target-libgcc
+
