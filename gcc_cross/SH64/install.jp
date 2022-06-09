@@ -1114,4 +1114,24 @@ sh-tdep.c が SH64 用になっていなかったということ.
 おそらく命令フェッチのところが間違えているのではと思い上のように修正してみたがこれだけでは
 正しい動作にはなっていない.
 
+そもそも SH64 の SHmedia や SHcompact をあまり理解しないままこの作業をしていることが
+問題.
+
+2022.06.09 12:04
+現状
+
+% sh64-elf-as -o test.o -g test.S --isa=sh2
+% sh64-elf-ld -o test.elf test.o -T ../default.x
+% sh64-elf-objdump -x -d -g test.elf > test.objdump
+% sh64-elf-gdb -q -x gdbcom test.elf
+
+のようにして期待する動作になっているものの
+
+% sh64-elf-as -o test.o -g test.S --isa=shmedia
+% sh64-elf-ld -o test.elf test.o -T ../default.x --oformat elf64-sh64
+% sh64-elf-objdump -x -d -g test.elf > test.objdump
+% sh64-elf-gdb -q -x gdbcom test.elf
+
+ではやはり nop ではなくて mov.b @r?, r? として命令を解釈しているので不正メモリアクセス
+が発生している. さてこれは何が正しいのか確認する必要がある.
 
