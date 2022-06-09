@@ -737,3 +737,381 @@ sh64-elf-gdb 視点ではソースファイルとアドレスの対応がとれ�
 なったらしいが詳しいことは不明. リンクし直す必要はあるのは理解できるのだがリコンパイル
 が必要な理由は不明.
 
+2022.06.08 15:04 ビルド後確認してみたところ上の症状は残ったまま. ソースファイルトアドレス
+の対応がとれていない原因を調査する.
+
+(gdb) b install_breakpoint
+(gdb) run
+...
+install_breakpoint のブレークポイントにヒット
+(gdb) p *b->location.get()
+$14 = {type = EXPLICIT_LOCATION, u = {addr_string = 0x0, linespec_location = {
+      match_type = symbol_name_match_type::WILD, 
+      spec_string = 0x8cb0ba8 "start"}, address = 633612988758097920, 
+    explicit_loc = {source_filename = 0x0, function_name = 0x8cb0ba8 "start",
+                                       ★
+      func_name_match_type = symbol_name_match_type::WILD, label_name = 0x0, 
+      line_offset = {offset = 0, sign = LINE_OFFSET_UNKNOWN}}}, 
+  as_string = 0x8cb0bb8 "start"}
+(gdb)
+
+同様のことを aarch64-elf-gdb でやってみた.
+
+(gdb) p *b->location.get()
+$2 = {type = EXPLICIT_LOCATION, u = {addr_string = 0x0, linespec_location = {
+      match_type = symbol_name_match_type::WILD, 
+      spec_string = 0x8d741e8 "start"}, address = 637050336984432640, 
+    explicit_loc = {source_filename = 0x0, function_name = 0x8d741e8 "start", 
+      func_name_match_type = symbol_name_match_type::WILD, label_name = 0x0, 
+      line_offset = {offset = 0, sign = LINE_OFFSET_UNKNOWN}}}, 
+  as_string = 0x8d7c280 "start"}
+(gdb) 
+
+想像していたものと違っていた. この時点では動作に違いがない.
+
+static void
+say_where (struct breakpoint *b)
+{
+...
+      if (b->loc->symtab != NULL)  ★
+	{
+
+期待通り動作している aarch64-elf-gdb ではこの条件が成立しているが sh64-elf-gdb では
+成立していない. aarch64-elf-gdb でこの値がセットされるのは以下:
+
+static struct bp_location *
+add_location_to_breakpoint (struct breakpoint *b,
+			    const struct symtab_and_line *sal)
+{
+...
+  loc->symtab = sal->symtab;  ★
+
+上を直接計算しているのは以下:
+
+      ops->create_sals_from_location (location, &canonical, type_wanted);
+
+SAL は symtab and line の略らしい. 以下の部分で動作に違いが出ている.
+
+
+  symtab_and_line sal = find_pc_sect_line (func_addr, section, 0);  ★
+
+aarch64-elf-gdb の場合
+(gdb) p sal
+$25 = {pspace = 0x8d00c18, symtab = 0x8d4f508, symbol = 0x0, section = 0x0, 
+  msymbol = 0x0, line = 3, pc = 256, end = 260, explicit_pc = false, 
+  explicit_line = false, is_stmt = true, prob = 0x0, objfile = 0x0}
+(gdb)
+
+sh64-elf-gdb の場合
+(gdb) p sal
+$33 = {pspace = 0x8c17670, symtab = 0x0, symbol = 0x0, section = 0x0, 
+  msymbol = 0x0, line = 0, pc = 256, end = 0, explicit_pc = false, 
+  explicit_line = false, is_stmt = false, prob = 0x0, objfile = 0x0}
+(gdb)
+
+
+以下を実行して aarch64-elf-gdb では nullptr 以外が返るが sh64-elf-gdb では nullptr
+が返っている.
+
+  cust = find_pc_sect_compunit_symtab (pc, section);  ★
+
+上の直接の原因は以下の呼び出しで result が nullptr にならないかなるかで違っている.
+
+      result = objf->sf->qf->find_pc_sect_compunit_symtab (objf,
+							   msymbol,
+							   pc, section,
+							   1);
+							   
+さらに上の直接の原因は以下の呼び出しで ps が nullptr にならないかなるかで違っている.
+
+  struct partial_symtab *ps = find_pc_sect_psymtab (objfile, pc, section,
+						    msymbol);
+
+さらに上の直接の原因は以下の呼び出しで pst が nullptr にならないかなるかで違っている.
+
+      struct partial_symtab *pst
+	= ((struct partial_symtab *)
+	   addrmap_find (objfile->partial_symtabs->psymtabs_addrmap,
+			 pc - baseaddr));
+
+以下のコード:
+
+static void *
+addrmap_fixed_find (struct addrmap *self, CORE_ADDR addr)
+{
+  struct addrmap_fixed *map = (struct addrmap_fixed *) self;
+  struct addrmap_transition *bottom = &map->transitions[0];
+  struct addrmap_transition *top = &map->transitions[map->num_transitions - 1];
+
+  while (bottom < top)
+
+map->num_transitions = 3 が期待値らしい. できていない sh64-elf-gdb は
+map->num_transitions = 1 で続く while ループでループしないのが nullptr が返る
+原因.
+
+map->_transitions の初期値は 1 で期待通り動作する aarch64-elf-gdb ではインクリメント
+されて 3 になる. そのときのスタックが以下:
+
+(gdb) where
+#0  splay_foreach_copy (n=0x8d603f4, closure=0x8d613a8) at addrmap.c:425
+#1  0x0855b483 in splay_tree_foreach_helper (data=0x8d613a8, fn=0x80ac470 <splay_foreach_copy(splay_tree_node, void*)>, node=0x8d603f4) at ./splay-tree.c:244
+#2  splay_tree_foreach (sp=0x8d603d0, fn=0x80ac470 <splay_foreach_copy(splay_tree_node, void*)>, data=0x8d613a8) at ./splay-tree.c:577
+#3  0x080ac767 in addrmap_mutable_create_fixed (self=0x8d603c0, obstack=0x8cba3f4) at addrmap.c:455
+#4  0x081ced0f in dwarf2_build_psymtabs_hard (per_objfile=0x8cba960) at /usr/local/include/c++/10.2.0/bits/shared_ptr_base.h:1324
+#5  dwarf2_build_psymtabs (objfile=0x8d3b6e0) at dwarf2/read.c:6144
+#6  0x082a9120 in require_partial_symbols (objfile=0x8d3b6e0, verbose=false) at psymtab.c:102
+#7  0x0833fe17 in read_symbols (objfile=0x8d3b6e0, add_flags=...) at symfile.c:804
+--Type <RET> for more, q to quit, c to continue without paging--
+#8  0x0833f6fd in syms_from_objfile_1 (add_flags=..., addrs=0xbffff328, objfile=0x8d3b6e0) at symfile.c:978
+#9  syms_from_objfile (add_flags=..., addrs=0x0, objfile=0x8d3b6e0) at symfile.c:995
+#10 symbol_file_add_with_addrs (abfd=0x8d3b610, name=0xbffff84e "test.elf", add_flags=..., addrs=0x0, flags=..., parent=0x0) at symfile.c:1098
+#11 0x0834095b in symbol_file_add_from_bfd (parent=0x0, flags=..., addrs=0x0, add_flags=..., name=0xbffff84e "test.elf", abfd=<optimized out>) at symfile.c:1179
+#12 symbol_file_add (name=0xbffff84e "test.elf", add_flags=..., addrs=0x0, flags=...) at symfile.c:1192
+#13 0x08340c88 in symbol_file_add_main_1 (reloff=0, flags=..., add_flags=..., args=0xbffff84e "test.elf") at symfile.c:1216
+#14 symbol_file_add_main (args=0xbffff84e "test.elf", args@entry=<error reading variable: value has been optimized out>, add_flags=..., add_flags@entry=<error reading variable: value has been optimized out>) at symfile.c:1207
+#15 0x0825e13a in catch_command_errors (command=<optimized out>, arg=<optimized out>, from_tty=<optimized out>) at main.c:457
+--Type <RET> for more, q to quit, c to continue without paging--
+#16 0x0826007f in captured_main_1 (context=<optimized out>) at main.c:1123
+#17 0x0826021d in captured_main (data=0xbffff544) at main.c:1243
+#18 gdb_main (args=0xbffff544) at main.c:1268
+#19 0x0806de5c in main (argc=5, argv=0xbffff614) at gdb.c:32
+(gdb)
+
+おそらく sh64-elf-gdb では何らかの理由で splay_foreach_copy が呼び出されていない
+ということ.
+
+その呼び出しがあるのは以下:
+
+  objfile->partial_symtabs->psymtabs_addrmap
+    = addrmap_create_fixed (objfile->partial_symtabs->psymtabs_addrmap,
+			    objfile->partial_symtabs->obstack ());
+
+そして splay_tree_foreach_helper で動作に違いが出ている.
+
+違いが出る直接の原因は以下：
+int
+splay_tree_foreach (splay_tree sp, splay_tree_foreach_fn fn, void *data)
+{
+  return splay_tree_foreach_helper (sp->root, fn, data);
+}
+
+sp->root が nullptr になっているのが sh64-elf-gdb, そうなっていないのが aarch64-elf-gdb
+
+函数 process_psymtab_comp_unit_reader での動作に違いが出ている:
+
+
+  cu_bounds_kind = dwarf2_get_pc_bounds (comp_unit_die, &best_lowpc,
+					 &best_highpc, cu, pst);      ★
+
+aarch64-elf-gdb では cu_bounds_kind = PC_BOUNDS_HIGH_LOW であるが
+sh64-elf-gdb では PC_BOUNDS_INVALID になっていてこれが sp->root が nullptr になるか
+ならないかの違いの原因になっている.
+
+dwarf2_get_pc_bounds での動作の違いが最初に現われるのは以下:
+
+	  low = attr->value_as_address ();
+	  high = attr_high->value_as_address ();  ★
+
+aarch64-elf-gdb では low = 0x100, high = 0x110 だが
+sh64-elf-gdb では low = 0x100, high = 0x100 になっている.
+
+実際は関係なかったのだが sh64-elf-gdb では以下のような結果になっていたので
+
+(gdb) p *attr_high
+$99 = {name = DW_AT_high_pc, form = DW_FORM_addr, string_is_canonical = 0, 
+  u = {str = 0x100 <error: Cannot access memory at address 0x100>, 
+    blk = 0x100, unsnd = 256, snd = 256, addr = 256, signature = 256}}
+
+上の Cannot access ... はターゲットシミュレータにメモリが割り当てられていないから
+出ているわけではなくて sh-elf-gdb が動いているホストの環境でメモリが割り当てられていないから
+出ているメッセージ.
+
+ここで少し脱線するがメモリの割り当てをいつものやり方, つまりプログラムのロード時に自動的に割り
+当てる方式にして sim_open で固定で割り当てている部分をコンパイルアウトした.
+
+上の結果はメモリ割り当てに先立って行なわれるので関係はないがいずれ修正するのでこの段階で
+やっておいた:
+
+gdb-10.2.sh64-elf/sim/sh64/sim-if.c:
+
+SIM_DESC
+sim_open (kind, callback, abfd, argv)
+...
+{
+...
++#if 0  ★
+  /* Allocate core managed memory if none specified by user.
+     Use address 4 here in case the user wanted address 0 unmapped.  */
+  if (sim_core_read_buffer (sd, NULL, read_map, &c, 4, 1) == 0)
+    sim_do_commandf (sd, "memory region 0,0x%x", SH64_DEFAULT_MEM_SIZE);
+
+  /* Add a small memory region way up in the address space to handle
+     writes to invalidate an instruction cache line.  This is used for
+     trampolines.  Since we don't simulate the cache, this memory just
+     avoids bus errors.  64K ought to do. */
+  sim_do_command (sd," memory region 0xf0000000,0x10000");
++#endif  ★
+
+そして sim-load.c にメモリ割り当てのパッチを入れた:
+
+脱線した話はここで元に戻る. sim_open の呼び出し前に dwarf2_get_pc_bounds での動作の違い
+が発生する. 改めて:
+
+.debug_info セクションの内容:
+...
+    <10>   DW_AT_low_pc      : 0x100
+    <18>   DW_AT_high_pc     : 0x100   ★
+
+ここが間違い.
+
+% sh64-elf-objdump --dwarf=info test.o
+
+test.o:     ファイル形式 elf64-sh64
+
+.debug_info セクションの内容:
+
+  コンパイル単位 @ オフセット 0x0:
+   長さ:        0x2a (32-bit)
+   バージョン:    2
+   Abbrev Offset: 0x0
+   ポインタサイズ:8
+ <0><b>: 省略番号: 1 (DW_TAG_compile_unit)
+    <c>   DW_AT_stmt_list   : 0x0
+    <10>   DW_AT_low_pc      : 0x0
+    <18>   DW_AT_high_pc     : 0x0 ★
+
+これはアセンブラが間違えている DW_AT_high_pc の期待値は 0x10.
+
+ここで以下の修正をしたことを思い出した:
+
+static int
+shmedia_init_reloc (arelent *rel, fixS *fixP)
+{
+  /* Adjust parts of *relp according to *fixp, and tell that it has been
+     done, so default initializations will not happen.   */
+  switch (fixP->fx_r_type)
+    {
++#if 0    
+    case BFD_RELOC_64:
+    case BFD_RELOC_64_PCREL:
++#endif    
+    case BFD_RELOC_SH_IMM_LOW16:
+  
+試しにこの修正をキャンセルしたところ DW_AT_high_pc の値が 0x10 になった.
+ということはこの修正自体が正しくなかったということ.
+
+そもそも .debug_line の 2 ずれる現象で fx_offset メンバに 2 をセットしているのは以下:
+
+	fixp->fx_offset += S_GET_VALUE (sym);   ★
+
+そして上の間接的な原因は以下:
+
+  dwarf2_emit_insn (3);  ★
+
+これまでの経験からこれは 4 の誤りに思える. コメントにはそれっぽい理由も書かれているが
+無視して 4 に修正した.
+
++#if 0
+  for (symp = symbol_rootP; symp != NULL; symp = symp->sy_next)
+    if (S_GET_OTHER (symp) & STO_SH5_ISA32)
+      symp->sy_value.X_add_number++;
++#endif
+
+さらに上も原因になって 2 ずれる現象になっていたので上のようにコンパイルアウトした.
+
+しかし現状 0x100 番地に nop を 4 つ並べたプログラムの objdump の結果は以下のようになっている:
+
+セクション .text の逆アセンブル:
+
+0000000000000100 <start+0x1>:
+ 100:	6ff0fff0 	nop	
+ 104:	6ff0fff0 	nop	
+ 108:	          	.byte 0x6f, 0xf0, 0xff
+
+000000000000010b <end>:
+ 10b:	f0          	.byte 0xf0
+ 10c:	6ff0fff0 	nop	
+
+そして sh64-elf-gdb の実行結果は以下:
+
+% sh64-elf-gdb -q -x gdbcom test.elf
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x10 lma 0x100
+Start address 0x100
+Transfer rate: 128 bits in <1 sec.
+Breakpoint 1 at 0xff                           ★
+Breakpoint 2 at 0x10b: file test.S, line 5.    ★
+gdbcom:6: Error in sourced command file:
+Warning:
+Cannot insert breakpoint 1.
+Cannot access memory at address 0xff
+
+(sh64-elf-gdb) q
+%
+
+おそらく start ラベルが 0xff, end ラベルが 0x10b と解釈されている.
+
+ずるいが以下のように修正した.
+
++#if 1
+  for (symp = symbol_rootP; symp != NULL; symp = symp->sy_next)
+    if (S_GET_OTHER (symp) & STO_SH5_ISA32)
+      symp->sy_value.X_add_number++;
++#endif
+
+まずは上のように修正を一旦キャンセルし, 以下のようにできていない部分を回避した.
+
+  switch (fixP->fx_r_type)
+    {
+    case BFD_RELOC_64:
+    case BFD_RELOC_64_PCREL:
+    case BFD_RELOC_SH_IMM_LOW16:
+...
++     if (fixP->fx_offset == 1) {
++	rel->addend = 0;
++	return 1;
++     }
+      rel->addend = fixP->fx_addnumber + fixP->fx_offset;
+      return 1;
+
+この修正を入れることで sh64-elf-gdb の実行結果は以下のようになった:
+
+% sh64-elf-gdb -q -x gdbcom test.elf
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x10 lma 0x100
+Start address 0x100
+Transfer rate: 128 bits in <1 sec.
+Breakpoint 1 at 0x100: file test.S, line 3.   ★
+Breakpoint 2 at 0x10c: file test.S, line 7.   ★
+
+Program received signal SIGTRAP, Trace/breakpoint trap.
+0x00000000 in ?? ()
+gdbcom:7: Error in sourced command file:
+Cannot find bounds of current function
+(sh64-elf-gdb) q
+%
+
+これはシミュレータのブレークポイントの扱いがおそらく間違っている.
+
+sim_resume からシミュレーションを開始してブレークポイントで sim_engine_halt により
+停止することはできている.
+
+ここで pc の値をシミュレータに問い合わせるのに 16 番のレジスタをサイズ 4 で指定していた.
+sh-tdep.c が SH64 用になっていなかったということ.
+
+2022.06.09 9:50 現時点でブレークポイントを扱うことができている. しかし nop を実行しようと
+しているが, シミュレータが実際実行している命令は
+
+	    mov.b @$rm, $rn
+
+らしい. この結果 0 番地から 1 バイト読み出して不正メモリアクセスが発生している.
+
+-      UHI insn = GETIMEMUHI (current_cpu, pc);
++      UHI insn = GETIMEMUSI (current_cpu, pc);
+
+おそらく命令フェッチのところが間違えているのではと思い上のように修正してみたがこれだけでは
+正しい動作にはなっていない.
+
+
