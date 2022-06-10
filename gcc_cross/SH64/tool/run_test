@@ -5,4 +5,5 @@ sh64-elf-as -o start.o -g start.S --isa=shmedia || exit 1
 sh64-elf-as -o sample.o -g sample.s --isa=shmedia || exit 1
 sh64-elf-ld -o sample.elf start.o sample.o -T sample.x --oformat elf64-sh64 || exit 1
 sh64-elf-objdump -x -d -g sample.elf > sample.objdump || exit 1
+setenv USE_SH64_PRINTF
 sh64-elf-run --memory-fill 0xcc --memory-region 0x1b000,0x5000 sample.elf

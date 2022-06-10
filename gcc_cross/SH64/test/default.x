@@ -6,5 +6,5 @@ SECTIONS {
 	 .bss  : {}
 
 	 . = 0x1000;
-	 _stack = .;
+	 stack = .;
 }

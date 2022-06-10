@@ -5,7 +5,6 @@ void f(int a, int b)
   printf("%d + %d = %d\n", a, b, a+b);
 }
 
-#if 0
 void g()
 {
   printf("hello world\n"); 
@@ -16,6 +15,8 @@ void h(double d)
   printf("\n");
   printf("%f\n", d);
 }
+
+#if 0
 void ff(long long int lli)
 {
   printf("%lld\n", lli);
@@ -95,10 +96,10 @@ void f4(char* s)
 int main()
 {
   f(5, 6);
-#if 0
   g();
   printf("\n");
   h(1.0);
+#if 0
   ff(9LL);
   char a[] = "hasegawa kei";  
   gg(&a[0], 5, 6.0);

@@ -3,6 +3,9 @@ https://ja.wikipedia.org/wiki/SuperH
 
 (*2) binutils のインストール
 
+最新バージョンではなくて 2.30 を使用することと  --enable-obsolete を configure 実行時に
+指定するのがポイント:
+
 % cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
 % gunzip -c ../binutils-2.30.tar.gz | tar xf -
 % mv binutils-2.30 binutils-2.30.sh64-elf
@@ -12,6 +15,9 @@ https://ja.wikipedia.org/wiki/SuperH
 % make install
 
 (*3) gdb のインストール
+
+bfd と opcodes を binutils のものを参照するのがポイント. これに伴なうコンパイルエラー等は
+発生してしまうがそれを回避する:
 
 % xz -d -c ../gdb-10.2-1.src/gdb-10.2.tar.xz | tar xf -
 % mv gdb-10.2 gdb-10.2.sh64-elf

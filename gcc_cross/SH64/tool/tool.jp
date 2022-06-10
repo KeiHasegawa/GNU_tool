@@ -4,3 +4,13 @@
 0xbadbeef2| printf
 0xbadbeef3| puts
 0xbadbeef4| putchar
+
+とするべきところだが SH64 のシミュレータの構造が複雑なので
+USE_SH64_PRINTF がセットされているとき
+
+0x12c の ptabs	r13, tr0 を printf
+0x134 の ptabs	r13, tr0 を puts
+0x13c の ptabs	r13, tr0 を putchar
+
+とすることにした.
+
