@@ -16,7 +16,6 @@ void h(double d)
   printf("%f\n", d);
 }
 
-#if 0
 void ff(long long int lli)
 {
   printf("%lld\n", lli);
@@ -31,11 +30,13 @@ void hh(long double ld)
 {
   printf("%Lf\n", ld);
 }
+
 void f2(double a, double b, double c)
 {
   printf("%f %f %f\n", a, b, c);
 }
 
+#if 0
 void g2(long long a, long long b, long long c, long long d,
 	long long e, long long f, long long g, long long h,
 	long long i, long long j, long long k, long long l,
@@ -49,6 +50,7 @@ void g2(long long a, long long b, long long c, long long d,
 	 m, n, o, p,
 	 q, r, s, t);
 }
+#endif
 
 void h2(int a, int b, int c, int d,
 	int e, int f, int g, int h,
@@ -66,6 +68,7 @@ void h2(int a, int b, int c, int d,
 	 u, v, w, x);
 }
 
+#if 0
 int test_f3;
 
 void f3(int a)
@@ -99,16 +102,18 @@ int main()
   g();
   printf("\n");
   h(1.0);
-#if 0
   ff(9LL);
   char a[] = "hasegawa kei";  
   gg(&a[0], 5, 6.0);
   hh(3.0L);
   f2(1.0, 2.0, 3.0);
+#if 0  
   g2(1LL, 2LL, 3LL, 4LL, 5LL, 6LL, 7LL, 8LL, 9LL, 10LL, 11LL, 12LL,
      13LL, 14LL, 15LL, 16LL, 17LL, 18LL, 19LL, 20LL);
+#endif  
   h2(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
      21, 22, 23, 24);
+#if 0
   f3(123);
   g3();
   h3();
