@@ -7,3 +7,28 @@ In similar way, cc1 model of IQ2000 can be built.
 No need to apply patch file in case of IQ2000 like below:
 
 % patch -p1 < ../gcc-10.2.0.aarch64-elf.mine.diff
+
+Development note is described from here.
+
+My `cc1' generated like below code:
+
+	lw	%2, 0(%27)
+	lw	%3, 4(%27)
+	add	%3, %2
+
+For these code, `iq2000-elf-as' warned like below:
+
+% iq2000-elf-as a.s
+a.s: Assembler messages:
+a.s:15: Warning: operand references R3 of previous load.
+a.s:15: Warning: operand references R3 of previous load.
+%
+
+To fix correctly, generated like below:
+
+	lw	%2, 0(%27)
+	lw	%3, 4(%27)
+	nop                  # This one
+	add	%3, %2
+
+I did not experience the delay slot like above.
