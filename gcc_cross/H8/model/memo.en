@@ -2,3 +2,61 @@ cc1 model
 
 Refer to "AARCH64" => "cc1 model" => "Memo".
 In similar way, cc1 model of H8 can be built.
+
+Development note is described below:
+
+Now "hello world 11" program works well. At this point, there is no
+rtx_insn* insn like below:
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+If "hello world 11" program is compiled with -g option, .debug_frame becomes
+like below:
+
+00000000 000e ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -2
+  Return address column: 9
+
+  DW_CFA_def_cfa: r7 ofs 0
+  DW_CFA_offset: r9 at cfa+0
+
+00000012 0008 00000000 FDE cie=00000000 pc=01d0..01f2
+
+0000001e 001e 00000000 FDE cie=00000000 pc=01f2..021e
+  DW_CFA_advance_loc4: 18 to 0204
+  DW_CFA_def_cfa_offset: 2
+  DW_CFA_advance_loc4: 6 to 020a
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_advance_loc4: 10 to 0214
+  DW_CFA_def_cfa_offset: 0
+  DW_CFA_nop
+
+where, some information is outputed for `main' function. We don't search the
+reason here. Refer to "M68HC11" => "cc1 model" => 3rd.jp
+
+I tried to execute "hello world 11" compiled with -g option under the control
+of `h83--elf-gdb'.
+
+The breakpoint of `main' worked well.
+Stepping into `f', `h8300-elf-gdb' could not skip prologue suitably.
+At the address where prologue was skipped, `a' and `b' were displayed suitably.
+And more, `where' command resulted like below:
+
+(h8300-elf-gdb) where
+#0  f (a=5, b=6) at a.c:5
+#1  0x00000006 in ?? ()
+Backtrace stopped: frame did not save the PC
+(h8300-elf-gdb)
+
+Maybe `b' = 6 was saved into stack, and `h8300-elf-gdb' recongized it as
+return address.
+
+Then I added the property for every rtx_insn* insn generated at
+`h8_expand_prologue':
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+I confirmed that `h8300-elf-gdb' worked well.
