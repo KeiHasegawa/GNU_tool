@@ -1,8 +1,8 @@
-*** gdb-10.2.tmp/sim/ppc/idecode.c	2021-11-22 15:16:49.000000000 +0900
---- gdb-10.2.ppc-elf/sim/ppc/idecode.c	2021-11-20 12:17:21.000000000 +0900
+*** gdb-10.2.tmp/sim/ppc/idecode.c	2022-06-11 14:57:24.000000000 +0900
+--- gdb-10.2.ppc-elf.new/sim/ppc/idecode.c	2022-06-11 14:34:31.000000000 +0900
 ***************
 *** 6527,6532 ****
---- 6527,6718 ----
+--- 6527,6723 ----
     /*63*/ { 0, MASK32(21,31), 0, idecode_table_21_31__63_0_5 },
   };
   
@@ -58,17 +58,18 @@
 +   return fmt;
 + }
 + 
-+ static unsigned int arg32(cpu* processor, unsigned cia, int nth)
++ static unsigned int arg32(cpu* processor, unsigned cia, int nth, int* off)
 + {
 +   assert(nth);
 +   if (nth < 8)
 +     return GPR(nth+3);
 +   int sp = GPR(1);
-+   int addr = sp + 4*(nth-8) + 8;
++   int addr = sp + 8 + *off;
++   *off += 4;
 +   return MEM(unsigned, addr, 4);
 + }
 + 
-+ static unsigned long long arg64(cpu* processor, unsigned cia, int nth)
++ static unsigned long long arg64(cpu* processor, unsigned cia, int nth, int* off)
 + {
 +   assert(nth);
 +   assert(!(nth & 1));
@@ -78,13 +79,14 @@
 +     return (a << 32) | b;
 +   }
 +   int sp = GPR(1);
-+   int addr = sp + 4*(nth-8) + 8;
++   int addr = sp + 8 + *off ;
++   *off += 8;
 +   unsigned long long a = MEM(unsigned, addr, 4);
 +   unsigned b = MEM(unsigned, addr+4, 4);
 +   return (a << 32) | b;
 + }
 + 
-+ static double float64(cpu* processor, unsigned cia, int fargc)
++ static double float64(cpu* processor, unsigned cia, int fargc, int* off)
 + {
 +   if (fargc < 9) {
 +     union {
@@ -94,7 +96,8 @@
 +     return u.d;
 +   }
 +   int sp = GPR(1);
-+   int addr = sp + 4*(fargc-9) + 8;
++   int addr = sp + 8 + *off;
++   *off += 8;
 +   unsigned long long a = MEM(unsigned, addr, 4);
 +   unsigned b = MEM(unsigned, addr+4, 4);
 +   union {
@@ -104,8 +107,9 @@
 +   return u.d;
 + }
 + 
-+ static const char* handle(cpu* processor, unsigned cia,
-+ 			  const char* fmt, int* nth, int* fargc, int* ret)
++ static const char*
++ handle(cpu* processor, unsigned cia,
++        const char* fmt, int* nth, int* fargc, int* off, int* ret)
 + {
 +   char c = *fmt;
 +   if (c != '%') {
@@ -128,20 +132,20 @@
 +   strncpy(&part_fmt[0], beg, n);
 +   part_fmt[n] = '\0';
 +   if (how == WORD) {
-+     int arg = arg32(processor, cia, (*nth)++);
++     int arg = arg32(processor, cia, (*nth)++, off);
 +     *ret += printf(part_fmt, arg);
 +     return end;
 +   }
 +   if (how == DW) {
 +     if (*nth & 1)
 +       ++*nth;
-+     unsigned long long arg = arg64(processor, cia, *nth);
++     unsigned long long arg = arg64(processor, cia, *nth, off);
 +     *nth += 2;
 +     *ret += printf(part_fmt, arg);
 +     return end;
 +   }
 +   if (how == DF || how == LDF) {
-+     double d = float64(processor, cia, (*fargc)++);
++     double d = float64(processor, cia, (*fargc)++, off);
 +     if (how == DF)
 +       *ret += printf(part_fmt, d);
 +     else
@@ -149,7 +153,7 @@
 +     return end;
 +   }
 +   if (how == STR) {
-+     unsigned addr = arg32(processor, cia, (*nth)++);
++     unsigned addr = arg32(processor, cia, (*nth)++, off);
 +     char buf[256];
 +     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
 +       char c = MEM(signed, addr+i, 1);
@@ -166,25 +170,26 @@
 +   return end;
 + }
 + 
-+ static void do_printf(cpu* processor, unsigned cia)
++ void do_printf(cpu* processor, unsigned cia)
 + {
 +   const char* fmt = first_string(processor, cia);
 +   int nargc = 1;
 +   int fargc = 1;
++   int off = 0;
 +   int ret = 0;
 +   while (*fmt)
-+     fmt = handle(processor, cia, fmt, &nargc, &fargc, &ret);
++     fmt = handle(processor, cia, fmt, &nargc, &fargc, &off, &ret);
 +   GPR(3) = ret;
 + }
 + 
-+ static void do_puts(cpu* processor, unsigned cia)
++ void do_puts(cpu* processor, unsigned cia)
 + {
 +   const char* arg = first_string(processor, cia);
 +   int ret = puts(arg);
 +   GPR(3) = ret;
 + }
 + 
-+ static void do_putchar(cpu* processor, unsigned cia)
++ void do_putchar(cpu* processor, unsigned cia)
 + {
 +   int arg = GPR(3);
 +   int ret = putchar(arg);
@@ -196,8 +201,127 @@
   (void)
   idecode_run(psim *system,
 ***************
-*** 6629,6634 ****
---- 6815,6845 ----
+*** 6539,6545 ****
+    int last_cpu;
+    int current_cpu;
+    int cpu_nr;
+! 
+    /* flush the icache of a possible break insn */
+    for (cpu_nr = 0; cpu_nr < nr_cpus; cpu_nr++)
+      cpu_flush_icache(processors[cpu_nr]);
+--- 6730,6736 ----
+    int last_cpu;
+    int current_cpu;
+    int cpu_nr;
+! #ifndef NEW_MEM_MAP
+    /* flush the icache of a possible break insn */
+    for (cpu_nr = 0; cpu_nr < nr_cpus; cpu_nr++)
+      cpu_flush_icache(processors[cpu_nr]);
+***************
+*** 6548,6557 ****
+    psim_set_halt_and_restart(system, &halt, NULL);
+    if (setjmp(halt))
+      return;
+! 
+    /* where were we before the halt? */
+    last_cpu = psim_last_cpu(system);
+- 
+    /* check for need to force event processing first */
+    if (WITH_EVENTS) {
+      if (last_cpu == nr_cpus) {
+--- 6739,6747 ----
+    psim_set_halt_and_restart(system, &halt, NULL);
+    if (setjmp(halt))
+      return;
+!   
+    /* where were we before the halt? */
+    last_cpu = psim_last_cpu(system);
+    /* check for need to force event processing first */
+    if (WITH_EVENTS) {
+      if (last_cpu == nr_cpus) {
+***************
+*** 6575,6581 ****
+  
+    /* have ensured that the event queue can not be first */
+    ASSERT(last_cpu >= -1 && last_cpu < nr_cpus - 1);
+- 
+    /* CASE 2: SMP (With or without ICACHE)
+  
+       The complexity here comes from needing to correctly restart the
+--- 6765,6770 ----
+***************
+*** 6593,6601 ****
+      current_cpu = last_cpu;
+      ASSERT(current_cpu >= -1 && current_cpu < nr_cpus);
+    }
+! 
+    while (1) {
+! 
+      if (WITH_EVENTS) {
+        current_cpu += 1;
+        if (current_cpu == nr_cpus) {
+--- 6782,6790 ----
+      current_cpu = last_cpu;
+      ASSERT(current_cpu >= -1 && current_cpu < nr_cpus);
+    }
+! #endif // NEW_MEM_MAP
+    while (1) {
+! #ifndef NEW_MEM_MAP
+      if (WITH_EVENTS) {
+        current_cpu += 1;
+        if (current_cpu == nr_cpus) {
+***************
+*** 6608,6614 ****
+      else {
+        current_cpu = (current_cpu + 1) % nr_cpus;
+      }
+! 
+      {
+        cpu *processor = processors[current_cpu];
+        unsigned_word cia =
+--- 6797,6805 ----
+      else {
+        current_cpu = (current_cpu + 1) % nr_cpus;
+      }
+! #else  // NEW_MEM_MAP
+!     current_cpu = 0;
+! #endif // NEW_MEM_MAP
+      {
+        cpu *processor = processors[current_cpu];
+        unsigned_word cia =
+***************
+*** 6616,6621 ****
+--- 6807,6813 ----
+        idecode_cache *cache_entry =
+          cpu_icache_entry(processor, cia);
+  
++ #ifndef NEW_MEM_MAP
+        if (cache_entry->address == cia) {
+  
+          /* cache hit */
+***************
+*** 6624,6636 ****
+          cpu_set_program_counter(processor, cia);
+  
+        }
+!       else {
+  
+          /* cache miss */
+          instruction_word instruction =
+            vm_instruction_map_read(cpu_instruction_map(processor), processor, cia);
+          if (WITH_MON != 0)
+            mon_event(mon_event_icache_miss, processors[current_cpu], cia);
+          {
+            /* prime the search */
+            idecode_table_entry *table = idecode_table_0_5;
+--- 6816,6856 ----
+          cpu_set_program_counter(processor, cia);
+  
+        }
+!       else
+! #endif // NEW_MEM_MAP
+! 	{
+  
           /* cache miss */
           instruction_word instruction =
             vm_instruction_map_read(cpu_instruction_map(processor), processor, cia);
@@ -225,7 +349,31 @@
 + 				    processor, cia);
 + 	  break;
 + 	}
-+ 	
++ #ifndef NEW_MEM_MAP
           if (WITH_MON != 0)
             mon_event(mon_event_icache_miss, processors[current_cpu], cia);
++ #endif // NEW_MEM_MAP
           {
+            /* prime the search */
+            idecode_table_entry *table = idecode_table_0_5;
+***************
+*** 6664,6670 ****
+              (processor, instruction, cia, cache_entry));
+          }
+          cpu_set_program_counter(processor, cia);
+! 
+        }
+      }
+    }
+--- 6884,6894 ----
+              (processor, instruction, cia, cache_entry));
+          }
+          cpu_set_program_counter(processor, cia);
+! #ifdef NEW_MEM_MAP
+! 	extern SIM_DESC g_sd;
+! 	if (sim_events_tick (g_sd))
+! 	  sim_events_process (g_sd);
+! #endif // NEW_MEM_MAP
+        }
+      }
+    }
