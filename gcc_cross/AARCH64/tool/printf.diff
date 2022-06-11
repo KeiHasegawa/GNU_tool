@@ -1,13 +1,205 @@
-*** gdb-10.2.arm-elf/sim/aarch64/simulator.c	2021-04-25 13:06:26.000000000 +0900
---- gdb-10.2.aarch64-elf/sim/aarch64/simulator.c	2021-11-19 16:42:29.000000000 +0900
+*** gdb-10.2.org/sim/aarch64/simulator.c	2021-04-25 13:06:26.000000000 +0900
+--- gdb-10.2.aarch64-elf/sim/aarch64/simulator.c	2022-06-11 14:19:40.000000000 +0900
 ***************
-*** 14322,14327 ****
---- 14326,14520 ----
-      }
-  }
+*** 32,37 ****
+--- 32,39 ----
+  #include "cpustate.h"
+  #include "memory.h"
   
 + #include <assert.h>
 + 
+  #define NO_SP 0
+  #define SP_OK 1
+  
+***************
+*** 580,586 ****
+--- 582,592 ----
+    uint64_t addr = aarch64_get_reg_u64 (cpu, rn, SP_OK) + offset;
+  
+    TRACE_DECODE (cpu, "emulated at line %d", __LINE__);
++ #if 0  
+    aarch64_set_vec_u8 (cpu, rd, 0, aarch64_get_mem_u32 (cpu, addr));
++ #else
++   aarch64_set_vec_u8 (cpu, rd, 0, aarch64_get_mem_u8 (cpu, addr));
++ #endif  
+  }
+  
+  /* Load 16 bit scaled unsigned 12 bit.  */
+***************
+*** 8281,8286 ****
+--- 8287,8293 ----
+       Infinity raises IO
+       Out of Range raises IO and IX and saturates value
+       Denormal raises ID and IX and sets to zero.  */
++ #if 0
+  #define RAISE_EXCEPTIONS(F, VALUE, FTYPE, ITYPE)	\
+    do							\
+      {							\
+***************
+*** 8320,8325 ****
+--- 8327,8335 ----
+  	}						\
+      }							\
+    while (0)
++ #else
++ #define RAISE_EXCEPTIONS(F, VALUE, FTYPE, ITYPE)
++ #endif
+  
+  /* 32 bit convert float to signed int truncate towards zero.  */
+  static void
+***************
+*** 8389,8395 ****
+  }
+  
+  static void
+! do_fcvtzu (sim_cpu *cpu)
+  {
+    /* instr[31]    = size: 32-bit (0), 64-bit (1)
+       instr[30,23] = 00111100
+--- 8399,8405 ----
+  }
+  
+  static void
+! do_fcvtzu (sim_cpu *cpu, _Bool check)
+  {
+    /* instr[31]    = size: 32-bit (0), 64-bit (1)
+       instr[30,23] = 00111100
+***************
+*** 8403,8410 ****
+    unsigned rs = INSTR (9, 5);
+    unsigned rd = INSTR (4, 0);
+  
+!   NYI_assert (30, 23, 0x3C);
+!   NYI_assert (20, 16, 0x19);
+  
+    if (INSTR (21, 21) != 1)
+      /* Convert to fixed point.  */
+--- 8413,8422 ----
+    unsigned rs = INSTR (9, 5);
+    unsigned rd = INSTR (4, 0);
+  
+!   if (check) {
+!     NYI_assert (30, 23, 0x3C);
+!     NYI_assert (20, 16, 0x19);
+!   }
+  
+    if (INSTR (21, 21) != 1)
+      /* Convert to fixed point.  */
+***************
+*** 8606,8612 ****
+  	case 3: fcvtszd (cpu); return;
+  	}
+  
+!     case 25: do_fcvtzu (cpu); return;
+      case 3:  do_UCVTF (cpu); return;
+  
+      case 0:	/* FCVTNS.  */
+--- 8618,8624 ----
+  	case 3: fcvtszd (cpu); return;
+  	}
+  
+!     case 25: do_fcvtzu (cpu, TRUE); return;
+      case 3:  do_UCVTF (cpu); return;
+  
+      case 0:	/* FCVTNS.  */
+***************
+*** 9310,9317 ****
+    unsigned rn = INSTR (9, 5);
+    unsigned rd = INSTR (4, 0);
+  
+    NYI_assert (31, 10, 0x1FB82E);
+! 
+    TRACE_DECODE (cpu, "emulated at line %d", __LINE__);
+    aarch64_set_vec_u64 (cpu, rd, 0, - aarch64_get_vec_u64 (cpu, rn, 0));
+  }
+--- 9322,9335 ----
+    unsigned rn = INSTR (9, 5);
+    unsigned rd = INSTR (4, 0);
+  
++ #if 0  
+    NYI_assert (31, 10, 0x1FB82E);
+! #else
+!   if (INSTR(31, 10) != 0x1FB82E) {
+!     do_fcvtzu(cpu, FALSE);
+!     return;
+!   }
+! #endif  
+    TRACE_DECODE (cpu, "emulated at line %d", __LINE__);
+    aarch64_set_vec_u64 (cpu, rd, 0, - aarch64_get_vec_u64 (cpu, rn, 0));
+  }
+***************
+*** 9411,9416 ****
+--- 9429,9446 ----
+  	case 0x01: do_scalar_MOV (cpu); return;
+  	case 0x39: do_scalar_FCM (cpu); return;
+  	case 0x3B: do_scalar_FCM (cpu); return;
++ 	case 0x36:
++ 	  {
++ 	    int sf = INSTR(31, 31);
++ 	    int ftype = INSTR(23, 22);
++ 	    if (sf == 0 && ftype == 1) {
++ 	      scvtd(cpu);
++ 	      return;
++ 	    }
++ 	    assert(sf == 0 && ftype == 0);
++ 	    scvtf(cpu);
++ 	    return;
++ 	  }
+  	}
+        break;
+  
+***************
+*** 9456,9461 ****
+--- 9486,9492 ----
+  	case 0x32: do_scalar_FCMGT_zero (cpu); return;
+  	case 0x36: do_scalar_FCMEQ_zero (cpu); return;
+  	case 0x3A: do_scalar_FCMLT_zero (cpu); return;
++ 	case 0x2e: do_fcvtzu(cpu, FALSE); return;
+  	default:
+  	  HALT_NYI;
+  	}
+***************
+*** 13958,13966 ****
+    /* We only implement HLT and BRK for now.  */
+    if (opc == 1 && LL == 0)
+      {
+!       TRACE_EVENTS (cpu, " BRK [0x%x]", imm16);
+        sim_engine_halt (CPU_STATE (cpu), cpu, NULL, aarch64_get_PC (cpu),
+  		       sim_exited, aarch64_get_reg_s32 (cpu, R0, SP_OK));
+      }
+  
+    if (opc == 2 && LL == 0)
+--- 13989,14002 ----
+    /* We only implement HLT and BRK for now.  */
+    if (opc == 1 && LL == 0)
+      {
+!       TRACE_EVENTS (cpu, " BRK [0x%x]", imm16);      
+! #if 0
+        sim_engine_halt (CPU_STATE (cpu), cpu, NULL, aarch64_get_PC (cpu),
+  		       sim_exited, aarch64_get_reg_s32 (cpu, R0, SP_OK));
++ #else
++       sim_engine_halt (CPU_STATE (cpu), cpu, NULL, aarch64_get_PC (cpu),
++ 		       sim_stopped, SIM_SIGTRAP);
++ #endif
+      }
+  
+    if (opc == 2 && LL == 0)
+***************
+*** 14292,14298 ****
+  {
+    /* We need to check if gdb wants an in here.  */
+    /* checkBreak (cpu);.  */
+- 
+    uint64_t group = dispatchGroup (aarch64_get_instr (cpu));
+  
+    switch (group)
+--- 14328,14333 ----
+***************
+*** 14322,14327 ****
+--- 14357,14554 ----
+      }
+  }
+  
 + static const char* first_string(sim_cpu* cpu)
 + {
 +   uint64_t x0 = cpu->gr[0].u64;
@@ -58,32 +250,35 @@
 +   return fmt;
 + }
 + 
-+ static unsigned int arg32(sim_cpu* cpu, int nth)
++ static unsigned int arg32(sim_cpu* cpu, int nth, int* off)
 + {
 +   assert(nth);
 +   if (nth < 8)
 +     return cpu->gr[nth].u32;
 +   uint64_t sp = cpu->gr[31].u64;
-+   uint64_t addr = sp + 8*(nth-8);
++   uint64_t addr = sp + *off;
++   *off += 8;
 +   return aarch64_get_mem_u64(cpu, addr);
 + }
 + 
-+ static uint64_t arg64(sim_cpu* cpu, int nth)
++ static uint64_t arg64(sim_cpu* cpu, int nth, int* off)
 + {
 +   assert(nth);
 +   if (nth < 8)
 +     return cpu->gr[nth].u64;
 +   uint64_t sp = cpu->gr[31].u64;
-+   uint64_t addr = sp + 8*(nth-8);
++   uint64_t addr = sp + *off;
++   *off += 8;
 +   return aarch64_get_mem_u64(cpu, addr);
 + }
 + 
-+ static double float64(sim_cpu* cpu, int nth)
++ static double float64(sim_cpu* cpu, int nth, int* off)
 + {
 +   if (nth < 8)
 +     return cpu->fr[nth].d;
 +   uint64_t sp = cpu->gr[31].u64;
-+   uint64_t addr = sp + 8*(nth-8);
++   uint64_t addr = sp + *off;
++   *off += 8;
 +   union {
 +     uint64_t i;
 +     double d;
@@ -91,7 +286,7 @@
 +   return u.d;
 + }
 + 
-+ static __float128 float128(sim_cpu* cpu, int nth)
++ static __float128 float128(sim_cpu* cpu, int nth, int* off)
 + {
 +   union U {
 +     uint64_t i[2];
@@ -102,7 +297,8 @@
 +     return u.f128;
 +   }
 +   uint64_t sp = cpu->gr[31].u64;
-+   uint64_t addr = sp + 8*(nth-8);
++   uint64_t addr = sp + *off;
++   *off += 16;
 +   union U u = {
 +     aarch64_get_mem_u64(cpu, addr), aarch64_get_mem_u64(cpu, addr+8)
 +   };
@@ -110,7 +306,7 @@
 + }
 + 
 + static const char*
-+ handle(sim_cpu* cpu, const char* fmt, int* nth, int *fargc, int* ret)
++ handle(sim_cpu* cpu, const char* fmt, int* nth, int *fargc, int* off, int* ret)
 + {
 +   char c = *fmt;
 +   if (c != '%') {
@@ -133,27 +329,27 @@
 +   strncpy(&part_fmt[0], beg, n);
 +   part_fmt[n] = '\0';
 +   if (how == WORD) {
-+     int arg = arg32(cpu, (*nth)++);
++     int arg = arg32(cpu, (*nth)++, off);
 +     *ret += printf(part_fmt, arg);
 +     return end;
 +   }
 +   if (how == DW) {
-+     unsigned long long arg = arg64(cpu, (*nth)++);
++     unsigned long long arg = arg64(cpu, (*nth)++, off);
 +     *ret += printf(part_fmt, arg);
 +     return end;
 +   }
 +   if (how == DF) {
-+     double d = float64(cpu, (*fargc)++);
++     double d = float64(cpu, (*fargc)++, off);
 +     *ret += printf(part_fmt, d);
 +     return end;
 +   }
 +   if (how == LDF) {
-+     __float128 f128 = float128(cpu, (*fargc)++);
++     __float128 f128 = float128(cpu, (*fargc)++, off);
 +     *ret += printf(part_fmt, (long double)f128);
 +     return end;
 +   }
 +   if (how == STR) {
-+     uint32_t addr = arg32(cpu, (*nth)++);
++     uint32_t addr = arg32(cpu, (*nth)++, off);
 +     char buf[256];
 +     for (int i = 0 ; i != sizeof buf/sizeof buf[0] ; ++i) {
 +       char c = aarch64_get_mem_s8(cpu, addr+i);
@@ -175,9 +371,10 @@
 +   const char* fmt = first_string(cpu);
 +   int nargc = 1;
 +   int fargc = 0;
++   int off = 0;
 +   int ret = 0;
 +   while (*fmt)
-+     fmt = handle(cpu, fmt, &nargc, &fargc, &ret);
++     fmt = handle(cpu, fmt, &nargc, &fargc, &off, &ret);
 +   cpu->gr[0].u32 = ret;
 + }
 + 
@@ -199,7 +396,10 @@
   aarch64_step (sim_cpu *cpu)
   {
 ***************
-*** 14336,14342 ****
+*** 14333,14342 ****
+    aarch64_set_next_PC (cpu, pc + 4);
+  
+    /* Code is always little-endian.  */
     sim_core_read_buffer (CPU_STATE (cpu), cpu, read_map,
   			& aarch64_get_instr (cpu), pc, 4);
     aarch64_get_instr (cpu) = endian_le2h_4 (aarch64_get_instr (cpu));
@@ -207,9 +407,16 @@
     TRACE_INSN (cpu, " pc = %" PRIx64 " instr = %08x", pc,
   	      aarch64_get_instr (cpu));
     TRACE_DISASM (cpu, pc);
---- 14529,14556 ----
+--- 14560,14594 ----
+    aarch64_set_next_PC (cpu, pc + 4);
+  
+    /* Code is always little-endian.  */
++ #if 0
     sim_core_read_buffer (CPU_STATE (cpu), cpu, read_map,
   			& aarch64_get_instr (cpu), pc, 4);
++ #else  // NEW_MEM_MAP
++   aarch64_get_instr(cpu) = sim_core_read_aligned_4(cpu, pc, read_map, pc);
++ #endif  // NEW_MEM_MAP
     aarch64_get_instr (cpu) = endian_le2h_4 (aarch64_get_instr (cpu));
 !   uint32_t tmp = aarch64_get_instr (cpu);
 !   switch (tmp) {
