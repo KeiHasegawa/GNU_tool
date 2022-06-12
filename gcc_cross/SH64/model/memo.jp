@@ -231,3 +231,37 @@ tr1 のレジスタ番号は 69 で選択されている理由は以下:
 
 実は fr0 をレジスタアロケーションの対象にしたのだがこれは既に意味がなくなっているので
 r4, r5, r6, r7, r8 も含めて 1 にすることにした.
+
+(*4)
+
+2022.06.13 7:43 現状 hello world 11 が sh64-elf-run で動作している. そして
+sh64::expand_prologue で生成している全ての rtx_insn* insn に対して
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+のようにしている. -g オプション付きで hello world 11 をコンパイルしアセンブルすると
+以下のようにアセンブルエラーになる:
+
+% ./cc1 -o a.s a.c -g -quiet
+% sh64-elf-as -o a.o a.s
+a.s: Assembler messages:
+a.s:11: Error: unknown opcode
+...
+% cat -n a.s
+     1		.file	"a.c"
+     2		.text
+     3	.Ltext0:
+     4		.cfi_sections	.debug_frame
+     5		.global	f
+     6		.type	f, @function
+     7	f:
+     8	.LFB0:
+     9	.LM1:
+    10		.cfi_startproc
+    11		addi	r15, -24, r15
+    12		.cfi_def_cfa_offset 24
+...
+%
+
+さてこれは一体どういうことか. sh64-elf-as で何故エラーにしているのか調べてみるべき.
+
