@@ -7,3 +7,93 @@ In similar way, cc1 model of MN10300 can be built.
 No need to apply patch file in case of MN10300 like below:
 
 % patch -p1 < ../gcc-10.2.0.aarch64-elf.mine.diff
+
+Development note from here:
+
+MN10300 stack frame is similar with that of Blackfin and Moxie.
+
+Based on Moxie analysis, I did the below item 
+
+(1) TARGET_LRA_P declaration added
+(2) The function which is specified to the definition of
+    TARGET_LEGITIMATE_ADDRESS_P fixed
+(3) ARG_POINTER_REGNUM specified to the different value of FRAM_POINTER_REGNUM
+    and ELIMINABLE_REGS adapted for it.
+(4) REG_PARM_STACK_SPACE declaration added
+(5) FIRST_PARM_OFFSET returns 0
+(6) OUTGOING_REG_PARM_STACK_SPACE, ACCUMULATE_OUTGOING_ARGS declarations added
+(7) FRAME_GROWS_DOWNWARD defined 1
+(8) At prologue, adjust stack pointer in mount of frame size and function
+    outgoing arguments.
+(9) FRAME_POINTER_CFA_OFFSET declaration added.
+
+But stepping into function, arguments are not displayed correctly like below:
+
+(mn10300-elf-gdb) s
+f (a=6, b=-858993460) at a.c:5
+(mn10300-elf-gdb)
+
+It seems that frame pointer is out of alignment by 4 bytes.1
+
+_f:
+.LFB3:
+.LM1:
+	movm	[a3], (sp)
+.LCFI0:
+	mov	sp, a3
+.LCFI1:
+	mov	d0, (8, a3)   (*)
+	mov	d1, (12, a3)  (*)
+...
+ <2><c9>: Abbrev: 6 (DW_TAG_formal_parameter)
+    <ca>   DW_AT_name        : a
+    <cc>   DW_AT_decl_file   : 1
+    <cd>   DW_AT_decl_line   : 3
+    <ce>   DW_AT_decl_column : 11
+    <cf>   DW_AT_type        : <0x83>
+    <d3>   DW_AT_location    : 2 byte block: 91 8 	(DW_OP_fbreg: 8)   (*)
+ <2><d6>: Abbrev: 6 (DW_TAG_formal_parameter)
+    <d7>   DW_AT_name        : b
+    <d9>   DW_AT_decl_file   : 1
+    <da>   DW_AT_decl_line   : 3
+    <db>   DW_AT_decl_column : 18
+    <dc>   DW_AT_type        : <0x83>
+    <e0>   DW_AT_location    : 2 byte block: 91 c 	(DW_OP_fbreg: 12)  (*)
+
+Above result is OK. So I investigated the same thing for original cc1:
+
+_f:
+.LFB3:
+	.file 1 "a.c"
+	.loc 1 4 1
+	movm [a3],(sp)
+.LCFI0:
+	mov sp,a3
+.LCFI1:
+	mov d0,(8,a3)     (*)
+	mov d1,(12,a3)    (*)
+
+ <2><c9>: Abbrev: 6 (DW_TAG_formal_parameter)
+    <ca>   DW_AT_name        : a
+    <cc>   DW_AT_decl_file   : 1
+    <cd>   DW_AT_decl_line   : 3
+    <ce>   DW_AT_decl_column : 11
+    <cf>   DW_AT_type        : <0x83>
+    <d3>   DW_AT_location    : 2 byte block: 91 4 	(DW_OP_fbreg: 4) (*)
+ <2><d6>: Abbrev: 6 (DW_TAG_formal_parameter)
+    <d7>   DW_AT_name        : b
+    <d9>   DW_AT_decl_file   : 1
+    <da>   DW_AT_decl_line   : 3
+    <db>   DW_AT_decl_column : 18
+    <dc>   DW_AT_type        : <0x83>
+    <e0>   DW_AT_location    : 2 byte block: 91 8 	(DW_OP_fbreg: 8) (*)
+
+This may makes the accounts balance, I think.
+
+-#define FRAME_POINTER_CFA_OFFSET(FDECL) 0
++#define FRAME_POINTER_CFA_OFFSET(FDECL) 4
+
+Then I could confirm that mn10300-elf-gdb worked well, as I expected.
+
+
+
