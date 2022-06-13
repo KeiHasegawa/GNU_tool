@@ -245,4 +245,18 @@ But at the line of:
 
 executing step command caused stepping into `printf' not into `f'.
 
+For my `cc1', I did the same thing. I found that
 
+o could not skip prologue when stepping into `g'
+o if could skip prologue, arguments `a' and `b' could be displayed correctly
+o where command became like below:
+
+(msp430-elf-gdb) where
+#0  g (a=5, b=6) at a.c:10
+#1  0x000005aa in main () at a.c:15
+Backtrace stopped: frame did not save the PC
+(msp430-elf-gdb)
+
+There were some problems at this point. I decided to make a goal
+that the program which is compiled with -g option by original `cc1'
+can be executed under control of msp430-elf-gdb.
