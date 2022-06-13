@@ -197,17 +197,18 @@ FRAME_POINTE_REGNUM の値を等しくすることがなかったが, もしか�
 さらにここで重要なことに気付いた. オリジナルの cc1 で生成したコードは
 gdb で期待した動作になっていない.
 
-~/lang/53_GNU_tool/gcc_cross/MSP430/test/test006/test.lof
+~/lang/53_GNU_tool/gcc_cross/MSP430/test/test006/test.c
 
 はもっと単純な例でこれはできている.
 
-~/lang/53_GNU_tool/gcc_cross/MSP430/tool/
+~/lang/53_GNU_tool/gcc_cross/MSP430/tool/sample.c
 
-にある sample.c を -g でコンパイルし, sample.elf を gdb で実行すると
+を -g でコンパイルし, sample.elf を gdb で実行すると
 f にステップインできない現象が再現している. しかも f 以外の函数はステッ
 プインできている.
 
-以下のようなテストプログラムに a.c をしてみた:
+a.c を以下のようなテストプログラムにしてみた:
+% cat a.c
 #include <stdio.h>
 
 int f(int a, int b)
@@ -226,6 +227,7 @@ int main()
   printf("hello world %d\n", f(5, 6));
   return 0;
 }
+%
 
 このテストプログラムをこれまで通り -g オプションでコンパイルして gdb
 で実行すると
