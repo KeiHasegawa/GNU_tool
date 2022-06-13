@@ -2,3 +2,99 @@ cc1 model
 
 Refer to "AARCH64" => "cc1 model" => "Memo".
 In similar way, cc1 model of MSP430 can be built.
+
+Development note from here:
+
+In MSP430 ABI, Arguments to the function which takes variable length argumets
+are passed with stack. For below code:
+
+#include <stdio.h>
+
+int f(int a, int b);
+
+int main()
+{
+  printf("hello world %d\n", f(5, 6));
+  return 0;
+}
+
+Original cc1 adjusts stack pointer by 4 bytes at main function prologue like
+below:
+
+  fs = cfun->machine->framesize_locals + cfun->machine->framesize_outgoing;
+                                           (*)
+  increment_stack (- fs);
+
+But I decided to implement my `cc1' by using default gcc common character.
+There exists push instruction in MSP430 and it's easy to use it.
+
+At this point, hello world 11 can be executed with msp430-elf-run. I noticed
+that msp430-elf-gdb could not step into function `f' suitably for this
+program compiled with -g option. Here, no rtx_insn* insn generated at
+msp430_expand_prologue was added below property:
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+Then I added above property for every rtx_insn* insn generated at
+msp430_expand_prologue. But msp430-elf-gdb still could not step into function.
+
+Original `cc1' generates .debug_frame section like below:
+
+00000000 00000010 ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -2
+  Return address column: 0
+
+  DW_CFA_def_cfa: r1 ofs 2
+  DW_CFA_offset: r0 at cfa-2
+  DW_CFA_nop
+  DW_CFA_nop
+
+00000014 00000014 00000000 FDE cie=00000000 pc=00000576..0000058a
+  DW_CFA_advance_loc4: 2 to 00000578
+  DW_CFA_def_cfa_offset: 6
+  DW_CFA_nop
+
+On the other hand, my `cc1' generates .debug_frame section like below:
+
+00000000 0000000e ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -2
+  Return address column: 17
+
+  DW_CFA_def_cfa: r1 ofs 0
+  DW_CFA_offset: r17 at cfa+0
+
+00000012 00000010 00000000 FDE cie=00000000 pc=00140576..0014077a
+  DW_CFA_nop
+  DW_CFA_def_cfa_offset: 4
+  DW_CFA_nop
+
+I was take care of above. But I was also take care of below:
+
+my `cc1':
+
+	.4byte	.LEFDE2-.LASFDE2
+.LASFDE2:
+	.4byte	.Lframe0
+	.2byte	.LFB4                        (*)
+	.2byte	.LFE4-.LFB4                  (*)
+
+
+Original `cc1'
+
+	.4byte	.LEFDE0-.LASFDE0
+.LASFDE0:
+	.4byte	.Lframe0
+	.4byte	.LFB3                        (*)
+	.4byte	.LFE3-.LFB3                  (*)
+
+Then I added below declaration:
+
+#define	DWARF2_ADDR_SIZE	4
+
+As this result, msp430-elf-gdb became to be able to step into function.
