@@ -17,3 +17,21 @@ f (a=5, b=6) at a.c:5
 0x1ed が保存されているから sh64-elf-gdb がそのような動作になっている.  sh64-elf-gdb
 が 0x1ed を読み出したときにそれを 0x1ec に変更する必要がある.
 
+以下のように共通ソースに直接修正を入れた.
+
+CORE_ADDR
+get_frame_pc (struct frame_info *frame)
+{
+#if 0
+  gdb_assert (frame->next != NULL);
+  return frame_unwind_pc (frame->next);
+#else
+  CORE_ADDR ret = frame_unwind_pc (frame->next);
+  ret &= (CORE_ADDR)~0 << 1;
+  return ret;
+#endif  
+}
+
+もっと良いやり方が本当はあるかもしれない. コンパイラを修正する方法とデバッガを修正する方法
+があるが面倒なのでこれで満足しておく.
+
