@@ -1,0 +1,19 @@
+現状 where コマンドの結果が正しくない.
+
+% sh64-elf-gdb a.elf -x gdbcom -q
+...
+Breakpoint 1, main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+f (a=5, b=6) at a.c:5
+5	  return a + b;
+#0  f (a=5, b=6) at a.c:5
+#1  0x00000000000001ed in main () at a.c:10    ★
+...
+
+このため finish コマンドで内部ブレークポイントを 0x1ed にセットすることになり, この
+結果 Illegal instruction 例外が発生している.
+
+おそらく 0x1ed はスタックに戻りアドレスを保存していてそこから読み出していて, そして本当に
+0x1ed が保存されているから sh64-elf-gdb がそのような動作になっている.  sh64-elf-gdb
+が 0x1ed を読み出したときにそれを 0x1ec に変更する必要がある.
+

@@ -1,0 +1,137 @@
+自前の cc1 の生成した hello world 11 を sh64-elf-gdb で実行すると f にステップイン
+したときプロローグを適切にスキップできていない.
+
+(gdb) b step_command
+(gdb) run
+...
+step_command のブレークポイントにヒット
+(gdb) b process_event_stop_test
+(gdb) c
+(gdb) c
+(gdb) c
+(gdb) c
+(gdb) c
+(gdb) c
+(gdb) c
+(gdb) c
+(gdb) c
+Continuing.
+f (a=<error reading variable: Cannot access memory at address 0x20000>, 
+    b=<error reading variable: Cannot access memory at address 0x20004>)
+    at a.c:4
+4	{
+(sh64-elf-gdb)
+
+函数 process_event_stop_test で以下の条件が成立することが f でプロローグを
+スキップするために必要.
+
+  if (!frame_id_eq (get_stack_frame_id (frame),
+		    ecs->event_thread->control.step_stack_frame_id)
+      && (frame_id_eq (frame_unwind_caller_id (get_current_frame ()),
+		       ecs->event_thread->control.step_stack_frame_id)
+	  && (!frame_id_eq (ecs->event_thread->control.step_stack_frame_id,
+			    outer_frame_id)
+	      || (ecs->event_thread->control.step_start_function
+		  != find_pc_function (ecs->event_thread->suspend.stop_pc)))))
+    {  ★
+
+
+この条件が成立しない原因を調べる.
+
+
+(gdb) p frame_id_eq (get_stack_frame_id (frame),ecs->event_thread->control.step_stack_frame_id)
+$13 = false
+(gdb) p frame_id_eq (frame_unwind_caller_id (get_current_frame ()), ecs->event_thread->control.step_stack_frame_id)
+$14 = false
+(gdb) 
+
+これらしい. 2 つ目の条件が成立していない.
+
+(gdb) p/x frame_unwind_caller_id (get_current_frame ())
+$16 = {stack_addr = 0x1fff0, code_addr = 0x0, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) p/x ecs->event_thread->control.step_stack_frame_id
+$17 = {stack_addr = 0x20000, code_addr = 0x1bc, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb)
+
+0x1bc は main のアドレスで 0x20000 は main の先頭での sp の値.
+
+以下を試してみたところ適切にプロローグをスキップできている:
+
+% cat z
+b sh-tdep.c:2036
+command
+set this_id->stack_addr = 0x20000
+set this_id->code_addr = 0x1bc
+c
+end
+%
+(gdb) so z
+(gdb) run
+...
+Connected to the simulator.
+Loading section .text, size 0x134 lma 0x100
+Loading section .rodata, size 0x10 lma 0x234
+Start address 0x100
+Transfer rate: 2592 bits in <1 sec.
+Breakpoint 1 at 0x1cc: file a.c, line 10.
+
+Breakpoint 1, main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+f (a=5, b=6) at a.c:5
+5	  return a + b;
+(sh64-elf-gdb) 
+
+以下に辿り着いた:
+
+.debug_frame セクションの内容:
+
+
+00000000 000000000000000c ffffffff CIE
+  Version:               1
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -4
+  Return address column: 17          ★
+
+  DW_CFA_def_cfa: r15 ofs 0
+
+そこで以下の修正を入れてみた:
+
+-#define LINK_REGNUM           13
+#define FRAME_POINTER_REGNUM  14
+#define STACK_POINTER_REGNUM  15
++#define PR_REGNUM             17
+
+2022.06.14 14:01
+
+% sh64-elf-gdb a.elf -x gdbcom -q
+Connected to the simulator.
+Loading section .text, size 0x134 lma 0x100
+Loading section .rodata, size 0x10 lma 0x234
+Start address 0x100
+Transfer rate: 2592 bits in <1 sec.
+Breakpoint 1 at 0x1cc: file a.c, line 10.
+
+Breakpoint 1, main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+f (a=5, b=6) at a.c:5
+5	  return a + b;
+#0  f (a=5, b=6) at a.c:5
+#1  0x00000000000001ed in main () at a.c:10    ★
+
+Program received signal SIGILL, Illegal instruction.
+0x00000000000001ec in main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+アボート
+exit 1
+%
+
+プロローグはスキップできるようになったが実行がさらに進んで Illegal instruction の
+例外が発生して, そしておそらく abort() が呼び出されている. すぐに気付くことは main
+の戻りアドレスが 0x1ec であるべきところが 0x1ed になっているということ.
+
+
