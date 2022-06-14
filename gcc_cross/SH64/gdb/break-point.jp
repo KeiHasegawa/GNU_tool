@@ -1,0 +1,20 @@
+自前の cc1 で -g 指定して生成したコードを sh64-elf-gdb で実行した.
+main にブレークポイントをセットするとソースとの対応が取れていない.
+
+sh64-elf-gdb 視点で調べてみたところ以下のように sh_skip_prologue
+が期待しない pc で呼び出されている:
+
+Thread 1 "gdb" hit Breakpoint 2, sh_skip_prologue (gdbarch=0x8d083f8, pc=445) at sh-tdep.c:772
+(gdb) p/x pc
+$3 = 0x1bd   ★
+(gdb) 
+
+
+00000000000001bc <main>:                     ★
+ 1bc:	d0ffc0f0 	addi	r15,-16,r15
+ 1c0:	acf000d0 	st.q	r15,0,r13
+ 1c4:	acf004e0 	st.q	r15,8,r14
+ 1c8:	d0f000e0 	addi	r15,0,r14
+ 1cc:	cc001850 	movi	6,r5
+
+0x1bc が期待値.
