@@ -1,3 +1,8 @@
+cc1 の雛形
+
+「AARCH64」=>「cc1 の雛形」=>「メモ」 を参照.
+AARCH64 と同様の手順で cc1 の雛形をビルドすることができる.
+
 以下開発メモ
 
 (*1) 2022.06.11 8:59
@@ -272,7 +277,7 @@ a.s:11: Error: unknown opcode
 % sh64-elf-objdump -x -d -g -s a.o > a.o.objdump
 % sh64-elf-ld -o a.elf /home/khasegawa/lang/53_GNU_tool/gcc_cross/SH64/tool/start.o a.o -T /home/khasegawa/lang/53_GNU_tool/gcc_cross/SH64/tool/sample.x --oformat elf64-sh64
 % sh64-elf-objdump -x -d -g -s a.elf > a.objdump
-% sh64-elf-objdump -x -d -g -s a.elf
+% sh64-elf-gdb -q -x gdbcom a.elf
 Reading symbols from a.elf...
 ...
 Connected to the simulator.
@@ -292,3 +297,11 @@ exit 1
 main にブレークポイントをセットしているがソース行との対応がとれていない. おそらく
 sh-tdep.c が未対応ということ. そこを修正する.
 
+  => sh64-elf-gdb 視点で調べた結果そうではなくてアセンブラの修正に問題があった
+     ことが判明.
+
+2022.06.14 11:27 現状 `f' にステップインしたときプロローグを適切にスキップできていない.
+原因を sh64-elf-gdb の視点で調査してみる.
+
+2022.06.14 14:58 現状 hello world 11 が期待通り動作している. sh64-elf-as と
+sh64-elf-gdb の修正で上の問題は回避した.
