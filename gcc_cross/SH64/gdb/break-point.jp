@@ -18,3 +18,50 @@ $3 = 0x1bd   ★
  1cc:	cc001850 	movi	6,r5
 
 0x1bc が期待値. 「インストール」を見直したところ 1 ずれるのはアセンブラに問題がありそう.
+以下のように修正してみた:
+
+#if 0      
+      if (fixP->fx_offset == 1) {
+	rel->addend = 0;
+	return 1;
+      }
+#else
+      fixP->fx_offset &= (long long)~0 << 1;
+#endif      
+
+% sh64-elf-gdb -q -x gdbcom a.elf
+Reading symbols from a.elf...
+Connected to the simulator.
+Loading section .text, size 0x134 lma 0x100
+Loading section .rodata, size 0x10 lma 0x234
+Start address 0x100
+Transfer rate: 2592 bits in <1 sec.
+Breakpoint 1 at 0x1cc: file a.c, line 10.  ★
+
+Breakpoint 1, main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+f (a=<error reading variable: Cannot access memory at address 0x20000>, 
+    b=<error reading variable: Cannot access memory at address 0x20004>)
+    at a.c:4
+4	{
+#0  f (a=<error reading variable: Cannot access memory at address 0x20000>, 
+    b=<error reading variable: Cannot access memory at address 0x20004>)
+    at a.c:4
+#1  0x0000000000000000 in ?? ()
+Backtrace stopped: frame did not save the PC
+Warning:
+Cannot insert breakpoint 0.
+Cannot access memory at address 0x0
+
+gdbcom:10: Error in sourced command file:
+Command aborted.
+(sh64-elf-gdb) q
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) y
+
+%
+
+まだできていないが main のブレークポイントは機能している.
