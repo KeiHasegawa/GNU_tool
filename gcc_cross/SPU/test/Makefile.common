@@ -1,0 +1,21 @@
+%.o : %.S
+	spu-elf-as -o $@ -g $<
+
+%.o : %.c
+	spu-elf-gcc -o $@ $< -g -c
+
+%.elf : %.o 
+	spu-elf-ld -o $@ ../default.o $< -T ../default.x
+
+%.objdump : %.elf
+	spu-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v spu-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.o *.s *.elf *.map *.objdump *.objcopy *.log TAGS *~
