@@ -1,0 +1,35 @@
+(*0) SPU
+
+https://ja.wikipedia.org/wiki/Cell_Broadband_Engine
+
+https://arcb.csc.ncsu.edu/~mueller/cluster/ps3/SDK3.0/docs/arch/SPU_ISA_v1.2_27Jan2007_pub.pdf
+
+(*1) binutils のインストール
+
+% xz -d -c ../binutils-2.36.1-2.src/binutils-2.36.1.tar.xz | tar xf -
+% mv binutils-2.36.1 binutils-2.36.1.spu-elf
+% cd binutils-2.36.1.spu-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=spu-elf
+% make
+% make all
+
+(*2) gcc のインストール
+
+% xz -d -c ../gcc-9.1.0.tar.xz | tar xf -
+% mv gcc-9.1.0 gcc-9.1.0.spu-elf
+% cd gcc-9.1.0.spu-elf
+% sed -e s/host_subdir = @host_subdir@/host_subdir = host-i686-pc-linux-gnu/ libgcc/Makefile.in
+% mv libgcc/Makefile.in.new libgcc/Makefile.in
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=spu-elf --enable-obsolete
+% make all-gcc
+% make all-target-libgcc
+% make install-gcc
+% make install-target-libgcc
+
+(*3) gdb のインストール
+
+インターネットを検索したが残念ながら SPU のシミュレータを作成している方を発見できなかった.
+
+
+
+
