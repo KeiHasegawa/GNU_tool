@@ -2,8 +2,6 @@
 
 https://ja.wikipedia.org/wiki/Cell_Broadband_Engine
 
-https://arcb.csc.ncsu.edu/~mueller/cluster/ps3/SDK3.0/docs/arch/SPU_ISA_v1.2_27Jan2007_pub.pdf
-
 (*1) binutils のインストール
 
 % xz -d -c ../binutils-2.36.1-2.src/binutils-2.36.1.tar.xz | tar xf -
@@ -23,13 +21,83 @@ https://arcb.csc.ncsu.edu/~mueller/cluster/ps3/SDK3.0/docs/arch/SPU_ISA_v1.2_27J
 % ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=spu-elf --enable-obsolete
 % make all-gcc
 % make all-target-libgcc
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-9.1.0.spu-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-9.1.0.spu-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/spu-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/spu-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/spu-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/spu-elf/sys-include    -g -O2 -mea64 -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition  -isystem ./include  -mwarn-reloc -D__IN_LIBGCC2 -fPIC -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc -mwarn-reloc -D__IN_LIBGCC2 -fPIC -I. -I. -I../../../host-i686-pc-linux-gnu/gcc -I../../.././libgcc -I../../.././libgcc/. -I../../.././libgcc/../gcc -I../../.././libgcc/../include  -DHAVE_CC_TLS -DUSE_EMUTLS -o cachemgr.o -MT cachemgr.o -MD -MP -MF cachemgr.dep -c ../../.././libgcc/config/spu/cachemgr.c
+/tmp/ccrVcYWV.s: Assembler messages:
+/tmp/ccrVcYWV.s:54: Error: Relocation doesn't fit. (relocation value = 0x518)
+make[3]: *** [../../.././libgcc/config/spu/t-elf:33: cachemgr.o] エラー 1
+make[3]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-9.1.0.spu-elf/spu-elf/mea64/libgcc' から出ます
+make[2]: *** [Makefile:1210: multi-do] エラー 1
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-9.1.0.spu-elf/spu-elf/libgcc' から出ます
+make[1]: *** [Makefile:127: all-multi] エラー 2
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-9.1.0.spu-elf/spu-elf/libgcc' から出ます
+make: *** [Makefile:12282: all-target-libgcc] エラー 2
+exit 1
+%
+
+libgcc のビルドでエラーしているが cc1, gcc 等はビルドできている.
+
 % make install-gcc
-% make install-target-libgcc
 
 (*3) gdb のインストール
 
 インターネットを検索したが残念ながら SPU のシミュレータを作成している方を発見できなかった.
 
+% xz -d -c ../gdb-10.2-1.src/gdb-10.2.tar.xz | tar xf -
+% mv gdb-10.2 gdb-10.2.spu-elf
+% cd gdb-10.2.spu-elf/gdb
 
+d30v, fr30, z8k, i960, mmix, z80, i386, pdp11, vax, alpha, m68k, ns32k
+と同じ対処をした.
 
+gdb-10.2.ns32k-elf/gdb/configure.tgt:
 
+h8300-*-*)
+	# Target: H8300 processor
+	gdb_target_obs="h8300-tdep.o"
+	gdb_sim=../sim/h8300/libsim.a
+	;;
+
++spu-*-*)
++	gdb_target_obs="spu-tdep.o"
++	gdb_sim=../sim/spu/libsim.a
++	;;
+
+hppa*-*-linux*)
+
+% cp ~/lang/53_GNU_tool/gcc_cross/MCORE/gdb/mcore-tdep.c.001 spu-tdep.c
+
+mcore を spu に置換
+
+% cd ..
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=spu-elf
+% make
+...
+  CXX    init.o
+make[2]: *** 'gdb' に必要なターゲット '../sim/spu/libsim.a' を make するルールがありません.  中止.
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.spu-elf/gdb' から出ます
+make[1]: *** [Makefile:10067: all-gdb] エラー 2
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.spu-elf' から出ます
+make: *** [Makefile:855: all] エラー 2
+%
+
+% tar xf ~/lang/53_GNU_tool/gcc_cross/NS32000/gdb/ns32k.1.tar
+% mv ns32k spu
+% cd spu
+
+ns32k を spu に置換
+spu.c をビルドに追加しリンクエラーになる函数をとりあえず空の函数として定義しておく
+
+% make
+一旦ビルドを成功させる
+
+% cd ../../gdb
+% make
+ビルド成功.
+
+少しの修正で 0x100 番地に nop を数個配置したプログラムを spu-elf-gdb で動作させるよう
+にする.
+
+  => 「SPU の gdb」を参照. spu-tdep.c.1 と spu.1.tar でできている.
+  
+  
