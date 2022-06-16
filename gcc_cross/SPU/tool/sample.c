@@ -183,9 +183,16 @@ void h3(void)
   printf("test_h3 = %d\n", test_h3);
 }
 
-void f4(char* s)
+void f4(int a, int b, int c, int d)
 {
-  printf("%s\n", s);
+  __vector int vi = { a, b, c, d };
+  printf("vi = { %vi }\n", vi);
+}
+
+void g4(float a, float b, float c, float d)
+{
+  __vector float vf = { a, b, c, d };
+  printf("vf = { %vf }\n", vf);
 }
 
 int main()
@@ -242,6 +249,8 @@ int main()
   f3(123);
   g3();
   h3();
+  f4(1, 2, 3, 4);
+  g4(1, 2, 3, 4);
   return 0;
 }
 
@@ -262,4 +271,10 @@ void f5(int a, int b)
 void g6(char* p, char v)
 {
   *p = v;
+}
+
+
+void h4(char* s)
+{
+  printf("%s\n", s);
 }
