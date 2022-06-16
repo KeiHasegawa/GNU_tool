@@ -1,0 +1,78 @@
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-9.1.0.spu-elf/gcc/config/spu/spu_intrinsics.h
+
+によると
+
+#define vec_uchar16             __vector unsigned char
+#define vec_char16              __vector   signed char
+#define vec_ushort8             __vector unsigned short
+#define vec_short8              __vector   signed short
+#define vec_uint4               __vector unsigned int
+#define vec_int4                __vector   signed int
+#define vec_ullong2             __vector unsigned long long
+#define vec_llong2              __vector   signed long long
+#define vec_float4              __vector          float
+#define vec_double2             __vector          double
+
+のような宣言がある. SPU プログラマはこれらの宣言を使用して以下のようなコードを
+書くことができる:
+
+#define vec_int4                __vector   signed int
+
+vec_int4 f(vec_int4 a, vec_int4 b)
+{
+  return a + b;
+}
+
+int main()
+{
+  f((vec_int4){1, 2, 3, 4}, (vec_int4){5, 6, 7, 8});
+  return 0;
+}
+
+この場合 main で停止し, f にステップインし, where コマンドを実行し, 最後に finish
+コマンドを実行した場合の動作は以下のようになるのが期待値:
+
+% spu-elf-gcc -q -x gdbcom test.elf
+...
+Breakpoint 1 at 0x144: file test.c, line 10.
+
+Breakpoint 1, main () at test.c:10
+10	  f((vec_int4){1, 2, 3, 4}, (vec_int4){5, 6, 7, 8});
+f (a=..., b=...) at test.c:5
+5	  return a + b;
+#0  f (a=..., b=...) at test.c:5
+#1  0x00000150 in main () at test.c:10
+main () at test.c:11
+11	  return 0;
+Value returned is $1 = {6, 8, 10, 12}
+...
+%
+
+現状では r3 等は 32 ビットの通常のレジスタとして扱っているからこれができていない.
+さてこれを実現するためにはどうすればよいか.
+
+以下を試してみた:
+
+static type* spu_register_type(gdbarch* arch, int regno)
+{
+  switch (regno) {
+  case pc_regno: return builtin_type(arch)->builtin_func_ptr;
+  case sp_regno: return builtin_type(arch)->builtin_data_ptr;
+#if 0    
+  default:       return builtin_type(arch)->builtin_int32;
+#else
+  case 0:        return builtin_type(arch)->builtin_func_ptr;
+  case 2:        return builtin_type(arch)->builtin_data_ptr;    
+  default:       return builtin_type(arch)->builtin_int128;
+#endif    
+  }
+}
+
+これは他の部分も修正が必要だったものの期待通り動作させることができている.
+またこれに伴なって printf の書式に %vi や %vf をサポートした. この時点での
+
+spu-tdep.c を spu-tdep.c.3 として
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.spu-elf/sim/spu
+
+を spu.3.tar としてこのページにアップロードしておく.

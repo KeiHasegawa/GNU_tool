@@ -1,0 +1,240 @@
+#include "defs.h"
+#include "value.h"
+#include "arch-utils.h"
+#include "regcache.h"
+#include "gdbcore.h"
+#include "objfiles.h"
+#include "dis-asm.h"
+#include "dwarf2/frame.h"
+#include "frame-base.h"
+#include "frame-unwind.h"
+#include <cassert>
+
+static int spu_register_sim_regno(gdbarch* arch, int regnum)
+{
+  return regnum;
+}
+
+static int spu_dbg_reg_to_regnum(gdbarch* arch, int regnum)
+{
+  return regnum;
+}
+
+const int pc_regno = 128;
+const int sp_regno = 1;
+
+static const char* spu_register_name (gdbarch* arch, int regno)
+{
+  if (regno == pc_regno)
+    return "pc";
+  if (regno == sp_regno)
+    return "sp";
+
+  static const char* name[] = {
+    "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7",
+    "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
+    "r16", "r17", "r18", "r19", "r20", "r21", "r22", "r23",
+    "r24", "r25", "r26", "r27", "r28", "r29", "r30", "r31",
+    "r32", "r33", "r34", "r35", "r36", "r37", "r38", "r39",
+    "r40", "r41", "r42", "r43", "r44", "r45", "r46", "r47",
+    "r48", "r49", "r50", "r51", "r52", "r53", "r54", "r55",
+    "r56", "r57", "r58", "r59", "r60", "r61", "r62", "r63",
+    "r64", "r65", "r66", "r67", "r68", "r69", "r70", "r71",
+    "r72", "r73", "r74", "r75", "r76", "r77", "r78", "r79",
+    "r80", "r81", "r82", "r83", "r84", "r85", "r86", "r87",
+    "r88", "r89", "r90", "r91", "r92", "r93", "r94", "r95",
+    "r96", "r97", "r98", "r99", "r100", "r101", "r102", "r103",
+    "r104", "r105", "r106", "r107", "r108", "r109", "r110", "r111",
+    "r112", "r113", "r114", "r115", "r116", "r117", "r118", "r119",
+    "r120", "r121", "r122", "r123", "r124", "r125", "r126", "r127",
+  };
+  
+  if (regno < sizeof name/sizeof name[0])
+    return name[regno];
+
+  return nullptr;
+}
+
+static bool is_aggregate(type_code code)
+{
+  switch (code) {
+  case TYPE_CODE_STRUCT: case TYPE_CODE_UNION: case TYPE_CODE_ARRAY:
+    return true;
+  default:
+    return false;
+  }
+}
+
+static void
+spu_extract_return_value(type* valtype, regcache* rc, gdb_byte* valbuf)
+{
+  gdb_byte tmp[16];
+  rc->raw_read(3, &tmp[0]);
+  int len = TYPE_LENGTH(valtype);
+  assert(len <= sizeof tmp);
+  memcpy(valbuf, &tmp[0], len);
+}
+
+static return_value_convention
+spu_return_value(gdbarch* arch, value* function,
+		 type* valtype, regcache* rc,
+		 gdb_byte* readbuf, const gdb_byte* writebuf)
+{
+  auto code = valtype->code();
+  if (is_aggregate(code)) {
+    int len = TYPE_LENGTH(valtype);
+    if (len > 16) {
+      if (readbuf) {
+	ULONGEST addr;
+	regcache_raw_read_unsigned(rc, 3, &addr);
+	read_memory(addr, readbuf, len);
+      }
+      return RETURN_VALUE_ABI_RETURNS_ADDRESS;      
+    }
+  }
+
+  assert(!writebuf);
+
+  if (readbuf)
+    spu_extract_return_value(valtype, rc, readbuf);
+  
+  return RETURN_VALUE_REGISTER_CONVENTION;
+}
+
+static type* spu_register_type(gdbarch* arch, int regno)
+{
+  switch (regno) {
+  case pc_regno: return builtin_type(arch)->builtin_func_ptr;
+  case sp_regno: return builtin_type(arch)->builtin_data_ptr;
+#if 0    
+  default:       return builtin_type(arch)->builtin_int32;
+#else
+  case 0:        return builtin_type(arch)->builtin_func_ptr;
+  case 2:        return builtin_type(arch)->builtin_data_ptr;    
+  default:       return builtin_type(arch)->builtin_int128;
+#endif    
+  }
+}
+
+static void
+spu_print_registers_info(gdbarch* arch, ui_file* file,
+			 frame_info* frame, int regno, int cpregs)
+{
+  fprintf_filtered (file, "%s at %s:%d called\n", __func__, __FILE__, __LINE__);
+}
+
+static CORE_ADDR spu_skip_prologue(gdbarch* arch, CORE_ADDR pc)
+{
+  CORE_ADDR func_addr, func_end;
+  if (!find_pc_partial_function (pc, nullptr, &func_addr, &func_end))
+    return pc;
+  
+  symtab_and_line sal = find_pc_line (func_addr, 0);
+  if (sal.end && sal.end < func_end)
+    return sal.end;
+
+  return pc;
+}
+
+static struct frame_base spu_frame_base = {
+};
+
+static void spu_frame_this_id(frame_info* frame, void** ptr, frame_id *id)
+{
+}
+
+static value*
+spu_frame_prev_register(frame_info* frame, void** ptr, int regnum)
+{
+  asm("int3");
+  return 0;
+}
+
+static frame_unwind spu_frame_unwind = {
+  NORMAL_FRAME,
+  default_frame_unwind_stop_reason,
+  spu_frame_this_id,
+  spu_frame_prev_register,
+  nullptr,
+  default_frame_sniffer
+};
+
+static int spu_kind_from_pc(gdbarch* arch, CORE_ADDR* addr)
+{
+  return 0;
+}
+
+static
+const unsigned char* spu_from_kind(gdbarch* arc, int kind, int* size)
+{
+  static unsigned char bkpt[] = { 0x00, 0x80, 0x00, 0x89 };
+  *size = sizeof bkpt;
+  return &bkpt[0];
+}
+
+static CORE_ADDR
+spu_push_dummy_call(gdbarch* arch, value* function,
+		    regcache* rc, CORE_ADDR bp_addr,
+		    int nargs, value** args, CORE_ADDR sp,
+		    function_call_return_method rm,
+		    CORE_ADDR struct_addr)
+{
+  asm("int3");
+  return 0;
+}
+
+static gdbarch*
+spu_gdbarch_init(gdbarch_info info, gdbarch_list* arches)
+{
+  gdbarch* arch = gdbarch_alloc(&info, 0);
+
+  set_gdbarch_num_regs(arch, pc_regno+1);
+  set_gdbarch_register_type(arch, spu_register_type);
+  set_gdbarch_register_sim_regno(arch, spu_register_sim_regno);
+  set_gdbarch_dwarf2_reg_to_regnum(arch, spu_dbg_reg_to_regnum);
+  set_gdbarch_stab_reg_to_regnum(arch, spu_dbg_reg_to_regnum);
+  set_gdbarch_register_name(arch, spu_register_name);
+
+  set_gdbarch_pc_regnum(arch, pc_regno);
+  set_gdbarch_sp_regnum(arch, sp_regno);
+  set_gdbarch_print_registers_info(arch, spu_print_registers_info);
+
+  set_gdbarch_ptr_bit(arch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_addr_bit(arch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_return_value(arch, spu_return_value);
+
+  set_gdbarch_skip_prologue(arch, spu_skip_prologue);
+  frame_base_set_default(arch, &spu_frame_base);
+  dwarf2_append_unwinders(arch);
+  frame_unwind_append_unwinder(arch, &spu_frame_unwind);
+
+  set_gdbarch_inner_than(arch, core_addr_lessthan);
+  set_gdbarch_breakpoint_kind_from_pc(arch, spu_kind_from_pc);
+  set_gdbarch_sw_breakpoint_from_kind(arch, spu_from_kind);
+  set_gdbarch_push_dummy_call(arch, spu_push_dummy_call);
+
+  set_gdbarch_char_signed(arch, 0);
+  set_gdbarch_int_bit(arch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_long_bit(arch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_long_long_bit(arch, 8 * TARGET_CHAR_BIT);
+
+  set_gdbarch_wchar_signed(arch, 0);
+  set_gdbarch_wchar_bit(arch, 2 * TARGET_CHAR_BIT);
+
+  set_gdbarch_double_bit(arch, 8 * TARGET_CHAR_BIT);
+  set_gdbarch_double_format(arch, floatformats_ieee_double);
+  set_gdbarch_long_double_bit(arch, 8 * TARGET_CHAR_BIT);
+  set_gdbarch_long_double_format(arch, floatformats_ieee_double);
+
+  set_gdbarch_believe_pcc_promotion(arch, 1);
+ 
+  return arch;
+}
+
+void _initialize_spu_tdep();
+void
+_initialize_spu_tdep()
+{
+  register_gdbarch_init(bfd_arch_spu, spu_gdbarch_init);
+}
+
