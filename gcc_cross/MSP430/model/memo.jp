@@ -427,6 +427,8 @@ $23 = {stack_addr = 0xfefe, code_addr = 0x58e, special_addr = 0x0,
 でスタックポインタを函数呼び出しのための引数のスペースを作るように
 してみる.
 
+  => 後で判明したがこの対処は必要ではなかった.
+
   fs = cfun->machine->framesize_locals + cfun->machine->framesize_outgoing;
 
 おそらく以下が必要
@@ -480,7 +482,6 @@ const char* msp430_pushhi1(rtx x)
 
   return "push %0";
 }
-
 
 期待した通りに修正できたのだが, まだ f にステップインできていない.
 
@@ -655,3 +656,5 @@ $18 = 4
   DW_CFA_def_cfa_offset: 6
   DW_CFA_nop
 
+「gcc ターゲット依存部」 => 「gcc の共通ソースから参照されるターゲット依存部の宣言」
+の INCOMING_FRAME_SP_OFFSET を参照.
