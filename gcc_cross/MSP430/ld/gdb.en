@@ -44,26 +44,27 @@ And more, I noticed that the result of msp430-elf-objdump was not expected:
  580:	1c 41 02 00 	mov	2(r1),	r12	;
  584:	2c 51       	add	@r1,	r12	;
 
-これでいくと 0x580 で停止するのが期待値.
+According to above result, expected stop address becomes 0x580.
 
 (msp430-elf-gdb) b f
 Breakpoint 2 at 0x578
 (msp430-elf-gdb)
 
-まず 0x578 が期待値と異なる. また a.c:5 が対応していない.
+At first, stop address is 0x578, not 0x580. And break-point of `f' is not
+correspoind to `a.c:5'.
 
-ところが, 以下のようにアドレス 0x580 を指定すれば
+On the other hand, if we specifiy directly 0x580 like below:
 
 (msp430-elf-gdb) b *0x580
-Breakpoint 1 at 0x580: file a.c, line 5.   # 行番号が対応している!
+Breakpoint 1 at 0x580: file a.c, line 5.   # correspoind to `a.c:5'!
 (msp430-elf-gdb) run
 Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.msp430-elf/host-i686-pc-linux-gnu/gcc/a.elf 
 
 Breakpoint 1, f (a=5, b=6) at a.c:5
 (msp430-elf-gdb)
 
-ということは, おそらく f のプロローグ部分を適切にスキップできれば修正される可能性が多いに
-ある.
+This implies that it's possible to fix if msp430-elf-gdb skip prologue
+correctly.
 
 (gdb) b msp430_skip_prologue
 (gdb) run
@@ -77,21 +78,19 @@ msp430_skip_prologue (struct gdbarch *gdbarch, CORE_ADDR pc)
     return pc;
 
   msp430_analyze_prologue (gdbarch, pc, func_end, &p);
-  return p.prologue_end;       ここで 0x578 が返っている.
+  return p.prologue_end;       // return here 0x578 !
 }
 
-
-そういえば msp430-elf-gcc で zconfirm による確認のときに
+Here, I remembered I fixed for msp430-elf-gcc -g option code generation
+like below:
 
       opcode_handle.sd = 0;
       opcode_handle.pc = pc;
 
-などの修正を行なったがこれがおそらく正しくなかった可能性もある.
+and I thought it was the reason of this phenomenon. Onece, I reverted
+the fix but if I set break-point of `f', the address became 0x578, not 0x580.
 
-一旦, このとき行なった修正を元に戻してみた. しかし f にブレークポイントを
-セットしてもやはり 0x580 ではなくて 0x578 にセットされている.
-
-そして気付いたことは以下
+Then I noticed that:
 
 int f(int a, int b)
 {
@@ -109,13 +108,14 @@ int main()
   return 0;
 }
 
-は main で停止して g にステップインして where コマンドと finish コマンド
-が期待通り動作しているのだが, g ではなくて f にすると問題の現象が発生する.
+When stopping `main', msp430-elf-gdb could step into `g' and `where' and
+`finish' commands worked well. But when stopping `g', could not step into
+`f'.
 
-いずれにしても g はプロローグを適切にスキップできているが, f はできていない
-ということだろうか.
+I thought that msp430-elf-gdb could skip prologue of `g' but colud not skip
+prologue of `f' suitably.
 
-objdump による逆アセンブル結果以下:
+The results of msp-elf-objdump becomes like below:
 
 00000576 <f>:
  576:	21 82       	sub	#4,	r1	;r2 As==10
@@ -123,7 +123,7 @@ objdump による逆アセンブル結果以下:
 00000578 <.LCFI0>:
  578:	
 0000057a <L0^A>:
- 57a:	02 00       	mova	@r0,	r2	; 
+ 57a:	02 00       	mova	@r0,	r2	;  (*) NG
  57c:	81 4d 00 00 	mov	r13,	0(r1)	;
 
 ...
@@ -131,14 +131,14 @@ objdump による逆アセンブル結果以下:
  58a:	21 82       	sub	#4,	r1	;r2 As==10
 
 0000058c <.LCFI1>:
- 58c:	81 4c 02 00 	mov	r12,	2(r1)	;  正しい
+ 58c:	81 4c 02 00 	mov	r12,	2(r1)	;  (*) OK as I expect
  590:	81 4d 00 00 	mov	r13,	0(r1)	;
 
 一方, disassemble コマンドによる結果は以下
 
 Dump of assembler code for function f:
    0x00000576 <+0>:	sub	#4,	r1	;r2 As==10
-   0x00000578 <+2>:	mov	r12,	2(r1)	;   正しい
+   0x00000578 <+2>:	mov	r12,	2(r1)	;  (*) OK. but ???
    0x0000057c <+6>:	mov	r13,	0(r1)	;
    0x00000580 <+10>:	mov	2(r1),	r12	;
    0x00000584 <+14>:	add	@r1,	r12	;
@@ -147,7 +147,7 @@ Dump of assembler code for function f:
 End of assembler dump.
 Dump of assembler code for function g:
    0x0000058a <+0>:	sub	#4,	r1	;r2 As==10
-   0x0000058c <+2>:	mov	r12,	2(r1)	;   正しい
+   0x0000058c <+2>:	mov	r12,	2(r1)	;   (*) OK. of cause.
    0x00000590 <+6>:	mov	r13,	0(r1)	;
    0x00000594 <+10>:	mov	2(r1),	r12	;
    0x00000598 <+14>:	sub	@r1,	r12	;
