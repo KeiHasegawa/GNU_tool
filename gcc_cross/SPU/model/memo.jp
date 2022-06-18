@@ -1,0 +1,645 @@
+以下開発メモ
+
+(*1)
+spu-elf-gcc では __vector をキーワードとして認識しているのでそれができるようにする必要が
+ある.
+
+字句解析器が __vector を読み込んだときに cc1 が独自の処理を行なうために以下の宣言を
+追加する.
+
+extern void spu_cpu_cpp_builtins(struct cpp_reader * pfile);
+#define TARGET_CPU_CPP_BUILTINS() spu_cpu_cpp_builtins(pfile)
+
+そして函数 spu_cpp_builtins では以下のようにキーワード __vector を登録しておく.
+またマクロ展開に際して呼び出されるコールバック函数の登録を行なっておく.
+
+void spu_cpu_cpp_builtins(cpp_reader* pfile)
+{
+  cpp_define (pfile, "__SPU__");
+  cpp_define(pfile, "__vector=__attribute__((__spu_vector__))");    ★
+  __vector_keyword = get_identifier("__vector");                    ★
+  C_CPP_HASHNODE(__vector_keyword)->flags |= NODE_CONDITIONAL;      ★
+  cpp_get_callbacks(pfile)->macro_to_expand = spu_macro_to_expand;  ★
+}
+
+(*2)
+2022.06.17 13:07 現状
+
+typedef __vector int vec_int4;
+
+vec_int4 f(vec_int4 a, vec_int4 b)
+{
+  return a + b;
+}
+
+をコンパイルすると
+
+a.c:1:1: 警告: ‘spu_vector’ 属性指示が無視されました [-Wattributes]
+    1 | typedef __vector int vec_int4;
+      | ^~~~~~~
+
+のように警告が出力される. また生成されているコードは vec_int4 を int のように解釈している
+コードになっている.
+
+実際に属性指示なるものが無視されているのが自前の cc1 でオリジナルの cc1 では無視されている
+ような状況なのでオリジナルの cc1 の動作を確認してみる.
+
+まず警告が出力されている箇所を確認する.
+
+      if (spec == NULL)
+	{
+	  if (!(flags & (int) ATTR_FLAG_BUILT_IN))
+	    {
+	      if (ns == NULL_TREE || !cxx11_attr_p)
+		warning (OPT_Wattributes, "%qE attribute directive ignored",
+			 name);  ★
+
+
+以下のようにしてターゲット固有の属性指示を追加する:
+
+static const attribute_spec spu_attribute_table[] =
+{
+  /* { name, min_len, max_len, decl_req, type_req, fn_type_req,
+       affects_type_identity, handler, exclude } */
+  { "spu_vector",     0, 0, false, true,  false, false,
+    spu_handle_vector_attribute, NULL },
+  { NULL,             0, 0, false, false, false, false, NULL, NULL }
+};
+
+#undef  TARGET_ATTRIBUTE_TABLE
+#define TARGET_ATTRIBUTE_TABLE spu_attribute_table
+
+また spu_handle_vector_attribute で返す型の初期化を行なう:
+
+static void spu_init_builtins()
+{
+  V4SI_type_node = build_vector_type(intSI_type_node, 4);
+...
+}
+
+これらの型を扱えるようにするには machine_mode の追加が必要になる:
+
+spu-modes.def:
+
+VECTOR_MODES (INT, 16);       /* V16QI V8HI V4SI V2DI */
+
+VECTOR_MODES (FLOAT, 16);     /*       V8HF V4SF V2DF */ 
+
+(*3)
+2022.06.17 17:38 現状
+
+typedef __vector int vec_int4;
+
+vec_int4 f(vec_int4 a, vec_int4 b)
+{
+  return a + b;
+}
+
+をコンパイルすると以下のように内部エラーが発生してしまう.
+
+during RTL pass: expand
+a.c: 関数 ‘f’ 内:
+a.c:5:12: コンパイラ内部エラー: default_libcall_value 内、位置 targhooks.c:974
+    5 |   return a + b;
+      |          ~~^~~
+0x8a7f715 default_libcall_value(machine_mode, rtx_def const*)
+	../.././gcc/targhooks.c:974
+
+(gdb) b targhooks.c:974
+(gdb) run
+...
+targhooks.c:974 のブレークポイントにヒット
+(gdb) where
+#0  expand_binop (mode=E_TImode, binoptab=xor_optab, op0=0xb78db5dc, op1=0xb78db5f0, target=0xb78db604, unsignedp=1, methods=OPTAB_LIB_WIDEN) at ../.././gcc/optabs.c:1162
+#1  0x086ef034 in expand_expr_real_2 (ops=0xbffff0bc, target=0xb78db604, tmode=E_TImode, modifier=EXPAND_NORMAL) at ../.././gcc/expr.c:9856
+#2  0x085b392f in expand_gimple_stmt_1 (stmt=0xb78d5104) at ../.././gcc/cfgexpan
+...
+
+mode=E_TImode, binoptab=xor_optab と全く期待しない動作になっている.
+正しくできているオリジナルの cc1 で確認してみた.
+
+(gdb) b expand_binop
+(gdb) run
+...
+Breakpoint 1, expand_binop (mode=E_V4SImode, binoptab=add_optab, op0=0xb79cc870, op1=0xb79cc890, target=0xb79b7cbc, unsignedp=0, methods=OPTAB_LIB_WIDEN) at ../.././gcc/optabs.c:1159
+(gdb)
+
+mode=E_V4SImode, binoptab=add_optab でこれは勿論だが期待した結果.
+
+(*4)
+2022.06.18 6:24 現時点で (*3) のエラーを回避できていない. tree -> gimple の
+変換が期待したものになっていないのが主な原因.
+
+  gsi = gsi_start (stmts);
+  if (!gsi_end_p (gsi))
+    {
+      stmt = gsi_stmt (gsi);  ★
+      if (gimple_code (stmt) != GIMPLE_LABEL)
+	stmt = NULL;
+    }
+
+自前の cc1 の結果は以下:
+(gdb) p debug_gimple_stmt(stmt)
+_6 = VIEW_CONVERT_EXPR<uint128_t>(a_2(D));
+$46 = void
+(gdb)
+
+オリジナルの cc1 の結果は以下:
+(gdb) p debug_gimple_stmt(stmt)
+_3 = a_1(D) + b_2(D);
+$6 = void
+(gdb)
+
+ここで違いが出ている. 上のコードは基本ブロックを構成する gimple を取り出しているところで
+tree -> gimple の変換はこれに先立って行なわれている.
+
+「GNU のツール」 => 「cc1 の抽象コードの調査」 でこれは既に調査していた:
+
+(gdb) b gimplify.c:14806
+(gdb) run
+(gdb) p debug_gimple_stmt(seq)
+{
+  _1 = a + b;
+  <retval> = _1;
+  return <retval>;
+}
+$48 = void
+(gdb)
+
+ここは期待通りの変換.
+
+オリジナルの cc1 は gcc-9.1.0 なので行番号が少し違うが以下の結果:
+
+(gdb) b gimplify.c:13674
+(gdb) p debug_gimple_stmt(seq)
+{
+  D.2180 = a + b;
+  return D.2180;
+}
+$7 = void
+(gdb)
+
+ここから a + b を変換する方法がオリジナルと自前の cc1 とで異なるということ.
+この時点の勝手な想像だが, 新しく導入した型 V4SI に対して加算が定義されていないので意図しない
+変換が発生しているということ.
+
+まずは違いが最初に確認される gimple を生成している瞬間を確認する.
+
+      scalar_int_mode mode
+	= int_mode_for_size (tree_to_uhwi (TYPE_SIZE (type)), 0).require ();
+      compute_type = lang_hooks.types.type_for_mode (mode, 1);
+      result = f (gsi, compute_type, a, b, NULL_TREE, NULL_TREE, code, type); ★
+      warning_at (loc, OPT_Wvector_operation_performance,
+	          "vector operation will be expanded with a "
+		  "single scalar operation");
+
+
+(gdb) p mode
+$62 = {m_mode = E_TImode}
+(gdb) p debug_tree(a)
+ <ssa_name 0xb78b90a0
+    type <vector_type 0xb78c2d80 vec_int4
+        type <integer_type 0xb7a4b3c0 int public SI
+            size <integer_cst 0xb7850c08 constant 32>
+            unit-size <integer_cst 0xb7850c1c constant 4>
+            align:8 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb7a4b3c0 precision:32 min <integer_cst 0xb7850de8 -2147483648> max <integer_cst 0xb7850dfc 2147483647>
+            pointer_to_this <pointer_type 0xb7a4bf00>>
+        BLK
+        size <integer_cst 0xb7850ed8 constant 128>
+        unit-size <integer_cst 0xb7850eec constant 16>
+        align:128 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb78c2a80 nunits:4 context <translation_unit_decl 0xb78591c8 a.c>
+        pointer_to_this <pointer_type 0xb78c2ea0>>
+    var <parm_decl 0xb78590e4 a>
+    def_stmt GIMPLE_NOP
+    version:2>
+$63 = void
+(gdb) p debug_tree(b)
+ <ssa_name 0xb78b90c8
+    type <vector_type 0xb78c2d80 vec_int4
+...    
+    var <parm_decl 0xb7859130 b>
+...
+(gdb) p debug_tree(result)
+ <ssa_name 0xb78b9258
+    type <integer_type 0xb7a4b780 public unsigned TI
+        size <integer_cst 0xb7850ed8 constant 128>
+        unit-size <integer_cst 0xb7850eec constant 16>
+        align:8 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb7a4b780 precision:128 min <integer_cst 0xb7850f50 0> max <integer_cst 0xb785a0d8 0xffffffffffffffffffffffffffffffff>>
+   
+    def_stmt _13 = _11 ^ _12;
+    version:13>
+$66 = void
+(gdb)
+
+mode がまず期待したものになっていない. そして debug_tree(result) の結果も期待した
+ものではない.
+
+static enum gimplify_status
+gimplify_bind_expr (tree *expr_p, gimple_seq *pre_p)
+{
+...
+  /* Gimplify the body into the GIMPLE_BIND tuple's body.  */
+  body = NULL;
+  gimplify_stmt (&BIND_EXPR_BODY (bind_expr), &body);  ★
+  gimple_bind_set_body (bind_stmt, body);
+
+できているオリジナルの cc1 ではこのポイントで
+
+_3 = a_1(D) + b_2(D);
+
+を生成しているのに対して, 自前の cc1 では
+
+_1 = a + b;
+
+はそのままでこの後, expand_vector_operations が呼び出され結果的に意図しない gimple が
+生成されている.
+
+static void
+expand_vector_operations_1 (gimple_stmt_iterator *gsi)
+{
+...
+  if (compute_type == type)
+    return;                   ★ ここで返るのが期待値
+
+以下は自前の cc1 の結果: 
+(gdb) p debug_tree(compute_type)
+ <integer_type 0xb7a4b3c0 int public SI
+    size <integer_cst 0xb7850c08 type <integer_type 0xb7a4b0c0 bitsizetype> constant 32>
+    unit-size <integer_cst 0xb7850c1c type <integer_type 0xb7a4b060 sizetype> constant 4>
+    align:8 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb7a4b3c0 precision:32 min <integer_cst 0xb7850de8 -2147483648> max <integer_cst 0xb7850dfc 2147483647>
+    pointer_to_this <pointer_type 0xb7a4bf00>>
+$76 = void
+(gdb) p debug_tree(type)
+ <vector_type 0xb78c2a80
+    type <integer_type 0xb7a4b3c0 int public SI
+        size <integer_cst 0xb7850c08 constant 32>
+        unit-size <integer_cst 0xb7850c1c constant 4>
+        align:8 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb7a4b3c0 precision:32 min <integer_cst 0xb7850de8 -2147483648> max <integer_cst 0xb7850dfc 2147483647>
+        pointer_to_this <pointer_type 0xb7a4bf00>>
+    BLK
+    size <integer_cst 0xb7850ed8 type <integer_type 0xb7a4b0c0 bitsizetype> constant 128>
+    unit-size <integer_cst 0xb7850eec type <integer_type 0xb7a4b060 sizetype> constant 16>
+    align:128 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb78c2a80 nunits:4 context <translation_unit_decl 0xb78591c8 a.c>
+    pointer_to_this <pointer_type 0xb78c2f00>>
+$77 = void
+(gdb)
+
+compute_type が vector_type になっていない.
+
+  if (compute_type == NULL_TREE)
+    compute_type = get_compute_type (code, op, type);  ★
+
+ここで計算されていた.
+
+(gdb) p code
+$80 = PLUS_EXPR
+(gdb) p op
+$81 = add_optab
+(gdb) p debug_tree(type)
+ <vector_type 0xb78c2a80
+    type <integer_type 0xb7a4b3c0 int public SI
+        size <integer_cst 0xb7850c08 constant 32>
+        unit-size <integer_cst 0xb7850c1c constant 4>
+        align:8 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb7a4b3c0 precision:32 min <integer_cst 0xb7850de8 -2147483648> max <integer_cst 0xb7850dfc 2147483647>
+        pointer_to_this <pointer_type 0xb7a4bf00>>
+    BLK
+    size <integer_cst 0xb7850ed8 type <integer_type 0xb7a4b0c0 bitsizetype> constant 128>
+    unit-size <integer_cst 0xb7850eec type <integer_type 0xb7a4b060 sizetype> constant 16>
+    align:128 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb78c2a80 nunits:4 context <translation_unit_decl 0xb78591c8 a.c>
+    pointer_to_this <pointer_type 0xb78c2f00>>
+$82 = void
+(gdb) 
+
+get_compute_type で vector が返っていない. その原因を調査する.
+
+
+  if (op
+      && (!VECTOR_MODE_P (TYPE_MODE (type))
+	  || optab_handler (op, TYPE_MODE (type)) == CODE_FOR_nothing))  ★
+    {
+
+この条件が成立するのが自前の cc1. 成立しないのがオリジナルの cc1. この部分のマクロ展開は
+以下:
+
+  if (op
+      && (!(((enum mode_class) mode_class[((((enum tree_code) ((type))->base.code) == VECTOR_TYPE) ? vector_type_mode (type) : (type)->type_common.mode)]) == MODE_VECTOR_BOOL || ((enum mode_class) mode_class[((((enum tree_code) ((type))->base.code) == VECTOR_TYPE) ? vector_type_mode (type) : (type)->type_common.mode)]) == MODE_VECTOR_INT || ((enum mode_class) mode_class[((((enum tree_code) ((type))->base.code) == VECTOR_TYPE) ? vector_type_mode (type) : (type)->type_common.mode)]) == MODE_VECTOR_FLOAT || ((enum mode_class) mode_class[((((enum tree_code) ((type))->base.code) == VECTOR_TYPE) ? vector_type_mode (type) : (type)->type_common.mode)]) == MODE_VECTOR_FRACT || ((enum mode_class) mode_class[((((enum tree_code) ((type))->base.code) == VECTOR_TYPE) ? vector_type_mode (type) : (type)->type_common.mode)]) == MODE_VECTOR_UFRACT || ((enum mode_class) mode_class[((((enum tree_code) ((type))->base.code) == VECTOR_TYPE) ? vector_type_mode (type) : (type)->type_common.mode)]) == MODE_VECTOR_ACCUM || ((enum mode_class) mode_class[((((enum tree_code) ((type))->base.code) == VECTOR_TYPE) ? vector_type_mode (type) : (type)->type_common.mode)]) == MODE_VECTOR_UACCUM)
+   || optab_handler (op, ((((enum tree_code) ((type))->base.code) == VECTOR_TYPE) ? vector_type_mode (type) : (type)->type_common.mode)) == CODE_FOR_nothing))
+
+これは大変だ. -g3 でリコンパイルした.
+
+以下はオリジナルの cc1 の結果:
+
+(gdb) p op
+$17 = add_optab
+(gdb) p VECTOR_MODE_P (TYPE_MODE (type))
+$18 = true
+(gdb) p optab_handler (op, TYPE_MODE (type)) == CODE_FOR_nothing)
+Junk after end of expression.
+(gdb) p optab_handler (op, TYPE_MODE (type)) == CODE_FOR_nothing
+$19 = false
+(gdb)
+
+以下は自前の cc1 の結果:
+
+(gdb) p op
+$83 = add_optab
+(gdb) p VECTOR_MODE_P (TYPE_MODE (type))
+$84 = false
+(gdb) p optab_handler (op, TYPE_MODE (type)) == CODE_FOR_nothing
+$85 = true
+(gdb)
+
+3 つ目の条件が違っているのも気にはなるがまずは VECTOR_MODE_P (TYPE_MODE (type)) が
+false になる理由を調査する.
+
+以下は自前の cc1 の結果:
+
+(gdb) p debug_tree(type)
+ <vector_type 0xb78c2a80
+    type <integer_type 0xb7a4b3c0 int public SI
+        size <integer_cst 0xb7850c08 constant 32>
+        unit-size <integer_cst 0xb7850c1c constant 4>
+        align:8 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb7a4b3c0 precision:32 min <integer_cst 0xb7850de8 -2147483648> max <integer_cst 0xb7850dfc 2147483647>
+        pointer_to_this <pointer_type 0xb7a4bf00>>
+    BLK  ★
+    size <integer_cst 0xb7850ed8 type <integer_type 0xb7a4b0c0 bitsizetype> constant 128>
+    unit-size <integer_cst 0xb7850eec type <integer_type 0xb7a4b060 sizetype> constant 16>
+    align:128 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb78c2a80 nunits:4 context <translation_unit_decl 0xb78591c8 a.c>
+    pointer_to_this <pointer_type 0xb78c2f00>>
+$99 = void
+(gdb) 
+
+以下はオリジナルの cc1 の結果
+(gdb) p debug_tree(type)
+ <vector_type 0xb79aa180 vec_int4
+    type <integer_type 0xb7aeb3c0 int public SI
+        size <integer_cst 0xb78f0cbc constant 32>
+        unit-size <integer_cst 0xb78f0cd0 constant 4>
+        align:32 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb7aeb3c0 precision:32 min <integer_cst 0xb78f0e9c -2147483648> max <integer_cst 0xb78f0eb0 2147483647>
+        pointer_to_this <pointer_type 0xb7aebde0>>
+    V4SI   ★
+    size <integer_cst 0xb78f0f8c type <integer_type 0xb7aeb0c0 bitsizetype> constant 128>
+    unit-size <integer_cst 0xb78f0fa0 type <integer_type 0xb7aeb060 sizetype> constant 16>
+    align:128 warn_if_not_align:0 symtab:0 alias-set -1 canonical-type 0xb7960b40 nunits:4 context <translation_unit_decl 0xb78fa1c8 a.c>>
+$20 = void
+(gdb)
+
+違っている.
+
+      mode = TYPE_MODE (node);
+      fprintf (file, " %s", GET_MODE_NAME (mode));
+
+この部分のマクロ展開は
+
+      mode = ((((enum tree_code) ((node))->base.code) == VECTOR_TYPE) ? vector_type_mode (node) : (node)->type_common.mode);
+      fprintf (file, " %s", mode_name[mode]);
+
+
+(gdb) p ((((enum tree_code) ((node))->base.code) == VECTOR_TYPE) ? vector_type_mode (node) : (node)->type_common.mode)
+$110 = E_BLKmode
+(gdb) p (((enum tree_code) ((node))->base.code) == VECTOR_TYPE)
+$111 = true
+(gdb) p vector_type_mode (node)
+$112 = E_BLKmode
+(gdb) p node
+$113 = (tree) 0xb78c2a80
+(gdb) 
+
+
+  mode = t->type_common.mode;
+  if (VECTOR_MODE_P (mode)
+      && (!targetm.vector_mode_supported_p (mode)  ★
+	  || !have_regs_of_mode[mode]))
+    {
+      scalar_int_mode innermode;
+
+
+これっぽい. 以下を追加:
+
+static bool spu_vector_mode_supported_p(machine_mode mode)
+{
+  switch (mode) {
+  case E_V16QImode:
+  case E_V8HImode:
+  case E_V4SImode:
+  case E_V2DImode:
+  case E_V4SFmode:
+  case E_V2DFmode:
+    return true;
+  default:
+    return false;
+  }
+}
+
+#undef TARGET_VECTOR_MODE_SUPPORTED_P
+#define TARGET_VECTOR_MODE_SUPPORTED_P	spu_vector_mode_supported_p
+
+しかしまだ条件が成立する.
+
+  if (VECTOR_MODE_P (mode)
+      && (!targetm.vector_mode_supported_p (mode)
+	  || !have_regs_of_mode[mode]))  ★
+
+この部分のマクロ展開は以下:
+
+  if ((((enum mode_class) mode_class[mode]) == MODE_VECTOR_BOOL || ((enum mode_class) mode_class[mode]) == MODE_VECTOR_INT || ((enum mode_class) mode_class[mode]) == MODE_VECTOR_FLOAT || ((enum mode_class) mode_class[mode]) == MODE_VECTOR_FRACT || ((enum mode_class) mode_class[mode]) == MODE_VECTOR_UFRACT || ((enum mode_class) mode_class[mode]) == MODE_VECTOR_ACCUM || ((enum mode_class) mode_class[mode]) == MODE_VECTOR_UACCUM)
+      && (!targetm.vector_mode_supported_p (mode)
+   || !((&default_target_regs)->x_have_regs_of_mode)[mode]))  ★
+
+
+(gdb) p ((&default_target_regs)->x_have_regs_of_mode)[mode]
+$118 = false
+(gdb)
+
+オリジナルの cc1 では以下で true にセットしていた:
+
+      for (i = 0; i < N_REG_CLASSES; i++)
+	if ((targetm.class_max_nregs ((reg_class_t) i, (machine_mode) m)
+	     <= reg_class_size[i])
+	    && hard_reg_set_intersect_p (ok_regs, reg_class_contents[i]))
+	  {
+	     contains_reg_of_mode[i][m] = 1;
+	     if (hard_reg_set_intersect_p (ok_regs2, reg_class_contents[i]))
+	       {
+		 have_regs_of_mode[m] = 1;   ★
+		 contains_allocatable_reg_of_mode[i][m] = 1;
+	       }
+	  }
+
+i = 1 のとき
+
+(gdb) p hard_reg_set_intersect_p (ok_regs2, ((&default_target_hard_regs)->x_reg_class_contents)[i])
+$127 = false
+(gdb)
+
+この条件が成立していない.
+
+以下は条件が成立するオリジナルの cc1 の結果: 
+(gdb) p ok_regs2
+$29 = {4294967292, 4294967295, 4294967295, 4294967295, 0}
+(gdb) p ((&default_target_hard_regs)->x_reg_class_contents)[i]
+$30 = {4294967295, 4294967295, 4294967295, 4294967295, 3}
+(gdb) 
+
+以下は条件が成立しない自前の cc1 の結果:
+(gdb) p ok_regs2
+$128 = {elts = {0, 0, 0, 0, 0}}
+(gdb) p ((&default_target_hard_regs)->x_reg_class_contents)[i]
+$129 = {elts = {7, 0, 0, 0, 1}}
+(gdb)
+
+
+#define REG_CLASS_CONTENTS \
+/* NO_REGS */	    {{ 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x0 }, \
+/* SPECIAL_REGS */   { 0x00000007, 0x00000000, 0x00000000, 0x00000000, 0x1 }, \
+/* GENERAL_REGS */   { 0xfffffff8, 0xffffffff, 0xffffffff, 0xffffffff, 0x0 }, \
+/* ALL_REGS */       { 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0x1 }}
+
+なるほど, 7, 0, 0, 0, 1 は SPECIAL_REGS に対する値だった. だとすれば自前の cc1 は
+i = 2 でこの条件が成立するのが期待値.いずれにしても ok_regs2 の値がおそらく
+違っている. この変数の計算の仕方を確認する.
+
+      for (j = 0; j < FIRST_PSEUDO_REGISTER; j++)
+	if (!TEST_HARD_REG_BIT (fixed_nonglobal_reg_set, j)
+	    && targetm.hard_regno_mode_ok (j, (machine_mode) m))  ★
+	  {
+	    SET_HARD_REG_BIT (ok_regs, j);
+	    if (!fixed_regs[j])
+	      SET_HARD_REG_BIT (ok_regs2, j);  ★
+	  }
+
+これっぽい. しかし以下の間違いに気付いた:
+
+#define FIXED_REGISTERS { \
+1, 1, 1, 1, 1, 1, 1, 1, \   ★
+
+
+#define CALL_USED_REGISTERS { \
+1, 1, 1, 0, 1, 1, 1, 1, \   ★
+
+これを修正してもう一度トライ.
+
+2022.06.18 11:37 現状以下に対して期待したコードを生成できている.
+
+typedef __vector int vec_int4;
+
+vec_int4 f(vec_int4 a, vec_int4 b)
+{
+  return a + b;
+}
+
+また以下に対しても期待したコードを生成できている.
+
+int f(int a, int b)
+{
+  return a + b;
+}
+
+(*5)
+2022.06.18 16:13
+
+現状
+
+int f(int a, int b)
+{
+  return a + b;
+}
+
+に対して以下のコードを生成している.
+
+f:
+	ai	$sp, $sp, -48
+	stqd	$lr, 0($sp)
+	stqd	$sp, 16($sp)
+	stqd	$3, 32($sp)
+	stqd	$4, 36($sp)
+	$3 := 32($sp) + 36($sp)
+	lqd	$lr, 0($sp)
+	ai	$sp, $sp, 48
+	bi	$lr
+
+a と b は sp 相対 32 と 36 にしているのだが, これを 32 と 48 にしたい.
+
+	  int align = STACK_SLOT_ALIGNMENT (data->arg.type,
+					    GET_MODE (data->entry_parm),
+					    TYPE_ALIGN (data->arg.type));
+
+ここで計算している. この部分のマクロ展開は
+
+   int align = ((data->arg.type) ? (((data->arg.type)->type_common.align ? ((unsigned)1) << ((data->arg.type)->type_common.align - 1) : 0)) : (((data->arg.type)->type_common.align ? ((unsigned)1) << ((data->arg.type)->type_common.align - 1) : 0)))
+
+2022.06.18 16:26 以下の宣言を追加してリビルド開始
+
+#define LOCAL_ALIGNMENT(TYPE, ALIGNMENT) 128
+
+2022.06.18 17:48 期待した動作になっていることを確認. get_frame_size() を 16 バイト
+アラインにすれば期待したコードになる.
+
+(*6)
+現状 hello world 11 が spu-elf-run で動作している. また vec_int4 を加算するプログラム
+モ spu-elf-run で期待通り動作している.
+
+そして spu::expand_prologue で生成しているすべての rtx_insn* insn に対して
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+のようにしている.
+
+-g オプション付きでコンパイルした hello world 11 を spu-elf-gdb で動作させると現状
+以下のようになる.
+
+% spu-elf-gdb b.elf -x gdbcom -q
+Reading symbols from b.elf...
+...
+Connected to the simulator.
+Loading section .text, size 0xb8 lma 0x100
+Loading section .rodata, size 0x10 lma 0x1b8
+Start address 0x100
+Transfer rate: 1600 bits in <1 sec.
+Breakpoint 1 at 0x18c: file b.c, line 10.
+
+Breakpoint 1, main () at b.c:10
+10	  printf("hello world %d\n", f(5, 6));
+f (a=<error reading variable: Cannot access memory at address 0x20>, 
+    b=<error reading variable: Cannot access memory at address 0x30>) at b.c:5
+5	  return a + b;
+...
+%
+
+f にステップインしたとき引数の a と b を正しく表示できていない. a と b は sp 相対
+0x20 と 0x30 にある.
+
+一方
+
+.debug_info セクションの内容(b.elf より読み込んだもの):
+...
+ <2><7c>: 省略番号: 5 (DW_TAG_formal_parameter)
+    <7d>   DW_AT_name        : a
+    <7f>   DW_AT_decl_file   : 1
+    <80>   DW_AT_decl_line   : 3
+    <81>   DW_AT_decl_column : 11
+    <82>   DW_AT_type        : <0x61>
+    <86>   DW_AT_location    : 2 byte block: 72 20 	(DW_OP_breg2 (r2): 32) ★
+ <2><89>: 省略番号: 5 (DW_TAG_formal_parameter)
+    <8a>   DW_AT_name        : b
+    <8c>   DW_AT_decl_file   : 1
+    <8d>   DW_AT_decl_line   : 3
+    <8e>   DW_AT_decl_column : 18
+    <8f>   DW_AT_type        : <0x61>
+    <93>   DW_AT_location    : 2 byte block: 72 30 	(DW_OP_breg2 (r2): 48) ★
+
+r2 レジスタ相対になっている.
+
+#define REGISTER_NAMES      { \
+-"$lr", "$1", "$sp", "$3", "$4", "$5", "$6", "$7", \
+
+#define REGISTER_NAMES      { \
++"$lr", "$sp", "$2", "$3", "$4", "$5", "$6", "$7", \
+
+-#define STACK_POINTER_REGNUM  2
++#define STACK_POINTER_REGNUM  1
+
+上の修正を入れてリビルド 2022.06.18 17:57 開始.
+
+
+
