@@ -160,36 +160,38 @@ g にブレークポイントをセットしたときに msp430_skip_prologue() 
 
 だから f と g でプロローグのスキップの仕方が違っているわけではない.
 
+msp430-tdep.c:
+
       else if (opc.id == MSO_mov
 	       && opc.op[0].type == MSP430_Operand_Immediate
 	       && 12 <= opc.op[0].reg && opc.op[0].reg <= 15)
 	after_last_frame_setup_insn = next_pc;
-は
+
+This correct version becomes like below:
+
       else if (opc.id == MSO_mov
 	       && opc.op[0].type == MSP430_Operand_Indirect
 	       && opc.op[0].reg == MSR_SP
 	       && 12 <= opc.op[1].reg && opc.op[1].reg <= 15)
 	after_last_frame_setup_insn = next_pc;
 
-の誤りのように思える.
-この修正を行なうことで f にブレークポイントをセットしたときにプロローグの部分をスキップ
-できるようになり, ソースファイルとの対応も取れている.
 
-しかし main 函数のブレークポイントで停止した状態で step コマンドを実行しても
-f にステップインできていない.
+By this fix, when setting break-point `f', the prologue of `f' can be
+skipped correctly and its address is corresponds to source file suitably.
 
-step コマンドは以下の函数で処理されている:
+But, msp430-elf-gdb still could not step into `f' from `main'.
+
 (gdb) b step_command
 (gdb) run
 ...
-ブレークポイントにヒット
+`step_command' break-point is hit
 (gdb) b sim_resume
 (gdb) c
 ...
 Thread 1 "gdb" hit Breakpoint 3, sim_resume (sd=0x8b915f8, step=1, siggnal=0) at ./../common/sim-resume.c:41
 (gdb)
 
-この後 f の先頭アドレス 0x576 まで少なくとも実行するはず.
+I was sure that this debugged program came to the start of `f' 0x576.
 
 (gdb) info b
 Num     Type           Disp Enb Address    What
@@ -200,7 +202,7 @@ Num     Type           Disp Enb Address    What
         end
 (gdb) c
 ...
-上のブレークポイントで停止
+Above break-point is hit
 (gdb) up
 (gdb) up
 
@@ -208,14 +210,14 @@ Num     Type           Disp Enb Address    What
                                             ^^^^^^^
 (gdb)
 
-期待せず step = 0 になっている. ここが期待しない結果.
+Unexpectedly, step = 0.
 
 0000059e <main>:
  59e:	7d 40 06 00 	mov.b	#6,	r13	;
  5a2:	7c 40 05 00 	mov.b	#5,	r12	;
  5a6:	b0 12 76 05 	call	#1398		;#0x0576
 
-sim_resume(step=1) の呼び出しが少なくとも 4 回連続するのが期待値.
+The expected result is that sim_resume(step=1) call continues at least 4 times.
 
 (gdb) info b
 Num     Type           Disp Enb Address    What
@@ -227,12 +229,12 @@ Num     Type           Disp Enb Address    What
 	breakpoint already hit 3 times
 9       breakpoint     keep y   0x083a6620 in sim_resume at ./../common/sim-resume.c:41
 	breakpoint already hit 4 times
-(gdb) disable        # 一旦全部無効にして 
-(gdb) enable 2       # step_command のブレークポイントのみ有効にする
+(gdb) disable        # once disable all
+(gdb) enable 2       # enable only step_command break-point
 (gdb) run
 ...
-step_command のブレークポイントにヒット
-(gdb) enablel        # ここで全てのブレークポイントを有効にする
+`step_command' break-point is hit
+(gdb) enablel        # enable all break-point again
 (gdb) c
 Continuing.
 
@@ -279,7 +281,7 @@ Thread 1 "gdb" hit Breakpoint 6, sim_stop_reason (sd=0x8b915f8, reason=0xbfffec5
 Continuing.
 
 Thread 1 "gdb" hit Breakpoint 9, sim_resume (sd=0x8b915f8, step=0, siggnal=0) at ./../common/sim-resume.c:41
-# ここで step=0 で呼び出されている.
+# Here called with step=0
 (gdb) c
 (gdb) p/x opcode_pc
 $24 = 0x576
@@ -290,15 +292,14 @@ $24 = 0x576
  5a2:	7c 40 05 00 	mov.b	#5,	r12	;
  5a6:	b0 12 76 05 	call	#1398		;#0x0576
 
-であるからこの 3 命令の先頭まで実行するのに sim_resume(step=1) で実行
-の再開を行なったが,
+i.e. These 3 instructions are executed by calling sim_resume(step=1), but
 
 00000576 <f>:
  576:	21 82       	sub	#4,	r1	;r2 As==10
 
-0x576 の先頭まで実行するのに sim_resume(step=0) で実行再開を行なっている.
+This instruction is executed by calling sim_resume(step=0).
 
-sim_resume() の引数は step 以下でセットされる.
+sim_resume() argument `step' is set like below:
 
 void
 gdbsim_target::resume_one_inferior (inferior *inf, bool step,
@@ -310,9 +311,9 @@ gdbsim_target::resume_one_inferior (inferior *inf, bool step,
   if (sim_data)
     {
       sim_data->resume_siggnal = siggnal;
-      sim_data->resume_step = step;
+      sim_data->resume_step = step;              (*)
 
-これが false で呼ばれてしまう原因を調べてみる.
+I tried to investigate the reason this function was called with step = false.
 
 static void
 resume_1 (enum gdb_signal sig)
@@ -325,28 +326,27 @@ resume_1 (enum gdb_signal sig)
   else if (step)
     step = maybe_software_singlestep (gdbarch, pc);  // (*2)
 
-  do_target_resume (resume_ptid, step, sig);  ここから呼び出されている.
+  do_target_resume (resume_ptid, step, sig);  // called from here
 
-この step の計算方法を確認してみる.
-
+I decided to confrim the way of calculating this `step'.
 
 (gdb) delete
 (gdb) b step_command
 (gdb) run
 ...
-ブレークポイントにヒット
+`step_command' break-point is hit
 (gdb) b resume_1
 (gdb) c
 ...
-resume_1 のブレークポイントにヒット
+`resume_1' break-point is hit
 
-1 回目上の (*1) で 1 に, (*2) で 1 になっている.
-2 回目も同じ.
-3 回目も同じ.
-4 回目は (*1) で 0 になっている. そして (*2) は実行されない.
+1st time : At above (*1), `step' became 1, at above (*2), `step' became 1.
+2nd time : Same with the 1st time
+3rd time : Same with the 1st time
+4th time : At above (*1), `step' became 0, and (*2) was not executed.
 
-以下のように f でなくて g ならば期待通りステップインできているので
-その場合の動作を確認してみる.
+I confirmed for below `g' not for below `f' because msp430-elf-gdb could
+step into `g':
 
 int f(int a, int b)
 {
@@ -364,25 +364,23 @@ int main()
   return 0;
 }
 
-確認してみたところ f の場合と同様に 4 回目は step=0 と計算されていた.
+Now I noticed that the way of calling `sim_resume' is the same between
+`f' and `g'. i.e. At 4th time, sim_resume was called with `step=0'.
 
-1, 2, 3 回目に sim_resume(step=1) で呼び出され,
-4 回目に sim_resume(step=0) で呼び出されるという動作は実は正しかったわ
-けで, 4 回目の sim_resume(step=0) の直前に内部ブレークポイントがセット
-されるが
+It was correct that:
+  o At 1st, 2nd and 3rd time, sim_resum(step=1) is called
+  o At 4th time, sim_resume(step=0) is called
 
-f の場合は
+But at 4th time, internal break-point was set before sim_resume(step=0) call.
+
+For `f', it was set to
 
   return 0;
 
-に内部ブレークポイントがセットされ
+On the other hand, for `g', it was set to the address where `g' prologue was
+skipped.
 
-g の場合は
-
-g のプロローグをスキップしたところ
-
-に内部ブレークポイントがセットされるという動作の違いが出ていたらしい.
-
+The difference appeared as the motion of msp430-elf-gdb.
 
 (gdb) info b
 Num     Type           Disp Enb Address    What
@@ -390,10 +388,10 @@ Num     Type           Disp Enb Address    What
 	breakpoint already hit 1 time
 13      breakpoint     keep y   0x081f2289 in resume_1(gdb_signal) at infrun.c:2260
 	breakpoint already hit 5 times
-(gdb) dele 13     # step_command のみにする
+(gdb) dele 13     # Just `step_command' break-point available
 (gdb) run
 ...
-ブレークポイントにヒット
+`step_command' break-point is hit
 (gdb) b sim_write
 
 (gdb) c
@@ -404,15 +402,14 @@ Thread 1 "gdb" hit Breakpoint 14, sim_write (sd=0x8b915f8, mem=1438, buf=0x86c72
 $45 = 0x59e
 (gdb)
 
-g の場合は内部ブレークポイントは 0x59e にセットされていた. これは main
-のアドレス.
+For `g', internal break-point is set to 0x59e, which is `main' address.
 
 Thread 1 "gdb" hit Breakpoint 14, sim_write (sd=0x8b915f8, mem=1428, buf=0x86c7221 <msp430_break_insn> "CC", length=2) at ./../common/sim-hrw.c:37
 (gdb) p/x mem
 $46 = 0x594
 (gdb)
 
-g の場合は 2 つ目 0x594 でこれは g のプロローグをスキップしたアドレス.
+For `g', 2 つ目 0x594 でこれは g のプロローグをスキップしたアドレス.
 
 同じことを f でやってみる.
 
