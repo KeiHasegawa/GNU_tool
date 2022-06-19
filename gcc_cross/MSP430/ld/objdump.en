@@ -54,17 +54,21 @@ This function was called for each label.
  578:	
 0000057a <L0^A>:
 
-おそらく 0x57a のラベルがあるために上のような表示になっていて 0x578 から 4
-バイトは 81 4c 02 00 になっていてこれ自体は合っている.
+I guessed that the label located at 0x57a caused this phenomenon. And
+the [0x578, 0x57c) object code are: 
 
-ラベルは以下の部分で表示している.
+81 4c 02 00
+
+and these are correct.
+
+A label is displayed at below code:
 
 	  pinfo->fprintf_func (pinfo->stream, "\n");
 	  objdump_print_addr_with_sym (abfd, section, sym, addr,
 				       pinfo, FALSE);
 	  pinfo->fprintf_func (pinfo->stream, ":\n");
 
-問題のラベルは以下で確認できる.
+The label located at 0x57a can be confirmed like below:
 (gdb) b objdump.c:3295
 (gdb) command
 >if (addr!=0x57a)
@@ -73,8 +77,7 @@ This function was called for each label.
 >end
 (gdb) c
 
-なぜ 0x57a にラベルが置かれているかを調べてみる.
-
+I'll try to investigate the reason of locating label at 0x57a.
 
 static void
 disassemble_section (bfd *abfd, asection *section, void *inf)
@@ -86,7 +89,7 @@ disassemble_section (bfd *abfd, asection *section, void *inf)
       addr = section->vma + addr_offset;
 ...
 
-addr=0x57a の瞬間を捕える.
+Now I want to catch the timing of addr=0x57a.
 
 b objdump.c:3193
 command
@@ -95,16 +98,16 @@ c
 end
 end
 
-きている.
+OK, come here.
 
 (gdb) p *sym
 $5 = {the_bfd = 0x81aca08, name = 0x81b427d "L0\001", value = 122, flags = 1, 
   section = 0x81aec94, udata = {p = 0x0, i = 0}}
 (gdb)
 
-L0^A らしきものがある.
+L0^A may be there.
 
-sym は以下で計算されているらしい.
+`sym' is calculated at below code:
 
   sym = (asymbol *) find_symbol_for_address (section->vma + addr_offset,
                                              (struct disassemble_info *) inf,
@@ -122,9 +125,8 @@ c
 end
 end
 
-これではひっかかっていない.
-
-一つ前のラベルで止める.
+Above gdb command cannot catch the timing I want to catch.
+So try to catch previous timing:
 
 b objdump.c:3193
 command
@@ -133,34 +135,33 @@ c
 end
 end
 
-止められている.
+OK, I could catch.
 
 (gdb) b objdump.c:3166
 (gdb) c
 ...
-これは思った動作と違うらしい.
+I noticed that the msp430-elf-objdump did not work as I expected:
 
   while (addr_offset < stop_offset)
     {
 ...
       addr = section->vma + addr_offset;
 ...
-      このループの中で sym が更新されているらしい
+      // `sym' might be updated in this loop
 
     }
 
 
 	    nextsym = sorted_syms[place];
 
-これで
+So now, 
 
 (gdb) p *nextsym
 $10 = {the_bfd = 0x81aaa08, name = 0x81b227d "L0\001", value = 122, 
   flags = 1, section = 0x81acc94, udata = {p = 0x0, i = 0}}
 (gdb)
 
-のようになっている.
-
+the result became like above:
 
 (gdb) p *sorted_syms[58]
 $13 = {the_bfd = 0x81aaa08, name = 0x81b227d "L0\001", value = 122, 
@@ -169,7 +170,7 @@ $13 = {the_bfd = 0x81aaa08, name = 0x81b227d "L0\001", value = 122,
 $14 = (asymbol *) 0x81b44c4
 (gdb)
 
-ここを変更する瞬間を捕えてみる.
+I tried to catch the timing of above updated:
 
       for (isym = isymbuf + 1, sym = symbase; isym < isymend; isym++, sym++)
 	{
@@ -179,7 +180,7 @@ $14 = (asymbol *) 0x81b44c4
 	  sym->symbol.name = bfd_elf_sym_name (abfd, hdr, isym, NULL);
 	  sym->symbol.value = isym->st_value;
 
-これだった.
+That was above code.
 
 (gdb) n
 (gdb) n
@@ -201,8 +202,7 @@ $23 = 0x57a
 $24 = (bfd_vma *) 0x81b3778
 (gdb) 
 
-これをセットする瞬間を捕える.
-
+Again I tried to catch the timing above updated:
 
 bfd_boolean
 elf_swap_symbol_in (bfd *abfd,
@@ -214,7 +214,7 @@ elf_swap_symbol_in (bfd *abfd,
   if (signed_vma)
     dst->st_value = H_GET_SIGNED_WORD (abfd, src->st_value);
   else
-    dst->st_value = H_GET_WORD (abfd, src->st_value);  ここだった
+    dst->st_value = H_GET_WORD (abfd, src->st_value);  // This one
 
 (gdb) p/x src->st_value
 $26 = {0x7a, 0x5, 0x0, 0x0}
@@ -224,13 +224,13 @@ $27 = 0x7a
 $28 = (unsigned char *) 0x81b3114 "z\005"
 (gdb) 
 
-これをセットする瞬間を捕える.
+And again I tried to catch the timing above updated:
 
       isymbuf = bfd_elf_get_elf_syms (abfd, hdr, symcount, 0,
-				      NULL, NULL, NULL);         ここだった
+				      NULL, NULL, NULL);         // This one
 
 
-  nread = abfd->iovec->bread (abfd, ptr, size);  ここ
+  nread = abfd->iovec->bread (abfd, ptr, size);  // This one
 
 (gdb) p size
 $44 = 1424
@@ -248,49 +248,51 @@ $46 = 832
 $47 = 0x7a
 (gdb) 
 
-おそらく何らかのセクションの 836 バイト目が 0x7a になっているということが原因.
+This was caused becase 836 th byte became 0x7a in some section.
 
 % msp430-elf-objdump -s /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.msp430-elf/host-i686-pc-linux-gnu/gcc/a.elf > a.objdump 
 
 
-セクション .debug_info の内容:
+Contents of section .debug_info:
  0000 22000000 02000000 00000401 00000000  "...............
  0010 00050000 7a050000 00000000 08000000  ....z...........
                ^^^^
 
-これが原因らしい.
+This might be the reason.
 
 % msp430-elf-objdump -g /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.msp430-elf/host-i686-pc-linux-gnu/gcc/a.elf > a.objdump 
 
-  コンパイル単位 @ オフセット 0x0:
-   長さ:        0x22 (32-bit)
-   バージョン:    2
-   省略オフセット: 0x0
-   ポインタサイズ:4
- <0><b>: 省略番号: 1 (DW_TAG_compile_unit)
+  Compilation Unit @ offset 0x0:
+   Length:        0x22 (32-bit)
+   Version:       2
+   Abbrev Offset: 0x0
+   Pointer Size:  4
+ <0><b>: Abbrev Number: 1 (DW_TAG_compile_unit)
     <c>   DW_AT_stmt_list   : 0x0
     <10>   DW_AT_low_pc      : 0x500
-    <14>   DW_AT_high_pc     : 0x57a            これ
-    <18>   DW_AT_name        : (間接文字列、オフセット: 0x0): start.S
-    <1c>   DW_AT_comp_dir    : (間接文字列、オフセット: 0x8): /home/khasegawa/lang/53_GNU_tool/gcc_cross/MSP430/tool
+    <14>   DW_AT_high_pc     : 0x57a            # This one
+    <18>   DW_AT_name        : (indirect string, offset: 0x0): start.S
+    <1c>   DW_AT_comp_dir    : (indirect string, offset: 0x8): /home/khasegawa/lang/53_GNU_tool/gcc_cross/MSP430/tool
 
-0x57a の期待値は 0x576. どこかで 4 が余分に加算されているらしい.
+0x57a is wrong. The expected value is 0x576, which implies that 4 is added 
+not suitably.
 
 % msp430-elf-objdump -g ~/lang/53_GNU_tool/gcc_cross/MSP430/tool/start.o > start.o.objdump 
 
 .debug_info セクションの内容(/home/khasegawa/lang/53_GNU_tool/gcc_cross/MSP430/tool/start.o より読み込んだもの):
 
-  コンパイル単位 @ オフセット 0x0:
-   長さ:        0x22 (32-bit)
-   バージョン:    2
-   省略オフセット: 0x0
-   ポインタサイズ:4
- <0><b>: 省略番号: 1 (DW_TAG_compile_unit)
+  Compilation Unit @ offset 0x0:
+   Length:        0x22 (32-bit)
+   Version:       2
+   Abbrev Offset: 0x0
+   Pointer Size:  4
+ <0><b>: Abbrev Number: 1 (DW_TAG_compile_unit)
     <c>   DW_AT_stmt_list   : 0x0
     <10>   DW_AT_low_pc      : 0x0
     <14>   DW_AT_high_pc     : 0x7a
 
-これはリンカのバグかと思っていたが, 実はアセンブラの問題だったらしい.
+At first, I thought this was caused by msp430-elf-ld, but from above result
+it might be cause by msp430-elf-as.
 
 % msp430-elf-objdump -d ~/lang/53_GNU_tool/gcc_cross/MSP430/tool/start.o > start.o.objdump 
 
@@ -301,12 +303,11 @@ $47 = 0x7a
 00000078 <.Loc.61.1>:
   78:	30 41       	ret			
 
-アセンブラの問題かと思ったがそうでもないらしい.
+But now, it was not.
 
-start.o の .text セクションは  0x7a のサイズを持つので 0x57a になるの
-は正しい.
+.text section of start.o size is 0x7a, so 0x57a is correct.
 
-それよりも f のアドレスが 0x576 になる, 言い換えれば a.o の .text セク
-ションが 0x576 になるのが間違い.
+It's not correct that start address of `f' becomes 0x576. In other words,
+.text section address of `a.o' should not be 0x576. It should be 0x57a.
 
 
