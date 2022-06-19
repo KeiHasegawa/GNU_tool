@@ -532,12 +532,12 @@ find_pc_line (CORE_ADDR pc, int notcurrent)  pc = 0x576 で呼び出されてい
 
 これは偶然だろうか?
 
-> msp430-elf-addr2line -a 0x576 -e c.elf
+% msp430-elf-addr2line -a 0x576 -e c.elf
 0x00000576
 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.msp430-elf/host-i686-pc-linux-gnu/gcc/c.c:2
->
+%
 
-一応 addr2line では 0x576 に対して c.c:2 だとしている.
+一応 msp430-elf-addr2line では 0x576 に対して c.c:2 だとしている.
 しかし gdb が 0x576 に対して対応するソースファイルがないと判定している.
 
 struct symtab_and_line
@@ -558,7 +558,7 @@ gdb 視点であって調査したことがあったことを今思い出した.
 (gdb) p/x *first
 $99 = {line = 0x2, is_stmt = 0x1, pc = 0x576}    # これは f の先頭アドレス
 (gdb) p/x *(first+1)
-$100 = {line = 0x3, is_stmt = 0x1, pc = 0x580}l  # これは f のプロローグを
+$100 = {line = 0x3, is_stmt = 0x1, pc = 0x580}   # これは f のプロローグを
                                                  # スキップしたアドレス
 (gdb)
 

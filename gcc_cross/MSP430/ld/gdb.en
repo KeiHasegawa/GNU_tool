@@ -115,7 +115,7 @@ When stopping `main', msp430-elf-gdb could step into `g' and `where' and
 I thought that msp430-elf-gdb could skip prologue of `g' but colud not skip
 prologue of `f' suitably.
 
-The results of msp-elf-objdump becomes like below:
+The results of msp430-elf-objdump becomes like below:
 
 00000576 <f>:
  576:	21 82       	sub	#4,	r1	;r2 As==10
@@ -134,7 +134,7 @@ The results of msp-elf-objdump becomes like below:
  58c:	81 4c 02 00 	mov	r12,	2(r1)	;  (*) OK as I expect
  590:	81 4d 00 00 	mov	r13,	0(r1)	;
 
-一方, disassemble コマンドによる結果は以下
+On the other hand, disassemble command of msp430-elf-gdb became like below:
 
 Dump of assembler code for function f:
    0x00000576 <+0>:	sub	#4,	r1	;r2 As==10
@@ -155,10 +155,11 @@ Dump of assembler code for function g:
    0x0000059c <+18>:	ret			
 End of assembler dump.
 
-g にブレークポイントをセットしたときに msp430_skip_prologue() の戻り値は 0x594
-になるのかと思っていたが実際は 0x58c であった.
+When setting break-point of `g', I mistook that msp430_skip_prologue() return
+value was 0x594, but actually it was 0x58c.
 
-だから f と g でプロローグのスキップの仕方が違っているわけではない.
+So this meant that there did not exist difference between the way of
+skipping prologue `f' and that of `g'.
 
 msp430-tdep.c:
 
@@ -409,16 +410,18 @@ Thread 1 "gdb" hit Breakpoint 14, sim_write (sd=0x8b915f8, mem=1428, buf=0x86c72
 $46 = 0x594
 (gdb)
 
-For `g', 2 つ目 0x594 でこれは g のプロローグをスキップしたアドレス.
+For `g', 2nd internal break-point was set to 0x594, which is `g' prologue
+skipped address.
 
-同じことを f でやってみる.
+So, I did the same thign for `f':
 
-f の場合は 1 つ目が 0x59e で main.  2 つ目が 0x5aa でやはり
+For `f', 1st internal break-point was 0x59e, which is `main' address. And
+2nd internal break-point was set to 0x5aa, which is the adress of:
 
   return 0;
 
-のアドレス. だから f の場合なぜ 2 つ目が 0x5aa になるのかを調べてみる.
-
+So I decided to investigate the reason why 2nd internal break-point was set to
+0x5aa.
 
 static void
 insert_breakpoint_locations (void)
@@ -450,7 +453,7 @@ insert_bp_location (struct bp_location *bl,
   bl->target_info.reqstd_address = bl->address;
 
 
-ここでセットしていた. そしてこれはさらに
+The internal break-point was set here. And more,
 
 static struct bp_location *
 add_location_to_breakpoint (struct breakpoint *b,
@@ -459,7 +462,7 @@ add_location_to_breakpoint (struct breakpoint *b,
 ...
   loc->requested_address = sal->pc;
 
-ここセットしていた. そしてこれはさらに
+That was set here, and more
 
 static void
 insert_step_resume_breakpoint_at_caller (struct frame_info *next_frame)
@@ -475,18 +478,20 @@ insert_step_resume_breakpoint_at_caller (struct frame_info *next_frame)
 					frame_unwind_caller_id (next_frame));
 }
 
-のように計算している. 同じことを f ではなくて g でやってみた.
-g では少なくとも insert_step_resume_breakpoint_at_caller は呼び出され
-ていない.
+That was calculated like above. I did the same thign for `g',
+and I noticed that `insert_step_resume_breakpoint_at_caller' was not
+called for `g'.
 
 
 	    if (execution_direction == EXEC_REVERSE)
 	      handle_step_into_function_backward (gdbarch, ecs);
 	    else
-	      handle_step_into_function (gdbarch, ecs);   ここだった.
+	      handle_step_into_function (gdbarch, ecs);   (*)
 	    return;
 
-つまり g ではステップインしているが f ではステップインしない原因は	    
+i.e. for `g', msp430-elf-gdb stepped into `g'. But for `f', msp430-elf-gdb
+did not step into `f'. The reason was:
+
 
 static void
 process_event_stop_test (struct execution_control_state *ecs)
@@ -496,7 +501,7 @@ process_event_stop_test (struct execution_control_state *ecs)
 	struct symtab_and_line tmp_sal;
 
 	tmp_sal = find_pc_line (ecs->stop_func_start, 0);
-これ	if (tmp_sal.line != 0
+(*)	if (tmp_sal.line != 0
 	    && !function_name_is_marked_for_skip (ecs->stop_func_name,
 						  tmp_sal)
 	    && !inline_frame_is_marked_for_skip (true, ecs->event_thread))
@@ -509,34 +514,35 @@ process_event_stop_test (struct execution_control_state *ecs)
 	  }
       }
 
-上の if の条件が成立しているのが g で成立していないのが f. f で何故条
-件が成立しないのかを調べてみる.
+Above if-statement condition satisfied in case of `g' and did not satisfy
+in case of `f'. So I investigated the reason why the condition did not
+satisfy in case of `f'.
 
-f の場合は tmp_sal.line = 0 になっている.
+In case of `f', tmp_sal.line = 0.
 
 struct symtab_and_line
-find_pc_line (CORE_ADDR pc, int notcurrent)  pc = 0x576 で呼び出されている
+find_pc_line (CORE_ADDR pc, int notcurrent)  was called with pc = 0x576 
 {
 
-0x576 は f の先頭アドレス.
+0x576 is start address of `f'
 
-以下は c.objdump の抜粋
+Here, c.objdump became like below:
 
-  Entry	Dir	時刻	サイズ	名前
+  Entry	Dir	Time	Size	Name
   1	0	0	0	start.S
 ...
-  [0x00000108]  PC を固定サイズ 2 分進め 0x576 とします
-  [0x0000010b]  拡張命令コード 1: 列の終り
+  [0x00000108]  Advance PC by fixed size amount 2 to 0x576
+  [0x0000010b]  Extended opcode 1: End of Sequence
 
-これは偶然だろうか?
+Is this accidental coincidence?
 
-> msp430-elf-addr2line -a 0x576 -e c.elf
+% msp430-elf-addr2line -a 0x576 -e c.elf
 0x00000576
 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.msp430-elf/host-i686-pc-linux-gnu/gcc/c.c:2
->
+%
 
-一応 addr2line では 0x576 に対して c.c:2 だとしている.
-しかし gdb が 0x576 に対して対応するソースファイルがないと判定している.
+msp430-elf-addr2line told that 0x576 was correspond to c.c:2.
+But msp430-elf-gdb judged that 0x576 was not correspond to any source file.
 
 struct symtab_and_line
 find_pc_sect_line (CORE_ADDR pc, struct obj_section *section, int notcurrent)
@@ -548,19 +554,18 @@ find_pc_sect_line (CORE_ADDR pc, struct obj_section *section, int notcurrent)
       l = SYMTAB_LINETABLE (iter_s);
 ...
 
-これは以前どこかでソースファイルとアドレスとの対応が取れていない状況が
-gdb 視点であって調査したことがあったことを今思い出した.
+I remembered that I had seen above source and at that time, the same kind
+phenomenon occurred.
 
-以下は g の場合
+For `g':
 
 (gdb) p/x *first
-$99 = {line = 0x2, is_stmt = 0x1, pc = 0x576}    # これは f の先頭アドレス
+$99 = {line = 0x2, is_stmt = 0x1, pc = 0x576}    # Thish is the start address of `f'
 (gdb) p/x *(first+1)
-$100 = {line = 0x3, is_stmt = 0x1, pc = 0x580}l  # これは f のプロローグを
-                                                 # スキップしたアドレス
+$100 = {line = 0x3, is_stmt = 0x1, pc = 0x580}   # This is the prologue skip address of `f'
 (gdb)
 
-以下は f の場合
+For `f':
 
 (gdb) p/x *first
 $101 = {line = 0x3, is_stmt = 0x1, pc = 0x500}
@@ -568,42 +573,44 @@ $101 = {line = 0x3, is_stmt = 0x1, pc = 0x500}
 $102 = {line = 0x4, is_stmt = 0x1, pc = 0x504}
 (gdb)
 
-f の場合は start.S の行番号情報からマッチするものを探しているようになっている.
+for `f', msp430-elf-gdb searched line information from `start.S', as not
+expected.
 
   for (symtab *iter_s : compunit_filetabs (cust))
     {
       /* Find the best line in this symtab.  */
       l = SYMTAB_LINETABLE (iter_s);
 
-g の場合:
+For `g':
 (gdb) p *iter_s
 $106 = {next = 0x0, compunit_symtab = 0x8b7e490, linetable = 0x8b7f07c, 
   filename = 0x8b8c680 "c.c", language = language_c, 
   fullname = 0x8bb0890 "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.msp430-elf/host-i686-pc-linux-gnu/gcc/c.c"}
 (gdb)
 
-f の場合
+For `f':
 (gdb) p *iter_s
 $105 = {next = 0x0, compunit_symtab = 0x8b7f1ac, linetable = 0x8bb86f0, 
   filename = 0x8b8c68c "start.S", language = language_asm, fullname = 0x0}
 (gdb)
 
-というわけでおそらく cust の計算で違いが出ている.
+i.e. there was the diffrence with the way of calculating `cust' for `f' and
+that of `g'.
 
   cust = find_pc_sect_compunit_symtab (pc, section);
 
-f の場合
+For `f'
 (gdb) p cust
 $108 = (compunit_symtab *) 0x8b7f1ac
 (gdb)
 
-g の場合
+For `g'
 (gdb) p cust
 $109 = (compunit_symtab *) 0x8b7e490
 (gdb)
 
-f の場合に g の値と同じ値に cust を書き換えて続行させてみたが
-
+For `f', I set `cust' 0x8b7e490 from msp430-elf-gdb but the result became
+like below:
 
 (gdb) c
 Continuing.
@@ -616,9 +623,8 @@ Quit anyway? (y or n) [answered Y; input not from terminal]
 [Thread 0xb6f32b70 (LWP 32428) exited]
 [Thre
 
-のようになっている. ここだけ修正してもうまくいかないらしい.
-
-ともあれ現状は cust の値が明かに正しくない.
+So if the way of `cust' is fixed, this bug may not be fixed.
+Anyway `cust' value is not correct.
 
 	  if (BLOCK_START (b) <= pc
 	      && BLOCK_END (b) > pc
@@ -631,8 +637,8 @@ $122 = {startaddr = 0x500, endaddr = 0x57a, function = 0x0, superblock = 0x0,
   multidict = 0x8b7f264, namespace_info = 0x8b7f26c, ranges = 0x0}
 (gdb) 
 
-0x500 は start のアドレス
-0x57a は f の最初の sub 命令 + 2 のアドレス
+0x500 is `start' label address.
+0x57a is `sub instruction + 2' address at `f'.
 
 00000576 <f>:
  576:	21 82       	sub	#4,	r1	;r2 As==10
@@ -643,16 +649,14 @@ $122 = {startaddr = 0x500, endaddr = 0x57a, function = 0x0, superblock = 0x0,
  57a:	02 00       	mova	@r0,	r2	;
  57c:	81 4d 00 00 	mov	r13,	0(r1)	;
 
-これは例の objdump の結果が予期しないものになるやつ.
-いずれにしても
+This is the phenomenon that msp430-elf-objdump result became unexpected.
+Anyway, above condition is satisfied because
 
 0x500 <= 0x576 < 0x57a
 
-なのでこの条件が成立している.
-
 % msp430-elf-objdump -d -g -x c.o > c.o.objdump
 
-c.o.objdump の抜粋
+The part of c.o.objdump:
 
 00000000 <f>:
    0:	21 82       	sub	#4,	r1	;r2 As==10
@@ -661,6 +665,5 @@ c.o.objdump の抜粋
    2:	81 4c 02 00 	mov	r12,	2(r1)	;
    6:	81 4d 00 00 	mov	r13,	0(r1)	;
 
-期待したものになっている.
-ということはこれはリンカに問題がありそう.
+This is expected. Now I think this bug is cased by msp430-elf-ld.
 
