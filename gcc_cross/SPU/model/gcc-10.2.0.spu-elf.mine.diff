@@ -1,0 +1,31 @@
+*** gcc-10.2.0.org/gcc/config.gcc	2021-10-16 10:31:18.000000000 +0900
+--- gcc-10.2.0.spu-elf.mine/gcc/config.gcc	2022-06-16 16:21:43.000000000 +0900
+***************
+*** 281,287 ****
+   | powerpc*-*-linux*paired*		\
+   | powerpc*-*-*spe*			\
+   | sparc-hal-solaris2*			\
+-  | spu*-*-*				\
+   | thumb-*-*				\
+   | *-*-freebsd[12] | *-*-freebsd[1234].* \
+   | *-*-freebsd*aout*			\
+--- 281,286 ----
+***************
+*** 1677,1682 ****
+--- 1676,1691 ----
+  	tmake_file="h8300/t-h8300"
+  	tm_file="h8300/h8300.h dbxelf.h elfos.h newlib-stdint.h h8300/elf.h"
+  	;;
++ spu-*-elf*)
++   	tm_file="dbxelf.h elfos.h usegas.h newlib-stdint.h spu/spu.h"
++   	tm_p_file="spu/spu-protos.h"
++   	md_file="spu/spu.md"
++   	out_file="spu/spu.c"
++   	tmake_file="spu/t-spu"
++   	use_gcc_stdint=wrap
++ 	c_target_objs="${c_target_objs} spu-c.o"
++ 	cxx_target_objs="${cxx_target_objs} spu-c.o"
++         ;;
+  h8300-*-linux*)
+  	tmake_file="${tmake_file} h8300/t-h8300 h8300/t-linux"
+  	tm_file="h8300/h8300.h dbxelf.h elfos.h gnu-user.h linux.h glibc-stdint.h h8300/linux.h"
