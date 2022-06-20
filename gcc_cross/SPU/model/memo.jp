@@ -1,3 +1,8 @@
+cc1 の雛形
+
+「AARCH64」=>「cc1 の雛形」=>「メモ」 を参照.
+AARCH64 と同様の手順で cc1 の雛形をビルドすることができる.
+
 以下開発メモ
 
 (*1)
@@ -641,5 +646,285 @@ r2 レジスタ相対になっている.
 
 上の修正を入れてリビルド 2022.06.18 17:57 開始.
 
+2022.06.19 5:25 現状 hello world 11 を -g オプション付きでコンパイルしたプログラムを
+spu-elf-gdb で実行すると以下のようになる:
+% spu-elf-gdb -q -x gdbcom b.elf
+Reading symbols from b.elf...
+Connected to the simulator.
+Loading section .text, size 0xb8 lma 0x100
+Loading section .rodata, size 0x10 lma 0x1b8
+Start address 0x100
+Transfer rate: 1600 bits in <1 sec.
+Breakpoint 1 at 0x18c: file b.c, line 10.
+
+Breakpoint 1, main () at b.c:10
+10	  printf("hello world %d\n", f(5, 6));
+f (a=5, b=6) at b.c:5
+5	  return a + b;
+#0  f (a=5, b=6) at b.c:5
+#1  0x00000198 in main () at b.c:10
+Backtrace stopped: previous frame inner to this frame (corrupt stack?)    ★
+hello world 11
+...
+%
+
+同じことをオリジナルの cc1 で試すと ★ のエラーメッセージは出ていない.
+
+以下はオリジナルの cc1 で生成している .debug_frame:
+
+.debug_frame セクションの内容(b.elf より読み込んだもの):
 
 
+00000000 0000000c ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -16
+  Return address column: 0
+
+  DW_CFA_def_cfa: r1 ofs 0
+
+00000010 00000014 00000000 FDE cie=00000000 pc=00000150..00000194
+  DW_CFA_advance_loc4: 8 to 00000158
+  DW_CFA_def_cfa_offset: 64
+  DW_CFA_nop
+
+00000028 00000018 00000000 FDE cie=00000000 pc=00000198..000001d4
+  DW_CFA_advance_loc4: 12 to 000001a4
+  DW_CFA_def_cfa_offset: 32
+  DW_CFA_offset_extended_sf: r0 at cfa+16
+  DW_CFA_nop
+  DW_CFA_nop
+
+以下は自前の cc1 の生成した .debug_frame:
+
+.debug_frame セクションの内容(b.elf より読み込んだもの):
+
+
+00000000 00000014 ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -16
+  Return address column: 129
+
+  DW_CFA_def_cfa: r1 ofs 0
+  DW_CFA_register: r129 in r0
+  DW_CFA_nop
+  DW_CFA_nop
+  DW_CFA_nop
+
+00000018 0000001c 00000000 FDE cie=00000000 pc=00000150..0000017c
+  DW_CFA_advance_loc4: 4 to 00000154
+  DW_CFA_def_cfa_offset: 64
+  DW_CFA_advance_loc4: 8 to 0000015c
+  DW_CFA_offset: r0 at cfa-64
+  DW_CFA_offset: r1 at cfa-48
+
+00000038 0000001c 00000000 FDE cie=00000000 pc=00000180..000001b4
+  DW_CFA_advance_loc4: 4 to 00000184
+  DW_CFA_def_cfa_offset: 32
+  DW_CFA_advance_loc4: 8 to 0000018c
+  DW_CFA_offset: r0 at cfa-32
+  DW_CFA_offset: r1 at cfa-16
+
+スタックフレームの構造が違うから単純な比較はできそうにない.
+
+2022.06.20 5:23 以下を試しに追加してビルド開始
+
+#define DWARF_FRAME_RETURN_COLUMN DWARF_FRAME_REGNUM(LINK_REGNUM)
+
+2022.06.20 6:03 症状は改善されていないことを確認. やはり意味のある調査が必要. 一旦上の
+修正は削除.
+
+spu-elf-gdb 視点から調査する必要がある.
+
+(gdb) b backtrace_command
+(gdb) run
+...
+backtrace_command のブレークポイントにヒット
+(gdb)
+
+エラーメッセージを出力しているのは以下:
+
+      if (fi == NULL && trailing != NULL)
+	{
+	  enum unwind_stop_reason reason;
+
+	  reason = get_frame_unwind_stop_reason (trailing);
+	  if (reason >= UNWIND_FIRST_ERROR)
+	    printf_filtered (_("Backtrace stopped: %s\n"),
+			     frame_stop_reason_string (trailing));  ★
+	}
+
+直接の原因は reason にエラーステータスがセットされるからであるが, さらにその理由は以下:
+
+(gdb) p trailing->stop_reason
+$3 = UNWIND_INNER_ID
+(gdb)
+
+これをセットしている瞬間を確認する.
+
+  if (get_frame_type (this_frame) == NORMAL_FRAME
+      && this_frame->next->unwind->type == NORMAL_FRAME
+      && frame_id_inner (get_frame_arch (this_frame->next),
+			 get_frame_id (this_frame),
+			 get_frame_id (this_frame->next)))   ★ この条件が成立
+    {
+...
+      if (!morestack_name || strcmp (morestack_name, "__morestack") != 0)
+	{
+	  if (frame_debug)
+	    {
+	      fprintf_unfiltered (gdb_stdlog, "-> ");
+	      fprint_frame (gdb_stdlog, NULL);
+	      fprintf_unfiltered (gdb_stdlog,
+				  " // this frame ID is inner }\n");
+	    }
+	  this_frame->stop_reason = UNWIND_INNER_ID;  ★
+	  return NULL;
+	}
+
+(gdb) p/x get_frame_id (this_frame)
+$7 = {stack_addr = 0x1f7c0, code_addr = 0x180, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) p/x get_frame_id (this_frame->next)
+$8 = {stack_addr = 0x1f7e0, code_addr = 0x150, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb)
+
+
+0x180 は main のアドレス. 0x150 は f のアドレス.
+f のスタックの値 0x1f7e0 >= main のスタックの値 0x1f7c0
+なのでこのエラーメッセージが出ている.
+
+main の先頭アドレスでのスタック : 0x1f800
+f    の先頭アドレスでのスタック : 0x1f7e0
+
+つまり main のスタック ID が間違えている. 0x1f7c0 をどのように計算しているか確認する.
+
+static void
+dwarf2_frame_this_id (struct frame_info *this_frame, void **this_cache,
+		      struct frame_id *this_id)
+{
+  struct dwarf2_frame_cache *cache =
+    dwarf2_frame_cache (this_frame, this_cache);
+
+  if (cache->unavailable_retaddr)
+    (*this_id) = frame_id_build_unavailable_stack (get_frame_func (this_frame));
+  else if (cache->undefined_retaddr)
+    return;
+  else
+    (*this_id) = frame_id_build (cache->cfa, get_frame_func (this_frame));  ★
+}
+
+この部分で一旦は 0x1f800 を算出している. しかしこれが 0 に変更された後再び 0x1f7c0 に
+変更されている. そして再び 0 に変更され, 最後には0x1f7c0 に変更されている.
+0x1f7c0 を算出しているところは以下:
+
+      switch (fs.regs.cfa_how)
+	{
+	case CFA_REG_OFFSET:
+	  cache->cfa = read_addr_from_reg (this_frame, fs.regs.cfa_reg);  ★
+	  if (fs.armcc_cfa_offsets_reversed)
+	    cache->cfa -= fs.regs.cfa_offset;
+	  else
+	    cache->cfa += fs.regs.cfa_offset;   ★
+	  break;
+
+最初に 0x1f7a0 が計算されそれに fs.regs.cfa_offset = 0x20 が加算されて 0x1f7c0 に
+なっている. 0x1f7a0 がどのように算出されているかが問題.
+
+一方で以下のように値を改竄すれば期待した動作にはなっている.
+
+      switch (fs.regs.cfa_how)
+	{
+	case CFA_REG_OFFSET:
+	  cache->cfa = read_addr_from_reg (this_frame, fs.regs.cfa_reg);
+	  if (fs.armcc_cfa_offsets_reversed)
+	    cache->cfa -= fs.regs.cfa_offset;
+	  else
+	    cache->cfa += fs.regs.cfa_offset;
++	  if (cache->cfa == 0x1f7c0) {
++	    switch (++n) {
++	    case 1:
++	      cache->cfa = 0x1f800;
++	      break;
++	    case 2:
++	      cache->cfa = 0x20000;
++	      break;
++	    }
+	  }  
+	  break;
+
+問題は 2 回目が 0x1f800 だとエラーメッセージが
+
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+
+のようになるとういこと. 期待値が現状不明. 上は無理に 0x1f800 よりも大きい値を指定しただけ
+のもの.
+
+しかしまずは 0x1f800 を返すのが期待値なので何故それが返っていないかを調べてみる.
+
+全く根拠がないが以下を入れて cc1 をビルドしてみた.
+
+#define DWARF_FRAME_RETURN_COLUMN DWARF_FRAME_REGNUM(LINK_REGNUM)
+
+やはり効果なし. 一旦上の修正は削除する.
+
+      struct value *regval = get_frame_register_value (frame, regnum);
+
+この時点で
+
+(gdb) p/x value_as_address (regval)
+$147 = 0x1f7a0
+(gdb)
+
+のようになっている. get_frame_register_value (frame, regnum) の戻り値
+が返すアドレスの内容が変更されているように思える.
+
+(gdb) p* regval
+$148 = {lval = lval_memory, modifiable = 1, lazy = 0, initialized = 1, 
+  stack = 1, location = {address = 128944, reg = {regnum = 128944, 
+      next_frame_id = {stack_addr = 0, code_addr = 0, special_addr = 0, 
+        stack_status = FID_STACK_INVALID, code_addr_p = 0, 
+        special_addr_p = 0, artificial_depth = 0}}, internalvar = 0x1f7b0, 
+(gdb) p/x regval->location.address
+$151 = 0x1f7b0
+(gdb)
+
+f のプロローグをスキップした時点でのメモリダンプの結果は  
+
+(spu-elf-gdb) x/32wx $sp
+0x1f7a0:	0x00000198	0x00000000	0x00000000	0x00000000
+0x1f7b0:	0x0001f7a0	0x0001f7a0	0x0001f7a0	0x0001f7a0
+0x1f7c0:	0x00000005	0x00000005	0x00000005	0x00000005
+0x1f7d0:	0x00000006	0x00000006	0x00000006	0x00000006
+0x1f7e0:	0x00000130	0x00000000	0x00000000	0x00000000
+0x1f7f0:	0x0001f7e0	0x0001f7e0	0x0001f7e0	0x0001f7e0
+0x1f800:	0xcccccccc	0xcccccccc	0xcccccccc	0xcccccccc
+0x1f810:	0xcccccccc	0xcccccccc	0xcccccccc	0xcccccccc
+(spu-elf-gdb) 
+
+つまり 0x1f7a0 はメモリ 0xaf7b0 にある値から算出している.
+
+	0x1f7a0 +---------------+ <- sp_{new}
+		|     0x198	|
+	0x1f7b0 +---------------+
+		|     0x1f7a0	|
+	0x1f7c0	+---------------+
+		|      5	|
+	0x1f7d0	+---------------+
+		|      6	|
+	0x1f7e0	+---------------+ <- sp_{old}
+
+これは, ... スタックフレームの構造はそのままで保存するスタックの値を更新前のものにするべき.
+一旦 expand_prologue と expand_epilogue を修正する.
+
+2022.06.20 13:16 上の修正を入れて hello world 11 -g オプションでコンパイルした
+プログラムを spu-elf-gdb で期待通り動作させることができている.
+また vec_int4 の加算をするプログラムに対しても step, where, finish が期待通り動作している.
+
+       
