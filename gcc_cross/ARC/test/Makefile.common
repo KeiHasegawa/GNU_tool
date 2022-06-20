@@ -1,0 +1,21 @@
+%.o : %.S
+	arc-elf-as -o $@ -g $<
+
+%.o : %.c
+	arc-elf-gcc -o $@ $< -g -c
+
+%.elf : %.o 
+	arc-elf-ld -o $@ ../default.o $< -T ../default.x
+
+%.objdump : %.elf
+	arc-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v arc-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.o *.s *.elf *.map *.objdump *.objcopy *.log TAGS *~

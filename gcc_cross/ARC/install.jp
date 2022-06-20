@@ -1,0 +1,59 @@
+(*0) ARCH
+
+https://en.wikipedia.org/wiki/ARC_(processor)
+
+(*1) binutils のインストール
+
+% xz -d -c ../binutils-2.36.1-2.src/binutils-2.36.1.tar.xz | tar xf -
+% mv binutils-2.36.1 binutils-2.36.1.arc-elf
+% cd binutils-2.36.1.arc-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=arc-elf
+% make
+% make all
+
+(*2) gcc のインストール
+
+% xz -d -c ../gcc-10.2.0.tar.xz  | tar xf -
+% mv gcc-10.2.0 gcc-10.2.0.arch-elf
+% cd gcc-10.2.0.arc-elf
+% sed -e 's/host_subdir = @host_subdir@/host_subdir = host-i686-pc-linux-gnu/' libgcc/Makefile.in > libgcc/Makefile.in.new
+% mv libgcc/Makefile.in.new libgcc/Makefile.in
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=arc-elf
+% make all-gcc
+% make all-target-libgcc
+% make install-gcc
+% make install-target-libgcc
+% cd ..
+
+(*3) gdb のインストール
+
+% xz -d -c ../gdb-10.2-1.src/gdb-10.2.tar.xz | tar xf -
+% mv gdb-10.2 gdb-10.2.arc-elf
+% cd gdb-10.2.arc-elf/gdb
+
+d30v, fr30, z8k, i960, mmix, z80, i386, pdp11, vax, alpha, m68k, ns32k, spu
+と同じ対処をした.
+
+gdb-10.2.ns32k-elf/gdb/configure.tgt:
+
+arc*-*-*)
+	# Target: Unidentified ARC target
+	cpu_obs="arc-tdep.o arch/arc.o"
++	gdb_sim=../sim/arc/libsim.a
+	;;
+
+% cd ..
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=arc-elf
+% make
+...
+
+github に arc の gdb を開発されている方を発見した. シミュレータの部分を使用させてもらうこと
+にした:
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/
+% mkdir Mellanox
+% cd Mellanox
+% git init
+% git pull https://github.com/Mellanox/gdb
+% cd sim
+% tar cf - arc ; (cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.arc-elf/sim | tar xf - )
