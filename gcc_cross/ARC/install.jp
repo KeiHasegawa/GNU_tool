@@ -46,6 +46,13 @@ arc*-*-*)
 % ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=arc-elf
 % make
 ...
+  CXX    init.o
+make[2]: *** 'gdb' に必要なターゲット '../sim/arc/libsim.a' を make するルールがありません.  中止.
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.arc-elf/gdb' から出ます
+make[1]: *** [Makefile:9731: all-gdb] エラー 2
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.arc-elf' から出ます
+make: *** [Makefile:853: all] エラー 2
+%
 
 github に arc の gdb を開発されている方を発見した. シミュレータの部分を使用させてもらうこと
 にした:
@@ -56,4 +63,94 @@ github に arc の gdb を開発されている方を発見した. シミュレ�
 % git init
 % git pull https://github.com/Mellanox/gdb
 % cd sim
-% tar cf - arc ; (cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.arc-elf/sim | tar xf - )
+% tar cf arc.tar arc
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.arc-elf/sim
+% tar xf /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/Mellanox/sim/arch.tar
+% cd arc
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% make
+...
+gcc -DHAVE_CONFIG_H   -DWITH_DEFAULT_MODEL='"arc700"'  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT   -DWITH_ENVIRONMENT=ALL_ENVIRONMENT   -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN     -DWITH_SCACHE=16384       -DARC_ELF   -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes  -g -O2 -c -o sim-config.o -MT sim-config.o -MMD -MP -MF .deps/sim-config.Tpo ./../common/sim-config.c
+In file included from ./../common/sim-config.c:23:
+./sim-main.h:15:10: 致命的エラー: arc-opc.h: そのようなファイルやディレクトリはありません
+   15 | #include "arc-desc.h"
+...
+% ln -s /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/Mellanox/opcodes/arc-desc.h .
+% ln -s /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/Mellanox/opcodes/arc-opc.h .
+% make
+gcc -DHAVE_CONFIG_H   -DWITH_DEFAULT_MODEL='"arc700"'  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT   -DWITH_ENVIRONMENT=ALL_ENVIRONMENT   -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN     -DWITH_SCACHE=16384       -DARC_ELF   -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes  -g -O2 -c -o sim-config.o -MT sim-config.o -MMD -MP -MF .deps/sim-config.Tpo ./../common/sim-config.c
+In file included from ../common/cgen-sim.h:33,
+                 from ./sim-main.h:35,
+                 from ./../common/sim-config.c:23:
+./cpuall.h:48:14: エラー: 不明な型名 ‘MACH’ です
+   48 | extern const MACH a5_mach;
+...
+
+エラーを回避するために暫定的に以下のようにした:
+
+extern const SIM_MACH a5_mach;
+extern const SIM_MACH arc600_mach;
+extern const SIM_MACH arc700_mach;
+
+% make
+gcc -DHAVE_CONFIG_H   -DWITH_DEFAULT_MODEL='"arc700"'  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT   -DWITH_ENVIRONMENT=ALL_ENVIRONMENT   -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN     -DWITH_SCACHE=16384       -DARC_ELF   -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes  -g -O2 -c -o sim-config.o -MT sim-config.o -MMD -MP -MF .deps/sim-config.Tpo ./../common/sim-config.c
+In file included from ./sim-main.h:36,
+                 from ./../common/sim-config.c:23:
+./arc-sim.h:111:8: エラー: 不明な型名 ‘device’ です
+  111 | extern device arc_devices;
+
+エラーを回避するため暫定的に以下のようにした:
+
+/* sim_core_attach device argument.  */
++typedef struct _device device;
+extern device arc_devices;
+
+% make 
+gcc -DHAVE_CONFIG_H   -DWITH_DEFAULT_MODEL='"arc700"'  -DPROFILE=1 -DWITH_PROFILE=-1   -DWITH_ALIGNMENT=STRICT_ALIGNMENT   -DWITH_ENVIRONMENT=ALL_ENVIRONMENT   -DWITH_HOST_BYTE_ORDER=LITTLE_ENDIAN     -DWITH_SCACHE=16384       -DARC_ELF   -I. -I. -I../common -I./../common -I../../include -I./../../include -I../../bfd -I./../../bfd -I../../opcodes -I./../../opcodes  -g -O2 -c -o sim-config.o -MT sim-config.o -MMD -MP -MF .deps/sim-config.Tpo ./../common/sim-config.c
+...
+./../common/sim-config.c: 関数 ‘sim_config’ 内:
+./../common/sim-config.c:192:21: エラー: ‘WITH_STDIO’ が宣言されていません (この関数内での最初の使用)
+  192 |     current_stdio = WITH_STDIO;
+
+エラーを回避するために暫定的に以下のようにした:
+
+sim-main.h に以下を追加:
+
+#define WITH_STDIO 0
+
+% make
+...
+../common/sim-trace.h:125:28: エラー: ‘WITH_TRACE’ undeclared (first use in this function); did you mean ‘WITH_TRACE_P’?
+  125 | #define WITH_TRACE_P(idx) (WITH_TRACE & (1 << idx))
+
+
+sim-main.h に以下を追加:
+
+#define WITH_TRACE ~TRACE_debug
+
+% make
+./../common/sim-options.c: 関数 ‘standard_option_handler’ 内:
+./../common/sim-options.c:298:13: エラー: ‘WITH_DEBUG’ が宣言されていません (この関数内での最初の使用)
+  298 |       if (! WITH_DEBUG)
+
+sim-main.h に以下を追加:
+
+#define WITH_DEBUG 0
+
+この後エラーが多すぎるのでこのソースを利用するのを断念した.
+
+最近一部を開発した SPU のシミュレータをほぼそのまま利用することにした.
+
+% cd ..
+% mv arc arc.ref
+% tar xf ~/lang/53_GNU_tool/gcc_cross/SPU/gdb/spu.3.tar
+% mv spu arc
+
+arc 用に spu の宣言や定義等を変更.
+
+とりあえず 0x100 に nop を数個配置したプログラムを動作させるようにした.
+この時点の
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.arc-elf/sim/arc
+
+「ARC の gdb」 => arc.1.tar としてアップロードしておく.
