@@ -1,12 +1,11 @@
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.msp430-elf/binutils/MEMO
+"Investigation from a view point objdump" revealed that .text setion
+of start.o size was 0x7a but
 
-で判明したことは start.o の .text セクションのサイズが 0x7a であるのに
+At 0x500, locating .text section
 
-0x500 に .text セクションを配置しようとして
-
-start.o の .text セクションが 0x500 から 0x57a に配置され
-a.o     の .text セクションが 0x57a から配置されされるのが期待値なのに
-                           0x576 から配置されされるのが原因.
+.text of start.o was located at [0x500, 0x57a)
+.text of a.o should have been located at [0x57a, ...)
+but it was located at [0x576, ...)
 
 しかし改めてリンク後の memcpy の最後のアドレスを見てみると 0x576
 になっている.
