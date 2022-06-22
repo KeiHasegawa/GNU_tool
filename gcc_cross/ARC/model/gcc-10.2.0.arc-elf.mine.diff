@@ -1,0 +1,71 @@
+*** gcc-10.2.0.org/gcc/config.gcc	2021-10-16 10:31:18.000000000 +0900
+--- gcc-10.2.0.arc-elf.mine/gcc/config.gcc	2022-06-22 11:27:28.000000000 +0900
+***************
+*** 338,347 ****
+  	;;
+  arc*-*-*)
+  	cpu_type=arc
+- 	c_target_objs="arc-c.o"
+- 	cxx_target_objs="arc-c.o"
+- 	extra_options="${extra_options} arc/arc-tables.opt g.opt"
+- 	extra_headers="arc-simd.h"
+  	;;
+  arm*-*-*)
+  	cpu_type=arm
+--- 338,343 ----
+***************
+*** 1139,1163 ****
+  	tmake_file="${tmake_file} alpha/t-vms alpha/t-alpha"
+  	;;
+  arc*-*-elf*)
+! 	tm_file="arc/arc-arch.h dbxelf.h elfos.h newlib-stdint.h arc/elf.h ${tm_file}"
+! 	tmake_file="arc/t-multilib arc/t-arc"
+! 	extra_gcc_objs="driver-arc.o"
+! 	if test "x$with_cpu" != x; then
+! 		tm_defines="${tm_defines} TARGET_CPU_BUILD=PROCESSOR_$with_cpu"
+! 	fi
+! 	if test x${with_endian} = x; then
+! 		case ${target} in
+! 		arc*be-*-* | arc*eb-*-*)	with_endian=big ;;
+! 		*)				with_endian=little ;;
+! 		esac
+! 	fi
+! 	case ${with_endian} in
+! 	big|little)		;;
+! 	*)	echo "with_endian=${with_endian} not supported."; exit 1 ;;
+! 	esac
+! 	case ${with_endian} in
+! 	big*)	tm_file="arc/big.h ${tm_file}"
+! 	esac
+  	;;
+  arc*-*-linux*)
+  	tm_file="arc/arc-arch.h dbxelf.h elfos.h gnu-user.h linux.h linux-android.h glibc-stdint.h arc/linux.h ${tm_file}"
+--- 1135,1142 ----
+  	tmake_file="${tmake_file} alpha/t-vms alpha/t-alpha"
+  	;;
+  arc*-*-elf*)
+! 	tm_file="arc/arc.h dbxelf.h elfos.h newlib-stdint.h"
+! 	tmake_file="arc/t-arc"
+  	;;
+  arc*-*-linux*)
+  	tm_file="arc/arc-arch.h dbxelf.h elfos.h gnu-user.h linux.h linux-android.h glibc-stdint.h arc/linux.h ${tm_file}"
+***************
+*** 4188,4204 ****
+  
+  	arc*-*-*)
+  		supported_defaults="cpu"
+- 
+- 		if [ x"$with_cpu" = x ] \
+- 		    || grep "^ARC_CPU ($with_cpu," \
+- 		       ${srcdir}/config/arc/arc-cpus.def \
+- 		       > /dev/null; then
+- 		 # Ok
+- 		 true
+- 		else
+- 		 echo "Unknown cpu used in --with-cpu=$with_cpu" 1>&2
+- 		 exit 1
+- 		fi
+  		;;
+  
+      csky-*-*)
+--- 4167,4172 ----
