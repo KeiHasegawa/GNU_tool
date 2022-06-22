@@ -1,0 +1,145 @@
+現状 hello world 11 が動作している.
+この段階では
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+のような rtx_insn は生成していない.
+
+-g オプションでコンパイルした hello world 11 を gdb で動作させてみたところ
+main 函数のブレークポイントで停止できているが f にステップインしたとき
+プロローグを適切にスキップできていない.
+
+プロローグで生成している rtx_insn に対して
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+のようにしてみたが症状は改善されず. 一旦この修正を外した.
+
+プロローグをスキップできていれば変数 a, b を適切に表示できている.
+この状態で where コマンドを実行すると以下のようになっている.
+
+(ppc-elf-gdb) where
+#0  f (a=5, b=6) at a.c:5
+#1  0x20000000 in ?? ()
+#2  0x00000230 in main () at a.c:10
+Backtrace stopped: previous frame identical to this frame (corrupt stack?)
+(ppc-elf-gdb) 
+
+現状自前の cc1 の .debug_frame は以下
+
+.debug_frame セクションの内容(a.elf より読み込んだもの):
+
+
+00000000 00000010 ffffffff CIE
+  Version:               3
+  Augmentation:          ""
+  Code alignment factor: 1
+  Data alignment factor: -4
+  Return address column: 66
+
+  DW_CFA_def_cfa: r1 ofs 0
+  DW_CFA_register: r66 in r64
+  DW_CFA_nop
+
+00000014 0000000c 00000000 FDE cie=00000000 pc=000001c8..00000210
+
+00000024 0000000c 00000000 FDE cie=00000000 pc=00000210..00000268
+
+オリジナルの cc1 は .debug_frame は生成されていない.
+
+自前の cc1 の生成結果
+f:
+.LFB3:
+.LM1:
+	stwu	1, -24(1)
+	mflr	0
+	stw	0, 28(1)
+	stw	31, 20(1)
+	mr	31, 1
+	stw	3, 8(31)
+	stw	4, 12(31)
+.LM2:
+
+オリジナルの cc1 の生成結果
+f:
+.LFB3:
+	.file 1 "a.c"
+	.loc 1 4 1
+	.cfi_startproc
+	stwu 1,-32(1)
+	.cfi_def_cfa_offset 32
+	stw 31,28(1)
+	.cfi_offset 31, -4
+	mr 31,1
+	.cfi_def_cfa_register 31
+	stw 3,8(31)
+	stw 4,12(31)
+
+.cfi_xxx のように疑似命令が出ているかどうかという違いがある.
+
+static void
+def_cfa_1 (dw_cfa_location *new_cfa)
+{
+  dw_cfi_ref cfi;
+
+  if (cur_trace->cfa_store.reg == new_cfa->reg && new_cfa->indirect == 0)
+    cur_trace->cfa_store.offset = new_cfa->offset;
+
+  cfi = def_cfa_0 (&cur_row->cfa, new_cfa);
+  if (cfi)
+    {
+      cur_row->cfa = *new_cfa;
+      cur_row->cfa_cfi = (cfi->dw_cfi_opc == DW_CFA_def_cfa_expression
+			  ? cfi : NULL);
+
+      add_cfi (cfi);  ここで生成している.
+    }
+}
+
+自前の cc1 でも上はきている.
+
+static void
+add_cfi (dw_cfi_ref cfi)
+{
+  any_cfis_emitted = true;
+
+  if (add_cfi_insn != NULL)
+    {
+      add_cfi_insn = emit_note_after (NOTE_INSN_CFI, add_cfi_insn);
+      NOTE_CFI (add_cfi_insn) = cfi;  ここが実行されていない.
+    }
+
+
+
+  RTX_FRAME_RELATED_P (insn) = 1;
+  add_reg_note (insn, REG_FRAME_RELATED_EXPR,
+		gen_rtx_SET (stack_pointer_rtx,
+			     gen_rtx_PLUS (Pmode,
+					   stack_pointer_rtx,
+					   GEN_INT (-size_int))));
+
+とここで自前の cc1 は gen_stwu() で生成した 2 命令目に
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+をしていないことに気付いた. そこで以下のように修正した
+
+#if 1
+  auto insn = emit_insn(gen_stwu(gen_rtx_CONST_INT(Pmode, size+12)));
+  RTX_FRAME_RELATED_P(insn) = true;
+  auto ins1 = XVECEXP(PATTERN(insn), 0, 1);      これ
+  RTX_FRAME_RELATED_P(ins1) = true;              これ
+#else
+  emit_insn(gen_stwu(gen_rtx_CONST_INT(Pmode, size+12)));
+#endif
+
+他のプロローグで生成している rtx_insn に対しても
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+としてみたがやはり症状は変わらず. また一旦
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+の修正を元に戻した.
+

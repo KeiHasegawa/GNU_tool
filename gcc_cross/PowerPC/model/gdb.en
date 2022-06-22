@@ -1,0 +1,847 @@
+現状自前の cc1 の生成した hello world 11 を -g オプション付きでコンパイルしたものを
+gdb で動作させると
+
+main 函数で停止できているがそこから f にステップインしたときプロローグを適切にスキップでき
+ていない.
+
+この原因を調べてみる.
+
+(gdb) b step_command
+(gdb) run
+...
+step_command のブレークポイントにヒット
+(gdb)
+
+ここから handle_step_into_function が呼び出されるのが期待した動作
+
+(gdb) b handle_step_into_function
+(gdb) c
+...
+handle_step_into_function のブレークポイントにヒットしていた
+(gdb)
+
+プロローグがスキップされる処理は
+
+rs6000-tdep.c:1451
+static CORE_ADDR
+skip_prologue (struct gdbarch *gdbarch, CORE_ADDR pc, CORE_ADDR lim_pc,
+	       struct rs6000_framedata *fdata)
+{
+...
+
+(gdb) b skip_prologue
+(gdb) c
+...
+handle_step_into_function のブレークポイントに再びヒット
+(gdb) c
+...
+skip_prologue のブレークポイントにヒット
+(gdb) p/x pc
+$1 = 0x0
+(gdb) p/x lim_pc
+$2 = 0x20000000
+(gdb) 
+
+0 番地はコードを配置していないから, これは全く予期していない動作.
+
+(gdb) finish
+単純にここでは 0 が返されている. そしてプロローグがスキップできていなくて
+
+f (a=-858993460, b=0) at a.c:4
+4	{
+A debugging session is active.
+
+のようになっている.
+できているオリジナルの cc1 の生成した a.elf に対して同様のことを行なってみると
+
+1. step_command のブレークポイントにヒット
+2. handle_step_into_function のブレークポイントに 3 回ヒット
+3. skip_prologue(pc=0x100) で呼び出される
+
+という動作になっている. handle_step_into_function は 3 回呼び出されるのが正しいよう
+である.
+
+自前の cc1 で生成した a.elf に対して実行したとき handle_step_into_function の
+ブレークポイントに 2 回ヒットしたところで
+
+(gdb) b process_event_stop_test
+
+として handle_step_into_function を呼び出す函数にブレークポイントを
+セットしてみたところ
+
+static void
+process_event_stop_test (struct execution_control_state *ecs)
+{
+...
+  if (!frame_id_eq (get_stack_frame_id (frame),
+		    ecs->event_thread->control.step_stack_frame_id)
+      && (frame_id_eq (frame_unwind_caller_id (get_current_frame ()),
+		       ecs->event_thread->control.step_stack_frame_id)
+	  && (!frame_id_eq (ecs->event_thread->control.step_stack_frame_id,
+			    outer_frame_id)
+	      || (ecs->event_thread->control.step_start_function
+		  != find_pc_function (ecs->event_thread->suspend.stop_pc)))))
+    {
+
+この条件式を評価するところで既に skip_prologue(pc=0) の呼び出しがある.
+同じことをオリジナルの cc1 で行なってみたところ, この条件式を評価するところで
+skip_prologue は勿論呼び出されず, この条件自体は成立していた.
+
+オリジナルの cc1 では
+
+(gdb) p frame_id_eq (get_stack_frame_id (frame), ecs->event_thread->control.step_stack_frame_id)
+$3 = false
+(gdb) p frame_id_eq (frame_unwind_caller_id (get_current_frame ()), ecs->event_thread->control.step_stack_frame_id)
+$4 = true
+(gdb) p frame_id_eq (ecs->event_thread->control.step_stack_frame_id, outer_frame_id)
+$5 = false
+(gdb)
+
+となっていて条件式全体では true として評価される.
+
+一方自前の cc1 では
+
+(gdb) p frame_id_eq (get_stack_frame_id (frame), ecs->event_thread->control.step_stack_frame_id)
+$3 = false
+(gdb) p frame_id_eq (frame_unwind_caller_id (get_current_frame ()), ecs->event_thread->control.step_stack_frame_id)
+ここで skip_prologue のブレークポイントにヒット
+一旦 skip_prologue のブレークポイントを解除して
+(gdb) p frame_id_eq (frame_unwind_caller_id (get_current_frame ()), ecs->event_thread->control.step_stack_frame_id)
+$7 = false
+(gdb) 
+
+
+ということは
+
+frame_id_eq (frame_unwind_caller_id (get_current_frame ()), ecs->event_thread->control.step_stack_frame_id)
+
+で違いが出ている.
+
+
+オリジナルの cc1
+(gdb) p/x ecs->event_thread->control.step_stack_frame_id
+$7 = {stack_addr = 0x20000, code_addr = 0x1fc, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+
+自前の cc1
+
+(gdb) p/x ecs->event_thread->control.step_stack_frame_id
+$13 = {stack_addr = 0x1fff0, code_addr = 0x210, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb)
+
+オリジナルの cc1
+(gdb) p *get_current_frame ()
+$9 = {level = 0, pspace = 0x8e2b858, aspace = 0x8e2bd00, 
+  prologue_cache = 0x0, unwind = 0x88938a0 <dwarf2_frame_unwind>, 
+  prev_arch = {p = false, arch = 0x0}, prev_pc = {status = CC_UNKNOWN, 
+    masked = false, value = 0}, prev_func = {addr = 0, status = CC_UNKNOWN}, 
+  this_id = {p = frame_id_status::NOT_COMPUTED, value = {stack_addr = 0, 
+      code_addr = 0, special_addr = 0, stack_status = FID_STACK_INVALID, 
+      code_addr_p = 0, special_addr_p = 0, artificial_depth = 0}}, 
+  base = 0x0, base_cache = 0x0, next = 0x8e94220, prev_p = false, prev = 0x0, 
+  stop_reason = UNWIND_NO_REASON, stop_string = 0x0}
+(gdb) 
+
+自前の cc1
+
+(gdb) p *get_current_frame ()
+$14 = {level = 0, pspace = 0x8e2b860, aspace = 0x8e2bd08, 
+  prologue_cache = 0x0, unwind = 0x88938a0 <dwarf2_frame_unwind>, 
+  prev_arch = {p = false, arch = 0x0}, prev_pc = {status = CC_UNKNOWN, 
+    masked = false, value = 0}, prev_func = {addr = 0, status = CC_UNKNOWN}, 
+  this_id = {p = frame_id_status::NOT_COMPUTED, value = {stack_addr = 0, 
+      code_addr = 0, special_addr = 0, stack_status = FID_STACK_INVALID, 
+      code_addr_p = 0, special_addr_p = 0, artificial_depth = 0}}, 
+  base = 0x0, base_cache = 0x0, next = 0x8e94230, prev_p = false, prev = 0x0, 
+  stop_reason = UNWIND_NO_REASON, stop_string = 0x0}
+(gdb)
+
+
+オリジナルの cc1
+(gdb) p/x frame_unwind_caller_id (get_current_frame ())
+$11 = {stack_addr = 0x20000, code_addr = 0x1fc, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb)
+
+自前の cc1
+(gdb) p/x frame_unwind_caller_id (get_current_frame ())
+$15 = {stack_addr = 0x1fff0, code_addr = 0x0, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb)
+
+オリジナルの cc1
+code_addr = 0x1fc
+
+自前の cc1
+code_addr = 0x0
+
+ここで決定的な違いが出ている. code_addr = 0x210 になれば例の条件式は true
+になる.
+
+0x1fc はオリジナルの cc1 の main 函数のアドレスで
+自前の cc1 では 0x210 になる.
+
+0x20000 は main 函数が呼ばれた時点でのスタックポインタの値でこれはオリジナルも自前も
+同じ値.
+
+main 函数のフレームサイズはオリジナルも自前も 16 で 0x1fff0 = 0x20000 - 16
+ということなのだと思う.
+
+オリジナルの cc1
+(gdb) s
+skip_artificial_frames (frame=0x8eb3f20) at frame.c:515
+(gdb) fin
+Run till exit from #0  skip_artificial_frames (frame=0x8eb3f20) at frame.c:515
+0x081bc7da in frame_unwind_caller_id (next_frame=<optimized out>) at frame.c:671
+Value returned is $12 = (frame_info *) 0x8eb3f20
+(gdb) p *$12
+$13 = {level = 1, pspace = 0x8e2b858, aspace = 0x8e2bd00, 
+  prologue_cache = 0x8eb3f98, unwind = 0x88938a0 <dwarf2_frame_unwind>, 
+  prev_arch = {p = true, arch = 0x8e820e8}, prev_pc = {status = CC_UNKNOWN, 
+    masked = false, value = 0}, prev_func = {addr = 0, status = CC_UNKNOWN}, 
+  this_id = {p = frame_id_status::COMPUTED, value = {stack_addr = 131072, 
+      code_addr = 508, special_addr = 0, stack_status = FID_STACK_VALID, 
+      code_addr_p = 1, special_addr_p = 0, artificial_depth = 0}}, 
+  base = 0x0, base_cache = 0x0, next = 0x8e9429c, prev_p = false, prev = 0x0, 
+  stop_reason = UNWIND_NO_REASON, stop_string = 0x0}
+(gdb)
+
+自前の cc1
+(gdb) s
+skip_artificial_frames (frame=0x8eb55e0) at frame.c:515
+(gdb) fin
+Run till exit from #0  skip_artificial_frames (frame=0x8eb55e0) at frame.c:515
+0x081bc7da in frame_unwind_caller_id (next_frame=<optimized out>) at frame.c:671
+Value returned is $17 = (frame_info *) 0x8eb55e0
+(gdb) p *$17
+$18 = {level = 1, pspace = 0x8e2b860, aspace = 0x8e2bd08, 
+  prologue_cache = 0x8eb5658, unwind = 0x88f50e0 <rs6000_frame_unwind>, 
+  prev_arch = {p = false, arch = 0x0}, prev_pc = {status = CC_UNKNOWN, 
+    masked = false, value = 0}, prev_func = {addr = 0, status = CC_UNKNOWN}, 
+  this_id = {p = frame_id_status::COMPUTED, value = {stack_addr = 131056, 
+      code_addr = 0, special_addr = 0, stack_status = FID_STACK_VALID, 
+      code_addr_p = 1, special_addr_p = 0, artificial_depth = 0}}, 
+  base = 0x0, base_cache = 0x0, next = 0x8e942ac, prev_p = false, prev = 0x0, 
+  stop_reason = UNWIND_NO_REASON, stop_string = 0x0}
+(gdb) c
+Continuing.
+(gdb)
+
+オリジナルの cc1
+code_addr = 508 = 0x1fc
+
+自前の cc1
+code_addr = 0
+
+なので skip_artificial_frames の戻り値の code_addr メンバに値をセットしている箇所を
+調べてみる.
+
+
+(gdb) p ((frame_info *) 0x8eb3f20)->this_id.value.code_addr
+$15 = 508
+(gdb) p &((frame_info *) 0x8eb3f20)->this_id.value.code_addr
+$16 = (CORE_ADDR *) 0x8eb3f64
+(gdb) watch *(int*) 0x8eb3f64
+(gdb) run
+...
+
+    (*this_id) = frame_id_build (cache->cfa, get_frame_func (this_frame));
+
+ここだった.
+(gdb) p/x cache->cfa
+$18 = 0x20000
+(gdb) 
+
+ここで自前の cc1 で
+
+#define FRAME_TRUE
+
+として
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+を有効にした. この修正を入れた自前の cc1 でリビルドした a.elf で同様の
+ことを試した.
+
+
+(gdb) p/x ecs->event_thread->control.step_stack_frame_id
+$22 = {stack_addr = 0x20000, code_addr = 0x210, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) 
+
+stack_addr が 0x1fff0 から 0x20000 になっている.
+
+(gdb) p/x frame_unwind_caller_id (get_current_frame ())
+$23 = {stack_addr = 0x1fff0, code_addr = 0x0, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb)
+
+こっちはそれほど変わっていない.
+
+00000014 00000028 00000000 FDE cie=00000000 pc=000001c8..00000210
+  DW_CFA_advance_loc4: 4 to 000001cc
+  DW_CFA_offset: r1 at cfa+0
+
+これが合っていない.
+一旦自前の cc1 を修正して以下のようにした
+
+00000014 00000028 00000000 FDE cie=00000000 pc=000001c8..00000210
+  DW_CFA_advance_loc4: 4 to 000001cc
+  DW_CFA_offset_extended_sf: r1 at cfa+24
+  DW_CFA_def_cfa_offset: 24
+
+改めて
+
+(gdb) p/x ecs->event_thread->control.step_stack_frame_id
+$24 = {stack_addr = 0x20000, code_addr = 0x210, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) p/x frame_unwind_caller_id (get_current_frame ())
+$25 = {stack_addr = 0x1fff0, code_addr = 0x0, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) 
+
+変わっていない. 改善されていない.
+
+get_current_frame() の戻り値は自前の cc1 では
+
+(gdb) p/x *$28
+$30 = {level = 0x0, pspace = 0x8e2b860, aspace = 0x8e2bd08, 
+  prologue_cache = 0x8e94324, unwind = 0x88938a0, prev_arch = {p = 0x1, 
+    arch = 0x8e820f8}, prev_pc = {status = 0x1, masked = 0x0, 
+    value = 0x20000000}, prev_func = {addr = 0x0, status = 0x1}, this_id = {
+    p = 0x2, value = {stack_addr = 0x1fff0, code_addr = 0x1c8, 
+      special_addr = 0x0, stack_status = 0x1, code_addr_p = 0x1, 
+      special_addr_p = 0x0, artificial_depth = 0x0}}, base = 0x0, 
+  base_cache = 0x0, next = 0x8e94230, prev_p = 0x1, prev = 0x8eb55e0, 
+  stop_reason = 0x0, stop_string = 0x0}
+(gdb)
+
+stack_addr = 0x1fff0, code_addr = 0x1c8
+
+でこれらは f の先頭アドレスでのスタックポイントの値と f の先頭アドレス
+なのでできているように見える.
+
+一方オリジナルの cc1 では
+
+
+(gdb) p/x *$21
+$22 = {level = 0x0, pspace = 0x8e2b858, aspace = 0x8e2bd00, 
+  prologue_cache = 0x8e94314, unwind = 0x88938a0, prev_arch = {p = 0x1, 
+    arch = 0x8e820e8}, prev_pc = {status = 0x0, masked = 0x0, value = 0x0}, 
+  prev_func = {addr = 0x0, status = 0x0}, this_id = {p = 0x2, value = {
+      stack_addr = 0x1fff0, code_addr = 0x1c8, special_addr = 0x0, 
+      stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+      artificial_depth = 0x0}}, base = 0x0, base_cache = 0x0, 
+  next = 0x8e94220, prev_p = 0x0, prev = 0x0, stop_reason = 0x0, 
+  stop_string = 0x0}
+(gdb)
+
+stack_addr = 0x1fff0, code_addr = 0x1c8
+
+でこれも合っている.
+ということは frame_unwind_caller_id の計算で違いが出ているということ.
+
+オリジナルの cc1
+(gdb) p/x *next_frame
+$23 = {level = 0x0, pspace = 0x8e2b858, aspace = 0x8e2bd00, 
+  prologue_cache = 0x8e94314, unwind = 0x88938a0, prev_arch = {p = 0x1, 
+    arch = 0x8e820e8}, prev_pc = {status = 0x0, masked = 0x0, value = 0x0}, 
+  prev_func = {addr = 0x0, status = 0x0}, this_id = {p = 0x2, value = {
+      stack_addr = 0x1fff0, code_addr = 0x1c8, special_addr = 0x0, 
+      stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+      artificial_depth = 0x0}}, base = 0x0, base_cache = 0x0, 
+  next = 0x8e94220, prev_p = 0x0, prev = 0x0, stop_reason = 0x0, 
+  stop_string = 0x0}
+(gdb)
+
+自前の cc1
+(gdb) p/x *next_frame
+$31 = {level = 0x0, pspace = 0x8e2b860, aspace = 0x8e2bd08, 
+  prologue_cache = 0x8e94324, unwind = 0x88938a0, prev_arch = {p = 0x1, 
+    arch = 0x8e820f8}, prev_pc = {status = 0x1, masked = 0x0, 
+    value = 0x20000000}, prev_func = {addr = 0x0, status = 0x1}, this_id = {
+    p = 0x2, value = {stack_addr = 0x1fff0, code_addr = 0x1c8, 
+      special_addr = 0x0, stack_status = 0x1, code_addr_p = 0x1, 
+      special_addr_p = 0x0, artificial_depth = 0x0}}, base = 0x0, 
+  base_cache = 0x0, next = 0x8e94230, prev_p = 0x1, prev = 0x8eb55e0, 
+  stop_reason = 0x0, stop_string = 0x0}
+(gdb)
+
+value = 0x0
+
+value = 0x20000000
+
+という違いが出ている.
+
+オリジナルの cc1
+
+(gdb) p/x *this_frame
+$24 = {level = 0x1, pspace = 0x8e2b858, aspace = 0x8e2bd00, 
+  prologue_cache = 0x8eb3f98, unwind = 0x88938a0, prev_arch = {p = 0x1, 
+    arch = 0x8e820e8}, prev_pc = {status = 0x0, masked = 0x0, value = 0x0}, 
+  prev_func = {addr = 0x0, status = 0x0}, this_id = {p = 0x2, value = {
+      stack_addr = 0x20000, code_addr = 0x1fc, special_addr = 0x0, 
+      stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+      artificial_depth = 0x0}}, base = 0x0, base_cache = 0x0, 
+  next = 0x8e9429c, prev_p = 0x0, prev = 0x0, stop_reason = 0x0, 
+  stop_string = 0x0}
+(gdb)
+
+stack_addr = 0x20000, code_addr = 0x1fc
+これは main 函数の先頭アドレスとそのときのスタックポインタの値
+
+自前の cc1
+(gdb) p/x *this_frame
+$32 = {level = 0x1, pspace = 0x8e2b860, aspace = 0x8e2bd08, 
+  prologue_cache = 0x8eb5658, unwind = 0x88f50e0, prev_arch = {p = 0x0, 
+    arch = 0x0}, prev_pc = {status = 0x0, masked = 0x0, value = 0x0}, 
+  prev_func = {addr = 0x0, status = 0x0}, this_id = {p = 0x2, value = {
+      stack_addr = 0x1fff0, code_addr = 0x0, special_addr = 0x0, 
+      stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+      artificial_depth = 0x0}}, base = 0x0, base_cache = 0x0, 
+  next = 0x8e942ac, prev_p = 0x0, prev = 0x0, stop_reason = 0x0, 
+  stop_string = 0x0}
+(gdb)
+
+ここで全然違っている. 最初に呼ばれた frame_unwind_caller_id が今注目し
+ているところだったので
+
+(gdb) delete
+(gdb) b frame_unwind_caller_id
+(gdb) run
+...
+ブレークポイントにヒット
+(gdb)
+
+以下はオリジナルの cc1
+(gdb) p/x *next_frame
+$32 = {level = 0x0, pspace = 0x8e2b858, aspace = 0x8e2bd00, 
+  prologue_cache = 0x8e94314, unwind = 0x88938a0, prev_arch = {p = 0x1, 
+    arch = 0x8e820e8}, prev_pc = {status = 0x0, masked = 0x0, value = 0x0}, 
+  prev_func = {addr = 0x0, status = 0x0}, this_id = {p = 0x2, value = {
+      stack_addr = 0x1fff0, code_addr = 0x1c8, special_addr = 0x0, 
+      stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+      artificial_depth = 0x0}}, base = 0x0, base_cache = 0x0, 
+  next = 0x8e94220, prev_p = 0x0, prev = 0x0, stop_reason = 0x0, 
+  stop_string = 0x0}
+(gdb) n
+(gdb) p/x *next_frame
+$33 = {level = 0x0, pspace = 0x8e2b858, aspace = 0x8e2bd00, 
+  prologue_cache = 0x8e94314, unwind = 0x88938a0, prev_arch = {p = 0x1, 
+    arch = 0x8e820e8}, prev_pc = {status = 0x0, masked = 0x0, value = 0x0}, 
+  prev_func = {addr = 0x0, status = 0x0}, this_id = {p = 0x2, value = {
+      stack_addr = 0x1fff0, code_addr = 0x1c8, special_addr = 0x0, 
+      stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+      artificial_depth = 0x0}}, base = 0x0, base_cache = 0x0, 
+  next = 0x8e94220, prev_p = 0x0, prev = 0x0, stop_reason = 0x0, 
+  stop_string = 0x0}
+(gdb) n
+(gdb) n
+(gdb) p/x *this_frame
+$34 = {level = 0x1, pspace = 0x8e2b858, aspace = 0x8e2bd00, 
+  prologue_cache = 0x8eb3f98, unwind = 0x88938a0, prev_arch = {p = 0x1, 
+    arch = 0x8e820e8}, prev_pc = {status = 0x0, masked = 0x0, value = 0x0}, 
+  prev_func = {addr = 0x0, status = 0x0}, this_id = {p = 0x2, value = {
+      stack_addr = 0x20000, code_addr = 0x1fc, special_addr = 0x0, 
+      stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+      artificial_depth = 0x0}}, base = 0x0, base_cache = 0x0, 
+  next = 0x8e9429c, prev_p = 0x0, prev = 0x0, stop_reason = 0x0, 
+  stop_string = 0x0}
+(gdb)
+
+以下は自前の cc1
+(gdb) p/x *next_frame
+$36 = {level = 0x0, pspace = 0x8e2b860, aspace = 0x8e2bd08, 
+  prologue_cache = 0x8e94324, unwind = 0x88938a0, prev_arch = {p = 0x1, 
+    arch = 0x8e820f8}, prev_pc = {status = 0x0, masked = 0x0, value = 0x0}, 
+  prev_func = {addr = 0x0, status = 0x0}, this_id = {p = 0x2, value = {
+      stack_addr = 0x1fff0, code_addr = 0x1c8, special_addr = 0x0, 
+      stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+      artificial_depth = 0x0}}, base = 0x0, base_cache = 0x0, 
+  next = 0x8e94230, prev_p = 0x0, prev = 0x0, stop_reason = 0x0, 
+  stop_string = 0x0}
+(gdb) n
+(gdb) p/x *next_frame
+$37 = {level = 0x0, pspace = 0x8e2b860, aspace = 0x8e2bd08, 
+  prologue_cache = 0x8e94324, unwind = 0x88938a0, prev_arch = {p = 0x1, 
+    arch = 0x8e820f8}, prev_pc = {status = 0x0, masked = 0x0, value = 0x0}, 
+  prev_func = {addr = 0x0, status = 0x0}, this_id = {p = 0x2, value = {
+      stack_addr = 0x1fff0, code_addr = 0x1c8, special_addr = 0x0, 
+      stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+      artificial_depth = 0x0}}, base = 0x0, base_cache = 0x0, 
+  next = 0x8e94230, prev_p = 0x0, prev = 0x0, stop_reason = 0x0, 
+  stop_string = 0x0}
+(gdb) n
+(gdb) 
+(gdb) p/x *this_frame
+$38 = {level = 0x1, pspace = 0x8e2b860, aspace = 0x8e2bd08, 
+  prologue_cache = 0x8eb5658, unwind = 0x88f50e0, prev_arch = {p = 0x0, 
+    arch = 0x0}, prev_pc = {status = 0x0, masked = 0x0, value = 0x0}, 
+  prev_func = {addr = 0x0, status = 0x0}, this_id = {p = 0x2, value = {
+      stack_addr = 0x1fff0, code_addr = 0x0, special_addr = 0x0, 
+      stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+      artificial_depth = 0x0}}, base = 0x0, base_cache = 0x0, 
+  next = 0x8e942ac, prev_p = 0x0, prev = 0x0, stop_reason = 0x0, 
+  stop_string = 0x0}
+(gdb)
+
+これを見ると this_frame の計算で違いが出ているように見える.
+
+
+オリジナルの cc1
+(gdb) p/x this_frame->this_id.value.stack_addr
+$41 = 0x20000
+(gdb) p &this_frame->this_id.value.stack_addr
+$42 = (CORE_ADDR *) 0x8eb3f5c
+(gdb) watch *(int*)0x8eb3f5c
+Hardware watchpoint 9: *(int*)0x8eb3f5c
+(gdb) run
+...
+
+static void
+dwarf2_frame_this_id (struct frame_info *this_frame, void **this_cache,
+		      struct frame_id *this_id)
+{
+  struct dwarf2_frame_cache *cache =
+    dwarf2_frame_cache (this_frame, this_cache);
+
+  if (cache->unavailable_retaddr)
+    (*this_id) = frame_id_build_unavailable_stack (get_frame_func (this_frame));
+  else if (cache->undefined_retaddr)
+    return;
+  else
+    (*this_id) = frame_id_build (cache->cfa, get_frame_func (this_frame));
+    ここでセットしていた cachec->cfa = 0x20000
+}
+
+一方自前の cc1 では
+
+(gdb) p/x this_frame->this_id.value.stack_addr
+$41 = 0x1fff0
+(gdb) p &this_frame->this_id.value.stack_addr
+$42 = (CORE_ADDR *) 0x8eb561c
+(gdb) watch *(int*)0x8eb561c
+Hardware watchpoint 10: *(int*)0x8eb561c
+(gdb) run
+...
+static void
+rs6000_frame_this_id (struct frame_info *this_frame, void **this_cache,
+		      struct frame_id *this_id)
+{
+  struct rs6000_frame_cache *info = rs6000_frame_cache (this_frame,
+							this_cache);
+
+  if (!info->base_p)
+    {
+      (*this_id) = frame_id_build_unavailable_stack (info->pc);
+      return;
+    }
+
+  /* This marks the outermost frame.  */
+  if (info->base == 0)
+    return;
+
+  (*this_id) = frame_id_build (info->base, get_frame_func (this_frame));
+  ここで作っていた. info->base = 0x1fff0
+}
+
+
+オリジナルの cc1 
+(gdb) where
+#0  0x08152b02 in dwarf2_frame_this_id (this_frame=0x8eb3f20, this_cache=0x8eb3f2c, this_id=0x8eb3f5c) at dwarf2/frame.c:1233
+#1  0x081b9e39 in compute_frame_id (fi=0x8eb3f20) at frame.c:590
+#2  0x081ba53d in get_prev_frame_if_no_cycle (this_frame=0x8e9429c) at frame.c:1983
+#3  0x081bc6c1 in get_prev_frame_always (this_frame=0x8e9429c) at frame.c:2183
+#4  0x081bc7ce in frame_unwind_caller_id (next_frame=<optimized out>) at frame.c:669
+
+自前の cc1
+
+(gdb) where
+#0  0x082e0062 in rs6000_frame_this_id (this_frame=0x8eb55e0, this_cache=0x8eb55ec, this_id=0x8eb561c) at rs6000-tdep.c:3633
+#1  0x081b9e39 in compute_frame_id (fi=0x8eb55e0) at frame.c:590
+#2  0x081ba53d in get_prev_frame_if_no_cycle (this_frame=0x8e942ac) at frame.c:1983
+#3  0x081bc6c1 in get_prev_frame_always (this_frame=0x8e942ac) at frame.c:2183
+#4  0x081bc7ce in frame_unwind_caller_id (next_frame=<optimized out>) at frame.c:669
+
+
+
+      fi->unwind->this_id (fi, &fi->prologue_cache, &fi->this_id.value);
+
+(gdb) p fi->unwind->this_id
+
+dwarf2_frame_this_id : オリジナル
+
+rs6000_frame_this_id : 自前
+
+
+      /* Find the unwinder.  */
+      if (fi->unwind == NULL)
+	frame_unwind_find_by_frame (fi, &fi->prologue_cache);  ここで
+
+fi->unwind を選択していてそこで違いが出ている.
+
+
+
+(gdb) info b
+Num     Type           Disp Enb Address    What
+9       breakpoint     keep y   0x081b9b9a in frame_unwind_caller_id(frame_info*) at frame.c:665
+	breakpoint already hit 1 time
+13      breakpoint     keep y   0x081b986c in compute_frame_id(frame_info*) at frame.c:585
+	breakpoint already hit 1 time
+(gdb) run
+...
+frame_unwind_caller_id のブレークポイントにヒット
+(gdb) c
+...
+frame_unwind_find_by_frame の呼び出しのブレークポイントにヒット
+(gdb) s
+
+
+  for (entry = table->list; entry != NULL; entry = entry->next)
+    if (frame_unwind_try_unwinder (this_frame, this_cache, entry->unwinder))
+      return;
+
+オリジナルの cc1 は 6 回目で if の条件が成立し戻る. 自前の cc1 は 9 回目で戻る.
+
+6 回目ステップインすると
+
+(gdb) s
+0x081b852f in frame_unwind_try_unwinder (this_frame=0x8eb65e0, this_cache=0x8eb65ec, unwinder=0x88948c0 <dwarf2_frame_unwind>) at frame-unwind.c:124
+(gdb)
+
+これで 0 が返っているところがオリジナルの cc1 と異なっている.
+
+
+  CORE_ADDR block_addr = get_frame_address_in_block (this_frame);
+
+オリジナル
+(gdb) p/x block_addr
+$50 = 0x21b
+(gdb) 
+
+自前
+(gdb) p/x block_addr
+$57 = 0x1fffffff
+(gdb)
+
+これは明らかに変なアドレス. 0x21b は main 函数から呼び出したところ
+
+000001fc <main>:
+ 1fc:	94 21 ff f0 	stwu    r1,-16(r1)
+ 200:	7c 08 02 a6 	mflr    r0
+ 204:	90 01 00 14 	stw     r0,20(r1)
+ 208:	93 e1 00 0c 	stw     r31,12(r1)
+ 20c:	7c 3f 0b 78 	mr      r31,r1
+ 210:	38 80 00 06 	li      r4,6
+ 214:	38 60 00 05 	li      r3,5
+ 218:	4b ff ff b1 	bl      1c8 <f>       これ
+ 21c:	7c 69 1b 78 	mr      r9,r3
+
+2022.02.14 18:42
+LR_REGNUM を 96 にして cc1 をビルドし直すことにした.
+
+しかし症状は改善されず.
+
+改めて
+(gdb) b frame_unwind_caller_id
+(gdb) b frame.c:585
+(gdb) b dwarf2_frame_sniffer
+(gdb) run
+...
+dwarf2_frame_sniffer のブレークポイントにヒットするので一旦これだけ disable
+(gdb) disa 3
+(gdb) c
+...
+frame_unwind_caller_id のブレークポイントにヒット
+(gdb) c
+...
+frame.c:585 のブレークポイントにヒット
+(gdb) enable
+(gdb) c
+...
+dwarf2_frame_sniffer のブレークポイントにヒット
+(gdb) s
+
+
+CORE_ADDR
+get_frame_address_in_block (struct frame_info *this_frame)
+{
+  /* A draft address.  */
+  CORE_ADDR pc = get_frame_pc (this_frame);
+
+ここで pc = 0x23f が返るのが期待値. 現状は 0x0 になっている
+
+00000210 <main>:
+ 210:	94 21 ff f0 	stwu    r1,-16(r1)
+ 214:	7c 08 02 a6 	mflr    r0
+ 218:	90 01 00 14 	stw     r0,20(r1)
+ 21c:	93 e1 00 0c 	stw     r31,12(r1)
+ 220:	7c 3f 0b 78 	mr      r31,r1
+ 224:	38 80 00 06 	li      r4,6
+ 228:	38 60 00 05 	li      r3,5
+ 22c:	4b ff ff 9d 	bl      1c8 <f>        これ
+ 230:	90 7f 00 08 	stw     r3,8(r31)
+
+LR_REGNUM を 96 にする前は 0x1fffffff が返っていた. 一応変化している.
+
+上の手順で dwarf2_frame_sniffer を dwarf2_frame_prev_register に代えても
+よい. つまり
+
+(gdb) delete
+(gdb) b frame_unwind_caller_id
+(gdb) b frame.c:585
+(gdb) b dwarf2_frame_prev_register
+(gdb) run
+...
+dwarf2_frame_prev_register のブレークポイントにヒットするので一旦これだけ disable
+(gdb) disa 4
+(gdb) c
+...
+frame_unwind_caller_id のブレークポイントにヒット
+(gdb) c
+...
+frame.c:585 のブレークポイントにヒット
+(gdb) enable
+(gdb) c
+...
+dwarf2_frame_prev_register のブレークポイントにヒット
+(gdb)
+
+dwarf2_frame_prev_register で最初に計算された変数 cache は
+
+自前の cc1
+(gdb) p/x *cache
+$7 = {cfa = 0x1fff0, unavailable_retaddr = 0x0, undefined_retaddr = 0x0, 
+  reg = 0x8ebef30, retaddr_reg = {loc = {offset = 0x0, reg = 0x0, exp = {
+        start = 0x0, len = 0x0}, fn = 0x0}, how = 0x0}, addr_size = 0x4, 
+  per_objfile = 0x8e6fd68, tailcall_cache = 0x0}
+(gdb) 
+
+オリジナルの cc1
+(gdb) p/x *cache
+$7 = {cfa = 0x1fff0, unavailable_retaddr = 0x0, undefined_retaddr = 0x0, 
+  reg = 0x8ea6200, retaddr_reg = {loc = {offset = 0x0, reg = 0x0, exp = {
+        start = 0x0, len = 0x0}, fn = 0x0}, how = 0x0}, addr_size = 0x4, 
+  per_objfile = 0x8e6fd58, tailcall_cache = 0x0}
+(gdb)
+
+この段階では違いは見られない. そして以下を実行
+
+    case DWARF2_FRAME_REG_SAVED_REG:
+      realnum = dwarf_reg_to_regnum_or_error
+	(gdbarch, cache->reg[regnum].loc.reg);
+      return frame_unwind_got_register (this_frame, regnum, realnum);
+
+自前の cc1
+realnum = 96
+
+オリジナルの cc1
+realnum = 67
+
+ここで違いが出ている.
+そして自前の cc1 で realnum を 67 に書き替えて続行したところ
+
+f (a=5, b=6) at a.c:5
+5	  return a + b;
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+のようにプロローグをスキップできている.
+
+問題の
+
+      realnum = dwarf_reg_to_regnum_or_error
+	(gdbarch, cache->reg[regnum].loc.reg);
+
+であるが
+
+オリジナルの cc1
+cache->reg[regnum].loc.reg = 108
+
+自前の cc1
+cache->reg[regnum].loc.reg = 96
+
+になっている.
+
+ここで自前の cc1 の生成した a.elf にも .eh_frame セクションが入ってい
+てこれが start.S にある .cfi_xxx の疑似命令が原因であることを確認した
+ので start.S から .cfi_xxx を削除した. .eh_frame セクションは a.elf
+から除外されたが動作は変わらず.
+
+オリジナルの cc1 の .eh_frame
+
+00000038 00000024 0000003c FDE cie=00000000 pc=000001fc..00000254
+  DW_CFA_advance_loc: 4 to 00000200
+  DW_CFA_def_cfa_offset: 16
+  DW_CFA_advance_loc: 12 to 0000020c
+  DW_CFA_offset_extended_sf: r65 at cfa+4
+  DW_CFA_offset: r31 at cfa-4
+  DW_CFA_advance_loc: 4 to 00000210
+  DW_CFA_def_cfa_register: r31
+  DW_CFA_advance_loc: 60 to 0000024c
+  DW_CFA_def_cfa: r11 ofs 0
+  DW_CFA_advance_loc: 4 to 00000250
+  DW_CFA_restore: r31
+  DW_CFA_def_cfa_register: r1
+  DW_CFA_nop
+  DW_CFA_nop
+  DW_CFA_nop
+
+自前の cc1 の .debug_frame
+
+00000040 00000028 00000000 FDE cie=00000000 pc=00000210..00000268
+  DW_CFA_advance_loc4: 4 to 00000214
+  DW_CFA_offset_extended_sf: r1 at cfa+16  # これは上にはない
+  DW_CFA_def_cfa_offset: 16
+  DW_CFA_advance_loc4: 12 to 00000220
+  DW_CFA_offset_extended_sf: r96 at cfa+4
+  DW_CFA_offset: r31 at cfa-4
+  DW_CFA_advance_loc4: 4 to 00000224
+  DW_CFA_def_cfa_register: r31
+  DW_CFA_nop
+
+試しに自前の cc1 から DW_CFA_offset_extended_sf: r1 at cfa+16
+の情報を出さないようにしてみたが結果は変わらず.
+
+static int
+rs6000_dwarf2_reg_to_regnum (struct gdbarch *gdbarch, int num)
+{
+...
+      case 108:
+        return tdep->ppc_lr_regnum;
+
+
+なので
+
+オリジナルの cc1 で
+cache->reg[regnum].loc.reg = 108
+
+のようにできていいる原因を調査する.
+
+おそらく LR_REGNUM を現状 96 にしているがこれを 108 にすれば辻褄は合う
+のだろうけども.
+
+		if (cache->reg[regnum].how == DWARF2_FRAME_REG_RA)
+		  {
+ここだった	    cache->reg[regnum].loc.reg = fs.retaddr_column;
+		    cache->reg[regnum].how = DWARF2_FRAME_REG_SAVED_REG;
+
+
+一方自前の cc1 では
+
+		if (cache->reg[regnum].how == DWARF2_FRAME_REG_RA)
+ここだった	  cache->reg[regnum] = regs[retaddr_column];
+
+面倒なので LR_REGNUM を 108 にしてみたところ期待通り動作している.
+
+
