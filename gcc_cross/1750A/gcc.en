@@ -1,0 +1,39 @@
+(*) gcc install
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/
+% gunzip -c ../gcc-3.0.1.tar.gz | tar xf -
+% mv gcc-3.0.1 gcc-3.0.1.1750a-elf
+% cd gcc-3.0.1.1750a-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ --target=1750a-elf
+% setenv SHELL /bin/sh
+% make all-gcc LANGUAGES="c c++"
+...
+gcc -c -DCROSS_COMPILE -DIN_GCC    -g -O2 -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes   -DHAVE_CONFIG_H    -I. -Icp -I. -I./cp -I./config -I./../include cp/decl.c -o cp/decl.o
+cp/decl.c: In function 'push_binding_level':
+cp/decl.c:528:25: error: lvalue required as left operand of assignment
+  528 |   current_binding_level = newlevel;
+      |                         ^
+...
+make[1]: *** [Makefile:717: cp/decl.o] Error 1
+make[1]: Leaving directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.0.1.1750a-elf/gcc'
+make: *** [Makefile:1470: all-gcc] Error 2
+%
+
+% ls gcc/cc1
+gcc/cc1
+%
+
+`cc1' was built
+
+% cd gcc
+% cat a.c
+cat a.c
+int f(int a, int b)
+{
+  return a + b;
+}
+% ./cc1 -quiet a.c
+`a.s' could be generated
+
+`gcc' could not be installed normally but `cc1' colud be built.
+

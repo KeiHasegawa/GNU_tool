@@ -1,0 +1,42 @@
+(*) gcc のインストール
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/
+% gunzip -c ../gcc-3.0.1.tar.gz | tar xf -
+% mv gcc-3.0.1 gcc-3.0.1.1750a-elf
+% cd gcc-3.0.1.1750a-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ --target=1750a-elf
+% setenv SHELL /bin/sh
+% make all-gcc LANGUAGES="c c++"
+...
+gcc -c -DCROSS_COMPILE -DIN_GCC    -g -O2 -W -Wall -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes   -DHAVE_CONFIG_H    -I. -Icp -I. -I./cp -I./config -I./../include cp/decl.c -o cp/decl.o
+cp/decl.c: 関数 ‘push_binding_level’ 内:
+cp/decl.c:528:25: エラー: 代入の左側の被演算子として左辺値が必要です
+  528 |   current_binding_level = newlevel;
+      |                         ^
+...
+make[1]: *** [Makefile:717: cp/decl.o] エラー 1
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.0.1.1750a-elf/gcc' から出ます
+make: *** [Makefile:1470: all-gcc] エラー 2
+%
+
+% ls gcc/cc1
+gcc/cc1
+%
+
+cc1 はビルドできているらしい.
+
+% cd gcc
+% cat a.c
+cat a.c
+int f(int a, int b)
+{
+  return a + b;
+}
+% ./cc1 -quiet a.c
+a.s を生成できている.
+
+正常にインストールはできていないが cc1 のビルド自体はできている.
+
+
+
+
