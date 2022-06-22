@@ -7,65 +7,64 @@ At 0x500, locating .text section
 .text of a.o should have been located at [0x57a, ...)
 but it was located at [0x576, ...)
 
-しかし改めてリンク後の memcpy の最後のアドレスを見てみると 0x576
-になっている.
+Once more, I confirmed the last address of `memcpy' was 0x576.
 
-アセンブル時の start.o の memcpy の先頭アドレスは
+After assembling, the start address of `memcpy' of start.o was:
 
 0000002e <memcpy>:
 ...
 00000078 <.Loc.61.1>:
   78:	30 41       	ret			
 
-0x2e で最後のアドレスが 0x7a になっている.
+0x2e, and the last address was 0x7a (=0x78+2)
 
-一方リンク後は
+On the other hand, after linking:
 
 0000052c <memcpy>:
 ...
 00000574 <.Loc.61.1>:
  574:	30 41       	ret			
 
-0x500 + 0x2c から 0x500 + 0x76
+memcpy was located at [0x500 + 0x2c, 0x500 + 0x76).
 
-と先頭アドレスも最後のアドレスもずれている.
-だからまずは memcpy の先頭アドレスが 0x52e ではなくて 0x52c になる理由を調べてみる.
+i.e. both the start address and the last address was wrong.
+So at first, I decided to investigate the reason why the start address of
+`memcpy' became 0x52c not 0x52e.
 
-
-アセンブル後
+After assembling:
   12:	30 40 00 00 	br	#0x0000		;
 
-リンク後
+After linking:
  512:	fa 3f       	jmp	$-10     	;abs 0x508
 
 
-つまり br 命令(4 バイト)があったときに jmp 命令(2 バイト)に置き代えることができるのならば
-リンカが最適化しているらしいがこれがバグとなって現れたということ.
-
-この最適化をするのであれば .debug_info の
+i.e. `br' instruction (4 bytes) was replaced to `jmp' instruction (2 bytes)
+And that caused this bug. If msp430-elf-ld do this optimization, it has
+to update `DW_AT_high_pc' of the .debug_info section:
 
     <10>   DW_AT_low_pc      : 0x500
     <14>   DW_AT_high_pc     : 0x57a
 
-DW_AT_high_pc の値も変更する必要があるが, やっていなかったということ.
-今回は面倒なので単純にこの最適化をはずすことにする. と思ったが似た話は
-CompactRISC のリンカでもやっていた. そしてそれが問題なのかは不明だが
+But it doesn't.
+
+It's troublesome work, so, I tried to make msp430-elf-ld not do this
+optimization. But this kind of optimization is done by cr16-elf-ld and
+it's not obvious that cr16-el-ld caused the phenomonen described at
 
 ~/lang/53_GNU_tool/gcc_cross/CompactRISC/test/test011/MEMO
 
-のような問題を引き起こしている可能性もある.
+I'm not sure.
 
-まずはこの最適化の箇所を特定する.
+Anyway, at first, I should specify the part of this optimization.
+I created the environment for this investigation at below directory:
 
 ~/lang/53_GNU_tool/gcc_cross/MSP430/test/test022
 
-にコンパクトな環境を準備した.
-
-test.o の .text セクションは
+.text section of test.o is
 
 31400000 b0120000 03433040 0000
                       ^^^^^^^^^
-br 命令は先頭から 11 バイト目から 4 バイト
+where, `br' instruction is the 10'th byte. 
 
 (gdb) b section.c:1523
 (gdb) run
@@ -79,7 +78,8 @@ $14 = 12
 0x8189ae8:	0x03	0x43	0xfa	0x3f
 (gdb)
 
-0xfa 0x3f になっている. これをどこかで変更しているはず.
+At this point, the 10'th byte was 0xfa and 11'th was 0x3f. These will be
+changed somewhere.
 
 
 (gdb) p/x ((char*)location)[10]
@@ -88,10 +88,10 @@ $15 = 0xfa
 $16 = 0x8189aea "\372?"
 (gdb)
 
-これを変更している瞬間を捕える.
+I'll catch the timing of chaning this.
 
-最初 0x30 になっている. これは br 命令の最初の 1 バイト.
-そして次は 0x30 から 0x00 に変更していた. 0xfa ではないが.
+At first, 10'th byte was 0x30, and 0x30 is `br' instruction 1st byte.
+And then it was changed from 0x30 to 0x00 not to 0xfa at below code:
 
 		    /* Fix the opcode right way.  */
 		    bfd_put_16 (abfd, opcode, contents + irel->r_offset - 2);
@@ -102,8 +102,7 @@ $16 = 0x8189aea "\372?"
 							irel->r_offset + 2, 2))
 		      goto error_return;
 
-そしてそれっぽいところから変更している.
-次に 0x00 から 0xfa に変更している.
+And more, it  was changed from 0x00 to 0xfa at below code:
 
 static bfd_reloc_status_type
 msp430_final_link_relocate (reloc_howto_type *	   howto,
@@ -127,7 +126,7 @@ msp430_final_link_relocate (reloc_howto_type *	   howto,
       bfd_put_16 (input_bfd, x, contents - 2);
       break;
 
-ということは 1 つ目のタイミングで .debug_info セクションを変更すれば良さそう.
+That is, at 1st timing, we should modify .debug_info section.
 
 
 	/* Try to turn a 16-bit absolute branch into a 10-bit pc-relative
@@ -138,8 +137,8 @@ msp430_final_link_relocate (reloc_howto_type *	   howto,
 		&& ELF32_R_TYPE (irel->r_info) == R_MSP430_16))
 	  {
 ...
-                  ここで 1 つ目の処理
+                  1st timing operation
 
 
-今回はやはり面倒なのでこの部分をごっそりコンパイルアウトすることにした.
-正常動作を確認している.
+I felt it was troublesome work, so tried to compile out above.
+And then, I confirmed that msp430-elf-ld worked well as I expected.
