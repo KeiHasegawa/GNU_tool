@@ -1,4 +1,429 @@
-新規に 1750A のアセンブラを開発してみた. とは言え milstd1750tools が既にあるので
+(*1)
+
+新規に 1750A のアセンブラを開発してみることにした. とは言え milstd1750tools が既にあるので
 これをなるべくであれば利用する.
 
-(*1)
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG
+% xz -d -c ../binutils-2.36.1-2.src/binutils-2.36.1.tar.xz | tar xf -
+% mv binutils-2.36.1 binutils-2.36.1.1750a-elf
+% cd binutils-2.36.1.1750a-elf
+
+以下のように修正してみた:
+binutils-2.36.1.1750a-elf/configure:
+
+  h8300*-*-*)
+    noconfigdirs="$noconfigdirs target-libgloss"
+    ;;
++ 1750a*-*-*)
++   noconfigdirs="$noconfigdirs target-libgloss"
++   ;;
+  h8500-*-*)
+
+% cd opcodes
+% touch 1750a-{dis,opc}.c
+% cd ../gas/config
+% touch  tc-1750a.{c,h}
+% cd ../..
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=1750a-elf
+% make
+...
+checking for cos in -lm... yes
+*** BFD does not support target 1750a-unknown-elf.
+*** Look in bfd/config.bfd for supported targets.
+make[1]: *** [Makefile:2717: configure-bfd] Error 1
+make[1]: Leaving directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf'
+make: *** [Makefile:853: all] Error 2
+%
+
+% cd bfd
+% touch cpu-1750a.c cpu-1750a.h elf32-1750a.c
+
+以下のように修正:
+
+binutils-2.36.1.1750a-elf/bfd/config.bfd:
+
+  h8300*-*-elf | h8300*-*-rtems*)
+    targ_defvec=h8300_elf32_vec
+    targ_underscore=yes
+    ;;
+
++ 1750a*-*-elf)
++   targ_defvec=m1750a_elf32_vec
++   targ_underscore=yes
++   ;;
+
+  h8300*-*-linux*)
+
+% cd ..
+% make
+...
+configure: error: *** unknown target vector m1750a_elf32_vec
+make[1]: *** [Makefile:2717: configure-bfd] Error 1
+make[1]: Leaving directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf'
+make: *** [Makefile:853: all] Error 2
+%
+
+修正が十分ではなかったらしい. 以下のように修正:
+
+binutils-2.36.1.1750a-elf/bfd/configure:
+
+    h8300_elf32_vec)		 tb="$tb elf32-h8300.lo elf32.lo $elf" ;;
++   m1750a_elf32_vec)		 tb="$tb elf32-1750a.lo elf32.lo $elf" ;;
+    h8300_elf32_linux_vec)	 tb="$tb elf32-h8300.lo elf32.lo $elf" ;;
+
+% make
+...
+libtool: compile:  gcc -DHAVE_CONFIG_H -I. -DBINDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin\" -DLIBDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib\" -I. -I. -I./../include -DHAVE_m1750a_elf32_vec -DHAVE_elf32_le_vec -DHAVE_elf32_be_vec -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g -O2 -MT archures.lo -MD -MP -MF .deps/archures.Tpo -c -DDEFAULT_VECTOR=m1750a_elf32_vec "-DSELECT_VECS=&m1750a_elf32_vec,&elf32_le_vec,&elf32_be_vec" "-DSELECT_ARCHITECTURES=&bfd_1750a_arch" ./archures.c -o archures.o
+<command-line>: error: 'bfd_1750a_arch' undeclared here (not in a function); did you mean 'bfd_v850_arch'?
+...
+%
+
+以下のように修正:
+
+binutils-2.36.1.1750a-elf/bfd/archures.c:
+
+extern const bfd_arch_info_type bfd_h8300_arch;
++extern const bfd_arch_info_type bfd_1750a_arch;
+extern const bfd_arch_info_type bfd_hppa_arch;
+
+% make
+...
+libtool: compile:  gcc -DHAVE_CONFIG_H -I. -DBINDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bin\" -DLIBDIR=\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib\" -I. -I. -I./../include -DHAVE_m1750a_elf32_vec -DHAVE_elf32_le_vec -DHAVE_elf32_be_vec -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -I./../zlib -g -O2 -MT targets.lo -MD -MP -MF .deps/targets.Tpo -c -DDEFAULT_VECTOR=m1750a_elf32_vec "-DSELECT_VECS=&m1750a_elf32_vec,&elf32_le_vec,&elf32_be_vec" "-DSELECT_ARCHITECTURES=&bfd_1750a_arch" ./targets.c -o targets.o
+<command-line>: error: 'm1750a_elf32_vec' undeclared here (not in a function); did you mean 'v850_elf32_vec'?
+...
+%
+
+以下のように修正:
+
+binutils-2.36.1.1750a-elf/bfd/targets.c:
+
+extern const bfd_target h8300_elf32_vec;
++extern const bfd_target m1750a_elf32_vec;
+extern const bfd_target h8300_elf32_linux_vec;
+
+% make
+...
+checking for cos in -lm... yes
+configure: error: *** unknown target architecture bfd_1750a_arch
+make[1]: *** [Makefile:3159: configure-opcodes] Error 1
+make[1]: Leaving directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf'
+make: *** [Makefile:853: all] Error 2
+%
+
+以下のように修正:
+
+binutils-2.36.1.1750a-elf/opcodes/configure:
+
+	bfd_h8300_arch)		ta="$ta h8300-dis.lo" ;;
++	bfd_1750a_arch)		ta="$ta 1750a-dis.lo" ;;
+	bfd_hppa_arch)		ta="$ta hppa-dis.lo" ;;
+
+% make
+...
+gcc -DHAVE_CONFIG_H -I.  -I. -I. -I../bfd -I./config -I./../include -I./.. -I./../bfd -DLOCALEDIR="\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/share/locale\""  -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -Wwrite-strings -I./../zlib -g -O2 -MT output-file.o -MD -MP -MF $depbase.Tpo -c -o output-file.o output-file.c &&\
+mv -f $depbase.Tpo $depbase.Po
+output-file.c: In function 'output_file_create':
+output-file.c:36:43: error: 'TARGET_FORMAT' undeclared (first use in this function)
+   36 |   else if (!(stdoutput = bfd_openw (name, TARGET_FORMAT)))
+      |                                           ^
+...
+make[4]: *** [Makefile:1230: output-file.o] Error 1
+make[4]: Leaving directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf/gas'
+make[3]: *** [Makefile:1275: all-recursive] Error 1
+make[3]: Leaving directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf/gas'
+make[2]: *** [Makefile:817: all] Error 2
+make[2]: Leaving directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf/gas'
+make[1]: *** [Makefile:4939: all-gas] Error 2
+make[1]: Leaving directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf'
+make: *** [Makefile:853: all] Error 2
+%
+
+以下のように修正:
+
+binutils-2.36.1.1750a-elf/gas/configure.tgt:
+
+  h8300-*-elf)				fmt=elf ;;
++ 1750a-*-elf)				fmt=elf ;;
+  h8300-*-linux*)			fmt=elf em=linux ;;
+
+% make
+前と同じエラーが発生. エラーを回避できていない.
+
+以下のように修正:
+
+binutils-2.36.1.1750a-elf/gas/config/tc-1750a.h:
+
+#ifndef TC_1750A_H
+#define TC_1750A_H
+
+#define TARGET_FORMAT "1750a-h8300"
+
+#define TARGET_ARCH bfd_arch_1750a
+
+#define TARGET_BYTES_BIG_ENDIAN	0
+
+#endif // TC_1750A_H
+
+% make
+...
+gcc -DHAVE_CONFIG_H -I.  -I. -I. -I../bfd -I./config -I./../include -I./.. -I./../bfd -DLOCALEDIR="\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/share/locale\""  -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -Wwrite-strings -I./../zlib -g -O2 -MT output-file.o -MD -MP -MF $depbase.Tpo -c -o output-file.o output-file.c &&\
+mv -f $depbase.Tpo $depbase.Po
+In file included from as.h:94,
+                 from output-file.c:21:
+output-file.c: In function 'output_file_create':
+./config/tc-1750a.h:6:21: error: 'bfd_arch_1750a' undeclared (first use in this function); did you mean 'bfd_arch_v850'?
+    6 | #define TARGET_ARCH bfd_arch_1750a
+...
+%
+
+以下のように修正:
+
+binutils-2.36.1.1750a-elf/bfd/bfd.h:
+
+  bfd_arch_pyramid,   /* Pyramid Technology.  */
+  bfd_arch_h8300,     /* Renesas H8/300 (formerly Hitachi H8/300).  */
+#define bfd_mach_h8300         1
+#define bfd_mach_h8300h        2
+#define bfd_mach_h8300s        3
+#define bfd_mach_h8300hn       4
+#define bfd_mach_h8300sn       5
+#define bfd_mach_h8300sx       6
+#define bfd_mach_h8300sxn      7
++ bfd_arch_1750a,
+  bfd_arch_pdp11,     /* DEC PDP-11.  */
+
+% make
+...
+libtool: link: gcc -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -Wwrite-strings -I./../zlib -g -O2 -o as-new app.o as.o atof-generic.o compress-debug.o cond.o depend.o dwarf2dbg.o dw2gencfi.o ecoff.o ehopt.o expr.o flonum-copy.o flonum-konst.o flonum-mult.o frags.o hash.o input-file.o input-scrub.o listing.o literal.o macro.o messages.o output-file.o read.o remap.o sb.o stabs.o subsegs.o symbols.o write.o config/tc-1750a.o config/obj-elf.o config/atof-ieee.o  ../opcodes/.libs/libopcodes.a ../bfd/.libs/libbfd.a -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf/zlib -lz ../libiberty/libiberty.a -ldl
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: symbols.o: in function `symbol_make':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf/gas/symbols.c:682: undefined reference to `md_undefined_symbol'
+...
+make[4]: *** [Makefile:1085: as-new] Error 1
+make[4]: Leaving directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf/gas'
+make[3]: *** [Makefile:1275: all-recursive] Error 1
+make[3]: Leaving directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf/gas'
+make[2]: *** [Makefile:817: all] Error 2
+make[2]: Leaving directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf/gas'
+make[1]: *** [Makefile:4939: all-gas] Error 2
+make[1]: Leaving directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf'
+make: *** [Makefile:853: all] Error 2
+%
+
+as-new のリンクでエラーするところまでできている.
+
+他のプロセッサの as-new を参考にリンクエラーを一つづつ回避する.
+
+2022.06.23 14:28 as-new のリンクに成功.
+
+% make
+...
+checking size of void *... 4
+*** ld does not support target 1750a-unknown-elf
+*** see ld/configure.tgt for supported targets
+make[1]: *** [Makefile:7164: configure-ld] Error 1
+make[1]: Leaving directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf'
+make: *** [Makefile:853: all] Error 2
+%
+
+以下のように修正:
+
+binutils-2.36.1.1750a-elf/ld/configure.tgt:
+
+h8300-*-elf* | h8300-*-rtems*)
+			targ_emul=h8300elf;
+			targ_extra_emuls="h8300helf h8300self h8300hnelf h8300snelf h8300sxelf h8300sxnelf"
+			;;
++1750a-*-elf*)
++			targ_emul=1750aelf;
++			;;
+h8300-*-linux*)
+
+% make
+...
+checking size of void *... 4
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf/ld/configure: line 17641: ./emulparams/1750aelf.sh: No such file or directory
+make[1]: *** [Makefile:7164: configure-ld] Error 1
+make[1]: Leaving directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf'
+make: *** [Makefile:853: all] Error 2
+%
+
+以下のファイルを追加:
+
+binutils-2.36.1.1750a-elf/ld/emulparams/1750aelf.sh:
+
+SCRIPT_NAME=elf
+OUTPUT_FORMAT="elf32-1750a"
+NO_REL_RELOCS=yes
+TEXT_START_ADDR=0x100
+MAXPAGESIZE=2
+TARGET_PAGE_SIZE=1
+ARCH=1750a
+TEMPLATE_NAME=elf
+EMBEDDED=yes
+STACK_ADDR=0xfffc
+
+% make
+...
+gcc -DHAVE_CONFIG_H -I.  -I. -I. -I../bfd -I./../bfd -I./../include -I./../zlib  -g -O2 -DLOCALEDIR="\"/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/share/locale\""  -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -DELF_LIST_OPTIONS=TRUE -DELF_SHLIB_LIST_OPTIONS=FALSE -DELF_PLT_UNWIND_LIST_OPTIONS=FALSE -g -O2 -MT ldbuildid.o -MD -MP -MF .deps/ldbuildid.Tpo -c -o ldbuildid.o ldbuildid.c
+mv -f .deps/ldbuildid.Tpo .deps/ldbuildid.Po
+make[4]: *** No rule to make target 'e1750aelf.o', needed by 'ld-new'.  Stop.
+make[4]: Leaving directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf/ld'
+...
+% touch ld/e1750aelf.c
+% make
+...
+libtool: link: gcc -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wstack-usage=262144 -DELF_LIST_OPTIONS=TRUE -DELF_SHLIB_LIST_OPTIONS=FALSE -DELF_PLT_UNWIND_LIST_OPTIONS=FALSE -g -O2 -o ld-new ldgram.o ldlex-wrapper.o lexsup.o ldlang.o mri.o ldctor.o ldmain.o ldwrite.o ldexp.o ldemul.o ldver.o ldmisc.o ldfile.o ldcref.o plugin.o ldbuildid.o e1750aelf.o ldelf.o ldelfgen.o  ../bfd/.libs/libbfd.a -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf/zlib ../libctf/.libs/libctf.a /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf/bfd/.libs/libbfd.a -L/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf/libctf/../libiberty -liberty ../libiberty/libiberty.a -lz -ldl
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: ldemul.o:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf/ld/ldemul.c:320: undefined reference to `ld_1750aelf_emulation'
+...
+%
+
+以下のように修正:
+
+binutils-2.36.1.1750a-elf/ld/e1750aelf.c:
+
+#include "sysdep.h"
+#include "bfd.h"
+#include "getopt.h"
+#include "bfdlink.h"
+#include "ctf-api.h"
+
+#include "ld.h"
+#include "ldmisc.h"
+#include "ldexp.h"
+#include "ldlang.h"
+#include "ldfile.h"
+#include "ldemul.h"
+
+ld_emulation_xfer_type ld_1750aelf_emulation;
+
+% make
+
+ビルド成功. おそらく全く動作しない as と ld とができている.
+
+まずは例によって 0x100 番地に nop を数個配置したプログラムをビルドできるようにする.
+
+% cd gas
+M-x gdb
+gdb --annotate=3 ./as-new
+(gdb) run -o test.o test.S
+Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf/gas/as-new -o test.o test.S
+Assembler messages:
+Fatal error: selected target format 'elf32-1750a' unknown
+[Inferior 1 (process 30329) exited with code 01]
+(gdb)
+
+エラーメッセージを出力しているのは以下:
+
+void
+output_file_create (const char *name)
+{
+  if (name[0] == '-' && name[1] == '\0')
+    as_fatal (_("can't open a bfd on stdout %s"), name);
+
+  else if (!(stdoutput = bfd_openw (name, TARGET_FORMAT)))
+    {
+      bfd_error_type err = bfd_get_error ();
+
+      if (err == bfd_error_invalid_target)
+	as_fatal (_("selected target format '%s' unknown"), TARGET_FORMAT);  ★
+
+そしてエラーを引き起こしている原因は以下:
+
+static const bfd_target *
+find_target (const char *name)
+{
+  const bfd_target * const *target;
+  const struct targmatch *match;
+
+  for (target = &bfd_target_vector[0]; *target != NULL; target++)
+    if (strcmp (name, (*target)->name) == 0)
+      return *target;
+
+(gdb) p name
+$1 = 0x80e63b9 "elf32-1750a"
+(gdb) p (*target)->name
+$2 = 0x80e62d8 "1750a-elf"
+(gdb)
+
+以下のように修正:
+
+binutils-2.36.1.1750a-elf/bfd/elf32-1750a.c:
+
+-#define TARGET_LITTLE_NAME		"1750a-elf"
++#define TARGET_LITTLE_NAME		"elf32-1750a"
+
+ビルドし直して再度実行
+
+(gdb) run
+...
+
+以下の埋め込んでおいたブレークポイントにヒット:
+
+void md_assemble(char* op)
+{
+  (void)op;
+  asm("int3");
+}
+
+(gdb) p op
+$3 = 0x8155198 "nop"
+(gdb)
+
+1750A の nop 命令は 0xff00 らしい.
+
+h8300-elf-as の動作を真似して以下のようにしてみた:
+
+void md_assemble(char* op)
+{
+  if (strcmp(op, "nop"))
+    abort();
+  char* p = frag_more(2);
+  p[0] = 0xff;
+  p[1] = 0x00;
+  dwarf2_emit_insn(2);
+}
+
+% ./as-new -o test.o -g test.S
+% ../binutils/objdump -s test.o
+
+test.o:     file format elf32-1750a
+
+Contents of section .text:
+ 0000 ff00ff00 ff00ff00                    ........        
+%
+
+.text セクションは正しいが, objdump で逆アセンブルが未実装:
+
+% ../binutils/objdump -d test.o
+
+test.o:     file format elf32-1750a
+
+../binutils/objdump: can't disassemble for architecture 1750a
+
+また -g 指定しているが .debug_line が生成されていない.
+
+% ../binutils/objdump -x test.o
+
+test.o:     file format elf32-1750a
+test.o
+architecture: 1750a, flags 0x00000010:
+HAS_SYMS
+start address 0x00000000
+
+Sections:
+Idx Name          Size      VMA       LMA       File off  Algn
+  0 .text         00000008  00000000  00000000  00000034  2**0
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+  1 .data         00000000  00000000  00000000  0000003c  2**0
+                  CONTENTS, ALLOC, LOAD, DATA
+  2 .bss          00000000  00000000  00000000  0000003c  2**0
+                  ALLOC
+SYMBOL TABLE:
+00000000 l    d  .text	00000000 .text
+00000000 l    d  .data	00000000 .data
+00000000 l    d  .bss	00000000 .bss
+00000000 l       .text	00000000 start
+00000006 l       .text	00000000 end
+
+
+%
