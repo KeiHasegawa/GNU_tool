@@ -1,8 +1,6 @@
 現状自前の cc1 の生成した hello world 11 を -g オプション付きでコンパイルしたものを
-gdb で動作させると
-
-main 函数で停止できているがそこから f にステップインしたときプロローグを適切にスキップでき
-ていない.
+gdb で動作させると main 函数で停止できているがそこから f にステップインしたときプロローグを
+適切にスキップできていない.
 
 この原因を調べてみる.
 
@@ -20,7 +18,7 @@ step_command のブレークポイントにヒット
 handle_step_into_function のブレークポイントにヒットしていた
 (gdb)
 
-プロローグがスキップされる処理は
+プロローグがスキップされる処理は以下:
 
 rs6000-tdep.c:1451
 static CORE_ADDR
@@ -110,7 +108,6 @@ $3 = false
 $7 = false
 (gdb) 
 
-
 ということは
 
 frame_id_eq (frame_unwind_caller_id (get_current_frame ()), ecs->event_thread->control.step_stack_frame_id)
@@ -159,7 +156,6 @@ $14 = {level = 0, pspace = 0x8e2b860, aspace = 0x8e2bd08,
   stop_reason = UNWIND_NO_REASON, stop_string = 0x0}
 (gdb)
 
-
 オリジナルの cc1
 (gdb) p/x frame_unwind_caller_id (get_current_frame ())
 $11 = {stack_addr = 0x20000, code_addr = 0x1fc, special_addr = 0x0, 
@@ -183,8 +179,7 @@ code_addr = 0x0
 ここで決定的な違いが出ている. code_addr = 0x210 になれば例の条件式は true
 になる.
 
-0x1fc はオリジナルの cc1 の main 函数のアドレスで
-自前の cc1 では 0x210 になる.
+0x1fc はオリジナルの cc1 の main 函数のアドレスで自前の cc1 では 0x210 になる.
 
 0x20000 は main 函数が呼ばれた時点でのスタックポインタの値でこれはオリジナルも自前も
 同じ値.
@@ -268,7 +263,6 @@ $18 = 0x20000
 を有効にした. この修正を入れた自前の cc1 でリビルドした a.elf で同様の
 ことを試した.
 
-
 (gdb) p/x ecs->event_thread->control.step_stack_frame_id
 $22 = {stack_addr = 0x20000, code_addr = 0x210, special_addr = 0x0, 
   stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
@@ -332,7 +326,6 @@ stack_addr = 0x1fff0, code_addr = 0x1c8
 
 一方オリジナルの cc1 では
 
-
 (gdb) p/x *$21
 $22 = {level = 0x0, pspace = 0x8e2b858, aspace = 0x8e2bd00, 
   prologue_cache = 0x8e94314, unwind = 0x88938a0, prev_arch = {p = 0x1, 
@@ -347,8 +340,7 @@ $22 = {level = 0x0, pspace = 0x8e2b858, aspace = 0x8e2bd00,
 
 stack_addr = 0x1fff0, code_addr = 0x1c8
 
-でこれも合っている.
-ということは frame_unwind_caller_id の計算で違いが出ているということ.
+でこれも合っている. ということは frame_unwind_caller_id の計算で違いが出ているということ.
 
 オリジナルの cc1
 (gdb) p/x *next_frame
@@ -496,7 +488,6 @@ $38 = {level = 0x1, pspace = 0x8e2b860, aspace = 0x8e2bd08,
 
 これを見ると this_frame の計算で違いが出ているように見える.
 
-
 オリジナルの cc1
 (gdb) p/x this_frame->this_id.value.stack_addr
 $41 = 0x20000
@@ -553,7 +544,6 @@ rs6000_frame_this_id (struct frame_info *this_frame, void **this_cache,
   (*this_id) = frame_id_build (info->base, get_frame_func (this_frame));
   ここで作っていた. info->base = 0x1fff0
 }
-
 
 オリジナルの cc1 
 (gdb) where
