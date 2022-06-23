@@ -1,12 +1,11 @@
-これが合っていない
+I thought below was not correct:
+
 00000014 00000028 00000000 FDE cie=00000000 pc=000001c8..00000210
   DW_CFA_advance_loc4: 4 to 000001cc
   DW_CFA_offset: r1 at cfa+0
   DW_CFA_def_cfa_offset: 24
 
-と考えた.
-
-現状
+At this point, `stwu' was implemented like below:
 
 ; sp := sp - (size+12)
 ; [sp] := sp
@@ -21,7 +20,7 @@
   ""
   "stwu	1, -%0(1)")
 
-としているものを
+Then I changed like below:
 
 ; {[sp - delta] := sp ; sp := sp - delta}
 (define_insn "stwu"
@@ -37,19 +36,18 @@
   ""
   "stwu	1, -%0(1)")
 
-のように変更.
+But ppc-elf-gdb did not change its motion. It could not still skip prologue
+suitably.
 
-しかしデバッガに動きの違いはなかった.
 
-
-オリジナル
+Original `cc1':
    (LR_REGNO			96)
 
-これと合わせてみる.
+I tried to do the same manner above.
 
 2022.02.15 7:10
 
-where コマンドの結果は少し変化したが以前できていない.
+`where' command result was changed but still not correct.
 
 Breakpoint 1, main () at a.c:10
 10	  printf("hello world %d\n", f(5, 6));
@@ -67,7 +65,7 @@ Command aborted.
 A debugging session is active.
 
 
-一旦修正した gen_stwu を元に戻した
+Once I cancelled the fix of `stwu':
 
 ; sp := sp - (size+12)
 ; [sp] := sp
@@ -82,7 +80,7 @@ A debugging session is active.
   ""
   "stwu	1, -%0(1)")
 
-そして
+And I did like below: 
 
 #define FRAME_TRUE
 #define USE_FAKE
@@ -103,13 +101,16 @@ void ppc_expand_prologue()
   emit_insn(gen_stwu(gen_rtx_CONST_INT(Pmode, size+12)));
 #endif
 
-分かりにくいが stwu 命令は sp := sp - (size+12) だけやっていることに変更.
+It's not easy to read above code but `stwu' instruction
+just did
 
-これにより main 函数の .debug_frame は
+sp := sp - (size+12)
+
+Then `main' .debug_frame
 
 00000040 00000028 00000000 FDE cie=00000000 pc=00000210..00000268
   DW_CFA_advance_loc4: 4 to 00000214
-  DW_CFA_offset_extended_sf: r1 at cfa+16  # これが外れる
+  DW_CFA_offset_extended_sf: r1 at cfa+16  # This would be removed
   DW_CFA_def_cfa_offset: 16
   DW_CFA_advance_loc4: 12 to 00000220
   DW_CFA_offset_extended_sf: r96 at cfa+4
@@ -118,7 +119,7 @@ void ppc_expand_prologue()
   DW_CFA_def_cfa_register: r31
   DW_CFA_nop
 
-から以下になった
+became like below:
 
 0000003c 00000024 00000000 FDE cie=00000000 pc=00000210..00000268
   DW_CFA_advance_loc4: 4 to 00000214
@@ -129,4 +130,5 @@ void ppc_expand_prologue()
   DW_CFA_advance_loc4: 4 to 00000224
   DW_CFA_def_cfa_register: r31
 
-しかし動作は改善されず.
+But ppc-elf-gdb still could not work well.
+
