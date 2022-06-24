@@ -427,3 +427,322 @@ SYMBOL TABLE:
 
 
 %
+
+まず .debug_line 等のセクションが生成されない理由を調べてみる.
+
+(gdb) b bfd_set_section_contents
+(gdb) run
+...
+bfd_set_section_contents のブレークポイントにヒット
+(gdb) p section->name
+$14 = 0x80f1c32 ".text"
+(gdb) p section->next->name
+$15 = 0x80f1c38 ".data"
+(gdb) p section->next->next->name
+$16 = 0x80f1c3e ".bss"
+(gdb) p section->next->next->next->name
+$17 = 0x80f2867 ".debug_line"
+(gdb)
+
+上は h8300-elf-as の動作. 通常はこのようにセクションリストに .debug_line がある.
+以下は現状の 1750a-elf-as の動作
+
+bfd_set_section_contents のブレークポイントにヒット
+(gdb) p section->name
+$4 = 0x80e8442 ".text"
+(gdb) p section->next->name
+$5 = 0x80e8448 ".data"
+(gdb) p section->next->next->name
+$6 = 0x8107292 ".bss"
+(gdb) p section->next->next->next->name
+Cannot access memory at address 0x0
+(gdb) 
+
+.debug_line がリストに入っていない. h8300-elf-as でセクションリストに .debug_line が
+入るタイミングを捕える. もしかすると 1750a-elf-as で単純に -g オプションを認識していないだ
+けなのかもしれない.
+
+static inline void
+bfd_section_list_remove (bfd *abfd, asection *s)
+{
+  asection *next = s->next;
+  asection *prev = s->prev;
+  if (prev)
+    prev->next = next;   ★
+  else
+...
+
+.bss セクションの次に .debug_line がくるのは上の箇所.
+
+.text -> .data -> .bss -> *GAS `reg' section* -> *GAS `expr' section*
+-> .debug_line
+
+というリストから 2 つが削除されて .bss の次が .debug_line になる.
+最初に .debug_line がセクションリストに入れられるのは以下:
+
+static inline void
+bfd_section_list_append (bfd *abfd, asection *s)
+{
+...
+  abfd->section_last = s;  ★
+}
+
+そしてこれは以下から呼び出されている:
+
+  /* Create and switch to the line number section.  */
+  if (empty_debug_line)
+    {
+      line_seg = subseg_new (".debug_line", 0);  ★
+      bfd_set_section_flags (line_seg,
+			     SEC_READONLY | SEC_DEBUGGING | SEC_OCTETS);
+    }
+
+1750a-elf-as では上の if 文にきていない. 以下の条件が成立して 1750a-elf-as では
+上の if 文に到達していない.
+
+  if ((!all_segs && emit_other_sections)
+      || (!emit_other_sections && !empty_debug_line))
+    /* If there is no line information and no non-empty .debug_info
+       section, or if there is both a non-empty .debug_info and a non-empty
+       .debug_line, then we do nothing.  */
+    return;
+
+以下は 1750a-elf-as の結果:
+(gdb) p (!all_segs && emit_other_sections)
+$7 = 1
+(gdb) p (!emit_other_sections && !empty_debug_line)
+$8 = 0
+(gdb) p !all_segs
+$9 = 1
+(gdb) 
+
+最初の条件が成立している. そしてそれは all_segs が 0 になっているから. h8300-elf-as では
+以下で all_segs の値にセットしている:
+
+      s->head = NULL;
+      *last_seg_ptr = s;  ★
+      last_seg_ptr = &s->next;
+      seg_info (seg)->dwarf2_line_seg = s;
+
+そのときの呼び出し履歴は以下:
+(gdb) where
+#0  get_line_subseg (seg=0x82b61d0, subseg=0, create_p=1) at dwarf2dbg.c:297
+#1  0x08050db3 in dwarf2_gen_line_info_1 (label=0x82a3314, loc=0xbffff254) at dwarf2dbg.c:528
+#2  0x08050efe in dwarf2_gen_line_info (ofs=0, loc=0xbffff254) at dwarf2dbg.c:584
+#3  0x080519e1 in dwarf2_emit_insn (size=2) at dwarf2dbg.c:950
+#4  0x08077ad7 in md_assemble (str=0x82a51a8 "nop") at config/tc-h8300.c:2063
+#5  0x08061360 in read_a_source_file (name=0xbffff830 "test.S") at read.c:1232
+#6  0x0804de56 in perform_an_assembly_pass (argc=0, argv=0x82a0c44) at as.c:1240
+#7  0x0804e248 in main (argc=2, argv=0x82a0c40) at as.c:1404
+(gdb) 
+
+
+1750a-elf-as では以下の箇所で函数から戻っているため .debug_line セクションが追加されていない:
+
+void
+dwarf2_emit_insn (int size)
+{
+  struct dwarf2_line_info loc;
+
+  if (debug_type != DEBUG_DWARF2
+      ? !dwarf2_loc_directive_seen
+      : !seen_at_least_1_file ())
+    return;  ★
+
+(gdb) p debug_type
+$11 = DEBUG_UNSPECIFIED
+(gdb)
+
+これが直接の原因. h8300-elf-as では以下で DEBUG_DWARF2 がセットされている:
+
+	  else if (IS_ELF)
+	    {
+	      debug_type = DEBUG_DWARF2; ★
+	      dwarf_level = 2;
+	    }
+
+以下が原因らしい:
+
+int md_parse_option(int c, const char* arg)
+{
+  (void)c;
+  (void)arg;
+- return 1;
++ return 0;
+}
+
+この修正を入れたところ以下の函数に埋め込んだブレークポイントにヒットしている:
+
+arelent* tc_gen_reloc(asection* sec, fixS* fixP)
+{
+  (void)sec;
+  (void)fixP;
+  asm("int3");
+  return 0;
+}
+
+修正なしのままで生成された test.o を確認してみた:
+
+% ../binutils/objdump -g test.o
+
+test.o:     file format elf32-1750a
+
+Raw dump of debug contents of section .debug_line (loaded from test.o):
+
+../binutils/objdump: Warning: Only DWARF version 2, 3, 4 and 5 line info is currently supported.
+../binutils/objdump: Warning: Corrupt unit length (0x0) found in section .debug_info
+Contents of the .debug_abbrev section (loaded from test.o):
+
+  Number TAG (0x0)
+   1      DW_TAG_compile_unit    [no children]
+    DW_AT_stmt_list    DW_FORM_data4
+    DW_AT_low_pc       DW_FORM_addr
+    DW_AT_high_pc      DW_FORM_addr
+    DW_AT_name         DW_FORM_strp
+    DW_AT_comp_dir     DW_FORM_strp
+    DW_AT_producer     DW_FORM_strp
+    DW_AT_language     DW_FORM_data2
+    DW_AT value: 0     DW_FORM value: 0
+
+Contents of the .debug_aranges section (loaded from test.o):
+
+../binutils/objdump: Warning: Corrupt unit length (0x0) found in section .debug_info
+../binutils/objdump: Warning: Only DWARF 2 and 3 aranges are currently supported.
+
+Contents of the .debug_str section (loaded from test.o):
+
+  0x00000000 74657374 2e53002f 6d656469 612f6361 test.S./media/ca
+  0x00000010 38353066 35322d30 3630352d 34326137 850f52-0605-42a7
+  0x00000020 2d396664 342d3839 39646539 65646634 -9fd4-899de9edf4
+  0x00000030 36312f77 6f726b2f 474e555f 4c414e47 61/work/GNU_LANG
+  0x00000040 2f62696e 7574696c 732d322e 33362e31 /binutils-2.36.1
+  0x00000050 2e313735 30612d65 6c662f67 61730047 .1750a-elf/gas.G
+  0x00000060 4e552041 5320322e 33362e31 00       NU AS 2.36.1.
+
+%
+
+.debug_line セクションは生成されるようになったが .debug_line セクション, .debug_aranges
+セクションが正しくないらしい.
+
+以下のように h8300-elf-as の一部のコードを真似してみた:
+
+arelent* tc_gen_reloc(asection* sec, fixS* fixp)
+{
+  (void)sec;
+  arelent* rel = XNEW(arelent);
+  rel->sym_ptr_ptr = XNEW(asymbol*);
+  *rel->sym_ptr_ptr = symbol_get_bfdsym(fixp->fx_addsy);
+  rel->address = fixp->fx_frag->fr_address + fixp->fx_where;
+  rel->addend = fixp->fx_offset;
+  bfd_reloc_code_real_type r_type = fixp->fx_r_type;
+  rel->howto = bfd_reloc_type_lookup(stdoutput, r_type);
+  assert(rel->howto);
+  return rel;
+}
+
+するとこれにより以下の函数に埋め込んだブレークポイントにヒットした:
+
+static reloc_howto_type*
+bfd_elf32_bfd_reloc_type_lookup(bfd* abfd, bfd_reloc_code_real_type code)
+{
+  (void)abfd;
+  (void)code;
+  asm("int3");
+  return NULL;
+}
+
+ここもそれなりに実装してみる. 他のツールではテーブルから何かを探して返すということをやっているが
+ここではそうしないで簡単にしてみた:
+
+static reloc_howto_type*
+bfd_elf32_bfd_reloc_type_lookup(bfd* abfd, bfd_reloc_code_real_type code)
+{
+  (void)abfd;
+  if (code == BFD_RELOC_32) {
+    static reloc_howto_type ret = {
+      ...
+    };
+    return &ret;
+  }
+  asm("int3");
+  return NULL;
+}
+
+しかし実行時に何かでエラーしている:
+
+test.S: Assembler messages:
+test.S: Fatal error: test.S:0: bad return from bfd_install_relocation: 0
+
+
+  s = bfd_install_relocation (stdoutput, reloc,
+			      fragp->fr_literal, fragp->fr_address,
+			      sec, &err);
+  switch (s)
+    {
+...
+    default:
+      as_fatal (_("%s:%u: bad return from bfd_install_relocation: %x"),
+		file, line, s);  ★
+
+static bfd_reloc_status_type
+special(bfd* input_bfd, arelent* reloc_entry, asymbol* sym,
+	void* p, asection* input_section, bfd* output_bfd, char** arg)
+{
+...
+  return 0;
+}
+
+  if (code == BFD_RELOC_32) {
+    static reloc_howto_type ret = {
+...    
+      .special_function = special,
+...      
+    };
+
+special で単に 0 を返しているのがまずかったらしい. ここを修正したところ code = BFD_RELOC_16
+に対して bfd_elf32_bfd_reloc_type_lookup が呼び出されたのでそれも実装しておいた.
+これにより以下のように .debug_line 等のセクションが生成されるようにはなった:
+
+% ../binutils/objdump -s test.o
+
+test.o:     file format elf32-1750a
+
+Contents of section .text:
+ 0000 ff00ff00 ff00ff00                    ........        
+Contents of section .debug_line:
+ 0000 00000000 00030000 00000101 fb0e0d00  ................
+ 0010 01010101 00000001 00000100 74657374  ............test
+ 0020 2e530000 00000000 03020000 142f2f30  .S...........//0
+ 0030 02020001 01                          .....           
+Contents of section .debug_info:
+ 0000 00000000 00020000 00000201 00000000  ................
+ 0010 00000000 00000000 00000000 00000000  ................
+ 0020 8001                                 ..              
+Contents of section .debug_abbrev:
+ 0000 01110010 06110112 01030e1b 0e250e13  .............%..
+ 0010 05000000                             ....            
+Contents of section .debug_aranges:
+ 0000 00000000 00020000 00000200 00000000  ................
+ 0010 00000000                             ....            
+Contents of section .debug_str:
+ 0000 74657374 2e53002f 6d656469 612f6361  test.S./media/ca
+ 0010 38353066 35322d30 3630352d 34326137  850f52-0605-42a7
+ 0020 2d396664 342d3839 39646539 65646634  -9fd4-899de9edf4
+ 0030 36312f77 6f726b2f 474e555f 4c414e47  61/work/GNU_LANG
+ 0040 2f62696e 7574696c 732d322e 33362e31  /binutils-2.36.1
+ 0050 2e313735 30612d65 6c662f67 61730047  .1750a-elf/gas.G
+ 0060 4e552041 5320322e 33362e31 00        NU AS 2.36.1.   
+%
+
+ところが,
+
+% ../binutils/objdump -g test.o
+
+test.o:     file format elf32-1750a
+
+Segmentation fault
+%
+
+何かがまずいらしい. おそらく libbfd.a を修正したので objdump も再リンクする必要がある.
+再リンクしたが症状は同じ.
+
