@@ -1,0 +1,30 @@
+gdb-10.2 のビルド
+
+% xz -d -c ../gdb-10.2-1.src/gdb-10.2.tar.xz | tar xf -
+% mv gdb-10.2 gdb-10.2.1750a-elf
+% cd gdb-10.2.1750a-elf/gdb
+
+d30v, fr30, z8k, i960, mmix, z80, i386, pdp11, vax, alpha, m68k, ns32k, spu, arc
+と同じ対処をした.
+
+gdb-10.2.1750a-elf/gdb/configure.tgt:
+
+h8300-*-*)
+	# Target: H8300 processor
+	gdb_target_obs="h8300-tdep.o"
+	gdb_sim=../sim/h8300/libsim.a
+	;;
+
++1750a-*-*)
++	gdb_target_obs="1750a-tdep.o"
++	gdb_sim=../sim/1750a/libsim.a
++	;;
+
+% cp ~/lang/53_GNU_tool/gcc_cross/CompactRISC/cr16-tdep.c.000 1750a-tdep.c
+% cd ..
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=1750a-elf
+% rm -r -f bfd
+% ln -s ../binutils-2.36.1.1750a-elf/bfd .
+% rm -r -f opcodes
+% ln -s ../binutils-2.36.1.1750a-elf/opcodes .
+% make
