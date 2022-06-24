@@ -1,0 +1,21 @@
+%.o : %.S
+	1750a-elf-as -o $@ -g $<
+
+%.o : %.c
+	1750a-elf-gcc -o $@ $< -g -c
+
+%.elf : %.o 
+	1750a-elf-ld -o $@ ../default.o $< -T ../default.x
+
+%.objdump : %.elf
+	1750a-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v 1750a-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.o *.s *.elf *.map *.objdump *.objcopy *.log TAGS *~
