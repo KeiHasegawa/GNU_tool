@@ -1,1 +1,265 @@
 objdump -g で不正メモリアクセスが発生してしまう件の調査
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf/binutils
+M-x gdb
+gdb --annotate=3 ./objdump
+(gdb) run -g ../gas/test.o
+Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf/binutils/objdump -g ../gas/test.o
+
+../gas/test.o:     ファイル形式 elf32-1750a
+
+
+Program received signal SIGSEGV, Segmentation fault.
+0x00000000 in ?? ()
+(gdb) where
+#0  0x00000000 in ?? ()
+#1  0x080b52f2 in elf_slurp_reloc_table_from_section (abfd=abfd@entry=0x81a1a08, asect=asect@entry=0x81a3ecc, rel_hdr=rel_hdr@entry=0x81a8bf4, reloc_count=3, relents=<optimized out>, symbols=0x81a9c60, dynamic=0) at elfcode.h:1525
+#2  0x080b55f5 in bfd_elf32_slurp_reloc_table (abfd=0x81a1a08, asect=0x81a3ecc, symbols=0x81a9c60, dynamic=0) at elfcode.h:1609
+#3  0x080c412b in _bfd_elf_canonicalize_reloc (abfd=0x81a1a08, section=0x81a3ecc, relptr=0x81a9c90, symbols=0x81a9c60) at elf.c:8556
+#4  0x080f6550 in bfd_generic_get_relocated_section_contents (abfd=0x81a1a08, link_info=0xbffff228, link_order=0xbffff1c4, data=<optimized out>, relocatable=0, symbols=0x81a9c60) at reloc.c:8402
+#5  0x080ae4ab in bfd_simple_get_relocated_section_contents (abfd=0x81a1a08, sec=0x81a3ecc, outbuf=0x81a9cc8 "", symbol_table=0x81a9c60) at simple.c:263
+...
+(gdb) up
+
+	res = ebd->elf_info_to_howto_rel (abfd, relent, &rela);   ★
+
+(gdb) p ebd->elf_info_to_howto_rel
+$1 = (bfd_boolean (*)(bfd *, arelent *, Elf_Internal_Rela *)) 0x0
+(gdb) 
+
+単純に函数ポインタがセットされていないだけらしい. 以下のようにして函数
+ポインタメンバをセットした:
+
+static bfd_boolean
+elf32_1750a_info_to_howto(bfd* abfd, arelent* bfd_reloc,
+			  Elf_Internal_Rela* elf_reloc)
+{
+...
+
+#define elf_info_to_howto elf32_1750a_info_to_howto
+
+static bfd_boolean
+elf32_1750a_info_to_howto_rel(bfd* abfd, arelent* bfd_reloc,
+			      Elf_Internal_Rela* elf_reloc)
+{
+...
+
+#define elf_info_to_howto_rel elf32_1750a_info_to_howto_rel
+
+#include "elf32-target.h"   ★
+
+こうすることで不正メモリアクセスはしなくなったがまだ .debug_line セク
+ションや .debug_abbrev が正しくないらしい.
+
+(gd) run --dwarf=line ../gas/test.o
+
+../gas/test.o:     ファイル形式 elf32-1750a
+
+セクション .debug_line のデバッグ内容の生ダンプ:
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf/binutils/objdump: 警告: 現在のところ、DWARF バージョン 2, 3, 4 および 5 のみ行情報をサポートしています。
+[Inferior 1 (process 12445) exited normally]
+(gdb) b warn
+(gdb) run
+...
+warn のブレークポインにヒット
+(gdb)
+
+  SAFE_BYTE_GET_AND_INC (linfo->li_min_insn_length, hdrptr, 1, end);
+
+  if (linfo->li_version >= 4)
+    {
+      SAFE_BYTE_GET_AND_INC (linfo->li_max_ops_per_insn, hdrptr, 1, end);
+
+      if (linfo->li_max_ops_per_insn == 0)
+	{
+	  warn (_("Invalid maximum operations per insn.\n")); ★
+	  return NULL;
+
+(gdb) p linfo->li_version
+$5 = 768
+(gdb) p/x linfo->li_version
+$6 = 0x300
+(gdb) 
+
+linfo->li_version は 3 になるのが期待値. ビッグエンディアン形式で読み出すべきところを
+リトルエンディアン形式で読み出している. と思ったが, これに先立って読み出している
+linfo->li_length は以下のようにリトルエンディアン形式:
+
+(gdb) x/6bx hdrptr
+0x81a3c90:	0x0c	0x00	0x00	0x00	0x00	0x03
+(gdb)
+
+.debug_line セクションの最初の 4 バイトがそもそも間違い. また objdump
+で値を読み出すところも間違い. まずはアセンブラから修正する. と思ったが
+
+% ../binutils/objdump -s test.o
+
+test.o:     file format elf32-1750a
+
+Contents of section .text:
+ 0000 ff00ff00 ff00ff00                    ........        
+Contents of section .debug_line:
+ 0000 00000000 00030000 00000101 fb0e0d00  ................
+      ★
+
+この部分はアセンブラは 0 として生成している. であるとすれば上の 0x0c
+をセットしているのは objdump の可能性が高い.
+
+void
+bfd_putl32 (bfd_vma data, void *p)
+{
+  bfd_byte *addr = (bfd_byte *) p;
+  addr[0] = data & 0xff;                   ★
+  addr[1] = (data >>  8) & 0xff;
+  addr[2] = (data >> 16) & 0xff;
+  addr[3] = (data >> 24) & 0xff;
+}
+
+がっつりリトルエンディアンになっている. 以下の修正を入れた:
+
+-#define TARGET_LITTLE_SYM		m1750a_elf32_vec
++#define TARGET_BIG_SYM		m1750a_elf32_vec
+-#define TARGET_LITTLE_NAME		"elf32-1750a"
++#define TARGET_BIG_NAME		"elf32-1750a"
+
+これで libbfd.a をリビルドし各種ツールを再リンク. もう一度 test.S をア
+センブルし直して改めて objdump の結果は以下:
+
+../gas/test.o:     ファイル形式 elf32-1750a
+
+セクション .debug_line のデバッグ内容の生ダンプ:
+
+  オフセット:                  0x0
+  長さ:                        12
+  DWARF バージョン:            3
+  Prologue の長さ:             7
+  最小命令長:                  1
+  'is_stmt' の初期値:          1
+  Line ベース:                 -5
+  Line 範囲:                   14
+  オペコードベース:            13
+
+ オペコード:
+  オペコード 1 は 0 個の引数を持ちます
+  オペコード 2 は 1 個の引数を持ちます
+  オペコード 3 は 1 個の引数を持ちます
+  オペコード 4 は 1 個の引数を持ちます
+  オペコード 5 は 1 個の引数を持ちます
+  オペコード 6 は 0 個の引数を持ちます
+  オペコード 7 は 0 個の引数を持ちます
+  オペコード 8 は 0 個の引数を持ちます
+  オペコード 9 は 1 個の引数を持ちます
+  オペコード 10 は 0 個の引数を持ちます
+  オペコード 11 は 0 個の引数を持ちます
+  オペコード 12 は 1 個の引数を持ちます
+
+ ディレクトリー表は空です。
+
+ ファイル名表(オフセット 0x1c):
+
+  Entry	Dir	時刻	サイズ	名前
+  1	0	0	0	test.S
+
+ No Line Number Statements.
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf/binutils/objdump: 警告: The length field (0x30200) in the debug_line header is wrong - the section is too small ★
+
+
+警告が出ているのとこの部分には以下のようになるのが期待値:
+
+  Entry	Dir	時刻	サイズ	名前
+  1	0	0	0	test.S
+
+ Line Number Statements:
+  [0x00000027]  拡張命令コード 2: 設定アドレス 0x0
+  [0x0000002c]  Special opcode 7: advance Address by 0 to 0x0 and Line by 2 to 3
+  [0x0000002d]  Special opcode 20: advance Address by 2 to 0x2 and Line by 1 to 4
+  [0x0000002e]  Special opcode 20: advance Address by 2 to 0x4 and Line by 1 to 5
+  [0x0000002f]  Special opcode 21: advance Address by 2 to 0x6 and Line by 2 to 7
+  [0x00000030]  Advance PC by 2 to 0x8
+  [0x00000032]  拡張命令コード 1: 列の終り
+
+警告が出る理由と Line Number Statements がない原因を調査してみる. また
+これに先立って read_debug_line_header が 2 回呼び出されている. 1 回呼
+び出されるのが期待値.
+
+以下は h8300-elf-as によって生成された nop 4 つの .debug_line セクション
+
+セクション .debug_line の内容:
+ 0000 00000031 00030000 001d0201 fb0e0d00  ...1............
+ 0010 01010101 00000001 00000100 74657374  ............test
+ 0020 2e530000 00000000 03020000 14212122  .S...........!!"
+ 0030 02010001 01                          .....           
+
+そして以下は 1750a-elf-as によって生成されたもの
+
+Contents of section .debug_line:
+ 0000 00000000 00030000 00000101 fb0e0d00  ................
+ 0010 01010101 00000001 00000100 74657374  ............test
+ 0020 2e530000 00000000 03020000 142f2f30  .S...........//0
+ 0030 02020001 01                          .....           
+
+[0x2c, 0x30) の部分で差分が出ている. おそらくここいらに問題がある. ま
+ずは objdump 視点で
+
+No Line Number Statements. が出る理由を調べてみる.
+
+ここで最小命令長が 2 であるべきところで 1 になっていることに気付いた.
+
+0x81a3c90:	0x00	0x00	0x00	0x0c	0x00	0x03	0x00	0x00
+0x81a3c98:	0x00	0x07	0x01	0x01	0xfb	0x0e	0x0d	0x00
+                                  ★
+
+アセンブラを修正したがまだ No Line Number Statements. が出ている.
+
+
+      if (data >= end_of_sequence)
+	printf (_(" No Line Number Statements.\n"));  ★
+
+このメッセージを生成しているのは上の箇所.
+
+	  if ((hdrptr = read_debug_line_header (section, data, end, & linfo,
+						& end_of_sequence)) == NULL)  ★
+
+
+この函数の呼び出しで end と end_of_sequence が同じ値になるのが期待値だがそうなっていない.
+
+  * end_of_sequence = data + linfo->li_length + initial_length_size;
+
+正常にできている h8300-elf-objdump の結果は以下:
+(gdb) p linfo->li_length
+$7 = 49
+(gdb) p initial_length_size
+$8 = 4
+(gdb) 
+
+
+そして以下は 1750a-elf-objdump の結果
+(gdb) p linfo->li_length
+$5 = 12
+(gdb) p initial_length_size
+$6 = 4
+(gdb) 
+
+linfo->li_length がおそらく間違えている.
+
+h8300-elf-as の生成結果
+セクション .debug_line の内容:
+ 0000 00000031 00030000 001d0201 fb0e0d00  ...1............
+            ★
+
+1750a-elf-as の生成結果
+セクション .debug_line の内容:
+ 0000 00000000 00030000 00000201 fb0e0d00  ................
+            ★ 
+
+なぜか 1750a-elf-as は上の部分をリロケーションとして生成している. そし
+てそれを objdump で 0x0c にしている.
+
+h8300-elf-as で 0x31 をセットしているのは以下の函数:
+void
+md_apply_fix (fixS *fixP, valueT *valP, segT seg ATTRIBUTE_UNUSED)
+{
+
+単純に 1750a-elf-as ではこれが未実装だった. h8300-elf-as のものをほぼ
+そのままコピーして正常動作を確認できている.

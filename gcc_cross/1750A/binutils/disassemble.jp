@@ -1,0 +1,7 @@
+  aux.disassemble_fn = disassembler (bfd_get_arch (abfd),
+				     bfd_big_endian (abfd),
+				     bfd_get_mach (abfd), abfd);
+  if (!aux.disassemble_fn)
+    {
+      non_fatal (_("can't disassemble for architecture %s\n"),
+		 bfd_printable_arch_mach (bfd_get_arch (abfd), 0));
