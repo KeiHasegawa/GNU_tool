@@ -1,0 +1,30 @@
+現状 0x100 番地に nop を数個配置するプログラムをリンクしようとすると以下のエラーになる:
+
+ld-new: test.elf: can not set architecture: bad value
+
+メッセージを出力している箇所は以下:
+
+  if (!bfd_set_arch_mach (link_info.output_bfd,
+			   ldfile_output_architecture,
+			   ldfile_output_machine))
+    einfo (_("%F%P: %s: can not set architecture: %E\n"), name);   ★
+
+binutils-2.36.1.1750a-elf/ld/e1750aelf.c
+
+で定義されている以下の構造体の変数のメンバが 0 のためにこのエラーが出ている.
+
+ld_emulation_xfer_type ld_1750aelf_emulation = {
+  .emulation_name = "1750aelf",
+  .choose_target = ldemul_default_target,
+  .before_parse = m1750aelf_before_parse,
+  .after_parse = ldelf_after_parse,
+  .set_output_arch = set_output_arch_default,
+  .after_open = m1750aelf_after_open,
+  .after_check_relocs = after_check_relocs_default,
+  .before_place_orphans = ldelf_before_place_orphans,
+  .before_allocation = m1750aelf_before_allocation,
+  .after_allocation = m1750aelf_after_allocation,
+  .finish = finish_default,
+};
+
+上のように値をセットすることで期待した動作をすることができている.
