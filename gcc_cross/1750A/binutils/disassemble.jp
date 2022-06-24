@@ -1,7 +1,31 @@
+現状 objdump で逆アセンブルできていない:
+
+% ./objdump -d ../gas/test.o
+
+../gas/test.o:     file format elf32-1750a
+
+./objdump: can't disassemble for architecture 1750a
+
+%
+
+エラーメッセージは以下の箇所で出ている.
+
   aux.disassemble_fn = disassembler (bfd_get_arch (abfd),
 				     bfd_big_endian (abfd),
 				     bfd_get_mach (abfd), abfd);
   if (!aux.disassemble_fn)
     {
-      non_fatal (_("can't disassemble for architecture %s\n"),
+      non_fatal (_("can't disassemble for architecture %s\n"),  ★
 		 bfd_printable_arch_mach (bfd_get_arch (abfd), 0));
+
+
+disassembler 函数が 1750A 用の逆アセンブル函数を返せば良さそうである.
+
+2022.06.24 16:12 現状以下の函数に埋め込んだブレークポイントにヒットしている.
+
+int print_insn_1750a(bfd_vma memaddr, disassemble_info* info)
+{
+  asm("int3");
+}
+
+2022.06.24 16:48 現状 0xff, 0x00 に対してのみ逆アセンブル結果を nop にするようにできている.
