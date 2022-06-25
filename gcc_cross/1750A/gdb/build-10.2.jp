@@ -28,3 +28,45 @@ h8300-*-*)
 % rm -r -f opcodes
 % ln -s ../binutils-2.36.1.1750a-elf/opcodes .
 % make
+...
+  CXX    init.o
+make[2]: *** 'gdb' に必要なターゲット '../sim/1750a/libsim.a' を make するルールがありません.  中止.
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.1750a-elf/gdb' から出ます
+make[1]: *** [Makefile:10065: all-gdb] エラー 2
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.1750a-elf' から出ます
+make: *** [Makefile:853: all] エラー 2
+%
+
+% cd sim
+% tar xf ~/lang/53_GNU_tool/gcc_cross/ARC/gdb/arc.1.tar
+% mv arc 1750a
+% cd 1750a
+
+arc を 1750a に, あるいは m1750a に変換.
+
+% make
+% cd ../../gdb
+% make
+
+2022.06.25 16:22 現状 0x100 番地に nop を数個配置したプログラムを期待通り実行できていない.
+nop をステップ実行したとき sim_resume(step=1) の呼び出しがあるが 1 命令しか実行すべきで
+ないところをそれ以上実行してしまっている. 以下が間違い:
+
+instruction_word m1750a_fetch(SIM_DESC sd, sim_cia cia)
+{
+  sim_cpu* cpu =  STATE_CPU(sd, 0);
+- return sim_core_read_aligned_4(cpu, cia, read_map, cia);
++ return sim_core_read_aligned_2(cpu, cia, read_map, cia);
+}
+
+ARC 用のコードが残っていた.
+2022.06.25 16:50 0x100 番地に nop を数個配置したプログラムを実行できるようになっている.
+不完全ではあるがこの時点での
+
+1750a-tdep.c を 1750a-tdep.c.1 として
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.1750a-elf/sim/1750a
+
+を 1750a.1.tar としてアップロードしておく.
+
+
