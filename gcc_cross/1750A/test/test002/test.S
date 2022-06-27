@@ -1,7 +1,7 @@
 	.text
 start:
-	li	r15, 0x1000
-	js	r13, 0x128
+	li	r15, stack
+	js	r13, main
 	.word	0xcccb
 	
 	.global  f
@@ -24,7 +24,7 @@ main:
 	lr	r14, r15
 	li	r0, 5
 	li	r1, 6
-	js	r13, 0x10a
+	js	r13, f
 	lr	r15, r14
 	popm	r14, r14
 	urs	r15
