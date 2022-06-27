@@ -1,0 +1,80 @@
+リロケーション
+
+1750A ではリロケーションは例えば以下のように li 命令や js 命令で出現する.
+
+	li	r15, stack
+	js	r13, main
+
+現状では扱えていないがこれができるようにする. 1750A では上の stack や main が 16 ビット
+に収まっていることが必要であり, おそらくこれは
+
+	.text
+start:
+	nop
+	nop
+	nop
+end:
+	nop
+
+この .text セクションを 0x100 番地に配置するのとそれほど変わらない処理なのだと
+想像している.
+
+まずはリロケーションができている h8300-elf-as で
+
+	mov	#stack, sp
+	jsr	main
+
+がどのように処理されているか調べてみる.
+
+tc-h8300.c:488:
+static char *
+parse_exp (char *src, struct h8_op *op)  ★
+{
+  char *save;
+
+  save = input_line_pointer;
+  input_line_pointer = src;
+  expression (&op->exp);                 ★ 共通函数 expr の呼び出し
+  if (op->exp.X_op == O_absent)
+    as_bad (_("missing operand"));
+  src = input_line_pointer;
+  input_line_pointer = save;
+
+  return skip_colonthing (src, &op->mode);
+}
+
+上の部分で stack や main に対する式を生成して, さらに
+
+      fix_new_exp (frag_now,                 ★
+		   offset + where,
+		   size,
+		   &operand->exp,
+		   0,
+		   idx);
+
+上の部分でその式をオブジェクトファイルに生成している.
+これと似たような処理を 1750a-elf-as に組み込むことでリロケーションを実現することができている.
+ポイントとなる部分を抜粋してみた:
+
+	char* q = frag_more(4);
+	q[0] = code;         code は li や js のオペコード 0x84, 0x72 が入る
+	q[1] = n << 4;       n は li のデスティネーションレジスタ r15 あるいは
+	                     js で指定するリンクレジスタ r13
+	q[2] = q[3] = 0;  // relocatable
+	parse_exp(s.c_str(), q+2);
+	dwarf2_emit_insn(4);
+...
+void parse_exp(char* src, const char* curr)
+{
+  char* save = input_line_pointer;
+  input_line_pointer = src;
+  expressionS res;
+  expr(0, &res, expr_normal);               ★
+  if (res.X_op == O_absent)
+    as_bad (_("missing operand"));
+  src = input_line_pointer;
+  input_line_pointer = save;
+  int offset = curr-frag_now->fr_literal;
+  fix_new_exp(frag_now, offset, sizeof(uint16_t), &res, FALSE, BFD_RELOC_16); ★
+}
+
