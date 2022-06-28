@@ -78,3 +78,77 @@ Breakpoint 1, 0x00000128 in l/gcc_cross/1750A/test/test003 () ★ 何かを表�
 #define POINTER_SIZE            16
 
 2022.06.28 14:55 コンパイル結果は変化していないことを確認.
+
+できている h8300-elf-ld で同じことを確認してみた:
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.h8300-elf/ld
+M-x gdb
+gdb --annotate=3 ./ld-new
+(gdb) cd ~/lang/53_GNU_tool/gcc_cross/H8/test/test008
+(gdb) run -o test.elf ../default.o test.o -T ../default.x
+
+たまたまではあるかもしれないが test.o の .debug_aranges セクションの .debug_info オフ
+セットは 0x22 になっている:
+
+.debug_aranges セクションの内容(test.elf より読み込んだもの):
+
+  長さ:                     16
+  バージョン:               2
+  .debug_info 内へのオフセット: 0
+  ポインタサイズ:           2
+  セグメントサイズ:         0
+
+    アドレス   長さ
+    0100 000a 
+    0000 0000 
+  長さ:                     16
+  バージョン:               2
+  .debug_info 内へのオフセット: 22  ★
+
+これをセットしている瞬間を捕えた:
+
+elf32_h8_final_link_relocate (unsigned long r_type, bfd *input_bfd,
+			      bfd *output_bfd ATTRIBUTE_UNUSED,
+			      asection *input_section ATTRIBUTE_UNUSED,
+			      bfd_byte *contents, bfd_vma offset,
+			      bfd_vma value, bfd_vma addend,
+			      struct bfd_link_info *info ATTRIBUTE_UNUSED,
+			      asection *sym_sec ATTRIBUTE_UNUSED,
+			      int is_local ATTRIBUTE_UNUSED)
+{
+...
+    case R_H8_DIR32:
+    case R_H8_DIR32A16:
+    case R_H8_DISP32A16:
+    case R_H8_DIR24A8:
+      value += addend;
+      bfd_put_32 (input_bfd, value, hit_data);  ★
+      return bfd_reloc_ok;
+
+元をたどってみたところ, そもそも呼び出している函数に違いがあった
+
+void
+ldwrite (void)
+{
+...
+  if (!bfd_final_link (link_info.output_bfd, &link_info))
+
+h8300-elf-ld の場合は bfd_elf_final_link
+1750a-elf-ld の場合は _bfd_generic_final_link
+
+上の部分のマクロ展開は以下:
+
+  if (!((*((link_info.output_bfd)->xvec->_bfd_final_link)) (link_info.output_bfd, &link_info)))
+    {
+
+まずは呼び出している函数を合致させてみる. 以下がポイントらしい:
+
+#define elf_backend_relocate_section elf32_h8_relocate_section
+
+2022.06.29 6:28 h8300-elf-ld の実装を真似してそれなりに動作するようになった.
+但しリンク時に以下の警告が出るようになっている:
+
+% 1750a-elf-ld -o test.elf ../default.o test.o -T ../default.x
+1750a-elf-ld: test.elf: warning: allocated section `.text' not in segment
+
+これは自前の cc1 が生成したプログラム以外に対しても出ている. これは別途対処する.
