@@ -1,2 +1,141 @@
 「自前の cc1 が生成したプログラムで objdump の警告が出る件」でリンカを修正したところ
 
+1750a-elf-ld: test.elf: warning: allocated section `.text' not in segment
+
+のようにウォーニングが出力される件の調査. 問題のウォーニングを出力している箇所は以下:
+
+static bfd_boolean
+assign_file_positions_for_non_load_sections (bfd *abfd,
+					     struct bfd_link_info *link_info)
+{
+...
+  for (hdrpp = i_shdrpp + 1; hdrpp < end_hdrpp; hdrpp++)
+    {
+...
+      if (hdr->bfd_section != NULL
+	  && (hdr->bfd_section->filepos != 0
+	      || (hdr->sh_type == SHT_NOBITS
+		  && hdr->contents == NULL)))
+	BFD_ASSERT (hdr->sh_offset == hdr->bfd_section->filepos);
+      else if ((hdr->sh_flags & SHF_ALLOC) != 0)
+	{
+	  if (hdr->sh_size != 0
+	      /* PR 24717 - debuginfo files are known to be not strictly
+		 compliant with the ELF standard.  In particular they often
+		 have .note.gnu.property sections that are outside of any
+		 loadable segment.  This is not a problem for such files,
+		 so do not warn about them.  */
+	      && ! is_debuginfo_file (abfd))
+	    _bfd_error_handler
+	      /* xgettext:c-format */
+	      (_("%pB: warning: allocated section `%s' not in segment"), ★
+	       abfd,
+	       (hdr->bfd_section == NULL
+		? "*unknown*"
+		: hdr->bfd_section->name));
+
+これも h83000-elf-ld と動作の比較を行なってみる. .text セクションに対して 1 つ目の
+if の条件が成立している.
+
+以下は h8300-elf-ld の結果:
+(gdb) p hdr->bfd_section->filepos
+$12 = 84
+(gdb)
+
+以下は 1750a-elf-ld の結果:
+(gdb) p hdr->bfd_section->filepos
+$12 = 0
+(gdb)
+
+これが直接の原因らしい.
+
+以下は h8300-elf-ld の出力に対する h8300-elf-objdump の結果:
+
+セクション:
+Idx Name          Size      VMA       LMA       File off  Algn
+  0 .text         00000008  00000100  00000100  00000054  2**0  ★
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+
+0x54 = 84
+
+一方 1750a-elf-xxx に対しては
+
+セクション:
+Idx Name          Size      VMA       LMA       File off  Algn
+  0 .text         00000008  00000100  00000100  00000034  2**0  ★
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+
+これは 0 というわけではないらしい.
+
+以下は h8300-elf-ld の結果
+
+(gdb) p **((((abfd) -> tdata.elf_obj_data) -> elf_sect_ptr)+1)
+$19 = {sh_name = 4, sh_type = 1, sh_flags = 6, sh_addr = 256, sh_offset = 84, ★
+  sh_size = 8, sh_link = 0, sh_info = 0, sh_addralign = 1, sh_entsize = 0, 
+  bfd_section = 0x81a47a8, contents = 0x0}
+(gdb)
+
+以下は 1750a-elf-ld の結果
+
+(gdb) p **((((abfd) -> tdata.elf_obj_data) -> elf_sect_ptr)+1)
+$19 = {sh_name = 4, sh_type = 1, sh_flags = 6, sh_addr = 256, sh_offset = 0, ★
+  sh_size = 8, sh_link = 0, sh_info = 0, sh_addralign = 1, sh_entsize = 0, 
+  bfd_section = 0x8182a68, contents = 0x0}
+(gdb)
+
+h8300-elf-ld で値をセットしている箇所は以下:
+
+	      if (p->p_type == PT_LOAD)
+		{
+		  this_hdr->sh_offset = sec->filepos = off;
+
+1750a-elf-ld で上の箇所に到達していないが原因は以下の条件が成立しているから:
+
+  if (alloc == 0)  ★
+    {
+      elf_next_file_pos (abfd) = bed->s->sizeof_ehdr;
+      return TRUE;
+    }
+
+一方 h8300-elf-ld では alloc = 1 なので上の条件は成立せず期待した動作になっている.
+alloc の計算方法が以下:
+
+  alloc = 0;
+  for (m = elf_seg_map (abfd); m != NULL; m = m->next)
+    m->idx = alloc++;
+
+
+以下は h8300-elf-ld の結果:
+
+(gdb) p (((abfd) -> tdata.elf_obj_data) -> o->seg_map)
+$23 = (struct elf_segment_map *) 0x81ac68c
+(gdb)
+
+一方 1750a-elf-ld の結果:
+
+(gdb) p (((abfd) -> tdata.elf_obj_data) -> o->seg_map)
+$21 = (struct elf_segment_map *) 0x0
+(gdb)
+
+h8300-elf-ld でこの値をセットしているのは以下:
+
+bfd_boolean
+_bfd_elf_map_sections_to_segments (bfd *abfd, struct bfd_link_info *info)
+{
+...
+      elf_seg_map (abfd) = mfirst; ★
+
+結果的に上は以下の函数から呼び出されていた:
+
+static void
+gldh8300elf_after_allocation (void)
+{
+  int need_layout = bfd_elf_discard_info (link_info.output_bfd, &link_info);
+
+  if (need_layout < 0)
+    einfo (_("%X%P: .eh_frame/.stab edit: %E\n"));
+  else
+    ldelf_map_segments (need_layout);
+}
+
+同じ処理を 1750a-elf-ld に対して行ない正常動作を確認した.
