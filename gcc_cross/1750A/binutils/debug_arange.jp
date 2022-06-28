@@ -1,0 +1,80 @@
+自前の cc1 の生成したプログラムをアセンブル, リンクした ELF ファイルを objdump に
+入力すると警告メッセージが生成される件の調査.
+
+「1750A」 => 「cc1 の雛形」 => 「メモ」
+
+も参照.
+     
+% 1750a-elf-objdump -s test.o
+...
+セクション .debug_aranges の内容:
+ 0000 00000010 00020000 00000200 00000034  ...............4
+ 0010 00000000                             ....            
+...
+% 1750a-elf-objdump -s test.elf
+...
+セクション .debug_aranges の内容:
+ 0000 00000010 00020000 00000200 0100000a  ................
+ 0010 00000000 00000010 00020000 00080200  ................
+ 0020 010a0034 00000000             ^      ...4....        
+...                                 ★
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.1750a-elf/ld/
+M-x gdb
+gdb --annotate=3 ./ld-new
+(gdb) cd ~/lang/53_GNU_tool/gcc_cross/1750A/test/test003
+(gdb) run -o test.elf ../default.o test.o -T ../default.x
+
+gdb から実行して再現している.
+
+(gdb) b bfd_set_section_contents
+(gdb) run
+...
+bfd_set_section_contents のブレークポイントに数回ヒット
+(gdb) p section->name
+$23 = 0x818a65a ".debug_aranges"
+(gdb) x/20bx location
+0x8191a20:	0x00	0x00	0x00	0x10	0x00	0x02	0x00	0x00
+0x8191a28:	0x00	0x00	0x02	0x00	0x01	0x00	0x00	0x0a
+0x8191a30:	0x00	0x00	0x00	0x00
+(gdb) c
+Continuing.
+
+Breakpoint 3, bfd_set_section_contents (abfd=0x817cde8, section=0x8182ee8, location=0x8191a20, offset=20, count=20) at section.c:1496
+(gdb) x/20bx location
+0x8191a20:	0x00	0x00	0x00	0x10	0x00	0x02	0x00	0x00
+0x8191a28:	0x00	0x08 ★ 0x02	0x00	0x01	0x0a	0x00	0x34
+0x8191a30:	0x00	0x00	0x00	0x00
+(gdb)
+
+試しに以下のようにしてみた:
+
+	.section	.debug_aranges,"",@progbits
+	.4byte	0x10
+	.2byte	0x2
+-	.4byte	.Ldebug_info0
++	.4byte	0x22
+
+これであれば勿論警告は出ない. とは言え, 以下のように 1750a-elf-gdb で main のブレーク
+ポイントをセットできていない.
+
+% 1750a-elf-gdb -q -x gdbcom test.elf
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x3e lma 0x100
+Start address 0x100
+Transfer rate: 496 bits in <1 sec.
+(1750a-elf-gdb) b main
+Breakpoint 1 at 0x128     ★ ソースファイルと対応していない
+(1750a-elf-gdb) run
+Starting program: /home/khasegawa/lang/53_GNU_tool/gcc_cross/1750A/test/test003/test.elf 
+
+Breakpoint 1, 0x00000128 in l/gcc_cross/1750A/test/test003 () ★ 何かを表示しようとしている
+(1750a-elf-gdb) 
+
+
+2022.06.28 14:22 以下を 1750a.h に追加して cc1 をリコンパイル中:
+
+#define POINTER_SIZE            16
+
+2022.06.28 14:55 コンパイル結果は変化していないことを確認.
