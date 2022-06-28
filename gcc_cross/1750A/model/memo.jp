@@ -1,0 +1,50 @@
+開発メモ
+
+(*1) 自前の cc1 の生成したプログラムをアセンブル, リンクした ELF ファイルを objdump に
+     入力すると警告メッセージが生成される.
+
+% 1750a-elf-objdump --dwarf=info --dwarf=aranges test.elf
+.debug_info セクションの内容:
+
+  コンパイル単位 @ オフセット 0x0:        ★
+   長さ:        0x1e (32-bit)
+   バージョン:    2
+   省略オフセット: 0x0
+   ポインタサイズ:2
+ <0><b>: 省略番号: 1 (DW_TAG_compile_unit)
+    <c>   DW_AT_stmt_list   : 0x0
+    <10>   DW_AT_low_pc      : 0x100
+    <12>   DW_AT_high_pc     : 0x10a
+    <14>   DW_AT_name        : (間接文字列、オフセット: 0x0): ../default.S
+    <18>   DW_AT_comp_dir    : (間接文字列、オフセット: 0x3): default.S
+    <1c>   DW_AT_producer    : (間接文字列、オフセット: 0x12): /khasegawa/lang/53_GNU_tool/gcc_cross/1750A/test/test003
+    <20>   DW_AT_language    : 32769	(MIPS assembler)
+  コンパイル単位 @ オフセット 0x22:        ★
+   長さ:        0x62 (32-bit)
+...
+.debug_aranges セクションの内容:
+
+  長さ:                     16
+  バージョン:               2
+  .debug_info 内へのオフセット: 0
+  ポインタサイズ:           2
+  セグメントサイズ:         0
+
+    アドレス   長さ
+    0100 000a 
+    0000 0000 
+1750a-elf-objdump: 警告: .debug_aranges セクション内オフセット 0x8 の .debug_info が CU ヘッダを指していません。
+  長さ:                     16
+  バージョン:               2
+  .debug_info 内へのオフセット: 8   ★
+  ポインタサイズ:           2
+  セグメントサイズ:         0
+
+    アドレス   長さ
+    010a 0034 
+    0000 0000 
+%
+
+8 ではなくて 0x22 になるのが期待値. この値を生成しているのはリンカであるからまずはリンカの視点
+から調査してみる.
+
