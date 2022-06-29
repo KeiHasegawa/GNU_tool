@@ -1,0 +1,22 @@
+逆アセンブル時に結果をラベルや函数名にしたほうがいい場合がある:
+
+00000100 <start>:
+ 100:	84 f0 ff fe 	li	r15, 0xfffe <start>  ★
+ 104:	72 d0 01 a0 	js	r13, 0x1a0 <main>    ★
+
+
+void sample(disassemble_info* info)
+{
+...
+  uint16_t imm = ...;
+  
+  if (info->symbol_at_address_func(imm, info)) {
+...
+    info->print_address_func(imm, info); これで fffe <start> を出力
+...
+  }
+
+のようにすることで実現できるらしい. ローカルラベルなどにも対応するには別途違う処理が
+必要らしい.
+
+
