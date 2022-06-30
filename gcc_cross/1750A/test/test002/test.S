@@ -17,7 +17,7 @@ f:
 	aisp	r15, 4
 	popm	r14, r14
 	urs	r15
-	
+
 	.global	main
 main:
 	pshm	r13, r14

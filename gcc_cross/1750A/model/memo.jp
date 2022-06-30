@@ -48,3 +48,184 @@
 8 ではなくて 0x22 になるのが期待値. この値を生成しているのはリンカであるからまずはリンカの視点
 から調査してみる.
 
+  => 1750a-elf-ld に問題があった. 2022.06.29 8:04 に修正できている.
+
+(*2)
+現状自前の cc1 の生成したプログラムを -g オプショション付きで実行すると以下のようになる: 
+
+% 1750a-elf-gdb -q -x gdbcom test.elf
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x3e lma 0x100
+Start address 0x100
+Transfer rate: 496 bits in <1 sec.
+Breakpoint 1 at 0x12c: file test.c, line 8.
+
+Breakpoint 1, main () at test.c:8
+8	  return f(5, 6);
+f (a=5, b=6) at test.c:3
+3	  return a + b;
+#0  f (a=5, b=6) at test.c:3
+#1  0x00000138 in main () at test.c:8
+Backtrace stopped: previous frame inner to this frame (corrupt stack?)  ★
+core: 2 byte read to unmapped address 0x0 at 0x13a
+
+Program received signal SIGSEGV, Segmentation fault.
+0x0000013a in main () at test.c:9
+9	}
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
+%
+
+まず where コンマンドでエラーメッセージが出ているのでそれを修正する. エラーメッセージ
+を出力している箇所は以下:
+
+	  reason = get_frame_unwind_stop_reason (trailing);
+	  if (reason >= UNWIND_FIRST_ERROR)
+	    printf_filtered (_("Backtrace stopped: %s\n"),  ★
+			     frame_stop_reason_string (trailing));
+
+そして間接的な原因は以下:
+
+  if (get_frame_type (this_frame) == NORMAL_FRAME
+      && this_frame->next->unwind->type == NORMAL_FRAME
+      && frame_id_inner (get_frame_arch (this_frame->next),
+			 get_frame_id (this_frame),
+			 get_frame_id (this_frame->next)))
+...
+	  this_frame->stop_reason = UNWIND_INNER_ID;  ★
+
+(gdb) p/x get_frame_id (this_frame)
+$6 = {stack_addr = 0x13c, code_addr = 0x128, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb) p/x get_frame_id (this_frame->next)
+$7 = {stack_addr = 0xffc, code_addr = 0x10a, special_addr = 0x0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x0, 
+  artificial_depth = 0x0}
+(gdb)
+
+stack_addr = 0x13c が間違い. このターゲットプログラムは
+
+start:
+	addr  : 0x100
+	stack : 0x1000
+	ret   : NA
+
+f:
+	addr  : 0x10a
+	stack : 0x1000 (プロローグ後は 0xffc)
+	ret   : 0x138
+
+main:
+	addr  : 0x128
+	stack : 0x1000
+	ret   : 0x108
+
+おそらく以下が間違い:
+
+(define_insn "pshm"
+  [
+   (set (mem:HI (minus:HI (reg:HI STACK_POINTER_REGNUM) (const_int 2)))
+  	(reg:HI FRAME_POINTER_REGNUM))
+   (set (mem:HI (minus:SI (reg:HI STACK_POINTER_REGNUM) (const_int 4)))
+   	(reg:HI LINK_REGNUM))
+   (set (reg:HI STACK_POINTER_REGNUM)
+	(minus:HI (reg:HI STACK_POINTER_REGNUM) (const_int 4)))
+  ]
+  ""
+  "pshm	r13, r14")
+
+以下のように修正してリビルド:
+
+(define_insn "pshm"
+  [
+   (set (mem:HI (pre_dec:HI (reg:HI STACK_POINTER_REGNUM)))
+   	(reg:HI LINK_REGNUM))
+   (set (mem:HI (pre_dec:HI (reg:HI STACK_POINTER_REGNUM)))
+  	(reg:HI FRAME_POINTER_REGNUM))
+  ]
+  ""
+  "pshm	r13, r14")
+
+これで where コマンドが正しく動作している.
+
+(*3)
+現状
+
+extern int printf(const char*, ...);
+
+void h(long long ll)
+{
+  printf("%lld\n", ll);
+}
+
+に対して以下のようなコードが生成されている:
+
+h:
+	pshm	r13, r14
+	sisp	r15, 10
+	lr	r14, r15
+	st	r0, 0, r14
+	st	r1, 2, r14
+	st	r2, 4, r14
+	st	r3, 6, r14
+	aisp	r15, -8
+	lr	r0, r15
+	st	r0, 8, r14
+	(mem:DI (mem/c:HI (plus:HI (reg/f:HI 14 r14)
+            (const_int 8 [0x8])) [2 %sfp+8 S2 A8]) [0  S8 A8]) := 0, r14
+	li	r0, .LC0
+	js	r13, printf
+	aisp	r15, 8
+	nop
+	lr	r15, r14
+	aisp	r15, 10
+	popm	r14, r14
+	urs	r15
+
+そして現状
+
+#define FIXED_REGISTERS     {  \
+    0,   1,   1,   1,   1,   1,   1,   1, \
+    1,   1,   1,   1,   1,   1,   1,   1, \
+    1 }
+
+のようにしている. 試しに
+
+#define FIXED_REGISTERS     {  \
+    0,   0,   0,   0,   1,   1,   1,   1, \
+    1,   1,   1,   1,   1,   1,   1,   1, \
+    1 }
+
+としてみたところ以下のようになった.
+
+h:
+	pshm	r13, r14
+	sisp	r15, 8
+	lr	r14, r15
+	st	r0, 0, r14
+	st	r1, 2, r14
+	st	r2, 4, r14
+	st	r3, 6, r14
+	aisp	r15, -8
+	lr	r1, r15
+	(mem:DI (reg:HI 1 r1 [23]) [0  S8 A8]) := 0, r14
+	li	r0, .LC0
+	js	r13, printf
+	aisp	r15, 8
+	nop
+	lr	r15, r14
+	aisp	r15, 8
+	popm	r14, r14
+	urs	r15
+
+r1 相対に変化している. 理由は不明だが自分の期待したコードに近い.
+
+と思ったが 1750A には pshm 命令があるからそれを使用したほうが簡単. そこで以下を追加.
+
+#define PUSH_ROUNDING(X)	(X)
+

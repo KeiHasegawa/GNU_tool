@@ -1,8 +1,13 @@
 %.o : %.S
 	1750a-elf-as -o $@ -g $<
 
-%.o : %.c
-	1750a-elf-gcc -o $@ $< -g -c
+%.o : %.s
+	1750a-elf-as -o $@ -g $<
+
+CC1 = /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-10.2.0.1750a-elf.mine/host-i686-pc-linux-gnu/gcc/cc1
+
+%.s : %.c
+	$(CC1) -o $@ $< -quiet -g
 
 %.elf : %.o 
 	1750a-elf-ld -o $@ ../default.o $< -T ../default.x
