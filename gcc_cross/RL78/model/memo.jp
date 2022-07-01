@@ -5,10 +5,11 @@ AARCH64 と同様の手順で cc1 の雛形をビルドすることができる.
 
 以下開発メモ
 
-MSP430 のようにフレームポインタを RL78 にはないから
+(*1)
+MSP430 のようにフレームポインタが RL78 にはないから
 
-constexpr int STACK_POINTER_REGNUM  = 32;
-#define       FRAME_POINTER_REGNUM    32
+#define STACK_POINTER_REGNUM 32
+#define FRAME_POINTER_REGNUM 32
 
 のようにすると
 
@@ -108,7 +109,7 @@ $25 = (rtx_insn *) 0xb78774ec
 $26 = void
 $27 = (rtx_insn *) 0xb78fbae0
 
-これは現状の cc1 とはだいぶ異なっている. おそらく何かしかけがあるらしい.
+これは現状自前の cc1 とはだいぶ異なっている. おそらく何かしかけがあるらしい.
 
 以下をまず生成していることを確認した.
 
@@ -194,18 +195,15 @@ _main:
 	addw	sp, #4
 	ret
 
-これはこれで期待しない結果. 一旦元に戻す:
+これはこれで期待しない結果. 一旦元に戻した.
+後で読み返して気付いたが最終的になぜ今の形になったかが不明. しかし以下の rtx_insn を
+生成できている:
 
-#define FIXED_REGISTERS						\
-  {								\
-      0,     0,     0,     0,     0,     0,     0,     0, 	\
-      1,     1,     1,     1,     1,     1,     1,     1,	\
-      1,     1,     1,     1,     1,     1,     1,     1,	\
-      1,     1,     1,     1,     1,     1,     1,     1,	\
-      1,     1,       1,         1			\
-  }
+    5: e:HI=[sp:HI+0x4]+[sp:HI+0x6]
 
+   12: r8:HI=e:HI
 
+(*2)
 現状 hello world 11 ができている.
 
 -g オプション付きでコンパイルした hello world 11 を rl78-elf-gdb で実行すると
@@ -1031,5 +1029,3 @@ int rl78_arg_pointer_cfa_offset(tree)
 上を削除
 
 そしてリビルド. 2022.02.18 18:24 正常動作を確認.
-
-
