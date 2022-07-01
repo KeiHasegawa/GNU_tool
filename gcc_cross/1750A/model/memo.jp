@@ -229,3 +229,266 @@ r1 相対に変化している. 理由は不明だが自分の期待したコー
 
 #define PUSH_ROUNDING(X)	(X)
 
+リコンパイルして期待するコードが生成できている.
+
+(*4)
+1750A のアドレッシングの問題
+
+現状函数で 4 バイトの領域が必要な場合に以下のようにプロローグを生成している.
+
+	pshm	r13, r14
+	sisp	r15, 4
+	lr	r14, r15
+
+1750A の仕様では sisp の第 2 オペランドは 2 が正しい.
+
+2022.06.30 14:42 以下の修正を入れてリビルド
+
+#if 0
+#define UNITS_PER_WORD		2
+#else
+#define UNITS_PER_WORD		1
+#define BITS_PER_WORD        16
+#endif
+
+生成コードに変化はなし. 一旦元に戻した. オリジナルの cc1 でどのようにフレームサイズを
+計算しているか調べてみる.
+
+函数のプロローグは以下の仕組みを使用してコード生成していた:
+
+#ifdef FUNCTION_PROLOGUE
+  /* First output the function prologue: code to set up the stack frame.  */
+  FUNCTION_PROLOGUE (file, get_frame_size ());
+#endif
+
+...
+#define FUNCTION_PROLOGUE(FILE, SIZE) {   \
+  if (flag_verbose_asm)						\
+...
+ここで get_frame_size() は 2 を返していることを確認した.
+また例の箇所
+
+      insn = final_scan_insn (insn, file, optimize, prescan, 0);
+
+にブレークポイントをセットして, そこで insn をダンプしてみた:
+
+Breakpoint 4, final (first=0xb7c15d80, file=0xb7fcf4c0 <_IO_2_1_stdout_>, optimize=0, prescan=0) at final.c:2022
+(note 21 2 3 [bb 0] NOTE_INSN_BASIC_BLOCK 0)
+$35 = void
+
+Breakpoint 4, final (first=0xb7c15d80, file=0xb7fcf4c0 <_IO_2_1_stdout_>, optimize=0, prescan=0) at final.c:2022
+
+--Type <RET> for more, q to quit, c to continue without paging--c
+source /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-3.0.1.1750a-elf/gcc/final.c:2022:59056:beg:0x8167030
+
+(insn 3 21 4 (set (mem/f:QI (plus:QI (reg/f:QI 14 14)
+                (const_int 1 [0x1])) 0)
+        (reg:QI 0 0)) 27 {movqi} (nil)
+    (nil))
+$36 = void
+	st	r0,1,r14
+
+Breakpoint 4, final (first=0xb7c15d80, file=0xb7fcf4c0 <_IO_2_1_stdout_>, optimize=0, prescan=0) at final.c:2022
+
+(insn 4 3 5 (set (mem/f:QI (plus:QI (reg/f:QI 14 14)
+                (const_int 2 [0x2])) 0)
+        (reg:QI 1 1)) 27 {movqi} (nil)
+    (nil))
+$37 = void
+	st	r1,2,r14
+
+Breakpoint 4, final (first=0xb7c15d80, file=0xb7fcf4c0 <_IO_2_1_stdout_>, optimize=0, prescan=0) at final.c:2022
+
+(note 5 4 25 NOTE_INSN_FUNCTION_BEG 0)
+$38 = void
+
+Breakpoint 4, final (first=0xb7c15d80, file=0xb7fcf4c0 <_IO_2_1_stdout_>, optimize=0, prescan=0) at final.c:2022
+
+(insn 25 5 12 (set (reg:QI 0 0 [21])
+        (mem/f:QI (plus:QI (reg/f:QI 14 14)
+                (const_int 1 [0x1])) 0)) 27 {movqi} (nil)
+    (nil))
+$39 = void
+	l	r0,1,r14
+
+Breakpoint 4, final (first=0xb7c15d80, file=0xb7fcf4c0 <_IO_2_1_stdout_>, optimize=0, prescan=0) at final.c:2022
+
+(insn 12 25 20 (set (reg:QI 0 0 [21])
+        (plus:QI (reg:QI 0 0 [21])
+            (mem/f:QI (plus:QI (reg/f:QI 14 14)
+                    (const_int 2 [0x2])) 0))) 33 {addqi3} (nil)
+    (nil))
+$40 = void
+	a	r0,2,r14
+
+Breakpoint 4, final (first=0xb7c15d80, file=0xb7fcf4c0 <_IO_2_1_stdout_>, optimize=0, prescan=0) at final.c:2022
+
+(insn 20 12 23 (use (reg/i:QI 0 0)) -1 (nil)
+    (nil))
+$41 = void
+
+これは HI であるはずの int が QI として扱われているということ. これが get_frame_size が
+4 ではなくて 2 を返す直接の原因.
+
+それでは最初に第 1 引数の a をスタックに保存する 
+
+(insn 3 21 4 (set (mem/f:QI (plus:QI (reg/f:QI 14 14)
+                (const_int 1 [0x1])) 0)
+        (reg:QI 0 0)) 27 {movqi} (nil)
+    (nil))
+
+がどのように生成されているのか, HI モードであるべきところでなぜ QI に変更されているのか
+その仕組みを調べてみる. 以下が原因の 1 つらしい.
+
+#define Pmode QImode
+
+試しに自前の cc1 に以下の修正を入れてみた:
+
+#if 0
+#define UNITS_PER_WORD		2
+#define Pmode HImode
+#else
+#define UNITS_PER_WORD		1
+#define BITS_PER_WORD		16
+#define Pmode QImode
+#endif
+
+また以下のように HI モードを QI に変更した.
+
+(define_insn "pshm"
+  [
+   (set (mem:QI (pre_dec:HI (reg:QI STACK_POINTER_REGNUM)))
+   	(reg:QI LINK_REGNUM))
+   (set (mem:QI (pre_dec:QI (reg:HI STACK_POINTER_REGNUM)))
+  	(reg:QI FRAME_POINTER_REGNUM))
+  ]
+  ""
+  "pshm	r13, r14")
+
+さらに以下も追加した:
+
+(define_insn "addqi3"
+  [(set
+    (match_operand:QI 0 "nonimmediate_operand" "")
+    (plus:QI
+     (match_operand:QI 1 "general_operand" "")
+     (match_operand:QI 2 "general_operand" "")))]
+  ""
+  "*
+  return m1750a::qi::add(operands[0], operands[1], operands[2]);")
+
+(define_insn "subqi3"
+  [(set
+    (match_operand:QI 0 "nonimmediate_operand" "")
+    (minus:QI
+     (match_operand:QI 1 "general_operand" "")
+     (match_operand:QI 2 "general_operand" "")))]
+  ""
+  "*
+  return m1750a::qi::sub(operands[0], operands[1], operands[2]);")
+
+2022.07.01 7:00 ビルド開始.
+この結果
+
+int f(int a, int b)
+{
+  return a + b;
+}
+
+に対して生成さたコードは以下:
+
+f:
+	pshm	r13, r14
+	r15 := r15 - 4
+	r14 := r15
+	st	r0, 0, r14
+	st	r1, 2, r14
+	l	r0, 0, r14
+	a	r0, 2, r14
+	r15 := r14
+	r15 := r15 + 4
+	r14 := (mem:QI (post_inc:QI (reg/f:QI 15 r15)) [0  S1 A8])
+	urs	r15
+
+やはり get_frame_size() の戻り値は 4 であって 2 ではない. ということは Pmode が QImode
+に define されていることは直接の原因ではないらしい.
+
+オリジナルの cc1 で get_frame_size() の戻り値が 2 になる原因を調査してみる.
+get_frame_size() の戻り値は以下のメンバによって決まる.
+
+#ifndef FRAME_GROWS_DOWNWARD
+  function->x_frame_offset += size;
+#endif
+
+function->x_frame_offset が 0 から 1 に変更されている. size = 1 になる原因を調べてみる.
+
+		  stack_parm
+		    = assign_stack_local (GET_MODE (entry_parm),
+					  GET_MODE_SIZE (GET_MODE (entry_parm)), 0);  ★
+
+(gdb) p debug_rtx(entry_parm)
+(reg:QI 0 0)
+$50 = void
+(gdb) up
+
+(gdb) p debug_tree(subr)
+ <function_decl 0xb7c0d4e0 f
+    type <function_type 0xb7c0d478
+        type <integer_type 0xb7c222d8 int QI
+            size <integer_cst 0xb7c230c0 constant 16>
+            unit size <integer_cst 0xb7c230e0 constant 1>
+            align 16 symtab 0 alias set -1 precision 16 min <integer_cst 0xb7c23220 -32768> max <integer_cst 0xb7c23240 32767>
+            pointer_to_this <pointer_type 0xb7c259c0>>
+        HI
+        size <integer_cst 0xb7c23780 constant 32>
+        unit size <integer_cst 0xb7c237a0 constant 2>
+        align 16 symtab 0 alias set -1
+        arg-types <tree_list 0xb7c21ca8 value <integer_type 0xb7c222d8 int>
+            chain <tree_list 0xb7c21cbc value <integer_type 0xb7c222d8 int>
+                chain <tree_list 0xb7c21cd0 value <void_type 0xb7c24478 void>>>>>
+    public static QI file a.c line 2
+    arguments <parm_decl 0xb7c0d3a8 a type <integer_type 0xb7c222d8 int>
+        used QI file a.c line 1 size <integer_cst 0xb7c230c0 16> unit size <integer_cst 0xb7c230e0 1>
+        align 16 context <function_decl 0xb7c0d4e0 f> result <integer_type 0xb7c222d8 int> initial <integer_type 0xb7c222d8 int> arg-type <integer_type 0xb7c222d8 int> arg-type-as-written <integer_type 0xb7c222d8 int>
+        incoming-rtl (reg:QI 0 0)
+        chain <parm_decl 0xb7c0d410 b type <integer_type 0xb7c222d8 int>
+            used QI file a.c line 1 size <integer_cst 0xb7c230c0 16> unit size <integer_cst 0xb7c230e0 1>
+            align 16 context <function_decl 0xb7c0d4e0 f> result <integer_type 0xb7c222d8 int> initial <integer_type 0xb7c222d8 int> arg-type <integer_type 0xb7c222d8 int> arg-type-as-written <integer_type 0xb7c222d8 int>>>
+    result <result_decl 0xb7c0d548 type <integer_type 0xb7c222d8 int>
+        regdecl QI file a.c line 2 size <integer_cst 0xb7c230c0 16> unit size <integer_cst 0xb7c230e0 1>
+        align 16 context <function_decl 0xb7c0d4e0 f>
+        (reg/i:QI 0 0)> initial <block 0xb7c15d60>
+    (mem:QI (symbol_ref:QI ("f")) 0) chain <var_decl 0xb7c0d340 __PRETTY_FUNCTION__>>
+$52 = void
+(gdb)
+
+これは f に対する tree が作成されたときその引数が既に HI ではなくて QI になっているということ.
+
+単純に以下をオリジナルの cc1 でコンパイルしてみた:
+
+int f()
+{
+  return sizeof(int);
+}
+
+生成されたコードは以下:
+f
+
+	pshm	r14,r14
+	lr	r14,r15
+	lisp	r0,1           ★
+	lr	r15,r14
+	popm	r14,r14
+	urs	r15
+
+sizeof(int) ではなくて sizeof(long) や sizeof(long long) を試してみたところそれぞれ
+2 や 4 になっている.
+
+sizeof(int) = 1 になっているがこのカラクリは不明だがだから get_frame_size で 1 が返る
+ということ.
+
+とここまで考えたが仕様が不明なため作業はここで打ち切ることにする. またの機会はおそらくない.
+
+#define Pmode QImode
+
+に関する修正をキャンセルしておく.
