@@ -1,0 +1,32 @@
+*** gcc-10.2.0.org/gcc/config.gcc	2021-10-16 10:31:18.000000000 +0900
+--- gcc-10.2.0.csky-elf.mine/gcc/config.gcc	2022-07-02 13:54:42.000000000 +0900
+***************
+*** 1551,1566 ****
+  	md_file="csky/csky.md"
+  	out_file="csky/csky.c"
+  	tm_p_file="${tm_p_file} csky/csky-protos.h"
+- 	extra_options="${extra_options} csky/csky_tables.opt"
+- 
+- 	if test x${enable_tpf_debug} = xyes; then
+- 	    tm_defines="${tm_defines} ENABLE_TPF_DEBUG"
+- 	fi
+  
+  	case ${target} in
+  	    csky-*-elf*)
+! 		tm_file="dbxelf.h elfos.h newlib-stdint.h ${tm_file} csky/csky-elf.h"
+! 		tmake_file="csky/t-csky csky/t-csky-elf"
+  		default_use_cxa_atexit=no
+  		;;
+  	    csky-*-linux*)
+--- 1551,1561 ----
+  	md_file="csky/csky.md"
+  	out_file="csky/csky.c"
+  	tm_p_file="${tm_p_file} csky/csky-protos.h"
+  
+  	case ${target} in
+  	    csky-*-elf*)
+! 		tm_file="dbxelf.h elfos.h newlib-stdint.h ${tm_file}"
+! 		tmake_file="csky/t-csky"
+  		default_use_cxa_atexit=no
+  		;;
+  	    csky-*-linux*)
