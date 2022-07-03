@@ -1,0 +1,47 @@
+gdb-10.2 のビルド
+
+% xz -d -c ../gdb-10.2-1.src/gdb-10.2.tar.xz | tar xf -
+% mv gdb-10.2 gdb-10.2.tic6x-elf
+% cd gdb-10.2.tic6x-elf/gdb
+
+d30v, fr30, z8k, i960, mmix, z80, i386, pdp11, vax, alpha, m68k, ns32k, spu,
+arc, 1750a, csky と似たような対処をした.
+
+gdb-10.2.tic6x-elf/gdb/configure.tgt:
+
+tic6x-*-*)
+	# Target: TI C6X 
+	gdb_target_obs="tic6x-tdep.o"
++	gdb_sim=../sim/tic6x/libsim.a
+	;;
+
+% cd ..
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=tic6x-elf
+% make
+...
+  CXX    init.o
+make[2]: *** 'gdb' に必要なターゲット '../sim/tic6x/libsim.a' を make するルールがありません.  中止.
+make[2]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.tic6x-elf/gdb' から出ます
+make[1]: *** [Makefile:10065: all-gdb] エラー 2
+make[1]: ディレクトリ '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.tic6x-elf' から出ます
+make: *** [Makefile:853: all] エラー 2
+%
+
+% cd sim
+% tar xf ~/lang/53_GNU_tool/gcc_cross/C-SKY/gdb/csky.1.tar
+% mv csky tic6x
+% cd tic6x
+
+csky を tic6x に変換.
+
+% make
+% cd ../../gdb
+% make
+
+2022.07.01 13:58 0x100 番地に nop を数個配置したプログラムを実行できるようになっている.
+
+不完全ではあるがこの時点での
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-10.2.tic6x-elf/sim/tic6x
+
+を tic6x.1.tar としてアップロードしておく.
