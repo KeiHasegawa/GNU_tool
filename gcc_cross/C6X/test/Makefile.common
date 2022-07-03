@@ -1,0 +1,21 @@
+%.o : %.S
+	tic6x-elf-as -o $@ -g $<
+
+%.o : %.c
+	tic6x-elf-gcc -o $@ $< -g -c
+
+%.elf : %.o 
+	tic6x-elf-ld -o $@ ../default.o $< -T ../default.x
+
+%.objdump : %.elf
+	tic6x-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v tic6x-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.o *.s *.elf *.map *.objdump *.objcopy *.log TAGS *~
