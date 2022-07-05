@@ -1,9 +1,9 @@
 SECTIONS {
+	 . = 0x0;
+ 	 __c6xabi_DSBT_BASE = .;
 	 . = 0x100;
 	 .text : {}
-	 .rodata : {
-	 	 __c6xabi_DSBT_BASE = .;
-	 }
+	 .rodata : {}
 	 .data : {}
 	 .bss : {
 	      _bss_start = .;

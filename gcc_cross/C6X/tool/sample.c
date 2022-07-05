@@ -1,5 +1,8 @@
 int printf(const char* fmt, ...);
 
+#define ALL
+
+#ifdef ALL
 void f(int a, int b)
 {
   printf("%d + %d = %d\n", a, b, a+b);
@@ -30,11 +33,12 @@ void hh(long double ld)
 {
   printf("%Lf\n", ld);
 }
+#endif
 void f2(double a, double b, double c)
 {
   printf("%f %f %f\n", a, b, c);
 }
-
+#ifdef ALL
 void g2(long long r3, long long r4, long long r5, long long r6,
 	long long r7, long long r8, long long r9, long long r10,
 	long long r11, long long r12, long long r13, long long r14,
@@ -182,9 +186,10 @@ void h3(void)
 {
   printf("test_h3 = %d\n", test_h3);
 }
-
+#endif
 int main()
 {
+#ifdef ALL  
   f(5, 6);
   g();
   printf("\n");
@@ -193,7 +198,9 @@ int main()
   char a[] = "hasegawa kei";  
   gg(&a[0], 5, 6.0);
   hh(3.0L);
+#endif  
   f2(1.0, 2.0, 3.0);
+#ifdef ALL  
   g2(3, 4, 5, 6,
      7, 8, 9, 10,
      11, 12, 13, 14,
@@ -237,9 +244,10 @@ int main()
   f3(123);
   g3(); 
   h3();
+#endif  
   return 0;
 }
-
+#ifdef ALL
 void clear_area(char* b, char* e)
 {
   while (b!=e)
@@ -264,3 +272,4 @@ void h4(char* s)
 {
   printf("%s\n", s);
 }
+#endif
