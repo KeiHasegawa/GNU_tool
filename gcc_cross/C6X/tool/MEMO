@@ -1,0 +1,52 @@
+2022.07.05 8:42
+
+現状 f を実行すると
+
+6 + 6 = 11
+
+のようになっている. f から printf を呼び出す直前を調べてみる.
+
+Breakpoint 1, f () at sample.s:37
+(tic6x-elf-gdb) p *(char**)($B15+4)
+$1 = 0x1ce0 "%d + %d = %d\n"
+(tic6x-elf-gdb) p *(int*)($B15+8)
+$2 = 6
+(tic6x-elf-gdb) p *(int*)($B15+12)
+$3 = 6
+(tic6x-elf-gdb) p *(int*)($B15+16)
+$4 = 11
+(tic6x-elf-gdb)
+
+であるから, シミュレータの printnf の扱いに問題があるわけではなくて単純にコンパイラのコード
+に問題があるように思える.
+
+
+(tic6x-elf-gdb) p (int*)($B15+8)
+$5 = (int *) 0x1fd54
+(tic6x-elf-gdb)
+...
+
+Watchpoint 3: *(int*)0x1fd54
+
+Old value = -858993460
+New value = 6
+f () at sample.s:22
+(tic6x-elf-gdb) p/x -858993460
+$1 = 0xcccccccc
+(tic6x-elf-gdb)
+
+f:
+...
+		stw	.d1t2	B4, *-A15(16)   ★
+		ldw	.d1t1	*-A15(12), A1
+
+これは引数をスタックに保存している部分. 改めてコードを調べてみると
+
+  printf("%d + %d = %d\n", a, b, a+b);
+
+書式文字列はスタックポインタ相対 4 に
+a は a4 レジスタに
+b は b4 レジスタに
+a+b は スタックポインタ相対 16 にセットされている. これは ABI をよく理解していなかったとい
+うこと.
+
