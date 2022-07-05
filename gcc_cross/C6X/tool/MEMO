@@ -342,3 +342,39 @@ test_f3 = -858993460
   1. 遅延スロット
   2. コンディショナル実行 (creg を参照していない. b_cst21 のみやっている) 
   3. 並列実行
+
+まずは遅延スロットに対応する. 例えば
+
+	ldw	.d1t1	*-A15(12), A1
+	nop	4
+
+のようにロード命令は遅延スロット 4 でレジスタに値が反映されるから
+
+struct delay {
+  virtual void exec() = 0;
+  virtual ~delay(){}
+};
+
+vector<delay*> delay_slot;
+
+struct delay_ld : delay {
+  uint32_t* dst;
+  uint32_t src;
+  delay_ldw(uint32_t* d, uint32_t s) : dst{d}, src{s} {}
+  void exec(){ *dst = src; }
+};
+
+
+while (delay_slot.size() < 3)
+  delay_slot.push_back(nullptr);
+ 
+uint32_t data = sim_core_read_aligned_4(...);
+delay_slot.push_back(new dealy_ld(&cpu->a[1], data));
+
+のようにする. ldw のシュミレーションでは直接 cpu->a[1] を変更しない.
+まずは ldw, lddw, ldnw, ldb 命令での正常動作を目指す.
+
+2022.07.06 7:35 delay_slot を消化するのは現状 nop でしか行なっていないものの
+printf, puts, putchar や test001, test002 が期待通りに動作している.
+
+2022.07.06 7:55 nop 以外でも delay_slot を消化できるようにしてやはり正常動作を確認している.
