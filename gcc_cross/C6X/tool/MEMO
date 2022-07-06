@@ -340,7 +340,7 @@ test_f3 = -858993460
 現状 printf, puts, putchar のツールが期待通り動作している. しかし以下がまだできていない.
 
   1. 遅延スロット
-  2. コンディショナル実行 (creg を参照していない. b_cst21 のみやっている) 
+  2. 条件実行 (creg を参照していない. b_cst21 のみやっている) 
   3. 並列実行
 
 まずは遅延スロットに対応する. 例えば
@@ -378,3 +378,106 @@ delay_slot.push_back(new dealy_ld(&cpu->a[1], data));
 printf, puts, putchar や test001, test002 が期待通りに動作している.
 
 2022.07.06 7:55 nop 以外でも delay_slot を消化できるようにしてやはり正常動作を確認している.
+
+2022.07.06 9:01 Branch 命令も同様に対応してみる. オリジナルの cc1 では callp 命令の
+後に nop 1 を生成している場合もあれば生成していない場合もあり, おそらくはバグかとは思うが
+callp 命令の遅延スロットに関する仕様が不明なので遅延スロット 0 の扱いにしておく.
+
+2022.07.06 9:44 Branch 命令に対応した. これまでのテストも期待通り動作している.
+しかし以下の 14 行目でステップ実行すると 15 行目ではなく 9 行目で停止する.
+
+% cat -n start.S 
+     1		.text
+     2	start:
+     3		mvkl	.s1	_bss_start, a1
+     4		mvkh	.s1	_bss_start, a1
+     5		mvkl	.s1	_bss_end, a2
+     6		mvkh	.s1	_bss_end, a2
+     7		mvkl	.s1	0, a3
+     8	.L1:
+     9		cmpeq	.l1	a1, a2, a0
+    10		[a0] b	.s2	.L2
+    11		nop	5
+    12		stb	.d1t1	a3, *a1
+    13		add	.d1	a1, 1, a1
+    14		b	.s2	.L1
+    15		nop	5
+    16	.L2:	
+    17		mvkl	.s2	__c6xabi_DSBT_BASE, b14
+  
+同様に 10 行目で条件が成立する場合もステップ実行により 11 行目ではなくて 17 行目で停止する.
+勿論 15 行目や 11 行目の nop 5 を実行していることには間違いはない.
+ロード命令でステップ実行した場合は勿論次の  nop 4 を実行する前に停止している.
+
+ステップ実行の後に続く sim_resume(step=0) の呼び出しがある. 調査前の予想では
+sim_resum(step=1) の呼び出しがあるのかと思っていたが違っていた. この状況は
+ロード命令でも分岐命令でも同じで, 内部ブレークポイントが次の命令にセットされているのがロード命令
+で次の次の命令にセットされているか分岐命令という違いがある.
+
+分岐命令で次の次の命令に内部ブレークポイントをセットしたときのスタックは以下:
+
+
+(gdb) where
+#0  sim_write (sd=0x8bc2d18, mem=276, buf=0x86fde88 <tic6x_bkpt_illegal_opcode_le> "\024CEVVEC\024negative value: %s", length=4) at ../common/sim-hrw.c:38
+#1  0x082a7006 in gdbsim_xfer_memory (xfered_len=0xbfffea68, len=4, memaddr=276, writebuf=0x86fde88 <tic6x_bkpt_illegal_opcode_le> "\024CEVVEC\024negative value: %s", readbuf=0x0, target=0x8a381d0 <gdbsim_ops>) at remote-sim.c:1061
+#2  gdbsim_target::xfer_partial (this=0x8a381d0 <gdbsim_ops>, object=TARGET_OBJECT_MEMORY, annex=0x0, readbuf=0x0, writebuf=0x86fde88 <tic6x_bkpt_illegal_opcode_le> "\024CEVVEC\024negative value: %s", offset=276, len=4, xfered_len=0xbfffea68) at remote-sim.c:1091
+#3  0x0832f6ef in raw_memory_xfer_partial (ops=0x8a381d0 <gdbsim_ops>, readbuf=0x0, writebuf=0x86fde88 <tic6x_bkpt_illegal_opcode_le> "\024CEVVEC\024negative value: %s", memaddr=276, len=4, xfered_len=0xbfffea68) at target.c:918
+#4  0x08333182 in target_xfer_partial (ops=0x8a381d0 <gdbsim_ops>, object=TARGET_OBJECT_RAW_MEMORY, annex=0x0, readbuf=0x0, writebuf=0x86fde88 <tic6x_bkpt_illegal_opcode_le> "\024CEVVEC\024negative value: %s", offset=276, len=<optimized out>, xfered_len=0xbfffea68) at target.c:1156
+#5  0x083337da in target_write_partial (xfered_len=0xbfffea68, len=4, offset=276, buf=0x86fde88 <tic6x_bkpt_illegal_opcode_le> "\024CEVVEC\024negative value: %s", annex=0x0, object=TARGET_OBJECT_RAW_MEMORY, ops=0x8a381d0 <gdbsim_ops>) at target.c:1397
+#6  target_write_with_progress (ops=0x8a381d0 <gdbsim_ops>, object=TARGET_OBJECT_RAW_MEMORY, annex=0x0, buf=0x86fde88 <tic6x_bkpt_illegal_opcode_le> "\024CEVVEC\024negative value: %s", offset=276, len=4, progress=0x0, baton=0x0) at target.c:1665
+#7  0x0833390f in target_write (len=<optimized out>, offset=276, buf=0x86fde88 <tic6x_bkpt_illegal_opcode_le> "\024CEVVEC\024negative value: %s", annex=0x0, object=TARGET_OBJECT_RAW_MEMORY, ops=<optimized out>) at target.c:1690
+--Type <RET> for more, q to quit, c to continue without paging--
+#8  target_write_raw_memory (memaddr=276, myaddr=0x86fde88 <tic6x_bkpt_illegal_opcode_le> "\024CEVVEC\024negative value: %s", len=4) at target.c:1318
+#9  0x0822a998 in default_memory_insert_breakpoint (gdbarch=0x8bab528, bp_tgt=0x8bc5efc) at mem-break.c:68
+#10 0x0832faef in target_insert_breakpoint (gdbarch=0x8bab528, bp_tgt=0x8bc5efc) at target.c:1821
+#11 0x080be6db in bkpt_insert_location (bl=0x8bc5e98) at breakpoint.c:12411
+#12 0x080cecd6 in insert_bp_location (bl=0x8bc5e98, tmp_error_stream=<optimized out>, disabled_breaks=<optimized out>, hw_breakpoint_error=<optimized out>, hw_bp_error_explained_already=<optimized out>) at breakpoint.c:2515
+#13 0x080d0ffe in insert_breakpoint_locations () at breakpoint.c:2940
+#14 update_global_location_list (insert_mode=UGLL_INSERT) at breakpoint.c:12069
+#15 0x080d6d12 in insert_single_step_breakpoint (gdbarch=0x8ba54e0, aspace=0x8b50e28, next_pc=276) at breakpoint.c:14500
+--Type <RET> for more, q to quit, c to continue without paging--c
+#16 0x080d6e9e in insert_single_step_breakpoints (gdbarch=0x8ba54e0) at breakpoint.c:14519
+#17 0x081f622f in maybe_software_singlestep (pc=<optimized out>, gdbarch=0x8ba54e0) at infrun.c:2127
+#18 maybe_software_singlestep (pc=296, gdbarch=0x8ba54e0) at infrun.c:2121
+#19 resume_1 (sig=<optimized out>) at infrun.c:2477
+#20 resume (sig=GDB_SIGNAL_0) at infrun.c:2630
+#21 0x081f6e46 in keep_going_pass_signal (ecs=0xbfffef7c) at infrun.c:7876
+#22 0x081f714b in start_step_over () at infrun.c:2028
+#23 0x081fdaf1 in proceed (addr=18446744073709551615, siggnal=GDB_SIGNAL_DEFAULT) at infrun.c:3079
+#24 0x081e5cd1 in step_1 (skip_subroutines=0, single_inst=<optimized out>, count_string=<optimized out>) at infcmd.c:900
+#25 0x080fd50c in cmd_func (cmd=0x8b0f7c0, args=0x0, from_tty=0) at cli/cli-decode.c:2181
+#26 0x0834187e in execute_command (p=<optimized out>, from_tty=0) at top.c:668
+#27 0x081a9b1c in command_handler (command=0x8bcc8b8 "step") at event-top.c:588
+#28 0x0833fe8c in read_command_file (stream=0x8b9e708) at top.c:447
+#29 0x08103b21 in script_from_file (stream=0x8b9e708, file=0xbffff851 "gdbcom.2") at cli/cli-script.c:1622
+#30 0x080fa3b4 in source_script_from_stream (file_to_open=0xbffff851 "gdbcom.2", file=0xbffff851 "gdbcom.2", stream=0x8b9e708) at cli/cli-cmds.c:700
+#31 source_script_with_search (file=0xbffff851 "gdbcom.2", file@entry=<error reading variable: value has been optimized out>, from_tty=<error reading variable: value has been optimized out>, search_path=<error reading variable: value has been optimized out>) at cli/cli-cmds.c:736
+#32 0x0821e10a in catch_command_errors (command=<optimized out>, arg=<optimized out>, from_tty=<optimized out>) at main.c:457
+#33 0x0821fdf0 in captured_main_1 (context=<optimized out>) at main.c:1214
+#34 0x082201ed in captured_main (data=0xbffff554) at main.c:1243
+#35 gdb_main (args=0xbffff554) at main.c:1268
+#36 0x080719bc in main (argc=5, argv=0xbffff624) at gdb.c:32
+(gdb)
+
+
+なるほど以下の函数で決めていたらしい. 自分のやりたかった gdb の動作ではないがここは
+そういう実装だったということでスルーしておく.
+
+/* Determine where to set a single step breakpoint.  */
+
+static CORE_ADDR
+tic6x_get_next_pc (struct regcache *regcache, CORE_ADDR pc)
+{
+  struct gdbarch *gdbarch = regcache->arch ();
+  unsigned long inst;
+  int register_number;
+  int last = 0;
+
+  do
+    {
+...
+
+残る課題は以下だが面倒なので気が向いたら対応することにする.
+
+  2. 条件実行 (creg を参照していない. b_cst21 のみやっている) 
+  3. 並列実行
