@@ -5,6 +5,7 @@ In similar way, cc1 model of RL78 can be built.
 
 Development note:
 
+(*1)
 Becase RL78 compiler doesn't use frame pointer like MSP430 compiler, so I
 declared like below:
 
@@ -203,10 +204,10 @@ the current resutl. Any way now my `cc1' could generate below rtx_insn:
    12: r8:HI=e:HI
    
 (*2)
-現状 hello world 11 ができている.
+At this point, hello world 11 program worked well.
 
--g オプション付きでコンパイルした hello world 11 を rl78-elf-gdb で実行すると
-現状以下のようになる.
+Compiling hello world 11 program with -g option and it was executed
+under control of rl78-elf-gdb, the result became like below:
 
 Breakpoint 1, main () at a.c:10
 10	  printf("hello world %d\n", f(5, 6));
@@ -223,25 +224,24 @@ f (a=<error reading variable: Unable to access DWARF register number 33>,
 Value returned is $1 = 11
 hello world 11
 
-現段階では
+At this point, my `cc1' did not generate any rtx_insn* insn like:
 
   RTX_FRAME_RELATED_P(insn) = true;
 
-のような rtx_insn は生成していない.
+Above result was difficult to understand, but rl78-elf-gdb could not
+display `a' and `b' correctly, but everything except it was OK.
+i.e. `where' command and `finish' command worked welll.
 
-上は分かりずらいが, f の引数 a と b を正しく表示できていないこと以外は実はできている.
-つまり where も finish もできている.
+.debug_info dump result was:
 
-.debug_info は
-
- <2><bd>: 省略番号: 6 (DW_TAG_formal_parameter)
+ <2><bd>: Abbrev Number: 6 (DW_TAG_formal_parameter)
     <be>   DW_AT_name        : a
     <c0>   DW_AT_decl_file   : 1
     <c1>   DW_AT_decl_line   : 3
     <c2>   DW_AT_decl_column : 11
     <c3>   DW_AT_type        : <0x7f>
     <c7>   DW_AT_location    : 3 byte block: 92 21 4 	(DW_OP_bregx: 33 (r33) 4)
- <2><cb>: 省略番号: 6 (DW_TAG_formal_parameter)
+ <2><cb>: Abbrev Number: 6 (DW_TAG_formal_parameter)
     <cc>   DW_AT_name        : b
     <ce>   DW_AT_decl_file   : 1
     <cf>   DW_AT_decl_line   : 3
@@ -249,27 +249,28 @@ hello world 11
     <d1>   DW_AT_type        : <0x7f>
     <d5>   DW_AT_location    : 3 byte block: 92 21 6 	(DW_OP_bregx: 33 (r33) 6
 
-のようになっている. つまりこれがエラーメッセージにも表われている 33 番のレジスタということ.
+And this 33'th register appeared in above error messages.
 
-現状
+At this point, declared like below:
 
-constexpr int STACK_POINTER_REGNUM  = 32;
-#define       FRAME_POINTER_REGNUM    32
-#define       ARG_POINTER_REGNUM      33
+#define STACK_POINTER_REGNUM    32
+#define FRAME_POINTER_REGNUM    32
+#define ARG_POINTER_REGNUM      33
 
-のようにしている. この 33 が 32 になればおそらく期待通り動くと思ったが, それは
-ローカル変数や中間変数が f にない場合でしか成立しない.
+Once I thoght if this `33' was changed to `32', rl78-elf-gdb worked well,
+But it was just correct for the case where no local variable or no mediam
+variable.
 
-オリジナルの cc1 では以下のようになっている.
+Original `cc1' .debug_info dump result was:
 
-<2><c9>: 省略番号: 6 (DW_TAG_formal_parameter)
+<2><c9>: Abbrev Number: 6 (DW_TAG_formal_parameter)
     <ca>   DW_AT_name        : a
     <cc>   DW_AT_decl_file   : 1
     <cd>   DW_AT_decl_line   : 3
     <ce>   DW_AT_decl_column : 11
     <cf>   DW_AT_type        : <0x83>
     <d3>   DW_AT_location    : 2 byte block: 91 0 	(DW_OP_fbreg: 0)
- <2><d6>: 省略番号: 6 (DW_TAG_formal_parameter)
+ <2><d6>: Abbrev Number: 6 (DW_TAG_formal_parameter)
     <d7>   DW_AT_name        : b
     <d9>   DW_AT_decl_file   : 1
     <da>   DW_AT_decl_line   : 3
@@ -277,14 +278,15 @@ constexpr int STACK_POINTER_REGNUM  = 32;
     <dc>   DW_AT_type        : <0x83>
     <e0>   DW_AT_location    : 2 byte block: 91 2 	(DW_OP_fbreg: 2)
 
-オリジナルの cc1 では以下のように定義
+And at original `cc1', declared like below:
 
 #define FRAME_POINTER_REGNUM 		22
 #define STACK_POINTER_REGNUM 	        32
 #define ARG_POINTER_REGNUM 		33
 
-あまりこれを参考にしないで, 独自路線でいくことにした.
-現状
+I thought I should have gone my way.
+
+At this point, .debug_frame dump result was:
 
 00000000 0000000e ffffffff CIE
   Version:               3
@@ -300,12 +302,11 @@ constexpr int STACK_POINTER_REGNUM  = 32;
 
 0000001e 00000008 00000000 FDE cie=00000000 pc=00000000..00000000
 
-のように 32 番がスタックポインタであるという情報しかなくて, 33 番のレジスタが
-どのようになっているかが表現されていない.
+Above just said that 32'th register was stack pointer and nothing about
+33'th register.
 
-と思ったが
+On the other hand, original `cc1' .debug_info dump result was:
 
-オリジナルの cc1 は以下
 00000000 00000010 ffffffff CIE
   Version:               3
   Augmentation:          ""
@@ -314,7 +315,7 @@ constexpr int STACK_POINTER_REGNUM  = 32;
   Return address column: 37
 
   DW_CFA_def_cfa: r32 ofs 4
-  DW_CFA_offset: r37 at cfa-4   これ
+  DW_CFA_offset: r37 at cfa-4   # This one
   DW_CFA_nop
   DW_CFA_nop
 
@@ -323,7 +324,10 @@ constexpr int STACK_POINTER_REGNUM  = 32;
 しかしオリジナルの cc1 ではフレームポインタを一応形だけもっているからこうすることで
 おそらくうまくいっている.
 
-以下のようにしてみた:
+I thought original `cc1' just formally has frame pointer and this
+worked well for that reason.
+
+I tried like below:
 
 void rl78_expand_prologue()
 {
@@ -333,7 +337,7 @@ void rl78_expand_prologue()
   auto insn = emit_move_insn(ap, minus4);
   RTX_FRAME_RELATED_P(insn) = true;
 
-これで
+This caused an internal error like below:
 
 during RTL pass: dwarf2
 a.c: In function ‘f’:
@@ -344,9 +348,9 @@ a.c:6:1: internal compiler error: in dwarf2out_frame_debug_expr, at dwarf2cfi.c:
 	../.././gcc/dwarf2cfi.c:1758
 0x85de105 dwarf2out_frame_debug
 
-内部エラーが発生している. どうやら ap := sp - 4 をデバッグ情報として組み込むのはだめらしい.
+I guessed that it was out of rule to generate rtx_insn like ap := sp - 4.
 
-以下のようにした:
+Then I tried liek below:
 void rl78_expand_prologue()
 {
   auto ap = gen_rtx_REG(Pmode, ARG_POINTER_REGNUM);
@@ -355,7 +359,7 @@ void rl78_expand_prologue()
   auto insn = emit_move_insn(ap, minus4);
   RTX_FRAME_RELATED_P(insn) = true;
 
-これで生成された .debug_frame は以下
+Then .debug_frame dump result became like below:
 
 00000000 0000000e ffffffff CIE
   Version:               3
@@ -375,24 +379,22 @@ void rl78_expand_prologue()
   DW_CFA_nop
   DW_CFA_def_cfa: r33 ofs 4
 
-一応期待したものになっているが, 以下のように症状は変わらず.
+Above was as I expected, but rl78-elf-gdb made the same error like below:
 
 f (a=<error reading variable: Unable to access DWARF register number 33>, 
     b=<error reading variable: Unable to access DWARF register number 33>)
     at a.c:5
 
-さてどうしたものか.
+I thought that I should have changed `.debug_info' like below:
 
-.debug_info を
-
- <2><bd>: 省略番号: 6 (DW_TAG_formal_parameter)
+ <2><bd>: Abbrev Number: 6 (DW_TAG_formal_parameter)
     <be>   DW_AT_name        : a
     <c0>   DW_AT_decl_file   : 1
     <c1>   DW_AT_decl_line   : 3
     <c2>   DW_AT_decl_column : 11
     <c3>   DW_AT_type        : <0x7f>
     <c7>   DW_AT_location    : 3 byte block: 92 20 4 	(DW_OP_bregx: 32 (r32) 4)
- <2><cb>: 省略番号: 6 (DW_TAG_formal_parameter)
+ <2><cb>: Abbrev Number: 6 (DW_TAG_formal_parameter)
     <cc>   DW_AT_name        : b
     <ce>   DW_AT_decl_file   : 1
     <cf>   DW_AT_decl_line   : 3
@@ -400,10 +402,12 @@ f (a=<error reading variable: Unable to access DWARF register number 33>,
     <d1>   DW_AT_type        : <0x7f>
     <d5>   DW_AT_location    : 3 byte block: 92 20 6 	(DW_OP_bregx: 32 (r32) 6
 
-のように sp 相対になるように修正する.
-期待値を作成した d.S はこれでできている.
+where, `a' and `b' are located at sp relative position.
+I created the assembler source which realized above .debug_info, and confirmed
+the program was executed as I expected under control of rl78-elf-gdb.
 
 この部分を生成しているところを調べてみる.
+Then I investigated the part which generated these:
 
 (gdb) delete
 (gdb) b final_1
@@ -413,29 +417,25 @@ f (a=<error reading variable: Unable to access DWARF register number 33>,
 
           compile_file ();
 
-ここから戻るところで問題の箇所が生成されている.
+When returning form above, `cc1' generated them.
 
-      (*debug_hooks->finish) (main_input_filename);  ここだった
+      (*debug_hooks->finish) (main_input_filename);  // This part
 
 
   output_comp_unit (comp_unit_die (), have_macinfo,
-		    dwarf_split_debug_info ? checksum : NULL); ここ
+		    dwarf_split_debug_info ? checksum : NULL); // This part
 		    
 
-  output_die (die);  ここ
-  
+  output_die (die);  // This part
 
-	  output_loc_sequence (AT_loc (a), -1);  ここ
+	  output_loc_sequence (AT_loc (a), -1);  // This part
 
-      output_loc_operands (loc, for_eh_or_skip);  ここ
+      output_loc_operands (loc, for_eh_or_skip);  // This part
 
-上の部分で
+At above part, generated below:
 
 	.uleb128 0x21  ARG_POINTER_REGNUM
-	.sleb128 4     オフセット
-
-を出している.
-
+	.sleb128 4     ; offset
 
 
 (gdb) p loc->dw_loc_oprnd1.v.val_addr
@@ -444,7 +444,7 @@ $47 = (rtx) 0x21
 $50 = (rtx) 0x4
 (gdb)
 
-これをセットしている瞬間を捕える.
+I caught the timing setting these:
 
 static inline dw_loc_descr_ref
 new_loc_descr (enum dwarf_location_atom op, unsigned HOST_WIDE_INT oprnd1,
@@ -460,10 +460,9 @@ new_loc_descr (enum dwarf_location_atom op, unsigned HOST_WIDE_INT oprnd1,
   descr->dw_loc_oprnd2.val_entry = NULL;
   descr->dw_loc_oprnd2.v.val_unsigned = oprnd2;
 
-ここだった.
+and I confrimed above code set them.
 
-
-  regno = DWARF_FRAME_REGNUM (regno);  ここで 33 を 32 に変換すれば良さそう
+  regno = DWARF_FRAME_REGNUM (regno);  // Here, to convert `33' to `32' works well
 
   HOST_WIDE_INT const_offset;
   if (!optimize && fde
@@ -479,9 +478,9 @@ new_loc_descr (enum dwarf_location_atom op, unsigned HOST_WIDE_INT oprnd1,
       return new_loc_descr (DW_OP_fbreg, const_offset, 0);
     }
 
-  result = new_reg_loc_descr (regno, offset);  ここから呼び出している.
+  result = new_reg_loc_descr (regno, offset);  // From here, calling above.
   
-以下を追加した:
+Then I declared like below:
 
 extern int rl78_dwarf_frame_regnum(int);
 #define DWARF_FRAME_REGNUM(X)  rl78_dwarf_frame_regnum(X)
@@ -494,9 +493,10 @@ int rl78_dwarf_frame_regnum(int regno)
   return regno;
 }
 
-これで hello world 11 を -g でコンパイルしたものは rl78-elf-gdb で期待した動作に
-なっている.
+Now, hello world 11 program compiled with -g option was executed
+under control of rl78-elf-gdb suitably.
 
+(*3)
 残念ながら現状では
 
 #include <stdio.h>
