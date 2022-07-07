@@ -1,0 +1,286 @@
+以下開発メモ
+
+(*1)
+C6X の ABI ではスタックで引数を渡すときに, スタックで渡す最初の引数は SP 相対 0 ではなくて
+4 にセットする.
+
+マクロ
+
+#define PUSH_ROUNDING(X)	(X)
+
+を宣言すると, 当り前であるが SP 相対 0, 4, 8, ... にプッシュするコードが生成される.
+C6X の場合は SP 相対 4, 8, 12, ... にセットするのが正しい.
+
+一旦 PUSH_ROUNDING のマクロを宣言するのを止めることにした.
+
+#define REG_PARM_STACK_SPACE(FUNC) 4
+#define ACCUMULATE_OUTGOING_ARGS 1
+
+またプロローグ, エピローグでは以下のようにした:
+
+  auto size = get_frame_size();
+  size += crtl->outgoing_args_size;
+
+これでリビルド開始 2022.07.07 9:00
+
+2022.07.07 11:26 現状 hello world 11 を tic6x-elf-run で実行すると以下のようになる.
+
+% tic6x-elf-run --memory-fill 0xcc --memory-region 0x1b000,0x5004 a.elf
+hello world 11
+core: 4 byte read to unmapped address 0x6 at 0x6
+program stopped with signal 11 (Segmentation fault).
+%
+
+そして生成されているコードは以下:
+
+f:
+	stw	.d2t1	a15, *b15--(8)
+	add	.l1x	8, b15, a15
+	stw	.d2t2	b3, *+b15(4)
+	stw	.d1t1	a4, *+a15(8)
+	stw	.d1t2	b4, *+a15(12)
+	ldw	.d1t1	*+a15(8), a4
+	nop	4
+	ldw	.d1t1	*+a15(12), a5
+	nop	4
+	add	.d1	a4, a5, a4
+	ldw	.d2t2	*+b15(4), b3
+	nop	4
+	add	.l2x	-8, a15, b15
+	ldw	.d2t1	*++b15(8), a15
+	nop	4
+	ret	.s2	b3
+	nop	5
+...
+main:
+	stw	.d2t1	a15, *b15--(8)
+	add	.l1x	8, b15, a15
+	sub	.d2	b15, 8, b15
+	stw	.d2t2	b3, *+b15(12)
+	mvk	.d2	6, b4
+	mvk	.d1	5, a4
+	callp	.s2	(f), b3
+	stw	.d2t1	a4, *+b15(8)
+	mvkl	.s1	(.LC0), a5
+	mvkh	.s1	(.LC0), a5
+	stw	.d2t1	a5, *+b15(4)
+	callp	.s2	(printf), b3
+	mvk	.d1	0, a4
+	ldw	.d2t2	*+b15(12), b3
+	nop	4
+	add	.l2x	-8, a15, b15
+	ldw	.d2t1	*++b15(8), a15
+	nop	4
+	ret	.s2	b3
+	nop	5
+...
+
+f の引数 a や b のフレーム相対が負の値になっていない.
+一旦
+
+#define ACCUMULATE_OUTGOING_ARGS 1
+
+をキャンセルし
+
+  auto size = get_frame_size();
+  size += crtl->outgoing_args_size;  これを削除する.
+
+2022.07.07 12:17 生成結果を確認したが
+
+#define REG_PARM_STACK_SPACE(FUNC) 4
+
+があるせいかフレーム相対が負になっていない. 一旦これを削除する.
+一周回って振り出しに戻った感じがする.
+
+2022.07.07 12:55 現状 hello world 11 に対して生成されているコードは以下:
+
+f:
+	stw	.d2t1	a15, *b15--(8)
+	add	.l1x	8, b15, a15
+	sub	.d2	b15, 8, b15
+	stw	.d2t2	b3, *+b15(12)
+	stw	.d1t1	a4, *-a15(4)
+	stw	.d1t2	b4, *-a15(8)
+	ldw	.d1t1	*-a15(4), a4
+	nop	4
+	ldw	.d1t1	*-a15(8), a5
+	nop	4
+	add	.d1	a4, a5, a4
+	ldw	.d2t2	*+b15(12), b3
+	nop	4
+	add	.l2x	-8, a15, b15
+	ldw	.d2t1	*++b15(8), a15
+	nop	4
+	ret	.s2	b3
+	nop	5
+...
+main:
+	stw	.d2t1	a15, *b15--(8)
+	add	.l1x	8, b15, a15
+	sub	.d2	b15, 4, b15
+	stw	.d2t2	b3, *+b15(8)
+	mvk	.d2	6, b4
+	mvk	.d1	5, a4
+	callp	.s2	(f), b3
+	stw	.d1t1	a4, *-a15(4)
+	add	.s2	-8, b15, b15
+	a4 := b15
+	(mem:SI (plus:SI (reg:SI 4 a4 [43])
+        (const_int 4 [0x4])) [0  S4 A8]) := (mem/c:SI (plus:SI (reg/f:SI 15 a15)
+        (const_int -4 [0xfffffffffffffffc])) [3 %sfp+-4 S4 A8])
+	(mem:SI (reg:SI 4 a4 [43]) [0  S4 A8]) := .LC0
+	callp	.s2	(printf), b3
+	add	.s2	8, b15, b15
+	mvk	.d1	0, a4
+	ldw	.d2t2	*+b15(8), b3
+	nop	4
+	add	.l2x	-8, a15, b15
+	ldw	.d2t1	*++b15(8), a15
+	nop	4
+	ret	.s2	b3
+	nop	5
+...
+
+f は期待したものになっている. やはり printf を呼び出すときの第 1 引数が SP 相対 0 のまま.
+これを何とか 4 にできないか調べてみる.
+と思ったがそもそも第 1 引数を SP 相対 4 にできているオリジナルの cc1 を参考にするべきだと
+思ってまずはそっちを当たってみることにした.
+
+これっぽい.
+
+#define STACK_POINTER_OFFSET 4
+
+2022.07.07 14:14 hello world 11 の main のコードは以下:
+
+main:
+...
+	callp	.s2	(f), b3
+	stw	.d1t1	a4, *-a15(4)
+	add	.s2	-8, b15, b15
+	add	.l1x	4, b15, a4
+	(mem:SI (plus:SI (reg:SI 4 a4 [43])
+        (const_int 4 [0x4])) [0  S4 A8]) := (mem/c:SI (plus:SI (reg/f:SI 15 a15)
+        (const_int -4 [0xfffffffffffffffc])) [3 %sfp+-4 S4 A8])
+	(mem:SI (reg:SI 4 a4 [43]) [0  S4 A8]) := .LC0
+	callp	.s2	(printf), b3
+
+これは期待した結果になっている.
+
+2022.07.07 14:16 以下もさらに追加してみた:
+
+#define PUSH_ROUNDING(X)	(X)
+
+やはりこれを追加すると SP 相対 0 に第 1 引数がセットされる. これはこれでそいういう仕様だと
+いうことで納得. 上の宣言を削除.
+
+(*2)
+現状 hello world 11 が tic6x-elf-run で期待通り動作している. -g オプションでコンパイル
+したものを tic6x-elf-gdb で動作させると以下のようになっている.
+
+% tic6x-elf-gdb a.elf -x gdbcom -q
+Connected to the simulator.
+Loading section .text, size 0x140 lma 0x100
+Loading section .rodata, size 0x10 lma 0x240
+Start address 0x100
+Transfer rate: 2688 bits in <1 sec.
+Breakpoint 1 at 0x1d8: file a.c, line 10.
+
+Breakpoint 1, main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+f (a=5, b=6) at a.c:5
+5	  return a + b;
+#0  f (a=5, b=6) at a.c:5
+#1  0x000001e4 in main () at a.c:10
+Backtrace stopped: frame did not save the PC
+hello world 11
+%
+
+そこそこできている. この時点ではプロローグで生成している rtx_insn* insn に対して
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+のようにはしていない. そこでプロローグで生成している全ての rtx_insn* insn に対して
+上のようにしてみたところ以下のようになった:
+
+% tic6x-elf-gdb a.elf -x gdbcom -q
+Connected to the simulator.
+Loading section .text, size 0x140 lma 0x100
+Loading section .rodata, size 0x10 lma 0x240
+Start address 0x100
+Transfer rate: 2688 bits in <1 sec.
+Breakpoint 1 at 0x1d8: file a.c, line 10.
+
+Breakpoint 1, main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+f (a=5, b=6) at a.c:5
+5	  return a + b;
+#0  f (a=5, b=6) at a.c:5
+#1  0x00000005 in ?? ()
+Warning:
+Cannot insert breakpoint 0.
+Cannot access memory at address 0x5
+
+gdbcom:10: Error in sourced command file:
+Command aborted.
+(tic6x-elf-gdb) q
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) y
+
+% 
+
+オリジナルの cc1 では以下のように定義されている:
+
+c6x.md:
+   (REG_B3 35)
+
+c6x.h:
+#define RETURN_ADDR_REGNO REG_B3
+#define INCOMING_RETURN_ADDR_RTX gen_rtx_REG (Pmode, RETURN_ADDR_REGNO)
+
+B3 は 35 番のレジスタになっている. 勿論オリジナルの cc1 の生成したプログラムは
+tic6x-elf-gdb で期待通り動作している.
+
+現時点では B3 レジスタの番号をそろえる必要はないと考えている.
+
+まずは tic6x-elf-gdb の視点で where コマンドが期待した動作にならない件を調べてみる.
+
+      for (fi = trailing; fi && count--; fi = get_prev_frame (fi))
+	{
+	  QUIT;
+
+	  /* Don't use print_stack_frame; if an error() occurs it probably
+	     means further attempts to backtrace would fail (on the other
+	     hand, perhaps the code does or could be fixed to make sure
+	     the frame->prev field gets set to NULL in that case).  */
+
+	  print_frame_info (fp_opts, fi, 1, LOCATION, 1, 0);   ★
+	  if ((flags & PRINT_LOCALS) != 0)
+
+上の部分で
+
+#0  f (a=5, b=6) at a.c:5
+
+や
+
+#1  0x00000005 in ?? ()
+
+を表示している. これからすると f の戻りアドレスが 5 であるかのようになっている. where
+コマンドを実行しているときのスタックは ...
+
+調べているところで以下の命令が正しく実行できていないそうなことに気付いた.
+
+   0x00000188 <+8>:	sub .D2 b15,8,b15
+
+subaw としてフェッチされていたことが判明. この修正を行なって既存の動作しているテストで
+正常動作を確認した.
+
+改めて tic6x-elf-run で hello world 11 の動作を確認したところ以下のように不正メモリ
+アクセスしている:
+
+% tic6x-elf-run --memory-fill 0xcc --memory-region 0x1b000,0x5004 a.elf
+core: 4 byte read to unmapped address 0x5 at 0x5
+program stopped with signal 11 (Segmentation fault).
+%
