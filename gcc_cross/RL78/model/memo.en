@@ -321,9 +321,6 @@ On the other hand, original `cc1' .debug_info dump result was:
 
 00000014 0000000c 00000000 FDE cie=00000000 pc=0000017d..00000186
 
-しかしオリジナルの cc1 ではフレームポインタを一応形だけもっているからこうすることで
-おそらくうまくいっている.
-
 I thought original `cc1' just formally has frame pointer and this
 worked well for that reason.
 
@@ -406,7 +403,6 @@ where, `a' and `b' are located at sp relative position.
 I created the assembler source which realized above .debug_info, and confirmed
 the program was executed as I expected under control of rl78-elf-gdb.
 
-この部分を生成しているところを調べてみる.
 Then I investigated the part which generated these:
 
 (gdb) delete
@@ -497,7 +493,7 @@ Now, hello world 11 program compiled with -g option was executed
 under control of rl78-elf-gdb suitably.
 
 (*3)
-残念ながら現状では
+Unfortunately, at this point, for below program
 
 #include <stdio.h>
 
@@ -513,8 +509,9 @@ int main()
   return 0;
 }
 
-のように f で 128 バイトのローカル変数を宣言すると, まずは実行結果が正しくない.
-f の先頭アドレスで以下のようになっている.
+which uses 128 bytes local area at `f', the execution result was wrong.
+
+At the start address of `f':
 
 (rl78-elf-gdb) x/4wh $sp
 0xf7ff4:	0x019c	0xcc00	0x0005	0x0006
@@ -531,10 +528,7 @@ f の先頭アドレスで以下のようになっている.
 	|    0x0006	|
 0xf7ffc	+---------------+
 
-これは呼び出す側ができていないように見えると思ったがこれはこれで合っていた.
-0x19c は f を呼び出した call 命令の次のアドレス.
-
-
+where, 0x19c is the return address of `f'.
 
 _f:
 	subw	sp, #128
@@ -542,20 +536,22 @@ _f:
 	movw	de, ax
 	movw	ax, [sp+4]
 
-単純に sp+6 や sp+4 が間違い. ap 相対のコードを以下のように修正.
+Simply, at above assembler source, `sp+6' and `sp+4' were wrong.
+Then I tired to fix the `ap' relative code like below:
 
 inline void load(int regno, int offset)
 {
   fprintf(asm_out_file, "	movw	");
   print_reg(asm_out_file, regno, HImode);
   auto sp = reg_names[STACK_POINTER_REGNUM];
-  offset += get_frame_size();                          これ
+  offset += get_frame_size();                          // This one
   fprintf(asm_out_file, ", [%s+%d]\n", sp, offset);
 }
 
-この修正で実行結果は正しい. つまり生成しているアセンブリは正しい.
+This fix caused the correct execution. i.e. The generated assembler program
+was correct.
 
-同じ修正を変数 a や b のオフセットに対しても行なってみる.
+I tried to apply the same fix for parameter `a' and `b':
 
 static dw_loc_descr_ref
 based_loc_descr (rtx reg, poly_int64 offset,
@@ -575,8 +571,7 @@ based_loc_descr (rtx reg, poly_int64 offset,
 		  ? lra_eliminate_regs (reg, VOIDmode, NULL_RTX)
 		  : eliminate_regs (reg, VOIDmode, NULL_RTX));
 
-これは bfin, mn10300, moxie でもやった.
-
+This kind of work was done for `bfin', `mn10300', and `moxie' compiler.
 
 bool rl78_legitimate_address_p(machine_mode mode, rtx x, bool strict)
 {
@@ -591,13 +586,12 @@ bool rl78_legitimate_address_p(machine_mode mode, rtx x, bool strict)
 
 gcc_target targetm = TARGET_INITIALIZER;
 
-この修正を入れたが
+This fix was applied but the next function wasn't called unexpectedly:
 
 void INITIAL_ELIMINATION_OFFSET(int from, int to, poly_int64_pod& offset)
 
-が呼び出されない.
+Then I fixed
 
-以下を
 #define REGISTER_NAMES						\
   {								\
     "x",   "a",   "c",   "b",   "e",   "d",   "l",   "h", 	\
@@ -607,7 +601,7 @@ void INITIAL_ELIMINATION_OFFSET(int from, int to, poly_int64_pod& offset)
     "sp",  "ap",  "dummy1", "dummy2"				\
   }
 
-以下のように変更した.
+like below:
 
 #define REGISTER_NAMES						\
   {								\
@@ -618,48 +612,49 @@ void INITIAL_ELIMINATION_OFFSET(int from, int to, poly_int64_pod& offset)
     "sp",  "ap",  "dummy0", "dummy1", "dummy2"			\
   }
 
-2022.02.17 18:00 ビルド開始. 修正の意味は
-HARD_REGISTER_NUM_P(33) が 1 に評価されるようにして, その結果
+Above fix was meant that `HARD_REGISTER_NUM_P(33)' was evaluated as `1' and
+as this result, 
 
 void INITIAL_ELIMINATION_OFFSET(int from, int to, poly_int64_pod& offset)
 
-が呼び出されるようにするため.
-修正して動作確認したが自分が思ったようには修正できていない.
-そもそも
+became to be called.
+
+I confirmed that the result was not as I expected.
+At the first place
 
 eliminate_regs
 
-から INITIAL_ELIMINATION_OFFSET は呼び出されない.
+did not call `INITIAL_ELIMINATION_OFFSET'.
 
-一旦上の修正をやめる.
+Once I cancelled above fix.
+
+At this point, `DWARF_FRAME_REGNUM' was declared like below:
 
 extern int rl78_dwarf_frame_regnum(int);
 #define DWARF_FRAME_REGNUM(X)  rl78_dwarf_frame_regnum(X)
 
-としているが
+I tried to fix like below:
 
 extern int rl78_dwarf_frame_regnum(int, poly_int64_pod&);
 #define DWARF_FRAME_REGNUM(X)  rl78_dwarf_frame_regnum(X, offset)
 
-のようにしてみる.
-
-ビルドしてみたところエラーになる.
+But it caused compile error:
 
 In file included from ./tm.h:22,
                  from ../.././gcc/target.h:52,
                  from ../.././gcc/dwarf2cfi.c:23:
-../.././gcc/dwarf2cfi.c: 関数 ‘rtx_def* expand_builtin_dwarf_sp_column()’ 内:
-../.././gcc/config/rl78/rl78.h:140:59: エラー: ‘offset’ was not declared in this scope; did you mean ‘off_t’?
+../.././gcc/dwarf2cfi.c: In function ‘rtx_def* expand_builtin_dwarf_sp_column()’ :
+../.././gcc/config/rl78/rl78.h:140:59: Error: ‘offset’ was not declared in this scope; did you mean ‘off_t’?
   140 | #define DWARF_FRAME_REGNUM(X)  rl78_dwarf_frame_regnum(X, offset)
       |                                                           ^~~~~~
-../.././gcc/dwarf2cfi.c:240:31: 備考: in expansion of macro ‘DWARF_FRAME_REGNUM’
+../.././gcc/dwarf2cfi.c:240:31: note: in expansion of macro ‘DWARF_FRAME_REGNUM’
   240 |   unsigned int dwarf_regnum = DWARF_FRAME_REGNUM (STACK_POINTER_REGNUM);
       |                               ^~~~~~~~~~~~~~~~~~
 
-このマクロの使用箇所で offset が定義されていなければエラーになるからしょうがない.
-この修正はキャンセル.
+At the code which uses this macro, if `offset' is not declared, compile
+error will be occured, so there is no way. Once I cancelled this fix.
 
-試しに g.S に期待値となるコンパイル結果を作成してみたが
+I tried to make `g.S' which was expected result.
 
 	.string	"a"
 	.byte	0x1
@@ -669,7 +664,7 @@ In file included from ./tm.h:22,
 	.uleb128 0x3
 	.byte	0x92
 	.uleb128 0x20
-	.sleb128 132          これ
+	.sleb128 132          ; This one
 	.uleb128 0x6
 	.string	"b"
 	.byte	0x1
@@ -679,37 +674,33 @@ In file included from ./tm.h:22,
 	.uleb128 0x3
 	.byte	0x92
 	.uleb128 0x20
-	.sleb128 136          これ
+	.sleb128 136          ; This one
 	.uleb128 0x7
 
 % ./z4
 ...
-rl78-elf-objdump: 警告: .debug_info セクション内に壊れたユニット長 (0) が見つかりました
-rl78-elf-objdump: 警告: .debug_info セクション内に壊れたユニット長 (0) が見つかりました
+rl78-elf-objdump: Warning: Corrupt unit length (0x0) found in section .debug_info
+rl78-elf-objdump: Warning: Corrupt unit length (0x0) found in section .debug_info
 ...
 
-objdump でウォーニングが出ている. ユニット長を表わす何かも修正する必要があるらしい.
+rl78-elf-objdump generated above warning. I had to fix something called unit
+length.
 
-一旦 g.S を正しいものにすることを止めて, 期待値となるものを生成することにシフトしてみる.
-
+Once I decided to stop making g.S correct, tried to generate correct one.
 
   result = new_reg_loc_descr (regno, offset);
 
-ここで停止して
+Stop above code and
 
 (gdb) p offset.coeffs[0]
 $17 = 4
-(gdb) set offset.coeffs[0]=132              書き代える.
+(gdb) set offset.coeffs[0]=132              # modify
 (gdb) c
 ...
 (gdb) p offset.coeffs[0]
 $18 = 6
-(gdb) set offset.coeffs[0]=136              書き代える
+(gdb) set offset.coeffs[0]=136              # modify
 (gdb) c
-
-しかし期待した通りの生成結果になっていない. 何か勘違いしている.
-コンパイルしているのは f.c だった. 改めて a.c をコンパイルして
-a.s を g.S にリネームして
 
 % ./z4
 rl78-elf-as -o g.o g.S
@@ -731,26 +722,27 @@ Quit anyway? (y or n) [answered Y; input not from terminal]
 
 %
 
-期待通り動いていている.
+OK. It worked well as I expected.
 
-問題は a と b は 128 加算するが c はそのままということ.
-これは DW_TAG_formal_parameter か DW_TAG_variable かで区別する.
+The problem was that the offset of `a' and `b' were added 128 but that of
+`c' was not.
+This could be done by `DW_TAG_formal_parameter' and `DW_TAG_variable'
 
- <2><c1>: 省略番号: 6 (DW_TAG_formal_parameter)
+ <2><c1>: Abbrev number: 6 (DW_TAG_formal_parameter)
     <c2>   DW_AT_name        : a
     <c4>   DW_AT_decl_file   : 1
     <c5>   DW_AT_decl_line   : 3
     <c6>   DW_AT_decl_column : 11
     <c7>   DW_AT_type        : <0x7f>
     <cb>   DW_AT_location    : 4 byte block: 92 20 84 1 	(DW_OP_bregx: 32 (r32) 132)
- <2><d0>: 省略番号: 6 (DW_TAG_formal_parameter)
+ <2><d0>: Abbrev number: 6 (DW_TAG_formal_parameter)
     <d1>   DW_AT_name        : b
     <d3>   DW_AT_decl_file   : 1
     <d4>   DW_AT_decl_line   : 3
     <d5>   DW_AT_decl_column : 18
     <d6>   DW_AT_type        : <0x7f>
     <da>   DW_AT_location    : 4 byte block: 92 20 86 1 	(DW_OP_bregx: 32 (r32) 134)
- <2><df>: 省略番号: 7 (DW_TAG_variable)
+ <2><df>: Abbrev number: 7 (DW_TAG_variable)
     <e0>   DW_AT_name        : c
     <e2>   DW_AT_decl_file   : 1
     <e3>   DW_AT_decl_line   : 5
@@ -758,8 +750,7 @@ Quit anyway? (y or n) [answered Y; input not from terminal]
     <e5>   DW_AT_type        : <0xee>
     <e9>   DW_AT_location    : 3 byte block: 92 20 0 	(DW_OP_bregx: 32 (r32) 0)
 
-改めてこのオフセットをどのように変更できるか調べてみる.
-現状
+Again I tried to investigate how this offset was modified. At this point,
 
       rtx elim = (ira_use_lra_p
 		  ? lra_eliminate_regs (reg, VOIDmode, NULL_RTX)
@@ -770,8 +761,8 @@ Quit anyway? (y or n) [answered Y; input not from terminal]
 $29 = true
 (gdb)
 
-であるからまずは lra_eliminate_regs で stack_pointer_rtx を返せないかどうか
-調べてみる.
+So first, I tried to investigate how `lra_eliminate_regs' could return
+`stack_pointer_rtx'.
 
 static class lra_elim_table *
 get_elimination (rtx reg)
@@ -786,7 +777,7 @@ get_elimination (rtx reg)
     return ep->from_rtx != reg ? NULL : ep;
   poly_int64 offset = self_elim_offsets[hard_regno];
   if (known_eq (offset, 0))
-    return NULL;              ここで返っている.
+    return NULL;              // Return here
 
 
 (gdb) p self_elim_offsets
@@ -795,21 +786,21 @@ $30 = {{coeffs = {0}} <repeats 36 times>}
 $39 = {0x0 <repeats 36 times>}
 (gdb) 
 
-この配列のどちらかを変更することはできるだろうか.
-elimination_map は難しい.
-self_elim_offsets も難しい.
+I wondered it was possible to modify one of two arrays.
+To modify `elimination_map' was difficult.
+To modify `self_elim_offsets' was also difficult.
 
-ira_use_lra_p を false にして lra_eliminate_regs で何とかできないか調べてみる.
-
+I tried to investigate if `lra_eliminate_regs' worked well by making
+`ira_use_lra_p' false.
 
 	    if (ep->from_rtx == x && ep->can_eliminate)
 	      return plus_constant (Pmode, ep->to_rtx, ep->previous_offset);
 
-現状
+Then at this point
 
 ep->can_eliminate = false
 
-だがこれを true にできればよい.
+but it's OK if making it true.
 
       ep->from = ep1->from;
       ep->to = ep1->to;
@@ -821,58 +812,59 @@ ep->can_eliminate = false
 		     || ! stack_realign_fp)));
 
 
-以下を追加した.
+Then I tried like below:
 
 bool rl78_target_can_eliminate(int from, int to)
 {
   assert(from == ARG_POINTER_REGNUM);
   assert(to == STACK_POINTER_REGNUM);
-  frame_pointer_needed = false;            これも必要だがずるい.
+  frame_pointer_needed = false;           // This was also required.
+                                          // And not so good.
   return true;
 }
 
 #undef TARGET_CAN_ELIMINATE
 #define TARGET_CAN_ELIMINATE rl78_target_can_eliminate
 
-これで can_eliminate = true にできている.
-さらにオフセットの計算が正しくないので以下を追加
+Then I could make `can_eliminate' true. And more, added below for
+calculation of offset:
 
 int rl78_frame_pointer_cfa_offset(tree);
 #define FRAME_POINTER_CFA_OFFSET(FUN) rl78_frame_pointer_cfa_offset(FUN)
 
-ビルド中 2022.02.18 10:24
+2022.02.18 10:24 build started
 
-上はやめて以下にした
+I cancelled above fix and fixed like below:
 
 int rl78_arg_pointer_cfa_offset(tree);
 #define ARG_POINTER_CFA_OFFSET(FUN) rl78_arg_pointer_cfa_offset(FUN)
 
-この修正を入れたところ
+Then for the code
 
 int f(int a, int b)
 {
   return a + b;
 }
 
-に対して, 前は a や b が ap 相対できていたのに sp 相対になっている.
+`a' and `b' became to be `sp' relative not to be `ap' relative.
 
-現状はまだできていないが
+At this point, .debug_info section was still incorrect:
 
- <2><c1>: 省略番号: 6 (DW_TAG_formal_parameter)
+ <2><c1>: Abbrev number: 6 (DW_TAG_formal_parameter)
     <c2>   DW_AT_name        : a
     <c4>   DW_AT_decl_file   : 1
     <c5>   DW_AT_decl_line   : 3
     <c6>   DW_AT_decl_column : 11
     <c7>   DW_AT_type        : <0x7f>
     <cb>   DW_AT_location    : 3 byte block: 91 84 1 	(DW_OP_fbreg: 132)
- <2><cf>: 省略番号: 6 (DW_TAG_formal_parameter)            ^^^^^^^^^^^
+ <2><cf>: Abbrev number: 6 (DW_TAG_formal_parameter)     ^^^^^^^^^^^
     <d0>   DW_AT_name        : b
     <d2>   DW_AT_decl_file   : 1
     <d3>   DW_AT_decl_line   : 3
     <d4>   DW_AT_decl_column : 18
     <d5>   DW_AT_type        : <0x7f>
     <d9>   DW_AT_location    : 3 byte block: 91 86 1 	(DW_OP_fbreg: 134)
- <2><dd>: 省略番号: 7 (DW_TAG_variable)                   ^^^^^^^^^^^^
+ <2><dd>: Abbrev number: 7 (DW_TAG_variable)             ^^^^^^^^^^^^
     <de>   DW_AT_name        : c
     <e0>   DW_AT_decl_file   : 1
     <e1>   DW_AT_decl_line   : 5
@@ -881,7 +873,7 @@ int f(int a, int b)
     <e7>   DW_AT_location    : 3 byte block: 92 20 0 	(DW_OP_bregx: 32 (r32) 0
 
 
-DW_OP_fbreg は間違いで, DW_OP_bregx : 32 が正しい.
+`DW_OP_fbreg' was wrong, `DW_OP_bregx : 32' was correct.
 
 現状 USE_LRA を define しているが袋工事に入った感じがする.
 
