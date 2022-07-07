@@ -1,0 +1,46 @@
+*** gcc-10.2.0.org/gcc/config.gcc	2021-10-16 10:31:18.000000000 +0900
+--- gcc-10.2.0.tic6x-elf.mine/gcc/config.gcc	2022-07-06 10:59:22.000000000 +0900
+***************
+*** 556,564 ****
+  	cpu_type=v850
+  	;;
+  tic6x-*-*)
+! 	cpu_type=c6x
+! 	extra_headers="c6x_intrinsics.h"
+! 	extra_options="${extra_options} c6x/c6x-tables.opt"
+  	;;
+  xtensa*-*-*)
+  	extra_options="${extra_options} fused-madd.opt"
+--- 556,562 ----
+  	cpu_type=v850
+  	;;
+  tic6x-*-*)
+! 	cpu_type=tic6x
+  	;;
+  xtensa*-*-*)
+  	extra_options="${extra_options} fused-madd.opt"
+***************
+*** 3374,3383 ****
+  	tmake_file="${tmake_file} sparc/t-sparc"
+  	;;
+  tic6x-*-elf)
+! 	tm_file="elfos.h ${tm_file} c6x/elf-common.h c6x/elf.h"
+! 	tm_file="${tm_file} dbxelf.h tm-dwarf2.h newlib-stdint.h"
+! 	tmake_file="c6x/t-c6x c6x/t-c6x-elf"
+! 	use_collect2=no
+  	;;
+  tic6x-*-uclinux)
+  	tm_file="elfos.h ${tm_file} gnu-user.h linux.h c6x/elf-common.h c6x/uclinux-elf.h"
+--- 3372,3383 ----
+  	tmake_file="${tmake_file} sparc/t-sparc"
+  	;;
+  tic6x-*-elf)
+! 	tm_file="dbxelf.h elfos.h usegas.h newlib-stdint.h tic6x/tic6x.h"
+! 	tm_p_file="tic6x/tic6x-protos.h"
+! 	md_file="tic6x/tic6x.md"
+! 	out_file="tic6x/tic6x.c"
+! 	tmake_file="tic6x/t-tic6x"
+! 	use_gcc_stdint=wrap
+  	;;
+  tic6x-*-uclinux)
+  	tm_file="elfos.h ${tm_file} gnu-user.h linux.h c6x/elf-common.h c6x/uclinux-elf.h"
