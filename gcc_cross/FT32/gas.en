@@ -1,0 +1,394 @@
+ft32-elf-as のライン情報の調査
+
+-g3 -O0 でビルドしなおした.
+
+そして gdb から以下のように実行
+
+(gdb) run -g a.S
+Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ft32-elf/gas/as-new -g a.S
+[Inferior 1 (process 12805) exited normally]
+(gdb) 
+
+% ft32-elf-objdump -g a.out > a
+
+a を確認して以下のようになっていた:
+
+ Line Number Statements:
+  [0x00000024]  拡張命令コード 2: 設定アドレス 0x0
+  [0x0000002b]  Special opcode 7: advance Address by 0 to 0x0 and Line by 2 to 3
+  [0x0000002c]  行を 1 進め 4 とします
+  [0x0000002e]  PC を固定サイズ 4 分進め 0x4 とします
+  [0x00000031]  コピー (view 1)
+  [0x00000032]  行を 1 進め 5 とします
+  [0x00000034]  PC を固定サイズ 8 分進め 0xc とします
+  [0x00000037]  コピー (view 2)
+  [0x00000038]  行を 2 進め 7 とします
+  [0x0000003a]  PC を固定サイズ 12 分進め 0x18 とします
+  [0x0000003d]  コピー (view 3)
+  [0x0000003e]  PC を固定サイズ 16 分進め 0x28 とします
+  [0x00000041]  拡張命令コード 1: 列の終り
+
+ft32-elf-as は a.out を生成しているから write システムコールを呼び出しているはず.
+
+  if (BFD_SEND (abfd, _bfd_set_section_contents,
+		(abfd, section, location, offset, count)))
+
+これは iq2000-elf-ld の修正で見たコードでここから write システムコールを発行している.
+
+".text"
+".debug_aranges"
+
+セクションはここにきているのは確認できたが他は確認できず. write ではなくて
+上の行にブレークポイントをセットしてみた.
+
+(gdb) delete
+(gdb) b section.c:1523
+(gdb) run
+
+".text"
+".debug_line"
+
+ちゃんと ".debug_line" がきている.
+
+(gdb) x/50bx location
+0x8171e38:	0x00	0x00	0x00	0x00	0x03	0x00	0x00	0x00
+0x8171e40:	0x00	0x00	0x01	0x01	0xfb	0x0e	0x0d	0x00
+0x8171e48:	0x01	0x01	0x01	0x01	0x00	0x00	0x00	0x01
+0x8171e50:	0x00	0x00	0x01	0x00	0x61	0x2e	0x53	0x00
+0x8171e58:	0x00	0x00	0x00	0x00	0x00	0x05	0x02	0x00
+0x8171e60:	0x00	0x00	0x00	0x14	0x03	0x01	0x09	0x00
+0x8171e68:	0x00	0x01
+(gdb) 
+
+同じことを ppc-elf-as でやってみた:
+
+(gdb) x/52bx location
+0x820c360:	0x00	0x00	0x00	0x30	0x00	0x03	0x00	0x00
+0x820c368:	0x00	0x1a	0x04	0x01	0xfb	0x0e	0x0d	0x00
+0x820c370:	0x01	0x01	0x01	0x01	0x00	0x00	0x00	0x01
+0x820c378:	0x00	0x00	0x01	0x00	0x61	0x2e	0x53	0x00
+0x820c380:	0x00	0x00	0x00	0x00	0x00	0x05	0x02	0x00
+0x820c388:	0x00	0x00	0x00	0x14	0x21	0x21	0x22	0x02
+0x820c390:	0x01	0x00	0x01	0x01
+(gdb)
+
+ppc-elf-as の出力に対する ppc-elf-objdump -g の結果は以下:
+
+ Line Number Statements:
+  [0x00000024]  拡張命令コード 2: 設定アドレス 0x0
+  [0x0000002b]  Special opcode 7: advance Address by 0 to 0x0 and Line by 2 to 3
+  [0x0000002c]  Special opcode 20: advance Address by 4 to 0x4 and Line by 1 to 4
+  [0x0000002d]  Special opcode 20: advance Address by 4 to 0x8 and Line by 1 to 5
+  [0x0000002e]  Special opcode 21: advance Address by 4 to 0xc and Line by 2 to 7
+  [0x0000002f]  Advance PC by 4 to 0x10
+  [0x00000031]  拡張命令コード 1: 列の終り
+
+Special opcode 20 に注目
+20 = 0x14 なのでこれを生成しているところを調べてみる.
+
+以下は ppc-elf-as で行なった:
+
+p/x *(char*)(0x820c388+3)
+$3 = 0x14
+(gdb) watch *(char*)(0x820c388+3)
+Hardware watchpoint 2: *(char*)(0x820c388+3)
+(gdb) run
+The program being debugged has been started already.
+Start it from the beginning? (y or n) y
+Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ppc-elf/gas/as-new -g a.S
+
+Hardware watchpoint 2: *(char*)(0x820c388+3)
+
+Old value = <unreadable>
+New value = 20 '\024'
+emit_inc_line_addr (line_delta=2, addr_delta=0, p=0x820c38c "", len=1) at dwarf2dbg.c:1612
+(gdb)
+
+これは正しく動作しているもの.
+
+emit_inc_line_addr
+
+という函数がポイントになりそう.
+一方できていない ft32-elf-as で試してみた:
+
+p/x *(char*)(0x8171e60+3)
+$5 = 0x14
+(gdb) watch *(char*)(0x8171e60+3)
+Hardware watchpoint 3: *(char*)(0x8171e60+3)
+(gdb) run
+The program being debugged has been started already.
+Start it from the beginning? (y or n) y
+Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ft32-elf/gas/as-new -g a.S
+
+Hardware watchpoint 3: *(char*)(0x8171e60+3)
+
+Old value = <unreadable>
+New value = 20 '\024'
+emit_inc_line_addr (line_delta=2, addr_delta=0, p=0x8171e64 "", len=1) at dwarf2dbg.c:1612
+(gdb)
+
+やはりここ. ということは実はエラーはもっと前の段階で発生している可能性が高い.
+かとも思ったが, それっぽいところが見つからず.
+
+20 = 0x14
+
+の次のバイトを調べてみた. 以下は正しく動作しているいる ppc-elf-as:
+
+(gdb) watch *(char*)(0x820c388+4)
+Hardware watchpoint 3: *(char*)(0x820c388+4)
+(gdb) c
+Continuing.
+
+Hardware watchpoint 3: *(char*)(0x820c388+4)
+
+Old value = 0 '\000'
+New value = 33 '!'
+emit_inc_line_addr (line_delta=1, addr_delta=1, p=0x820c38d "", len=1) at dwarf2dbg.c:1612
+(gdb) 
+
+函数は同じ
+
+emit_inc_line_addr
+
+らしい.
+
+そして問題の ft32-elf-as:
+
+watch *(char*)(0x8171e60+4)
+Hardware watchpoint 4: *(char*)(0x8171e60+4)
+(gdb) c
+Continuing.
+
+Hardware watchpoint 4: *(char*)(0x8171e60+4)
+
+Old value = 0 '\000'
+New value = 3 '\003'
+emit_fixed_inc_line_addr (line_delta=1, addr_delta=4, frag=0x8171e00, p=0x8171e65 "", len=6) at dwarf2dbg.c:1702
+(gdb)
+
+emit_fixed_inc_line_addr
+
+これだった.
+
+                    20                     33
+ppc-elf-as          emit_inc_line_addr     emit_inc_line_addr
+                                           3
+ft32-elf-as	    emit_inc_line_addr	   emit_fixed_inc_line_addr
+
+これは, もしかすると emit_fixed_inc_line_addr を呼び出しているのが
+そもそも期待した動作ではないのかもしれない.
+
+
+  if (DWARF2_USE_FIXED_ADVANCE_PC)
+    emit_fixed_inc_line_addr (frag->fr_offset, addr_diff, frag,
+			      frag->fr_literal + frag->fr_fix,
+			      frag->fr_subtype);
+  else
+    emit_inc_line_addr (frag->fr_offset, addr_diff,
+			frag->fr_literal + frag->fr_fix, frag->fr_subtype);
+
+なるほど, こういうことらしい.
+
+(gdb) p DWARF2_USE_FIXED_ADVANCE_PC
+$7 = 1
+(gdb) 
+
+さてこれの正体は何か.
+
+#ifndef DWARF2_USE_FIXED_ADVANCE_PC
+# define DWARF2_USE_FIXED_ADVANCE_PC	linkrelax
+#endif
+
+同じことは ppc-elf-as でもやっている.
+動作を比較してみた
+
+
+      else if (frag == last_frag && ! DWARF2_USE_FIXED_ADVANCE_PC)
++	out_inc_line_addr (line_delta, frag_ofs - last_frag_ofs);
+      else
+-	relax_inc_line_addr (line_delta, lab, last_lab);
+
+ppc-elf-as は 上の + の行を実行している.
+
+ft32-elf-as はこの行を実行していないので - の行を実行している.
+
+ppc-elf-as で
+
+(gdb) p DWARF2_USE_FIXED_ADVANCE_PC
+0
+(gdb)
+
+これは, コンパイルの方法が異なっていた可能性はある.
+
+DWARF2_USE_FIXED_ADVANCE_PC
+
+が結果的に 1 に define されていること自体が誤りとは言い難いが, 実際に正しく動いていないのが
+残念なので回避策を考えてみる.
+
+単純に以下のようにしてみた:
+
+//# define DWARF2_USE_FIXED_ADVANCE_PC	linkrelax
+# define DWARF2_USE_FIXED_ADVANCE_PC	0
+
+修正した as-new は以下
+
+ Line Number Statements:
+  [0x00000024]  拡張命令コード 2: 設定アドレス 0x0
+  [0x0000002b]  Special opcode 7: advance Address by 0 to 0x0 and Line by 2 to 3
+  [0x0000002c]  Special opcode 62: advance Address by 4 to 0x4 and Line by 1 to 4
+  [0x0000002d]  Special opcode 62: advance Address by 4 to 0x8 and Line by 1 to 5
+  [0x0000002e]  Special opcode 63: advance Address by 4 to 0xc and Line by 2 to 7
+  [0x0000002f]  Advance PC by 4 to 0x10
+  [0x00000031]  拡張命令コード 1: 列の終り
+
+不明だが 62 は予期しない値. 20 が予定した値なんだが...これを試してみたが
+
+% ft32-elf-addr2line -e test000.elf -a 0x100
+0x00000100
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ft32-elf/gas/a.S:3
+% ft32-elf-addr2line -e test000.elf -a 0x104
+0x00000104
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ft32-elf/gas/a.S:4
+% ft32-elf-addr2line -e test000.elf -a 0x108
+0x00000108
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ft32-elf/gas/a.S:5
+% ft32-elf-addr2line -e test000.elf -a 0x10c
+0x0000010c
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ft32-elf/gas/a.S:7
+%
+
+これはで期待通り動作するかと思ったが ft32-elf-gdb ではライン情報を正しく受け取れていない.
+
+まずは 20 が 62 になっている原因を調査する.
+
+修正した状態で .debug_line をダンプしてみた.
+
+(gdb) x/52bx  location
+0x8171e38:	0x00	0x00	0x00	0x00	0x03	0x00	0x00	0x00
+0x8171e40:	0x00	0x00	0x01	0x01	0xfb	0x0e	0x0d	0x00
+0x8171e48:	0x01	0x01	0x01	0x01	0x00	0x00	0x00	0x01
+0x8171e50:	0x00	0x00	0x01	0x00	0x61	0x2e	0x53	0x00
+0x8171e58:	0x00	0x00	0x00	0x00	0x00	0x05	0x02	0x00
+0x8171e60:	0x00	0x00	0x00	0x14	0x4b	0x4b	0x4c	0x02
+0x8171e68:	0x04	0x00	0x01	0x01
+(gdb)
+
+そして気付くことは修正前は count = 50 だったので 50 バイトダンプしていたのだが
+修正後は count = 52 と ppc-elf-as と同じバイト数になっている.
+
+62 = 0x3e
+
+だが 0x3e は見当たらない.
+
+以下は改めて ppc-elf-as のダンプ
+
+(gdb) x/52bx location
+0x820c360:	0x00	0x00	0x00	0x30	0x00	0x03	0x00	0x00
+0x820c368:	0x00	0x1a	0x04	0x01	0xfb	0x0e	0x0d	0x00
+0x820c370:	0x01	0x01	0x01	0x01	0x00	0x00	0x00	0x01
+0x820c378:	0x00	0x00	0x01	0x00	0x61	0x2e	0x53	0x00
+0x820c380:	0x00	0x00	0x00	0x00	0x00	0x05	0x02	0x00
+0x820c388:	0x00	0x00	0x00	0x14	0x21	0x21	0x22	0x02
+0x820c390:	0x01	0x00	0x01	0x01
+(gdb)
+
+完全一致している(実は後で違いに気付く). .debug_line のダンプ内容が一致しているの
+に 62 と 20 との違いがある. さてこれは一体.
+
+であれば ft32-elf-objdump が修正前に 20 と表示していたものを何故 62 と変更することに
+なったのかそれを調べるべきだろう.
+
+ft32-elf-objdump -g ../gas/a.out 
+
+で何故 20 ではなくて 62 になるのか調査する.
+
+ Line Number Statements:
+  [0x00000024]  拡張命令コード 2: 設定アドレス 0x0
+  [0x0000002b]  Special opcode 7: advance Address by 0 to 0x0 and Line by 2 to 3
+  [0x0000002c]  Special opcode 62: advance Address by 4 to 0x4 and Line by 1 to 4
+  [0x0000002d]  Special opcode 62: advance Address by 4 to 0x8 and Line by 1 to 5
+  [0x0000002e]  Special opcode 63: advance Address by 4 to 0xc and Line by 2 to 7
+  [0x0000002f]  Advance PC by 4 to 0x10
+  [0x00000031]  拡張命令コード 1: 列の終り
+
+これが問題の 62.
+さてどこにブレークポイントをセットするべきか.
+平凡だが write にセットしてみる.
+
+
+		      printf (_("  Special opcode %d: "
+				"advance Address by %s to 0x%s%s"),
+			      op_code, dwarf_vmatoa ("u", uladv),
+			      dwarf_vmatoa ("x", state_machine_regs.address),
+			      verbose_view && uladv
+			      ? _(" (reset view)") : "");
+
+ここらしい. op_code = 62 であることを確認した.
+なるほどいままで 20 = 0x14 を問題にしていたが,
+
+	      if (op_code >= linfo.li_opcode_base)
+		{
+		  op_code -= linfo.li_opcode_base;
+
+のような計算をしている. linfo.li_opcode_base = 13 だから
+
+62 = 75 - 13 = 0x4b - 13
+
+ということ. 62 の正体は 0x4b だった.
+
+完全一致しているとか書いたが実は違っていた.
+
+(gdb) x/52bx  location
+0x8171e38:	0x00	0x00	0x00	0x00	0x03	0x00	0x00	0x00
+0x8171e40:	0x00	0x00	0x01	0x01	0xfb	0x0e	0x0d	0x00
+0x8171e48:	0x01	0x01	0x01	0x01	0x00	0x00	0x00	0x01
+0x8171e50:	0x00	0x00	0x01	0x00	0x61	0x2e	0x53	0x00
+0x8171e58:	0x00	0x00	0x00	0x00	0x00	0x05	0x02	0x00
+0x8171e60:	0x00	0x00	0x00	0x14	0x4b	0x4b	0x4c	0x02
+0x8171e68:	0x04	0x00	0x01	0x01     ~~~
+(gdb)
+
+ここが 0x4b になる理由は...
+
+addr_delta は ppc では 1 だが ft32 では 4 のまま.
+
+  if (DWARF2_LINE_MIN_INSN_LENGTH > 1)
+      ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+これが 1 になっている. ppc では 4 に define されていた.
+
+
+//# define DWARF2_LINE_MIN_INSN_LENGTH	1
+# define DWARF2_LINE_MIN_INSN_LENGTH	4
+
+これで試してみたが ft32-elf-gdb では期待した動作にはなっていない.
+
+DWARF2_USE_FIXED_ADVANCE_PC が 1 に define されているアセンブラが他にあるのか
+調査してみた:
+
+mn10300, msp430, rl78 では 1 に define
+
+aarch64, arm, h8300, iq2000, m32r, mips, ppc, sh, v850 は 0 に define
+
+
+arm
+ Line Number Statements:
+  [0x00000028]  拡張命令コード 2: 設定アドレス 0x100
+  [0x0000002f]  Special opcode 7: advance Address by 0 to 0x100 and Line by 2 to 3
+  [0x00000030]  Special opcode 34: advance Address by 4 to 0x104 and Line by 1 to 4
+  [0x00000031]  Special opcode 34: advance Address by 4 to 0x108 and Line by 1 to 5
+  [0x00000032]  Special opcode 35: advance Address by 4 to 0x10c and Line by 2 to 7
+
+なので 20 は必ずしも必須ではないらしい.
+
+iq2000
+  [0x0000002a]  拡張命令コード 2: 設定アドレス 0x80000100
+  [0x00000031]  Special opcode 7: advance Address by 0 to 0x80000100 and Line by 2 to 3
+  [0x00000032]  Special opcode 62: advance Address by 4 to 0x80000104 and Line by 1 to 4
+  [0x00000033]  Special opcode 62: advance Address by 4 to 0x80000108 and Line by 1 to 5
+  [0x00000034]  Special opcode 63: advance Address by 4 to 0x8000010c and Line b
+
+
+問題は, そもそも ft32-elf-as 自体が行番号情報が正しく出せていなかったこと.
+仮に ppc スタイルに修正しても ft32-elf-gdb 自体がこれを読み込めていないこと.
+
