@@ -875,20 +875,22 @@ At this point, .debug_info section was still incorrect:
 
 `DW_OP_fbreg' was wrong, `DW_OP_bregx : 32' was correct.
 
-現状 USE_LRA を define しているが袋工事に入った感じがする.
+At this point, `USE_LRA' macro was defined and I was lost.
 
-一旦
+Once I decided to delete below:
+
 #define USE_LRA
-を削除する.
+
+When the function
 
 static dw_loc_descr_ref
 based_loc_descr (rtx reg, poly_int64 offset,
 		 enum var_init_status initialized)
 {
 
-が呼び出された時点では reg = ap で offset = 4 なのだからここまでは期待した
-動作であるし, この呼び出し前に offset = 132 のように変更するのは間違い.
-
+was called, I confirmed reg was `ap' and offset was 4. So it worked
+as I expected. And I believed that it was not correct to modify
+offset = 132 before this function was called.
 
   if (reg == arg_pointer_rtx || reg == frame_pointer_rtx)
     {
@@ -905,9 +907,8 @@ based_loc_descr (rtx reg, poly_int64 offset,
 
   regno = REGNO (reg);
 
-
-のようになっているから elim で stack_pointer_rtx が戻るのが少くとも必要.
-と思ったが,
+According to above code, I guessed that it was correct that `elim' became
+`stack_pointer_rtx', but
 
 
   HOST_WIDE_INT const_offset;
@@ -921,11 +922,11 @@ based_loc_descr (rtx reg, poly_int64 offset,
 	 is supposed to track where the arguments live and the register
 	 used as vdrap or drap in some spot might be used for something
 	 else in other part of the routine.  */
-      return new_loc_descr (DW_OP_fbreg, const_offset, 0);  これ
+      return new_loc_descr (DW_OP_fbreg, const_offset, 0);  // This one
     }
 
 
-オリジナルの cc1
+Original cc1 .debug_frame
 
 00000000 00000010 ffffffff CIE
   Version:               3
@@ -935,18 +936,16 @@ based_loc_descr (rtx reg, poly_int64 offset,
   Return address column: 37
 
   DW_CFA_def_cfa: r32 ofs 4
-  DW_CFA_offset: r37 at cfa-4  これを試してみる.
+  DW_CFA_offset: r37 at cfa-4  # Try this one
   DW_CFA_nop
   DW_CFA_nop
 
 
-以下を追加
+I added below declaration
 
 #define INCOMING_FRAME_SP_OFFSET		4
 
-フレームポインタないからこういうのはあまり好きではないが
-
-変更前は
+Before adding the declaration:
 
 00000000 0000000e ffffffff CIE
   Version:               3
@@ -958,7 +957,7 @@ based_loc_descr (rtx reg, poly_int64 offset,
   DW_CFA_def_cfa: r32 ofs 0
   DW_CFA_offset: r36 at cfa+0
 
-変更後は
+After adding the declaration:
 
 00000000 0000000e ffffffff CIE
   Version:               3
@@ -970,17 +969,17 @@ based_loc_descr (rtx reg, poly_int64 offset,
   DW_CFA_def_cfa: r32 ofs 4
   DW_CFA_offset: r36 at cfa-4
 
-なのでここは予定通り.
-ここは USE_LRA を削除しているから現状は以下
+.debug_frame was changed as I expected.
+At this point, because `USE_LRA' macro was deleted:
 
- <2><c1>: 省略番号: 6 (DW_TAG_formal_parameter)
+ <2><c1>: Abbrev number: 6 (DW_TAG_formal_parameter)
     <c2>   DW_AT_name        : a
     <c4>   DW_AT_decl_file   : 1
     <c5>   DW_AT_decl_line   : 3
     <c6>   DW_AT_decl_column : 11
     <c7>   DW_AT_type        : <0x7f>
     <cb>   DW_AT_location    : 3 byte block: 92 20 4 	(DW_OP_bregx: 32 (r32) 4)
- <2><cf>: 省略番号: 6 (DW_TAG_formal_parameter)
+ <2><cf>: Abbrev number: 6 (DW_TAG_formal_parameter)
     <d0>   DW_AT_name        : b
     <d2>   DW_AT_decl_file   : 1
     <d3>   DW_AT_decl_line   : 3
@@ -988,20 +987,19 @@ based_loc_descr (rtx reg, poly_int64 offset,
     <d5>   DW_AT_type        : <0x7f>
     <d9>   DW_AT_location    : 3 byte block: 92 20 6 	(DW_OP_bregx: 32 (r32) 6)
 
-当初の予定とは違ったが, 一度 USE_LRA を define した. そして
+This was different from the beginning plan, and again `USE_LRA' was defined.
 
 int rl78_arg_pointer_cfa_offset(tree)
 {
-  return 0;  // もともとは -get_frame_size() にしていた
+- return -get_frame_size();
++ return 0;  // fixed
 }
 
-のように修正したところ, 期待通り rl78-elf-gdb が動作している.
+Then rl78-elf-gdb became to work well.
 
-2022.02.18 17:18
+2022.02.18 17:18 Once I made backup like below:
 
 % tar cf rl78-elf.mine.tar gcc/config/rl78 gcc/common/config/rl78
-
-のようにして一旦現状をバックアップしておいた.
 
 2022.02.18 17:20
 
@@ -1010,15 +1008,17 @@ int rl78_arg_pointer_cfa_offset(tree);
 #define ARG_POINTER_CFA_OFFSET(FUN) rl78_arg_pointer_cfa_offset(FUN)
 #endif
 
-上を削除
+Above was deleted.
 
 int rl78_arg_pointer_cfa_offset(tree)
 {
   return 0;
 }
 
-上を削除
+Above was deleted.
 
-そしてリビルド. 2022.02.18 18:24 正常動作を確認.
+And re-builded. 2022.02.18 18:24 I confirmed hello world 11 program worked
+well under control of rl78-elf-gdb.
+
 
 
