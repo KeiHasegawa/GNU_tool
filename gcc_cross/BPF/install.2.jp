@@ -20,6 +20,40 @@
 ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ --target=bpf
 % make all-gcc
 % make all-target-libgcc
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-12.1.0.bpf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-12.1.0.bpf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bpf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bpf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bpf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/bpf/sys-include    -g -O2 -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../host-i686-pc-linux-gnu/gcc -I../.././libgcc -I../.././libgcc/. -I../.././libgcc/../gcc -I../.././libgcc/../include  -DHAVE_CC_TLS -DUSE_EMUTLS  -o _gcov_info_to_gcda.o -MT _gcov_info_to_gcda.o -MD -MP -MF _gcov_info_to_gcda.dep -DL_gcov_info_to_gcda -c ../.././libgcc/libgcov-driver.c
+../.././libgcc/libgcov-driver.c: 関数 ‘write_topn_counters’ 内:
+../.././libgcc/libgcov-driver.c:418:1: エラー: too many function arguments for eBPF
+...
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-12.1.0.bpf/libgcc/libgcov-driver.c
+
+を修正してコンパイルエラーを回避:
+
+#if 0
+static void
+write_topn_counters (const struct gcov_ctr_info *ci_ptr,
+...
+}
+#endif
+...
+	  if (t_ix == GCOV_COUNTER_V_TOPN || t_ix == GCOV_COUNTER_V_INDIR) {
+#if 0	    
+	    write_topn_counters (ci_ptr, t_ix, n_counts, dump_fn, allocate_fn,
+				 arg);
+#else
+	    (void)allocate_fn; abort();
+#endif	    
+	  }
+...
+#if 0  
+  (*filename_fn) (gi_ptr->filename, arg);
+#else
+  (void)filename_fn; abort();
+#endif  
+  write_one_data (gi_ptr, NULL, dump_fn, allocate_fn, arg);
+...
+% make all-target-libgcc
 % make install-gcc
 % make install-target-libgcc
 % cd ..
@@ -30,4 +64,4 @@
 % cd gdb-10.2 gdb-12.1.bpf
 % ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ --target=bpf
 % make all
-% mkae install
+% make install
