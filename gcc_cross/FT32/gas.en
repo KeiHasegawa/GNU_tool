@@ -1,8 +1,8 @@
-ft32-elf-as のライン情報の調査
+Investigation about ft32-elf-as line information
 
--g3 -O0 でビルドしなおした.
+I re-builded with `-g3 -O0' option
 
-そして gdb から以下のように実行
+And executed as-new (ft32-elf-as ) under control of gdb like below:
 
 (gdb) run -g a.S
 Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ft32-elf/gas/as-new -g a.S
@@ -11,35 +11,34 @@ Starting program: /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binu
 
 % ft32-elf-objdump -g a.out > a
 
-a を確認して以下のようになっていた:
+`a' became like below:
 
  Line Number Statements:
-  [0x00000024]  拡張命令コード 2: 設定アドレス 0x0
+  [0x00000024]  Extended opcode 2: set Address to 0x0
   [0x0000002b]  Special opcode 7: advance Address by 0 to 0x0 and Line by 2 to 3
-  [0x0000002c]  行を 1 進め 4 とします
-  [0x0000002e]  PC を固定サイズ 4 分進め 0x4 とします
-  [0x00000031]  コピー (view 1)
-  [0x00000032]  行を 1 進め 5 とします
-  [0x00000034]  PC を固定サイズ 8 分進め 0xc とします
-  [0x00000037]  コピー (view 2)
-  [0x00000038]  行を 2 進め 7 とします
-  [0x0000003a]  PC を固定サイズ 12 分進め 0x18 とします
-  [0x0000003d]  コピー (view 3)
-  [0x0000003e]  PC を固定サイズ 16 分進め 0x28 とします
-  [0x00000041]  拡張命令コード 1: 列の終り
+  [0x0000002c]  Advance Line by 1 to 4
+  [0x0000002e]  Advance PC by 4 to 0x4
+  [0x00000031]  Coopy (view 1)
+  [0x00000032]  Advance Line by 1 to 5
+  [0x00000034]  Advance PC by 8 to 0xc
+  [0x00000037]  Coy (view 2)
+  [0x00000038]  Advance Line by 2 to 7
+  [0x0000003a]  Advance PC by 12 to 0x18
+  [0x0000003d]  Copy (view 3)
+  [0x0000003e]  Advance PC by 16 to 0x28
+  [0x00000041]  Extended opcode 1: End of Sequence
 
-ft32-elf-as は a.out を生成しているから write システムコールを呼び出しているはず.
+Because ft32-elf-as generates `a.out', it may call `write' system call.
 
   if (BFD_SEND (abfd, _bfd_set_section_contents,
 		(abfd, section, location, offset, count)))
 
-これは iq2000-elf-ld の修正で見たコードでここから write システムコールを発行している.
+Above code was investigated at fixing `iq2000-elf-ld', and `write' system
+call was called from above code.
 
-".text"
-".debug_aranges"
-
-セクションはここにきているのは確認できたが他は確認できず. write ではなくて
-上の行にブレークポイントをセットしてみた.
+For just ".text" and ".debug_aranges" sections, `write' was called.
+Not setting break-point to `write', by setting break-point to above code, 
+I confirmed that above code was called for ".debug_line" section: 
 
 (gdb) delete
 (gdb) b section.c:1523
@@ -48,7 +47,7 @@ ft32-elf-as は a.out を生成しているから write システムコールを
 ".text"
 ".debug_line"
 
-ちゃんと ".debug_line" がきている.
+OK for ".debug_line", above code was called.
 
 (gdb) x/50bx location
 0x8171e38:	0x00	0x00	0x00	0x00	0x03	0x00	0x00	0x00
@@ -60,7 +59,7 @@ ft32-elf-as は a.out を生成しているから write システムコールを
 0x8171e68:	0x00	0x01
 (gdb) 
 
-同じことを ppc-elf-as でやってみた:
+I tried to do the same thing for `ppc-elf-as':
 
 (gdb) x/52bx location
 0x820c360:	0x00	0x00	0x00	0x30	0x00	0x03	0x00	0x00
@@ -72,23 +71,24 @@ ft32-elf-as は a.out を生成しているから write システムコールを
 0x820c390:	0x01	0x00	0x01	0x01
 (gdb)
 
-ppc-elf-as の出力に対する ppc-elf-objdump -g の結果は以下:
+For the output file of ppc-elf-as, the result ppc-elf-objdump -g became like
+below:
 
  Line Number Statements:
-  [0x00000024]  拡張命令コード 2: 設定アドレス 0x0
+  [0x00000024]  Extended opcode 2: set Address to 0x0
   [0x0000002b]  Special opcode 7: advance Address by 0 to 0x0 and Line by 2 to 3
   [0x0000002c]  Special opcode 20: advance Address by 4 to 0x4 and Line by 1 to 4
   [0x0000002d]  Special opcode 20: advance Address by 4 to 0x8 and Line by 1 to 5
   [0x0000002e]  Special opcode 21: advance Address by 4 to 0xc and Line by 2 to 7
   [0x0000002f]  Advance PC by 4 to 0x10
-  [0x00000031]  拡張命令コード 1: 列の終り
+  [0x00000031]  Extended opcode 1: End of Sequence
 
-Special opcode 20 に注目
-20 = 0x14 なのでこれを生成しているところを調べてみる.
+I tooke care of `Special opcode 20' (20 = 0x14). Then I investigated the code
+which generated this data. 
 
-以下は ppc-elf-as で行なった:
+For ppc-elf-as:
 
-p/x *(char*)(0x820c388+3)
+(gdb) p/x *(char*)(0x820c388+3)
 $3 = 0x14
 (gdb) watch *(char*)(0x820c388+3)
 Hardware watchpoint 2: *(char*)(0x820c388+3)
@@ -104,14 +104,13 @@ New value = 20 '\024'
 emit_inc_line_addr (line_delta=2, addr_delta=0, p=0x820c38c "", len=1) at dwarf2dbg.c:1612
 (gdb)
 
-これは正しく動作しているもの.
+These were correct motion.
 
-emit_inc_line_addr
+I thought `emit_inc_line_addr' was the important function.
 
-という函数がポイントになりそう.
-一方できていない ft32-elf-as で試してみた:
+On the other hand, I tried the same thing for `ft32-elf-as':
 
-p/x *(char*)(0x8171e60+3)
+(gdb) p/x *(char*)(0x8171e60+3)
 $5 = 0x14
 (gdb) watch *(char*)(0x8171e60+3)
 Hardware watchpoint 3: *(char*)(0x8171e60+3)
@@ -127,12 +126,11 @@ New value = 20 '\024'
 emit_inc_line_addr (line_delta=2, addr_delta=0, p=0x8171e64 "", len=1) at dwarf2dbg.c:1612
 (gdb)
 
-やはりここ. ということは実はエラーはもっと前の段階で発生している可能性が高い.
-かとも思ったが, それっぽいところが見つからず.
+As we saw, this function set this data. I guessed that this error occured
+at the previous timing but I could not find the code.
 
-20 = 0x14
 
-の次のバイトを調べてみた. 以下は正しく動作しているいる ppc-elf-as:
+I examined the next data of `20'( = 0x14) for ppc-elf-as:
 
 (gdb) watch *(char*)(0x820c388+4)
 Hardware watchpoint 3: *(char*)(0x820c388+4)
@@ -146,13 +144,9 @@ New value = 33 '!'
 emit_inc_line_addr (line_delta=1, addr_delta=1, p=0x820c38d "", len=1) at dwarf2dbg.c:1612
 (gdb) 
 
-函数は同じ
+The same function `emit_inc_line_addr' set this data.
 
-emit_inc_line_addr
-
-らしい.
-
-そして問題の ft32-elf-as:
+And for ft32-elf-as:
 
 watch *(char*)(0x8171e60+4)
 Hardware watchpoint 4: *(char*)(0x8171e60+4)
@@ -168,16 +162,15 @@ emit_fixed_inc_line_addr (line_delta=1, addr_delta=4, frag=0x8171e00, p=0x8171e6
 
 emit_fixed_inc_line_addr
 
-これだった.
+This function set the next data:
 
                     20                     33
 ppc-elf-as          emit_inc_line_addr     emit_inc_line_addr
                                            3
 ft32-elf-as	    emit_inc_line_addr	   emit_fixed_inc_line_addr
 
-これは, もしかすると emit_fixed_inc_line_addr を呼び出しているのが
-そもそも期待した動作ではないのかもしれない.
-
+Here, I guessed it was not correct that `emit_fixed_inc_line_addr' was
+called.
 
   if (DWARF2_USE_FIXED_ADVANCE_PC)
     emit_fixed_inc_line_addr (frag->fr_offset, addr_diff, frag,
@@ -187,61 +180,55 @@ ft32-elf-as	    emit_inc_line_addr	   emit_fixed_inc_line_addr
     emit_inc_line_addr (frag->fr_offset, addr_diff,
 			frag->fr_literal + frag->fr_fix, frag->fr_subtype);
 
-なるほど, こういうことらしい.
+OK, I see.
 
 (gdb) p DWARF2_USE_FIXED_ADVANCE_PC
 $7 = 1
 (gdb) 
 
-さてこれの正体は何か.
+This was define at below:
 
 #ifndef DWARF2_USE_FIXED_ADVANCE_PC
 # define DWARF2_USE_FIXED_ADVANCE_PC	linkrelax
 #endif
 
-同じことは ppc-elf-as でもやっている.
-動作を比較してみた
-
+It was also the same with ppc-elf-as. I compared the motion:
 
       else if (frag == last_frag && ! DWARF2_USE_FIXED_ADVANCE_PC)
 +	out_inc_line_addr (line_delta, frag_ofs - last_frag_ofs);
       else
 -	relax_inc_line_addr (line_delta, lab, last_lab);
 
-ppc-elf-as は 上の + の行を実行している.
+ppc-elf-as exected + line.
 
-ft32-elf-as はこの行を実行していないので - の行を実行している.
+ft32-elf-as execute - line.
 
-ppc-elf-as で
+For ppc-elf-as
 
 (gdb) p DWARF2_USE_FIXED_ADVANCE_PC
 0
 (gdb)
 
-これは, コンパイルの方法が異なっていた可能性はある.
+This was caused by the way of compiling.
 
-DWARF2_USE_FIXED_ADVANCE_PC
-
-が結果的に 1 に define されていること自体が誤りとは言い難いが, 実際に正しく動いていないのが
-残念なので回避策を考えてみる.
-
-単純に以下のようにしてみた:
+It was hard to say that it was not correct that `DWARF2_USE_FIXED_ADVANCE_PC'
+became 1. But actually, ft32-elf-as did not work well. I tried WA like below:
 
 //# define DWARF2_USE_FIXED_ADVANCE_PC	linkrelax
 # define DWARF2_USE_FIXED_ADVANCE_PC	0
 
-修正した as-new は以下
+Then ft32-elf-as(as-new) generated like below:
 
  Line Number Statements:
-  [0x00000024]  拡張命令コード 2: 設定アドレス 0x0
+  [0x00000024]  Extended opcode 2: set Address to 0x0
   [0x0000002b]  Special opcode 7: advance Address by 0 to 0x0 and Line by 2 to 3
   [0x0000002c]  Special opcode 62: advance Address by 4 to 0x4 and Line by 1 to 4
   [0x0000002d]  Special opcode 62: advance Address by 4 to 0x8 and Line by 1 to 5
   [0x0000002e]  Special opcode 63: advance Address by 4 to 0xc and Line by 2 to 7
   [0x0000002f]  Advance PC by 4 to 0x10
-  [0x00000031]  拡張命令コード 1: 列の終り
+  [0x00000031]  Extended opcode 1: End of Sequence
 
-不明だが 62 は予期しない値. 20 が予定した値なんだが...これを試してみたが
+Here, `62' was unexpected value. I expected `20'...Anyway
 
 % ft32-elf-addr2line -e test000.elf -a 0x100
 0x00000100
@@ -257,9 +244,10 @@ DWARF2_USE_FIXED_ADVANCE_PC
 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ft32-elf/gas/a.S:7
 %
 
-これはで期待通り動作するかと思ったが ft32-elf-gdb ではライン情報を正しく受け取れていない.
+These were expected result. But ft32-elf-gdb did not work well. i.e.
+ft32-elf-gdb could not get correct line information.
 
-まずは 20 が 62 になっている原因を調査する.
+So first, `20' was expected but `62' came there. I investigated the reason.
 
 修正した状態で .debug_line をダンプしてみた.
 
