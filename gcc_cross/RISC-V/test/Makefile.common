@@ -1,8 +1,14 @@
 %.o : %.S
 	riscv-elf-as -o $@ -g $<
 
-%.o : %.c
-	riscv-elf-gcc -o $@ $< -g -c
+%.t : %.c
+	riscv-elf-gcc -o $@ $< -g -S
+
+%.s : %.t
+	sed -e '/attribute arch/d' $< > $@
+
+%.o : %.s
+	riscv-elf-as -o $@ $<
 
 %.elf : %.o 
 	riscv-elf-ld -o $@ ../default.o $< -T ../default.x
@@ -18,4 +24,4 @@
 	touch $@
 
 clean:
-	rm -f *.o *.s *.elf *.map *.objdump *.objcopy *.log TAGS *~
+	rm -f *.o *.s *.t *.elf *.map *.objdump *.objcopy *.log TAGS *~

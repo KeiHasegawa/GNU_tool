@@ -5,4 +5,3 @@ start:
 	call	main
 end:
 	nop
-	
