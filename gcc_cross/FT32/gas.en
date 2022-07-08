@@ -249,7 +249,7 @@ ft32-elf-gdb could not get correct line information.
 
 So first, `20' was expected but `62' came there. I investigated the reason.
 
-修正した状態で .debug_line をダンプしてみた.
+By applying above WA, I dumped .debug_line section:
 
 (gdb) x/52bx  location
 0x8171e38:	0x00	0x00	0x00	0x00	0x03	0x00	0x00	0x00
@@ -261,14 +261,15 @@ So first, `20' was expected but `62' came there. I investigated the reason.
 0x8171e68:	0x04	0x00	0x01	0x01
 (gdb)
 
-そして気付くことは修正前は count = 50 だったので 50 バイトダンプしていたのだが
-修正後は count = 52 と ppc-elf-as と同じバイト数になっている.
+Then I knew that size of .debug_line section was 50 before applying WA,
+and after applying WA, that of .debug_line section became 52, and
+it was the same with that of ppc-elf-as.
 
 62 = 0x3e
 
-だが 0x3e は見当たらない.
+but I did not found 0x3e
 
-以下は改めて ppc-elf-as のダンプ
+Again, ppc-elf-as dump result was:
 
 (gdb) x/52bx location
 0x820c360:	0x00	0x00	0x00	0x30	0x00	0x03	0x00	0x00
@@ -280,29 +281,29 @@ So first, `20' was expected but `62' came there. I investigated the reason.
 0x820c390:	0x01	0x00	0x01	0x01
 (gdb)
 
-完全一致している(実は後で違いに気付く). .debug_line のダンプ内容が一致しているの
-に 62 と 20 との違いがある. さてこれは一体.
+At this time, I mistook that two results were the same (Later I noticed).
+So I wondered why there exsisted the diffrence between `62' and `20'.
 
-であれば ft32-elf-objdump が修正前に 20 と表示していたものを何故 62 と変更することに
-なったのかそれを調べるべきだろう.
+So I decided to investigate the way of displaying the value by
+ft32-elf-objdump, where before applying WA it displayed 20, and
+after applyging WA it displayed 62.
 
-ft32-elf-objdump -g ../gas/a.out 
+Execution of
 
-で何故 20 ではなくて 62 になるのか調査する.
+% ft32-elf-objdump -g ../gas/a.out 
+
+I tried to investigate the reason why ft32-elf-objdump displayed `62' not `20'.
 
  Line Number Statements:
-  [0x00000024]  拡張命令コード 2: 設定アドレス 0x0
+  [0x00000024]  Extended opcode 2: set Address to 0x0
   [0x0000002b]  Special opcode 7: advance Address by 0 to 0x0 and Line by 2 to 3
   [0x0000002c]  Special opcode 62: advance Address by 4 to 0x4 and Line by 1 to 4
   [0x0000002d]  Special opcode 62: advance Address by 4 to 0x8 and Line by 1 to 5
   [0x0000002e]  Special opcode 63: advance Address by 4 to 0xc and Line by 2 to 7
   [0x0000002f]  Advance PC by 4 to 0x10
-  [0x00000031]  拡張命令コード 1: 列の終り
+  [0x00000031]  Extended opcode 1: End of Sequence
 
-これが問題の 62.
-さてどこにブレークポイントをセットするべきか.
-平凡だが write にセットしてみる.
-
+This was the mentioned `62'. And it was desplayed below:
 
 		      printf (_("  Special opcode %d: "
 				"advance Address by %s to 0x%s%s"),
@@ -311,20 +312,19 @@ ft32-elf-objdump -g ../gas/a.out
 			      verbose_view && uladv
 			      ? _(" (reset view)") : "");
 
-ここらしい. op_code = 62 であることを確認した.
-なるほどいままで 20 = 0x14 を問題にしていたが,
+I confirmed that `op_code' was 62. I took care of `20' ( = 0x14) but,
 
 	      if (op_code >= linfo.li_opcode_base)
 		{
 		  op_code -= linfo.li_opcode_base;
 
-のような計算をしている. linfo.li_opcode_base = 13 だから
+`op_code' was calculated like above. Now because linfo.li_opcode_base = 13,
 
 62 = 75 - 13 = 0x4b - 13
 
-ということ. 62 の正体は 0x4b だった.
+That's it. 62 was deduced from `0x4b'.
 
-完全一致しているとか書いたが実は違っていた.
+And now I noticed that:
 
 (gdb) x/52bx  location
 0x8171e38:	0x00	0x00	0x00	0x00	0x03	0x00	0x00	0x00
@@ -336,47 +336,51 @@ ft32-elf-objdump -g ../gas/a.out
 0x8171e68:	0x04	0x00	0x01	0x01     ~~~
 (gdb)
 
-ここが 0x4b になる理由は...
+I investigated the reason why this data became `0x4b'.
 
-addr_delta は ppc では 1 だが ft32 では 4 のまま.
+`addr_delta' (2nd argument of `emit_fixed_inc_line_addr') was 1 at ppc-elf-as
+but it was 4 at ft32-elf-as.
 
   if (DWARF2_LINE_MIN_INSN_LENGTH > 1)
       ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-これが 1 になっている. ppc では 4 に define されていた.
+Above value was defined as 1 at ft32-elfas. It was defined as 4 at ppc-elf-as.
 
+Then I tried below:
 
 //# define DWARF2_LINE_MIN_INSN_LENGTH	1
 # define DWARF2_LINE_MIN_INSN_LENGTH	4
 
-これで試してみたが ft32-elf-gdb では期待した動作にはなっていない.
+but ft32-elf-gdb could not still get correct line number information.
 
-DWARF2_USE_FIXED_ADVANCE_PC が 1 に define されているアセンブラが他にあるのか
-調査してみた:
+I looked for assembler where `DWARF2_USE_FIXED_ADVANCE_PC' was defined as 1.
 
-mn10300, msp430, rl78 では 1 に define
+At mn10300, msp430 and rl78, it was defined as 1.
 
-aarch64, arm, h8300, iq2000, m32r, mips, ppc, sh, v850 は 0 に define
+At aarch64, arm, h8300, iq2000, m32r, mips, ppc, sh and v850, it was define
+as 0.
 
 
 arm
  Line Number Statements:
-  [0x00000028]  拡張命令コード 2: 設定アドレス 0x100
+  [0x00000028]  Extended opcode 2: set Address to 0x100
   [0x0000002f]  Special opcode 7: advance Address by 0 to 0x100 and Line by 2 to 3
   [0x00000030]  Special opcode 34: advance Address by 4 to 0x104 and Line by 1 to 4
   [0x00000031]  Special opcode 34: advance Address by 4 to 0x108 and Line by 1 to 5
   [0x00000032]  Special opcode 35: advance Address by 4 to 0x10c and Line by 2 to 7
 
-なので 20 は必ずしも必須ではないらしい.
+This implies that the value should not be 20 absolutely.
 
 iq2000
-  [0x0000002a]  拡張命令コード 2: 設定アドレス 0x80000100
+  [0x0000002a]  Extended opcode 2: set Address to 0x80000100
   [0x00000031]  Special opcode 7: advance Address by 0 to 0x80000100 and Line by 2 to 3
   [0x00000032]  Special opcode 62: advance Address by 4 to 0x80000104 and Line by 1 to 4
   [0x00000033]  Special opcode 62: advance Address by 4 to 0x80000108 and Line by 1 to 5
   [0x00000034]  Special opcode 63: advance Address by 4 to 0x8000010c and Line b
 
 
-問題は, そもそも ft32-elf-as 自体が行番号情報が正しく出せていなかったこと.
-仮に ppc スタイルに修正しても ft32-elf-gdb 自体がこれを読み込めていないこと.
+The problem was that at the first place, ft32-elf-as could not generate line
+information correctly.
+If I imitate ppc-elf-as style, ft32-elf-gdb could not get line information
+correctly.
 
