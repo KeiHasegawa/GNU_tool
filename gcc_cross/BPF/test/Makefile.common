@@ -1,0 +1,21 @@
+%.o : %.S
+	bpf-as -o $@ -g $<
+
+%.o : %.c
+	bpf-gcc -o $@ $< -g -c
+
+%.elf : %.o 
+	bpf-ld -o $@ ../default.o $< -T ../default.x
+
+%.objdump : %.elf
+	bpf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v bpf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.o *.s *.elf *.map *.objdump *.objcopy *.log TAGS *~
