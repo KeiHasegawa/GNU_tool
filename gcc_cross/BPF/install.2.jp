@@ -65,3 +65,39 @@ write_topn_counters (const struct gcov_ctr_info *ci_ptr,
 % ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ --target=bpf
 % make all
 % make install
+
+(*4) 動作確認
+前回確認したときは nop がアセンブルで通っていたが今回は更新されてアセンブルでエラーになっている.
+以下のプログラムを 0x100 番地に配置した:
+
+	.text
+start:
+	mov	%r1, 1
+	mov	%r1, 2
+	mov	%r1, 3
+end:
+	mov	%r1, 4
+	
+これをアセンブル, リンクし bpf-elf-gdb で実行したところプログラムをロードする直前に
+メモリを割り当てる例のパッチを適用すれば期待通り動作する.
+
+さらに main 函数を呼び出し, そこから加算の結果を返す f を呼び出すプログラムを作成したが
+スタートアップルーチンで
+
+start:
+	mov	%r9, stack
+	mov	%fp, stack
+	call	main              ★
+end:
+	mov	%r0, %r0
+
+に対して
+
+	call	9
+
+のようなオブジェクトコードが生成されている. ここで main のアドレスは 0x160.
+また上の call 命令をシミュレータで実行してみたがプログラムの制御が 9 番地や
+0x160 番地には移ることはなく nop の動作になっている. これは前回のリリースと
+残念ながら同じ状況.
+
+
