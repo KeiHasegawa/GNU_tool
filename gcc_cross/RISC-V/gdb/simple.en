@@ -1,0 +1,46 @@
+(*1) gdb fix
+
+As usual, I created the program which located 4 nop instruction at 0x100.
+And I executed it under control of riscv-elf-gdb.
+
+First I fixed like below, as usual:
+
+#if 0
+  /* Allocate external memory if none specified by user.
+     Use address 4 here in case the user wanted address 0 unmapped.  */
+  if (sim_core_read_buffer (sd, NULL, read_map, &c, 4, 1) == 0)
+    sim_do_commandf (sd, "memory-size %#x", DEFAULT_MEM_SIZE);
+#endif
+
+And second fixed like below, as usual:
+
+  	      data_count += size;
+  	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
++ 	      sim_do_commandf(sd, "memory-region 0x%llx,0x%llx", lma, size);
+  	      do_write (sd, lma, buffer, size);
+  	      found_loadable_section = 1;
+  	      free (buffer);
+  	    }
+  	}
++       else if (s->flags & SEC_ALLOC) {
++         bfd_vma vma = bfd_section_vma(s);
++         bfd_size_type size = bfd_section_size(s);
++         sim_do_command(sd, "memory-fill 0xcc");
++         sim_do_commandf(sd, "memory-region 0x%llx,0x%llx", vma, size);
++       }
+
+I noticed that when break-point hit, simulator advanced pc by 4. Then I fixed
+like below:
+
+    case MATCH_SBREAK:
+      TRACE_INSN (cpu, "sbreak;");
+      /* GDB expects us to step over SBREAK.  */
+#if 0      
+      sim_engine_halt (sd, cpu, NULL, cpu->pc + 4, sim_stopped, SIM_SIGTRAP);
+#else
+      sim_engine_halt (sd, cpu, NULL, cpu->pc, sim_stopped, SIM_SIGTRAP);
+#endif      
+      break;
+
+Finally, I confirmed that this simple program worked well under control of
+riscv-elf-gdb.
