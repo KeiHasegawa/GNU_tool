@@ -2,4 +2,36 @@
 
 https://en.wikipedia.org/wiki/RISC-V
 
-(*1) 
+(*1) binutils-2.38 install
+
+% setenv SHELL /bin/sh
+% xz -d -c ../binutils-2.38.tar.xz | tar xf -
+% mv binutils-2.38 binutils-2.38.riscv-elf
+% cd binutils-2.38.riscv-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ --target=riscv-elf
+% make
+% make install
+% cd ..
+
+(*2) gcc-12.1.0 install
+
+% xz -d -c ../gcc-12.1.0.tar.xz  | tar xf -
+% mv gcc-12.1.0 gcc-12.1.0.riscv-elf
+% cd gcc-12.1.0.riscv-elf
+% sed -e 's/host_subdir = @host_subdir@/host_subdir = host-i686-pc-linux-gnu/' libgcc/Makefile.in > libgcc/Makefile.in.new
+% mv libgcc/Makefile.in.new libgcc/Makefile.in
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ --target=riscv-elf
+% make all-gcc
+% make all-target-libgcc
+% make install-gcc
+% make install-target-libgcc
+% cd ..
+
+(*3) gdb-12.1 install
+
+% xz -d -c ../gdb-12.1.tar.xz | tar xf -
+% mv gdb-12.1 gdb-12.1.riscv-elf
+% cd gdb-12.1.riscv-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ --target=riscv-elf
+% make all
+% make install
