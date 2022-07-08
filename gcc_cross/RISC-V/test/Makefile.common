@@ -1,0 +1,21 @@
+%.o : %.S
+	riscv-elf-as -o $@ -g $<
+
+%.o : %.c
+	riscv-elf-gcc -o $@ $< -g -c
+
+%.elf : %.o 
+	riscv-elf-ld -o $@ ../default.o $< -T ../default.x
+
+%.objdump : %.elf
+	riscv-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v riscv-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.o *.s *.elf *.map *.objdump *.objcopy *.log TAGS *~
