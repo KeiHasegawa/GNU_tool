@@ -60,3 +60,27 @@ Here, at address 0x130, object code 0x1141 instruction was located:
 
 As far as simulator source code, I thought that 2 bytes instruction became
 illegal instruction.
+
+% cat -n test.s
+     1		.file	"test.c"
+     2		.option nopic
+=>   3		.attribute arch, "rv32i2p1_m2p0_a2p1_f2p2_d2p2_c2p0_zicsr2p0_zifencei2p0"
+     4		.attribute unaligned_access, 0
+     5		.attribute stack_align, 16
+     6		.text
+     7		.align	1
+     8		.globl	f
+     9		.type	f, @function
+    10	f:
+    11		addi	sp,sp,-32
+...
+%
+
+Then I deleted above (=>) 3rd line and assembled test.s, link to generat
+test.elf and confirmed that:
+
+00000140 <main>:
+ 140:	ff010113          	addi	sp,sp,-16  # OK
+
+Fine. This illustrated that compile option was not suitable in this case.
+
