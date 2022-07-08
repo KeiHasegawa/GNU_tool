@@ -1,0 +1,62 @@
+(*2) gdb fix
+
+I created the 2nd simple program like below:
+
+% cat ../default.S
+	.text
+start:
+	lui	sp, %hi(stack)
+	addi	sp, sp, %lo(stack)
+	call	main
+end:
+	nop
+% cat test.c
+int f(int a, int b)
+{
+  return a + b;
+}
+
+int main()
+{
+  return f(5, 6);
+}
+% cat ../default.x
+SECTIONS {
+	 . = 0x100;
+	 .text : {}
+	 .rodata : {}
+	 .data : {}
+	 .bss  : {}
+
+	 . = 0x1000;
+	 stack = .;
+}
+% riscv-elf-gcc -o test.s test.c -S
+% riscv-elf-as -g -o test.o test.s
+% riscv-elf-as -o ../default.o -g ../default.S
+% riscv-elf-ld -o test.elf ../default.o test.o -T ../default.x
+
+Then I executed it with riscv-elf-run like below:
+
+% rsicv-elf-run --memory-fill 0xcc --memory-region 0xe00,0x200 test.elf
+sim: bad insn len 0x2 @ 0x130: 0x1141
+program stopped with signal 4 (Illegal instruction).
+%
+
+riscv-elf-run detected illegal instruction at below code:
+
+  len = riscv_insn_length (iw);
+  if (len != 4)
+    {
+      sim_io_printf (sd, "sim: bad insn len %#x @ %#" PRIxTA ": %#" PRIxTW "\n",
+		     len, pc, iw);
+      sim_engine_halt (sd, cpu, NULL, pc, sim_signalled, SIM_SIGILL);
+    }
+
+Here, at address 0x130, object code 0x1141 instruction was located:
+
+00000130 <main>:
+ 130:	1141                	addi	sp,sp,-16
+
+As far as simulator source code, I thought that 2 bytes instruction became
+illegal instruction.
