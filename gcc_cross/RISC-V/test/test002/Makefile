@@ -2,7 +2,11 @@ all:test.objdump test.lof
 
 include ../Makefile.common
 
-test.o:test.c
+test.t:test.c
+
+test.s:test.t
+
+test.o:test.s
 
 test.elf:test.o ../default.o
 

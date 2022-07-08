@@ -7,9 +7,3 @@ int main()
 {
   return f(5, 6);
 }
-
-int* g()
-{
-  extern int stack;
-  return &stack;
-}
