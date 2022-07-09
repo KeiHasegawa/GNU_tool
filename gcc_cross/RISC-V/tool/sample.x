@@ -2,8 +2,8 @@ SECTIONS {
 	 . = 0x100;
 	 .text : {}
 	 .rodata : {}
-	 .data : {}
-	 .bss : {
+	 .sdata : {}
+	 .sbss : {
 	      _bss_start = .;
 	 }
 	 _bss_end = .;
