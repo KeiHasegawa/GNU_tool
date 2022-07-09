@@ -1,0 +1,9 @@
+#! /bin/csh -vf
+
+riscv-elf-as -o start.o -g start.S || exit 1
+riscv-elf-gcc -o sample.t sample.c -S || exit 1
+sed -e '/attribute arch/d' sample.t > sample.s || exit 1
+riscv-elf-as -o sample.o -g sample.s || exit 1
+riscv-elf-ld -o sample.elf start.o sample.o -T sample.x || exit 1
+riscv-elf-objdump -x -d -g sample.elf > sample.objdump || exit 1
+riscv-elf-run --memory-fill 0xcc --memory-region 0x1b000,0x5000 sample.elf
