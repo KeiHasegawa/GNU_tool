@@ -1,4 +1,4 @@
-(*2) gdb fix
+(*2) Build simple C program 
 
 I created the 2nd simple program like below:
 
@@ -25,8 +25,8 @@ SECTIONS {
 	 . = 0x100;
 	 .text : {}
 	 .rodata : {}
-	 .data : {}
-	 .bss  : {}
+	 .sdata : {}
+	 .sbss  : {}
 
 	 . = 0x1000;
 	 stack = .;
@@ -76,7 +76,7 @@ illegal instruction.
 ...
 %
 
-Then I deleted above (=>) 3rd line and assembled test.s, link to generat
+Then I deleted above (=>) 3rd line and assembled test.s, link to generate
 test.elf and confirmed that:
 
 00000140 <main>:
@@ -84,3 +84,74 @@ test.elf and confirmed that:
 
 Fine. This illustrated that compile option was not suitable in this case.
 
+I also noticed that if I executed cc1 directly above .attribute arch line
+was not generated.
+
+Then I tried like below:
+
+% riscv-elf-gcc test.c -S -###
+Using built-in specs.
+COLLECT_GCC=riscv-elf-gcc
+Target: riscv-elf
+Configured with: ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG --target=riscv-elf
+Thread model: single
+Supported LTO compression algorithms: zlib zstd
+gcc version 12.1.0 (GCC) 
+COLLECT_GCC_OPTIONS='-S' '-march=rv32imafdc_zicsr_zifencei' '-mabi=ilp32d' '-misa-spec=20191213' '-march=rv32imafdc_zicsr_zifencei'
+ /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/libexec/gcc/riscv-elf/12.1.0/cc1 -quiet test.c -quiet -dumpbase test.c -dumpbase-ext .c "-march=rv32imafdc_zicsr_zifencei" "-mabi=ilp32d" "-misa-spec=20191213" "-march=rv32imafdc_zicsr_zifencei" -o test.s
+COMPILER_PATH=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/libexec/gcc/riscv-elf/12.1.0/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/libexec/gcc/riscv-elf/12.1.0/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/libexec/gcc/riscv-elf/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/riscv-elf/12.1.0/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/riscv-elf/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/riscv-elf/12.1.0/../../../../riscv-elf/bin/
+LIBRARY_PATH=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/riscv-elf/12.1.0/:/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/lib/gcc/riscv-elf/12.1.0/../../../../riscv-elf/lib/
+COLLECT_GCC_OPTIONS='-S' '-march=rv32imafdc_zicsr_zifencei' '-mabi=ilp32d' '-misa-spec=20191213' '-march=rv32imafdc_zicsr_zifencei'
+%
+
+For cc1 option, gcc specified 
+
+"-march=rv32imafdc_zicsr_zifencei"
+"-mabi=ilp32d"
+"-misa-spec=20191213"
+"-march=rv32imafdc_zicsr_zifencei"
+
+Then I tried like below:
+% riscv-elf-gcc -o test.s test.c -S -march=rv64imafdc_zicsr_zifencei -mabi=lp64
+% riscv-elf-as -g -o test.o test.s
+% riscv-elf-ld -o test.elf ../default.o test.o -T ../default.x
+riscv-elf-ld: test.o: ABI is incompatible with that of the selected emulation:
+  target emulation `elf64-littleriscv' does not match `elf32-littleriscv'
+riscv-elf-ld: failed to merge target specific data of file test.o
+%
+
+Now riscv-elf-ld detected some error. I was not so interested with these stuff.
+So I generated test.elf like below:
+
+% riscv-elf-gcc -o test.t test.c -S
+% sed -e '/attribute arch/d' test.t > test.s
+% riscv-elf-as -g -o test.o test.s
+% riscv-elf-ld -o test.elf ../default.o test.o -T ../default.x
+
+Then I executed test.elf under control of riscv-elf-gdb
+
+% riscv-elf-gdb -q -x gdbcom test.elf
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x74 lma 100
+Start address 100
+Transfer rate: 928 bits in <1 sec.
+Breakpoint 1 at 0x150: file test.c, line 8.
+
+Breakpoint 1, main () at test.c:8
+8	  return f(5, 6);
+f (a=5, b=6) at test.c:3
+3	  return a + b;
+#0  f (a=5, b=6) at test.c:3
+#1  0x0000015c in main () at test.c:8
+0x0000015c in main () at test.c:8
+8	  return f(5, 6);
+Value returned is $1 = 11
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
+%
+
+OK. Fine.
