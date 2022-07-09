@@ -2,8 +2,8 @@ SECTIONS {
 	 . = 0x100;
 	 .text : {}
 	 .rodata : {}
-	 .data : {}
-	 .bss  : {}
+	 .sdata : {}
+	 .sbss  : {}
 
 	 . = 0x1000;
 	 stack = .;
