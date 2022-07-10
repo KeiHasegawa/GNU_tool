@@ -8,13 +8,20 @@
      x5  (alias t0)
      x6  (alias t1)
      x7  (alias t2)
-     x8  (alias fp) : frame pointer
+     x8  (alias s0, fp) : frame pointer
      x9  (alias s1)
      x10 (alias a0)
      x11 (alias a1)
      ...
      x17 (alias a7)
+     x18 (alias s2)
      ...
+     x27 (alias s11)
+     x28 (alias t3)
+     ...
+     x31 (alias t6)
+     pc : program counter
+     
 
 (*1) Function call
 
@@ -23,3 +30,33 @@
 (*2) Return from function
 
 	jr	ra
+
+(*3) Function prologue
+
+	addi	sp, sp, -32
+	sw	ra, 28(sp)
+	sw	s0, 24(sp)
+	addi	s0, sp, 32
+
+	Above is function prologue which uses 24 bytes local area
+
+	+---------------+ <- sp_{new}
+	|		|
+	|		|
+	|		|
+	|		|
+	+---------------+
+	|    s0_{old}	|
+	+---------------+
+	|    ra_{old}	|
+	+---------------+ <- sp_{old}, s0_{new}
+
+(*4) Function epilogue
+
+	lw	ra, 28(sp)
+	lw	s0, 24(sp)
+	addi	sp, sp, 32
+	jr	ra
+
+	Above is function epilogue which uses 28 bytes local area.
+	ra, s0 and sp are recovered and return to callee.

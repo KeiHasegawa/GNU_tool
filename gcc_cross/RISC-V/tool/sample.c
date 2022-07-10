@@ -17,7 +17,7 @@ void g()
 void h(double d)
 {
   printf("\n");
-#if 0  
+#if 1  
   printf("%f\n", d);
 #endif  
 }
