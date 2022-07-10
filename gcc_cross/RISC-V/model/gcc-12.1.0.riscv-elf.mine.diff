@@ -1,0 +1,212 @@
+*** gcc-12.1.0.org/gcc/config.gcc	Sun Jul 10 10:30:45 2022
+--- gcc-12.1.0.riscv-elf.mine/gcc/config.gcc	Sun Jul 10 03:31:33 2022
+***************
+*** 517,524 ****
+  	;;
+  riscv*)
+  	cpu_type=riscv
+- 	extra_objs="riscv-builtins.o riscv-c.o riscv-sr.o riscv-shorten-memrefs.o"
+- 	d_target_objs="riscv-d.o"
+  	;;
+  rs6000*-*-*)
+  	extra_options="${extra_options} g.opt fused-madd.opt rs6000/rs6000-tables.opt"
+--- 517,522 ----
+***************
+*** 2461,2492 ****
+  	gcc_cv_initfini_array=yes
+  	;;
+  riscv*-*-elf* | riscv*-*-rtems*)
+! 	tm_file="elfos.h newlib-stdint.h ${tm_file} riscv/elf.h"
+! 	case ${target} in
+! 	*-*-rtems*)
+! 	  tm_file="${tm_file} riscv/rtems.h rtems.h"
+! 	  tmake_file="${tmake_file} riscv/t-rtems"
+! 	  ;;
+! 	*)
+! 	  if test "x${with_multilib_generator}" == xdefault; then
+! 		  case "x${enable_multilib}" in
+! 		  xno) ;;
+! 		  xyes) tmake_file="${tmake_file} riscv/t-elf-multilib" ;;
+! 		  *) echo "Unknown value for enable_multilib"; exit 1
+! 		  esac
+! 	  fi
+! 	esac
+! 	tmake_file="${tmake_file} riscv/t-riscv"
+! 	gnu_ld=yes
+! 	gas=yes
+! 	case $target in
+! 	riscv32be-*|riscv64be-*)
+! 		tm_defines="${tm_defines} TARGET_BIG_ENDIAN_DEFAULT=1"
+! 		;;
+! 	esac
+! 	# Force .init_array support.  The configure script cannot always
+! 	# automatically detect that GAS supports it, yet we require it.
+! 	gcc_cv_initfini_array=yes
+  	;;
+  riscv*-*-freebsd*)
+  	tm_file="${tm_file} elfos.h ${fbsd_tm_file} riscv/freebsd.h"
+--- 2459,2470 ----
+  	gcc_cv_initfini_array=yes
+  	;;
+  riscv*-*-elf* | riscv*-*-rtems*)
+! 	tm_file="dbxelf.h elfos.h usegas.h newlib-stdint.h riscv/riscv.h"
+! 	tm_p_file="riscv/riscv-protos.h"
+! 	md_file="riscv/riscv.md"
+! 	out_file="riscv/riscv.c"
+! 	tmake_file="riscv/t-riscv"
+! 	use_gcc_stdint=wrap
+  	;;
+  riscv*-*-freebsd*)
+  	tm_file="${tm_file} elfos.h ${fbsd_tm_file} riscv/freebsd.h"
+***************
+*** 4654,4802 ****
+  		;;
+  
+  	riscv*-*-*)
+- 		supported_defaults="abi arch tune riscv_attribute isa_spec"
+- 
+- 		case "${target}" in
+- 		riscv-* | riscv32*) xlen=32 ;;
+- 		riscv64*) xlen=64 ;;
+- 		*) echo "Unsupported RISC-V target ${target}" 1>&2; exit 1 ;;
+- 		esac
+- 
+- 		case "${with_isa_spec}" in
+- 		""|default|20191213|201912)
+- 			tm_defines="${tm_defines} TARGET_DEFAULT_ISA_SPEC=ISA_SPEC_CLASS_20191213"
+- 			with_isa_spec=20191213
+- 			;;
+- 		2.2)
+- 			tm_defines="${tm_defines} TARGET_DEFAULT_ISA_SPEC=ISA_SPEC_CLASS_2P2"
+- 			;;
+- 		20190608 | 201906)
+- 			tm_defines="${tm_defines} TARGET_DEFAULT_ISA_SPEC=ISA_SPEC_CLASS_20190608"
+- 			with_isa_spec=20190608
+- 			;;
+- 		*)
+- 			echo "--with-isa-spec only accept 2.2, 20191213, 201912, 20190608 or 201906" 1>&2
+- 			exit 1
+- 		esac
+- 
+- 		case "${with_riscv_attribute}" in
+- 		yes)
+- 			tm_defines="${tm_defines} TARGET_RISCV_ATTRIBUTE=1"
+- 			;;
+- 		no)
+- 			tm_defines="${tm_defines} TARGET_RISCV_ATTRIBUTE=0"
+- 			;;
+- 		""|default)
+- 			tm_defines="${tm_defines} TARGET_RISCV_ATTRIBUTE=1"
+- 			;;
+- 		*)
+- 			echo "--with-riscv-attribute=${with_riscv_attribute} is not supported.  The argument must begin with yes, no or default." 1>&2
+- 			exit 1
+- 			;;
+- 		esac
+- 
+- 
+- 		# Infer arch from --with-arch, --target, and --with-abi.
+- 		case "${with_arch}" in
+- 		rv32e* | rv32i* | rv32g* | rv64i* | rv64g*)
+- 			# OK.
+- 			;;
+- 		"")
+- 			# Infer XLEN, but otherwise assume GC.
+- 			case "${with_abi}" in
+- 			ilp32e) with_arch="rv32e" ;;
+- 			ilp32 | ilp32f | ilp32d) with_arch="rv32gc" ;;
+- 			lp64 | lp64f | lp64d) with_arch="rv64gc" ;;
+- 			*) with_arch="rv${xlen}gc" ;;
+- 			esac
+- 			;;
+- 		*)
+- 			echo "--with-arch=${with_arch} is not supported.  The argument must begin with rv32e, rv32i, rv32g, rv64i, or rv64g." 1>&2
+- 			exit 1
+- 			;;
+- 		esac
+- 		PYTHON=`which python || which python3 || which python2`
+- 		if test "x${PYTHON}" != x; then
+- 			with_arch=`${PYTHON} ${srcdir}/config/riscv/arch-canonicalize -misa-spec=${with_isa_spec} ${with_arch}`
+- 		fi
+- 		tm_defines="${tm_defines} TARGET_RISCV_DEFAULT_ARCH=${with_arch}"
+- 
+- 		# Make sure --with-abi is valid.  If it was not specified,
+- 		# pick a default based on the ISA, preferring soft-float
+- 		# unless the D extension is present.
+- 		case "${with_abi}" in
+- 		ilp32 | ilp32e | ilp32f | ilp32d | lp64 | lp64f | lp64d)
+- 			;;
+- 		"")
+- 			case "${with_arch}" in
+- 			rv32*d* | rv32g*) with_abi=ilp32d ;;
+- 			rv32e*) with_abi=ilp32e ;;
+- 			rv32*) with_abi=ilp32 ;;
+- 			rv64*d* | rv64g*) with_abi=lp64d ;;
+- 			rv64*) with_abi=lp64 ;;
+- 			esac
+- 			;;
+- 		*)
+- 			echo "--with-abi=${with_abi} is not supported" 1>&2
+- 			exit 1
+- 			;;
+- 		esac
+- 		tm_defines="${tm_defines} TARGET_RISCV_DEFAULT_ABI=${with_abi}"
+- 
+- 		# Make sure ABI and ISA are compatible.
+- 		case "${with_abi},${with_arch}" in
+- 		ilp32,rv32* | ilp32e,rv32e* \
+- 		| ilp32f,rv32*f* | ilp32f,rv32g* \
+- 		| ilp32d,rv32*d* | ilp32d,rv32g* \
+- 		| lp64,rv64* \
+- 		| lp64f,rv64*f* | lp64f,rv64g* \
+- 		| lp64d,rv64*d* | lp64d,rv64g*)
+- 			;;
+- 		*)
+- 			echo "--with-abi=${with_abi} is not supported for ISA ${with_arch}" 1>&2
+- 			exit 1
+- 			;;
+- 		esac
+- 		# Handle --with-multilib-generator.
+- 		if test "x${with_multilib_generator}" != xdefault; then
+- 			if test "x${with_multilib_list}" != xdefault; then
+- 				echo "--with-multilib-list= can't used with --with-multilib-generator= at same time" 1>&2
+- 				exit 1
+- 			fi
+- 			case "${target}" in
+- 			riscv*-*-elf*)
+- 				if ${srcdir}/config/riscv/multilib-generator \
+- 					-misa-spec=${with_isa_spec} \
+- 					`echo ${with_multilib_generator} | sed 's/;/ /g'`\
+- 					> t-multilib-config;
+- 				then
+- 					tmake_file="${tmake_file} riscv/t-withmultilib-generator"
+- 				else
+- 					echo "invalid option for --with-multilib-generator" 1>&2
+- 					exit 1
+- 				fi
+- 				;;
+- 			*)
+- 				echo "--with-multilib-generator= is not supported for ${target}, only supported for riscv*-*-elf*" 1>&2
+- 				exit 1
+- 				;;
+- 			esac
+- 		fi
+- 
+- 		# Handle --with-multilib-list.
+- 		if test "x${with_multilib_list}" != xdefault; then
+- 			tmake_file="${tmake_file} riscv/t-withmultilib"
+- 
+- 			case ${with_multilib_list} in
+- 			ilp32 | ilp32f | ilp32d \
+- 			| lp64 | lp64f | lp64d )
+- 				TM_MULTILIB_CONFIG="${with_arch},${with_multilib_list}"
+- 				;;
+- 			*)
+- 				echo "--with-multilib-list=${with_multilib_list} not supported."
+- 				exit 1
+- 			esac
+- 		fi
+  		;;
+  
+  	mips*-*-*)
+--- 4632,4637 ----
