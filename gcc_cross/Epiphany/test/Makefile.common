@@ -1,0 +1,21 @@
+%.o : %.S
+	epiphany-elf-as -o $@ -g $<
+
+%.o : %.c
+	epiphany-elf-gcc -o $@ $< -g -c
+
+%.elf : %.o 
+	epiphany-elf-ld -o $@ ../default.o $< -T ../default.x
+
+%.objdump : %.elf
+	epiphany-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v epiphany-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.o *.s *.elf *.map *.objdump *.objcopy *.log TAGS *~
