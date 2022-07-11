@@ -1,6 +1,172 @@
 % xz -d -c ../gdb-12.1.tar.xz | tar xf -
 % mv gdb-12.1 gdb-12.1.epiphany-elf
-% cd gdb-12.1.epiphany-elf
+% cd gdb-12.1.epiphany-elf/gdb
+
+Do the same thing with d30v, fr30, z8k, i960, mmix, z80, i386, pdp11, vax,
+alpha, m68k, ns32k, spu, arc, 1750a, csky and tic6x.
+
+h8300-*-*)
+	# Target: H8300 processor
+	gdb_target_obs="h8300-tdep.o"
+	;;
+
++epiphany-*-*)
++	gdb_target_obs="epiphany-tdep.o"
++	;;
+
+hppa*-*-linux*)
+...
+h8300*-*-*)		gdb_sim=h8300 ;;
++epiphany*-*-*)		gdb_sim=epiphany ;;
+iq2000-*-*)		gdb_sim=iq2000 ;;
+
+% cp ~/lang/53_GNU_tool/gcc_cross/MCORE/gdb/mcore-tdep.c.000 epiphany-tdep.c
+% cd ..
 % ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ --target=epiphany-elf
 % make all
-% make install
+...
+  CXX    epiphany-tdep.o
+epiphany-tdep.c:111:3: error: cannot convert 'frame_type' to 'const char*' in initialization
+  111 |   NORMAL_FRAME,
+      |   ^~~~~~~~~~~~
+      |   |
+      |   frame_type
+make[2]: *** [Makefile:1655: epiphany-tdep.o] Error 1
+make[2]: Leaving directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-12.1.epiphany-elf/gdb'
+make[1]: *** [Makefile:11810: all-gdb] Error 2
+make[1]: Leaving directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-12.1.epiphany-elf'
+make: *** [Makefile:1000: all] Error 2
+%
+
+gdb-12.1.epiphany-elf/gdb/epiphany-tdep.c:
+static struct frame_unwind mcore_frame_unwind = {
++ "epiphany proloue",
+  NORMAL_FRAME,
+  default_frame_unwind_stop_reason,
+  mcore_frame_this_id,
+  mcore_frame_prev_register,
+  nullptr,
+  default_frame_sniffer
+};
+
+% make
+...
+make[2]: *** No rule to make target '../sim/epiphany/libsim.a', needed by 'gdb'.  Stop.
+make[2]: Leaving directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-12.1.epiphany-elf/gdb'
+make[1]: *** [Makefile:11810: all-gdb] Error 2
+make[1]: Leaving directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-12.1.epiphany-elf'
+make: *** [Makefile:1000: all] Error 2
+%
+
+% cd sim
+% tar xf ~/lang/53_GNU_tool/gcc_cross/C6X/gdb/tic6x.1.tar 
+% mv tic6x epiphany
+% cd epiphany
+
+I replaced `tic6x' to `epiphany'.
+
+% make
+gcc -g -o callback.o ../common/callback.c -c -I../../include -I. -I../../bfd -DHAVE_CONFIG_H -I../common -DWITH_PROFILE=-1 -DWITH_ALIGNMENT=4
+In file included from ../common/callback.c:24:
+../common/defs.h:26:10: fatal error: gnulib/config.h: No such file or directory
+   26 | #include "gnulib/config.h"
+      |          ^~~~~~~~~~~~~~~~~
+compilation terminated.
+make: *** [Makefile:51: callback.o] Error 1
+%
+
+I noticed that the way of compiling became changed. I had to change for
+gdb-12.1.
+
+Finally, I could build
+
+gdb-12.1.epiphany-elf/sim/epiphany/{run,libsim.a}
+
+and 
+
+gdb-12.1.epiphany-elf/gdb/gdb
+
+I created the program which had 4 nops at address 0x100 and executed it
+under control of epiphany-elf-gdb. Then internal error occured like below.
+
+% epiphany-elf-gdb -q -x gdbcom test.elf
+arch-utils.c:752: internal-error: initialize_current_architecture: Selection of initial architecture failed
+...
+%
+
+I confirmed that this error was detected at below code:
+
+  if (! gdbarch_update_p (info))   // This was satisfied
+    internal_error (__FILE__, __LINE__,
+		    _("initialize_current_architecture: Selection of "
+		      "initial architecture failed"));  // And error occured
+
+I tried to compare the execution between epiphany-elf-gdb and riscv-elf-gdb.
+Then I noticed:
+
+  /* Find the tdep code that knows about this architecture.  */
+  for (rego = gdbarch_registry;
+       rego != NULL;
+       rego = rego->next)
+    if (rego->bfd_architecture == info.bfd_arch_info->arch)
+      break;  // *** found at riscv-elf-gdb but not at epiphany-elf-gdb ***
+
+
+
+At epiphany-elf-gdb:
+(gdb) p gdbarch_registry
+$12 = (gdbarch_registration *) 0x0
+(gdb) 
+
+At riscv-elf-gdb
+(gdb) p *gdbarch_registry
+$9 = {bfd_architecture = bfd_arch_riscv, init = 0x83624f0
+     <riscv_gdbarch_init(gdbarch_info, gdbarch_list*)>, dump_tdep = 0x0, 
+  arches = 0x0, next = 0x0}
+(gdb) 
+
+
+void
+_initialize_riscv_tdep ()
+{
+  riscv_init_reggroups ();
+
+  gdbarch_register (bfd_arch_riscv, riscv_gdbarch_init, NULL);  // This one
+
+
+I noticed that
+
+void
+-_initialize_epiphany_tdep ()
++_initialize_epiphany_tdep ()
+{
+  register_gdbarch_init(bfd_arch_epiphany, epiphany_gdbarch_init);
+}
+
+above style caused this error. By above fix, the internal error did not
+occure.
+
+As usual, I applied memory access patch like below:
+
+	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
++	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
+	      do_write (sd, lma, buffer, size);
+	      found_loadable_section = 1;
+	      free (buffer);
+	    }
+	}
++       else if (s->flags & SEC_ALLOC) {
++         bfd_vma vma = bfd_section_vma(s);
++         bfd_size_type size = bfd_section_size(s);
++         sim_do_command(sd, "memory-fill 0xcc");
++         sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", vma, size);
++       }
+
+By fixing a few stuff, this simple nop program could be executed by
+epiphany-elf-gdb.
+
+I uploaded `epiphany-tdep.c' at this point as `epiphany-tdep.c.1' and
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-12.1.epiphany-elf/sim/epiphany/
+
+as `epiphany.1.tar'.
