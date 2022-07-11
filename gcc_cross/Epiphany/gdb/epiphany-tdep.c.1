@@ -1,0 +1,187 @@
+#include "defs.h"
+#include "value.h"
+#include "arch-utils.h"
+#include "regcache.h"
+#include "gdbcore.h"
+#include "objfiles.h"
+#include "dis-asm.h"
+#include "dwarf2/frame.h"
+#include "frame-base.h"
+#include "frame-unwind.h"
+#include <cassert>
+
+static int
+epiphany_register_sim_regno(struct gdbarch *gdbarch, int regnum)
+{
+  return regnum;
+}
+
+static int
+epiphany_dbg_reg_to_regnum(struct gdbarch *gdbarch, int regnum)
+{
+  asm("int3");
+  return regnum;
+}
+
+const int pc_regno = 64;
+const int sp_regno = 13;
+
+static const char*
+epiphany_register_name (struct gdbarch *gdbarch, int regno)
+{
+  static const char* name[] = {
+  "r0",  "r1",  "r2",  "r3",  "r4",  "r5",  "r6",  "r7",
+  "r8",  "r9",  "r10", "fp",  "ip",  "sp",  "lr",  "r15",
+  "r16",  "r17","r18", "r19", "r20", "r21", "r22", "r23",
+  "r24", "r25", "r26", "r27", "r28", "r29", "r30", "r31",
+  "r32", "r33", "r34", "r35", "r36", "r37", "r38", "r39",
+  "r40", "r41", "r42", "r43", "r44", "r45", "r46", "r47",
+  "r48", "r49", "r50", "r51", "r52", "r53", "r54", "r55",
+  "r56", "r57", "r58", "r59", "r60", "r61", "r62", "r63",
+  "pc", "status" };
+  assert(regno >= 0);
+  if (regno < sizeof name/sizeof name[0])
+    return name[regno];
+  return nullptr;
+}
+
+static enum return_value_convention
+epiphany_return_value (struct gdbarch *gdbarch, struct value *function,
+		    struct type *type, struct regcache *regcache,
+		    gdb_byte *readbuf, const gdb_byte *writebuf)
+{
+  asm("int3");
+  return return_value_convention(0);
+}
+
+static struct type*
+epiphany_register_type(struct gdbarch* gdbarch, int regno)
+{
+  switch (regno) {
+  case pc_regno: return builtin_type (gdbarch)->builtin_func_ptr;
+  case sp_regno: return builtin_type (gdbarch)->builtin_data_ptr;
+  default:       return builtin_type(gdbarch)->builtin_int32;
+  }
+}
+
+static void
+epiphany_print_registers_info(struct gdbarch *gdbarch, struct ui_file *file,
+			   struct frame_info *frame, int regno, int cpregs)
+{
+  asm("int3");
+}
+
+static CORE_ADDR
+epiphany_skip_prologue(struct gdbarch *gdbarch, CORE_ADDR pc)
+{
+  asm("int3");
+  return pc;
+}
+
+static struct frame_base epiphany_frame_base = {
+};
+
+static void
+epiphany_frame_this_id (struct frame_info *this_frame, void **this_cache,
+		     struct frame_id *this_id)
+{
+}
+
+static struct value*
+epiphany_frame_prev_register(struct frame_info *this_frame, void **this_cache,
+			  int regnum)
+{
+  asm("int3");
+  return 0;
+}
+
+static struct frame_unwind epiphany_frame_unwind = {
+  "epiphany proloue",
+  NORMAL_FRAME,
+  default_frame_unwind_stop_reason,
+  epiphany_frame_this_id,
+  epiphany_frame_prev_register,
+  nullptr,
+  default_frame_sniffer
+};
+
+static
+int epiphany_kind_from_pc(struct gdbarch* gdbarch, CORE_ADDR* addr)
+{
+  return 0;
+}
+
+static
+const unsigned char* epiphany_from_kind(gdbarch* handle, int kind, int* size)
+{
+  static unsigned char bkpt[] = { 0xcc, 0xcc };
+  *size = sizeof bkpt;
+  return &bkpt[0];
+}
+
+static CORE_ADDR
+epiphany_push_dummy_call(struct gdbarch *gdbarch, struct value *function,
+		      struct regcache *regcache, CORE_ADDR bp_addr,
+		      int nargs, struct value **args, CORE_ADDR sp,
+		      function_call_return_method return_method,
+		      CORE_ADDR struct_addr)
+{
+  asm("int3");
+  return 0;
+}
+
+static struct gdbarch*
+epiphany_gdbarch_init(struct gdbarch_info info, struct gdbarch_list *arches)
+{
+  struct gdbarch *gdbarch = gdbarch_alloc (&info, 0);
+
+  set_gdbarch_num_regs(gdbarch, pc_regno+1);
+  set_gdbarch_register_type(gdbarch, epiphany_register_type);
+  set_gdbarch_register_sim_regno(gdbarch, epiphany_register_sim_regno);
+  set_gdbarch_dwarf2_reg_to_regnum(gdbarch, epiphany_dbg_reg_to_regnum);
+  set_gdbarch_stab_reg_to_regnum(gdbarch, epiphany_dbg_reg_to_regnum);
+  set_gdbarch_register_name(gdbarch, epiphany_register_name);
+
+  set_gdbarch_pc_regnum(gdbarch, pc_regno);
+  set_gdbarch_sp_regnum(gdbarch, sp_regno);
+  set_gdbarch_print_registers_info(gdbarch, epiphany_print_registers_info);
+
+  set_gdbarch_ptr_bit(gdbarch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_addr_bit(gdbarch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_return_value(gdbarch, epiphany_return_value);
+
+  set_gdbarch_skip_prologue (gdbarch, epiphany_skip_prologue);
+  frame_base_set_default (gdbarch, &epiphany_frame_base);
+  dwarf2_append_unwinders(gdbarch);
+  frame_unwind_append_unwinder(gdbarch, &epiphany_frame_unwind);
+
+  set_gdbarch_inner_than (gdbarch, core_addr_lessthan);
+  set_gdbarch_breakpoint_kind_from_pc(gdbarch, epiphany_kind_from_pc);
+  set_gdbarch_sw_breakpoint_from_kind(gdbarch, epiphany_from_kind);
+  set_gdbarch_push_dummy_call(gdbarch, epiphany_push_dummy_call);
+
+  set_gdbarch_char_signed(gdbarch, 0);
+  set_gdbarch_int_bit(gdbarch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_long_bit(gdbarch, 4 * TARGET_CHAR_BIT);
+  set_gdbarch_long_long_bit (gdbarch, 8 * TARGET_CHAR_BIT);
+
+  set_gdbarch_wchar_signed(gdbarch, 0);
+  set_gdbarch_wchar_bit(gdbarch, 2 * TARGET_CHAR_BIT);
+
+  set_gdbarch_double_bit(gdbarch, 8 * TARGET_CHAR_BIT);
+  set_gdbarch_double_format(gdbarch, floatformats_ieee_double);
+  set_gdbarch_long_double_bit(gdbarch, 8 * TARGET_CHAR_BIT);
+  set_gdbarch_long_double_format(gdbarch, floatformats_ieee_double);
+
+  set_gdbarch_believe_pcc_promotion(gdbarch, 1);
+ 
+  return gdbarch;
+}
+
+void _initialize_epiphany_tdep();
+void
+_initialize_epiphany_tdep ()
+{
+  register_gdbarch_init(bfd_arch_epiphany, epiphany_gdbarch_init);
+}
+
