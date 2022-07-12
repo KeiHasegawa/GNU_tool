@@ -1,0 +1,8 @@
+#! /bin/csh -vf
+
+epiphany-elf-as -o start.o -g start.S || exit 1
+epiphany-elf-gcc -o sample.s sample.c -S || exit 1
+epiphany-elf-as -o sample.o -g sample.s || exit 1
+epiphany-elf-ld -o sample.elf start.o sample.o -T sample.x || exit 1
+epiphany-elf-objdump -x -d -g sample.elf > sample.objdump || exit 1
+epiphany-elf-run --memory-fill 0xcc --memory-region 0x1b000,0x5008 sample.elf
