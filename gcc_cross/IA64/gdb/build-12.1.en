@@ -1,0 +1,163 @@
+(*) Build gdb-12.1
+
+% xz -d -c ../gdb-12.1.tar.xz | tar xf -
+% mv gdb-12.1 gdb-12.1.ia64-elf
+% cd gdb-12.1.ia64-elf/gdb
+
+Do the same thing with d30v, fr30, z8k, i960, mmix, z80, i386, pdp11, vax,
+alpha, m68k, ns32k, spu, arc, 1750a, csky, tic6x and epiphany.
+
+configure.tgt:
+
+h8300*-*-*)		gdb_sim=h8300 ;;
++ia64*-*-*)		gdb_sim=ia64 ;;
+iq2000-*-*)		gdb_sim=iq2000 ;;
+
+% cd ..
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ --target=ia64-elf
+% make all
+...
+checking for readline in -lreadline... no
+configure: error: the required "readline" library is missing
+make[1]: *** [Makefile:9541: configure-sim] Error 1
+make[1]: Leaving directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-12.1.ia64-elf'
+make: *** [Makefile:1000: all] Error 2
+%
+
+% cd sim
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-12.1.ia64-elf/sim/configure --srcdir=.././sim --cache-file=./config.cache --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ --program-transform-name=s/^/ia64-elf-/ --disable-option-checking --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=ia64-elf
+...
+checking for readline in -lreadline... no
+configure: error: the required "readline" library is missing
+...
+%
+
+The Error could be reproduced.
+
+% cd ../readline
+% ./configure
+% cd .. ; make
+% ls gdb/gdb
+ls: cannot access 'gdb/gdb': No such file or directory
+% cd gdb
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ --target=ia64-elf
+% make gdb
+...
+./../gdbsupport/common-defs.h:23:10: fatal error: gdbsupport/config.h: No such file or directory
+   23 | #include <gdbsupport/config.h>
+      |          ^~~~~~~~~~~~~~~~~~~~~
+compilation terminated.
+make: *** [Makefile:1655: gdb.o] Error 1
+% cd ../gdbsupport
+% ./configure
+% make
+% cd ../gdb ; make
+...
+  CXX    varobj.o
+  GEN    stamp-version
+mv: cannot move 'version.c-tmp' to '': No such file or directory
+mv: cannot stat 'version-t.t': No such file or directory
+make: *** [Makefile:2115: stamp-version] Error 1
+%
+
+Makefile
+-host_alias =
++host_alias = i686-pc-linux-gnu
+
+% make
+...
+make: *** No rule to make target '../sim/ia64/libsim.a', needed by 'gdb'.  Stop.
+%
+% cd ../sim
+% tar xf ~/lang/53_GNU_tool/gcc_cross/Epiphany/gdb/epiphany.1.tar
+% mv epiphany ia64
+% cd ia64
+
+I replaced `epiphany' to `ia64'.
+
+% make
+...
+gcc -g -o nrun.o ../common/nrun.c -c -I../../include -I. -I../../bfd -DHAVE_CONFIG_H -I../common -DWITH_PROFILE=-1 -I../..
+g++ -o run nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a ../common/libcommon.a -lnsl -ldl -lz -lpthread
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(ia64.o): in function `LSEXTRACTED(unsigned int, int, int)':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-12.1.ia64-elf/sim/ia64/../common/sim-bits.c:64: undefined reference to `sim_io_error(sim_state*, char const*, ...)'
+...
+%
+
+gdb-12.1.ia64-elf/sim/common/sim-io.h:
+
++#ifndef __cplusplus
+void sim_io_error (SIM_DESC sd,
+		   const char *fmt,
+		   ...)
+  ATTRIBUTE_PRINTF (2, 3)
+  ATTRIBUTE_NORETURN;
++#else
++extern "C" void sim_io_error (SIM_DESC sd, const char *fmt, ...);
++#endif
+
+% make clean ; make
+% cd ../../gdb ; make
+make: *** No rule to make target '../readline/readline/libreadline.a', needed by 'gdb'.  Stop.
+% cd ../readline ; make
+% cd ../gdb ; make
+  CXXLD  gdb
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: remote-sim.o: in function `gdbsim_target_open(char const*, int)':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-12.1.ia64-elf/gdb/remote-sim.c:326: undefined reference to `default_callback'
+collect2: error: ld returned 1 exit status
+make: *** [Makefile:1904: gdb] Error 1
+%
+
+gdb-12.1.ia64-elf/gdb/Makefile:
+
+-SIM = ../sim/ia64/libsim.a
++SIM = ../sim/ia64/libsim.a ../sim/common/libcommon.a
+
+
+I created the program which had a few nop like below:
+
+	.text
+start:
+	nop.m	0
+	nop.i	0
+	nop.i	0
+
+	nop.m	0
+	nop.i	0
+	nop.i	0
+
+	nop.m	0
+	nop.i	0
+	nop.i	0
+
+end:
+	nop.m	0
+	nop.i	0
+	nop.i	0
+
+at address 0x100 and executed it under control of ia64-elf-gdb.
+
+As usual, I applied memory access patch like below:
+
+	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
++	      sim_do_commandf(sd, "memory-region 0x%llx,0x%llx", lma, size);
+	      do_write (sd, lma, buffer, size);
+	      found_loadable_section = 1;
+	      free (buffer);
+	    }
+	}
++       else if (s->flags & SEC_ALLOC) {
++         bfd_vma vma = bfd_section_vma(s);
++         bfd_size_type size = bfd_section_size(s);
++         sim_do_command(sd, "memory-fill 0xcc");
++         sim_do_commandf(sd, "memory-region 0x%llx,0x%llx", vma, size);
++       }
+
+By fixing a few stuff, this simple nop program could be executed under control
+of ia64-elf-gdb.
+
+I uploaded
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-12.1.ia64-elf/sim/ia64/
+
+at this point as `ia64.1.tar'.
