@@ -64,3 +64,23 @@ void execute_for_me(SIM_DESC sd, sim_cpu* cpu, uint32_t tmp, sim_cia cia)
 By above fix, simulator part became to be able to detect break instruction.
 But at this point, ia64-elf-gdb could not work well. => (*2)
 Stopped source line should be test.c:8, not test.c:7.
+
+After simulator detected the break instruction, simulator answered
+that its `pc' was 0x1d1 not 0x1d0. And if it was accepted by ia64-elf-gdb,
+ia64-elf-gdb might say that the target program stopped at test.c:8.
+But currently ia64-elf-gdb say that the target program stopped at test.c:7
+because ia64-elf-gdb recognized that the target program stopped at address
+0x1d0, not 0x1d1.
+
+Here, `test.elf' line information was:
+
+% ia64-elf-addr2line -a 0x1d0 -e test.elf
+0x00000000000001d0
+/home/khasegawa/lang/53_GNU_tool/gcc_cross/IA64/test/test002/test.c:7
+% ia64-elf-addr2line -a 0x1d1 -e test.elf
+0x00000000000001d1
+/home/khasegawa/lang/53_GNU_tool/gcc_cross/IA64/test/test002/test.c:8
+%
+
+So, I tried to investigate the reason why ia64-elf-gdb recognized the target
+program stopped at address 0x1d0.
