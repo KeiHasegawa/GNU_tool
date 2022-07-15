@@ -84,3 +84,99 @@ Here, `test.elf' line information was:
 
 So, I tried to investigate the reason why ia64-elf-gdb recognized the target
 program stopped at address 0x1d0.
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-12.1.ia64-elf/gdb
+M-x gdb
+gdb --annotate=3 ./gdb
+(gdb) cd ~/lang/53_GNU_tool/gcc_cross/IA64/test/test002
+(gdb) run -q -x gdbcom.2 test.elf
+...
+OK. Reproduced by executing from gdb.
+
+(gdb) b sim_engine_halt
+(gdb) run
+...
+`sim_engine_halt' break-point hit
+(gdb) up
+
+Then I confirmed that `sim_engine_halt' was called from above code at
+`execute_for_me'.
+
+(gdb) b sim_fetch_register
+(gdb) c
+...
+`sim_fetch_register' break-point hit. It was called with (rn=332), which was
+PSR register number.
+(gdb) c
+...
+`sim_fetch_register' break-point hit. It was called with (rn=331), which was
+PC register number.
+(gdb)
+
+I confimred that simulator answered that PC value was 0x1d1. Then I tried
+to investigate how the address 0x1d1 was changed to 0x1d0.
+
+At this time, backtrace became like below:
+
+(gdb) where
+#0  sim_fetch_register (sd=0x8d5ca40, rn=331, buf=0x8d5d410 "", length=8) at ../common/sim-reg.c:35
+#1  0x08340671 in gdbsim_target::fetch_registers (this=0x8be1d68 <gdbsim_ops>, regcache=0x8d37b20, regno=331) at remote-sim.c:479
+#2  0x083d5e6a in target_fetch_registers (regcache=0x8d37b20, regno=331) at target.c:3965
+#3  0x08337ab2 in regcache::raw_update (regnum=331, this=0x8d37b20) at regcache.c:587
+#4  regcache::raw_update (this=0x8d37b20, regnum=331) at regcache.c:576
+#5  0x08337afd in readable_regcache::raw_read (this=0x8d37b20, regnum=331, buf=0xbfffecb0 "") at regcache.c:601
+#6  0x08337c40 in readable_regcache::cooked_read (this=<optimized out>, regnum=<optimized out>, buf=<optimized out>) at regcache.c:690
+#7  0x0833b0cf in readable_regcache::cooked_read<unsigned long long, void> (this=0x8d37b20, regnum=331, val=0xbfffed18) at regcache.c:775
+--Type <RET> for more, q to quit, c to continue without paging--c
+#8  0x08246cdb in ia64_read_pc (regcache=0x8d37b20) at ia64-tdep.c:886
+#9  0x083396c5 in regcache_read_pc (regcache=0x8d37b20) at regcache.c:1319
+#10 0x0826ba9e in handle_signal_stop (ecs=0xbffff054) at infrun.c:5945
+#11 0x0826dfe2 in handle_inferior_event (ecs=<optimized out>) at infrun.c:5681
+#12 0x0826f130 in fetch_inferior_event () at infrun.c:4085
+#13 0x080da77f in check_async_event_handlers () at async-event.c:335
+#14 0x0858517b in gdb_do_one_event () at event-loop.cc:216
+#15 0x083e3f44 in wait_sync_command_done () at top.c:556
+#16 0x083e62a4 in maybe_wait_sync_command_done (was_sync=0) at top.c:573
+#17 execute_command (p=<optimized out>, from_tty=0) at top.c:704
+#18 0x0820b6cc in command_handler (command=0x8d5f950 "run") at event-top.c:597
+#19 0x083e4b54 in read_command_file (stream=0x8d4d938) at top.c:471
+#20 0x08156a61 in script_from_file (stream=0x8d4d938, file=0xbffff84b "gdbcom.2") at cli/cli-script.c:1625
+#21 0x08145aa4 in source_script_from_stream (file_to_open=0x8d5fa70 "gdbcom.2", file=0xbffff84b "gdbcom.2", stream=0x8d4d938) at cli/cli-cmds.c:715
+#22 source_script_with_search (file=0xbffff84b "gdbcom.2", from_tty=<optimized out>, search_path=<optimized out>) at cli/cli-cmds.c:760
+#23 0x08295f74 in catch_command_errors (command=0x8145bf0 <source_script(char const*, int)>, arg=<optimized out>, from_tty=<optimized out>, do_bp_actions=false) at main.c:523
+#24 0x08296003 in execute_cmdargs (cmdarg_vec=cmdarg_vec@entry=0xbffff41c, file_type=file_type@entry=CMDARG_FILE, cmd_type=cmd_type@entry=CMDARG_COMMAND, ret=0xbffff414) at main.c:615
+#25 0x08297b70 in captured_main_1 (context=<optimized out>) at main.c:1320
+#26 0x082985fd in captured_main (data=0xbffff554) at main.c:1341
+#27 gdb_main (args=0xbffff554) at main.c:1366
+#28 0x0807bb1c in main (argc=5, argv=0xbffff624) at gdb.c:32
+(gdb) 
+
+#define SLOT_MULTIPLIER 1
+...
+static CORE_ADDR
+ia64_read_pc (readable_regcache *regcache)
+{
+...
+  regcache->cooked_read (IA64_PSR_REGNUM, &psr_value);
+  regcache->cooked_read (IA64_IP_REGNUM, &pc_value);
+  slot_num = (psr_value >> 41) & 3;
+
+  return pc_value | (slot_num * SLOT_MULTIPLIER);
+
+(gdb) p/x pc_value
+$11 = 0x1d1
+(gdb) p/x psr_value
+$26 = 0x1002000
+(gdb) p slot_num
+$27 = 0
+(gdb) 
+
+I was not sure but I tried below code:
+
+  if (insn[1] == 0x3333300) {
+    cpu->psr |= (1LL << 41) | (1 << 24) | (1 << 13) ;    // (*)
+    cpu->pc += 1;
+    sim_engine_halt(sd, cpu, 0, cpu->pc, sim_stopped, SIM_SIGTRAP);
+  }
+
+By this fix, ia64-elf-gdb worked well as I expected.
