@@ -1,0 +1,47 @@
+(*0) Registers
+
+     r0, ..., r127
+     f0, ..., f127
+
+
+     r1  : global pointer
+     r12 : stack pointer
+
+
+(*1) Register stack
+
+int f(int a, int b);
+
+int g()
+{
+  return f(5, 6);
+}
+
+f:
+	; r32 = 5, r33 = 6
+
+g:
+	alloc r33 = ar.pfs, 0, 4, 2, 0
+...
+	mov	r37, 6
+	mov	r36, 5
+	br.call.sptk.many b0 = f#
+
+
+(*2)
+
+    For adding r14 := r15 + r14 and set r8 = r14 and r12 = r2, assmble
+    code becomes like below:
+
+	add r14 = r15, r14
+	mov r8 = r14
+	mov r12 = r2
+
+    And more, these 3 instructions are in 1 bundle:
+
+ 180:	0a 70 3c 1c 00 20 	[MMI]       add r14=r15,r14;;
+ 186:	80 00 38 00 42 80 	            mov r8=r14
+ 18c:	01 10 00 84       	            mov r12=r2
+
+    i.e. after 1st add instruction is complete and then 2nd mov instruction
+    is issued.
