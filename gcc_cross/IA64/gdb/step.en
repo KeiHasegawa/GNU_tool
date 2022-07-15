@@ -1,0 +1,270 @@
+By fixing break-point problem, then I faced the problem about step command
+like below:
+
+Breakpoint 1 at 0x1d1: file test.c, line 8.
+
+Breakpoint 1, main () at test.c:8
+8	  return f(5, 6);
+(ia64-elf-gdb) step
+Cannot access memory at address 0xffffffffffffffd0
+(ia64-elf-gdb)
+
+I just wondered why ia64-elf-gdb accessed the address. And before above,
+I already noticed that simulator answered that BSP register value was 0.
+Anyway, I tried to investigate above reason.
+
+extern "C" uint64_t ia64_reg_get_1(sim_cpu* cpu, int rn)
+{
+...
+  if (rn == 351) {
+#if 0
+    return cpu->bsp;
+#else    
+    return cpu->r[12];
+#endif    
+  }
+
+Here, I was not also sure that above worked well, but tried:
+
+% ia64-elf-gdb -q -x gdbcom.3 test.elf
+...
+Breakpoint 1 at 0x1d1: file test.c, line 8.
+
+Breakpoint 1, main () at test.c:8
+8	  return f(5, 6);
+(ia64-elf-gdb) step
+f (a=5, b=-858993460) at test.c:3
+3	  return a + b;
+(ia64-elf-gdb)
+
+Even though parameter `b' was not displayed correctly, but ia64-elf-gdb could
+skip prologue as I expected.
+
+(ia64-elf-gdb) p/x -858993460
+$1 = 0xcccccccc
+(ia64-elf-gdb) p &a
+$2 = (int *) 0xfc0
+(ia64-elf-gdb) p &b
+$3 = (int *) 0xfc4
+(ia64-elf-gdb) p/x $pc
+$4 = 0x161
+(ia64-elf-gdb) disassemble
+Dump of assembler code for function f:
+   0x0000000000000140 <+0>:	[MII]       mov r2=r12
+   0x0000000000000141 <+1>:	            nop.i 0x0
+   0x0000000000000142 <+2>:	            nop.i 0x0;;
+   0x0000000000000150 <+16>:	[MII]       st4 [r2]=r32
+   0x0000000000000151 <+17>:	            adds r14=4,r2;;
+   0x0000000000000152 <+18>:	            nop.i 0x0
+   0x0000000000000160 <+32>:	[MII]       st4 [r14]=r33
+=> 0x0000000000000161 <+33>:	            adds r14=4,r2
+   0x0000000000000162 <+34>:	            nop.i 0x0
+   0x0000000000000170 <+48>:	[MMI]       ld4 r15=[r2];;
+   0x0000000000000171 <+49>:	            ld4 r14=[r14]
+   0x0000000000000172 <+50>:	            nop.i 0x0;;
+   0x0000000000000180 <+64>:	[MMI]       add r14=r15,r14;;
+   0x0000000000000181 <+65>:	            mov r8=r14
+   0x0000000000000182 <+66>:	            mov r12=r2
+   0x0000000000000190 <+80>:	[MIB]       nop.m 0x0
+   0x0000000000000191 <+81>:	            nop.i 0x0
+   0x0000000000000192 <+82>:	            br.ret.sptk.many b0;;
+End of assembler dump.
+(ia64-elf-gdb)
+
+When simulator detected break instruction, slot0 instruction should have
+been executed.
+
+% cat gdbcom.4
+set prompt (ia64-elf-gdb) 
+target sim
+load
+sim memory-fill 0xcc
+sim memory-region 0xe00,0x208
+b f
+run
+quit
+% ia64-elf-gdb -q -x gdbcom.4 test.elf
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x130 lma 100
+Loading section .IA_64.unwind_info, size 0x28 lma 230
+Loading section .IA_64.unwind, size 0x30 lma 258
+Start address 100
+Transfer rate: 3136 bits in <1 sec.
+Breakpoint 1 at 0x161: file test.c, line 3.
+
+Breakpoint 1, f (a=5, b=-858993460) at test.c:3             # NG
+3	  return a + b;
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
+%
+
+Then I fixed lik below:
+
+extern "C"
+void execute_for_me(SIM_DESC sd, sim_cpu* cpu, uint32_t tmp, sim_cia cia)
+{
+...
+  struct sweeper {
+...  
+    ~sweeper()
+    {
+#if 0    
+      cpu->pc += 16;  // move to sweeper2
+#endif
+      auto p = actions.find(cpu);
+      if (p != end(actions)) {
+	auto& v = p->second;
+	std::for_each(begin(v), end(v), std::mem_fun(&action_t::exec));
+	std::for_each(begin(v), end(v), [](action_t* a) { delete a; });
+	actions.erase(p);
+      }
+      cpu->r[0] = 0;
+    }
+  } sweeper(cpu);
+
+  if (insn[1] == 0x3333300) {
+    auto opc = insn[0] >> 37;
+    auto p = table.find(opc);
+    if (p == end(table)) {
+      asm("int3");
+      sim_engine_halt(sd, cpu, nullptr, cia, sim_stopped, SIM_SIGILL);
+    }
+    (p->second)(sd, cpu, insn[0], cia);
+    cpu->psr |= (1LL << 41) | (1 << 24) | (1 << 13) ;
+    cpu->pc += 1;
+    sweeper.~sweeper();  // explicit destructor call
+    sim_engine_halt(sd, cpu, 0, cpu->pc, sim_stopped, SIM_SIGTRAP);
+  }
+
+  struct sweeper2 {
+  ...
+    ~sweeper2()
+    {
+      cpu->pc += 16;      
+    }
+  } sweeper2(cpu);
+
+By above fix, ia64-elf-gdb worked well like below:
+
+% ia64-elf-gdb -q -x gdbcom.4 test.elf
+...
+Breakpoint 1 at 0x161: file test.c, line 3.
+
+Breakpoint 1, f (a=5, b=6) at test.c:3              # OK. Fine!
+3	  return a + b;
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
+%
+
+But I had to fix for step command except above. I guessed that the point was
+the same. But it was not so easy.
+
+For step command, the result became like below:
+
+Breakpoint 1 at 0x1d1: file test.c, line 8.
+
+Breakpoint 1, main () at test.c:8
+8	  return f(5, 6);
+f (a=5, b=-858993460) at test.c:3             # NG
+3	  return a + b;
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+By step command, `sim_resume(step=1)' calls were occurred some times.
+
+0000000000000140 <f>:
+ 140:	01 10 00 18 00 21 	[MII]       mov r2=r12
+ 146:	00 00 00 02 00 00 	            nop.i 0x0
+ 14c:	00 00 04 00       	            nop.i 0x0;;
+ 150:	02 00 80 04 90 11 	[MII]       st4 [r2]=r32
+ 156:	e0 20 08 00 42 00 	            adds r14=4,r2;;
+ 15c:	00 00 04 00       	            nop.i 0x0
+ 160:	00 00 84 1c 90 11 	[MII]       st4 [r14]=r33
+ 166:	e0 20 08 00 42 00 	            adds r14=4,r2
+ 16c:	00 00 04 00       	            nop.i 0x0
+
+00000000000001a0 <main>:
+...
+ 1d0:	01 18 01 02 00 21 	[MII]       mov r35=r1
+ 1d6:	50 32 00 00 48 80 	            mov r37=6
+ 1dc:	54 00 00 90       	            mov r36=5;;
+ 1e0:	10 00 00 00 01 00 	[MIB]       nop.m 0x0
+ 1e6:	00 00 00 02 00 00 	            nop.i 0x0
+ 1ec:	68 ff ff 58       	            br.call.sptk.many b0=140 <f>
+
+
+By step command, PC were chaged:
+
+0x1d1 -> 0x1e0 -> 0x140 -> 0x150 -> 0x160
+
+And no `sim_resume()' was called since then. The direct reason was:
+
+static void
+prepare_to_wait (struct execution_control_state *ecs)
+{
+  infrun_debug_printf ("prepare_to_wait");
+
+  ecs->wait_some_more = 1;   // (*) If this member was set, continue to call
+                             // sim_resume
+
+At this time, backtrace became like below:
+(gdb) where
+#0  prepare_to_wait (ecs=0xbfffefe8) at infrun.c:8108
+#1  0x0826ac2f in keep_going_pass_signal (ecs=0xbfffefe8) at infrun.c:8080
+#2  0x0826ad84 in keep_going (ecs=0xbfffefe8) at infrun.c:8096
+#3  0x082677f7 in process_event_stop_test (ecs=0xbfffefe8) at infrun.c:6744
+#4  0x08266d26 in handle_signal_stop (ecs=0xbfffefe8) at infrun.c:6420
+#5  0x082651f1 in handle_inferior_event (ecs=0xbfffefe8) at infrun.c:5681
+#6  0x0826143c in fetch_inferior_event () at infrun.c:4085
+#7  0x0824b029 in inferior_event_handler (event_type=INF_REG_EVENT) at inf-loop.c:41
+--Type <RET> for more, q to quit, c to continue without paging--c
+#8  0x0826d596 in infrun_async_inferior_event_handler (data=0x0) at infrun.c:9371
+#9  0x080d930f in check_async_event_handlers () at async-event.c:335
+#10 0x0858f41b in gdb_do_one_event () at event-loop.cc:216
+#11 0x083ee0d4 in wait_sync_command_done () at top.c:556
+#12 0x083f0434 in maybe_wait_sync_command_done (was_sync=0) at top.c:573
+#13 execute_command (p=<optimized out>, from_tty=0) at top.c:704
+#14 0x0820a25c in command_handler (command=0x8d76950 "step") at event-top.c:597
+#15 0x083eece4 in read_command_file (stream=0x8d64938) at top.c:471
+#16 0x081555f1 in script_from_file (stream=0x8d64938, file=0xbffff84b "gdbcom.3") at cli/cli-script.c:1625
+#17 0x08144634 in source_script_from_stream (file_to_open=0x8d76a70 "gdbcom.3", file=0xbffff84b "gdbcom.3", stream=0x8d64938) at cli/cli-cmds.c:715
+#18 source_script_with_search (file=0xbffff84b "gdbcom.3", from_tty=<optimized out>, search_path=<optimized out>) at cli/cli-cmds.c:760
+#19 0x082a0574 in catch_command_errors (command=0x8144780 <source_script(char const*, int)>, arg=<optimized out>, from_tty=<optimized out>, do_bp_actions=false) at main.c:523
+#20 0x082a0603 in execute_cmdargs (cmdarg_vec=cmdarg_vec@entry=0xbffff41c, file_type=file_type@entry=CMDARG_FILE, cmd_type=cmd_type@entry=CMDARG_COMMAND, ret=0xbffff414) at main.c:615
+#21 0x082a2170 in captured_main_1 (context=<optimized out>) at main.c:1320
+#22 0x082a2bfd in captured_main (data=0xbffff554) at main.c:1341
+#23 gdb_main (args=0xbffff554) at main.c:1366
+#24 0x0807a6ec in main (argc=5, argv=0xbffff624) at gdb.c:32
+(gdb)
+
+And the function `keep_going' was called because the next condition was
+satisfied:
+
+  if (pc_in_thread_step_range (ecs->event_thread->stop_pc (),
+			       ecs->event_thread)
+      && (execution_direction != EXEC_REVERSE
+	  || frame_id_eq (get_frame_id (frame),
+			  ecs->event_thread->control.step_frame_id)))
+    {
+...
+	keep_going (ecs);
+
+On the other hand, after PC became 0x160, above condition was not satisfied.
+
+(gdb) p pc_in_thread_step_range(ecs->event_thread->stop_pc (), ecs->event_thread)
+$35 = 0
+(gdb) p pc_in_thread_step_range(0x160, ecs->event_thread)
+$36 = 1
+(gdb) p/x ecs->event_thread->stop_pc ()
+$37 = 0x161                                  ## Unexpected
+(gdb)
+
+Then I noticed that PSR bit 42:41 affected.
