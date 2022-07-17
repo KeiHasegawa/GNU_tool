@@ -19,7 +19,7 @@ where, ../default.o was startup routine.
 
 Then executed test.elf under control of ia64-elf-gdb like below:
 
-% cat gdbcom.2
+% cat gdbcom
 set prompt (ia64-elf-gdb) 
 target sim
 load
@@ -55,9 +55,8 @@ extern "C"
 void execute_for_me(SIM_DESC sd, sim_cpu* cpu, uint32_t tmp, sim_cia cia)
 {
 ...
-  if (insn[1] == 0x3333300) {
-    cpu->psr |= (1 << 24) | (1 << 13) ;
-    cpu->pc += 1;
+  if (insn[b1_0] == 0x3333300) {
+    cpu->psr |= (1 << 24) | (1 << 13);
     sim_engine_halt(sd, cpu, 0, cpu->pc, sim_stopped, SIM_SIGTRAP);
   }
 
@@ -89,7 +88,7 @@ program stopped at address 0x1d0.
 M-x gdb
 gdb --annotate=3 ./gdb
 (gdb) cd ~/lang/53_GNU_tool/gcc_cross/IA64/test/test002
-(gdb) run -q -x gdbcom.2 test.elf
+(gdb) run -q -x gdbcom test.elf
 ...
 OK. Reproduced by executing from gdb.
 
@@ -173,9 +172,9 @@ $27 = 0
 
 I was not sure but I tried below code:
 
-  if (insn[1] == 0x3333300) {
-    cpu->psr |= (1LL << 41) | (1 << 24) | (1 << 13) ;    // (*)
-    cpu->pc += 1;
+  if (insn[b1_0] == 0x3333300) {
+    cpu->psr &= ~(3LL << 41);
+    cpu->psr |= b1_0 << 41;
     sim_engine_halt(sd, cpu, 0, cpu->pc, sim_stopped, SIM_SIGTRAP);
   }
 

@@ -1,3 +1,6 @@
+At this point, ia64-elf-gdb could execute step and where command but
+could not execute finish command like below: 
+
 % ia64-elf-gdb -q -x gdbcom.2 test.elf
 Reading symbols from test.elf...
 Connected to the simulator.
@@ -20,4 +23,237 @@ Run till exit from #0  f (a=5, b=6) at test.c:3
 Program received signal SIGTRAP, Trace/breakpoint trap.
 0x00000000000001f1 in main () at test.c:8
 8	  return f(5, 6);
-(ia64-elf-gdb) 
+(ia64-elf-gdb)
+
+I noticed that internal break-point was set to address 0x1f0 which was
+return address of `f'. I guessed that because simulator answered stop address
+was 0x1f1, ia64-elf-gdb recognized it as a normal break-point.
+
+At this point, simulator implmentation was:
+
+extern "C"
+void execute_for_me(SIM_DESC sd, sim_cpu* cpu, uint32_t tmp, sim_cia cia)
+{
+...
+  if (insn[0] == 0x3333300)
+    sim_engine_halt(sd, cpu, 0, cia, sim_stopped, SIM_SIGTRAP);  // This one
+
+For above finish command, above code worked but not well.
+
+(gdb) p/x cpu->psr
+$111 = 0x20000000000
+(gdb) p cpu->psr >> 41
+$112 = 1
+(gdb) p/x cpu->pc
+$113 = 0x1f0
+(gdb) p/x cia
+$114 = 0x1f0
+(gdb)
+
+I tried below code:
+
+  if (insn[0] == 0x3333300) {
+    cpu->psr &= ~(1LL << 41);
+    sim_engine_halt(sd, cpu, 0, cia, sim_stopped, SIM_SIGTRAP);
+  }
+
+But did not work because the internal break-point was canceled for some
+reason. As the result, finish command did not stop and execution continued.
+
+I tried to compare ia64-elf-gdb and epiphany-elf-gdb about finish command.
+
+After finish_command was called, there was the difference at below code:
+
+infrun.c:4087:
+    if (!ecs->wait_some_more)
+      {
+At ia64-elf-gdb, above condition was not satisfied. But at epiphany-elf-gdb,
+it was satisfied.
+
+At ia64-elf-gdb, the member was set at below code:
+
+
+  ecs->wait_some_more = 1;
+
+And at this time, backtrace was:
+
+(gdb) where
+#0  prepare_to_wait (ecs=0xbfffefe8) at infrun.c:8114
+#1  0x0826ac2f in keep_going_pass_signal (ecs=0xbfffefe8) at infrun.c:8080
+#2  0x0826ad84 in keep_going (ecs=0xbfffefe8) at infrun.c:8096
+#3  0x082691a7 in switch_back_to_stepped_thread (ecs=0xbfffefe8) at infrun.c:7323
+#4  0x0826753d in process_event_stop_test (ecs=0xbfffefe8) at infrun.c:6680
+#5  0x08266d26 in handle_signal_stop (ecs=0xbfffefe8) at infrun.c:6420
+#6  0x082651f1 in handle_inferior_event (ecs=0xbfffefe8) at infrun.c:5681
+#7  0x0826143c in fetch_inferior_event () at infrun.c:4085
+--Type <RET> for more, q to quit, c to continue without paging--c
+#8  0x0824b029 in inferior_event_handler (event_type=INF_REG_EVENT) at inf-loop.c:41
+#9  0x0826d596 in infrun_async_inferior_event_handler (data=0x0) at infrun.c:9371
+#10 0x080d930f in check_async_event_handlers () at async-event.c:335
+#11 0x0858f45b in gdb_do_one_event () at event-loop.cc:216
+#12 0x083ee0d4 in wait_sync_command_done () at top.c:556
+#13 0x083f0434 in maybe_wait_sync_command_done (was_sync=0) at top.c:573
+#14 execute_command (p=<optimized out>, from_tty=0) at top.c:704
+#15 0x0820a25c in command_handler (command=0x8d76950 "finish") at event-top.c:597
+#16 0x083eece4 in read_command_file (stream=0x8d64938) at top.c:471
+#17 0x081555f1 in script_from_file (stream=0x8d64938, file=0xbffff84d "gdbcom") at cli/cli-script.c:1625
+#18 0x08144634 in source_script_from_stream (file_to_open=0x8d76a70 "gdbcom", file=0xbffff84d "gdbcom", stream=0x8d64938) at cli/cli-cmds.c:715
+#19 source_script_with_search (file=0xbffff84d "gdbcom", from_tty=<optimized out>, search_path=<optimized out>) at cli/cli-cmds.c:760
+#20 0x082a0574 in catch_command_errors (command=0x8144780 <source_script(char const*, int)>, arg=<optimized out>, from_tty=<optimized out>, do_bp_actions=false) at main.c:523
+#21 0x082a0603 in execute_cmdargs (cmdarg_vec=cmdarg_vec@entry=0xbffff41c, file_type=file_type@entry=CMDARG_FILE, cmd_type=cmd_type@entry=CMDARG_COMMAND, ret=0xbffff414) at main.c:615
+#22 0x082a2170 in captured_main_1 (context=<optimized out>) at main.c:1320
+#23 0x082a2bfd in captured_main (data=0xbffff554) at main.c:1341
+#24 gdb_main (args=0xbffff554) at main.c:1366
+#25 0x0807a6ec in main (argc=5, argv=0xbffff624) at gdb.c:32
+(gdb)
+
+static void
+process_event_stop_test (struct execution_control_state *ecs)
+{
+...
+  switch (what.main_action)
+
+ia64-elf-gdb:
+(gdb) p what.main_action
+$130 = BPSTAT_WHAT_SINGLE
+(gdb)
+
+epiphany-elf-gdb:
+(gdb) p what.main_action
+$10 = BPSTAT_WHAT_STOP_NOISY
+(gdb)
+
+I confirmed the way of calculation of `what.main_action'.
+
+  what = bpstat_what (ecs->event_thread->control.stop_bpstat);
+
+struct bpstat_what
+bpstat_what (bpstat *bs_head)
+{
+...
+      retval.main_action = std::max (retval.main_action, this_action);
+
+ia64-elf-gdb:
+(gdb) p retval.main_action
+$134 = BPSTAT_WHAT_KEEP_CHECKING
+(gdb) p this_action
+$135 = BPSTAT_WHAT_SINGLE
+(gdb)
+
+epiphany-elf-gdb
+(gdb) p retval.main_action
+$13 = BPSTAT_WHAT_KEEP_CHECKING
+(gdb) p this_action
+$14 = BPSTAT_WHAT_STOP_NOISY
+(gdb)
+
+
+	  if (bs->stop)
+	    {
+	      if (bs->print)
+		this_action = BPSTAT_WHAT_STOP_NOISY;
+	      else
+		this_action = BPSTAT_WHAT_STOP_SILENT;
+	    }
+	  else
+	    this_action = BPSTAT_WHAT_SINGLE;
+
+ia64-elf-gdb:
+(gdb) p bs->stop
+$136 = 0 '\000'
+(gdb)
+
+epiphany-elf-gdb:
+(gdb) p bs->stop
+$15 = 1 '\001'
+(gdb) 
+
+I confirmed that which code set `bs->stop' at epiphany-elf-gdb.
+
+	  bs->stop = 1;
+
+At this time, backtrace was:
+
+(gdb) where
+#0  build_bpstat_chain (aspace=0x8bf59d0, bp_addr=346, ws=...) at breakpoint.c:5393
+#1  0x08262788 in handle_signal_stop (ecs=0xbfffefd8) at infrun.c:6139
+#2  0x082614f1 in handle_inferior_event (ecs=0xbfffefd8) at infrun.c:5681
+#3  0x0825d73c in fetch_inferior_event () at infrun.c:4085
+#4  0x08247329 in inferior_event_handler (event_type=INF_REG_EVENT) at inf-loop.c:41
+#5  0x08269896 in infrun_async_inferior_event_handler (data=0x0) at infrun.c:9371
+#6  0x080db83f in check_async_event_handlers () at async-event.c:335
+#7  0x0855da1b in gdb_do_one_event () at event-loop.cc:216
+--Type <RET> for more, q to quit, c to continue without paging--c
+#8  0x083e9d54 in wait_sync_command_done () at top.c:556
+#9  0x083ec0b4 in maybe_wait_sync_command_done (was_sync=0) at top.c:573
+#10 execute_command (p=<optimized out>, from_tty=0) at top.c:704
+#11 0x0820c4ac in command_handler (command=0x8d194d8 "finish") at event-top.c:597
+#12 0x083ea964 in read_command_file (stream=0x8d0d8c0) at top.c:471
+#13 0x08157a31 in script_from_file (stream=0x8d0d8c0, file=0xbffff845 "gdbcom") at cli/cli-script.c:1625
+#14 0x08146b34 in source_script_from_stream (file_to_open=0x8d193c8 "gdbcom", file=0xbffff845 "gdbcom", stream=0x8d0d8c0) at cli/cli-cmds.c:715
+#15 source_script_with_search (file=0xbffff845 "gdbcom", from_tty=<optimized out>, search_path=<optimized out>) at cli/cli-cmds.c:760
+#16 0x0829c674 in catch_command_errors (command=0x8146c80 <source_script(char const*, int)>, arg=<optimized out>, from_tty=<optimized out>, do_bp_actions=false) at main.c:523
+#17 0x0829c703 in execute_cmdargs (cmdarg_vec=cmdarg_vec@entry=0xbffff40c, file_type=file_type@entry=CMDARG_FILE, cmd_type=cmd_type@entry=CMDARG_COMMAND, ret=0xbffff404) at main.c:615
+#18 0x0829e270 in captured_main_1 (context=<optimized out>) at main.c:1320
+#19 0x0829ecfd in captured_main (data=0xbffff544) at main.c:1341
+#20 gdb_main (args=0xbffff544) at main.c:1366
+#21 0x0807a64c in main (argc=5, argv=0xbffff614) at gdb.c:32
+(gdb)
+
+At also ia64-elf-gdb, bs->stop was set to 1, but after that,
+
+  if (frame_id_p (b->frame_id)
+      && !frame_id_eq (b->frame_id, get_stack_frame_id (get_current_frame ())))
+    {
+      bs->stop = 0;
+      return;
+    }
+
+it was set to 0 at above code.
+
+ia64-elf-gdb:
+(gdb) p frame_id_eq (b->frame_id, get_stack_frame_id (get_current_frame ()))
+$147 = false
+(gdb) p/x b->frame_id
+$149 = {stack_addr = 0xfc0, code_addr = 0x1a0, special_addr = 0xf90, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x1, 
+  artificial_depth = 0x0}
+(gdb) p/x get_stack_frame_id (get_current_frame ())
+$150 = {stack_addr = 0xfc0, code_addr = 0x1a0, special_addr = 0xfc0, 
+  stack_status = 0x1, code_addr_p = 0x1, special_addr_p = 0x1, 
+  artificial_depth = 0x0}
+(gdb)
+
+`special_addr' member was different.
+
+
+static void
+ia64_frame_this_id (struct frame_info *this_frame, void **this_cache,
+		    struct frame_id *this_id)
+{
+...
+    (*this_id) = frame_id_build_special (cache->base, cache->pc, cache->bsp);
+                                                                 ^^^^^^^^^^
+
+After finish_command was called, I modified `cache->bsp' from gdb command
+line like below:
+
+(gdb) p/x cache->bsp
+$163 = 0xfc0
+(gdb) set cache->bsp=0xf90
+(gdb) c
+
+Then, frame id matched so that bs->stop was not reset. As this result,
+
+0x00000000000001f0 in main () at test.c:8
+8	  return f(5, 6);
+Value returned is $1 = 6
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
+
+ia64-elf-gdb worked well except that return value was not correct.
+
+
