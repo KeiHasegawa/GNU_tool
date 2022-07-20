@@ -1,0 +1,39 @@
+Build IA64 instruction set simulator
+
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/
+% mkdir ski
+% cd ski
+% git init
+% git pull https://github.com/trofi/ski
+% ./autogen.sh
+checking for NCURSES... no
+configure: error: Package requirements (ncurses) were not met:
+
+No package 'ncurses' found
+
+Consider adjusting the PKG_CONFIG_PATH environment variable if you
+installed software in a non-standard prefix.
+
+Alternatively, you may set the environment variables NCURSES_CFLAGS
+and NCURSES_LIBS to avoid the need to call pkg-config.
+See the pkg-config man page for more details.
+% ls /usr/lib/libncurses.a
+/usr/lib/libncurses.a
+%
+
+I did comment-out error part of `configure'.
+
+% ./configure --enable-maintainer-mode --enable-compile-warnings --enable-dependency-tracking
+% make
+...
+/bin/sh ../libtool --tag=CC   --mode=link cc  -g -O2  -DLINUX -D_GNU_SOURCE -D__norcsid -fno-strict-aliasing -Wall -Wunused   -o ski main.o libski.la -ldl -lelf -lm
+libtool: link: cc -g -O2 -DLINUX -D_GNU_SOURCE -D__norcsid -fno-strict-aliasing -Wall -Wunused -o ski main.o  ./.libs/libski.a -ldl -lelf -lm
+/usr/local/bin/ld: ./.libs/libski.a(cur.o): in function `createWindows':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/ski/src/cur.c:313: undefined reference to `LINES'
+...
+% cd src
+% /bin/sh ../libtool --tag=CC   --mode=link cc  -g -O2  -DLINUX -D_GNU_SOURCE -D__norcsid -fno-strict-aliasing -Wall -Wunused   -o ski main.o libski.la -ldl -lelf -lm -lncurses
+% ./ski
+
+Then I confirmed that IA-64 simulator started. See ski.jpg
+
