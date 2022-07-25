@@ -1,10 +1,22 @@
 @gprel operator
 
 According to IA64 ABI, r1 register is used as a global pointer.
-The address of .rodata, .sdata, and .sbss section is refered as a offset
-from r1 (global pointer) register.
+The symbol address of .rodata, .sdata, and .sbss section is refered as a
+offset from r1 (global pointer) register.
 
-For example,
+For example, for hello world program, ia64-elf-gcc generates like below code:
 
-    .
+	.section	.rodata
+	.align 8
 .LC0:
+	stringz	"hello world"
+...
+	.text
+...
+	movl r38 = @gprel(.LC0)
+	;;
+	add r38 = r1, r38
+	br.call.sptk.many b0 = puts#
+
+I noticed that ia64-elf-ld generated the program which refered to wrong
+string literal address.
