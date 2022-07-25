@@ -14,9 +14,59 @@ For example, for hello world program, ia64-elf-gcc generates like below code:
 	.text
 ...
 	movl r38 = @gprel(.LC0)
-	;;
 	add r38 = r1, r38
 	br.call.sptk.many b0 = puts#
 
 I noticed that ia64-elf-ld generated the program which refered to wrong
 string literal address.
+
+I confirmed that it was reproduced from gdb like below:
+% cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.38.ia64-elf/ld
+M-x gdb
+gdb --annotate=3 ./ld-new
+(gdb) cd ~/lang/53_GNU_tool/gcc_cross/IA64/tool/
+(gdb) run -o sample.elf start.o sample.o -T sample.x
+
+Then I again confirmed that ia64-elf-ld generated wrong object code like below:
+
+(gdb) b bfd_set_section_contents
+(gdb) run
+...
+Several times break-point hit.
+...
+Breakpoint 1, bfd_set_section_contents (abfd=0x81f7070, section=0x81fd9f4, location=0x8238f78, offset=112, count=9216) at section.c:1497
+(gdb) p section->name
+$3 = 0x81fc7e0 ".text"
+(gdb) x/10bx location+118
+0x8238fee:	0xff	0xff	0xff	0xff	0x7f	0xc0	0x04	0xf5
+0x8238ff6:	0xcb	0x6f
+(gdb)
+
+Aboves are the object code of
+
+       movl r38=-1712
+
+And expected results are
+
+(gdb) x/10bx location+118
+0x8238fee:	0xff	0xff	0xff	0xff	0x7f	0xc0	0x84	0xf4
+0x8238ff6:	0xcb	0x6f
+(gdb)
+
+That are object code of
+
+       movl r38=-1720
+
+I noticed that the offset form global pointer was calculated like below:
+
+	  value -= gp_val;
+	  r = ia64_elf_install_value (hit_addr, value, r_type);
+
+(gdb) p/x gp_val
+$32 = 0x2c20
+(gdb) 
+
+From this code, I thought I should have fixed start.S like below:
+
+-	movl	r1 = _GLOBAL_OFFSET_TABLE_
++	movl	r1 = _GLOBAL_OFFSET_TABLE_+8
