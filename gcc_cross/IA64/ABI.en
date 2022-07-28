@@ -3,12 +3,12 @@
      r0, ..., r127
      f0, ..., f127
 
-
+     r0  : zero register
      r1  : global pointer
      r12 : stack pointer
+     (original ia64-elf-gcc doesn't use frame pointer)
 
-
-(*1) Register stack
+(*1) Register stack (alloc instruction)
 
 int f(int a, int b);
 
@@ -16,9 +16,6 @@ int g()
 {
   return f(5, 6);
 }
-
-f:
-	; r32 = 5, r33 = 6
 
 g:
 	alloc r33 = ar.pfs, 0, 4, 2, 0
@@ -28,7 +25,41 @@ g:
 	br.call.sptk.many b0 = f#
 
 
-(*2)
+	After `br.call.sptk.many' instruction grmap[32] = 36, grmap[33] = 37,
+	so that `f' uses r32 as `a' (=5) and r33 as `b' (=6), where,
+	`grmap' expresses map from the current function register number to
+	physical register number.
+
+	To be easy, compiler may output `alloc' instruction as prologue code
+	of the function which uses 128 bytes locall area like below:
+	
+	alloc r33 = ar.pfs, 0, 4, 8, 0
+	mov r34 = r12
+	adds r12 = -128, r12
+	mov r32 = b0
+	mov r35 = r1
+	...
+
+	This means that 4 registers are used for saving AR[PFS],
+	r12(stack pointer), b0(return address) and r1(global pointer).
+
+	See http://refspecs.linux-foundation.org/IA64-softdevman-vol3.pdf
+	for `alloc' instruction specification.
+	
+	alloc r_1 = ar.pfs, i, l, o, r
+
+	i : size of inputs
+	l : size of local
+	o : size of output
+	r : size of rotating
+
+	sof : size of frame
+	sof = i + l + o
+
+	sol : size of local
+	sol = i + l
+
+(*2) bundle
 
     For adding r14 := r15 + r14 and set r8 = r14 and r12 = r2, assmble
     code becomes like below:
@@ -43,5 +74,10 @@ g:
  186:	80 00 38 00 42 80 	            mov r8=r14
  18c:	01 10 00 84       	            mov r12=r2
 
-    i.e. after 1st add instruction is complete and then 2nd mov instruction
+    i.e. after 1st `add' instruction is complete and then 2nd `mov' instruction
     is issued.
+
+
+(*3) RSE(Register Stack Engine)
+
+     
