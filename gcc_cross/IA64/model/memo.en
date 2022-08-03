@@ -1,0 +1,56 @@
+cc1 model
+
+Refer to "AARCH64" => "cc1 model" => "Memo".
+In similar way, cc1 model of IA64 can be built.
+
+Development note:
+
+(*1)
+2022.08.03 10:12 hello world 11 program can be executed with ia64-elf-run as
+I expected.
+
+(*2)
+I had arealdy known that original cc1 did not generate .debug_frame section.
+So I tried below:
+
+#undef PREFERRED_DEBUGGING_TYPE
+#define PREFERRED_DEBUGGING_TYPE DBX_DEBUG
+
+But when I stepped into `f' from `main' ia64-elf-gdb aborted.
+
+Once I canceled above macro declaration.
+
+(*3)
+Intentionally, I did not add the property like below
+
+  RTX_FRAME_RELATED_P(insn) = true;
+
+for all rtx_insn* insn generated at ia64::expand_prologue.
+
+Then I executed hello world 11 with ia64-elf-gdb
+
+% ia64-elf-gdb -q -x gdbcom.2 a.elf
+...
+Breakpoint 1, main () at a.c:10
+10	  printf("hello world %d\n", f(5, 6));
+(ia64-elf-gdb) s
+f (a=5, b=6) at a.c:5
+5	  return a + b;
+(ia64-elf-gdb) where
+#0  f (a=5, b=6) at a.c:5
+#1  0x0000000000000000 in ?? ()
+(ia64-elf-gdb) finish
+Run till exit from #0  f (a=5, b=6) at a.c:5
+Note: automatically using hardware breakpoints for read-only addresses.
+Warning:
+Cannot insert hardware breakpoint 0.
+Could not insert hardware breakpoints:
+You may have requested too many hardware breakpoints/watchpoints.
+
+Command aborted.
+(ia64-elf-gdb) quit
+...
+%
+
+`where' and `finish' command did not work. I guessed that the reasons of these
+results were same.
