@@ -1,6 +1,6 @@
-ft32-elf-as が期待した行番号情報を生成していない件の調査.
+Investigation about ft32-elf-as がdoesn't generate correct line information.
 
-rl78-elf-as はできている. それと比較してみたい.
+I decided to compare rl78-elf-as and ft32-elf-as.
 
 % ./as-new -g a.S
 % ft32-elf-addr2line -a 0x0
@@ -17,7 +17,7 @@ rl78-elf-as はできている. それと比較してみたい.
 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ft32-elf/gas/a.S:5
 %
 
-同じことを, 正しく動作している rl78-elf-as でやってみた.
+I did the same thing with rl78-elf-as:
 
 % ./as-new -g a.S
 % rl78-elf-addr2line -a 0x0
@@ -37,65 +37,64 @@ rl78-elf-as はできている. それと比較してみたい.
 % ft32-elf-objdump -g
 ...
  Line Number Statements:
-  [0x00000024]  拡張命令コード 2: 設定アドレス 0x0
+  [0x00000024]  Extended opcode 2: set Address to 0x0
   [0x0000002b]  Special opcode 7: advance Address by 0 to 0x0 and Line by 2 to 3
-  [0x0000002c]  行を 1 進め 4 とします
-  [0x0000002e]  PC を固定サイズ 4 分進め 0x4 とします
-  [0x00000031]  コピー (view 1)
-  [0x00000032]  行を 1 進め 5 とします
-  [0x00000034]  PC を固定サイズ 8 分進め 0xc とします
-  [0x00000037]  コピー (view 2)
-  [0x00000038]  行を 2 進め 7 とします
-  [0x0000003a]  PC を固定サイズ 12 分進め 0x18 とします
-  [0x0000003d]  コピー (view 3)
-  [0x0000003e]  PC を固定サイズ 16 分進め 0x28 とします
-  [0x00000041]  拡張命令コード 1: 列の終り
+  [0x0000002c]  Advance Line by 1 to 4
+  [0x0000002e]  Advance PC by fixed size amount 4 to 0x4
+  [0x00000031]  Copy (view 1)
+  [0x00000032]  Advance Line by 1 to 5
+  [0x00000034]  Advance PC by fixed size amount 8 to 0xc
+  [0x00000037]  Copy (view 2)
+  [0x00000038]  Advance Line by 2 to 7
+  [0x0000003a]  Advance PC by fixed size amount 12 to 0x18
+  [0x0000003d]  Copy (view 3)
+  [0x0000003e]  Advance PC by fixed size amount 16 to 0x28
+  [0x00000041]  Extended opcode 1: End of Sequence
 
 
 % rl78-elf-objdump -g
 ...
  Line Number Statements:
-  [0x00000024]  拡張命令コード 2: 設定アドレス 0x0
+  [0x00000024]  Extended opcode 2: set Address to 0x0
   [0x0000002b]  Special opcode 7: advance Address by 0 to 0x0 and Line by 2 to 3
-  [0x0000002c]  行を 1 進め 4 とします
-  [0x0000002e]  PC を固定サイズ 1 分進め 0x1 とします
-  [0x00000031]  コピー (view 1)
-  [0x00000032]  行を 1 進め 5 とします
-  [0x00000034]  PC を固定サイズ 1 分進め 0x2 とします
-  [0x00000037]  コピー (view 2)
-  [0x00000038]  行を 2 進め 7 とします
-  [0x0000003a]  PC を固定サイズ 1 分進め 0x3 とします
-  [0x0000003d]  コピー (view 3)
-  [0x0000003e]  PC を固定サイズ 1 分進め 0x4 とします
-  [0x00000041]  拡張命令コード 1: 列の終り
+  [0x0000002c]  Advance Line by 1 to 4
+  [0x0000002e]  Advance PC by fixed size amount 1 to 0x1
+  [0x00000031]  Copy (view 1)
+  [0x00000032]  Advance Line by 1 to 5
+  [0x00000034]  Advance PC by fixed size amount 1 to 0x2
+  [0x00000037]  Copy (view 2)
+  [0x00000038]  Advance Line by 2 to 7
+  [0x0000003a]  Advance PC by fixed size amount 1 to 0x3
+  [0x0000003d]  Copy (view 3)
+  [0x0000003e]  Advance PC by fixed size amount 1 to 0x4
+  [0x00000041]  Extended opcode 1: End of Sequence
 
 
-ft32-elf-objdump -g
-の結果でおかしいと思ったのは
+I thought that the output of ft32-elf-objdump was wrong about:
 
-  [0x00000034]  PC を固定サイズ 8 分進め 0xc とします
+  [0x00000034]  Advance PC by fixed size amount 8 to 0xc
 
-これは
+I thought it should have been:
 
-  [0x00000034]  PC を固定サイズ 4 分進め 0x8 とします
+  [0x00000034]  Advance PC by fixed size amount 4 to 0xd8
 
-が正しいかと思った.
+And also:
 
-  [0x0000003a]  PC を固定サイズ 12 分進め 0x18 とします
-  [0x0000003e]  PC を固定サイズ 16 分進め 0x28 とします
+  [0x0000003a]  Advance PC by fixed size amount 12 to 0x18
+  [0x0000003e]  Advance PC by fixed size amount 16 to 0x28
 
-も
+they shold have been:
 
-  [0x0000003a]  PC を固定サイズ 4 分進め 0xc とします
-  [0x0000003e]  PC を固定サイズ 4 分進め 0x10 とします
-
-が期待する結果.
+  [0x0000003a]  Advance PC by fixed size amount 4 to 0xc
+  [0x0000003e]  Advance PC by fixed size amount 4 to 0x10
 
 (gdb) b section.c:1523
 (gdb) run -g a.S
 ...
 (gdb) c
-最初は .text セクション
+break-point hit. 1st section was `.text'.
+(gdb) c
+...
 (gdb) p section->name
 $1 = 0x80ef836 ".debug_line"
 (gdb) x/50bx location
@@ -108,7 +107,7 @@ $1 = 0x80ef836 ".debug_line"
 0x8171e68:	0x00	0x01
 (gdb)
 
-同じことを rl78-elf-gas でやってみた.
+I did the same thing with rl78-elf-as.
 
 (gdb) x/50xb location
 0x8182834:	0x40	0x00	0x00	0x00	0x03	0x00	0x1a	0x00
@@ -120,10 +119,7 @@ $1 = 0x80ef836 ".debug_line"
 0x8182864:	0x00	0x01
 (gdb)
 
-
-emit_fixed_inc_line_addr
-
-で以下の部分が問題
+I noticed that belo code of `emit_fixed_inc_line_addr' caused problem:
 
     {
       *p++ = DW_LNS_fixed_advance_pc;
@@ -131,10 +127,9 @@ emit_fixed_inc_line_addr
       p += 2;
     }
 
-これの pexp が違っている. 正し最初に呼ばれたときは正しい.
+`pexp' was wrong. But it was right when this came here at 1st time.
 
-emit_expr_fix の中にステップインして気付いたが,
-
+I also noticed that ft32-elf-as executed #else code:
 
 #ifdef TC_CONS_FIX_NEW
   TC_CONS_FIX_NEW (frag, p - frag->fr_literal + offset, size, exp, r);
@@ -143,11 +138,12 @@ emit_expr_fix の中にステップインして気付いたが,
 ...
 #endif
 
-ft32-elf-as では #else 以降を実行している. 一方 rl78-elf-as では上を実行している.
-しかし, 下が有効になっているからといって間違いではない.
+On the other hand, rl78-elf-as executed #ifdef code. But that's not the
+critical, of cause.
 
-2 回目に emit_fixed_inc_line_addr が呼び出されたとき emit_expr_fix
-によって 4 ではなくて 8 が生成されているのが原因だと考えた.
+Finally, I thought it was caused because it was caused
+because `emit_expr_fix' generated 8 not 4 when `emit_fixed_inc_line_addr'
+was called at 2nd time.
 
 しかしいずれの場合も生成している 2 バイトは 0x0000 そしてこの状況は rl78 でも
 同じ.

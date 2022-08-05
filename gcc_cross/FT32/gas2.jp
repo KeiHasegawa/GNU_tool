@@ -131,7 +131,7 @@ emit_fixed_inc_line_addr
       p += 2;
     }
 
-これの pexp が違っている. 正し最初に呼ばれたときは正しい.
+これの pexp が違っている. 但し最初に呼ばれたときは正しい.
 
 emit_expr_fix の中にステップインして気付いたが,
 
@@ -152,13 +152,13 @@ ft32-elf-as では #else 以降を実行している. 一方 rl78-elf-as では�
 しかしいずれの場合も生成している 2 バイトは 0x0000 そしてこの状況は rl78 でも
 同じ.
 
-rl78 は
+rl78-elf-as は
 
       emit_expr_fix (pexp, 2, frag, p, TC_PARSE_CONS_RETURN_NONE);
       p += 2;
 
 として後でこの領域を更新していた.
-ft32 では更新していない.
+ft32-elf-as では更新していない.
 
 msp430-elf-as のほうがむしろ参考になるかもしれない. msp430-elf-gas は
 
