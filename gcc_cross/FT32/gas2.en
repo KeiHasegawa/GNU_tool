@@ -34,7 +34,7 @@ I did the same thing with rl78-elf-as:
 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.rl78-elf/gas/a.S:7
 %
 
-% ft32-elf-objdump -g
+% ft32-elf-objdump -g a.o
 ...
  Line Number Statements:
   [0x00000024]  Extended opcode 2: set Address to 0x0
@@ -52,7 +52,7 @@ I did the same thing with rl78-elf-as:
   [0x00000041]  Extended opcode 1: End of Sequence
 
 
-% rl78-elf-objdump -g
+% rl78-elf-objdump -g test.o
 ...
  Line Number Statements:
   [0x00000024]  Extended opcode 2: set Address to 0x0
@@ -203,43 +203,46 @@ cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_msp430.000/
 
 executable file `start.elf' line information was correct.
 
-せっかくなので mn10300 でも確認してみた.
+Incidentally, I examined about mn10300-elf-***:
 
-test003.o の objdump -g
+% mn10300-elf-objdump -g test.o
+...
  Line Number Statements:
-  [0x0000002a]  拡張命令コード 2: 設定アドレス 0x0
+  [0x0000002a]  Extended opcode 2: set Address to 0x0
   [0x00000031]  Special opcode 7: advance Address by 0 to 0x0 and Line by 2 to 3
-  [0x00000032]  行を 1 進め 4 とします
-  [0x00000034]  PC を固定サイズ 1 分進め 0x1 とします
-  [0x00000037]  コピー (view 1)
-  [0x00000038]  行を 1 進め 5 とします
-  [0x0000003a]  PC を固定サイズ 3 分進め 0x4 とします
-  [0x0000003d]  コピー (view 2)
-  [0x0000003e]  行を 2 進め 7 とします
-  [0x00000040]  PC を固定サイズ 5 分進め 0x9 とします
-  [0x00000043]  コピー (view 3)
-  [0x00000044]  PC を固定サイズ 7 分進め 0x10 とします
-  [0x00000047]  拡張命令コード 1: 列の終り
+  [0x00000032]  Advance Line by 1 to 4
+  [0x00000034]  Advance PC by fixed size amount 1 to 0x1
+  [0x00000037]  Copy (view 1)
+  [0x00000038]  Advance Line by 1 to 5
+  [0x0000003a]  Advance PC by fixed size amount 3 to 0x4
+  [0x0000003d]  Copy (view 2)
+  [0x0000003e]  Advance Line by 2 to 7
+  [0x00000040]  Advance PC by fixed size amount 5 to 0x9
+  [0x00000043]  Copy (view 3)
+  [0x00000044]  Advance PC by fixed size amount 7 to 0x10
+  [0x00000047]  Extended opcode 1: End of Sequence
 
-test003.elf の objdump -g
+% mn10300-elf-objdump -g test.elf
+...
  Line Number Statements:
-  [0x0000002a]  拡張命令コード 2: 設定アドレス 0x100
+  [0x0000002a]  Extended opcode 2: set Address to 0x100
   [0x00000031]  Special opcode 7: advance Address by 0 to 0x100 and Line by 2 to 3
-  [0x00000032]  行を 1 進め 4 とします
-  [0x00000034]  PC を固定サイズ 1 分進め 0x101 とします
-  [0x00000037]  コピー (view 1)
-  [0x00000038]  行を 1 進め 5 とします
-  [0x0000003a]  PC を固定サイズ 1 分進め 0x102 とします
-  [0x0000003d]  コピー (view 2)
-  [0x0000003e]  行を 2 進め 7 とします
-  [0x00000040]  PC を固定サイズ 1 分進め 0x103 とします
-  [0x00000043]  コピー (view 3)
-  [0x00000044]  PC を固定サイズ 1 分進め 0x104 とします
-  [0x00000047]  拡張命令コード 1: 列の終り
+  [0x00000032]  Advance Line by 1 to 4
+  [0x00000034]  Advance PC by fixed size amount 1 to 0x101
+  [0x00000037]  Copy (view 1)
+  [0x00000038]  Advance Line by 1 to 5
+  [0x0000003a]  Advance PC by fixed size amount 1 to 0x102
+  [0x0000003d]  Copy (view 2)
+  [0x0000003e]  Advance Line by 2 to 7
+  [0x00000040]  Advance PC by fixed size amount 1 to 0x103
+  [0x00000043]  Copy (view 3)
+  [0x00000044]  Advance PC by fixed size amount 1 to 0x104
+  [0x00000047]  Extended opcode 1: End of Sequence
 
-mn10300 はアセンブラで期待しない結果になっているが, リンカの出力で帳尻が合っている.
+As far as mn10300-elf-***, assembler output is not expected one but linker
+output is expected one.
 
-mn10300 は
+About mn10300-elf-*** code
 
 #ifdef TC_CONS_FIX_NEW
   TC_CONS_FIX_NEW (frag, p - frag->fr_literal + offset, size, exp, r);
@@ -248,9 +251,11 @@ mn10300 は
 ...
 #endif
 
-TC_CONS_FIX_NEW を define していて上が有効になっている.
+TC_CONS_FIX_NEW is defined.
 
-さて, これは ft32-elf-as を修正しようにも期待値が不明だったりして混乱している.
-rl78-elf-as, rl78-elf-ld は期待した通り動作している.
-msp430, mn10300 のようにアセンブラの出力は一見正しくなさそうでリンカで帳尻が合って
-いるものもある.
+Anyway, if I fix ft32-elf-as but I don't know the expected result and I'm
+very confused.
+
+rl78-elf-as, rl78-elf-ld work well, especially as I expected.
+And more, like msp430-elf-***, mn10300-elf-***, assembler output is not
+expected one but linker output is expected one.
