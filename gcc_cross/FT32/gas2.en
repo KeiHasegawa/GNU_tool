@@ -145,28 +145,17 @@ Finally, I thought it was caused because it was caused
 because `emit_expr_fix' generated 8 not 4 when `emit_fixed_inc_line_addr'
 was called at 2nd time.
 
-しかしいずれの場合も生成している 2 バイトは 0x0000 そしてこの状況は rl78 でも
-同じ.
+But both ft32-elf-as and rl78-elf-as generated 2 bytes 0x0000.
 
-rl78 は
+rl78-elf-as updated this area by executing:
 
       emit_expr_fix (pexp, 2, frag, p, TC_PARSE_CONS_RETURN_NONE);
       p += 2;
 
-として後でこの領域を更新していた.
-ft32 では更新していない.
+On the other hand, ft32-elf-as did not update.
 
-msp430-elf-as のほうがむしろ参考になるかもしれない. msp430-elf-gas は
-
-#ifdef TC_CONS_FIX_NEW
-  TC_CONS_FIX_NEW (frag, p - frag->fr_literal + offset, size, exp, r);
-#else
-  if (r != TC_PARSE_CONS_RETURN_NONE)
-...
-#endif
-
-で #else 以下を実行している.
-
+Then I thought that I should have compare msp430-elf-as and ft32-elfas because
+msp430-elf-as executed #else code.
 
 % msp430-elf-addr2line -a 0x0 
 0x00000000
@@ -182,8 +171,8 @@ msp430-elf-as のほうがむしろ参考になるかもしれない. msp430-elf
 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.msp430-elf/gas/a.S:5
 %
 
-これは -a 0x2 に対しても -a 0x4 に対しても a.S:4 となっている.
-しかし一方で.
+According to above, for `-a 0x2' and `-a 0x4' the results were `a.S:4'.
+But on the other hand,
 
 cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_msp430.000/
 % msp430-elf-addr2line -a 0x0 -e start.o
@@ -212,7 +201,8 @@ cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_msp430.000/
 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_msp430.000/start.S:7
 %
 
-実行ファイルであれば行番号が合っている.
+executable file `start.elf' line information was correct.
+
 せっかくなので mn10300 でも確認してみた.
 
 test003.o の objdump -g
