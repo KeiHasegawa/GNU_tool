@@ -1,83 +1,79 @@
-ft32-elf-as の行番号情報を修正したが, ft32-elf-gdb で期待した形で
-読み込めていないことの調査.
+Investigation about ft32-elf-gdb could not get line information even though
+I applied WA to ft32-elf-as.
 
-
-(*1) ft32-elf-as 修正前に b end で test000.S の 1 行目に対応をとっていた動作の調査
+(*1) Investigation : Before applying WA to ft32-elf-as, for `b end'
+ft32-elf-gdb made an corresponding to test000.S:1.
 
 b start
 b end
 
 create_breakpoint
 
-b start に対しては単に 0x100
-b end に対しては test000.S の 1 行目に対応を取っている(間違っているが).
+For `b start', ft32-elf-gdb just made an corresponding to address 0x100
+For `b end', ft32-elf-gdb made an corresponding to test.S:1 and it was not
+correct.
 
-対応を取っているのはここ.
+The corresponding was made at below:
 
   if (!internal)
     mention (b);
 
 
-
-mention(b) の実行で対応を表示している. だから b がおそらく対応内容について保持しているはず.
+By calling mention(b), corresponding was displayed. So I guessed that `b'
+contained the result of correspondig.
 
 b start
 
-に対して単に
+For above command, just displayed like below:
 
 Breakpoint 1 at 0x100
 
-と表示するだけなのに対して
+On the other hand,
 
 b end
 
-に対しては
+For above command, displayed like below:
 
 Breakpoint 2 at 0x10c: file test000.S, line 1.
 
-のようになる.
-
-
 b start
 
-に対しては
+For above command,
 
 (gdb) p b->loc->line_number
 0
 
 b end
-に対しては
+
+For above command,
 
 (gdb) p b->loc->line_number
 1
 
-のようになっている.
-
-1 をセットしているのは以下
+where, 1 was set at below code:
 
   loc->line_number = sal->line;
 
 
-sal というのは sytab and line の略
+where, `sal' expresses `Sytab And Line'
 
   add_location_to_breakpoint (b, &sal);
 
-なるほどこんな感じらしい. で, b->loc->line_number = sal->line;
-というわけだ.
+I see. Above code could be understood.
 
-
-b start, b end に対する add_location_to_breakpoint は以下から呼び出されていた:
+For command `b start' and `b end', `add_location_to_breakpoint' was called
+from below code:
 
       if (&sal == &sals[0])
 	{
 	  init_raw_breakpoint (b, gdbarch, sal, type, ops);
 
-そして
+And more,
 
-b start に対しては sal.line = 0 sal.pc = 0x100
-b end   に対しては sal.line = 1 sal.pc = 0x10c
+For `b start', sal.line = 0 sal.pc = 0x100
+For `b end',   sal.line = 1 sal.pc = 0x10c
 
-になっているわけである. この sal だがどこで計算しているか
+This `sal' was calculated at below code:
 
 static void
 create_breakpoints_sal (struct gdbarch *gdbarch,
@@ -91,14 +87,12 @@ create_breakpoints_sal (struct gdbarch *gdbarch,
       create_breakpoint_sal (gdbarch, lsal.sals,
                                       ^^^^^^^^^
 
-これからすると create_breakpoints_sal が呼び出された時点ですでに計算されている
-可能性はある.
+According to above code, at the timing when `create_breakpoints_sal' was
+called, it had been possible that `lsal.sals' was already calculated.
 
-デバッグ用の函数を付け加えて
-
-create_breakpoints_sal
-
-で停止したときに呼び出してみた.
+For debugging, I added the function named `debug' and when
+`create_breakpoints_sal' was called, I called it from gdb command line
+like below:
 
 (gdb) p debug(canonical)
 pc = 0x100 line = 0
@@ -107,7 +101,7 @@ pc = 0x100 line = 0
 pc = 0x10c line = 1
 (gdb)
 
-既に計算されている.
+Already calculated.
 
 
 breakpoint.c:9376
@@ -127,17 +121,18 @@ pc = 0x100 line = 0
 pc = 0x10c line = 1
 (gdb)
 
-この時点でも既に計算されている. どのように canonical が計算されるか調べてみた:
+At above point, it has been already calculated. I examined how `canonical'
+was calculated:
 
 (gdb) delete
 (gdb) b create_breakpoint
 
       ops->create_sals_from_location (location, &canonical, type_wanted);
 
-ここだった. この名前からすると location で既に計算されている可能性もある.
-とはいえこの中は調べてみる.
+That was, above code. According the function name, it was possible that
+`location' had been already calculated. Anyway I examined above.
 
-これを実行して計算されていることを確認した:
+Then I confirmed that `canonical' was calculated at below code:
 
   decode_line_full (location, DECODE_LINE_FUNFIRSTLINE, NULL,
 		    cursal.symtab, cursal.line, canonical, NULL, NULL);
@@ -150,14 +145,14 @@ pc = 0x10c line = 1
   std::vector<symtab_and_line> result = event_location_to_sals (&parser,
 								location);
 
-ここで
+At above point,
 (gdb) p debug(result)
 pc = 0x100 line = 0
 $27 = void
 (gdb)
 
-のように計算されている. この結果 canonical が更新されている.
-だとすれば location で既に計算されているかもしれな.
+it was calculated so that `canonical' was updated. Then I guessed that
+`location' had been already calculated.
 
 (gdb) delete
 (gdb) b event_location_to_sals
@@ -167,20 +162,20 @@ $27 = void
 				     ls->spec_string, ls->match_type);
 
 
-ここで result がセットされている.
+At above point, `result' was set.
 
 (gdb) delete
 (gdb) b parse_linespec
 
-ここで気付いたが, 文字列 "start" がきている. start のアドレスはまだ計算されていなかった
-のかも.
+Here, I noticed that string literal "start" was passed to this function
+`parse_linespec'. I guessed that address of `start' was not still calculated.
 
 (gdb) delete
 (gdb) b convert_linespec_to_sals
 
 	      minsym_found (state, elem.objfile, elem.minsym, &sals);
 
-ここで計算している.
+I confirmed that `canonical' was calculated at above code.
 
 (gdb) delete
 (gdb) b minsym_found
@@ -191,15 +186,15 @@ $27 = void
 (gdb) delete
 (gdb) b find_pc_sect_line
 
-この函数は
+This function `find_pc_sect_line' was called few times for command:
 
 b start
 
-に対して数回くる. しかし
+But for command
 
 b end
 
-に対しては 1 回.
+it was just called one time.
 
 
       val.is_stmt = best->is_stmt;
@@ -207,9 +202,9 @@ b end
       val.line = best->line;
       val.pc = best->pc;
 
-ここで best が見つかっているから行番号情報が付加されている.
+At above code, `best' was found so that line information was added correctly.
 
-b start に対しては best が見つからない.
+For `b start' command, `best' was not found.
 
 
       if (prev && prev->line && (!best || prev->pc > best->pc))
@@ -217,15 +212,14 @@ b start に対しては best が見つからない.
 	  best = prev;
 	  best_symtab = iter_s;
 
-この条件が成立しているから best が見つかっている. この条件が成立するためには少なくとも
-prev が非ゼロである必要があるが
+Above condition was satisfied so that `best' was found. For satisfying this
+condition, it's ncessary that `prev' is non-zero. But
+
 
       if (item != first)
 	prev = item - 1;		/* Found a matching item.  */
 
-b end
-
-に対しては prev はここでセットされている.
+for `b end' command, `prev' was set at above code. More precisely:
 
       auto pc_compare = [](const CORE_ADDR & comp_pc,
 			   const struct linetable_entry & lhs)->bool
@@ -239,7 +233,7 @@ b end
       if (item != first)
 	prev = item - 1;		/* Found a matching item.  */
 
-こんな感じ. ちなみに len = 4.
+len was 4.
 
 
 (gdb) p/x *(first+0)
@@ -252,12 +246,11 @@ $63 = {line = 0x4, is_stmt = 0x1, pc = 0x318}
 $64 = {line = 0x0, is_stmt = 0x1, pc = 0x428}
 (gdb)
 
-これは 0x100 に対しては見つからず 0x104 に対しては見つかるわけだ.
+Above implies that `best' is not found for 0x100 but found for 0x104.
 
-同様のことを test000.elf.correct に対して行なってみたところ
+I did the same thign for `test000.elf.correct':
 
-len = 2 で
-
+len was 2 and
 
 (gdb) p/x *(first+0)
 $73 = {line = 0x3, is_stmt = 0x1, pc = 0x4}
@@ -265,16 +258,14 @@ $73 = {line = 0x3, is_stmt = 0x1, pc = 0x4}
 $74 = {line = 0x0, is_stmt = 0x1, pc = 0x8}
 (gdb)
 
-のようになっている. 以下のように gdb から値を変更すれば
+I modified from gdb command line like below:
 
 (gdb) set (first+0)->pc=0x100
 (gdb) set (first+1)->pc=0x104
 
-b start
+For `b start' command, the break-point corresponds to test000.S:3.
 
-に対しては期待通り test000.S の 3 行目と対応はとれることになる.
-
-さて, 既に期待通り動作している h8300-elf-gdb で同じことをためしてみた:
+And more, I did the same thing for h8300-elf-gdb, which of cause work well:
 
 (gdb) p len
 $2 = 5
@@ -298,9 +289,12 @@ $7 = {line = 0x0, is_stmt = 0x1, pc = 0x108}
 6	end:
 7		nop
 
-H8 は nop が 2 バイトだからこのようにアドレスの違いはあるが len = 5 が期待値
-で FT32 の場合は 0x100, 0x104, 0x108, 0x10c, 0x110 のようになるのが
-正しい.
+H8 nop instruction is 2 byte, so that the difference about address
+is caused but the expect value of `len' is 5.
+In case of FT32, `pc' member expected values should be:
+
+0x100, 0x104, 0x108, 0x10c and 0x110 
+
 
 「gas の調査」でライン情報の生成のしかたに 2 パターンあることを調査していたが
 h8300-elf-as は ppc と同じ方式.
