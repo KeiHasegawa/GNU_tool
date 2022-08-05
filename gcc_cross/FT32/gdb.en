@@ -296,11 +296,12 @@ In case of FT32, `pc' member expected values should be:
 0x100, 0x104, 0x108, 0x10c and 0x110 
 
 
-「gas の調査」でライン情報の生成のしかたに 2 パターンあることを調査していたが
-h8300-elf-as は ppc と同じ方式.
+"gas investigation" said that there were 2 ways of generating line information.
+The way of h8300-elf-as generating line information is same with that of
+ppc-elf-as.
 
-一方 rl78 はオリジナルの ft32-elf-as と同じ方式を採用している. rl78-elf-gdb
-でも同様のことを試してみたところやはり len = 5 で
+On the other hand, that of rl78-elf-as is same with that of ft32-elf-as.
+I did the same thing with rl78-elf-gdb and confirmed that `len' was 5.
 
 (gdb) p/x *(first+0)
 $2 = {line = 0x3, is_stmt = 0x1, pc = 0x100}
@@ -314,8 +315,9 @@ $5 = {line = 0x7, is_stmt = 0x1, pc = 0x103}
 $6 = {line = 0x0, is_stmt = 0x1, pc = 0x104}
 (gdb)
 
-RL78 の場合 nop が 1 バイトだからアドレスの違いはあるが, 期待したものになっている.
-つまり ft32-elf-*** で期待した動作にならない直接の原因は ft32-elf-gdb で
+Because RL78 nop instruction is 1 byte, there is the difference about address,
+but above are, of cause, expected. i.e. The reason why ft32-elf-*** doesn't
+work is, as a view point of ft32-elf-gdb, below is expected
 
 (gdb) p len
 $2 = 5
@@ -331,10 +333,10 @@ $6 = {line = 0x7, is_stmt = 0x1, pc = 0x10c}
 $7 = {line = 0x0, is_stmt = 0x1, pc = 0x110}
 (gdb)
 
-になっていないこと. そしてその原因が ft32-elf-gdb, ft32-elf-ld , ft32-elf-as
-のいずれかにある.
+but above is not satisfied. And more, it is caused by one of ft32-elf-gdb,
+ft32-elf-ld or ft32-elf-as
 
-オリジナルの ft32-elf-as で生成した test000.elf を試すと
+Without fixing original ft32-elf-as, doing the same thing
 
 (gdb) p len
 $96 = 4
@@ -348,16 +350,13 @@ $99 = {line = 0x4, is_stmt = 0x1, pc = 0x318}
 $100 = {line = 0x0, is_stmt = 0x1, pc = 0x428}
 (gdb) 
 
-である.
-
-そこでもう一度
+And again, I want to think about the good way without defining
 
 DWARF2_USE_FIXED_ADVANCE_PC
 DWARF2_LINE_MIN_INSN_LENGTH
 
-を define することなしで修正する方法を考えてみる. 勿論 define して修正する方法が分かるの
-ならばそれでもよい.
+Of cause, with defining above macro, if there is a good way, it's OK.
 
-いずれにしても ft32-elf-as をもう一度見直す.
+Anyway, I'll reexamine ft32-elf-as.
 
 
