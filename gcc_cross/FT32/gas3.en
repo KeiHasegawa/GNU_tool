@@ -1,0 +1,76 @@
+色々考えた結果以下の修正を入れた:
+
+      *p++ = DW_LNS_fixed_advance_pc;
+#if 0      
+      emit_expr_fix (pexp, 2, frag, p, TC_PARSE_CONS_RETURN_NONE);
+#else
+      p[0] = addr_delta;
+      p[1] = 0;
+#endif      
+      p += 2;
+
+この修正により
+
+test000.o.objdump
+
+ Line Number Statements:
+  [0x0000002a]  拡張命令コード 2: 設定アドレス 0x0
+  [0x00000031]  Special opcode 7: advance Address by 0 to 0x0 and Line by 2 to 3
+  [0x00000032]  行を 1 進め 4 とします
+  [0x00000034]  PC を固定サイズ 4 分進め 0x4 とします
+  [0x00000037]  コピー (view 1)
+  [0x00000038]  行を 1 進め 5 とします
+  [0x0000003a]  PC を固定サイズ 4 分進め 0x8 とします
+  [0x0000003d]  コピー (view 2)
+  [0x0000003e]  行を 2 進め 7 とします
+  [0x00000040]  PC を固定サイズ 4 分進め 0xc とします
+  [0x00000043]  コピー (view 3)
+  [0x00000044]  PC を固定サイズ 4 分進め 0x10 とします
+  [0x00000047]  拡張命令コード 1: 列の終り
+
+期待したものになっている.
+
+test000.o.addr2line
+0x00000000
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:3
+0x00000004
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:4
+0x00000008
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:5
+0x0000000c
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:7
+
+これも期待したもの.
+
+test000.objdump
+
+ Line Number Statements:
+  [0x0000002a]  拡張命令コード 2: 設定アドレス 0x100
+  [0x00000031]  Special opcode 7: advance Address by 0 to 0x100 and Line by 2 to 3
+  [0x00000032]  行を 1 進め 4 とします
+  [0x00000034]  PC を固定サイズ 4 分進め 0x104 とします
+  [0x00000037]  コピー (view 1)
+  [0x00000038]  行を 1 進め 5 とします
+  [0x0000003a]  PC を固定サイズ 4 分進め 0x108 とします
+  [0x0000003d]  コピー (view 2)
+  [0x0000003e]  行を 2 進め 7 とします
+  [0x00000040]  PC を固定サイズ 4 分進め 0x10c とします
+  [0x00000043]  コピー (view 3)
+  [0x00000044]  PC を固定サイズ 4 分進め 0x110 とします
+  [0x00000047]  拡張命令コード 1: 列の終り
+
+これも期待したもの.
+
+test000.addr2line
+
+0x00000100
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:3
+0x00000104
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:4
+0x00000108
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:5
+0x0000010c
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:7
+
+できている. しかし残念ながら ft32-elf-gdb では b start, b end に
+対して期待通り動作していない.
