@@ -1,0 +1,142 @@
+I fixed ft32-elf-as but ft32-elf-gdb didn't work for:
+
+b start
+b end
+
+Above 2 break-points were not corresponding to source file.
+
+At already examined function `find_pc_sect_line'
+
+(gdb) p len
+$1 = 4
+(gdb) p/x *(first+0)
+$3 = {line = 0x1, is_stmt = 0x1, pc = 0x4}
+(gdb) p/x *(first+1)
+$4 = {line = 0x2, is_stmt = 0x1, pc = 0x8}
+(gdb) p/x *(first+2)
+$5 = {line = 0x4, is_stmt = 0x1, pc = 0xc}
+(gdb) p/x *(first+3)
+$6 = {line = 0x0, is_stmt = 0x1, pc = 0x10}
+(gdb)
+
+`len'  expected value is 5 and
+
+*(first+0) = {line = 0x3, is_stmt = 0x1, pc = 0x100}
+
+is expected. Line information was wrong as a view point of ft32-elf-gdb.
+
+On the other hand, the output of ft32-elf-objdump and ft32-elf-addr2line were what I expected.
+So I thought I should have examined the reason why ft32-elf-gdb became this situation.
+
+(gdb) p &iter_s->linetable->nitems
+$19 = (int *) 0x8dbc258
+(gdb) watch *(int *) 0x8dbc258
+Hardware watchpoint 2: *(int *) 0x8dbc258
+(gdb)
+
+Set watch-point like above. And it hit at below code:
+
+          memcpy (SYMTAB_LINETABLE (symtab), subfile->line_vector,
+                  linetablesize);
+
+This means that it is copied from `subfile->line_vector'. So we have to examine the timing when `subfile->line_vector' is set.
+
+I did the same thing with rl78-elf-gdb and confirmed that it was copied in the same way.
+
+(gdb) p subfile->line_vector->nitems
+$22 = 4
+(gdb) p &subfile->line_vector->nitems
+$23 = (int *) 0x8de1ea0
+(gdb) watch *(int*)0x8de1ea0
+Hardware watchpoint 3: *(int*)0x8de1ea0
+(gdb)
+
+Set watch-point like above and it hit at:
+
+buildsym_compunit::record_line
+
+で subfile->line_vector を作っていることを確認した.
+この函数が呼び出されいているときにはすでに
+
+line, is_stmt, pc
+
+がすでに決まっているので, これらがどこで計算されるのかを確認する.
+
+
+lnp_state_machine::record_line
+
+という函数でこれは dwarf2/read.c
+-g -O0 ビルドしていた.
+
+
+(gdb) b lnp_state_machine::lnp_state_machine
+
+としてこの段階で m_line = 1 だったので
+
+(gdb) set m_line=0
+
+とした. そして &m_line にウォッチポイントをかけたが m_line が更新されることがなく
+
+lnp_state_machine::record_line
+
+が呼び出されている.
+
+同じこと rl78-elf-gdb で確かめてみると
+
+コンストラクトされた後以下のメンバ函数で m_line に値がセットされていた:
+
+
+  void handle_set_address (CORE_ADDR baseaddr, CORE_ADDR address)
+  {
+
+そしてそれはここから呼び出されていた:
+
+                case DW_LNE_set_address:
+                  {
+                    CORE_ADDR address
+                      = cu->header.read_address (abfd, line_ptr, &bytes_read);
+                    line_ptr += bytes_read;
+
+                    state_machine.check_line_address (cu, line_ptr,
+                                                      lowpc - baseaddr, address);
+                    state_machine.handle_set_address (baseaddr, address);
+
+
+ということは, DW_LINE_set_address = 2 が
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.elf
+
+にはない可能性が高い.
+
+一方
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_rl78.000/test000.elf
+
+には DW_LINE_set_address = 2 があるからセットされているというわけだ.
+
+ということは修正した ft32-elf-as には DW_LINE_set_address = 2 がないから
+handle_set_address メンバ函数が呼び出されないが,
+修正前の ft32-elf-as ならば間違えた形ではあるが handle_set_address メンバ函数が呼び出され
+ていた.
+つまり ft32-elf-as の修正が正しくなかったのだ.
+
+
+0x09 0x04 0x00
+
+は
+
+プログラムカウンタを固定サイズ 4 進めるつもりで書いたが, これを
+
+void f(char* p)
+{
+  p[0] = 0x09;
+  p[1] = 0x04;
+  p[2] = 0x00;
+}
+
+のようにしてしまったために ft32-elf-objdump, ft32-elf-addr2line では
+期待する形ではあったものの, ft32-elf-ld の出力に
+
+DW_LINE_set_address = 2
+
+がない以上間違いということだ.
