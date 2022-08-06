@@ -1,76 +1,89 @@
-色々考えた結果以下の修正を入れた:
+Thinking about various things, I decided to fix like below:
 
       *p++ = DW_LNS_fixed_advance_pc;
-#if 0      
+#if 0     
       emit_expr_fix (pexp, 2, frag, p, TC_PARSE_CONS_RETURN_NONE);
 #else
       p[0] = addr_delta;
       p[1] = 0;
-#endif      
+#endif     
       p += 2;
 
-この修正により
+By this fix,
 
-test000.o.objdump
-
+% ft32-elf-objdump -g a.o
+...
  Line Number Statements:
-  [0x0000002a]  拡張命令コード 2: 設定アドレス 0x0
+  [0x0000002a]  Extended opcode 2: set Address to 0x0
   [0x00000031]  Special opcode 7: advance Address by 0 to 0x0 and Line by 2 to 3
-  [0x00000032]  行を 1 進め 4 とします
-  [0x00000034]  PC を固定サイズ 4 分進め 0x4 とします
-  [0x00000037]  コピー (view 1)
-  [0x00000038]  行を 1 進め 5 とします
-  [0x0000003a]  PC を固定サイズ 4 分進め 0x8 とします
-  [0x0000003d]  コピー (view 2)
-  [0x0000003e]  行を 2 進め 7 とします
-  [0x00000040]  PC を固定サイズ 4 分進め 0xc とします
-  [0x00000043]  コピー (view 3)
-  [0x00000044]  PC を固定サイズ 4 分進め 0x10 とします
-  [0x00000047]  拡張命令コード 1: 列の終り
+  [0x00000032]  Advance Line by 1 to 4
+  [0x00000034]  Advance PC by fixed size amount 4 to 0x4
+  [0x00000037]  Copy (view 1)
+  [0x00000038]  Advance Line by 1 to 5
+  [0x0000003a]  Advance PC by fixed size amount 4 to 0x8
+  [0x0000003d]  Copy (view 2)
+  [0x0000003e]  Advance Line by 2 to 7
+  [0x00000040]  Advance PC by fixed size amount 4 to 0xc
+  [0x00000043]  Copy (view 3)
+  [0x00000044]  Advance PC by fixed size amount 4 to 0x10
+  [0x00000047]  Extended opcode 1: End of Sequence
 
-期待したものになっている.
+OK. Above is what I expected.
 
-test000.o.addr2line
-0x00000000
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:3
-0x00000004
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:4
-0x00000008
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:5
-0x0000000c
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:7
+% ft32-elf-addr2line -a 0x0 -e a.o
+0x0
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/a.S:3
+% ft32-elf-addr2line -a 0x4 -e a.o
+0x4
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/a.S:4
 
-これも期待したもの.
+% ft32-elf-addr2line -a 0x8 -e a.o
+0x8
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/a.S:5
 
-test000.objdump
+% ft32-elf-addr2line -a 0xc -e a.o
+0xc
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/a.S:7
 
+Above is also what I expected.
+
+% ft32-elf-objdump -g a.elf
+...
  Line Number Statements:
-  [0x0000002a]  拡張命令コード 2: 設定アドレス 0x100
+  [0x0000002a]  Extended opcode 2: set Address to 0x100
   [0x00000031]  Special opcode 7: advance Address by 0 to 0x100 and Line by 2 to 3
-  [0x00000032]  行を 1 進め 4 とします
-  [0x00000034]  PC を固定サイズ 4 分進め 0x104 とします
-  [0x00000037]  コピー (view 1)
-  [0x00000038]  行を 1 進め 5 とします
-  [0x0000003a]  PC を固定サイズ 4 分進め 0x108 とします
-  [0x0000003d]  コピー (view 2)
-  [0x0000003e]  行を 2 進め 7 とします
-  [0x00000040]  PC を固定サイズ 4 分進め 0x10c とします
-  [0x00000043]  コピー (view 3)
-  [0x00000044]  PC を固定サイズ 4 分進め 0x110 とします
-  [0x00000047]  拡張命令コード 1: 列の終り
+  [0x00000032]  Advance Line by 1 to 4
+  [0x00000034]  Advance PC by fixed size amount 4 to 0x104
+  [0x00000037]  Copy (view 1)
+  [0x00000038]  Advance Line by 1 to 5
+  [0x0000003a]  Advance PC by fixed size amount 4 to 0x108
+  [0x0000003d]  Copy (view 2)
+  [0x0000003e]  Advance Line by 2 to 7
+  [0x00000040]  Advance PC by fixed size amount 4 to 0x10c
+  [0x00000043]  Copy (view 3)
+ [0x00000044]  Advance PC by fixed size amount 4 to 0x110
+  [0x00000047]  Extended opcode 1: End of Sequence
 
-これも期待したもの.
+OK, fine.
 
-test000.addr2line
+% ft32-elf-addr2line -a 0x100 -e a.elf
 
 0x00000100
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:3
-0x00000104
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:4
-0x00000108
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:5
-0x0000010c
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/test000.S:7
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/a.S:3
 
-できている. しかし残念ながら ft32-elf-gdb では b start, b end に
-対して期待通り動作していない.
+% ft32-elf-addr2line -a 0x104 -e a.elf
+
+0x00000104
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/a.S:4
+
+% ft32-elf-addr2line -a 0x108 -e a.elf
+
+0x00000108
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/a.S:5
+
+% ft32-elf-addr2line -a 0x10c -e a.elf
+
+0x0000010c
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000/a.S:7
+
+Again OK, fine. But unfortunately ft32-elf-gdb didn't work for `b start', `b end'.
