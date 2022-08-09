@@ -1,0 +1,109 @@
+Investigation about ft32-elf-gdb can’t handle a.out.fake-ld-new as I expect
+
+I did like below:
+
+(gdb) cd /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/test_ft32.000
+(gdb) run -q -x x a.out.fake-ld-new
+
+Then I confirmed that
+
+dwarf_decode_lines_1
+
+was called, at 1st time it came below part:
+
+            case DW_LNS_fixed_advance_pc:
+              {
+                CORE_ADDR addr_adj = read_2_bytes (abfd, line_ptr);
+                line_ptr += 2;
+
+                state_machine.handle_fixed_advance_pc (addr_adj);
+              }
+              break;
+
+The expected motion is that it came below part reading extended opcode:
+
+                case DW_LNE_set_address:
+                  {
+                    CORE_ADDR address
+                      = cu->header.read_address (abfd, line_ptr, &bytes_read);
+                    line_ptr += bytes_read;
+
+                    state_machine.check_line_address (cu, line_ptr,
+                                                      lowpc - baseaddr, address);
+                    state_machine.handle_set_address (baseaddr, address);
+                  }
+                  break;
+
+
+This was caused by below code:
+
+gdb-10.2.ft32-elf/gdb/dwarf2/line-header.c
+
+  lh->header_length = read_offset (abfd, line_ptr, offset_size);
+
+Here, lh->header_length became 36 になっているが,
+
+offset_size = 4
+
+で結果的にではあるが line_ptr を進めすぎている. 以下のように調整すれば
+期待したところを line_ptr が指すことになる.
+
+(gdb) set line_ptr-=10
+(gdb) x/32bx line_ptr + lh->header_length
+0x8dbed84:      0x00    0x05    0x02    0x00    0x01    0x00    0x00    0x14
+0x8dbed8c:      0x03    0x01    0x09    0x04    0x00    0x01    0x03    0x01
+0x8dbed94:      0x09    0x04    0x00    0x01    0x03    0x02    0x09    0x04
+0x8dbed9c:      0x00    0x01    0x09    0x04    0x00    0x00    0x01    0x01
+(gdb)
+
+                         rl78      ft32
+  lh->header_length       32       36
+  offset_size;             4        4
+
+しかしこのまま continue すると 0 割りが発生してしまう.
+
+void
+lnp_state_machine::handle_special_opcode (unsigned char op_code)
+{
+  unsigned char adj_opcode = op_code - m_line_header->opcode_base;
+  unsigned char adj_opcode_d = adj_opcode / m_line_header->line_range;  ここ
+  unsigned char adj_opcode_r = adj_opcode % m_line_header->line_range;
+
+本来期待するデータが入っていないらしい.
+
+  オフセット:                  0x0
+  長さ:                        64
+  DWARF バージョン:            3
+  Prologue の長さ:             36
+  最小命令長:                  1
+  'is_stmt' の初期値:          1
+  Line ベース:                 -5
+  Line 範囲:                   14
+  オペコードベース:            13
+
+36 は Prologue の長さが該当するようだ. また最小命令長は 4 が正しいようにも思える.
+
+できている rl78-elf-gdb で試したところ m_line_header->line_range = 14
+が期待値で
+
+Old value = 0 '\000'
+New value = 14 '\016'
+dwarf_decode_line_header (sect_off=0, is_dwz=false, per_objfile=0x91ab470, section=0x91c14f0, cu_header=0x91c1ae8) at dwarf2/line-header.c:378
+
+ここで書き変えられていた. なるほど Line 範囲というのがこれだったのだ.
+
+これはまず Prologue の長さを間違えている可能性がある.
+
+アセンブラの出力で
+
+  オフセット:                  0x0
+  長さ:                        70
+  DWARF バージョン:            3
+  Prologue の長さ:             42
+  最小命令長:                  1
+  'is_stmt' の初期値:          1
+  Line ベース:                 -5
+  Line 範囲:                   14
+  オペコードベース:            13
+
+となっているが, 70 = 0x46 や 42 = 0x2a はリロケータブル
