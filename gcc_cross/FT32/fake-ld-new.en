@@ -1,0 +1,67 @@
+2021/07/13 18:34
+
+ld-new をデバッガで動作させて
+
+relocation を書いているところを
+
+0x104
+
+でなくて
+
+0x004
+
+を書くようにすると
+
+
+a.out.fake-ld-new
+
+のようなものができる.
+
+% ft32-elf-addr2line -a 0x100 0x104 0x108 0x10c  -e a.out.fake-ld-new
+0x00000100
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ft32-elf/gas/a.S:3
+0x00000104
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ft32-elf/gas/a.S:4
+0x00000108
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ft32-elf/gas/a.S:5
+0x0000010c
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/binutils-2.36.1.ft32-elf/gas/a.S:7
+%
+
+だからこれは一応期待した結果
+
+% ft32-elf-objdump -g a.out.fake-ld-new
+
+ Line Number Statements:
+  [0x00000024]  拡張命令コード 2: 設定アドレス 0x100
+  [0x0000002b]  Special opcode 7: advance Address by 0 to 0x100 and Line by 2 to 3
+  [0x0000002c]  行を 1 進め 4 とします
+  [0x0000002e]  PC を固定サイズ 4 分進め 0x104 とします
+  [0x00000031]  コピー (view 1)
+  [0x00000032]  行を 1 進め 5 とします
+  [0x00000034]  PC を固定サイズ 4 分進め 0x108 とします
+  [0x00000037]  コピー (view 2)
+  [0x00000038]  行を 2 進め 7 とします
+  [0x0000003a]  PC を固定サイズ 4 分進め 0x10c とします
+  [0x0000003d]  コピー (view 3)
+  [0x0000003e]  PC を固定サイズ 4 分進め 0x110 とします
+  [0x00000041]  拡張命令コード 1: 列の終り
+
+これもできている. しかし
+
+ft32-elf-gdb で読み込むと, 例の場所で
+のように期待した結果になっていない.
+
+(gdb) p len
+$20 = 4
+(gdb) p first[0]
+$21 = {line = 1, is_stmt = 1, pc = 4}
+(gdb) p first[1]
+$22 = {line = 2, is_stmt = 1, pc = 8}
+(gdb) p first[2]
+$23 = {line = 4, is_stmt = 1, pc = 12}
+(gdb) p first[3]
+$24 = {line = 0, is_stmt = 1, pc = 16}
+(gdb)
+
+
