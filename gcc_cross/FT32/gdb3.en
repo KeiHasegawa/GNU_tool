@@ -41,12 +41,11 @@ gdb-10.2.ft32-elf/gdb/dwarf2/line-header.c
 
   lh->header_length = read_offset (abfd, line_ptr, offset_size);
 
-Here, lh->header_length became 36 になっているが,
+Here, lh->header_length became 36, but because
 
 offset_size = 4
 
-で結果的にではあるが line_ptr を進めすぎている. 以下のように調整すれば
-期待したところを line_ptr が指すことになる.
+`line_ptr' is advanced too much as a result. Below gdb commands makes `line_ptr' expected:
 
 (gdb) set line_ptr-=10
 (gdb) x/32bx line_ptr + lh->header_length
@@ -58,18 +57,18 @@ offset_size = 4
 
                          rl78      ft32
   lh->header_length       32       36
-  offset_size;             4        4
+  offset_size              4        4
 
-しかしこのまま continue すると 0 割りが発生してしまう.
+But this’ll cause zero division.
 
 void
 lnp_state_machine::handle_special_opcode (unsigned char op_code)
 {
   unsigned char adj_opcode = op_code - m_line_header->opcode_base;
-  unsigned char adj_opcode_d = adj_opcode / m_line_header->line_range;  ここ
+  unsigned char adj_opcode_d = adj_opcode / m_line_header->line_range;  // This
   unsigned char adj_opcode_r = adj_opcode % m_line_header->line_range;
 
-本来期待するデータが入っていないらしい.
+In the first place, the expected value is not set.
 
   オフセット:                  0x0
   長さ:                        64
@@ -81,18 +80,17 @@ lnp_state_machine::handle_special_opcode (unsigned char op_code)
   Line 範囲:                   14
   オペコードベース:            13
 
-36 は Prologue の長さが該当するようだ. また最小命令長は 4 が正しいようにも思える.
+where, 36 might be `Prologue length'. And最小命令長 should be 4 .
 
-できている rl78-elf-gdb で試したところ m_line_header->line_range = 14
-が期待値で
+I did the same thing with `rl78-elf-gdb', m_line_header->line_range = 14
 
 Old value = 0 '\000'
 New value = 14 '\016'
 dwarf_decode_line_header (sect_off=0, is_dwz=false, per_objfile=0x91ab470, section=0x91c14f0, cu_header=0x91c1ae8) at dwarf2/line-header.c:378
 
-ここで書き変えられていた. なるほど Line 範囲というのがこれだったのだ.
+It was set at above code. That is ` Line 範囲'.
 
-これはまず Prologue の長さを間違えている可能性がある.
+Above shows that it is possible to mistake ` Prologue の長さ'.
 
 アセンブラの出力で
 
