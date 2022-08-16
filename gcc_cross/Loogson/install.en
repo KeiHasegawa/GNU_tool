@@ -1,0 +1,176 @@
+(*0) Loongson
+
+https://en.wikipedia.org/wiki/Loongson
+
+(*1) binutils-2.38 install
+
+% setenv SHELL /bin/sh
+% xz -d -c ../binutils-2.38.tar.xz | tar xf -
+% mv binutils-2.38 binutils-2.38.loongarch64-elf
+% cd binutils-2.38.loongarch64-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ --target=loongarch64-elf
+% make
+% make install
+% cd ..
+
+(*2) gcc-12.1.0 install
+
+% xz -d -c ../gcc-12.1.0.tar.xz  | tar xf -
+% mv gcc-12.1.0 gcc-12.1.0.loongarch64-elf
+% cd gcc-12.1.0.loongarch64-elf
+% sed -e 's/host_subdir = @host_subdir@/host_subdir = host-i686-pc-linux-gnu/' libgcc/Makefile.in > libgcc/Makefile.in.new
+% mv libgcc/Makefile.in.new libgcc/Makefile.in
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ --target=loongarch64-elf
+% make all-gcc
+...
+Unsupported target loongarch64-unknown-elf.
+...
+%
+
+% cd ..
+% diff -c gcc-12.1.0.{org,loongarch64-elf}/gcc/config.gcc 
+*** gcc-12.1.0.org/gcc/config.gcc	Sun Jul 10 10:30:45 2022
+--- gcc-12.1.0.loongarch64-elf/gcc/config.gcc	Sun Aug 14 10:46:38 2022
+***************
+*** 2503,2509 ****
+  	gcc_cv_initfini_array=yes
+  	;;
+  
+! loongarch*-*-linux*)
+  	tm_file="dbxelf.h elfos.h gnu-user.h linux.h linux-android.h glibc-stdint.h ${tm_file}"
+  	tm_file="${tm_file} loongarch/gnu-user.h loongarch/linux.h"
+  	extra_options="${extra_options} linux-android.opt"
+--- 2503,2509 ----
+  	gcc_cv_initfini_array=yes
+  	;;
+  
+! loongarch64-unknown-elf)
+  	tm_file="dbxelf.h elfos.h gnu-user.h linux.h linux-android.h glibc-stdint.h ${tm_file}"
+  	tm_file="${tm_file} loongarch/gnu-user.h loongarch/linux.h"
+  	extra_options="${extra_options} linux-android.opt"
+***************
+*** 4981,4987 ****
+  			abi_pattern="lp64s"
+  			triplet_abi="sf"
+  			;;
+! 		loongarch64-*-*-*)
+  			abi_pattern="lp64[dfs]"
+  			abi_default="lp64d"
+  			triplet_abi=""
+--- 4981,4987 ----
+  			abi_pattern="lp64s"
+  			triplet_abi="sf"
+  			;;
+! 		loongarch64-*-*-*|loongarch64-unknown-elf)
+  			abi_pattern="lp64[dfs]"
+  			abi_default="lp64d"
+  			triplet_abi=""
+***************
+*** 4997,5003 ****
+  
+  		# Get the canonical triplet (multiarch specifier).
+  		case ${target} in
+! 		  *-linux-gnu*)  triplet_os="linux-gnu";;
+  		  *-linux-musl*) triplet_os="linux-musl";;
+  		  *)
+  			  echo "Unsupported target ${target}." 1>&2
+--- 4997,5003 ----
+  
+  		# Get the canonical triplet (multiarch specifier).
+  		case ${target} in
+! 		  *-linux-gnu*|loongarch64-unknown-elf)  triplet_os="linux-gnu";;
+  		  *-linux-musl*) triplet_os="linux-musl";;
+  		  *)
+  			  echo "Unsupported target ${target}." 1>&2
+%
+% cd gcc-12.1.0.loongarch64-elf
+% make all-gcc
+...
+g++ -c   -g -O2   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H  -DGENERATOR_FILE -I. -Ibuild -I../.././gcc -I../.././gcc/build -I../.././gcc/../include  -I../.././gcc/../libcpp/include  \
+	-o build/genpreds.o ../.././gcc/genpreds.cc
+In file included from ./tm.h:45,
+                 from ../.././gcc/genpreds.cc:26:
+../.././gcc/config/linux.h:95:2: error: #error "Unsupported DEFAULT_LIBC"
+   95 | #error "Unsupported DEFAULT_LIBC"
+      |  ^~~~~
+%
+
+gcc-12.1.0.loongarch64-elf/gcc/config/linux.h:95
+#if DEFAULT_LIBC == LIBC_GLIBC
+#define CHOOSE_DYNAMIC_LINKER(G, U, B, M) \
+  CHOOSE_DYNAMIC_LINKER1 ("mglibc", "muclibc", "mbionic", "mmusl", G, U, B, M)
+#elif DEFAULT_LIBC == LIBC_UCLIBC
+#define CHOOSE_DYNAMIC_LINKER(G, U, B, M) \
+  CHOOSE_DYNAMIC_LINKER1 ("muclibc", "mglibc", "mbionic", "mmusl", U, G, B, M)
+#elif DEFAULT_LIBC == LIBC_BIONIC
+#define CHOOSE_DYNAMIC_LINKER(G, U, B, M) \
+  CHOOSE_DYNAMIC_LINKER1 ("mbionic", "mglibc", "muclibc", "mmusl", B, G, U, M)
+#elif DEFAULT_LIBC == LIBC_MUSL
+#define CHOOSE_DYNAMIC_LINKER(G, U, B, M) \
+  CHOOSE_DYNAMIC_LINKER1 ("mmusl", "mglibc", "muclibc", "mbionic", M, G, U, B)
+#else
+#error "Unsupported DEFAULT_LIBC"
+#endif /* DEFAULT_LIBC */
+
+gcc-12.1.0.loongarch64-elf/host-i686-pc-linux-gnu/gcc/Makefile:
+
+# The C++ version.
+ALL_CXXFLAGS = $(T_CFLAGS) $(CFLAGS-$@) $(CXXFLAGS) $(INTERNAL_CFLAGS) \
+  $(COVERAGE_FLAGS) $(ALIASING_FLAGS) $(NOEXCEPTION_FLAGS) \
+  $(WARN_CXXFLAGS) -DHAVE_CONFIG_H -DDEFAULT_LIBC=LIBC_GLIBC
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+Modify the Makefile like above.
+
+% make all-gcc
+...
+g++  -fno-PIE -c  -DIN_GCC_FRONTEND -DIN_GCC_FRONTEND -g -O2   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H -DDEFAULT_LIBC=LIBC_GLIBC -I. -Ic-family -I../.././gcc -I../.././gcc/c-family -I../.././gcc/../include -I../.././gcc/../libcpp/include -I../.././gcc/../libcody  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber -I../.././gcc/../libbacktrace   -o c-family/c-common.o -MT c-family/c-common.o -MMD -MP -MF c-family/.deps/c-common.TPo ../.././gcc/c-family/c-common.cc
+In file included from ./tm.h:45,
+                 from ../.././gcc/target.h:52,
+                 from ../.././gcc/c-family/c-common.cc:25:
+../.././gcc/c-family/c-common.cc: In function 'void c_common_nodes_and_builtins()':
+../.././gcc/config/linux.h:42:38: error: 'struct gcc_options' has no member named 'x_linux_libc'
+...
+%
+
+gcc-12.1.0.loongarch64-elf/gcc/config/linux.h:42
+
+#ifdef SINGLE_LIBC
+#define OPTION_GLIBC_P(opts)	(DEFAULT_LIBC == LIBC_GLIBC)
+#define OPTION_UCLIBC_P(opts)	(DEFAULT_LIBC == LIBC_UCLIBC)
+#define OPTION_BIONIC_P(opts)	(DEFAULT_LIBC == LIBC_BIONIC)
+#undef OPTION_MUSL_P
+#define OPTION_MUSL_P(opts)	(DEFAULT_LIBC == LIBC_MUSL)
+#else
+#define OPTION_GLIBC_P(opts)	((opts)->x_linux_libc == LIBC_GLIBC)
+#define OPTION_UCLIBC_P(opts)	((opts)->x_linux_libc == LIBC_UCLIBC)
+#define OPTION_BIONIC_P(opts)	((opts)->x_linux_libc == LIBC_BIONIC)
+#undef OPTION_MUSL_P
+#define OPTION_MUSL_P(opts)	((opts)->x_linux_libc == LIBC_MUSL)
+
+gcc-12.1.0.loongarch64-elf/host-i686-pc-linux-gnu/gcc/Makefile:
+
+# The C++ version.
+ALL_CXXFLAGS = $(T_CFLAGS) $(CFLAGS-$@) $(CXXFLAGS) $(INTERNAL_CFLAGS) \
+  $(COVERAGE_FLAGS) $(ALIASING_FLAGS) $(NOEXCEPTION_FLAGS) \
+  $(WARN_CXXFLAGS) -DHAVE_CONFIG_H -DDEFAULT_LIBC=LIBC_GLIBC -DSINGLE_LIBC
+                                                             ^^^^^^^^^^^^^
+Modify the Makefile like above.
+
+% make all-gcc
+...
+g++  -fno-PIE -c   -g -O2   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H -DDEFAULT_LIBC=LIBC_GLIBC -DSINGLE_LIBC -I. -I. -I../.././gcc -I../.././gcc/. -I../.././gcc/../include -I../.././gcc/../libcpp/include -I../.././gcc/../libcody  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber -I../.././gcc/../libbacktrace   -o loongarch.o -MT loongarch.o -MMD -MP -MF ./.deps/loongarch.TPo ../.././gcc/config/loongarch/loongarch.cc
+In file included from ./tm.h:45,
+                 from ../.././gcc/backend.h:28,
+                 from ../.././gcc/config/loongarch/loongarch.cc:27:
+../.././gcc/config/linux.h:226:35: error: 'linux_libc_has_function' was not declared in this scope; did you mean 'gnu_libc_has_function'?
+  226 | # define TARGET_LIBC_HAS_FUNCTION linux_libc_has_function
+      |                                   ^~~~~~~~~~~~~~~~~~~~~~~
+./target-hooks-def.h:2149:5: note: in expansion of macro 'TARGET_LIBC_HAS_FUNCTION'
+ 2149 |     TARGET_LIBC_HAS_FUNCTION, \
+      |     ^~~~~~~~~~~~~~~~~~~~~~~~
+../.././gcc/config/loongarch/loongarch.cc:5948:29: note: in expansion of macro 'TARGET_INITIALIZER'
+ 5948 | struct gcc_target targetm = TARGET_INITIALIZER;
+      |                             ^~~~~~~~~~~~~~~~~~
+make[1]: *** [Makefile:2419: loongarch.o] Error 1
+...
+%
