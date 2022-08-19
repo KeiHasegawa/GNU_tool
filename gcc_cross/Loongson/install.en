@@ -174,3 +174,242 @@ In file included from ./tm.h:45,
 make[1]: *** [Makefile:2419: loongarch.o] Error 1
 ...
 %
+
+gcc/config/linux-protos.h:22:extern bool linux_libc_has_function (enum function_class fn_class, tree);
+gcc/config/linux.cc:28:linux_libc_has_function (enum function_class fn_class,
+
+gcc-12.1.0.loongarch64-elf/gcc/config.gcc:
+
+loongarch64-unknown-elf)
+	tm_file="dbxelf.h elfos.h gnu-user.h linux-protos.h linux.h linux-android.h glibc-stdint.h ${tm_file}"
+
+I fixed like above.
+
+% make all-gcc
+...
+g++  -fno-PIE -c   -g -O2   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H -DDEFAULT_LIBC=LIBC_GLIBC -DSINGLE_LIBC -I. -I. -I../.././gcc -I../.././gcc/. -I../.././gcc/../include -I../.././gcc/../libcpp/include -I../.././gcc/../libcody  -I../.././gcc/../libdecnumber -I../.././gcc/../libdecnumber/dpd -I../libdecnumber -I../.././gcc/../libbacktrace   -o options.o -MT options.o -MMD -MP -MF ./.deps/options.TPo options.cc
+options.cc:2816:3: error: 'ANDROID_DEFAULT' was not declared in this scope; did you mean 'RTLD_DEFAULT'?
+ 2816 |   ANDROID_DEFAULT ? OPTION_MASK_ANDROID : 0, /* flag_android */
+      |   ^~~~~~~~~~~~~~~
+      |   RTLD_DEFAULT
+make[1]: *** [Makefile:1144: options.o] Error 1
+make[1]: Leaving directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-12.1.0.loongarch64-elf/host-i686-pc-linux-gnu/gcc'
+make: *** [Makefile:4610: all-gcc] Error 2
+%
+
+gcc-12.1.0.loongarch64-elf/host-i686-pc-linux-gnu/gcc/Makefile:
+
+# The C++ version.
+ALL_CXXFLAGS = $(T_CFLAGS) $(CFLAGS-$@) $(CXXFLAGS) $(INTERNAL_CFLAGS) \
+  $(COVERAGE_FLAGS) $(ALIASING_FLAGS) $(NOEXCEPTION_FLAGS) \
+  $(WARN_CXXFLAGS) -DHAVE_CONFIG_H -DDEFAULT_LIBC=LIBC_GLIBC -DSINGLE_LIBC \
+  -DANDROID_DEFAULT=0
+  ^^^^^^^^^^^^^^^^^^^
+Modify the Makefile like above.
+
+% make all-gcc
+...
+g++ -no-pie   -g -O2   -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE   -fno-exceptions -fno-rtti -fasynchronous-unwind-tables -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wmissing-format-attribute -Woverloaded-virtual -pedantic -Wno-long-long -Wno-variadic-macros -Wno-overlength-strings   -DHAVE_CONFIG_H -DDEFAULT_LIBC=LIBC_GLIBC -DSINGLE_LIBC -DANDROID_DEFAULT=0 -static-libstdc++ -static-libgcc  -o cc1 c/c-lang.o c-family/stub-objc.o attribs.o c/c-errors.o c/c-decl.o c/c-typeck.o c/c-convert.o c/c-aux-info.o c/c-objc-common.o c/c-parser.o c/c-fold.o c/gimple-parser.o c-family/c-common.o c-family/c-cppbuiltin.o c-family/c-dump.o c-family/c-format.o c-family/c-gimplify.o c-family/c-indentation.o c-family/c-lex.o c-family/c-omp.o c-family/c-opts.o c-family/c-pch.o c-family/c-ppoutput.o c-family/c-pragma.o c-family/c-pretty-print.o c-family/c-semantics.o c-family/c-ada-spec.o c-family/c-ubsan.o c-family/known-headers.o c-family/c-attribs.o c-family/c-warn.o c-family/c-spellcheck.o default-c.o \
+  cc1-checksum.o libbackend.a main.o libcommon-target.a libcommon.a ../libcpp/libcpp.a ../libdecnumber/libdecnumber.a libcommon.a ../libcpp/libcpp.a   ../libbacktrace/.libs/libbacktrace.a ../libiberty/libiberty.a ../libdecnumber/libdecnumber.a   -lmpc -lmpfr -lgmp -rdynamic -ldl  -L./../zlib -lz -lzstd
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: loongarch.o:(.data+0x318): undefined reference to `linux_libc_has_function(function_class, tree_node*)'
+...
+%
+
+gcc-12.1.0.loongarch64-elf/host-i686-pc-linux-gnu/gcc/Makefile:
+
+	xcoffout.o \
++	linux.o \
+	$(out_object_file) \
+...
++linux.o:../../gcc/config/linux.cc
++	g++ -o $@ $< -c $(BUILD_CPPFLAGS) $(ALL_CXXFLAGS) 
+
+I fixed like above.
+
+% make all-gcc  # OK. successfully done
+% make all-target-libgcc
+...
+checking for loongarch64-elf-gcc...  /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-12.1.0.loongarch64-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-12.1.0.loongarch64-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/loongarch64-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/loongarch64-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/loongarch64-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/loongarch64-elf/sys-include   
+checking for suffix of object files... configure: error: in `/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-12.1.0.loongarch64-elf/loongarch64-elf/libgcc':
+configure: error: cannot compute suffix of object files: cannot compile
+See `config.log' for more details
+make: *** [Makefile:13953: configure-target-libgcc] Error 1
+%
+
+loongarch64-elf/libgcc/config.log:
+...
+configure:3814:  /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-12.1.0.loongarch64-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-12.1.0.loongarch64-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/loongarch64-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/loongarch64-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/loongarch64-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/loongarch64-elf/sys-include    -c -g -O2  conftest.c >&5
+Assembler messages:
+Error: unrecognized option -#lp64d
+configure:3818: $? = 1
+configure: failed program was:
+| /* confdefs.h */
+| #define PACKAGE_NAME "GNU C Runtime Library"
+| #define PACKAGE_TARNAME "libgcc"
+| #define PACKAGE_VERSION "1.0"
+| #define PACKAGE_STRING "GNU C Runtime Library 1.0"
+| #define PACKAGE_BUGREPORT ""
+| #define PACKAGE_URL "http://www.gnu.org/software/libgcc/"
+| /* end confdefs.h.  */
+| 
+| int
+| main ()
+| {
+| 
+|   ;
+|   return 0;
+| }
+configure:3832: error: in `/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-12.1.0.loongarch64-elf/loongarch64-elf/libgcc':
+configure:3834: error: cannot compute suffix of object files: cannot compile
+See `config.log' for more details
+...
+
+% cat /tmp/a.c
+int main()
+{
+  return 0;
+}
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-12.1.0.loongarch64-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-12.1.0.loongarch64-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/loongarch64-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/loongarch64-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/loongarch64-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/loongarch64-elf/sys-include /tmp/a.c
+Assembler messages:
+Error: unrecognized option -#lp64d
+%
+
+The error could be reproduced.
+
+
+gcc-12.1.0.loongarch64-elf/gcc/config.gcc:
+...
+		loongarch64-*-*-*)
+			abi_pattern="lp64[dfs]"
+			abi_default="lp64d"
+			triplet_abi=""
+			;;
+		loongarch64-unknown-elf)
+			;;
+...
+
+
+gcc-12.1.0.loongarch64-elf/gcc/config/loongarch/loongarch-driver.h:
+
++#if 0
+/* ABI spec strings.  */
+#define ABI_GRLEN_SPEC \
+  "%{mabi=lp64*:64}"   \
+
+#define ABI_SPEC \
+  "%{mabi=lp64d:lp64d}" \
+  "%{mabi=lp64f:lp64f}" \
+  "%{mabi=lp64s:lp64s}" \
+
++#else
++#define ABI_GRLEN_SPEC ""
++#define ABI_SPEC ""
++#endif
+
+
+gcc-12.1.0.loongarch64-elf/gcc/config/loongarch/loongarch-str.h:
+
++#if 0
+#define STR_ABI_BASE_LP64D "lp64d"
+#define STR_ABI_BASE_LP64F "lp64f"
+#define STR_ABI_BASE_LP64S "lp64s"
++#else
+#define STR_ABI_BASE_LP64D ""
+#define STR_ABI_BASE_LP64F ""
+#define STR_ABI_BASE_LP64S ""
++#endif
+
+gcc/config/loongarch/loongarch-opts.cc:
+
++#if 0
+#ifndef DEFAULT_ABI_BASE
+#error missing definition of DEFAULT_ABI_BASE in ${tm_defines}.
+#endif
++#endif
+...
++#if 0
+#ifndef DEFAULT_CPU_ARCH
+#error missing definition of DEFAULT_CPU_ARCH in ${tm_defines}.
+#endif
++#endif
+
++#if 0
+#ifndef DEFAULT_ISA_EXT_FPU
+#error missing definition of DEFAULT_ISA_EXT_FPU in ${tm_defines}.
+#endif
++#endif
+
+
+gcc-12.1.0.loongarch64-elf/host-i686-pc-linux-gnu/gcc/Makefile:
+
+# The C++ version.
+ALL_CXXFLAGS = $(T_CFLAGS) $(CFLAGS-$@) $(CXXFLAGS) $(INTERNAL_CFLAGS) \
+  $(COVERAGE_FLAGS) $(ALIASING_FLAGS) $(NOEXCEPTION_FLAGS) \
+  $(WARN_CXXFLAGS) -DHAVE_CONFIG_H -DDEFAULT_LIBC=LIBC_GLIBC -DSINGLE_LIBC \
+  -DANDROID_DEFAULT=0 -DLA_DISABLE_MULTILIB
+                      ^^^^^^^^^^^^^^^^^^^^^
+
+gcc/config/loongarch/loongarch-opts.cc:
+
+static void
+init_enabled_abi_types ()
+{
++#if 0
+#ifdef LA_DISABLE_MULTILIB
+  enabled_abi_types[DEFAULT_ABI_BASE][DEFAULT_ABI_EXT] = 1;
+#else
+  int abi_base, abi_ext;
+  for (unsigned int i = 0; i < MULTILIB_LIST_LEN; i++)
+    {
+      abi_base = tm_multilib_list[i << 1];
+      abi_ext = tm_multilib_list[(i << 1) + 1];
+      enabled_abi_types[abi_base][abi_ext] = 1;
+    }
+#endif
++#endif
+}
+
++#if 0
+  t.abi.base = constrained.abi_base ? opt_abi_base : DEFAULT_ABI_BASE;
++#else
+  t.abi.base = 0; 
++#endif  
++#if 0
+  t.abi.ext = constrained.abi_ext ? opt_abi_ext : DEFAULT_ABI_EXT;
++#else  
+  t.abi.ext = 0;
++#endif
+
++#if 0
+#ifdef LA_DISABLE_MULTILIB
+  if (follow_multilib_list)
+    if (t.abi.base != DEFAULT_ABI_BASE || t.abi.ext != DEFAULT_ABI_EXT)
+      {
+	static const struct loongarch_abi default_abi
+	  = {DEFAULT_ABI_BASE, DEFAULT_ABI_EXT};
+
+	warning (0, "ABI changed (%qs to %qs) while multilib is disabled",
+		 abi_str (default_abi), abi_str (t.abi));
+      }
+#endif
++#endif
+
++#if 0  
+  t.cpu_arch = constrained.arch ? opt_arch : DEFAULT_CPU_ARCH;
++#else
+  t.cpu_arch = 0;
++#endif
++#if 0  
+  t.cpu_tune = constrained.tune ? opt_tune
+    : (constrained.arch ? DEFAULT_CPU_ARCH : DEFAULT_CPU_TUNE);
++#else
+  t.cpu_tune = 0;
++#endif  
+
++#if 0  
+  t.isa.fpu = constrained.fpu ? opt_fpu :
+    ((t.cpu_arch == CPU_NATIVE && constrained.arch) ?
+     t.isa.fpu : DEFAULT_ISA_EXT_FPU);
++#else
+  t.isa.fpu = 0;
++#endif
