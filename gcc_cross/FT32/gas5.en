@@ -1,10 +1,10 @@
-(*1) ロケーションカウンタ 4 ずつずらす対応
+(*1) Fix for advancing location counter by 4
 (*2) .debug_line の Prologue の長さ 36(0x24) -> 26(0x1a)
 (*3) .debug_line の Prologue の長さの計算
 
-(*1) ロケーションカウンタ 4 ずつずらす対応
+(*1) Fix for advancing location counter by 4
 
-ft32-elf-gas で現状
+`ft32-elf-as' was fixed like below:
 
 binutils-2.36.1.ft32-elf/gas/config/tc-ft32.c
 
@@ -17,13 +17,14 @@ binutils-2.36.1.ft32-elf/gas/config/tc-ft32.c
   dwarf2_emit_insn(n);
 #endif
 
-の対応を入れることで 1 行に 4 ずつロケーションをずらせているが
+With above fix, It's enable to advance location counter by 4 according to 1
+line:
 
 % ./as-new -g a.S
 % ft32-elf-objdump --dwarf=rawline --dwarf=decodedline a.out
 ...
-  [0x0000003e]  PC を固定サイズ 16 分進め 0x1c とします
-  [0x00000041]  拡張命令コード 1: 列の終り
+  [0x0000003e]  Advance PC by 16 to 0x1c
+  [0x00000041]  Extended opcode 1: End of Sequence
 ...
 File name                            Line number    Starting address    View    Stmt
 a.S                                            3                   0               x
@@ -32,8 +33,7 @@ a.S                                            5                 0x8       2    
 a.S                                            7                 0xc       3       x
 a.S                                            -                0x1c
 
-のように最後の PC を固定サイズ 16 進めてしまっている.
-これを
+But like above, the last advance PC size is 16 and it's not correct.
 
 (gdb) b dwarf2dbg.c:1734 
 (gdb) run
@@ -43,7 +43,7 @@ a.S                                            -                0x1c
 (gdb) p debug(pexp)
 
   if (expr->X_add_number == 16)
-    asm("int3");                   これにヒットする
+    asm("int3");                   // Hit this break-point
   if (expr->X_add_number == 36)
     asm("int3");
 
@@ -61,7 +61,7 @@ Hardware watchpoint 4: *(offsetT *) 0x815b6c0
 Old value = <unreadable>
 New value = 0
 memset () at ../sysdeps/i386/i686/memset.S:85
-85	../sysdeps/i386/i686/memset.S: そのようなファイルやディレクトリはありません.
+85	../sysdeps/i386/i686/memset.S: No such file or directory
 (gdb) c
 Continuing.
 
@@ -73,11 +73,10 @@ S_SET_VALUE (s=0x815b6a0, val=16) at symbols.c:2173
 (gdb) set s->x->value.X_add_number=4
 (gdb) 
 
-のようにすることで生成される a.out が期待したものになることが
+By above gdb `set' command, ft32-elf-as can generate `a.out' as I expect and
+confirm with below command
 
 % ft32-elf-objdump --dwarf=rawline --dwarf=decodedline a.out
-
-で確認できる.
 
 (*2) .debug_line の Prologue の長さ 36(0x24) -> 26(0x1a)
 
