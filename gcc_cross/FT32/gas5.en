@@ -1,6 +1,6 @@
 (*1) Fix for advancing location counter by 4
-(*2) .debug_line の Prologue の長さ 36(0x24) -> 26(0x1a)
-(*3) .debug_line の Prologue の長さの計算
+(*2) Modification `Prologue Length' of .debug_line 36(0x24) -> 26(0x1a)
+(*3) Calculation `Prologue Length' of .debug_line
 
 (*1) Fix for advancing location counter by 4
 
@@ -35,7 +35,7 @@ a.S                                            -                0x1c
 
 But like above, the last advance PC size is 16 and it's not correct.
 
-(gdb) b dwarf2dbg.c:1734 
+(gdb) b dwarf2dbg.c:1734
 (gdb) run
 
       emit_expr_fix (pexp, 2, frag, p, TC_PARSE_CONS_RETURN_NONE);
@@ -61,7 +61,7 @@ Hardware watchpoint 4: *(offsetT *) 0x815b6c0
 Old value = <unreadable>
 New value = 0
 memset () at ../sysdeps/i386/i686/memset.S:85
-85	../sysdeps/i386/i686/memset.S: No such file or directory
+85      ../sysdeps/i386/i686/memset.S: No such file or directory
 (gdb) c
 Continuing.
 
@@ -71,62 +71,59 @@ Old value = 0
 New value = 16
 S_SET_VALUE (s=0x815b6a0, val=16) at symbols.c:2173
 (gdb) set s->x->value.X_add_number=4
-(gdb) 
+(gdb)
 
 By above gdb `set' command, ft32-elf-as can generate `a.out' as I expect and
 confirm with below command
 
 % ft32-elf-objdump --dwarf=rawline --dwarf=decodedline a.out
 
-(*2) .debug_line の Prologue の長さ 36(0x24) -> 26(0x1a)
+(*2) Modification `Prologue Length' of .debug_line 36(0x24) -> 26(0x1a)
 
 ft32-elf-objdump -r a.out
 
-a.out:     ファイル形式 elf32-ft32
+a.out:     File format elf32-ft32
 
 RELOCATION RECORDS FOR [.debug_line]:
-OFFSET   TYPE              VALUE 
+OFFSET   TYPE              VALUE
 00000000 R_FT32_32         .debug_line+0x00000040
-00000006 R_FT32_32         .debug_line+0x00000024  これ
+00000006 R_FT32_32         .debug_line+0x00000024  # This one
 00000027 R_FT32_32         .text
 0000002f R_FT32_16         .text+0x00000004
 00000035 R_FT32_16         .text+0x00000004
 0000003b R_FT32_16         .text+0x00000004
 0000003f R_FT32_16         .text+0x00000010
 
-  (*1) と同様に p debgu(pexp) とすると
+  Similarly with (*1) , execute `p debgu(pexp)'
 
   if (expr->X_add_number == 16)
     asm("int3");
   if (expr->X_add_number == 36)
-    asm("int3");                   これにヒットする
+    asm("int3");                   // This hit
 
-そこで同じように 
+Then similarly,
 
 (gdb) p &expr->X_add_number
 
-としてアドレスを確認してそこにウォッチポイントをセットする.
+I confirmed the address and set watch-point.
 
-そこにきたとき 36 をセットしているから
+When above watch-point hit, the code set 36 to the address, so modified like below:
 
 (gdb) set s->x->value.X_add_number=26
 
-とすればよい.
+(*3) Calculation `Prologue Length' of .debug_line
 
-
-(*3) .debug_line の Prologue の長さの計算
-
-36 を返すのは結局は以下の値を参照しているから
+`Prologue Length' of .debug_line becomes 36 because of referring below function:
 
 (gdb) p frchain_now->frch_obstack->next_free - frag_now->fr_literal
 
-函数 out_debug_line の先頭で
+ At the start of `out_debug_line' function,
 
 (gdb) p frchain_now->frch_obstack->next_free - frag_now->fr_literal
 $18 = 0
-(gdb) 
+(gdb)
 
-なのでこれがどのように変化していくか確認する.
+so confirm how the expression is changed.
 
   asm("int3");
 #if 0
@@ -140,8 +137,8 @@ $18 = 0
 
   ここは out_debug_line より先に実行されている.
 
-  out_byte (0);			/* DW_LNS_set_epilogue_begin */
-  out_byte (1);			/* DW_LNS_set_isa */   これを実行する前が
+  out_byte (0);                 /* DW_LNS_set_epilogue_begin */
+  out_byte (1);                 /* DW_LNS_set_isa */   これを実行する前が
 
 rchain_now->frch_obstack->next_free - frag_now->fr_literal = 26
 
