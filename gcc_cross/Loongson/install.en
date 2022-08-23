@@ -275,3 +275,103 @@ Error: unrecognized option -#lp64d
 %
 
 The error could be reproduced.
+
+M-x gdb
+gdb --annotate=3 /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-12.1.0.loongarch64-elf/host-i686-pc-linux-gnu/gcc/xgcc
+
+(gdb) run -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-12.1.0.loongarch64-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/loongarch64-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/loongarch64-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/loongarch64-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/loongarch64-elf/sys-include /tmp/a.c
+...
+Assembler messages:
+Error: unrecognized option -#lp64d
+
+From gdb command line, the error also could be reproduced.
+
+(gdb) b vfork
+(gdb) run
+...
+`vfork' break-point hit for `cc1'
+(gdb) c
+...
+`vfork' break-point hit for `as'
+(gdb) where
+#0  vfork () at ../sysdeps/unix/sysv/linux/i386/vfork.S:35
+#1  0x080ce3c5 in pex_unix_exec_child (obj=0x819dac0, flags=1, executable=0x819d9f0 "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-12.1.0.loongarch64-elf/host-i686-pc-linux-gnu/gcc/as", argv=0x819eb40, env=0x0, in=0, out=1, errdes=2, toclose=-1, errmsg=0xbffff134, err=0xbffff1ec) at ../.././libiberty/pex-unix.c:620
+#2  0x080cd993 in pex_run_in_environment (obj=0x819dac0, flags=1, executable=0x819d9f0 "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-12.1.0.loongarch64-elf/host-i686-pc-linux-gnu/gcc/as", argv=0x819eb40, env=0x0, orig_outname=<optimized out>, errname=0x0, err=0xbffff1ec) at ../.././libiberty/pex-common.c:344
+#3  0x080cddc6 in pex_run (obj=0x819dac0, flags=1, executable=0x819d9f0 "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-12.1.0.loongarch64-elf/host-i686-pc-linux-gnu/gcc/as", argv=0x819eb40, orig_outname=0x0, errname=0x0, err=0xbffff1ec) at ../.././libiberty/pex-common.c:374
+#4  0x0804eb9f in execute () at ../.././gcc/gcc.cc:3421
+#5  0x0805362c in do_spec (spec=0x80e1fd4 "%{E|M|MM:%(trad_capable_cpp) %(cpp_options) %(cpp_debug_options)}      %{!E:%{!M:%{!MM:          %{traditional:%eGNU C no longer supports -traditional without -E}      %{save-temps*|traditional-cpp|no"...) at ../.././gcc/gcc.cc:5726
+#6  0x0805ae68 in driver::do_spec_on_infiles (this=0xbffff2f0) at ../.././gcc/gcc.cc:8929
+#7  0x08058c6c in driver::main (this=0xbffff2f0, argc=9, argv=0xbffff3d4) at ../.././gcc/gcc.cc:8157
+#8  0x0804c051 in main (argc=9, argv=0xbffff3d4) at ../.././gcc/gcc-main.cc:47
+(gdb) p argv[1]
+$78 = 0x8196cb4 "-mabi=lp64d"
+(gdb) p argv[0]
+$79 = 0x819d9f0 "/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-12.1.0.loongarch64-elf/host-i686-pc-linux-gnu/gcc/as"
+(gdb)
+
+I fixed like below:
+
+      const char *string = commands[i].argv[0];
+
+#if 1
+      int len = strlen(string);
+      if (len >= 3) {
+	if (strcmp("/as", &string[len-3]) == 0) {
+	  if (strcmp(commands[i].argv[1], "-mabi=lp64d") == 0) {
+	    for (int j = 1 ; commands[i].argv[j] ; ++j)
+	      commands[i].argv[j] = commands[i].argv[j+1];
+	  }
+	}
+      }
+#endif
+      errmsg = pex_run (pex,
+
+I thought there was better way, but above worked well as I expected.
+
+% make all-target-libgcc
+...
+checking whether assembler supports CFI directives... yes
+checking for target glibc version... 0.0
+*** Configuration loongarch64-unknown-elf not supported
+...
+%
+
+gcc-12.1.0.loongarch64-elf/libgcc/config.host:
+
+	;;
+-loongarch*-*-*)
++loongarch*-*-*|loongarch64-unknown-elf)
+	cpu_type=loongarch
+...
+	;;
+loongarch*-*-linux*)	
+loongarch*-*-linux*|loongarch64-unknown-elf)
+	extra_parts="$extra_parts crtfastmath.o"
+
+% make all-target-libgcc
+...
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-12.1.0.loongarch64-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-12.1.0.loongarch64-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/loongarch64-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/loongarch64-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/loongarch64-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/loongarch64-elf/sys-include    -g -O2 -mabi=lp64d -O2  -g -O2 -DIN_GCC  -DCROSS_DIRECTORY_STRUCTURE  -W -Wall -Wno-narrowing -Wwrite-strings -Wcast-qual -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition  -isystem ./include   -g -DIN_LIBGCC2 -fbuilding-libgcc -fno-stack-protector -Dinhibit_libc  -I. -I. -I../../../../host-i686-pc-linux-gnu/gcc -I../../../.././libgcc -I../../../.././libgcc/. -I../../../.././libgcc/../gcc -I../../../.././libgcc/../include  -DHAVE_CC_TLS   -o _muldi3.o -MT _muldi3.o -MD -MP -MF _muldi3.dep -DL_muldi3 -c ../../../.././libgcc/libgcc2.c -fvisibility=hidden -DHIDE_EXPORTS
+In file included from ../../../../host-i686-pc-linux-gnu/gcc/tm.h:45,
+                 from ../../../.././libgcc/libgcc2.c:29:
+../../../.././libgcc/../gcc/config/linux-protos.h:20:8: error: unknown type name 'bool'
+   20 | extern bool linux_has_ifunc_p (void);
+      |        ^~~~
+../../../.././libgcc/../gcc/config/linux-protos.h:22:8: error: unknown type name 'bool'
+   22 | extern bool linux_libc_has_function (enum function_class fn_class, tree);
+      |        ^~~~
+In file included from ../../../../host-i686-pc-linux-gnu/gcc/tm.h:46:
+../../../.././libgcc/../gcc/config/linux.h:95:2: error: #error "Unsupported DEFAULT_LIBC"
+   95 | #error "Unsupported DEFAULT_LIBC"
+      |  ^~~~~
+make[3]: *** [Makefile:501: _muldi3.o] Error 1
+make[3]: Leaving directory '/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-12.1.0.loongarch64-elf/loongarch64-elf/base/lp64d/libgcc'
+...
+%
+
+At this point, I decided to give up to get rid of this error.
+
+% make install-gcc
+
+(*3) gdb-12.1 install
+
+Refer to "Loongarch64 gdb".
