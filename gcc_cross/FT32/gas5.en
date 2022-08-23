@@ -82,7 +82,7 @@ confirm with below command
 
 ft32-elf-objdump -r a.out
 
-a.out:     File format elf32-ft32
+a.out:     file format elf32-ft32
 
 RELOCATION RECORDS FOR [.debug_line]:
 OFFSET   TYPE              VALUE
@@ -135,16 +135,16 @@ so confirm how the expression is changed.
   dwarf2_emit_insn(n);
 #endif
 
-  ここは out_debug_line より先に実行されている.
+  Above code is executed before `out_debug_line' is called.
 
   out_byte (0);                 /* DW_LNS_set_epilogue_begin */
-  out_byte (1);                 /* DW_LNS_set_isa */   これを実行する前が
+  out_byte (1);                 /* DW_LNS_set_isa */   // Before executing this line
 
 rchain_now->frch_obstack->next_free - frag_now->fr_literal = 26
 
-で実行すると
+And after executing above line:
 
 rchain_now->frch_obstack->next_free - frag_now->fr_literal = 27
 
-になる. ということは (*2) で 36 を 26 にして動いていたのはどういう理由からか.
-それは ft32-elf-gdb がそういう解釈をしていたからという理由.
+i.e. as described at (*2), To modify 26 worked well. The reason
+was that `ft32-elf-gdb' recognized in such a way.
