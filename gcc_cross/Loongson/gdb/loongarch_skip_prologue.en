@@ -1,0 +1,74 @@
+As usual, I created simple program like below:
+
+% cat test.c
+int f(int a, int b)
+{
+  return a + b;
+}
+
+int main()
+{
+  return f(5, 6);
+}
+%
+
+And as usual, built target program like below:
+
+% loongarch64-elf-as -o ../default.o -g ../default.S
+% loongarch64-elf-gcc -o test.o test.c -g -c
+% loongarch64-elf-ld -o test.elf ../default.o test.o -T ../default.x
+
+And executed under control of loongarch-elf-gdb
+
+% cat gdbcom
+set prompt (loongarch-elf-gdb) 
+target sim
+load
+sim memory-fill 0xcc
+sim memory-region 0xe00,0x200
+b main
+run
+quit
+% loongarch64-elf-gdb -q -x gdbcom test.elf
+Reading symbols from test.elf...
+Connected to the simulator.
+Loading section .text, size 0x84 lma 100
+Loading section .eh_frame, size 0x6c lma 188
+Loading section .got, size 0x10 lma 1f8
+Start address 100
+Transfer rate: 2048 bits in <1 sec.
+Breakpoint 1 at 0x154: file test.c, line 7.
+
+Breakpoint 1, main () at test.c:7
+7	{
+A debugging session is active.
+
+	Inferior 1 [process 42000] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]
+%
+
+The address 0x154 for break-point of `main' is wrong:
+
+0000000000000150 <main>:
+ 150:	02ffc063 	addi.d      	$sp, $sp, -16(0xff0)
+ 154:	29c02061 	st.d        	$ra, $sp, 8(0x8)
+ 158:	27000076 	stptr.d     	$fp, $sp, 0
+ 15c:	02c04076 	addi.d      	$fp, $sp, 16(0x10)
+ 160:	02801805 	addi.w      	$a1, $zero, 6(0x6)
+ 164:	02801404 	addi.w      	$a0, $zero, 5(0x5)
+
+0x160 is correct. I confirmed that `loongarch_skip_prologue' was called
+with pc = 0x150 and it returned 0x154.
+
+As far as I examined, `loongarch_skip_prologue' was the same implementation
+with other `xxx_skip_prologue'.
+
+At this point, I guessed that this problem was caused by original
+loongarch64-elf-gcc generated code, but just guess.
+
+I uploaded
+
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-12.1.loongarch64-elf/sim/loongarch64/
+
+at this point as `loongarch64.2.tar'.
