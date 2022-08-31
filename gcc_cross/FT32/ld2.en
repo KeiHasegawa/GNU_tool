@@ -1,5 +1,6 @@
-Fix advance PC by fixed size amount 4 to 0x104 not setting address to 0x104
-at addres 0x104 of `.debug_line' section
+Modification from gdb command line advance PC by fixed size amount 4 to 0x104
+not advance PC by fixed size amoutn 0x104 at addres 0x104 of `.debug_line'
+section
 
 (gdb) run test000.o -x test000.x
 Break-point hit, which is coded directlry handling `.debug_line' section
@@ -8,7 +9,7 @@ Break-point hit, which is coded directlry handling `.debug_line' section
 $15 = 68
 (gdb) p p
 $16 = (bfd_byte *) 0x81b2fa0 ""
-(gdb) x/68bx 0x81b2fa0  # .debug_line セックションのダンプ
+(gdb) x/68bx 0x81b2fa0  # `.debug_line' section dump
 0x81b2fa0:	0x00	0x00	0x00	0x00	0x03	0x00	0x00	0x00
 0x81b2fa8:	0x00	0x00	0x01	0x01	0xfb	0x0e	0x0d	0x00
 0x81b2fb0:	0x01	0x01	0x01	0x01	0x00	0x00	0x00	0x01
@@ -33,13 +34,13 @@ New value = 4
 bfd_putl16 (data=260, p=0x81b2fcf) at libbfd.c:578
 (gdb) n
 
-この後 bfd_putl16 が data = 260 = 0x104
-で呼び出されるので実際書き込む値が 4 になるように
+After above, `bfd_putl16' was called with data = 260 = 0x104
+so modified like below:
 
 (gdb) set addr[1]=0
 
-のようにする. この後 3 回この函数が data = 0x104 で呼び出されるので
-その値も修正する.
+And more, at 3 times, `bfd_putl16' was called with data = 0x104, then modified
+like below:
 
 (gdb) b bfd_putl16
 (gdb) c
