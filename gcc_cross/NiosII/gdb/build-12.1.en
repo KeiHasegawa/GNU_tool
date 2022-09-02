@@ -1,42 +1,43 @@
 (*) Build gdb-12.1
 
 % xz -d -c ../gdb-12.1.tar.xz | tar xf -
-% mv gdb-12.1 gdb-12.1.loongarch64-elf
-% cd gdb-12.1.loongarch64-elf/gdb
+% mv gdb-12.1 gdb-12.1.nios2-elf
+% cd gdb-12.1.nios2-elf/gdb
 
 Do the same thing with d30v, fr30, z8k, i960, mmix, z80, i386, pdp11, vax,
-alpha, m68k, ns32k, spu, arc, 1750a, csky, tic6x, epiphany and ia64.
+alpha, m68k, ns32k, spu, arc, 1750a, csky, tic6x, epiphany, ia64 and
+loongarch64.
 
 configure.tgt:
 
 h8300*-*-*)		gdb_sim=h8300 ;;
-+loongarch64-*-*)	gdb_sim=loongarch64 ;;
++nios2-*-*)		gdb_sim=nios2 ;;
 iq2000-*-*)		gdb_sim=iq2000 ;;
 
 % cd ..
-% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ --target=loongarch64-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ --target=nios2-elf
 % make all
 ...
-make[2]: *** No rule to make target '../sim/loongarch64/libsim.a', needed by 'gdb'.  Stop.
+make[2]: *** No rule to make target '../sim/nios2/libsim.a', needed by 'gdb'.  Stop.
 ...
 %
 
 % cd sim
-% tar xf ~/lang/53_GNU_tool/gcc_cross/IA64/gdb/ia64.1.tar
-% mv ia64 loongarch64
-% cd loongarch64
+% tar xf ~/lang/53_GNU_tool/gcc_cross/Loongson/gdb/loongarch64.1.tar
+% mv loongarch64 nios2
+% cd nios2
 
-I replaced `ia64' to `loongarch64'.
+I replaced `loongarch64' to `nios2'.
 
 % make
 ...
 g++ -o run nrun.o libsim.a ../../bfd/libbfd.a ../../opcodes/libopcodes.a  ../../libiberty/libiberty.a ../common/libcommon.a -lnsl -ldl -lz -lpthread
-/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(loongarch64.o): in function `LSEXTRACTED(unsigned int, int, int)':
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-12.1.loongarch64-elf/sim/loongarch64/../common/sim-bits.c:64: undefined reference to `sim_io_error(sim_state*, char const*, ...)'
+/usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: libsim.a(nios2.o): in function `LSEXTRACTED(unsigned int, int, int)':
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-12.1.nios2-elf/sim/nios2/../common/sim-bits.c:64: undefined reference to `sim_io_error(sim_state*, char const*, ...)'
 ...
 %
 
-gdb-12.1.loongarch64-elf/sim/common/sim-io.h:
+gdb-12.1.nios2-elf/sim/common/sim-io.h:
 
 +#ifndef __cplusplus
 void sim_io_error (SIM_DESC sd,
@@ -52,15 +53,15 @@ void sim_io_error (SIM_DESC sd,
 % cd ../../gdb ; make all
   CXXLD  gdb
 /usr/local/lib/gcc/i686-pc-linux-gnu/10.2.0/../../../../i686-pc-linux-gnu/bin/ld: remote-sim.o: in function `gdbsim_target_open(char const*, int)':
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-12.1.loongarch64-elf/gdb/remote-sim.c:326: undefined reference to `default_callback'
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-12.1.nios2-elf/gdb/remote-sim.c:326: undefined reference to `default_callback'
 collect2: error: ld returned 1 exit status
 make: *** [Makefile:1904: gdb] Error 1
 % 
 
-gdb-12.1.loongarch64-elf/gdb/Makefile:
+gdb-12.1.nios2-elf/gdb/Makefile:
 
--SIM = ../sim/loongarch64/libsim.a
-+SIM = ../sim/loongarch64/libsim.a ../sim/common/libcommon.a
+-SIM = ../sim/nios2/libsim.a
++SIM = ../sim/nios2/libsim.a ../sim/common/libcommon.a
 
 % make all
 
@@ -74,12 +75,12 @@ start:
 end:
 	nop
 
-at address 0x100 and executed it under control of loongarch64-elf-gdb.
+at address 0x100 and executed it under control of nios2-elf-gdb.
 
 As usual, I applied memory access patch like below:
 
 	      bfd_get_section_contents (result_bfd, s, buffer, 0, size);
-+	      sim_do_commandf(sd, "memory-region 0x%llx,0x%llx", lma, size);
++	      sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", lma, size);
 	      do_write (sd, lma, buffer, size);
 	      found_loadable_section = 1;
 	      free (buffer);
@@ -89,14 +90,14 @@ As usual, I applied memory access patch like below:
 +         bfd_vma vma = bfd_section_vma(s);
 +         bfd_size_type size = bfd_section_size(s);
 +         sim_do_command(sd, "memory-fill 0xcc");
-+         sim_do_commandf(sd, "memory-region 0x%llx,0x%llx", vma, size);
++         sim_do_commandf(sd, "memory-region 0x%lx,0x%lx", vma, size);
 +       }
 
 By fixing a few stuff, this simple nop program could be executed under control
-of loongarch64-elf-gdb.
+of nios2-elf-gdb.
 
 I uploaded
 
-/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-12.1.loongarch64-elf/sim/loongarch64/
+/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gdb-12.1.nios2-elf/sim/nios2/
 
-at this point as `loongarch64.1.tar'.
+at this point as `nios2.1.tar'.
