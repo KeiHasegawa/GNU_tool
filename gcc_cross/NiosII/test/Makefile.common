@@ -1,0 +1,21 @@
+%.o : %.S
+	nios2-elf-as -o $@ -g $<
+
+%.o : %.c
+	nios2-elf-gcc -o $@ $< -g -c
+
+%.elf : %.o 
+	nios2-elf-ld -o $@ ../default.o $< -T ../default.x
+
+%.objdump : %.elf
+	nios2-elf-objdump -x -d -g $< > $@
+
+%.log : %.elf
+	wdog.exe -v nios2-elf-gdb -q -x gdbcom $< > $@
+
+%.lof : %.log
+	wdog.exe -v diff $< $@
+	touch $@
+
+clean:
+	rm -f *.o *.s *.elf *.map *.objdump *.objcopy *.log TAGS *~
