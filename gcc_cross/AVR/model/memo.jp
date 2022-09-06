@@ -9,13 +9,13 @@ AARCH64 と同様の手順で cc1 の雛形をビルドすることができる.
         の定義を追加する.
         REG_NAMES の最後の 2 つがダミーの要素になる.
 
-(*2) Pmode を HImode にすると予期しない rtx_insn が生成される
-     => md ファイルに
+(*2) Pmode を HImode にすると予期しない rtx_insn* insn が生成される
+     => .md ファイルに
 
        (define_insn "addhi3" ...)
 
        を入れていないのならば gcc は addhi3 相当のコードを addsi3 を使って rtx_insn 
-       の列を生成する.
+       の列を生成するから.
 
 (*3) hello world のコンパイルでエラーになる
      => マクロ TARGET_ADDR_SPACE_POINTER_MODE を定義

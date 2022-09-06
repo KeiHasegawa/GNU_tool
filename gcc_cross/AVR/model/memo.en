@@ -3,32 +3,32 @@ cc1 model
 Refer to "AARCH64" => "cc1 model" => "Memo".
 In similar way, cc1 model of AVR can be built.
 
-(*1) UNITS_PER_WORD を 1 にした場合に必要になる修正
+(*1) Fix if `UNITS_PER_WORD' is defined as 1
      => SHORT_TYPE_SIZE, INT_TYPE_SIZE, LONG_TYPE_SIZE, LONG_LONG_TYPE_SIZE,
         FLOAT_TYPE_SIZE, DOUBLE_TYPE_SIZE, LONG_DOUBLE_TYPE_SIZE
-        の定義を追加する.
-        REG_NAMES の最後の 2 つがダミーの要素になる.
+	Above macro declaration is required.
+        `REG_NAMES' macro reqires 2 dummy elements.
 
-(*2) Pmode を HImode にすると予期しない rtx_insn が生成される
-     => md ファイルに
+(*2) When `Pmode' is defined as `HImode', unexpected rtx_insn* insn is
+     generated.
+     => .md file doesn't contain below:
 
        (define_insn "addhi3" ...)
 
-       を入れていないのならば gcc は addhi3 相当のコードを addsi3 を使って rtx_insn 
-       の列を生成する.
+       then, gcc generates substitute code using `addsi3'.
 
-(*3) hello world のコンパイルでエラーになる
-     => マクロ TARGET_ADDR_SPACE_POINTER_MODE を定義
+(*3) Compiling hello world program causes error
+     => TARGET_ADDR_SPACE_POINTER_MODE macro should be defined
 
-(*4) printf の引数はスタック渡しなので push 命令を生成する
-     => マクロ PUSH_ROUNDING を定義
+(*4) printf arguments are passed using stack, so generate `push' instruction
+     => `PUSH_ROUNDING' macro should be defined
 
-(*5) 函数の引数をフレームポインタ相対 0, 2, ... ではなくて 1, 3, ...
-     となるような rtx_insn を生成する.
-     => マクロ TARGET_STARTING_FRAME_OFFSET を定義
+(*5) Make function arguments saved position `fp' relative 1, 3, ...
+     not 0, 2, ...
+     => `TARGET_STARTING_FRAME_OFFSET' macro should be defined
 
-(*6) where コマンドで意図しないアドレスに gdb がアクセスする
-     => gdb のターゲット固有部の修正.
+(*6) By `where' command, gdb accesses unexpeced address
+     => Fix gdb target depend part.
 
 (*1) UNITS_PER_WORD を 1 にした場合に必要になる修正
 
