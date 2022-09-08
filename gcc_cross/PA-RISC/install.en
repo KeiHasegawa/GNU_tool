@@ -1,0 +1,91 @@
+(*0) PA-RISC
+
+https://en.wikipedia.org/wiki/PA-RISC
+
+(*1) binutils-2.38 install
+
+% setenv SHELL /bin/sh
+% xz -d -c ../binutils-2.38.tar.xz | tar xf -
+% mv binutils-2.38 binutils-2.38.hppa-elf
+% cd binutils-2.38.hppa-elf
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ --target=hppa-elf
+% make
+% make install
+% cd ..
+
+(*2) gcc-12.1.0 install
+
+% xz -d -c ../gcc-12.1.0.tar.xz  | tar xf -
+% mv gcc-12.1.0 gcc-12.1.0.hppa-elf
+% cd gcc-12.1.0.hppa-elf
+% sed -e 's/host_subdir = @host_subdir@/host_subdir = host-i686-pc-linux-gnu/' libgcc/Makefile.in > libgcc/Makefile.in.new
+% mv libgcc/Makefile.in.new libgcc/Makefile.in
+% ./configure --prefix=/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/ --target=hppa-elf
+% make all-gcc
+...
+checking if mkdir takes one argument... no
+*** Configuration hppa-unknown-elf not supported
+make: *** [Makefile:4552: configure-gcc] Error 1
+% cd ..
+% diff -c gcc-12.1.0.{org,hppa-elf}/gcc/config.gcc
+*** gcc-12.1.0.org/gcc/config.gcc	Sun Jul 10 10:30:45 2022
+--- gcc-12.1.0.hppa-elf/gcc/config.gcc	Thu Sep  8 09:42:36 2022
+***************
+*** 1826,1832 ****
+  		;;
+  	esac
+  	;;
+! hppa[12]*-*-hpux11*)
+  	case ${target} in
+  	hppa1.1-*-* | hppa2*-*-*)
+  		target_cpu_default="MASK_PA_11"
+--- 1826,1832 ----
+  		;;
+  	esac
+  	;;
+! hppa[12]*-*-hpux11*|hppa-unknown-elf)
+  	case ${target} in
+  	hppa1.1-*-* | hppa2*-*-*)
+  		target_cpu_default="MASK_PA_11"
+% cd gcc-12.1.0.hppa-elf
+% make all-gcc
+% make all-target-libgcc
+...
+checking for suffix of object files... configure: error: in `/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-12.1.0.hppa-elf/hppa-elf/libgcc':
+configure: error: cannot compute suffix of object files: cannot compile
+See `config.log' for more details
+make: *** [Makefile:13953: configure-target-libgcc] Error 1
+% cat /tmp/a.c
+int main()
+{
+  return 0;
+}
+% /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-12.1.0.hppa-elf/host-i686-pc-linux-gnu/gcc/xgcc -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/gcc-12.1.0.hppa-elf/host-i686-pc-linux-gnu/gcc/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/hppa-elf/bin/ -B/media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/hppa-elf/lib/ -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/hppa-elf/include -isystem /media/ca850f52-0605-42a7-9fd4-899de9edf461/work/GNU_LANG/hppa-elf/sys-include    -c -g -O2  /tmp/a.c
+/tmp/ccHjTLGa.s: Assembler messages:
+/tmp/ccHjTLGa.s:3: Error: unknown pseudo-op: `.subspa'
+/tmp/ccHjTLGa.s:4: Error: unknown pseudo-op: `.subspa'
+/tmp/ccHjTLGa.s:6: Error: unknown pseudo-op: `.subspa'
+/tmp/ccHjTLGa.s:7: Error: unknown pseudo-op: `.subspa'
+/tmp/ccHjTLGa.s:14: Error: unknown pseudo-op: `.nsubspa'
+/tmp/ccHjTLGa.s:18: Error: unknown pseudo-op: `.nsubspa'
+/tmp/ccHjTLGa.s:20: Error: unknown pseudo-op: `.nsubspa'
+/tmp/ccHjTLGa.s:39: Error: unknown pseudo-op: `.nsubspa'
+/tmp/ccHjTLGa.s:42: Error: unknown pseudo-op: `.nsubspa'
+/tmp/ccHjTLGa.s:2: Error: .space, .nops or .fill specifies non-absolute value
+/tmp/ccHjTLGa.s:5: Error: .space, .nops or .fill specifies non-absolute value
+/tmp/ccHjTLGa.s:13: Error: .space, .nops or .fill specifies non-absolute value
+/tmp/ccHjTLGa.s:17: Error: .space, .nops or .fill specifies non-absolute value
+/tmp/ccHjTLGa.s:19: Error: .space, .nops or .fill specifies non-absolute value
+/tmp/ccHjTLGa.s:38: Error: .space, .nops or .fill specifies non-absolute value
+/tmp/ccHjTLGa.s:41: Error: .space, .nops or .fill specifies non-absolute value
+%
+
+How can I get rid of this error?
+
+% make install-gcc
+% make install-target-libgcc
+% cd ..
+
+(*3) gdb-12.1 install
+
+Refer to "PA-RISC gdb".
