@@ -30,30 +30,32 @@ In similar way, cc1 model of AVR can be built.
 (*6) By `where' command, gdb accesses unexpeced address
      => Fix gdb target depend part.
 
-(*1) UNITS_PER_WORD を 1 にした場合に必要になる修正
+(*1) Fix if `UNITS_PER_WORD' is defined as 1
 
-AVR は 8 ビットマイコンだから UNITS_PER_WORD を 1 にする必要がある.
+AVR is 8 bit micro processor, we have to define `UNITS_PER_WORD' as 1.
 
 constexpr int UNITS_PER_WORD = 4;
 
-を
+When fixing above like below:
 
 constexpr int UNITS_PER_WORD = 1;
 
-のように修正すると cc1 の実行時, 以下の部分でエラー 0 番地アクセスする.
+then `cc1' runtime error (access address 0) causes at below part:
 
 c-common.c:4304:
 
   char16_type_node = get_identifier (CHAR16_TYPE);
 
-この部分のプリプロセスの結果は以下:
+For above code, pre-process result becomes like below:
 
   c_global_trees[CTI_CHAR16_TYPE] = (__builtin_constant_p (((((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 16 ? "short unsigned int" : ((8) * UNITS_PER_WORD) == 16 ? "unsigned int" : (8) == 16 ? "unsigned char" : 0) ? (((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 16 ? "short unsigned int" : ((8) * UNITS_PER_WORD) == 16 ? "unsigned int" : (8) == 16 ? "unsigned char" : 0) : ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) ? ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) : (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) ? (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) : 0)) ? get_identifier_with_length ((((((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 16 ? "short unsigned int" : ((8) * UNITS_PER_WORD) == 16 ? "unsigned int" : (8) == 16 ? "unsigned char" : 0) ? (((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 16 ? "short unsigned int" : ((8) * UNITS_PER_WORD) == 16 ? "unsigned int" : (8) == 16 ? "unsigned char" : 0) : ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) ? ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) : (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) ? (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) : 0)), strlen (((((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 16 ? "short unsigned int" : ((8) * UNITS_PER_WORD) == 16 ? "unsigned int" : (8) == 16 ? "unsigned char" : 0) ? (((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 16 ? "short unsigned int" : ((8) * UNITS_PER_WORD) == 16 ? "unsigned int" : (8) == 16 ? "unsigned char" : 0) : ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) ? ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) : (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) ? (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) : 0))) : get_identifier (((((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 16 ? "short unsigned int" : ((8) * UNITS_PER_WORD) == 16 ? "unsigned int" : (8) == 16 ? "unsigned char" : 0) ? (((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 16 ? "short unsigned int" : ((8) * UNITS_PER_WORD) == 16 ? "unsigned int" : (8) == 16 ? "unsigned char" : 0) : ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) ? ((((8) * UNITS_PER_WORD) == 32) ? "long unsigned int" : ((8) * UNITS_PER_WORD) == 32 ? "unsigned int" : ((8) * (((UNITS_PER_WORD + 1) / 2) < (2) ? ((UNITS_PER_WORD + 1) / 2) : (2))) == 32 ? "short unsigned int" : (8) == 32 ? "unsigned char" : 0) : (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) ? (((8) * UNITS_PER_WORD) == 64 ? "long unsigned int" : (((8) * UNITS_PER_WORD) * 2) == 64 ? "long long unsigned int" : ((8) * UNITS_PER_WORD) == 64 ? "unsigned int" : 0) : 0)));
 
-これは人間が読める感じではないが, strlen に 0 を渡しているのが原因であることが分かる.
-さてこれを回避するためにはどうすればよいか.
+It's hard for human to understand above, but it is possible to understand
+that error is caused because NULL pointer is passed to `strlen'.
 
-CHAR16_TYPE はマクロで
+Anyway how can we get rid of this error?
+
+`CHAR16_TYPE' is macro and defined at:
 
 $macro $def CHAR16_TYPE "../.././gcc/defaults.h" 591 ;
 
@@ -63,14 +65,13 @@ $macro $def CHAR16_TYPE "../.././gcc/defaults.h" 591 ;
 #define CHAR16_TYPE "short unsigned int"
 #endif
 
-となっている.
-UINT_LEAST16_TYPE もやはりマクロで
+`UINT_LEAST16_TYPE' is also macro and defined at:
 
 $macro $def UINT_LEAST16_TYPE "../.././gcc/config/newlib-stdint.h" 50
 
 #define UINT_LEAST16_TYPE (UINT16_TYPE ? UINT16_TYPE : UINT32_TYPE ? UINT32_TYPE : UINT64_TYPE ? UINT64_TYPE : 0)
 
-となっている. そこで以下の宣言を追加してみた.
+Then, I added like below:
 
 #undef UINT16_TYPE
 #define UINT16_TYPE	"unsigned int"
@@ -79,14 +80,16 @@ $macro $def UINT_LEAST16_TYPE "../.././gcc/config/newlib-stdint.h" 50
 #undef UINT64_TYPE
 #define UINT64_TYPE	"unsigned long long"
 
-UINT32_TYPE や UINT64_TYPE はこの部分を回避するためだけであれば必要なさそうだが, 
-おそらくどこかで参照されると思われる. 上の宣言を追加してもう一度ビルドし直して簡単な函数を
-コンパイルしてみると該当箇所でのエラーは回避できたが
+It's not necessary to add `UINT32_TYPE' and `UINT64_TYPE' declaration
+for getting rid of this error, but I guessed that some code refers to them.
+Then I executed `make' and confirmed that I could get rid of above error.
+But,
 
   char32_type_node = get_identifier (CHAR32_TYPE);
   char32_type_node = TREE_TYPE (identifier_global_value (char32_type_node));
 
-上の 2 つ目の行で 0 番地アクセスする. 上のプリプロセス結果は
+2nd line caused NULL pointer access. For 2nd line, pre-process result becomes
+like below:
 
   c_global_trees[CTI_CHAR32_TYPE] = (__builtin_constant_p (("unsigned long" ? "unsigned long" : "unsigned long long" ? "unsigned long long" : 0)) ? get_identifier_with_length ((("unsigned long" ? "unsigned long" : "unsigned long long" ? "unsigned long long" : 0)), strlen (("unsigned long" ? "unsigned long" : "unsigned long long" ? "unsigned long long" : 0))) : get_identifier (("unsigned long" ? "unsigned long" : "unsigned long long" ? "unsigned long long" : 0)));
   c_global_trees[CTI_CHAR32_TYPE] = ((identifier_global_value (c_global_trees[CTI_CHAR32_TYPE]))->typed.type);
